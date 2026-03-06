@@ -1,10 +1,23 @@
 cmake_minimum_required(VERSION 3.16)
-project(fcitx5-vinput VERSION 0.1.0 LANGUAGES CXX)
+
+set(VINPUT_PROJECT_VERSION "0.1.0"
+    CACHE STRING "Project version for builds and release artifacts")
+project(fcitx5-vinput VERSION ${VINPUT_PROJECT_VERSION} LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(VINPUT_PACKAGE_RELEASE "1"
+    CACHE STRING "Package release revision for distro packages")
+set(VINPUT_PACKAGE_CONTACT "fcitx5-vinput maintainers <noreply@github.com>"
+    CACHE STRING "Contact metadata used by generated distro packages")
+set(VINPUT_PACKAGE_HOMEPAGE_URL ""
+    CACHE STRING "Homepage URL used by generated distro packages")
+set(VINPUT_PACKAGE_DESCRIPTION_SUMMARY
+    "Offline voice input addon for Fcitx5 with optional OpenAI-compatible postprocess"
+    CACHE STRING "Short description used by generated distro packages")
 
 find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Config REQUIRED)
@@ -32,3 +45,26 @@ install(FILES data/vinput-scenes.json
 
 add_subdirectory(src/daemon)
 add_subdirectory(src/addon)
+
+string(REPLACE "-" "~" VINPUT_DEBIAN_UPSTREAM_VERSION "${PROJECT_VERSION}")
+
+set(CPACK_PACKAGE_NAME "fcitx5-vinput")
+set(CPACK_PACKAGE_VENDOR "fcitx5-vinput")
+set(CPACK_PACKAGE_CONTACT "${VINPUT_PACKAGE_CONTACT}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${VINPUT_PACKAGE_DESCRIPTION_SUMMARY}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "fcitx5-vinput")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+if(VINPUT_PACKAGE_HOMEPAGE_URL)
+    set(CPACK_PACKAGE_HOMEPAGE_URL "${VINPUT_PACKAGE_HOMEPAGE_URL}")
+endif()
+
+set(CPACK_DEBIAN_PACKAGE_NAME "fcitx5-vinput")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${VINPUT_PACKAGE_CONTACT}")
+set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "fcitx5")
+set(CPACK_DEBIAN_PACKAGE_VERSION "${VINPUT_DEBIAN_UPSTREAM_VERSION}")
+set(CPACK_DEBIAN_PACKAGE_RELEASE "${VINPUT_PACKAGE_RELEASE}")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+
+include(CPack)

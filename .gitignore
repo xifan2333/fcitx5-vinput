@@ -1,1 +1,8 @@
 build/
+dist/
+packaging/arch/PKGBUILD
+packaging/arch/pkg/
+packaging/arch/src/
+packaging/arch/*.pkg.tar.zst
+packaging/arch/*.pkg.tar.zst.sig
+packaging/arch/*.tar.gz

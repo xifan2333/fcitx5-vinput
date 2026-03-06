@@ -1,0 +1,199 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source_archive:
+    runs-on: ubuntu-latest
+    outputs:
+      package_version: ${{ steps.meta.outputs.package_version }}
+      package_release: ${{ steps.meta.outputs.package_release }}
+      source_archive: ${{ steps.meta.outputs.source_archive }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          if [[ -z "${version}" || "${version}" == "${tag}" ]]; then
+            echo "Release tags must start with v" >&2
+            exit 1
+          fi
+
+          echo "package_version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "package_release=1" >> "${GITHUB_OUTPUT}"
+          echo "source_archive=fcitx5-vinput-${version}.tar.gz" >> "${GITHUB_OUTPUT}"
+
+      - name: Create source archive
+        shell: bash
+        run: |
+          mkdir -p dist
+          ./scripts/create-source-archive.sh \
+            "dist/${{ steps.meta.outputs.source_archive }}" \
+            "${{ steps.meta.outputs.package_version }}" \
+            "${GITHUB_WORKSPACE}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-archive
+          path: dist/${{ steps.meta.outputs.source_archive }}
+          if-no-files-found: error
+
+  build-deb:
+    needs: source_archive
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            gettext \
+            dpkg-dev \
+            curl \
+            libcurl4-openssl-dev \
+            libpipewire-0.3-dev \
+            libsystemd-dev \
+            libfcitx5core-dev \
+            libfcitx5config-dev \
+            fcitx5-modules-dev
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-archive
+          path: dist
+
+      - name: Build Debian package
+        shell: bash
+        run: |
+          tar -xf "dist/${{ needs.source_archive.outputs.source_archive }}"
+
+          cmake -S "fcitx5-vinput-${{ needs.source_archive.outputs.package_version }}" -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DVINPUT_PROJECT_VERSION="${{ needs.source_archive.outputs.package_version }}" \
+            -DVINPUT_PACKAGE_RELEASE="${{ needs.source_archive.outputs.package_release }}" \
+            -DVINPUT_PACKAGE_CONTACT="${{ github.repository_owner }} <noreply@github.com>" \
+            -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}"
+
+          cmake --build build
+          cpack --config build/CPackConfig.cmake -G DEB -B dist
+
+          deb_path="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
+          if [[ -z "${deb_path}" ]]; then
+            echo "No .deb package was generated" >&2
+            exit 1
+          fi
+
+          asset_name="fcitx5-vinput_${{ needs.source_archive.outputs.package_version }}-${{ needs.source_archive.outputs.package_release }}_ubuntu24.04_amd64.deb"
+          mv "${deb_path}" "dist/${asset_name}"
+          dpkg-deb -I "dist/${asset_name}" >/dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: dist/*.deb
+          if-no-files-found: error
+
+  build-arch:
+    needs: source_archive
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-archive
+          path: dist
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          pacman -Syu --noconfirm --needed \
+            cmake \
+            curl \
+            fcitx5 \
+            pipewire \
+            pkgconf \
+            systemd
+
+      - name: Render PKGBUILD
+        shell: bash
+        run: |
+          cp "dist/${{ needs.source_archive.outputs.source_archive }}" packaging/arch/
+          VINPUT_PKGURL="${{ github.server_url }}/${{ github.repository }}" \
+            ./scripts/render-arch-pkgbuild.sh \
+            packaging/arch/PKGBUILD.in \
+            packaging/arch/PKGBUILD \
+            "${{ needs.source_archive.outputs.package_version }}" \
+            "packaging/arch/${{ needs.source_archive.outputs.source_archive }}" \
+            "${{ needs.source_archive.outputs.package_release }}"
+
+      - name: Build Arch package
+        shell: bash
+        run: |
+          useradd -m builder
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+          su builder -c "cd '${GITHUB_WORKSPACE}/packaging/arch' && makepkg --noconfirm --cleanbuild --force"
+
+          mkdir -p dist
+          pkg_path="packaging/arch/fcitx5-vinput-${{ needs.source_archive.outputs.package_version }}-${{ needs.source_archive.outputs.package_release }}-x86_64.pkg.tar.zst"
+          if [[ -z "${pkg_path}" ]]; then
+            echo "No Arch package was generated" >&2
+            exit 1
+          fi
+          if [[ ! -f "${pkg_path}" ]]; then
+            echo "Expected Arch package not found at ${pkg_path}" >&2
+            exit 1
+          fi
+
+          asset_name="fcitx5-vinput-${{ needs.source_archive.outputs.package_version }}-${{ needs.source_archive.outputs.package_release }}-archlinux-x86_64.pkg.tar.zst"
+          mv "${pkg_path}" "dist/${asset_name}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: dist/*.pkg.tar.zst
+          if-no-files-found: error
+
+  publish-release:
+    needs:
+      - source_archive
+      - build-deb
+      - build-arch
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Publish assets to GitHub Release
+        shell: bash
+        run: |
+          mkdir -p release
+          find release-artifacts -type f -exec cp {} release/ \;
+
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" --generate-notes
+          fi
+
+          gh release upload "${GITHUB_REF_NAME}" release/* --clobber
