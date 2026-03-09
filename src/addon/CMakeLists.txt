@@ -26,5 +26,4 @@ configure_file(vinput-addon.conf.in vinput-addon.conf @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/vinput-addon.conf"
         DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon"
         RENAME vinput.conf)
-install(FILES vinput.conf
-        DESTINATION "${FCITX_INSTALL_PKGDATADIR}/inputmethod")
+
