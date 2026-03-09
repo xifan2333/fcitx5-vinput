@@ -7,3 +7,5 @@ packaging/arch/*.pkg.tar.zst
 packaging/arch/*.pkg.tar.zst.sig
 packaging/arch/*.tar.gz
 .ace-tool/
+.cache/
+compile_commands.json
