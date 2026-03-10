@@ -48,6 +48,7 @@ add_subdirectory(src/common)
 add_subdirectory(src/daemon)
 add_subdirectory(src/addon)
 add_subdirectory(src/cli)
+add_subdirectory(src/gui)
 
 string(REPLACE "-" "~" VINPUT_DEBIAN_UPSTREAM_VERSION "${PROJECT_VERSION}")
 

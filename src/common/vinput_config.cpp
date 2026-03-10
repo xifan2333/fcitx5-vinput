@@ -100,7 +100,7 @@ VinputConfig::VinputConfig(const VinputSettings &settings, bool chinese_ui)
                    fcitx::ToolTipAnnotation(PageNextKeysTooltip(chinese_ui))),
       modelManager(this, "ModelManager",
                    chinese_ui ? "打开 Vinput 设置" : "Open Vinput Settings",
-                   "vinput") {}
+                   "vinput-gui") {}
 
 VinputSettings VinputConfig::settings() const {
   VinputSettings settings;
