@@ -5,10 +5,9 @@
 
 #include <cstdio>
 #include <optional>
+
 #include <set>
 #include <string>
-#include <string_view>
-#include <vector>
 
 namespace {
 
@@ -209,9 +208,10 @@ RewriteWithOpenAiCompatible(const std::string &text,
   if (!settings.llm.enabled || !scene.llm) {
     return std::nullopt;
   }
-  const LlmProvider* provider = ResolveActiveLlmProvider(settings);
+  const LlmProvider *provider = ResolveActiveLlmProvider(settings);
   if (!provider) {
-    fprintf(stderr, "vinput-daemon: LLM enabled but no active provider configured\n");
+    fprintf(stderr,
+            "vinput-daemon: LLM enabled but no active provider configured\n");
     return std::nullopt;
   }
 

@@ -1,16 +1,34 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
 struct ModelInfo {
   std::string model_type; // e.g. "paraformer", "sense_voice", "whisper"
-  std::string language;
-  std::string model;  // Abs path to model.onnx or model.int8.onnx
-  std::string tokens; // Abs path to tokens.txt
-  std::string modeling_unit;
-  bool use_itn = false;
+  // All file paths (absolute), keyed by role:
+  //   "model", "tokens", "encoder", "decoder", "joiner",
+  //   "preprocessor", "uncached_decoder", "cached_decoder", "merged_decoder"
+  std::map<std::string, std::string> files;
+  // Model-specific parameters from vinput-model.json "params"
+  std::map<std::string, std::string> params;
+
+  // Convenience accessors
+  std::string File(const std::string &key) const {
+    auto it = files.find(key);
+    return it != files.end() ? it->second : std::string{};
+  }
+  std::string Param(const std::string &key,
+                    const std::string &default_val = "") const {
+    auto it = params.find(key);
+    return it != params.end() ? it->second : default_val;
+  }
+  bool ParamBool(const std::string &key, bool default_val = false) const {
+    auto it = params.find(key);
+    if (it == params.end()) return default_val;
+    return it->second == "true" || it->second == "1";
+  }
 };
 
 enum class ModelState { Installed, Active, Broken };

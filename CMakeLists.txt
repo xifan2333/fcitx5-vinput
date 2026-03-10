@@ -42,12 +42,7 @@ set(VINPUT_RUNTIME_LIBDIR
 set(VINPUT_DAEMON_EXECUTABLE
     "${CMAKE_INSTALL_FULL_BINDIR}/vinput-daemon")
 
-install(FILES data/vinput-scenes.json
-        DESTINATION "${FCITX_INSTALL_PKGDATADIR}/vinput")
 
-install(PROGRAMS scripts/vinput-model-setup.sh
-        RENAME vinput-model-setup
-        DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
 add_subdirectory(src/common)
 add_subdirectory(src/daemon)

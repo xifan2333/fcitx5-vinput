@@ -51,6 +51,7 @@ public:
       pageNextKeys;
 
   fcitx::ExternalOption modelManager;
+  fcitx::ExternalOption editConfig;
 };
 
 bool UseChineseUi();

@@ -9,6 +9,8 @@ if(NOT CLI11_FOUND)
     FetchContent_MakeAvailable(CLI11)
 endif()
 
+pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
+
 add_executable(vinput
     main.cpp
     formatter.cpp
@@ -19,6 +21,8 @@ add_executable(vinput
     command_scene.cpp
     command_config.cpp
     command_llm.cpp
+    command_hotword.cpp
+    command_device.cpp
     command_daemon.cpp
     command_status.cpp
     dbus_client.cpp
@@ -27,6 +31,7 @@ add_executable(vinput
 
 target_include_directories(vinput PRIVATE
     ${CMAKE_SOURCE_DIR}/src
+    ${PIPEWIRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(vinput PRIVATE
@@ -35,6 +40,7 @@ target_link_libraries(vinput PRIVATE
     CURL::libcurl
     ${SDBUS_LIBRARIES}
     LibArchive::LibArchive
+    ${PIPEWIRE_LIBRARIES}
 )
 
 install(TARGETS vinput DESTINATION ${CMAKE_INSTALL_BINDIR})

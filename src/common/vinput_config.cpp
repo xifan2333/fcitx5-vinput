@@ -5,7 +5,6 @@
 
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <string>
 
 namespace {
@@ -100,8 +99,7 @@ VinputConfig::VinputConfig(const VinputSettings &settings, bool chinese_ui)
                    settings.pageNextKeys, TriggerKeyListConstrain(), {},
                    fcitx::ToolTipAnnotation(PageNextKeysTooltip(chinese_ui))),
       modelManager(this, "ModelManager",
-                   chinese_ui ? "配置与管理 vinput (启动 CLI)"
-                              : "Manage Vinput (Launch CLI)",
+                   chinese_ui ? "打开 Vinput 设置" : "Open Vinput Settings",
                    "vinput") {}
 
 VinputSettings VinputConfig::settings() const {

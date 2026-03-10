@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -11,6 +10,72 @@
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
+
+// ---------------------------------------------------------------------------
+// Helpers: parse vinput-model.json into ModelInfo
+// ---------------------------------------------------------------------------
+
+namespace {
+
+ModelInfo ParseModelJson(const fs::path &dir, const fs::path &json_path) {
+  ModelInfo info;
+  try {
+    std::ifstream file(json_path);
+    json j;
+    file >> j;
+
+    info.model_type = j.value("model_type", "");
+
+    if (j.contains("files") && j["files"].is_object()) {
+      for (const auto &[key, val] : j["files"].items()) {
+        if (val.is_string() && !val.get<std::string>().empty()) {
+          info.files[key] = (dir / val.get<std::string>()).string();
+        }
+      }
+    }
+
+    // Read all params as string key-value pairs
+    if (j.contains("params") && j["params"].is_object()) {
+      for (const auto &[key, val] : j["params"].items()) {
+        if (val.is_string()) {
+          info.params[key] = val.get<std::string>();
+        } else if (val.is_boolean()) {
+          info.params[key] = val.get<bool>() ? "true" : "false";
+        } else if (val.is_number_integer()) {
+          info.params[key] = std::to_string(val.get<int64_t>());
+        } else if (val.is_number_float()) {
+          info.params[key] = std::to_string(val.get<double>());
+        }
+      }
+    }
+
+  } catch (const std::exception &e) {
+    fprintf(stderr, "vinput: failed to parse %s: %s\n",
+            json_path.string().c_str(), e.what());
+  }
+
+  return info;
+}
+
+// Check that the tokens file exists (required for all model types)
+bool HasTokens(const ModelInfo &info) {
+  return !info.File("tokens").empty() && fs::exists(info.File("tokens"));
+}
+
+// Check that at least one model/encoder file exists
+bool HasModelFiles(const ModelInfo &info) {
+  for (const auto &[key, path] : info.files) {
+    if (key == "tokens") continue;
+    if (!path.empty() && fs::exists(path)) return true;
+  }
+  return false;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// ModelManager
+// ---------------------------------------------------------------------------
 
 // static
 fs::path ModelManager::NormalizeBaseDir(const std::string &raw_path) {
@@ -40,23 +105,23 @@ bool ModelManager::EnsureModels() {
   }
 
   auto info = GetModelInfo();
-  if (info.model.empty() || info.tokens.empty() || info.model_type.empty()) {
+  if (info.model_type.empty()) {
     fprintf(
         stderr,
-        "vinput: 'vinput-model.json' for '%s' is missing required fields.\n",
+        "vinput: 'vinput-model.json' for '%s' is missing model_type.\n",
         model_name_.c_str());
     return false;
   }
 
-  if (!fs::exists(info.model)) {
-    fprintf(stderr, "vinput: ASR model file not found at %s\n",
-            info.model.c_str());
+  if (!HasTokens(info)) {
+    fprintf(stderr, "vinput: tokens file not found for model '%s'\n",
+            model_name_.c_str());
     return false;
   }
 
-  if (!fs::exists(info.tokens)) {
-    fprintf(stderr, "vinput: tokens.txt not found at %s\n",
-            info.tokens.c_str());
+  if (!HasModelFiles(info)) {
+    fprintf(stderr, "vinput: no model files found for model '%s'\n",
+            model_name_.c_str());
     return false;
   }
 
@@ -64,38 +129,14 @@ bool ModelManager::EnsureModels() {
 }
 
 ModelInfo ModelManager::GetModelInfo() const {
-  ModelInfo info;
   auto dir = fs::path(base_dir_) / model_name_;
   auto json_path = dir / "vinput-model.json";
 
   if (!fs::exists(json_path)) {
-    return info;
+    return {};
   }
 
-  try {
-    std::ifstream file(json_path);
-    json j;
-    file >> j;
-
-    info.model_type = j.value("model_type", "");
-    info.language = j.value("language", "auto");
-
-    if (j.contains("files") && j["files"].is_object()) {
-      info.model = (dir / j["files"].value("model", "")).string();
-      info.tokens = (dir / j["files"].value("tokens", "")).string();
-    }
-
-    if (j.contains("params") && j["params"].is_object()) {
-      info.modeling_unit = j["params"].value("modeling_unit", "");
-      info.use_itn = j["params"].value("use_itn", false);
-    }
-
-  } catch (const std::exception &e) {
-    fprintf(stderr, "vinput: failed to parse %s: %s\n",
-            json_path.string().c_str(), e.what());
-  }
-
-  return info;
+  return ParseModelJson(dir, json_path);
 }
 
 std::string ModelManager::GetBaseDir() const { return base_dir_; }
@@ -193,48 +234,25 @@ bool ModelManager::Validate(const std::string &model_name,
     return false;
   }
 
-  ModelInfo info;
-  try {
-    std::ifstream file(json_path);
-    json j;
-    file >> j;
-
-    info.model_type = j.value("model_type", "");
-    info.language = j.value("language", "auto");
-
-    if (j.contains("files") && j["files"].is_object()) {
-      info.model = (dir / j["files"].value("model", "")).string();
-      info.tokens = (dir / j["files"].value("tokens", "")).string();
-    }
-  } catch (const std::exception &e) {
-    if (error)
-      *error = std::string("failed to parse vinput-model.json: ") + e.what();
-    return false;
-  }
+  auto info = ParseModelJson(dir, json_path);
 
   if (info.model_type.empty()) {
     if (error) *error = "vinput-model.json missing required field: model_type";
     return false;
   }
 
-  if (info.model.empty()) {
-    if (error) *error = "vinput-model.json missing required field: files.model";
+  if (!HasTokens(info)) {
+    auto tokens_path = info.File("tokens");
+    if (tokens_path.empty()) {
+      if (error) *error = "vinput-model.json missing required field: files.tokens";
+    } else {
+      if (error) *error = "tokens file not found: " + tokens_path;
+    }
     return false;
   }
 
-  if (!fs::exists(info.model)) {
-    if (error) *error = "model file not found: " + info.model;
-    return false;
-  }
-
-  if (info.tokens.empty()) {
-    if (error)
-      *error = "vinput-model.json missing required field: files.tokens";
-    return false;
-  }
-
-  if (!fs::exists(info.tokens)) {
-    if (error) *error = "tokens file not found: " + info.tokens;
+  if (!HasModelFiles(info)) {
+    if (error) *error = "no model/encoder files found in model directory";
     return false;
   }
 

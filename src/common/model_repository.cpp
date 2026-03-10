@@ -238,6 +238,27 @@ bool ModelRepository::InstallModel(const std::string &registry_url,
     return false;
   }
 
+  // If archive extracted into a single top-level directory, flatten it
+  // (equivalent to tar --strip-components=1)
+  {
+    std::vector<fs::path> top_entries;
+    for (const auto &entry : fs::directory_iterator(extracted_dir)) {
+      top_entries.push_back(entry.path());
+    }
+    if (top_entries.size() == 1 && fs::is_directory(top_entries[0])) {
+      const fs::path single_dir = top_entries[0];
+      const fs::path flatten_tmp = tmp_dir / "flatten";
+      fs::rename(single_dir, flatten_tmp, ec);
+      if (!ec) {
+        // Move all contents from flatten_tmp into extracted_dir
+        for (const auto &entry : fs::directory_iterator(flatten_tmp)) {
+          fs::rename(entry.path(), extracted_dir / entry.path().filename(), ec);
+        }
+        fs::remove_all(flatten_tmp, ec);
+      }
+    }
+  }
+
   // Write vinput-model.json if provided
   if (!found->vinput_model.is_null() && !found->vinput_model.empty()) {
     const fs::path json_path = extracted_dir / "vinput-model.json";

@@ -19,7 +19,12 @@ struct CoreConfig {
   std::string captureDevice{"default"};
   std::string activeModel{"paraformer-zh"};
   std::string modelBaseDir;
-  std::string registryUrl;
+  std::string registryUrl{"https://raw.githubusercontent.com/xifan2333/vinput-models/main/registry.json"};
+
+  std::string defaultLanguage{"zh"};
+
+  std::vector<std::string> hotwords;
+  float hotwordsScore{1.5f};
 
   struct Llm {
     bool enabled{false};
@@ -27,11 +32,6 @@ struct CoreConfig {
     std::vector<LlmProvider> providers;
     int candidateCount{1};  // global default
   } llm;
-
-  struct Ui {
-    std::string language{"zh_CN"};
-    std::string theme{"dark"};
-  } ui;
 
   struct Scenes {
     std::string activeScene{"default"};

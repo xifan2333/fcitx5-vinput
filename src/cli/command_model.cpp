@@ -1,5 +1,4 @@
 #include "cli/command_model.h"
-#include "cli/editor_utils.h"
 #include "cli/i18n.h"
 #include "cli/progress.h"
 #include "common/core_config.h"
@@ -188,20 +187,6 @@ int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) 
     fmt.PrintSuccess(success_buf);
     fmt.PrintInfo("Run `vinput model use " + name + "` to activate");
     return 0;
-}
-
-int RunModelEdit(const std::string& name, Formatter& fmt, const CliContext& /*ctx*/) {
-    auto config = LoadCoreConfig();
-    NormalizeCoreConfig(&config);
-    auto base_dir = ResolveModelBaseDir(config);
-    auto json_path = base_dir / name / "vinput-model.json";
-
-    if (!std::filesystem::exists(json_path)) {
-        fmt.PrintError("Model '" + name + "' not found at: " + json_path.string());
-        return 1;
-    }
-
-    return OpenInEditor(json_path);
 }
 
 int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& /*ctx*/) {

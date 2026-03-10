@@ -4,7 +4,7 @@
 #include "common/dbus_interface.h"
 #include "common/recognition_result.h"
 #include "dbus_service.h"
-#include "model_manager.h"
+#include "common/model_manager.h"
 #include "post_processor.h"
 
 #include <poll.h>
@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
   NormalizeCoreConfig(&startup_settings);
   ModelManager model_mgr(ResolveModelBaseDir(startup_settings).string(),
                          startup_settings.activeModel);
-  const auto model_info = model_mgr.GetModelInfo();
+  auto model_info = model_mgr.GetModelInfo();
 
   if (!disable_asr && !model_mgr.EnsureModels()) {
     fprintf(stderr, "vinput-daemon: model check failed, exiting\n");
@@ -45,16 +45,21 @@ int main(int argc, char *argv[]) {
   }
 
   if (!disable_asr) {
-    fprintf(stderr, "vinput-daemon: using model '%s' from %s\n",
-            model_mgr.GetModelName().c_str(), model_info.model.c_str());
-    fprintf(stderr, "vinput-daemon: using tokens from %s\n",
-            model_info.tokens.c_str());
+    fprintf(stderr, "vinput-daemon: using model '%s' (type: %s, lang: %s)\n",
+            model_mgr.GetModelName().c_str(), model_info.model_type.c_str(),
+            startup_settings.defaultLanguage.c_str());
   }
 
   AsrEngine asr;
-  if (!disable_asr && !asr.Init(model_info, 4)) {
-    fprintf(stderr, "vinput-daemon: ASR engine init failed, exiting\n");
-    return 1;
+  if (!disable_asr) {
+    AsrConfig asr_config;
+    asr_config.language = startup_settings.defaultLanguage;
+    asr_config.hotwords = startup_settings.hotwords;
+    asr_config.hotwords_score = startup_settings.hotwordsScore;
+    if (!asr.Init(model_info, asr_config)) {
+      fprintf(stderr, "vinput-daemon: ASR engine init failed, exiting\n");
+      return 1;
+    }
   }
   if (disable_asr) {
     fprintf(stderr, "vinput-daemon: running with ASR disabled\n");

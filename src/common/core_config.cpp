@@ -78,19 +78,6 @@ void from_json(const json &j, CoreConfig::Llm &p) {
 }
 
 // ---------------------------------------------------------------------------
-// CoreConfig::Ui serialization
-// ---------------------------------------------------------------------------
-
-void to_json(json &j, const CoreConfig::Ui &p) {
-  j = json{{"language", p.language}, {"theme", p.theme}};
-}
-
-void from_json(const json &j, CoreConfig::Ui &p) {
-  p.language = j.value("language", p.language);
-  p.theme = j.value("theme", p.theme);
-}
-
-// ---------------------------------------------------------------------------
 // CoreConfig::Scenes serialization
 // ---------------------------------------------------------------------------
 
@@ -119,7 +106,9 @@ void to_json(json &j, const CoreConfig &p) {
   j["model_base_dir"] = p.modelBaseDir;
   j["registry_url"] = p.registryUrl;
   j["llm"] = p.llm;
-  j["ui"] = p.ui;
+  j["default_language"] = p.defaultLanguage;
+  j["hotwords"] = p.hotwords;
+  j["hotwords_score"] = p.hotwordsScore;
   j["scenes"] = p.scenes;
 }
 
@@ -127,13 +116,17 @@ void from_json(const json &j, CoreConfig &p) {
   p.captureDevice = j.value("capture_device", p.captureDevice);
   p.activeModel = j.value("active_model", p.activeModel);
   p.modelBaseDir = j.value("model_base_dir", p.modelBaseDir);
-  p.registryUrl = j.value("registry_url", p.registryUrl);
+  if (auto v = j.value("registry_url", std::string{}); !v.empty()) {
+    p.registryUrl = std::move(v);
+  }
   if (j.contains("llm")) {
     p.llm = j.at("llm").get<CoreConfig::Llm>();
   }
-  if (j.contains("ui")) {
-    p.ui = j.at("ui").get<CoreConfig::Ui>();
+  p.defaultLanguage = j.value("default_language", p.defaultLanguage);
+  if (j.contains("hotwords")) {
+    p.hotwords = j.at("hotwords").get<std::vector<std::string>>();
   }
+  p.hotwordsScore = j.value("hotwords_score", p.hotwordsScore);
   if (j.contains("scenes")) {
     p.scenes = j.at("scenes").get<CoreConfig::Scenes>();
   }
