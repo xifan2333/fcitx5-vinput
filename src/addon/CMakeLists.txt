@@ -2,21 +2,14 @@ find_package(Fcitx5ModuleDBus REQUIRED)
 
 add_library(fcitx5-vinput MODULE
     vinput.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/recognition_result.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/postprocess_scene.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/vinput_config.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/model_manager.cpp
 )
 target_link_libraries(fcitx5-vinput PRIVATE
-    Fcitx5::Config
+    vinput-common
     Fcitx5::Core
     Fcitx5::Module::DBus
-    nlohmann_json::nlohmann_json
-    ${PIPEWIRE_LIBRARIES}
 )
 target_include_directories(fcitx5-vinput PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${PIPEWIRE_INCLUDE_DIRS}
 )
 set_target_properties(fcitx5-vinput PROPERTIES PREFIX "")
 
@@ -26,4 +19,3 @@ configure_file(vinput-addon.conf.in vinput-addon.conf @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/vinput-addon.conf"
         DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon"
         RENAME vinput.conf)
-

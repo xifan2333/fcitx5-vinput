@@ -1,4 +1,5 @@
 set(SHERPA_ONNX_DIR "${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx")
+pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 set(VINPUT_SYSTEMD_SERVICE_FILE
     "${CMAKE_CURRENT_BINARY_DIR}/vinput-daemon.service")
 set(VINPUT_DBUS_SERVICE_FILE
@@ -15,11 +16,7 @@ add_executable(vinput-daemon
     audio_capture.cpp
     asr_engine.cpp
     dbus_service.cpp
-    model_manager.cpp
     post_processor.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/recognition_result.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/postprocess_scene.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/vinput_config.cpp
 )
 
 target_include_directories(vinput-daemon PRIVATE
@@ -33,8 +30,7 @@ target_link_directories(vinput-daemon PRIVATE
 )
 
 target_link_libraries(vinput-daemon PRIVATE
-    Fcitx5::Config
-    nlohmann_json::nlohmann_json
+    vinput-common
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
     CURL::libcurl

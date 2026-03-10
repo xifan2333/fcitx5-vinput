@@ -344,9 +344,6 @@ void VinputEngine::setConfig(const fcitx::RawConfig &rawConfig) {
   settings_ = config->settings();
   applySettings();
   SaveVinputSettings(settings_);
-  if (old_settings.modelName != settings_.modelName) {
-    restartDaemon();
-  }
   ui_config_ = std::move(config);
 }
 

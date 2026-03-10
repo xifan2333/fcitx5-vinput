@@ -25,9 +25,10 @@ include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cma
 find_package(PkgConfig REQUIRED)
 find_package(nlohmann_json 3.2.0 REQUIRED)
 
-pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 pkg_check_modules(SDBUS REQUIRED libsystemd)
 find_package(CURL REQUIRED)
+find_package(LibArchive REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
@@ -44,8 +45,14 @@ set(VINPUT_DAEMON_EXECUTABLE
 install(FILES data/vinput-scenes.json
         DESTINATION "${FCITX_INSTALL_PKGDATADIR}/vinput")
 
+install(PROGRAMS scripts/vinput-model-setup.sh
+        RENAME vinput-model-setup
+        DESTINATION "${CMAKE_INSTALL_BINDIR}")
+
+add_subdirectory(src/common)
 add_subdirectory(src/daemon)
 add_subdirectory(src/addon)
+add_subdirectory(src/cli)
 
 string(REPLACE "-" "~" VINPUT_DEBIAN_UPSTREAM_VERSION "${PROJECT_VERSION}")
 

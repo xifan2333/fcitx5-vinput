@@ -16,14 +16,12 @@ inline constexpr const char* kPkgDataPath = "vinput/scenes.json";
 struct Definition {
     std::string id;
     std::string label;
-    std::string labelZh;
-    std::string labelEn;
     bool llm = false;
     std::string prompt;
 };
 
 struct Config {
-    std::string defaultSceneId;
+    std::string activeSceneId;
     std::vector<Definition> scenes;
 };
 
@@ -31,6 +29,12 @@ const Config& DefaultConfig();
 Config LoadConfig();
 const Definition* Find(const Config& config, std::string_view scene_id);
 const Definition& Resolve(const Config& config, std::string_view scene_id);
-std::string DisplayLabel(const Definition& scene, bool chinese_ui);
+std::string DisplayLabel(const Definition& scene, bool chinese_ui = false);
+
+bool IsBuiltinScene(const std::string& id);
+bool AddScene(Config* config, const Definition& def, std::string* error);
+bool UpdateScene(Config* config, const std::string& id, const Definition& def, std::string* error);
+bool RemoveScene(Config* config, const std::string& id, bool force, std::string* error);
+bool SetActiveScene(Config* config, const std::string& id, std::string* error);
 
 }  // namespace vinput::scene

@@ -1,15 +1,15 @@
 #pragma once
 
-#include "common/recognition_result.h"
+#include "common/core_config.h"
 #include "common/postprocess_scene.h"
-#include "common/vinput_config.h"
+#include "common/recognition_result.h"
 
 class PostProcessor {
 public:
-    PostProcessor();
-    ~PostProcessor();
+  PostProcessor();
+  ~PostProcessor();
 
-    vinput::result::Payload Process(const std::string& raw_text,
-                                    const vinput::scene::Definition& scene,
-                                    const VinputSettings& settings) const;
+  vinput::result::Payload Process(const std::string &raw_text,
+                                  const vinput::scene::Definition &scene,
+                                  const CoreConfig &settings) const;
 };

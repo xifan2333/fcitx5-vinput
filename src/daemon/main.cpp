@@ -1,8 +1,8 @@
 #include "asr_engine.h"
 #include "audio_capture.h"
+#include "common/core_config.h"
 #include "common/dbus_interface.h"
 #include "common/recognition_result.h"
-#include "common/vinput_config.h"
 #include "dbus_service.h"
 #include "model_manager.h"
 #include "post_processor.h"
@@ -13,7 +13,6 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
-#include <future>
 #include <string>
 
 static std::atomic<bool> g_running{true};
@@ -34,8 +33,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  const auto startup_settings = LoadVinputSettings();
-  ModelManager model_mgr("", startup_settings.modelName);
+  auto startup_settings = LoadCoreConfig();
+  NormalizeCoreConfig(&startup_settings);
+  ModelManager model_mgr(ResolveModelBaseDir(startup_settings.core).string(),
+                         startup_settings.core.activeModel);
   const auto model_info = model_mgr.GetModelInfo();
 
   if (!disable_asr && !model_mgr.EnsureModels()) {
@@ -74,8 +75,8 @@ int main(int argc, char *argv[]) {
   std::atomic<Status> current_status{Status::Idle};
 
   dbus.SetStartHandler([&]() {
-    auto runtime_settings = LoadVinputSettings();
-    capture.SetTargetObject(runtime_settings.captureDevice);
+    auto runtime_settings = LoadCoreConfig();
+    capture.SetTargetObject(runtime_settings.core.captureDevice);
     if (!capture.BeginRecording()) {
       current_status = Status::Error;
       dbus.EmitStatusChanged(StatusToString(Status::Error));
@@ -119,10 +120,11 @@ int main(int argc, char *argv[]) {
 
     auto result = vinput::result::PlainTextPayload(text);
     if (!text.empty()) {
-      const auto runtime_settings = LoadVinputSettings();
+      auto runtime_settings = LoadCoreConfig();
+      NormalizeCoreConfig(&runtime_settings);
       const auto scene_config = vinput::scene::LoadConfig();
       const auto &scene = vinput::scene::Resolve(scene_config, scene_id);
-      if (runtime_settings.llmEnabled && scene.llm) {
+      if (runtime_settings.llm.enabled && scene.llm) {
         current_status = Status::Postprocessing;
         dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
       }
