@@ -12,7 +12,7 @@ struct RemoteModelEntry {
   std::string name;
   std::string display_name;
   std::string description;
-  std::string url;          // download URL
+  std::vector<std::string> urls; // download URLs (tried in order, fallback)
   std::string sha256;
   uint64_t size_bytes = 0;
   std::string model_type;

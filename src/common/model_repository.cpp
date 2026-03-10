@@ -9,7 +9,6 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -121,7 +120,19 @@ ModelRepository::FetchRegistry(const std::string &registry_url,
       e.name = item.value("name", "");
       e.display_name = item.value("display_name", "");
       e.description = item.value("description", "");
-      e.url = item.value("url", "");
+      // url: string or array of strings (tried in order as fallback)
+      if (item.contains("url")) {
+        const auto &u = item["url"];
+        if (u.is_string()) {
+          e.urls.push_back(u.get<std::string>());
+        } else if (u.is_array()) {
+          for (const auto &elem : u) {
+            if (elem.is_string() && !elem.get<std::string>().empty()) {
+              e.urls.push_back(elem.get<std::string>());
+            }
+          }
+        }
+      }
       e.sha256 = item.value("sha256", "");
       e.size_bytes = item.value("size_bytes", uint64_t{0});
       e.model_type = item.value("model_type", "");
@@ -129,7 +140,7 @@ ModelRepository::FetchRegistry(const std::string &registry_url,
       if (item.contains("vinput_model")) {
         e.vinput_model = item["vinput_model"];
       }
-      if (!e.name.empty() && !e.url.empty()) {
+      if (!e.name.empty() && !e.urls.empty()) {
         entries.push_back(std::move(e));
       }
     }
@@ -176,13 +187,12 @@ bool ModelRepository::InstallModel(const std::string &registry_url,
     return false;
   }
 
-  // Determine archive filename from URL
-  std::string url_path = found->url;
+  // Determine archive filename from first URL
   std::string archive_name = model_name + ".tar.gz";
   {
-    auto pos = url_path.rfind('/');
-    if (pos != std::string::npos && pos + 1 < url_path.size()) {
-      archive_name = url_path.substr(pos + 1);
+    auto pos = found->urls[0].rfind('/');
+    if (pos != std::string::npos && pos + 1 < found->urls[0].size()) {
+      archive_name = found->urls[0].substr(pos + 1);
       // Strip query string if present
       auto q = archive_name.find('?');
       if (q != std::string::npos) archive_name = archive_name.substr(0, q);
@@ -191,9 +201,20 @@ bool ModelRepository::InstallModel(const std::string &registry_url,
 
   const fs::path archive_path = tmp_dir / archive_name;
 
-  // Download
+  // Try each URL in order (fallback on failure)
   std::string dl_err;
-  if (!DownloadFile(found->url, archive_path, progress_cb, &dl_err)) {
+  bool downloaded = false;
+  for (const auto &url : found->urls) {
+    dl_err.clear();
+    if (DownloadFile(url, archive_path, progress_cb, &dl_err)) {
+      downloaded = true;
+      break;
+    }
+    // Clean up partial download before trying next URL
+    std::error_code rm_ec;
+    fs::remove(archive_path, rm_ec);
+  }
+  if (!downloaded) {
     fs::remove_all(tmp_dir, ec);
     if (error) *error = dl_err;
     return false;

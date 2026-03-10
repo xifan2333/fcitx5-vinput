@@ -190,7 +190,7 @@ int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) 
     return 0;
 }
 
-int RunModelEdit(const std::string& name, Formatter& fmt, const CliContext& ctx) {
+int RunModelEdit(const std::string& name, Formatter& fmt, const CliContext& /*ctx*/) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
     auto base_dir = ResolveModelBaseDir(config);
@@ -204,7 +204,7 @@ int RunModelEdit(const std::string& name, Formatter& fmt, const CliContext& ctx)
     return OpenInEditor(json_path);
 }
 
-int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& ctx) {
+int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& /*ctx*/) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
     auto base_dir = ResolveModelBaseDir(config);
@@ -237,7 +237,7 @@ int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& ctx) 
     return 0;
 }
 
-int RunModelRemove(const std::string& name, bool force, Formatter& fmt, const CliContext& ctx) {
+int RunModelRemove(const std::string& name, bool force, Formatter& fmt, const CliContext& /*ctx*/) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
     auto base_dir = ResolveModelBaseDir(config);
