@@ -45,11 +45,11 @@ static uint64_t DirSize(const std::filesystem::path& dir) {
 int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
-    auto base_dir = ResolveModelBaseDir(config.core);
+    auto base_dir = ResolveModelBaseDir(config);
     ModelManager mgr(base_dir.string());
 
     if (!remote) {
-        auto models = mgr.ListDetailed(config.core.activeModel);
+        auto models = mgr.ListDetailed(config.activeModel);
 
         if (ctx.json_output) {
             nlohmann::json arr = nlohmann::json::array();
@@ -87,21 +87,21 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
     }
 
     // Remote listing
-    if (config.core.registryUrl.empty()) {
-        fmt.PrintError("No registry URL configured. Set with: vinput config set extra.core.registry_url <url>");
+    if (config.registryUrl.empty()) {
+        fmt.PrintError("No registry URL configured. Set with: vinput config set extra.registry_url <url>");
         return 1;
     }
 
     ModelRepository repo(base_dir.string());
     std::string err;
-    auto remote_models = repo.FetchRegistry(config.core.registryUrl, &err);
+    auto remote_models = repo.FetchRegistry(config.registryUrl, &err);
     if (!err.empty()) {
         fmt.PrintError(err);
         return 1;
     }
 
     // Get local model names for comparison
-    auto local_models = mgr.ListDetailed(config.core.activeModel);
+    auto local_models = mgr.ListDetailed(config.activeModel);
     auto is_installed = [&](const std::string& name) {
         for (const auto& lm : local_models) {
             if (lm.name == name) return true;
@@ -140,10 +140,10 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
 int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
-    auto base_dir = ResolveModelBaseDir(config.core);
+    auto base_dir = ResolveModelBaseDir(config);
 
-    if (config.core.registryUrl.empty()) {
-        fmt.PrintError("No registry URL configured. Set with: vinput config set extra.core.registry_url <url>");
+    if (config.registryUrl.empty()) {
+        fmt.PrintError("No registry URL configured. Set with: vinput config set extra.registry_url <url>");
         return 1;
     }
 
@@ -151,7 +151,7 @@ int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) 
 
     // Fetch registry first to get total size for progress bar
     std::string err;
-    auto remote_models = repo.FetchRegistry(config.core.registryUrl, &err);
+    auto remote_models = repo.FetchRegistry(config.registryUrl, &err);
     if (!err.empty()) {
         fmt.PrintError(err);
         return 1;
@@ -170,7 +170,7 @@ int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) 
     ProgressBar bar(label_buf, total_size, ctx.is_tty);
 
     bool install_ok = repo.InstallModel(
-        config.core.registryUrl, name,
+        config.registryUrl, name,
         [&](const InstallProgress& p) {
             bar.Update(p.downloaded_bytes, p.speed_bps);
         },
@@ -193,7 +193,7 @@ int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) 
 int RunModelEdit(const std::string& name, Formatter& fmt, const CliContext& ctx) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
-    auto base_dir = ResolveModelBaseDir(config.core);
+    auto base_dir = ResolveModelBaseDir(config);
     auto json_path = base_dir / name / "vinput-model.json";
 
     if (!std::filesystem::exists(json_path)) {
@@ -207,7 +207,7 @@ int RunModelEdit(const std::string& name, Formatter& fmt, const CliContext& ctx)
 int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& ctx) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
-    auto base_dir = ResolveModelBaseDir(config.core);
+    auto base_dir = ResolveModelBaseDir(config);
 
     ModelManager mgr(base_dir.string());
     std::string err;
@@ -216,7 +216,7 @@ int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& ctx) 
         return 1;
     }
 
-    config.core.activeModel = name;
+    config.activeModel = name;
     if (!SaveCoreConfig(config)) {
         fmt.PrintError("Failed to save configuration.");
         return 1;
@@ -240,9 +240,9 @@ int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& ctx) 
 int RunModelRemove(const std::string& name, bool force, Formatter& fmt, const CliContext& ctx) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
-    auto base_dir = ResolveModelBaseDir(config.core);
+    auto base_dir = ResolveModelBaseDir(config);
 
-    if (name == config.core.activeModel && !force) {
+    if (name == config.activeModel && !force) {
         fmt.PrintError("Cannot remove active model '" + name + "'. Use --force to override.");
         return 1;
     }
@@ -261,7 +261,7 @@ int RunModelRemove(const std::string& name, bool force, Formatter& fmt, const Cl
 int RunModelInfo(const std::string& name, Formatter& fmt, const CliContext& ctx) {
     auto config = LoadCoreConfig();
     NormalizeCoreConfig(&config);
-    auto base_dir = ResolveModelBaseDir(config.core);
+    auto base_dir = ResolveModelBaseDir(config);
     auto model_dir = base_dir / name;
     auto json_path = model_dir / "vinput-model.json";
 

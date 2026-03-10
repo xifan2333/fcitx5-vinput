@@ -35,8 +35,8 @@ int main(int argc, char *argv[]) {
 
   auto startup_settings = LoadCoreConfig();
   NormalizeCoreConfig(&startup_settings);
-  ModelManager model_mgr(ResolveModelBaseDir(startup_settings.core).string(),
-                         startup_settings.core.activeModel);
+  ModelManager model_mgr(ResolveModelBaseDir(startup_settings).string(),
+                         startup_settings.activeModel);
   const auto model_info = model_mgr.GetModelInfo();
 
   if (!disable_asr && !model_mgr.EnsureModels()) {
@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
 
   dbus.SetStartHandler([&]() {
     auto runtime_settings = LoadCoreConfig();
-    capture.SetTargetObject(runtime_settings.core.captureDevice);
+    capture.SetTargetObject(runtime_settings.captureDevice);
     if (!capture.BeginRecording()) {
       current_status = Status::Error;
       dbus.EmitStatusChanged(StatusToString(Status::Error));

@@ -13,7 +13,7 @@ namespace vinput::config {
 
 static const std::string kExtraPrefix = "extra.";
 
-// Parse a dotpath like "extra.core.active_model" → vector ["core", "active_model"]
+// Parse a dotpath like "extra.active_model" → vector ["active_model"]
 // Returns false if prefix is not "extra."
 static bool ParseExtraDotpath(const std::string& dotpath, std::vector<std::string>* keys, std::string* error) {
     if (dotpath.substr(0, kExtraPrefix.size()) != kExtraPrefix) {

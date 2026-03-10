@@ -9,7 +9,6 @@
 
 using json = nlohmann::json;
 
-
 std::string GetCoreConfigPath() {
   return vinput::path::CoreConfigPath().string();
 }
@@ -59,25 +58,7 @@ void from_json(const json &j, Definition &d) {
 }  // namespace vinput::scene
 
 // ---------------------------------------------------------------------------
-// CoreConfig::Core serialization
-// ---------------------------------------------------------------------------
-
-void to_json(json &j, const CoreConfig::Core &p) {
-  j = json{{"capture_device", p.captureDevice},
-           {"active_model", p.activeModel},
-           {"model_base_dir", p.modelBaseDir},
-           {"registry_url", p.registryUrl}};
-}
-
-void from_json(const json &j, CoreConfig::Core &p) {
-  p.captureDevice = j.value("capture_device", p.captureDevice);
-  p.activeModel = j.value("active_model", p.activeModel);
-  p.modelBaseDir = j.value("model_base_dir", p.modelBaseDir);
-  p.registryUrl = j.value("registry_url", p.registryUrl);
-}
-
-// ---------------------------------------------------------------------------
-// CoreConfig::Llm serialization (new multi-provider format)
+// CoreConfig::Llm serialization
 // ---------------------------------------------------------------------------
 
 void to_json(json &j, const CoreConfig::Llm &p) {
@@ -128,21 +109,25 @@ void from_json(const json &j, CoreConfig::Scenes &s) {
 }
 
 // ---------------------------------------------------------------------------
-// CoreConfig serialization
+// CoreConfig serialization (top-level fields, no "core" wrapper)
 // ---------------------------------------------------------------------------
 
 void to_json(json &j, const CoreConfig &p) {
   j = json::object();
-  j["core"] = p.core;
+  j["capture_device"] = p.captureDevice;
+  j["active_model"] = p.activeModel;
+  j["model_base_dir"] = p.modelBaseDir;
+  j["registry_url"] = p.registryUrl;
   j["llm"] = p.llm;
   j["ui"] = p.ui;
   j["scenes"] = p.scenes;
 }
 
 void from_json(const json &j, CoreConfig &p) {
-  if (j.contains("core")) {
-    p.core = j.at("core").get<CoreConfig::Core>();
-  }
+  p.captureDevice = j.value("capture_device", p.captureDevice);
+  p.activeModel = j.value("active_model", p.activeModel);
+  p.modelBaseDir = j.value("model_base_dir", p.modelBaseDir);
+  p.registryUrl = j.value("registry_url", p.registryUrl);
   if (j.contains("llm")) {
     p.llm = j.at("llm").get<CoreConfig::Llm>();
   }
@@ -209,10 +194,9 @@ bool SaveCoreConfig(const CoreConfig &config) {
 
 void NormalizeCoreConfig(CoreConfig *config) {
   if (!config) return;
-  // Expand ~ in modelBaseDir
-  if (!config->core.modelBaseDir.empty()) {
-    config->core.modelBaseDir =
-        vinput::path::ExpandUserPath(config->core.modelBaseDir).string();
+  if (!config->modelBaseDir.empty()) {
+    config->modelBaseDir =
+        vinput::path::ExpandUserPath(config->modelBaseDir).string();
   }
 }
 
@@ -226,9 +210,9 @@ const LlmProvider *ResolveActiveLlmProvider(const CoreConfig &config) {
   return nullptr;
 }
 
-std::filesystem::path ResolveModelBaseDir(const CoreConfig::Core &core) {
-  if (!core.modelBaseDir.empty()) {
-    return vinput::path::ExpandUserPath(core.modelBaseDir);
+std::filesystem::path ResolveModelBaseDir(const CoreConfig &config) {
+  if (!config.modelBaseDir.empty()) {
+    return vinput::path::ExpandUserPath(config.modelBaseDir);
   }
   return vinput::path::DefaultModelBaseDir();
 }

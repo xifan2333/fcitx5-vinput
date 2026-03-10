@@ -16,12 +16,10 @@ struct LlmProvider {
 };
 
 struct CoreConfig {
-  struct Core {
-    std::string captureDevice{"default"};
-    std::string activeModel{"paraformer-zh"};
-    std::string modelBaseDir;
-    std::string registryUrl;
-  } core;
+  std::string captureDevice{"default"};
+  std::string activeModel{"paraformer-zh"};
+  std::string modelBaseDir;
+  std::string registryUrl;
 
   struct Llm {
     bool enabled{false};
@@ -48,4 +46,4 @@ std::string GetCoreConfigPath();
 
 void NormalizeCoreConfig(CoreConfig *config);
 const LlmProvider *ResolveActiveLlmProvider(const CoreConfig &config);
-std::filesystem::path ResolveModelBaseDir(const CoreConfig::Core &core);
+std::filesystem::path ResolveModelBaseDir(const CoreConfig &config);
