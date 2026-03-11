@@ -33,7 +33,6 @@ int RunInit(bool force, Formatter& fmt, const CliContext& ctx) {
             vinput::scene::Definition{
                 .id = "default",
                 .label = "",
-                .llm = false,
                 .prompt = "",
             },
         };

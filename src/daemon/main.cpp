@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
         NormalizeCoreConfig(&runtime_settings);
         const auto scene_config = vinput::scene::LoadConfig();
         const auto &scene = vinput::scene::Resolve(scene_config, job.scene_id);
-        if (runtime_settings.llm.enabled && scene.llm) {
+        if (runtime_settings.llm.enabled && !scene.prompt.empty()) {
           current_status = Status::Postprocessing;
           dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
         }

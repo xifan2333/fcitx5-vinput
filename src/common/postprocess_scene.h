@@ -16,9 +16,7 @@ inline constexpr const char* kPkgDataPath = "vinput/scenes.json";
 struct Definition {
     std::string id;
     std::string label;
-    bool llm = false;
     std::string prompt;
-    std::string type{"input"};
 };
 
 struct Config {
@@ -31,10 +29,6 @@ Config LoadConfig();
 const Definition* Find(const Config& config, std::string_view scene_id);
 const Definition& Resolve(const Config& config, std::string_view scene_id);
 std::string DisplayLabel(const Definition& scene);
-
-bool IsCommandScene(const Definition& scene);
-bool IsRewriteScene(const Definition& scene);
-bool IsInputScene(const Definition& scene);
 
 bool IsBuiltinScene(const std::string& id);
 bool AddScene(Config* config, const Definition& def, std::string* error);

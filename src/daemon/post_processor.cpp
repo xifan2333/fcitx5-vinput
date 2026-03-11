@@ -213,7 +213,7 @@ std::optional<std::vector<std::string>>
 RewriteWithOpenAiCompatible(const std::string &text,
                             const vinput::scene::Definition &scene,
                             const CoreConfig &settings, int candidate_count) {
-  if (!settings.llm.enabled || !scene.llm) {
+  if (!settings.llm.enabled) {
     return std::nullopt;
   }
   const LlmProvider *provider = ResolveActiveLlmProvider(settings);
@@ -405,45 +405,12 @@ PostProcessor::Process(const std::string &raw_text,
     return {};
   }
 
-  if (vinput::scene::IsCommandScene(scene)) {
-    const int candidate_count =
-        NormalizeCandidateCount(settings.llm.candidateCount);
-    if (candidate_count == 0 || !scene.llm) {
-      return vinput::result::PlainTextPayload(normalized);
-    }
-
-    auto rewritten =
-        RewriteWithOpenAiCompatible(normalized, scene, settings, candidate_count);
-    if (!rewritten.has_value() || rewritten->empty()) {
-      return vinput::result::PlainTextPayload(normalized);
-    }
-
-    vinput::result::Payload payload;
-    std::set<std::string> seen;
-    for (auto &text : *rewritten) {
-      AppendUniqueCandidate(payload, seen, std::move(text),
-                            vinput::result::kSourceCommand);
-    }
-
-    if (payload.candidates.empty()) {
-      return vinput::result::PlainTextPayload(normalized);
-    }
-
-    AppendUniqueCandidate(payload, seen, _("Cancel"),
-                          vinput::result::kSourceCancel);
-    payload.commitText.clear();
-    return payload;
-  }
-
-  if (!scene.llm) {
-    return vinput::result::PlainTextPayload(normalized);
-  }
-
   const int candidate_count =
       NormalizeCandidateCount(settings.llm.candidateCount);
-  if (candidate_count == 0) {
+  if (candidate_count == 0 || scene.prompt.empty()) {
     return vinput::result::PlainTextPayload(normalized);
   }
+
   auto rewritten =
       RewriteWithOpenAiCompatible(normalized, scene, settings, candidate_count);
   if (!rewritten.has_value()) {

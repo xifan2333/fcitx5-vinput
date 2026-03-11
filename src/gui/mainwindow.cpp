@@ -516,10 +516,9 @@ void MainWindow::refreshSceneList() {
   CoreConfig config = LoadCoreConfig();
   for (const auto &s : config.scenes.definitions) {
     QString label = QString::fromStdString(vinput::scene::DisplayLabel(s));
-    QString type = QString::fromStdString(s.type);
     bool active = (s.id == config.scenes.activeScene);
 
-    QString display = QString("%1 [%2]").arg(label, type);
+    QString display = label;
     if (active)
       display += " *";
 
@@ -535,16 +534,11 @@ void MainWindow::onSceneAdd() {
   auto *form = new QFormLayout();
   auto *editId = new QLineEdit();
   auto *editLabel = new QLineEdit();
-  auto *comboType = new QComboBox();
-  comboType->addItems({"input", "command", "rewrite"});
-  auto *checkLlm = new QCheckBox();
   auto *editPrompt = new QTextEdit();
   editPrompt->setMaximumHeight(100);
 
   form->addRow(tr("ID:"), editId);
   form->addRow(tr("Label:"), editLabel);
-  form->addRow(tr("Type:"), comboType);
-  form->addRow(tr("LLM:"), checkLlm);
   form->addRow(tr("Prompt:"), editPrompt);
 
   auto *buttons =
@@ -564,8 +558,6 @@ void MainWindow::onSceneAdd() {
   vinput::scene::Definition def;
   def.id = editId->text().trimmed().toStdString();
   def.label = editLabel->text().trimmed().toStdString();
-  def.type = comboType->currentText().toStdString();
-  def.llm = checkLlm->isChecked();
   def.prompt = editPrompt->toPlainText().toStdString();
 
   vinput::scene::Config sc;
@@ -613,20 +605,12 @@ void MainWindow::onSceneEdit() {
   auto *editId = new QLineEdit(scene_id);
   editId->setReadOnly(true);
   auto *editLabel = new QLineEdit(QString::fromStdString(found->label));
-  auto *comboType = new QComboBox();
-  comboType->addItems({"input", "command", "rewrite"});
-  comboType->setCurrentText(QString::fromStdString(found->type));
-  comboType->setEnabled(false);
-  auto *checkLlm = new QCheckBox();
-  checkLlm->setChecked(found->llm);
   auto *editPrompt = new QTextEdit();
   editPrompt->setPlainText(QString::fromStdString(found->prompt));
   editPrompt->setMaximumHeight(100);
 
   form->addRow(tr("ID:"), editId);
   form->addRow(tr("Label:"), editLabel);
-  form->addRow(tr("Type:"), comboType);
-  form->addRow(tr("LLM:"), checkLlm);
   form->addRow(tr("Prompt:"), editPrompt);
 
   auto *buttons =
@@ -643,7 +627,6 @@ void MainWindow::onSceneEdit() {
 
   vinput::scene::Definition updated;
   updated.label = editLabel->text().trimmed().toStdString();
-  updated.llm = checkLlm->isChecked();
   updated.prompt = editPrompt->toPlainText().toStdString();
 
   vinput::scene::Config sc;

@@ -26,9 +26,7 @@ vinput::scene::Config BuildDefaultConfig() {
         Definition{
             .id = vinput::scene::kDefault,
             .label = _("Default"),
-            .llm = false,
             .prompt = "",
-            .type = "input",
         }
     };
     return config;
@@ -70,19 +68,6 @@ bool ParseSceneDefinition(const json& value, std::size_t index,
 
     scene.label = JsonString(value, "label");
     scene.prompt = JsonString(value, "prompt");
-    scene.llm = JsonBool(value, "llm", !scene.prompt.empty());
-    scene.type = JsonString(value, "type");
-    if (scene.type.empty()) {
-        scene.type = "input";
-    }
-
-    if (scene.llm && scene.prompt.empty()) {
-        fprintf(stderr,
-                "vinput: skipping scene '%s' in %s because llm=true but "
-                "prompt is empty\n",
-                scene.id.c_str(), vinput::scene::kConfigPath);
-        return false;
-    }
 
     *out = std::move(scene);
     return true;
@@ -215,18 +200,6 @@ std::string DisplayLabel(const Definition& scene) {
     return scene.id;
 }
 
-bool IsCommandScene(const Definition& scene) {
-    return scene.type == "command";
-}
-
-bool IsRewriteScene(const Definition& scene) {
-    return scene.type == "rewrite";
-}
-
-bool IsInputScene(const Definition& scene) {
-    return scene.type.empty() || scene.type == "input";
-}
-
 bool IsBuiltinScene(const std::string& id) {
     return id == kDefault || id == kFormal || id == kCode || id == kTranslate;
 }
@@ -249,7 +222,6 @@ bool UpdateScene(Config* config, const std::string& id, const Definition& def,
     for (auto& scene : config->scenes) {
         if (scene.id == id) {
             scene.label = def.label;
-            scene.llm = def.llm;
             scene.prompt = def.prompt;
             return true;
         }
