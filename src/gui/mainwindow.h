@@ -2,6 +2,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QLabel>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QPushButton>
@@ -49,12 +50,22 @@ private slots:
   void onLlmRemove();
   void onLlmSetActive();
 
+  // Hotword Management
+  void onImportHotwordsClicked();
+
+  // Daemon Management
+  void refreshDaemonStatus();
+  void onDaemonStart();
+  void onDaemonStop();
+  void onDaemonRestart();
+
 private:
   void setupUi();
   void setupGeneralTab();
   void setupModelTab();
   void setupSceneTab();
   void setupLlmTab();
+  void setupHotwordTab();
   void refreshSceneList();
   void refreshLlmList();
 
@@ -63,6 +74,7 @@ private:
   QWidget *modelTab;
   QWidget *sceneTab;
   QWidget *llmTab;
+  QWidget *hotwordTab;
 
   // General Tab
   QComboBox *comboDevice;
@@ -95,6 +107,18 @@ private:
   QPushButton *btnLlmEdit;
   QPushButton *btnLlmRemove;
   QPushButton *btnLlmSetActive;
+
+  // Hotword Tab
+  QTextEdit *textHotwords;
+  QDoubleSpinBox *spinHotwordScore;
+  QPushButton *btnImportHotwords;
+
+  // Daemon Tab
+  QLabel *lblDaemonStatus;
+  QPushButton *btnDaemonStart;
+  QPushButton *btnDaemonStop;
+  QPushButton *btnDaemonRestart;
+  class QTimer *daemonRefreshTimer = nullptr;
 
   // Core Data
   CoreConfig currentConfig;

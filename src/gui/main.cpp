@@ -13,18 +13,20 @@ QStringList TranslationSearchPaths() {
   QStringList paths;
   const QByteArray xdg = qgetenv("XDG_DATA_DIRS");
   if (!xdg.isEmpty()) {
-    for (const auto &p : QString::fromUtf8(xdg).split(":", Qt::SkipEmptyParts)) {
+    for (const auto &p :
+         QString::fromUtf8(xdg).split(":", Qt::SkipEmptyParts)) {
       paths.push_back(p);
     }
   }
-  const QStringList std = QStandardPaths::standardLocations(
-      QStandardPaths::GenericDataLocation);
+  const QStringList std =
+      QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
   for (const auto &p : std) {
     if (!paths.contains(p)) {
       paths.push_back(p);
     }
   }
   paths.push_back(QCoreApplication::applicationDirPath() + "/../share");
+  paths.push_back(QCoreApplication::applicationDirPath());
   return paths;
 }
 
@@ -36,8 +38,13 @@ bool TryLoadTranslation(QTranslator &translator, const QString &base_name) {
   };
   for (const auto &root : TranslationSearchPaths()) {
     for (const auto &name : candidates) {
-      const QString path = QDir(root).filePath(
-          "fcitx5-vinput/i18n/" + name + ".qm");
+      // System path pattern
+      QString path = QDir(root).filePath("fcitx5-vinput/i18n/" + name + ".qm");
+      if (translator.load(path)) {
+        return true;
+      }
+      // Local path pattern (for running directly from build dir)
+      path = QDir(root).filePath(name + ".qm");
       if (translator.load(path)) {
         return true;
       }

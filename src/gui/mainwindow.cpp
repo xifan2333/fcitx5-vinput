@@ -3,25 +3,33 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 
 #include <algorithm>
+#include <unordered_set>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle(tr("Vinput Configuration"));
   setupUi();
   loadConfigToUi();
+
+  daemonRefreshTimer = new QTimer(this);
+  connect(daemonRefreshTimer, &QTimer::timeout, this,
+          &MainWindow::refreshDaemonStatus);
+  daemonRefreshTimer->start(2000); // 2 seconds refresh rate
 }
 
 MainWindow::~MainWindow() = default;
@@ -39,6 +47,7 @@ void MainWindow::setupUi() {
   setupModelTab();
   setupSceneTab();
   setupLlmTab();
+  setupHotwordTab();
 
   auto *bottomLayout = new QHBoxLayout();
   btnSave = new QPushButton(tr("Save Settings"), this);
@@ -69,10 +78,45 @@ void MainWindow::setupGeneralTab() {
 
   layout->addSpacing(20);
 
-  btnOpenConfig = new QPushButton(tr("Open Advanced Config (config.json)"));
-  connect(btnOpenConfig, &QPushButton::clicked, this,
-          &MainWindow::onOpenConfigClicked);
-  layout->addWidget(btnOpenConfig);
+  // Daemon Status Area
+  auto *daemonFrame = new QFrame();
+  daemonFrame->setFrameShape(QFrame::StyledPanel);
+  auto *daemonLayout = new QVBoxLayout(daemonFrame);
+
+  auto *statusLayout = new QHBoxLayout();
+  statusLayout->addWidget(new QLabel(tr("Daemon Status:")));
+
+  lblDaemonStatus = new QLabel(tr("Unknown"));
+  QFont boldFont = lblDaemonStatus->font();
+  boldFont.setBold(true);
+  lblDaemonStatus->setFont(boldFont);
+  statusLayout->addWidget(lblDaemonStatus);
+  statusLayout->addStretch();
+
+  daemonLayout->addLayout(statusLayout);
+
+  auto *btnLayout = new QHBoxLayout();
+  btnDaemonStart = new QPushButton(tr("Start Daemon"));
+  btnDaemonStop = new QPushButton(tr("Stop Daemon"));
+  btnDaemonRestart = new QPushButton(tr("Restart Daemon"));
+
+  btnLayout->addWidget(btnDaemonStart);
+  btnLayout->addWidget(btnDaemonStop);
+  btnLayout->addWidget(btnDaemonRestart);
+  btnLayout->addStretch();
+
+  daemonLayout->addLayout(btnLayout);
+  layout->addWidget(daemonFrame);
+
+  connect(btnDaemonStart, &QPushButton::clicked, this,
+          &MainWindow::onDaemonStart);
+  connect(btnDaemonStop, &QPushButton::clicked, this,
+          &MainWindow::onDaemonStop);
+  connect(btnDaemonRestart, &QPushButton::clicked, this,
+          &MainWindow::onDaemonRestart);
+
+  // Initial trigger
+  QTimer::singleShot(0, this, &MainWindow::refreshDaemonStatus);
 
   layout->addStretch();
   tabWidget->addTab(generalTab, tr("General Settings"));
@@ -142,8 +186,7 @@ bool RunVinputJson(const QStringList &args, QJsonDocument *out_doc,
 
 QList<DeviceEntry> LoadDevicesFromCli(QString *error_out) {
   QJsonDocument doc;
-  if (!RunVinputJson({"device", "list"}, &doc, error_out) ||
-      !doc.isArray()) {
+  if (!RunVinputJson({"device", "list"}, &doc, error_out) || !doc.isArray()) {
     if (error_out && error_out->isEmpty())
       *error_out = "invalid JSON output from vinput device list";
     return {};
@@ -168,8 +211,7 @@ QList<DeviceEntry> LoadDevicesFromCli(QString *error_out) {
 
 QList<ModelEntry> LoadLocalModelsFromCli(QString *error_out) {
   QJsonDocument doc;
-  if (!RunVinputJson({"model", "list"}, &doc, error_out) ||
-      !doc.isArray()) {
+  if (!RunVinputJson({"model", "list"}, &doc, error_out) || !doc.isArray()) {
     if (error_out && error_out->isEmpty())
       *error_out = "invalid JSON output from vinput model list";
     return {};
@@ -369,8 +411,8 @@ void MainWindow::onDownloadModelClicked() {
     btnDownloadModel->setEnabled(false);
     btnRemoveModel->setEnabled(false);
     textLog->append("Downloading " + model_name + "...");
-    cliProcess->start("vinput", QStringList() << "model" << "add"
-                                              << model_name);
+    cliProcess->start("vinput", QStringList()
+                                    << "model" << "add" << model_name);
   }
 }
 
@@ -443,17 +485,41 @@ void MainWindow::loadConfigToUi() {
         QString::fromStdString(currentConfig.activeModel));
   }
 
+  // Hotwords
+  spinHotwordScore->setValue(currentConfig.hotwordsScore);
+  QStringList hotwordList;
+  for (const auto &hw : currentConfig.hotwords) {
+    hotwordList << QString::fromStdString(hw);
+  }
+  textHotwords->setPlainText(hotwordList.join("\n"));
+
   // LLM
   checkLlmEnabled->setChecked(currentConfig.llm.enabled);
 }
 
 void MainWindow::onSaveClicked() {
+  // Reload config to avoid overwriting changes from other tabs if they aren't
+  // bound strictly
+  currentConfig = LoadCoreConfig();
+
   QString device_value = comboDevice->currentData().toString();
   if (device_value.isEmpty())
     device_value = comboDevice->currentText();
   currentConfig.captureDevice = device_value.toStdString();
   currentConfig.activeModel = comboModel->currentText().toStdString();
   currentConfig.llm.enabled = checkLlmEnabled->isChecked();
+
+  currentConfig.hotwordsScore = spinHotwordScore->value();
+  QStringList lines = textHotwords->toPlainText().split('\n');
+  std::vector<std::string> hotwords;
+  std::unordered_set<std::string> seen;
+  for (const QString &line : lines) {
+    std::string hw = line.trimmed().toStdString();
+    if (!hw.empty() && seen.insert(hw).second) {
+      hotwords.push_back(hw);
+    }
+  }
+  currentConfig.hotwords = hotwords;
 
   if (SaveCoreConfig(currentConfig)) {
     // notify fcitx5 daemon to load new config via dbus
@@ -500,8 +566,7 @@ void MainWindow::setupSceneTab() {
   tabWidget->addTab(sceneTab, tr("Scene Management"));
 
   connect(btnSceneAdd, &QPushButton::clicked, this, &MainWindow::onSceneAdd);
-  connect(btnSceneEdit, &QPushButton::clicked, this,
-          &MainWindow::onSceneEdit);
+  connect(btnSceneEdit, &QPushButton::clicked, this, &MainWindow::onSceneEdit);
   connect(btnSceneRemove, &QPushButton::clicked, this,
           &MainWindow::onSceneRemove);
   connect(btnSceneSetActive, &QPushButton::clicked, this,
@@ -634,8 +699,7 @@ void MainWindow::onSceneEdit() {
   sc.scenes = config.scenes.definitions;
 
   std::string err;
-  if (!vinput::scene::UpdateScene(&sc, scene_id.toStdString(), updated,
-                                  &err)) {
+  if (!vinput::scene::UpdateScene(&sc, scene_id.toStdString(), updated, &err)) {
     QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
     return;
   }
@@ -668,8 +732,25 @@ void MainWindow::onSceneRemove() {
   sc.activeSceneId = config.scenes.activeScene;
   sc.scenes = config.scenes.definitions;
 
+  bool is_active = (scene_id.toStdString() == sc.activeSceneId);
+  bool is_builtin = (scene_id == "default" || scene_id == "formal" ||
+                     scene_id == "code" || scene_id == "translate");
+
+  if (is_active || is_builtin) {
+    auto response = QMessageBox::question(
+        this, tr("Warning"),
+        tr("The scene '%1' is either active or builtin. Are you SURE you want "
+           "to forcibly remove it?")
+            .arg(scene_id),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (response != QMessageBox::Yes) {
+      return;
+    }
+  }
+
   std::string err;
-  if (!vinput::scene::RemoveScene(&sc, scene_id.toStdString(), true, &err)) {
+  if (!vinput::scene::RemoveScene(&sc, scene_id.toStdString(),
+                                  is_active || is_builtin, &err)) {
     QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
     return;
   }
@@ -741,8 +822,7 @@ void MainWindow::setupLlmTab() {
 
   connect(btnLlmAdd, &QPushButton::clicked, this, &MainWindow::onLlmAdd);
   connect(btnLlmEdit, &QPushButton::clicked, this, &MainWindow::onLlmEdit);
-  connect(btnLlmRemove, &QPushButton::clicked, this,
-          &MainWindow::onLlmRemove);
+  connect(btnLlmRemove, &QPushButton::clicked, this, &MainWindow::onLlmRemove);
   connect(btnLlmSetActive, &QPushButton::clicked, this,
           &MainWindow::onLlmSetActive);
 
@@ -801,9 +881,9 @@ void MainWindow::onLlmAdd() {
   std::string name = editName->text().trimmed().toStdString();
   for (const auto &p : config.llm.providers) {
     if (p.name == name) {
-      QMessageBox::warning(
-          this, tr("Error"),
-          tr("Provider '%1' already exists.").arg(QString::fromStdString(name)));
+      QMessageBox::warning(this, tr("Error"),
+                           tr("Provider '%1' already exists.")
+                               .arg(QString::fromStdString(name)));
       return;
     }
   }
@@ -901,17 +981,15 @@ void MainWindow::onLlmRemove() {
   auto &providers = config.llm.providers;
   std::string name = provider_name.toStdString();
 
-  auto it = std::find_if(providers.begin(), providers.end(),
-                         [&name](const LlmProvider &p) {
-                           return p.name == name;
-                         });
+  auto it =
+      std::find_if(providers.begin(), providers.end(),
+                   [&name](const LlmProvider &p) { return p.name == name; });
   if (it == providers.end())
     return;
 
   providers.erase(it);
   if (config.llm.activeProvider == name)
-    config.llm.activeProvider =
-        providers.empty() ? "" : providers.front().name;
+    config.llm.activeProvider = providers.empty() ? "" : providers.front().name;
 
   if (!SaveCoreConfig(config)) {
     QMessageBox::critical(this, tr("Error"),
@@ -952,4 +1030,130 @@ void MainWindow::onInstallProgress(quint64 downloaded, quint64 total,
 void MainWindow::onInstallFinished(bool success, const QString &error) {
   (void)success;
   (void)error;
+}
+// ---------------------------------------------------------------------------
+// Hotword Tab
+// ---------------------------------------------------------------------------
+
+#include <QFileDialog>
+#include <QTextStream>
+#include <unordered_set>
+
+void MainWindow::setupHotwordTab() {
+  hotwordTab = new QWidget();
+  auto *layout = new QVBoxLayout(hotwordTab);
+
+  auto *formLayout = new QFormLayout();
+  spinHotwordScore = new QDoubleSpinBox();
+  spinHotwordScore->setRange(0.0, 100.0);
+  spinHotwordScore->setSingleStep(1.0);
+  spinHotwordScore->setDecimals(1);
+  formLayout->addRow(tr("Hotword Weight (Score):"), spinHotwordScore);
+
+  layout->addLayout(formLayout);
+
+  auto *lblWords = new QLabel(tr("Custom Hotwords (One per line):"));
+  layout->addWidget(lblWords);
+
+  textHotwords = new QTextEdit();
+  layout->addWidget(textHotwords);
+
+  btnImportHotwords = new QPushButton(tr("Import from File"));
+  layout->addWidget(btnImportHotwords);
+
+  tabWidget->addTab(hotwordTab, tr("Hotwords"));
+
+  connect(btnImportHotwords, &QPushButton::clicked, this,
+          &MainWindow::onImportHotwordsClicked);
+}
+
+void MainWindow::onImportHotwordsClicked() {
+  QString fileName = QFileDialog::getOpenFileName(
+      this, tr("Import Hotwords"), "", tr("Text Files (*.txt);;All Files (*)"));
+  if (fileName.isEmpty()) {
+    return;
+  }
+
+  QFile file(fileName);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    QMessageBox::warning(
+        this, tr("Error"),
+        tr("Cannot open file %1:\n%2.")
+            .arg(QDir::toNativeSeparators(fileName), file.errorString()));
+    return;
+  }
+
+  QString existingText = textHotwords->toPlainText();
+  if (!existingText.isEmpty() && !existingText.endsWith('\n')) {
+    existingText += "\n";
+  }
+
+  QTextStream in(&file);
+  QString currentContent = in.readAll();
+
+  textHotwords->setPlainText(existingText + currentContent);
+}
+
+// ---------------------------------------------------------------------------
+// Daemon Control
+// ---------------------------------------------------------------------------
+
+void MainWindow::refreshDaemonStatus() {
+  QJsonDocument doc;
+  QString err;
+  bool ok = RunVinputJson({"status"}, &doc, &err);
+
+  if (!ok || !doc.isObject()) {
+    lblDaemonStatus->setText(tr("Error: %1").arg(err));
+    lblDaemonStatus->setStyleSheet("color: red;");
+    btnDaemonStart->setEnabled(true);
+    btnDaemonStop->setEnabled(false);
+    btnDaemonRestart->setEnabled(false);
+    return;
+  }
+
+  QJsonObject obj = doc.object();
+  bool running = obj.value("running").toBool();
+
+  if (!running) {
+    lblDaemonStatus->setText(tr("Stopped"));
+    lblDaemonStatus->setStyleSheet("color: gray;");
+    btnDaemonStart->setEnabled(true);
+    btnDaemonStop->setEnabled(false);
+    btnDaemonRestart->setEnabled(false);
+    return;
+  }
+
+  QString status = obj.value("status").toString();
+  if (status.isEmpty()) {
+    QString runtime_err = obj.value("error").toString();
+    lblDaemonStatus->setText(tr("Running (Status Error: %1)").arg(runtime_err));
+    lblDaemonStatus->setStyleSheet("color: orange;");
+  } else {
+    lblDaemonStatus->setText(tr("Running: %1").arg(status));
+    lblDaemonStatus->setStyleSheet("color: green;");
+  }
+
+  btnDaemonStart->setEnabled(false);
+  btnDaemonStop->setEnabled(true);
+  btnDaemonRestart->setEnabled(true);
+}
+
+void MainWindow::onDaemonStart() {
+  btnDaemonStart->setEnabled(false);
+  QProcess::startDetached("vinput", QStringList() << "daemon" << "start");
+  // The timer will catch the state change shortly.
+}
+
+void MainWindow::onDaemonStop() {
+  btnDaemonStop->setEnabled(false);
+  QProcess::startDetached("vinput", QStringList() << "daemon" << "stop");
+  // The timer will catch the state change shortly.
+}
+
+void MainWindow::onDaemonRestart() {
+  btnDaemonRestart->setEnabled(false);
+  btnDaemonStop->setEnabled(false);
+  QProcess::startDetached("vinput", QStringList() << "daemon" << "restart");
+  // The timer will catch the state change shortly.
 }
