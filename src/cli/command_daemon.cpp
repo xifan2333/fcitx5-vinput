@@ -1,12 +1,13 @@
 #include "cli/command_daemon.h"
 #include "cli/systemd_client.h"
-#include "cli/i18n.h"
+#include "common/i18n.h"
 #include <string>
 
 int RunDaemonStart(Formatter& fmt, const CliContext& ctx) {
+    (void)ctx;
     int r = vinput::cli::SystemctlStart();
     if (r == 0) {
-        fmt.PrintSuccess(_(msgs::kDaemonStarted, ctx.use_chinese));
+        fmt.PrintSuccess(_("Daemon started."));
         return 0;
     }
     std::string msg = "systemctl start failed (exit code: ";
@@ -17,9 +18,10 @@ int RunDaemonStart(Formatter& fmt, const CliContext& ctx) {
 }
 
 int RunDaemonStop(Formatter& fmt, const CliContext& ctx) {
+    (void)ctx;
     int r = vinput::cli::SystemctlStop();
     if (r == 0) {
-        fmt.PrintSuccess(_(msgs::kDaemonStopped, ctx.use_chinese));
+        fmt.PrintSuccess(_("Daemon stopped."));
         return 0;
     }
     std::string msg = "systemctl stop failed (exit code: ";
@@ -30,9 +32,10 @@ int RunDaemonStop(Formatter& fmt, const CliContext& ctx) {
 }
 
 int RunDaemonRestart(Formatter& fmt, const CliContext& ctx) {
+    (void)ctx;
     int r = vinput::cli::SystemctlRestart();
     if (r == 0) {
-        fmt.PrintSuccess(_(msgs::kDaemonRestarted, ctx.use_chinese));
+        fmt.PrintSuccess(_("Daemon restarted."));
         return 0;
     }
     std::string msg = "systemctl restart failed (exit code: ";

@@ -5,7 +5,7 @@
 #include <string>
 
 #include "cli/editor_utils.h"
-#include "cli/i18n.h"
+#include "common/i18n.h"
 #include "common/config_path.h"
 
 int RunConfigGet(const std::string& path, Formatter& fmt, const CliContext& ctx) {
@@ -23,6 +23,7 @@ int RunConfigGet(const std::string& path, Formatter& fmt, const CliContext& ctx)
 }
 
 int RunConfigSet(const std::string& path, const std::string& value_arg, bool from_stdin, Formatter& fmt, const CliContext& ctx) {
+    (void)ctx;
     std::string value = value_arg;
     if (from_stdin) {
         std::string line, all;
@@ -37,7 +38,7 @@ int RunConfigSet(const std::string& path, const std::string& value_arg, bool fro
         fmt.PrintError(error);
         return 1;
     }
-    fmt.PrintSuccess(_(msgs::kConfigValueSet, ctx.use_chinese));
+    fmt.PrintSuccess(_("Config value set."));
     return 0;
 }
 

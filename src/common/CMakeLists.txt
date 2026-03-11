@@ -8,6 +8,7 @@ add_library(vinput-common STATIC
     path_utils.cpp
     file_utils.cpp
     config_path.cpp
+    i18n.cpp
 )
 
 set_target_properties(vinput-common PROPERTIES
@@ -24,4 +25,5 @@ target_link_libraries(vinput-common PUBLIC
     CURL::libcurl
     LibArchive::LibArchive
     OpenSSL::Crypto
+    ${GETTEXT_LIBRARIES}
 )

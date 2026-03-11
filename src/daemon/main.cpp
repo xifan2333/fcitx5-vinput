@@ -2,6 +2,7 @@
 #include "audio_capture.h"
 #include "common/core_config.h"
 #include "common/dbus_interface.h"
+#include "common/i18n.h"
 #include "common/recognition_result.h"
 #include "dbus_service.h"
 #include "common/model_manager.h"
@@ -11,9 +12,13 @@
 #include <signal.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <deque>
+#include <mutex>
 #include <string>
+#include <thread>
 
 static std::atomic<bool> g_running{true};
 
@@ -23,6 +28,7 @@ static void signal_handler(int sig) {
 }
 
 int main(int argc, char *argv[]) {
+  vinput::i18n::Init();
   signal(SIGTERM, signal_handler);
   signal(SIGINT, signal_handler);
 
@@ -79,6 +85,72 @@ int main(int argc, char *argv[]) {
 
   std::atomic<Status> current_status{Status::Idle};
 
+  struct InferenceJob {
+    std::vector<int16_t> pcm;
+    std::string scene_id;
+  };
+
+  std::mutex job_mutex;
+  std::condition_variable job_cv;
+  std::deque<InferenceJob> jobs;
+  std::atomic<bool> worker_running{true};
+
+  std::thread worker([&]() {
+    while (worker_running) {
+      InferenceJob job;
+      {
+        std::unique_lock<std::mutex> lock(job_mutex);
+        job_cv.wait(lock, [&]() {
+          return !jobs.empty() || !worker_running.load();
+        });
+        if (!worker_running && jobs.empty()) {
+          break;
+        }
+        job = std::move(jobs.front());
+        jobs.pop_front();
+      }
+
+      current_status = Status::Inferring;
+      dbus.EmitStatusChanged(StatusToString(Status::Inferring));
+
+      std::string text;
+      if (!disable_asr) {
+        text = asr.Infer(job.pcm);
+      }
+
+      auto result = vinput::result::PlainTextPayload(text);
+      if (!text.empty()) {
+        auto runtime_settings = LoadCoreConfig();
+        NormalizeCoreConfig(&runtime_settings);
+        const auto scene_config = vinput::scene::LoadConfig();
+        const auto &scene = vinput::scene::Resolve(scene_config, job.scene_id);
+        if (runtime_settings.llm.enabled && scene.llm) {
+          current_status = Status::Postprocessing;
+          dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
+        }
+        result = post_processor.Process(text, scene, runtime_settings);
+        text = result.commitText;
+      }
+
+      if (!text.empty()) {
+        dbus.EmitRecognitionResult(vinput::result::Serialize(result));
+      }
+
+      bool has_more = false;
+      {
+        std::lock_guard<std::mutex> lock(job_mutex);
+        has_more = !jobs.empty();
+      }
+      if (!has_more) {
+        current_status = Status::Idle;
+        dbus.EmitStatusChanged(StatusToString(Status::Idle));
+      } else {
+        current_status = Status::Inferring;
+        dbus.EmitStatusChanged(StatusToString(Status::Inferring));
+      }
+    }
+  });
+
   dbus.SetStartHandler([&]() {
     auto runtime_settings = LoadCoreConfig();
     capture.SetTargetObject(runtime_settings.captureDevice);
@@ -114,37 +186,15 @@ int main(int argc, char *argv[]) {
       return "";
     }
 
+    {
+      std::lock_guard<std::mutex> lock(job_mutex);
+      jobs.push_back({std::move(pcm), scene_id});
+    }
     current_status = Status::Inferring;
     dbus.EmitStatusChanged(StatusToString(Status::Inferring));
-    fprintf(stderr, "vinput-daemon: recording stopped, starting inference\n");
-
-    std::string text;
-    if (!disable_asr) {
-      text = asr.Infer(pcm);
-    }
-
-    auto result = vinput::result::PlainTextPayload(text);
-    if (!text.empty()) {
-      auto runtime_settings = LoadCoreConfig();
-      NormalizeCoreConfig(&runtime_settings);
-      const auto scene_config = vinput::scene::LoadConfig();
-      const auto &scene = vinput::scene::Resolve(scene_config, scene_id);
-      if (runtime_settings.llm.enabled && scene.llm) {
-        current_status = Status::Postprocessing;
-        dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
-      }
-      result = post_processor.Process(text, scene, runtime_settings);
-      text = result.commitText;
-    }
-
-    if (!text.empty()) {
-      dbus.EmitRecognitionResult(vinput::result::Serialize(result));
-    }
-
-    current_status = Status::Idle;
-    dbus.EmitStatusChanged(StatusToString(Status::Idle));
-    fprintf(stderr, "vinput-daemon: inference complete: %s\n", text.c_str());
-    return text;
+    job_cv.notify_one();
+    fprintf(stderr, "vinput-daemon: recording stopped, queued inference\n");
+    return "";
   });
 
   dbus.SetStatusHandler(
@@ -179,6 +229,11 @@ int main(int argc, char *argv[]) {
   }
 
   fprintf(stderr, "vinput-daemon: shutting down\n");
+  worker_running = false;
+  job_cv.notify_all();
+  if (worker.joinable()) {
+    worker.join();
+  }
   asr.Shutdown();
   return 0;
 }

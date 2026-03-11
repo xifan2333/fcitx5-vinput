@@ -1,5 +1,7 @@
 #include "post_processor.h"
 
+#include "common/i18n.h"
+
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
@@ -37,6 +39,12 @@ std::string TrimAsciiWhitespace(std::string text) {
 }
 
 int NormalizeCandidateCount(int candidate_count) {
+  if (candidate_count <= 0) {
+    return 0;
+  }
+  if (candidate_count == 1) {
+    return 1;
+  }
   return candidate_count >= 2 && candidate_count <= 9 ? candidate_count : 1;
 }
 
@@ -397,12 +405,45 @@ PostProcessor::Process(const std::string &raw_text,
     return {};
   }
 
+  if (vinput::scene::IsCommandScene(scene)) {
+    const int candidate_count =
+        NormalizeCandidateCount(settings.llm.candidateCount);
+    if (candidate_count == 0 || !scene.llm) {
+      return vinput::result::PlainTextPayload(normalized);
+    }
+
+    auto rewritten =
+        RewriteWithOpenAiCompatible(normalized, scene, settings, candidate_count);
+    if (!rewritten.has_value() || rewritten->empty()) {
+      return vinput::result::PlainTextPayload(normalized);
+    }
+
+    vinput::result::Payload payload;
+    std::set<std::string> seen;
+    for (auto &text : *rewritten) {
+      AppendUniqueCandidate(payload, seen, std::move(text),
+                            vinput::result::kSourceCommand);
+    }
+
+    if (payload.candidates.empty()) {
+      return vinput::result::PlainTextPayload(normalized);
+    }
+
+    AppendUniqueCandidate(payload, seen, _("Cancel"),
+                          vinput::result::kSourceCancel);
+    payload.commitText.clear();
+    return payload;
+  }
+
   if (!scene.llm) {
     return vinput::result::PlainTextPayload(normalized);
   }
 
   const int candidate_count =
       NormalizeCandidateCount(settings.llm.candidateCount);
+  if (candidate_count == 0) {
+    return vinput::result::PlainTextPayload(normalized);
+  }
   auto rewritten =
       RewriteWithOpenAiCompatible(normalized, scene, settings, candidate_count);
   if (!rewritten.has_value()) {

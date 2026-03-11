@@ -1,5 +1,7 @@
 #include "common/postprocess_scene.h"
 
+#include "common/i18n.h"
+
 #include <fcitx-utils/standardpath.h>
 #include <nlohmann/json.hpp>
 
@@ -23,9 +25,10 @@ vinput::scene::Config BuildDefaultConfig() {
     config.scenes = {
         Definition{
             .id = vinput::scene::kDefault,
-            .label = "默认",
+            .label = _("Default"),
             .llm = false,
             .prompt = "",
+            .type = "input",
         }
     };
     return config;
@@ -68,6 +71,10 @@ bool ParseSceneDefinition(const json& value, std::size_t index,
     scene.label = JsonString(value, "label");
     scene.prompt = JsonString(value, "prompt");
     scene.llm = JsonBool(value, "llm", !scene.prompt.empty());
+    scene.type = JsonString(value, "type");
+    if (scene.type.empty()) {
+        scene.type = "input";
+    }
 
     if (scene.llm && scene.prompt.empty()) {
         fprintf(stderr,
@@ -197,11 +204,27 @@ const Definition& Resolve(const Config& config, std::string_view scene_id) {
     return config.scenes.front();
 }
 
-std::string DisplayLabel(const Definition& scene, bool /*chinese_ui*/) {
+std::string DisplayLabel(const Definition& scene) {
     if (!scene.label.empty()) {
         return scene.label;
     }
+    if (scene.id == kDefault) return _("Default");
+    if (scene.id == kFormal) return _("Formal");
+    if (scene.id == kCode) return _("Code");
+    if (scene.id == kTranslate) return _("Translate");
     return scene.id;
+}
+
+bool IsCommandScene(const Definition& scene) {
+    return scene.type == "command";
+}
+
+bool IsRewriteScene(const Definition& scene) {
+    return scene.type == "rewrite";
+}
+
+bool IsInputScene(const Definition& scene) {
+    return scene.type.empty() || scene.type == "input";
 }
 
 bool IsBuiltinScene(const std::string& id) {

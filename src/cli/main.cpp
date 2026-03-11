@@ -13,7 +13,7 @@
 #include "cli/command_scene.h"
 #include "cli/command_status.h"
 #include "cli/formatter.h"
-#include "cli/i18n.h"
+#include "common/i18n.h"
 #include "common/vinput_config.h"
 
 int main(int argc, char *argv[]) {
@@ -62,10 +62,14 @@ int main(int argc, char *argv[]) {
   auto *scene_add = scene_cmd->add_subcommand("add", "Add a new scene");
   std::string scene_add_id;
   std::string scene_add_label;
+  std::string scene_add_type;
   bool scene_add_llm = false;
   std::string scene_add_prompt;
   scene_add->add_option("--id", scene_add_id, "Scene ID")->required();
   scene_add->add_option("--label", scene_add_label, "Display label");
+  scene_add->add_option("--type", scene_add_type,
+                        "Scene type: input | command | rewrite")
+      ->default_val("input");
   scene_add->add_flag("--llm", scene_add_llm, "Enable LLM post-processing");
   scene_add->add_option("--prompt", scene_add_prompt, "LLM prompt");
 
@@ -205,7 +209,7 @@ int main(int argc, char *argv[]) {
   // Build context after parsing
   CliContext ctx;
   ctx.json_output = json_output;
-  ctx.use_chinese = UseChineseUi();
+  vinput::i18n::Init();
   ctx.is_tty = (isatty(STDOUT_FILENO) == 1);
 
   auto fmt = CreateFormatter(ctx);
@@ -229,8 +233,8 @@ int main(int argc, char *argv[]) {
   else if (scene_list->parsed()) {
     return RunSceneList(*fmt, ctx);
   } else if (scene_add->parsed()) {
-    return RunSceneAdd(scene_add_id, scene_add_label, scene_add_llm,
-                       scene_add_prompt, *fmt, ctx);
+    return RunSceneAdd(scene_add_id, scene_add_label, scene_add_type,
+                       scene_add_llm, scene_add_prompt, *fmt, ctx);
   } else if (scene_use->parsed()) {
     return RunSceneUse(scene_use_id, *fmt, ctx);
   } else if (scene_remove->parsed()) {

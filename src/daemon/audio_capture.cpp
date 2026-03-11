@@ -53,6 +53,7 @@ void AudioCapture::processCallback() {
 
 void AudioCapture::onParamChanged(void* userdata, uint32_t id,
                                    const struct spa_pod* param) {
+    (void)userdata;
     if (param == nullptr || id != SPA_PARAM_Format) {
         return;
     }
@@ -98,11 +99,10 @@ bool AudioCapture::CreateStream() {
         return true;
     }
 
-    static const struct pw_stream_events stream_events = {
-        .version = PW_VERSION_STREAM_EVENTS,
-        .param_changed = onParamChanged,
-        .process = onProcess,
-    };
+    struct pw_stream_events stream_events{};
+    stream_events.version = PW_VERSION_STREAM_EVENTS;
+    stream_events.param_changed = onParamChanged;
+    stream_events.process = onProcess;
 
     std::string target_object;
     {
@@ -141,8 +141,10 @@ bool AudioCapture::CreateStream() {
     uint8_t pod_buffer[1024];
     struct spa_pod_builder builder =
         SPA_POD_BUILDER_INIT(pod_buffer, sizeof(pod_buffer));
-    struct spa_audio_info_raw raw_info = SPA_AUDIO_INFO_RAW_INIT(
-        .format = SPA_AUDIO_FORMAT_S16_LE, .rate = 16000, .channels = 1);
+    struct spa_audio_info_raw raw_info{};
+    raw_info.format = SPA_AUDIO_FORMAT_S16_LE;
+    raw_info.rate = 16000;
+    raw_info.channels = 1;
     const struct spa_pod* params[1];
     params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat,
                                             &raw_info);

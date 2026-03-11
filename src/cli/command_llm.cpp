@@ -6,7 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "cli/i18n.h"
+#include "common/i18n.h"
 #include "common/core_config.h"
 
 static std::string MaskApiKey(const std::string &key) {
@@ -54,11 +54,11 @@ int RunLlmList(Formatter &fmt, const CliContext &ctx) {
 int RunLlmAdd(const std::string &name, const std::string &base_url,
               const std::string &model, const std::string &api_key,
               Formatter &fmt, const CliContext &ctx) {
+  (void)ctx;
   auto config = LoadCoreConfig();
   for (const auto &p : config.llm.providers) {
     if (p.name == name) {
-      fmt.PrintError(
-          FormatMsg(_(msgs::kLlmProviderExists, ctx.use_chinese), name));
+      fmt.PrintError(FormatMsg(_("LLM provider '%s' already exists."), name));
       return 1;
     }
   }
@@ -76,15 +76,15 @@ int RunLlmAdd(const std::string &name, const std::string &base_url,
   }
 
   if (!SaveCoreConfig(config)) {
-    fmt.PrintError("Failed to save config.");
+    fmt.PrintError(_("Failed to save config."));
     return 1;
   }
-  fmt.PrintSuccess(
-      FormatMsg(_(msgs::kLlmProviderAdded, ctx.use_chinese), name));
+  fmt.PrintSuccess(FormatMsg(_("LLM provider '%s' added."), name));
   return 0;
 }
 
 int RunLlmUse(const std::string &name, Formatter &fmt, const CliContext &ctx) {
+  (void)ctx;
   auto config = LoadCoreConfig();
   bool found = false;
   for (const auto &p : config.llm.providers) {
@@ -94,26 +94,24 @@ int RunLlmUse(const std::string &name, Formatter &fmt, const CliContext &ctx) {
     }
   }
   if (!found) {
-    fmt.PrintError(
-        FormatMsg(_(msgs::kLlmProviderNotFound, ctx.use_chinese), name));
+    fmt.PrintError(FormatMsg(_("LLM provider '%s' not found."), name));
     return 1;
   }
   config.llm.activeProvider = name;
   if (!SaveCoreConfig(config)) {
-    fmt.PrintError("Failed to save config.");
+    fmt.PrintError(_("Failed to save config."));
     return 1;
   }
-  fmt.PrintSuccess(
-      FormatMsg(_(msgs::kLlmProviderSwitched, ctx.use_chinese), name));
+  fmt.PrintSuccess(FormatMsg(_("Active LLM provider set to '%s'."), name));
   return 0;
 }
 
 int RunLlmRemove(const std::string &name, bool force, Formatter &fmt,
                  const CliContext &ctx) {
+  (void)ctx;
   auto config = LoadCoreConfig();
   if (name == config.llm.activeProvider && !force) {
-    fmt.PrintError(
-        FormatMsg(_(msgs::kLlmCannotRemoveActive, ctx.use_chinese), name));
+    fmt.PrintError(FormatMsg(_("Cannot remove active provider '%s'. Use --force."), name));
     return 1;
   }
   auto &providers = config.llm.providers;
@@ -121,17 +119,15 @@ int RunLlmRemove(const std::string &name, bool force, Formatter &fmt,
       std::find_if(providers.begin(), providers.end(),
                    [&name](const LlmProvider &p) { return p.name == name; });
   if (it == providers.end()) {
-    fmt.PrintError(
-        FormatMsg(_(msgs::kLlmProviderNotFound, ctx.use_chinese), name));
+    fmt.PrintError(FormatMsg(_("LLM provider '%s' not found."), name));
     return 1;
   }
   providers.erase(it);
   if (!SaveCoreConfig(config)) {
-    fmt.PrintError("Failed to save config.");
+    fmt.PrintError(_("Failed to save config."));
     return 1;
   }
-  fmt.PrintSuccess(
-      FormatMsg(_(msgs::kLlmProviderRemoved, ctx.use_chinese), name));
+  fmt.PrintSuccess(FormatMsg(_("LLM provider '%s' removed."), name));
   return 0;
 }
 
@@ -139,16 +135,15 @@ int RunLlmEnable(Formatter &fmt, const CliContext &ctx) {
   (void)ctx;
   auto config = LoadCoreConfig();
   if (config.llm.enabled) {
-    fmt.PrintInfo("LLM is already enabled.");
+    fmt.PrintInfo(_("LLM is already enabled."));
     return 0;
   }
   config.llm.enabled = true;
   if (!SaveCoreConfig(config)) {
-    fmt.PrintError("Failed to save config.");
+    fmt.PrintError(_("Failed to save config."));
     return 1;
   }
-  fmt.PrintSuccess(
-      "LLM features are now ENABLED. Restart the daemon to apply.");
+  fmt.PrintSuccess(_("LLM features are now ENABLED. Restart the daemon to apply."));
   return 0;
 }
 
@@ -156,15 +151,14 @@ int RunLlmDisable(Formatter &fmt, const CliContext &ctx) {
   (void)ctx;
   auto config = LoadCoreConfig();
   if (!config.llm.enabled) {
-    fmt.PrintInfo("LLM is already disabled.");
+    fmt.PrintInfo(_("LLM is already disabled."));
     return 0;
   }
   config.llm.enabled = false;
   if (!SaveCoreConfig(config)) {
-    fmt.PrintError("Failed to save config.");
+    fmt.PrintError(_("Failed to save config."));
     return 1;
   }
-  fmt.PrintSuccess(
-      "LLM features are now DISABLED. Restart the daemon to apply.");
+  fmt.PrintSuccess(_("LLM features are now DISABLED. Restart the daemon to apply."));
   return 0;
 }

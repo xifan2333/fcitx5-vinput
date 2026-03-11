@@ -1,5 +1,5 @@
 #include "cli/command_scene.h"
-#include "cli/i18n.h"
+#include "common/i18n.h"
 #include "common/core_config.h"
 #include "common/postprocess_scene.h"
 #include <cstdio>
@@ -19,6 +19,10 @@ void FromSceneConfig(CoreConfig::Scenes& s, const vinput::scene::Config& c) {
     s.definitions = c.scenes;
 }
 
+bool IsValidSceneType(const std::string& type) {
+    return type == "input" || type == "command" || type == "rewrite";
+}
+
 } // namespace
 
 int RunSceneList(Formatter& fmt, const CliContext& ctx) {
@@ -31,7 +35,8 @@ int RunSceneList(Formatter& fmt, const CliContext& ctx) {
             bool active = (scene.id == config.scenes.activeScene);
             arr.push_back({
                 {"id", scene.id},
-                {"label", vinput::scene::DisplayLabel(scene, ctx.use_chinese)},
+                {"label", vinput::scene::DisplayLabel(scene)},
+                {"type", scene.type},
                 {"llm", scene.llm},
                 {"active", active}
             });
@@ -40,21 +45,26 @@ int RunSceneList(Formatter& fmt, const CliContext& ctx) {
         return 0;
     }
 
-    std::vector<std::string> headers = {"ID", "LABEL", "LLM", "STATUS"};
+    std::vector<std::string> headers = {"ID", "LABEL", "TYPE", "LLM", "STATUS"};
     std::vector<std::vector<std::string>> rows;
     for (const auto& scene : scenes) {
-        std::string label = vinput::scene::DisplayLabel(scene, ctx.use_chinese);
-        std::string llm_str = scene.llm ? "yes" : "no";
+        std::string label = vinput::scene::DisplayLabel(scene);
+        std::string llm_str = scene.llm ? _("yes") : _("no");
         std::string status = (scene.id == config.scenes.activeScene) ? "[*]" : "[ ]";
-        rows.push_back({scene.id, label, llm_str, status});
+        rows.push_back({scene.id, label, scene.type, llm_str, status});
     }
     fmt.PrintTable(headers, rows);
     return 0;
 }
 
 int RunSceneAdd(const std::string& id, const std::string& label,
-                bool llm, const std::string& prompt,
+                const std::string& type, bool llm,
+                const std::string& prompt,
                 Formatter& fmt, const CliContext& /*ctx*/) {
+    if (!IsValidSceneType(type)) {
+        fmt.PrintError(_("Invalid scene type. Use: input | command | rewrite."));
+        return 1;
+    }
     CoreConfig config = LoadCoreConfig();
 
     vinput::scene::Definition def;
@@ -62,6 +72,7 @@ int RunSceneAdd(const std::string& id, const std::string& label,
     def.label = label;
     def.llm = llm;
     def.prompt = prompt;
+    def.type = type.empty() ? "input" : type;
 
     vinput::scene::Config scene_config = ToSceneConfig(config.scenes);
     std::string error;
@@ -72,12 +83,12 @@ int RunSceneAdd(const std::string& id, const std::string& label,
     FromSceneConfig(config.scenes, scene_config);
 
     if (!SaveCoreConfig(config)) {
-        fmt.PrintError("Failed to save config.");
+        fmt.PrintError(_("Failed to save config."));
         return 1;
     }
 
     char buf[256];
-    std::snprintf(buf, sizeof(buf), "Scene '%s' added.", id.c_str());
+    std::snprintf(buf, sizeof(buf), _("Scene '%s' added."), id.c_str());
     fmt.PrintSuccess(buf);
     return 0;
 }
@@ -95,12 +106,12 @@ int RunSceneUse(const std::string& id, Formatter& fmt, const CliContext& ctx) {
     FromSceneConfig(config.scenes, scene_config);
 
     if (!SaveCoreConfig(config)) {
-        fmt.PrintError("Failed to save config.");
+        fmt.PrintError(_("Failed to save config."));
         return 1;
     }
 
     char buf[256];
-    std::snprintf(buf, sizeof(buf), "Default scene set to '%s'.", id.c_str());
+    std::snprintf(buf, sizeof(buf), _("Default scene set to '%s'."), id.c_str());
     fmt.PrintSuccess(buf);
     return 0;
 }
@@ -118,12 +129,12 @@ int RunSceneRemove(const std::string& id, bool force, Formatter& fmt, const CliC
     FromSceneConfig(config.scenes, scene_config);
 
     if (!SaveCoreConfig(config)) {
-        fmt.PrintError("Failed to save config.");
+        fmt.PrintError(_("Failed to save config."));
         return 1;
     }
 
     char buf[256];
-    std::snprintf(buf, sizeof(buf), "Scene '%s' removed.", id.c_str());
+    std::snprintf(buf, sizeof(buf), _("Scene '%s' removed."), id.c_str());
     fmt.PrintSuccess(buf);
     return 0;
 }

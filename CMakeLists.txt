@@ -24,6 +24,7 @@ find_package(Fcitx5Config REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 find_package(PkgConfig REQUIRED)
 find_package(nlohmann_json 3.2.0 REQUIRED)
+find_package(Gettext REQUIRED)
 
 pkg_check_modules(SDBUS REQUIRED libsystemd)
 find_package(CURL REQUIRED)
@@ -42,6 +43,12 @@ set(VINPUT_RUNTIME_LIBDIR
 set(VINPUT_DAEMON_EXECUTABLE
     "${CMAKE_INSTALL_FULL_BINDIR}/vinput-daemon")
 
+configure_file(
+    ${CMAKE_SOURCE_DIR}/src/common/config.h.in
+    ${CMAKE_BINARY_DIR}/config.h
+    @ONLY)
+
+include_directories(${CMAKE_BINARY_DIR})
 
 
 add_subdirectory(src/common)
@@ -49,6 +56,7 @@ add_subdirectory(src/daemon)
 add_subdirectory(src/addon)
 add_subdirectory(src/cli)
 add_subdirectory(src/gui)
+add_subdirectory(po)
 
 string(REPLACE "-" "~" VINPUT_DEBIAN_UPSTREAM_VERSION "${PROJECT_VERSION}")
 

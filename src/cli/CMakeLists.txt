@@ -27,6 +27,7 @@ add_executable(vinput
     command_status.cpp
     dbus_client.cpp
     systemd_client.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/pipewire_device.cpp
 )
 
 target_include_directories(vinput PRIVATE
@@ -43,4 +44,6 @@ target_link_libraries(vinput PRIVATE
     ${PIPEWIRE_LIBRARIES}
 )
 
-install(TARGETS vinput DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS vinput
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)

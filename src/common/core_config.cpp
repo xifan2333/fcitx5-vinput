@@ -2,12 +2,51 @@
 
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <nlohmann/json.hpp>
+#include <system_error>
 
 #include "common/file_utils.h"
 #include "common/path_utils.h"
 
 using json = nlohmann::json;
+
+namespace {
+
+struct ConfigCache {
+  std::mutex mu;
+  bool has_cache = false;
+  std::filesystem::file_time_type mtime;
+  std::uintmax_t size = 0;
+  CoreConfig cached;
+};
+
+ConfigCache &GetConfigCache() {
+  static ConfigCache cache;
+  return cache;
+}
+
+bool GetConfigStat(const std::filesystem::path &path,
+                   std::filesystem::file_time_type *mtime,
+                   std::uintmax_t *size) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec) || ec) {
+    return false;
+  }
+  auto t = std::filesystem::last_write_time(path, ec);
+  if (ec) {
+    return false;
+  }
+  auto s = std::filesystem::file_size(path, ec);
+  if (ec) {
+    return false;
+  }
+  if (mtime) *mtime = t;
+  if (size) *size = s;
+  return true;
+}
+
+}  // namespace
 
 std::string GetCoreConfigPath() {
   return vinput::path::CoreConfigPath().string();
@@ -45,7 +84,8 @@ void to_json(json &j, const Definition &d) {
   j = json{{"id", d.id},
            {"label", d.label},
            {"llm", d.llm},
-           {"prompt", d.prompt}};
+           {"prompt", d.prompt},
+           {"type", d.type}};
 }
 
 void from_json(const json &j, Definition &d) {
@@ -53,6 +93,7 @@ void from_json(const json &j, Definition &d) {
   d.label = j.value("label", std::string{});
   d.llm = j.value("llm", false);
   d.prompt = j.value("prompt", std::string{});
+  d.type = j.value("type", std::string{"input"});
 }
 
 }  // namespace vinput::scene
@@ -132,13 +173,10 @@ void from_json(const json &j, CoreConfig &p) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// LoadCoreConfig
-// ---------------------------------------------------------------------------
+namespace {
 
-CoreConfig LoadCoreConfig() {
+CoreConfig LoadCoreConfigFromFile(const std::filesystem::path &path) {
   CoreConfig config;
-  std::filesystem::path path = vinput::path::CoreConfigPath();
   std::ifstream f(path);
   if (!f.is_open()) {
     return config;
@@ -150,6 +188,42 @@ CoreConfig LoadCoreConfig() {
     config = j.get<CoreConfig>();
   } catch (const json::exception &e) {
     std::cerr << "Failed to parse vinput config: " << e.what() << std::endl;
+  }
+  return config;
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+// LoadCoreConfig
+// ---------------------------------------------------------------------------
+
+CoreConfig LoadCoreConfig() {
+  std::filesystem::path path = vinput::path::CoreConfigPath();
+  std::filesystem::file_time_type mtime;
+  std::uintmax_t size = 0;
+  const bool stat_ok = GetConfigStat(path, &mtime, &size);
+
+  auto &cache = GetConfigCache();
+  {
+    std::lock_guard<std::mutex> lock(cache.mu);
+    if (stat_ok && cache.has_cache && cache.mtime == mtime &&
+        cache.size == size) {
+      return cache.cached;
+    }
+  }
+
+  if (!stat_ok) {
+    return CoreConfig{};
+  }
+
+  CoreConfig config = LoadCoreConfigFromFile(path);
+  {
+    std::lock_guard<std::mutex> lock(cache.mu);
+    cache.cached = config;
+    cache.mtime = mtime;
+    cache.size = size;
+    cache.has_cache = true;
   }
   return config;
 }

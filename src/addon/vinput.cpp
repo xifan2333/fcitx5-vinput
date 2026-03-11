@@ -1,5 +1,6 @@
 #include "vinput.h"
 #include "common/dbus_interface.h"
+#include "common/i18n.h"
 #include "common/postprocess_scene.h"
 
 #include <dbus_public.h>
@@ -13,7 +14,9 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
+#include <thread>
 
 using namespace vinput::dbus;
 
@@ -35,40 +38,28 @@ struct SceneOption {
   std::string label;
 };
 
-bool UseChineseSceneUi() { return UseChineseUi(); }
-
-std::string SceneMenuTitle() {
-  return UseChineseSceneUi() ? "选择后处理选单" : "Choose Postprocess Menu";
-}
+std::string SceneMenuTitle() { return _("Choose Postprocess Menu"); }
 
 std::string ResultMenuTitle(std::size_t count) {
-  if (UseChineseSceneUi()) {
-    return "选择结果（" + std::to_string(count) + "项）";
-  }
-  return "Choose Result (" + std::to_string(count) + ")";
+  char buf[128];
+  std::snprintf(buf, sizeof(buf), _("Choose Result (%zu)"), count);
+  return buf;
 }
 
-std::string RecordingPreeditText() {
-  return UseChineseSceneUi() ? "... 正在录音 ..." : "... Recording ...";
-}
+std::string RecordingPreeditText() { return _("... Recording ..."); }
 
-std::string InferringPreeditText() {
-  return UseChineseSceneUi() ? "... 正在识别 ..." : "... Recognizing ...";
-}
+std::string InferringPreeditText() { return _("... Recognizing ..."); }
 
-std::string PostprocessingPreeditText() {
-  return UseChineseSceneUi() ? "... 正在后处理 ..." : "... Postprocessing ...";
-}
+std::string PostprocessingPreeditText() { return _("... Postprocessing ..."); }
 
-std::string ResultCandidateComment(const vinput::result::Candidate &candidate,
-                                   std::size_t llm_index) {
+std::string ResultCandidateComment(const vinput::result::Candidate &candidate) {
   if (candidate.source == vinput::result::kSourceRaw) {
-    return UseChineseSceneUi() ? "原始识别" : "Raw ASR";
+    return _("Raw ASR");
   }
-  if (UseChineseSceneUi()) {
-    return "候选 " + std::to_string(llm_index);
+  if (candidate.source == vinput::result::kSourceCommand) {
+    return _("Command");
   }
-  return "Option " + std::to_string(llm_index);
+  return std::string();
 }
 
 std::string DisplayCandidateText(std::string text) {
@@ -97,12 +88,10 @@ std::string DecoratePagedMenuTitle(const std::string &base_title,
     return base_title;
   }
 
-  if (UseChineseSceneUi()) {
-    return base_title + "（" + std::to_string(current_page + 1) + "/" +
-           std::to_string(total_pages) + "页）";
-  }
-  return base_title + " (" + std::to_string(current_page + 1) + "/" +
-         std::to_string(total_pages) + ")";
+  char buf[64];
+  std::snprintf(buf, sizeof(buf), _(" (%d/%d)"), current_page + 1,
+                total_pages);
+  return base_title + buf;
 }
 
 void SetMenuTitle(fcitx::InputContext *ic, const std::string &base_title,
@@ -166,6 +155,15 @@ std::string DisplayTextWithComment(std::string text,
   return text;
 }
 
+void ExecuteShellCommandAsync(std::string command) {
+  if (command.empty()) {
+    return;
+  }
+  std::thread([cmd = std::move(command)]() {
+    std::system(cmd.c_str());
+  }).detach();
+}
+
 bool ChangeCandidatePage(fcitx::InputContext *ic, const std::string &base_title,
                          bool next_page) {
   if (!ic) {
@@ -200,7 +198,7 @@ public:
   SceneCandidateWord(VinputEngine *engine, SceneOption option, bool active)
       : fcitx::CandidateWord(fcitx::Text(DisplayTextWithComment(
             option.label, active
-                              ? (UseChineseSceneUi() ? "（当前）" : "(Current)")
+                              ? _(" (Current)")
                               : std::string()))),
         engine_(engine), index_(option.index) {}
 
@@ -233,6 +231,7 @@ private:
 } // namespace
 
 VinputEngine::VinputEngine(fcitx::Instance *instance) : instance_(instance) {
+  vinput::i18n::Init();
   reloadConfig();
 
   key_event_handler_ = instance_->watchEvent(
@@ -392,7 +391,7 @@ void VinputEngine::showSceneMenu(fcitx::InputContext *ic) {
         this,
         SceneOption{
             .index = i,
-            .label = vinput::scene::DisplayLabel(scene, UseChineseSceneUi()),
+            .label = vinput::scene::DisplayLabel(scene),
         },
         active);
   }
@@ -437,17 +436,13 @@ void VinputEngine::showResultMenu(fcitx::InputContext *ic,
       fcitx::CursorPositionAfterPaging::ResetToFirst);
 
   int cursor_index = 0;
-  std::size_t llm_index = 0;
   for (std::size_t i = 0; i < result_candidates_.size(); ++i) {
     const auto &candidate = result_candidates_[i];
-    if (candidate.source == vinput::result::kSourceLlm) {
-      ++llm_index;
-    }
     if (candidate.text == payload.commitText) {
       cursor_index = static_cast<int>(i);
     }
     candidate_list->append<ResultCandidateWord>(
-        this, i, candidate.text, ResultCandidateComment(candidate, llm_index));
+        this, i, candidate.text, ResultCandidateComment(candidate));
   }
   MoveCursorToIndex(candidate_list.get(), cursor_index);
 
@@ -676,9 +671,25 @@ void VinputEngine::selectResultCandidate(std::size_t index,
     return;
   }
 
-  const std::string text = result_candidates_[index].text;
+  const auto &candidate = result_candidates_[index];
+  const std::string text = candidate.text;
   hideResultMenu();
-  if (!text.empty() && ic) {
+  if (!ic) {
+    return;
+  }
+
+  if (candidate.source == vinput::result::kSourceCancel) {
+    clearPreedit(ic);
+    return;
+  }
+
+  if (candidate.source == vinput::result::kSourceCommand) {
+    clearPreedit(ic);
+    ExecuteShellCommandAsync(text);
+    return;
+  }
+
+  if (!text.empty()) {
     clearPreedit(ic);
     ic->commitString(text);
   }

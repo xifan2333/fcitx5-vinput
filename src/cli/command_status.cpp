@@ -1,6 +1,6 @@
 #include "cli/command_status.h"
 #include "cli/dbus_client.h"
-#include "cli/i18n.h"
+#include "common/i18n.h"
 #include <nlohmann/json.hpp>
 #include <cstdio>
 #include <string>
@@ -15,7 +15,7 @@ int RunStatus(Formatter& fmt, const CliContext& ctx) {
         if (ctx.json_output) {
             fmt.PrintJson({{"running", false}});
         } else {
-            fmt.PrintError(_(msgs::kDaemonNotRunning, ctx.use_chinese));
+            fmt.PrintError(_("Daemon is not running."));
         }
         return 1;
     }
@@ -36,7 +36,7 @@ int RunStatus(Formatter& fmt, const CliContext& ctx) {
         fmt.PrintJson({{"running", true}, {"status", status}});
     } else {
         char buf[256];
-        std::snprintf(buf, sizeof(buf), _(msgs::kDaemonStatus, ctx.use_chinese), status.c_str());
+        std::snprintf(buf, sizeof(buf), _("Daemon status: %s"), status.c_str());
         fmt.PrintInfo(buf);
     }
 

@@ -1,0 +1,3 @@
+#pragma once
+
+#define VINPUT_LOCALEDIR "@CMAKE_INSTALL_FULL_LOCALEDIR@"

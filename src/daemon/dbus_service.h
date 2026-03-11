@@ -3,6 +3,7 @@
 #include <systemd/sd-bus.h>
 
 #include <functional>
+#include <mutex>
 #include <string>
 
 class DbusService {
@@ -31,6 +32,7 @@ public:
 private:
     sd_bus* bus_ = nullptr;
     sd_bus_slot* slot_ = nullptr;
+    std::recursive_mutex bus_mutex_;
     std::function<void()> start_handler_;
     std::function<std::string(const std::string& scene_id)> stop_handler_;
     std::function<std::string()> status_handler_;

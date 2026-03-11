@@ -1,12 +1,20 @@
 #include "cli/command_hotword.h"
 #include "cli/editor_utils.h"
-#include "cli/i18n.h"
+#include "common/i18n.h"
 #include "common/core_config.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+
+namespace {
+static std::string FormatMsg1(const char* tmpl, const std::string& a) {
+  char buf[512];
+  std::snprintf(buf, sizeof(buf), tmpl, a.c_str());
+  return buf;
+}
+} // namespace
 
 int RunHotwordList(Formatter &fmt, const CliContext &ctx) {
   (void)ctx;
@@ -22,7 +30,7 @@ int RunHotwordList(Formatter &fmt, const CliContext &ctx) {
   }
 
   if (config.hotwords.empty()) {
-    fmt.PrintInfo("No hotwords configured.");
+    fmt.PrintInfo(_("No hotwords configured."));
     return 0;
   }
 
@@ -66,7 +74,7 @@ int RunHotwordLoad(const std::string &file_path, Formatter &fmt,
   } else {
     std::ifstream file(file_path);
     if (!file.is_open()) {
-      fmt.PrintError("Failed to open file: " + file_path);
+      fmt.PrintError(FormatMsg1(_("Failed to open file: %s"), file_path));
       return 1;
     }
     process_stream(file);
@@ -74,12 +82,13 @@ int RunHotwordLoad(const std::string &file_path, Formatter &fmt,
 
   config.hotwords = new_hotwords;
   if (!SaveCoreConfig(config)) {
-    fmt.PrintError("Failed to save config.");
+    fmt.PrintError(_("Failed to save config."));
     return 1;
   }
 
   char buf[256];
-  std::snprintf(buf, sizeof(buf), "Loaded %zu hotwords.", new_hotwords.size());
+  std::snprintf(buf, sizeof(buf), _("Loaded %zu hotwords."),
+                new_hotwords.size());
   fmt.PrintSuccess(buf);
   return 0;
 }
@@ -90,11 +99,11 @@ int RunHotwordClear(Formatter &fmt, const CliContext &ctx) {
   config.hotwords.clear();
 
   if (!SaveCoreConfig(config)) {
-    fmt.PrintError("Failed to save config.");
+    fmt.PrintError(_("Failed to save config."));
     return 1;
   }
 
-  fmt.PrintSuccess("Cleared all hotwords.");
+  fmt.PrintSuccess(_("Cleared all hotwords."));
   return 0;
 }
 
@@ -105,7 +114,7 @@ int RunHotwordEdit(Formatter &fmt, const CliContext &ctx) {
   char tmp_template[] = "/tmp/vinput_hotwords_XXXXXX";
   int fd = mkstemp(tmp_template);
   if (fd == -1) {
-    fmt.PrintError("Failed to create temporary file for editing.");
+    fmt.PrintError(_("Failed to create temporary file for editing."));
     return 1;
   }
   close(fd);
@@ -123,7 +132,7 @@ int RunHotwordEdit(Formatter &fmt, const CliContext &ctx) {
   int ret = OpenInEditor(tmp_path);
   if (ret != 0) {
     std::remove(tmp_path.c_str());
-    fmt.PrintError("Editor exited with error.");
+    fmt.PrintError(_("Editor exited with error."));
     return ret;
   }
 
@@ -132,7 +141,7 @@ int RunHotwordEdit(Formatter &fmt, const CliContext &ctx) {
   std::remove(tmp_path.c_str());
 
   if (ret == 0) {
-    fmt.PrintSuccess("Hotwords updated from editor.");
+    fmt.PrintSuccess(_("Hotwords updated from editor."));
   }
   return ret;
 }

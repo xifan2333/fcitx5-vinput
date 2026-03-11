@@ -1,5 +1,5 @@
 #include "cli/command_model.h"
-#include "cli/i18n.h"
+#include "common/i18n.h"
 #include "cli/progress.h"
 #include "common/core_config.h"
 #include "common/model_manager.h"
@@ -39,6 +39,19 @@ static uint64_t DirSize(const std::filesystem::path& dir) {
     return total;
 }
 
+static std::string FormatMsg1(const char* tmpl, const std::string& a) {
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), tmpl, a.c_str());
+    return buf;
+}
+
+static std::string FormatMsg2(const char* tmpl, const std::string& a,
+                              const std::string& b) {
+    char buf[768];
+    std::snprintf(buf, sizeof(buf), tmpl, a.c_str(), b.c_str());
+    return buf;
+}
+
 } // namespace
 
 int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
@@ -73,11 +86,11 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
         for (const auto& m : models) {
             std::string status_str;
             if (m.state == ModelState::Active) {
-                status_str = std::string("[*] ") + _(msgs::kActive, ctx.use_chinese);
+                status_str = std::string("[*] ") + _("Active");
             } else if (m.state == ModelState::Broken) {
-                status_str = std::string("[!] ") + _(msgs::kBroken, ctx.use_chinese);
+                status_str = std::string("[!] ") + _("Broken");
             } else {
-                status_str = std::string("[ ] ") + _(msgs::kInstalled, ctx.use_chinese);
+                status_str = std::string("[ ] ") + _("Installed");
             }
             rows.push_back({m.name, m.model_type, m.language, status_str});
         }
@@ -87,7 +100,7 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
 
     // Remote listing
     if (config.registryUrl.empty()) {
-        fmt.PrintError("No registry URL configured. Set with: vinput config set extra.registry_url <url>");
+        fmt.PrintError(_("No registry URL configured. Set with: vinput config set extra.registry_url <url>"));
         return 1;
     }
 
@@ -129,7 +142,7 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
     std::vector<std::string> headers = {"NAME", "TYPE", "LANGUAGE", "SIZE", "STATUS"};
     std::vector<std::vector<std::string>> rows;
     for (const auto& m : remote_models) {
-        std::string status = is_installed(m.name) ? "installed" : "available";
+        std::string status = is_installed(m.name) ? _("installed") : _("available");
         rows.push_back({m.name, m.model_type, m.language, FormatSize(m.size_bytes), status});
     }
     fmt.PrintTable(headers, rows);
@@ -142,7 +155,7 @@ int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) 
     auto base_dir = ResolveModelBaseDir(config);
 
     if (config.registryUrl.empty()) {
-        fmt.PrintError("No registry URL configured. Set with: vinput config set extra.registry_url <url>");
+        fmt.PrintError(_("No registry URL configured. Set with: vinput config set extra.registry_url <url>"));
         return 1;
     }
 
@@ -165,7 +178,7 @@ int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) 
     }
 
     char label_buf[256];
-    snprintf(label_buf, sizeof(label_buf), _(msgs::kDownloading, ctx.use_chinese), name.c_str());
+    snprintf(label_buf, sizeof(label_buf), _("Downloading %s..."), name.c_str());
     ProgressBar bar(label_buf, total_size, ctx.is_tty);
 
     bool install_ok = repo.InstallModel(
@@ -183,9 +196,9 @@ int RunModelAdd(const std::string& name, Formatter& fmt, const CliContext& ctx) 
     }
 
     char success_buf[256];
-    snprintf(success_buf, sizeof(success_buf), _(msgs::kInstallSuccess, ctx.use_chinese), name.c_str());
+    snprintf(success_buf, sizeof(success_buf), _("Model '%s' installed successfully."), name.c_str());
     fmt.PrintSuccess(success_buf);
-    fmt.PrintInfo("Run `vinput model use " + name + "` to activate");
+    fmt.PrintInfo(FormatMsg1(_("Run `vinput model use %s` to activate"), name));
     return 0;
 }
 
@@ -197,13 +210,13 @@ int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& /*ctx
     ModelManager mgr(base_dir.string());
     std::string err;
     if (!mgr.Validate(name, &err)) {
-        fmt.PrintError("Model '" + name + "' is not valid: " + err);
+        fmt.PrintError(FormatMsg2(_("Model '%s' is not valid: %s"), name, err));
         return 1;
     }
 
     config.activeModel = name;
     if (!SaveCoreConfig(config)) {
-        fmt.PrintError("Failed to save configuration.");
+        fmt.PrintError(_("Failed to save configuration."));
         return 1;
     }
 
@@ -218,7 +231,7 @@ int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& /*ctx
         waitpid(pid, &status, 0);
     }
 
-    fmt.PrintSuccess("Active model set to '" + name + "'. Daemon restarted.");
+    fmt.PrintSuccess(FormatMsg1(_("Active model set to '%s'. Daemon restarted."), name));
     return 0;
 }
 
@@ -228,7 +241,7 @@ int RunModelRemove(const std::string& name, bool force, Formatter& fmt, const Cl
     auto base_dir = ResolveModelBaseDir(config);
 
     if (name == config.activeModel && !force) {
-        fmt.PrintError("Cannot remove active model '" + name + "'. Use --force to override.");
+        fmt.PrintError(FormatMsg1(_("Cannot remove active model '%s'. Use --force to override."), name));
         return 1;
     }
 
@@ -239,7 +252,7 @@ int RunModelRemove(const std::string& name, bool force, Formatter& fmt, const Cl
         return 1;
     }
 
-    fmt.PrintSuccess("Model '" + name + "' removed.");
+    fmt.PrintSuccess(FormatMsg1(_("Model '%s' removed."), name));
     return 0;
 }
 
@@ -251,7 +264,7 @@ int RunModelInfo(const std::string& name, Formatter& fmt, const CliContext& ctx)
     auto json_path = model_dir / "vinput-model.json";
 
     if (!std::filesystem::exists(json_path)) {
-        fmt.PrintError("Model '" + name + "' not found at: " + json_path.string());
+        fmt.PrintError(FormatMsg2(_("Model '%s' not found at: %s"), name, json_path.string()));
         return 1;
     }
 
@@ -259,13 +272,13 @@ int RunModelInfo(const std::string& name, Formatter& fmt, const CliContext& ctx)
     {
         std::ifstream f(json_path);
         if (!f) {
-            fmt.PrintError("Failed to read: " + json_path.string());
+            fmt.PrintError(FormatMsg1(_("Failed to read: %s"), json_path.string()));
             return 1;
         }
         try {
             f >> j;
         } catch (const std::exception& e) {
-            fmt.PrintError(std::string("Failed to parse vinput-model.json: ") + e.what());
+            fmt.PrintError(FormatMsg1(_("Failed to parse vinput-model.json: %s"), e.what()));
             return 1;
         }
     }
@@ -282,9 +295,9 @@ int RunModelInfo(const std::string& name, Formatter& fmt, const CliContext& ctx)
         return 0;
     }
 
-    fmt.PrintKeyValue("Name", name);
-    fmt.PrintKeyValue("Path", model_dir.string());
-    fmt.PrintKeyValue("Size", FormatSize(dir_size));
+    fmt.PrintKeyValue(_("Name"), name);
+    fmt.PrintKeyValue(_("Path"), model_dir.string());
+    fmt.PrintKeyValue(_("Size"), FormatSize(dir_size));
 
     for (auto it = j.begin(); it != j.end(); ++it) {
         if (it.value().is_string()) {

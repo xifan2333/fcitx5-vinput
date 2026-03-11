@@ -23,7 +23,7 @@ struct VinputSettings {
 
 class VinputConfig : public fcitx::Configuration {
 public:
-  VinputConfig(const VinputSettings &settings, bool chinese_ui);
+  VinputConfig(const VinputSettings &settings);
   VinputConfig(const VinputConfig &) = delete;
   VinputConfig &operator=(const VinputConfig &) = delete;
 
@@ -53,7 +53,6 @@ public:
   fcitx::ExternalOption modelManager;
 };
 
-bool UseChineseUi();
 VinputSettings LoadVinputSettings();
 bool SaveVinputSettings(const VinputSettings &settings);
 std::unique_ptr<VinputConfig> BuildVinputConfig(const VinputSettings &settings);

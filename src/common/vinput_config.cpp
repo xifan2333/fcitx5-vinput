@@ -1,8 +1,11 @@
 #include "vinput_config.h"
 
+#include "common/i18n.h"
+
 #include <fcitx-config/iniparser.h>
 #include <fcitx-utils/standardpath.h>
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -30,76 +33,59 @@ std::string UserPkgConfigPath(std::string_view relative_path) {
       .string();
 }
 
-std::string TriggerKeyLabel(bool chinese_ui) {
-  return chinese_ui ? "触发键" : "Trigger Key";
+std::string TriggerKeyLabel() { return _("Trigger Key"); }
+
+std::string TriggerKeyTooltip() {
+  const std::string path = UserPkgConfigPath(kVinputConfigPath);
+  char buf[1024];
+  std::snprintf(
+      buf, sizeof(buf),
+      _("Press and hold this key to record. Release it to start recognition. "
+        "Supports regular keys, modifier keys, and modified key combinations. "
+        "You can configure multiple trigger keys. The config is stored at %s."),
+      path.c_str());
+  return buf;
 }
 
-std::string TriggerKeyTooltip(bool chinese_ui) {
-  return chinese_ui
-             ? "可配置多个触发键。支持普通按键、修饰键，以及带修饰键的组合键。"
-               "配置保存在 " +
-                   UserPkgConfigPath(kVinputConfigPath) + "。"
-             : "Press and hold this key to record. Release it to start "
-               "recognition. Supports regular keys, modifier keys, and "
-               "modified key combinations. You can configure multiple "
-               "trigger keys. The config is stored at " +
-                   UserPkgConfigPath(kVinputConfigPath) + ".";
+std::string SceneMenuKeyLabel() { return _("Postprocess Menu Keys"); }
+
+std::string SceneMenuKeyTooltip() {
+  return _("Configure one or more keys to open the postprocess menu. The "
+           "default is F9.");
 }
 
-std::string SceneMenuKeyLabel(bool chinese_ui) {
-  return chinese_ui ? "后处理选单键" : "Postprocess Menu Keys";
+std::string PagePrevKeysLabel() { return _("Previous Page Keys"); }
+
+std::string PagePrevKeysTooltip() {
+  return _("Keys for paging to the previous page in the postprocess menu and "
+           "the postprocess candidate menu. Defaults to Page Up and keypad "
+           "Page Up.");
 }
 
-std::string SceneMenuKeyTooltip(bool chinese_ui) {
-  return chinese_ui ? "可配置多个按键，用于打开后处理选单。默认是 F9。"
-                    : "Configure one or more keys to open the postprocess "
-                      "menu. The default is F9.";
-}
+std::string PageNextKeysLabel() { return _("Next Page Keys"); }
 
-std::string PagePrevKeysLabel(bool chinese_ui) {
-  return chinese_ui ? "上一页键" : "Previous Page Keys";
-}
-
-std::string PagePrevKeysTooltip(bool chinese_ui) {
-  return chinese_ui ? "用于后处理选单和后处理候选菜单翻到上一页。默认是 Page "
-                      "Up 和小键盘 Page Up。"
-                    : "Keys for paging to the previous page in the postprocess "
-                      "menu and "
-                      "the postprocess candidate menu. Defaults to Page Up and "
-                      "keypad Page Up.";
-}
-
-std::string PageNextKeysLabel(bool chinese_ui) {
-  return chinese_ui ? "下一页键" : "Next Page Keys";
-}
-
-std::string PageNextKeysTooltip(bool chinese_ui) {
-  return chinese_ui
-             ? "用于后处理选单和后处理候选菜单翻到下一页。默认是 Page Down "
-               "和小键盘 Page Down。"
-             : "Keys for paging to the next page in the postprocess menu "
-               "and the "
-               "postprocess candidate menu. Defaults to Page Down and "
-               "keypad Page Down.";
+std::string PageNextKeysTooltip() {
+  return _("Keys for paging to the next page in the postprocess menu and the "
+           "postprocess candidate menu. Defaults to Page Down and keypad Page "
+           "Down.");
 }
 
 } // namespace
 
-VinputConfig::VinputConfig(const VinputSettings &settings, bool chinese_ui)
-    : triggerKey(this, "TriggerKey", TriggerKeyLabel(chinese_ui),
-                 settings.triggerKeys, TriggerKeyListConstrain(), {},
-                 fcitx::ToolTipAnnotation(TriggerKeyTooltip(chinese_ui))),
-      sceneMenuKey(this, "SceneMenuKey", SceneMenuKeyLabel(chinese_ui),
+VinputConfig::VinputConfig(const VinputSettings &settings)
+    : triggerKey(this, "TriggerKey", TriggerKeyLabel(), settings.triggerKeys,
+                 TriggerKeyListConstrain(), {},
+                 fcitx::ToolTipAnnotation(TriggerKeyTooltip())),
+      sceneMenuKey(this, "SceneMenuKey", SceneMenuKeyLabel(),
                    settings.sceneMenuKey, SceneMenuKeyListConstrain(), {},
-                   fcitx::ToolTipAnnotation(SceneMenuKeyTooltip(chinese_ui))),
-      pagePrevKeys(this, "PagePrevKeys", PagePrevKeysLabel(chinese_ui),
+                   fcitx::ToolTipAnnotation(SceneMenuKeyTooltip())),
+      pagePrevKeys(this, "PagePrevKeys", PagePrevKeysLabel(),
                    settings.pagePrevKeys, TriggerKeyListConstrain(), {},
-                   fcitx::ToolTipAnnotation(PagePrevKeysTooltip(chinese_ui))),
-      pageNextKeys(this, "PageNextKeys", PageNextKeysLabel(chinese_ui),
+                   fcitx::ToolTipAnnotation(PagePrevKeysTooltip())),
+      pageNextKeys(this, "PageNextKeys", PageNextKeysLabel(),
                    settings.pageNextKeys, TriggerKeyListConstrain(), {},
-                   fcitx::ToolTipAnnotation(PageNextKeysTooltip(chinese_ui))),
-      modelManager(this, "ModelManager",
-                   chinese_ui ? "打开 Vinput 设置" : "Open Vinput Settings",
+                   fcitx::ToolTipAnnotation(PageNextKeysTooltip())),
+      modelManager(this, "ModelManager", _("Open Vinput Settings"),
                    "vinput-gui") {}
 
 VinputSettings VinputConfig::settings() const {
@@ -111,31 +97,20 @@ VinputSettings VinputConfig::settings() const {
   return settings;
 }
 
-bool UseChineseUi() {
-  const char *locale = std::getenv("LC_ALL");
-  if (!locale || locale[0] == '\0') {
-    locale = std::getenv("LC_MESSAGES");
-  }
-  if (!locale || locale[0] == '\0') {
-    locale = std::getenv("LANG");
-  }
-  return locale && std::strncmp(locale, "zh", 2) == 0;
-}
-
 VinputSettings LoadVinputSettings() {
-  VinputConfig config(VinputSettings{}, false);
+  VinputConfig config(VinputSettings{});
   fcitx::readAsIni(config, fcitx::StandardPath::Type::PkgConfig,
                    kVinputConfigPath);
   return config.settings();
 }
 
 bool SaveVinputSettings(const VinputSettings &settings) {
-  VinputConfig config(settings, false);
+  VinputConfig config(settings);
   return fcitx::safeSaveAsIni(config, fcitx::StandardPath::Type::PkgConfig,
                               kVinputConfigPath);
 }
 
 std::unique_ptr<VinputConfig>
 BuildVinputConfig(const VinputSettings &settings) {
-  return std::make_unique<VinputConfig>(settings, UseChineseUi());
+  return std::make_unique<VinputConfig>(settings);
 }
