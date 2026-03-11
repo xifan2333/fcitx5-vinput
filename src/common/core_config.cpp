@@ -61,7 +61,6 @@ void to_json(json &j, const LlmProvider &p) {
            {"base_url", p.base_url},
            {"api_key", p.api_key},
            {"model", p.model},
-           {"candidate_count", p.candidate_count},
            {"timeout_ms", p.timeout_ms}};
 }
 
@@ -70,7 +69,6 @@ void from_json(const json &j, LlmProvider &p) {
   p.base_url = j.value("base_url", p.base_url);
   p.api_key = j.value("api_key", p.api_key);
   p.model = j.value("model", p.model);
-  p.candidate_count = j.value("candidate_count", p.candidate_count);
   p.timeout_ms = j.value("timeout_ms", p.timeout_ms);
 }
 
@@ -83,17 +81,13 @@ namespace vinput::scene {
 void to_json(json &j, const Definition &d) {
   j = json{{"id", d.id},
            {"label", d.label},
-           {"llm", d.llm},
-           {"prompt", d.prompt},
-           {"type", d.type}};
+           {"prompt", d.prompt}};
 }
 
 void from_json(const json &j, Definition &d) {
   d.id = j.value("id", std::string{});
   d.label = j.value("label", std::string{});
-  d.llm = j.value("llm", false);
   d.prompt = j.value("prompt", std::string{});
-  d.type = j.value("type", std::string{"input"});
 }
 
 }  // namespace vinput::scene

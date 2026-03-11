@@ -11,7 +11,6 @@ struct LlmProvider {
   std::string base_url;
   std::string api_key;
   std::string model;
-  int candidate_count = 1;
   int timeout_ms = 4000;
 };
 
