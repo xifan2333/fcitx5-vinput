@@ -3,7 +3,6 @@
 #include "cli/cli_context.h"
 #include "cli/formatter.h"
 #include <string>
-#include <vector>
 
 int RunHotwordList(Formatter &fmt, const CliContext &ctx);
 int RunHotwordLoad(const std::string &file_path, Formatter &fmt,

@@ -1,17 +1,15 @@
 #include "cli/command_device.h"
-#include "common/i18n.h"
 #include "common/core_config.h"
+#include "common/i18n.h"
 #include "common/pipewire_device.h"
 
 #include <cstdio>
-#include <iostream>
 #include <nlohmann/json.hpp>
-#include <sstream>
 #include <vector>
 
 namespace {
 
-static std::string FormatMsg1(const char* tmpl, const std::string& a) {
+static std::string FormatMsg1(const char *tmpl, const std::string &a) {
   char buf[512];
   std::snprintf(buf, sizeof(buf), tmpl, a.c_str());
   return buf;
@@ -25,7 +23,8 @@ int RunDeviceList(Formatter &fmt, const CliContext &ctx) {
 
   auto devices = vinput::pw::EnumerateAudioSources();
   if (devices.empty()) {
-    fmt.PrintInfo(_("No audio capture devices found or PipeWire is not running."));
+    fmt.PrintInfo(
+        _("No audio capture devices found or PipeWire is not running."));
     return 0;
   }
 
@@ -47,18 +46,15 @@ int RunDeviceList(Formatter &fmt, const CliContext &ctx) {
   std::vector<std::vector<std::string>> rows;
 
   {
-    std::string status =
-        (active_device == "default" || active_device.empty())
-            ? std::string("[*] ") + _("Active")
-            : "[ ]";
+    std::string status = (active_device == "default" || active_device.empty())
+                             ? std::string("[*] ") + _("Active")
+                             : "[ ]";
     rows.push_back({"default", _("System Default"), status});
   }
 
   for (const auto &d : devices) {
     std::string status =
-        (active_device == d.name)
-            ? std::string("[*] ") + _("Active")
-            : "[ ]";
+        (active_device == d.name) ? std::string("[*] ") + _("Active") : "[ ]";
     rows.push_back({d.name, d.description, status});
   }
 
@@ -81,10 +77,8 @@ int RunDeviceUse(const std::string &name, Formatter &fmt,
       }
     }
     if (!found) {
-      fmt.PrintWarning(
-          FormatMsg1(
-              _("Device '%s' not found in PipeWire. Setting it anyway."),
-              name));
+      fmt.PrintWarning(FormatMsg1(
+          _("Device '%s' not found in PipeWire. Setting it anyway."), name));
     }
   }
 
@@ -96,7 +90,6 @@ int RunDeviceUse(const std::string &name, Formatter &fmt,
   }
 
   fmt.PrintSuccess(FormatMsg1(
-      _("Capture device set to '%s'. Restart daemon to apply changes."),
-      name));
+      _("Capture device set to '%s'. Restart daemon to apply changes."), name));
   return 0;
 }

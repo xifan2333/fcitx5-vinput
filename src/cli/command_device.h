@@ -3,7 +3,6 @@
 #include "cli/cli_context.h"
 #include "cli/formatter.h"
 #include <string>
-#include <vector>
 
 int RunDeviceList(Formatter &fmt, const CliContext &ctx);
 int RunDeviceUse(const std::string &name, Formatter &fmt,

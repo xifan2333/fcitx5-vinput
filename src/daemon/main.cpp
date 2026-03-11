@@ -122,7 +122,9 @@ int main(int argc, char *argv[]) {
       if (!text.empty()) {
         auto runtime_settings = LoadCoreConfig();
         NormalizeCoreConfig(&runtime_settings);
-        const auto scene_config = vinput::scene::LoadConfig();
+        vinput::scene::Config scene_config;
+        scene_config.activeSceneId = runtime_settings.scenes.activeScene;
+        scene_config.scenes = runtime_settings.scenes.definitions;
         const auto &scene = vinput::scene::Resolve(scene_config, job.scene_id);
         if (runtime_settings.llm.enabled && !scene.prompt.empty()) {
           current_status = Status::Postprocessing;

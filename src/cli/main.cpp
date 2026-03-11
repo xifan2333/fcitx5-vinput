@@ -14,7 +14,6 @@
 #include "cli/command_status.h"
 #include "cli/formatter.h"
 #include "common/i18n.h"
-#include "common/vinput_config.h"
 
 int main(int argc, char *argv[]) {
   CLI::App app{"vinput - Voice input model and daemon manager"};
@@ -227,8 +226,8 @@ int main(int argc, char *argv[]) {
   else if (scene_list->parsed()) {
     return RunSceneList(*fmt, ctx);
   } else if (scene_add->parsed()) {
-    return RunSceneAdd(scene_add_id, scene_add_label, scene_add_prompt,
-                       *fmt, ctx);
+    return RunSceneAdd(scene_add_id, scene_add_label, scene_add_prompt, *fmt,
+                       ctx);
   } else if (scene_use->parsed()) {
     return RunSceneUse(scene_use_id, *fmt, ctx);
   } else if (scene_remove->parsed()) {

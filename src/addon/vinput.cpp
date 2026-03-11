@@ -1,4 +1,5 @@
 #include "vinput.h"
+#include "common/core_config.h"
 #include "common/dbus_interface.h"
 #include "common/i18n.h"
 #include "common/postprocess_scene.h"
@@ -354,11 +355,12 @@ void VinputEngine::applySettings() {
 }
 
 void VinputEngine::reloadSceneConfig() {
-  scene_config_ = vinput::scene::LoadConfig();
-  if (scene_config_.scenes.empty()) {
-    scene_config_ = vinput::scene::DefaultConfig();
+  auto core_config = LoadCoreConfig();
+  scene_config_.activeSceneId = core_config.scenes.activeScene;
+  scene_config_.scenes = core_config.scenes.definitions;
+  if (!scene_config_.scenes.empty()) {
+    active_scene_id_ = vinput::scene::Resolve(scene_config_, active_scene_id_).id;
   }
-  active_scene_id_ = vinput::scene::Resolve(scene_config_, active_scene_id_).id;
 }
 
 void VinputEngine::rebuildUiConfig() const {
