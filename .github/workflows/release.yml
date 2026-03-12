@@ -116,6 +116,74 @@ jobs:
           path: dist/*.deb
           if-no-files-found: error
 
+  build-deb-debian12:
+    needs: source_archive
+    runs-on: ubuntu-latest
+    container:
+      image: debian:12
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            gettext \
+            dpkg-dev \
+            file \
+            curl \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libarchive-dev \
+            libpipewire-0.3-dev \
+            libsystemd-dev \
+            libfcitx5core-dev \
+            libfcitx5config-dev \
+            libfcitx5utils-dev \
+            fcitx5-modules-dev \
+            nlohmann-json3-dev \
+            qtbase5-dev \
+            qttools5-dev
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-archive
+          path: dist
+
+      - name: Build Debian package
+        shell: bash
+        run: |
+          tar -xf "dist/${{ needs.source_archive.outputs.source_archive }}"
+
+          cmake -S "fcitx5-vinput-${{ needs.source_archive.outputs.package_version }}" -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DVINPUT_PROJECT_VERSION="${{ needs.source_archive.outputs.package_version }}" \
+            -DVINPUT_PACKAGE_RELEASE="${{ needs.source_archive.outputs.package_release }}" \
+            -DVINPUT_PACKAGE_CONTACT="${{ github.repository_owner }} <noreply@github.com>" \
+            -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}"
+
+          cmake --build build
+          cpack --config build/CPackConfig.cmake -G DEB -B dist
+
+          deb_path="$(find dist -maxdepth 1 -name '*.deb' -print -quit)"
+          if [[ -z "${deb_path}" ]]; then
+            echo "No .deb package was generated" >&2
+            exit 1
+          fi
+
+          asset_name="fcitx5-vinput_${{ needs.source_archive.outputs.package_version }}-${{ needs.source_archive.outputs.package_release }}_debian12_amd64.deb"
+          mv "${deb_path}" "dist/${asset_name}"
+          dpkg-deb -I "dist/${asset_name}" >/dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-package-debian12
+          path: dist/*.deb
+          if-no-files-found: error
+
   build-arch:
     needs: source_archive
     runs-on: ubuntu-latest
@@ -190,6 +258,7 @@ jobs:
     needs:
       - source_archive
       - build-deb
+      - build-deb-debian12
       - build-arch
     runs-on: ubuntu-latest
     env:
