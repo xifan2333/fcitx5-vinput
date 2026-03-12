@@ -718,6 +718,10 @@ void VinputEngine::selectScene(std::size_t index, fcitx::InputContext *ic) {
   }
 
   active_scene_id_ = scene_config_.scenes[index].id;
+  // Persist the active scene to config
+  auto core_config = LoadCoreConfig();
+  core_config.scenes.activeScene = active_scene_id_;
+  SaveCoreConfig(core_config);
   hideSceneMenu();
   (void)ic;
 }
