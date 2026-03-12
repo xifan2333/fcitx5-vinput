@@ -201,11 +201,11 @@
     </message>
     <message>
       <source>Base URL:</source>
-      <translation>环境主网址（Base URL）：</translation>
+      <translation>地址：</translation>
     </message>
     <message>
       <source>API Key:</source>
-      <translation>API 密钥：</translation>
+      <translation>密钥：</translation>
     </message>
     <message>
       <source>Model Name:</source>

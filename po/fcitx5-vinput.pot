@@ -1,200 +1,194 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: fcitx5-vinput\n"
+"Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-12 04:14+0800\n"
-"PO-Revision-Date: 2026-03-11 00:00+0000\n"
-"Last-Translator: \n"
-"Language-Team: \n"
-"Language: zh_CN\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
 "MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
 #: src/addon/vinput.cpp:94
 #, c-format
 msgid " (%d/%d)"
-msgstr "（%d/%d页）"
+msgstr ""
 
 #: src/addon/vinput.cpp:201
 msgid " (Current)"
-msgstr "（当前）"
+msgstr ""
 
 #: src/addon/vinput.cpp:55
 msgid "... Postprocessing ..."
-msgstr "... 正在后处理 ..."
+msgstr ""
 
 #: src/addon/vinput.cpp:53
 msgid "... Recognizing ..."
-msgstr "... 正在识别 ..."
+msgstr ""
 
 #: src/addon/vinput.cpp:51
 msgid "... Recording ..."
-msgstr "... 正在录音 ..."
-
-#: src/addon/vinput.cpp:53
-msgid "... Commanding ..."
-msgstr "... 正在命令 ..."
-
-#: src/addon/vinput.cpp
-msgid "Original"
-msgstr "原文"
-
-#: src/addon/vinput.cpp
-msgid "Voice Command"
-msgstr "语音命令"
+msgstr ""
 
 #: src/cli/command_device.cpp:50 src/cli/command_device.cpp:57
 #: src/cli/command_model.cpp:89
 msgid "Active"
-msgstr "活跃"
+msgstr ""
 
 #: src/cli/command_llm.cpp:105
 #, c-format
 msgid "Active LLM provider set to '%s'."
-msgstr "活跃 LLM 提供商已设为 '%s'。"
+msgstr ""
 
 #: src/cli/command_model.cpp:234
 #, c-format
 msgid "Active model set to '%s'. Daemon restarted."
-msgstr "活跃模型已设为 '%s'，守护进程已重启。"
+msgstr ""
 
 #: src/cli/command_model.cpp:91
 msgid "Broken"
-msgstr "损坏"
+msgstr ""
 
 #: src/cli/command_model.cpp:244
 #, c-format
 msgid "Cannot remove active model '%s'. Use --force to override."
-msgstr "不能移除活跃模型 '%s'，请用 --force。"
+msgstr ""
 
 #: src/cli/command_llm.cpp:114
 #, c-format
 msgid "Cannot remove active provider '%s'. Use --force."
-msgstr "不能移除活跃提供商 '%s'，请用 --force。"
+msgstr ""
 
 #: src/cli/command_device.cpp:93
 #, c-format
 msgid "Capture device set to '%s'. Restart daemon to apply changes."
-msgstr "录音设备已设为 '%s'，请重启守护进程生效。"
+msgstr ""
 
 #: src/addon/vinput.cpp:43
 msgid "Choose Postprocess Menu"
-msgstr "选择后处理选单"
+msgstr ""
 
 #: src/addon/vinput.cpp:47
 #, c-format
 msgid "Choose Result (%zu)"
-msgstr "选择结果（%zu项）"
+msgstr ""
 
 #: src/cli/command_hotword.cpp:106
 msgid "Cleared all hotwords."
-msgstr "已清空所有热词。"
+msgstr ""
 
 #: src/addon/vinput.cpp:62
 msgid "Command"
-msgstr "命令"
+msgstr ""
 
 #: src/common/vinput_config.cpp:48
 msgid "Command Keys"
-msgstr "命令键"
+msgstr ""
 
 #: src/cli/command_init.cpp:28
 #, c-format
 msgid "Config already exists: %s"
-msgstr "配置文件已存在：%s"
+msgstr ""
 
 #: src/cli/command_config.cpp:41
 msgid "Config value set."
-msgstr "配置值已设置。"
+msgstr ""
 
 #: src/common/vinput_config.cpp:58
 msgid ""
 "Configure one or more keys to open the postprocess menu. The default is "
 "Right Alt + Control."
-msgstr "可配置多个按键，用于打开后处理选单。默认是右 Alt + Ctrl。"
+msgstr ""
 
 #: src/cli/command_init.cpp:41
 #, c-format
 msgid "Created config: %s"
-msgstr "已创建配置文件：%s"
+msgstr ""
 
 #: src/cli/command_init.cpp:63
 #, c-format
 msgid "Created model dir: %s"
-msgstr "已创建模型目录：%s"
+msgstr ""
 
 #: src/cli/command_status.cpp:18
 msgid "Daemon is not running."
-msgstr "守护进程未运行。"
+msgstr ""
 
 #: src/cli/command_daemon.cpp:38
 msgid "Daemon restarted."
-msgstr "守护进程已重启。"
+msgstr ""
 
 #: src/cli/command_daemon.cpp:10
 msgid "Daemon started."
-msgstr "守护进程已启动。"
+msgstr ""
 
 #: src/cli/command_status.cpp:39
 #, c-format
 msgid "Daemon status: %s"
-msgstr "守护进程状态：%s"
+msgstr ""
 
 #: src/cli/command_daemon.cpp:24
 msgid "Daemon stopped."
-msgstr "守护进程已停止。"
+msgstr ""
 
 #: src/cli/command_scene.cpp:99
 #, c-format
 msgid "Default scene set to '%s'."
-msgstr "默认场景已设为 '%s'。"
+msgstr ""
 
 #: src/cli/command_device.cpp:81
 #, c-format
 msgid "Device '%s' not found in PipeWire. Setting it anyway."
-msgstr "在 PipeWire 中未找到设备 '%s'，仍将继续设置。"
+msgstr ""
 
 #: src/cli/command_model.cpp:181
 #, c-format
 msgid "Downloading %s..."
-msgstr "正在下载 %s..."
+msgstr ""
 
 #: src/cli/command_hotword.cpp:135
 msgid "Editor exited with error."
-msgstr "编辑器异常退出。"
+msgstr ""
 
 #: src/cli/command_init.cpp:68
 msgid "Everything already initialized"
-msgstr "所有文件已就绪，无需初始化"
+msgstr ""
 
 #: src/cli/command_init.cpp:44
 msgid "Failed to create config"
-msgstr "创建配置文件失败"
+msgstr ""
 
 #: src/cli/command_init.cpp:59
 #, c-format
 msgid "Failed to create model dir: %s"
-msgstr "创建模型目录失败：%s"
+msgstr ""
 
 #: src/cli/command_hotword.cpp:117
 msgid "Failed to create temporary file for editing."
-msgstr "创建临时文件失败，无法编辑。"
+msgstr ""
 
 #: src/cli/command_hotword.cpp:77
 #, c-format
 msgid "Failed to open file: %s"
-msgstr "打开文件失败：%s"
+msgstr ""
 
 #: src/cli/command_model.cpp:281
 #, c-format
 msgid "Failed to parse vinput-model.json: %s"
-msgstr "解析 vinput-model.json 失败：%s"
+msgstr ""
 
 #: src/cli/command_model.cpp:275
 #, c-format
 msgid "Failed to read: %s"
-msgstr "读取失败：%s"
+msgstr ""
 
 #: src/cli/command_device.cpp:88 src/cli/command_llm.cpp:79
 #: src/cli/command_llm.cpp:102 src/cli/command_llm.cpp:127
@@ -203,142 +197,137 @@ msgstr "读取失败：%s"
 #: src/cli/command_scene.cpp:118 src/cli/command_hotword.cpp:85
 #: src/cli/command_hotword.cpp:102
 msgid "Failed to save config."
-msgstr "保存配置失败。"
+msgstr ""
 
 #: src/cli/command_model.cpp:219
 msgid "Failed to save configuration."
-msgstr "保存配置失败。"
+msgstr ""
 
 #: src/cli/command_hotword.cpp:144
 msgid "Hotwords updated from editor."
-msgstr "热词已从编辑器更新。"
+msgstr ""
 
 #: src/cli/command_model.cpp:93
 msgid "Installed"
-msgstr "已安装"
+msgstr ""
 
 #: src/common/vinput_config.cpp:73
 msgid ""
 "Keys for paging to the next page in the postprocess menu and the postprocess "
 "candidate menu. Defaults to Page Down and keypad Page Down."
 msgstr ""
-"用于后处理选单和后处理候选菜单翻到下一页。默认是 Page Down 和小键盘 Page "
-"Down。"
 
 #: src/common/vinput_config.cpp:65
 msgid ""
 "Keys for paging to the previous page in the postprocess menu and the "
 "postprocess candidate menu. Defaults to Page Up and keypad Page Up."
 msgstr ""
-"用于后处理选单和后处理候选菜单翻到上一页。默认是 Page Up 和小键盘 Page Up。"
 
 #: src/cli/command_llm.cpp:162
 msgid "LLM features are now DISABLED. Restart the daemon to apply."
-msgstr "LLM 功能已禁用，请重启守护进程生效。"
+msgstr ""
 
 #: src/cli/command_llm.cpp:146
 msgid "LLM features are now ENABLED. Restart the daemon to apply."
-msgstr "LLM 功能已启用，请重启守护进程生效。"
+msgstr ""
 
 #: src/cli/command_llm.cpp:154
 msgid "LLM is already disabled."
-msgstr "LLM 已经是禁用状态。"
+msgstr ""
 
 #: src/cli/command_llm.cpp:138
 msgid "LLM is already enabled."
-msgstr "LLM 已经是启用状态。"
+msgstr ""
 
 #: src/cli/command_llm.cpp:82
 #, c-format
 msgid "LLM provider '%s' added."
-msgstr "LLM 提供商 '%s' 已添加。"
+msgstr ""
 
 #: src/cli/command_llm.cpp:61
 #, c-format
 msgid "LLM provider '%s' already exists."
-msgstr "LLM 提供商 '%s' 已存在。"
+msgstr ""
 
 #: src/cli/command_llm.cpp:97 src/cli/command_llm.cpp:122
 #, c-format
 msgid "LLM provider '%s' not found."
-msgstr "LLM 提供商 '%s' 未找到。"
+msgstr ""
 
 #: src/cli/command_llm.cpp:130
 #, c-format
 msgid "LLM provider '%s' removed."
-msgstr "LLM 提供商 '%s' 已移除。"
+msgstr ""
 
 #: src/cli/command_hotword.cpp:90
 #, c-format
 msgid "Loaded %zu hotwords."
-msgstr "已加载 %zu 个热词。"
+msgstr ""
 
 #: src/cli/command_model.cpp:199
 #, c-format
 msgid "Model '%s' installed successfully."
-msgstr "模型 '%s' 安装成功。"
+msgstr ""
 
 #: src/cli/command_model.cpp:213
 #, c-format
 msgid "Model '%s' is not valid: %s"
-msgstr "模型 '%s' 无效：%s"
+msgstr ""
 
 #: src/cli/command_model.cpp:267
 #, c-format
 msgid "Model '%s' not found at: %s"
-msgstr "未找到模型 '%s'：%s"
+msgstr ""
 
 #: src/cli/command_model.cpp:255
 #, c-format
 msgid "Model '%s' removed."
-msgstr "模型 '%s' 已移除。"
+msgstr ""
 
 #: src/cli/command_init.cpp:53
 #, c-format
 msgid "Model dir already exists: %s"
-msgstr "模型目录已存在：%s"
+msgstr ""
 
 #: src/cli/command_model.cpp:298
 msgid "Name"
-msgstr "名称"
+msgstr ""
 
 #: src/common/vinput_config.cpp:70
 msgid "Next Page Keys"
-msgstr "下一页键"
+msgstr ""
 
 #: src/cli/command_device.cpp:27
 msgid "No audio capture devices found or PipeWire is not running."
-msgstr "未找到音频输入设备或 PipeWire 未运行。"
+msgstr ""
 
 #: src/cli/command_hotword.cpp:33
 msgid "No hotwords configured."
-msgstr "未配置热词。"
+msgstr ""
 
 #: src/cli/command_model.cpp:103 src/cli/command_model.cpp:158
 msgid ""
 "No registry URL configured. Set with: vinput config set extra.registry_url "
 "<url>"
 msgstr ""
-"未配置 registry URL。请使用以下命令设置：vinput config set "
-"extra.registry_url <url>"
 
 #: src/common/vinput_config.cpp:96
 msgid "Open Vinput Settings"
-msgstr "打开 Vinput 设置"
+msgstr ""
 
 #: src/cli/command_model.cpp:299
 msgid "Path"
-msgstr "路径"
+msgstr ""
 
 #: src/common/vinput_config.cpp:55
 msgid "Postprocess Menu Keys"
-msgstr "后处理选单键"
+msgstr ""
 
 #: src/common/vinput_config.cpp:51
 msgid ""
 "Press and hold this key to record a voice command to operate on the selected "
 "text. Default is Right Control."
-msgstr "按住该键录制语音指令，将对当前选中的文本进行处理。默认是右 Ctrl。"
+msgstr ""
 
 #: src/common/vinput_config.cpp:41
 #, c-format
@@ -347,75 +336,46 @@ msgid ""
 "regular keys, modifier keys, and modified key combinations. You can "
 "configure multiple trigger keys. The config is stored at %s."
 msgstr ""
-"按住该键开始录音，松开后开始识别。支持普通按键、修饰键以及带修饰键的组合键。"
-"可配置多个触发键。配置保存在 %s。"
 
 #: src/common/vinput_config.cpp:62
 msgid "Previous Page Keys"
-msgstr "上一页键"
+msgstr ""
 
 #: src/addon/vinput.cpp:59
 msgid "Raw ASR"
-msgstr "原始识别"
+msgstr ""
 
 #: src/cli/command_model.cpp:201
 #, c-format
 msgid "Run `vinput model use %s` to activate"
-msgstr "运行 `vinput model use %s` 以启用该模型"
+msgstr ""
 
 #: src/cli/command_scene.cpp:76
 #, c-format
 msgid "Scene '%s' added."
-msgstr "场景 '%s' 已添加。"
+msgstr ""
 
 #: src/cli/command_scene.cpp:123
 #, c-format
 msgid "Scene '%s' removed."
-msgstr "场景 '%s' 已移除。"
+msgstr ""
 
 #: src/cli/command_model.cpp:300
 msgid "Size"
-msgstr "大小"
+msgstr ""
 
 #: src/cli/command_device.cpp:52
 msgid "System Default"
-msgstr "系统默认"
+msgstr ""
 
 #: src/common/vinput_config.cpp:34
 msgid "Trigger Key"
-msgstr "触发键"
+msgstr ""
 
 #: src/cli/command_model.cpp:145
 msgid "available"
-msgstr "可用"
+msgstr ""
 
 #: src/cli/command_model.cpp:145
 msgid "installed"
-msgstr "已安装"
-
-#~ msgid "Cancel"
-#~ msgstr "取消"
-
-#~ msgid "Option %zu"
-#~ msgstr "候选 %zu"
-
-#~ msgid "Default"
-#~ msgstr "默认"
-
-#~ msgid "Formal"
-#~ msgstr "正式"
-
-#~ msgid "Code"
-#~ msgstr "代码"
-
-#~ msgid "Translate"
-#~ msgstr "翻译"
-
-#~ msgid "yes"
-#~ msgstr "是"
-
-#~ msgid "no"
-#~ msgstr "否"
-
-#~ msgid "Invalid scene type. Use: input | command | rewrite."
-#~ msgstr "场景类型无效，请使用：input | command | rewrite。"
+msgstr ""
