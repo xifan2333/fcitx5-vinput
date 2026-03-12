@@ -133,9 +133,11 @@ jobs:
         shell: bash
         run: |
           pacman -Syu --noconfirm --needed \
+            cli11 \
             cmake \
             curl \
             fcitx5 \
+            git \
             libarchive \
             nlohmann-json \
             openssl \
