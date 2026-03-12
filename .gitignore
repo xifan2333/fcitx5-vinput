@@ -14,3 +14,6 @@ compile_commands.json
 *.po~
 *.orig
 *~
+*.mo
+.vscode/
+.codex/
