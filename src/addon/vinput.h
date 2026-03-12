@@ -54,8 +54,8 @@ private:
   void clearPreedit(fcitx::InputContext *ic);
 
   fcitx::Instance *instance_;
-  std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>
-      key_event_handler_;
+  std::vector<std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>>
+      eventHandlers_;
   fcitx::dbus::Bus *bus_ = nullptr;
   std::unique_ptr<fcitx::dbus::Slot> result_slot_;
   std::unique_ptr<fcitx::dbus::Slot> status_slot_;

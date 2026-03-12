@@ -55,6 +55,8 @@ std::string InferringPreeditText() { return _("... Recognizing ..."); }
 
 std::string PostprocessingPreeditText() { return _("... Postprocessing ..."); }
 
+std::string NoSelectionPreeditText() { return _("Please select text first."); }
+
 std::string ResultCandidateComment(const vinput::result::Candidate &candidate) {
   if (candidate.source == vinput::result::kSourceRaw) {
     return _("Original");
@@ -72,10 +74,6 @@ std::string DisplayCandidateText(std::string text) {
     }
   }
   return text;
-}
-
-bool MatchesKeyList(const fcitx::Key &key, const fcitx::KeyList &key_list) {
-  return key.keyListIndex(key_list) >= 0;
 }
 
 std::string DecoratePagedMenuTitle(const std::string &base_title,
@@ -225,10 +223,20 @@ VinputEngine::VinputEngine(fcitx::Instance *instance) : instance_(instance) {
   vinput::i18n::Init();
   reloadConfig();
 
-  key_event_handler_ = instance_->watchEvent(
+  eventHandlers_.emplace_back(instance_->watchEvent(
       fcitx::EventType::InputContextKeyEvent,
       fcitx::EventWatcherPhase::PreInputMethod,
-      [this](fcitx::Event &event) { handleKeyEvent(event); });
+      [this](fcitx::Event &event) { handleKeyEvent(event); }));
+
+  eventHandlers_.emplace_back(instance_->watchEvent(
+      fcitx::EventType::InputContextCreated,
+      fcitx::EventWatcherPhase::PreInputMethod,
+      [](fcitx::Event &event) {
+        auto &icEvent = static_cast<fcitx::InputContextEvent &>(event);
+        auto *ic = icEvent.inputContext();
+        ic->setCapabilityFlags(ic->capabilityFlags() |
+                               fcitx::CapabilityFlag::SurroundingText);
+      }));
 
   auto *dbus_addon = instance_->addonManager().addon("dbus");
   if (dbus_addon) {
@@ -271,14 +279,14 @@ void VinputEngine::handleKeyEvent(fcitx::Event &event) {
     return;
   }
 
-  if (!recording_ && MatchesKeyList(keyEvent.key(), scene_menu_key_) &&
+  if (!recording_ && keyEvent.key().checkKeyList(scene_menu_key_) &&
       !keyEvent.isRelease()) {
     showSceneMenu(keyEvent.inputContext());
     keyEvent.filterAndAccept();
     return;
   }
 
-  if (MatchesKeyList(keyEvent.key(), scene_menu_key_) && keyEvent.isRelease()) {
+  if (keyEvent.key().checkKeyList(scene_menu_key_) && keyEvent.isRelease()) {
     keyEvent.filterAndAccept();
     return;
   }
@@ -308,19 +316,23 @@ void VinputEngine::handleKeyEvent(fcitx::Event &event) {
         std::string selected_text;
         auto &surrounding = active_ic_->surroundingText();
         if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
-          // 有真实选中文本，从 surrounding text 获取
           const auto &text = surrounding.text();
           int from = std::min(surrounding.cursor(), surrounding.anchor());
           int to = std::max(surrounding.cursor(), surrounding.anchor());
           selected_text = text.substr(from, to - from);
-        } else if (auto *clipboard = instance_->addonManager().addon("clipboard")) {
-          // fallback：从剪贴板读，仅作为 LLM 上下文，不用于替换
-          selected_text =
-              clipboard->call<fcitx::IClipboard::primary>(active_ic_);
-          if (selected_text.empty()) {
+        }
+        if (selected_text.empty()) {
+          if (auto *clipboard = instance_->addonManager().addon("clipboard")) {
             selected_text =
-                clipboard->call<fcitx::IClipboard::clipboard>(active_ic_);
+                clipboard->call<fcitx::IClipboard::primary>(active_ic_);
           }
+        }
+        if (selected_text.empty()) {
+          command_mode_ = false;
+          recording_ = false;
+          updatePreedit(active_ic_, NoSelectionPreeditText());
+          keyEvent.filterAndAccept();
+          return;
         }
         FCITX_LOG(Info) << "vinput: command key pressed, selected_text length=" << selected_text.size();
         callStartCommandRecording(selected_text);
@@ -343,6 +355,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event &event) {
   }
 
   if ((is_trigger || is_command) && keyEvent.isRelease()) {
+    if (!recording_ && active_ic_) {
+      clearPreedit(active_ic_);
+      active_ic_ = nullptr;
+    }
     keyEvent.filterAndAccept();
     return;
   }
@@ -508,9 +524,9 @@ bool VinputEngine::handleSceneMenuKeyEvent(fcitx::KeyEvent &keyEvent) {
   auto *cursor_list =
       candidate_list ? candidate_list->toCursorMovable() : nullptr;
   if (keyEvent.isRelease()) {
-    if (MatchesKeyList(keyEvent.key(), scene_menu_key_) ||
-        MatchesKeyList(keyEvent.key(), page_prev_keys_) ||
-        MatchesKeyList(keyEvent.key(), page_next_keys_) ||
+    if (keyEvent.key().checkKeyList(scene_menu_key_) ||
+        keyEvent.key().checkKeyList(page_prev_keys_) ||
+        keyEvent.key().checkKeyList(page_next_keys_) ||
         keyEvent.key().digitSelection() >= 0 ||
         keyEvent.key().check(FcitxKey_Up) ||
         keyEvent.key().check(FcitxKey_Down) ||
@@ -523,7 +539,7 @@ bool VinputEngine::handleSceneMenuKeyEvent(fcitx::KeyEvent &keyEvent) {
     return false;
   }
 
-  if (MatchesKeyList(keyEvent.key(), scene_menu_key_)) {
+  if (keyEvent.key().checkKeyList(scene_menu_key_)) {
     keyEvent.filterAndAccept();
     return true;
   }
@@ -534,13 +550,13 @@ bool VinputEngine::handleSceneMenuKeyEvent(fcitx::KeyEvent &keyEvent) {
     return true;
   }
 
-  if (MatchesKeyList(keyEvent.key(), page_prev_keys_)) {
+  if (keyEvent.key().checkKeyList(page_prev_keys_)) {
     ChangeCandidatePage(scene_menu_ic_, SceneMenuTitle(), false);
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (MatchesKeyList(keyEvent.key(), page_next_keys_)) {
+  if (keyEvent.key().checkKeyList(page_next_keys_)) {
     ChangeCandidatePage(scene_menu_ic_, SceneMenuTitle(), true);
     keyEvent.filterAndAccept();
     return true;
@@ -605,8 +621,8 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent &keyEvent) {
       candidate_list ? candidate_list->toCursorMovable() : nullptr;
   if (keyEvent.isRelease()) {
     if (keyEvent.key().digitSelection() >= 0 ||
-        MatchesKeyList(keyEvent.key(), page_prev_keys_) ||
-        MatchesKeyList(keyEvent.key(), page_next_keys_) ||
+        keyEvent.key().checkKeyList(page_prev_keys_) ||
+        keyEvent.key().checkKeyList(page_next_keys_) ||
         keyEvent.key().check(FcitxKey_Up) ||
         keyEvent.key().check(FcitxKey_Down) ||
         keyEvent.key().check(FcitxKey_Return) ||
@@ -624,14 +640,14 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent &keyEvent) {
     return true;
   }
 
-  if (MatchesKeyList(keyEvent.key(), page_prev_keys_)) {
+  if (keyEvent.key().checkKeyList(page_prev_keys_)) {
     ChangeCandidatePage(result_menu_ic_,
                         ResultMenuTitle(result_candidates_.size()), false);
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (MatchesKeyList(keyEvent.key(), page_next_keys_)) {
+  if (keyEvent.key().checkKeyList(page_next_keys_)) {
     ChangeCandidatePage(result_menu_ic_,
                         ResultMenuTitle(result_candidates_.size()), true);
     keyEvent.filterAndAccept();
@@ -934,4 +950,4 @@ VinputEngineFactory::create(fcitx::AddonManager *manager) {
   return new VinputEngine(manager->instance());
 }
 
-FCITX_ADDON_FACTORY(VinputEngineFactory);
+FCITX_ADDON_FACTORY_V2(vinput, VinputEngineFactory);
