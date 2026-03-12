@@ -38,6 +38,7 @@ struct ModelSummary {
   ModelState state;
   std::string model_type;
   std::string language;
+  bool supports_hotwords = false;
 };
 
 class ModelManager {

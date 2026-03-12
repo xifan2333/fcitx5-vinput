@@ -39,12 +39,15 @@ size_t CurlWriteCallback(char *ptr, size_t size, size_t nmemb, void *userdata) {
 
 struct MemoryBuffer {
   std::string data;
+  size_t max_size = 0;
 };
 
 size_t CurlMemoryWriteCallback(char *ptr, size_t size, size_t nmemb,
                                void *userdata) {
   auto *buf = static_cast<MemoryBuffer *>(userdata);
   const size_t total = size * nmemb;
+  if (buf->max_size > 0 && buf->data.size() + total > buf->max_size)
+    return 0;
   buf->data.append(ptr, total);
   return total;
 }
@@ -87,6 +90,7 @@ ModelRepository::FetchRegistry(const std::string &registry_url,
   }
 
   MemoryBuffer buf;
+  buf.max_size = 4 * 1024 * 1024; // 4 MB limit for registry JSON
   curl_easy_setopt(curl, CURLOPT_URL, registry_url.c_str());
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlMemoryWriteCallback);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
@@ -179,14 +183,15 @@ bool ModelRepository::InstallModel(const std::string &registry_url,
     return false;
   }
 
-  // Create temporary directory
-  const fs::path tmp_dir = base_dir_ / fs::path(".tmp-" + model_name);
-  std::error_code ec;
-  fs::remove_all(tmp_dir, ec); // clean up any leftover
-  if (!fs::create_directories(tmp_dir, ec)) {
-    if (error) *error = "failed to create temp dir: " + tmp_dir.string();
+  // Create temporary directory with random name to avoid symlink race
+  std::string tmp_template = (base_dir_ / ".tmp-XXXXXX").string();
+  char *tmp_result = mkdtemp(tmp_template.data());
+  if (!tmp_result) {
+    if (error) *error = "failed to create temp dir";
     return false;
   }
+  const fs::path tmp_dir = fs::path(tmp_result);
+  std::error_code ec;
 
   // Determine archive filename from first URL
   std::string archive_name = model_name + ".tar.gz";
@@ -263,14 +268,13 @@ bool ModelRepository::InstallModel(const std::string &registry_url,
   // Write vinput-model.json if provided
   if (!found->vinput_model.is_null() && !found->vinput_model.empty()) {
     const fs::path json_path = extracted_dir / "vinput-model.json";
-    std::ofstream jf(json_path);
-    if (!jf.is_open()) {
+    std::string json_content = found->vinput_model.dump(2) + "\n";
+    std::string write_err;
+    if (!vinput::file::AtomicWriteTextFile(json_path, json_content, &write_err)) {
       fs::remove_all(tmp_dir, ec);
-      if (error) *error = "failed to write vinput-model.json";
+      if (error) *error = "failed to write vinput-model.json: " + write_err;
       return false;
     }
-    jf << found->vinput_model.dump(2);
-    jf.close();
   }
 
   // Atomic rename to final destination

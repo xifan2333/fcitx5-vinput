@@ -117,20 +117,15 @@ bool SetConfigValue(const std::string &dotpath, const std::string &value,
   } else if (value == "false") {
     (*cur)[leaf] = false;
   } else {
-    bool all_digits = !value.empty();
-    for (char c : value) {
-      if (c < '0' || c > '9') {
-        all_digits = false;
-        break;
-      }
-    }
-    if (all_digits) {
-      try {
-        (*cur)[leaf] = std::stoi(value);
-      } catch (...) {
+    try {
+      size_t pos = 0;
+      long long ival = std::stoll(value, &pos);
+      if (pos == value.size()) {
+        (*cur)[leaf] = static_cast<int64_t>(ival);
+      } else {
         (*cur)[leaf] = value;
       }
-    } else {
+    } catch (...) {
       (*cur)[leaf] = value;
     }
   }
@@ -155,10 +150,16 @@ std::filesystem::path GetEditTarget(const std::string &target) {
   if (target == "extra") {
     return vinput::path::CoreConfigPath();
   }
-  // "fcitx" → ~/.config/fcitx5/conf/vinput.conf
-  auto home = std::getenv("HOME");
-  return std::filesystem::path(home ? home : "/tmp") / ".config" / "fcitx5" /
-         "conf" / "vinput.conf";
+  // "fcitx" → $XDG_CONFIG_HOME/fcitx5/conf/vinput.conf
+  //           or ~/.config/fcitx5/conf/vinput.conf
+  const char *xdg = std::getenv("XDG_CONFIG_HOME");
+  if (xdg && xdg[0] != '\0') {
+    return std::filesystem::path(xdg) / "fcitx5" / "conf" / "vinput.conf";
+  }
+  const char *home = std::getenv("HOME");
+  if (!home || home[0] == '\0')
+    return {};
+  return std::filesystem::path(home) / ".config" / "fcitx5" / "conf" / "vinput.conf";
 }
 
 } // namespace vinput::config

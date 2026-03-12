@@ -53,11 +53,11 @@ Payload Parse(std::string_view payload_text) {
     try {
         root = json::parse(payload_text);
     } catch (const std::exception&) {
-        return PlainTextPayload(std::string(payload_text));
+        return {};
     }
 
     if (!root.is_object()) {
-        return PlainTextPayload(std::string(payload_text));
+        return {};
     }
 
     Payload payload;
@@ -90,7 +90,7 @@ Payload Parse(std::string_view payload_text) {
     }
 
     if (payload.commitText.empty() && payload.candidates.empty()) {
-        return PlainTextPayload(std::string(payload_text));
+        return {};
     }
 
     return payload;

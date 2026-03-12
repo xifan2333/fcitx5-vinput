@@ -8,8 +8,8 @@ std::filesystem::path ExpandUserPath(std::string_view path) {
     return std::filesystem::path(path);
   }
   const char *home = std::getenv("HOME");
-  if (!home)
-    home = "/tmp";
+  if (!home || home[0] == '\0')
+    return {};
   return std::filesystem::path(home) /
          std::filesystem::path(
              path.substr(path.size() > 1 && path[1] == '/' ? 2 : 1));
@@ -21,7 +21,9 @@ std::filesystem::path DefaultModelBaseDir() {
     return std::filesystem::path(xdg) / "vinput" / "models";
   }
   const char *home = std::getenv("HOME");
-  return std::filesystem::path(home ? home : "/tmp") / ".local" / "share" /
+  if (!home || home[0] == '\0')
+    return {};
+  return std::filesystem::path(home) / ".local" / "share" /
          "vinput" / "models";
 }
 
@@ -31,7 +33,9 @@ std::filesystem::path CoreConfigPath() {
     return std::filesystem::path(xdg) / "vinput" / "config.json";
   }
   const char *home = std::getenv("HOME");
-  return std::filesystem::path(home ? home : "/tmp") / ".config" / "vinput" /
+  if (!home || home[0] == '\0')
+    return {};
+  return std::filesystem::path(home) / ".config" / "vinput" /
          "config.json";
 }
 

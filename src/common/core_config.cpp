@@ -192,31 +192,27 @@ CoreConfig LoadCoreConfigFromFile(const std::filesystem::path &path) {
 
 CoreConfig LoadCoreConfig() {
   std::filesystem::path path = vinput::path::CoreConfigPath();
+
+  auto &cache = GetConfigCache();
+  std::lock_guard<std::mutex> lock(cache.mu);
+
   std::filesystem::file_time_type mtime;
   std::uintmax_t size = 0;
   const bool stat_ok = GetConfigStat(path, &mtime, &size);
-
-  auto &cache = GetConfigCache();
-  {
-    std::lock_guard<std::mutex> lock(cache.mu);
-    if (stat_ok && cache.has_cache && cache.mtime == mtime &&
-        cache.size == size) {
-      return cache.cached;
-    }
-  }
 
   if (!stat_ok) {
     return CoreConfig{};
   }
 
-  CoreConfig config = LoadCoreConfigFromFile(path);
-  {
-    std::lock_guard<std::mutex> lock(cache.mu);
-    cache.cached = config;
-    cache.mtime = mtime;
-    cache.size = size;
-    cache.has_cache = true;
+  if (cache.has_cache && cache.mtime == mtime && cache.size == size) {
+    return cache.cached;
   }
+
+  CoreConfig config = LoadCoreConfigFromFile(path);
+  cache.cached = config;
+  cache.mtime = mtime;
+  cache.size = size;
+  cache.has_cache = true;
   return config;
 }
 

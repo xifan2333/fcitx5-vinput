@@ -202,6 +202,7 @@ ModelManager::ListDetailed(const std::string &active_model) const {
       file >> j;
       s.model_type = j.value("model_type", "");
       s.language = j.value("language", "auto");
+      s.supports_hotwords = j.value("supports_hotwords", false);
     } catch (...) {
       s.state = ModelState::Broken;
       summaries.push_back(std::move(s));
@@ -261,7 +262,14 @@ bool ModelManager::Validate(const std::string &model_name,
 
 bool ModelManager::Remove(const std::string &model_name,
                           std::string *error) const {
-  const auto dir = fs::path(base_dir_) / model_name;
+  const auto dir = fs::weakly_canonical(fs::path(base_dir_) / model_name);
+  const auto base = fs::weakly_canonical(fs::path(base_dir_));
+
+  // Prevent path traversal: dir must be a direct child of base_dir_
+  if (dir.parent_path() != base) {
+    if (error) *error = "invalid model name: " + model_name;
+    return false;
+  }
 
   if (!fs::exists(dir)) {
     if (error) *error = "model directory does not exist: " + dir.string();

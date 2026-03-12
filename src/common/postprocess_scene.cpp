@@ -69,15 +69,6 @@ bool RemoveScene(Config *config, const std::string &id, bool force,
         *error = "Cannot remove active scene '" + id + "'.";
       return false;
     }
-    // Assuming we still want to protect builtin scenes but `IsBuiltinScene` is
-    // gone. The original code had IsBuiltinScene check, but the current code
-    // does not have IsBuiltinScene.
-    if (id == "default" || id == "formal" || id == "code" ||
-        id == "translate") {
-      if (error)
-        *error = "Cannot remove built-in scene '" + id + "'.";
-      return false;
-    }
   }
   for (auto it = config->scenes.begin(); it != config->scenes.end(); ++it) {
     if (it->id == id) {
