@@ -4,7 +4,7 @@
 #include "common/i18n.h"
 #include "common/postprocess_scene.h"
 
-#include <Fcitx5/Module/fcitx-module/clipboard/clipboard_public.h>
+#include "clipboard_public.h"
 #include <dbus_public.h>
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
