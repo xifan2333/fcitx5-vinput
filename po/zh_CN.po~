@@ -1,18 +1,12 @@
-# SOME DESCRIPTIVE TITLE.
-# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the PACKAGE package.
-# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
-#
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: PACKAGE VERSION\n"
+"Project-Id-Version: fcitx5-vinput\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-03-12 17:10+0800\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
-"Language: \n"
+"POT-Creation-Date: 2026-03-12 04:00+0800\n"
+"PO-Revision-Date: 2026-03-11 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: zh_CN\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -37,22 +31,6 @@ msgstr "... 正在识别 ..."
 #: src/addon/vinput.cpp:51
 msgid "... Recording ..."
 msgstr "... 正在录音 ..."
-
-#: src/addon/vinput.cpp
-msgid "Please select text first."
-msgstr "请先选中文本。"
-
-#: src/addon/vinput.cpp:53
-msgid "... Commanding ..."
-msgstr "... 正在命令 ..."
-
-#: src/addon/vinput.cpp
-msgid "Original"
-msgstr "原文"
-
-#: src/addon/vinput.cpp
-msgid "Voice Command"
-msgstr "语音命令"
 
 #: src/cli/command_device.cpp:50 src/cli/command_device.cpp:57
 #: src/cli/command_model.cpp:89
@@ -120,9 +98,8 @@ msgstr "配置值已设置。"
 
 #: src/common/vinput_config.cpp:58
 msgid ""
-"Configure one or more keys to open the postprocess menu. The default is "
-"Right Alt + Control."
-msgstr "可配置多个按键，用于打开后处理选单。默认是右 Alt + Ctrl。"
+"Configure one or more keys to open the postprocess menu. The default is F9."
+msgstr "可配置多个按键，用于打开后处理选单。默认是 F9。"
 
 #: src/cli/command_init.cpp:41
 #, c-format
@@ -347,8 +324,9 @@ msgstr "后处理选单键"
 #: src/common/vinput_config.cpp:51
 msgid ""
 "Press and hold this key to record a voice command to operate on the selected "
-"text. Default is Right Control."
-msgstr "按住该键录制语音指令，将对当前选中的文本进行处理。默认是右 Ctrl。"
+"text. Default is Left Control."
+msgstr ""
+"按住该键录制语音指令，将对当前选中的文本进行处理。默认是左 Ctrl。"
 
 #: src/common/vinput_config.cpp:41
 #, c-format
@@ -387,38 +365,6 @@ msgstr "场景 '%s' 已移除。"
 msgid "Size"
 msgstr "大小"
 
-#: src/cli/command_model.cpp
-msgid "NAME"
-msgstr "名称"
-
-#: src/cli/command_model.cpp
-msgid "TYPE"
-msgstr "类型"
-
-#: src/cli/command_model.cpp
-msgid "LANGUAGE"
-msgstr "语言"
-
-#: src/cli/command_model.cpp
-msgid "SIZE"
-msgstr "大小"
-
-#: src/cli/command_model.cpp
-msgid "HOTWORDS"
-msgstr "热词"
-
-#: src/cli/command_model.cpp
-msgid "STATUS"
-msgstr "状态"
-
-#: src/cli/command_model.cpp
-msgid "yes"
-msgstr "是"
-
-#: src/cli/command_model.cpp
-msgid "no"
-msgstr "否"
-
 #: src/cli/command_device.cpp:52
 msgid "System Default"
 msgstr "系统默认"
@@ -435,274 +381,29 @@ msgstr "可用"
 msgid "installed"
 msgstr "已安装"
 
-#: src/cli/main.cpp
-msgid "Print this help message and exit"
-msgstr "显示此帮助信息并退出"
+#~ msgid "Cancel"
+#~ msgstr "取消"
 
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:21
-msgid "vinput - Voice input model and daemon manager"
-msgstr "vinput - 语音输入模型与守护进程管理器"
+#~ msgid "Option %zu"
+#~ msgstr "候选 %zu"
 
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:25
-msgid "Output in JSON format"
-msgstr "以 JSON 格式输出"
+#~ msgid "Default"
+#~ msgstr "默认"
 
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:28
-msgid "Manage ASR models"
-msgstr "管理 ASR 模型"
+#~ msgid "Formal"
+#~ msgstr "正式"
 
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:33
-msgid "List installed (and optionally remote) models"
-msgstr "列出已安装（及可选的远程）模型"
+#~ msgid "Code"
+#~ msgstr "代码"
 
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:35
-msgid "Include remote models from registry"
-msgstr "包含注册表中的远程模型"
+#~ msgid "Translate"
+#~ msgstr "翻译"
 
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:39
-msgid "Download and install a model"
-msgstr "下载并安装模型"
+#~ msgid "yes"
+#~ msgstr "是"
 
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:40
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:44
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:50
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:55
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:96
-msgid "Model name"
-msgstr "模型名称"
+#~ msgid "no"
+#~ msgstr "否"
 
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:43
-msgid "Set active model"
-msgstr "设置当前使用的模型"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:49
-msgid "Remove an installed model"
-msgstr "移除已安装的模型"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:51
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:108
-msgid "Skip confirmation"
-msgstr "跳过确认"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:54
-msgid "Show model details"
-msgstr "显示模型详情"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:58
-msgid "Manage recognition scenes"
-msgstr "管理识别场景"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:61
-msgid "List all scenes"
-msgstr "列出所有场景"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:63
-msgid "Add a new scene"
-msgstr "添加新场景"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:67
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:73
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:78
-msgid "Scene ID"
-msgstr "场景 ID"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:68
-msgid "Display label"
-msgstr "显示标签"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:69
-msgid "LLM prompt"
-msgstr "LLM 提示词"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:72
-msgid "Set active scene"
-msgstr "设置当前场景"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:77
-msgid "Remove a scene"
-msgstr "移除场景"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:80
-msgid "Force removal of built-in scenes"
-msgstr "强制移除内置场景"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:83
-msgid "Manage LLM providers"
-msgstr "管理 LLM 提供商"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:87
-msgid "List configured LLM providers"
-msgstr "列出已配置的 LLM 提供商"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:93
-msgid "Add an LLM provider"
-msgstr "添加 LLM 提供商"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:94
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:101
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:107
-msgid "Provider name"
-msgstr "提供商名称"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:95
-msgid "Base URL"
-msgstr "服务地址"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:97
-msgid "API key"
-msgstr "API 密钥"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:100
-msgid "Set active LLM provider"
-msgstr "设置当前 LLM 提供商"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:106
-msgid "Remove an LLM provider"
-msgstr "移除 LLM 提供商"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:111
-msgid "Enable LLM processing globally"
-msgstr "全局启用 LLM 功能"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:113
-msgid "Disable LLM processing globally"
-msgstr "全局禁用 LLM 功能"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:117
-msgid "Read or write configuration values"
-msgstr "读取或写入配置项"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:122
-msgid "Get a config value by dotpath"
-msgstr "通过路径获取配置值"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:125
-msgid "Config dotpath (e.g. fcitx.triggerKey)"
-msgstr "配置路径（如 fcitx.triggerKey）"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:132
-msgid "Set a config value by dotpath"
-msgstr "通过路径设置配置值"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:133
-msgid "Config dotpath"
-msgstr "配置路径"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:134
-msgid "New value"
-msgstr "新值"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:135
-msgid "Read value from stdin"
-msgstr "从标准输入读取值"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:139
-msgid "Open config file in editor"
-msgstr "用编辑器打开配置文件"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:142
-msgid "Config target: fcitx or extra"
-msgstr "配置目标：fcitx 或 extra"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:146
-msgid "Control the vinput daemon"
-msgstr "控制 vinput 守护进程"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:149
-msgid "Start the daemon"
-msgstr "启动守护进程"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:150
-msgid "Stop the daemon"
-msgstr "停止守护进程"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:152
-msgid "Restart the daemon"
-msgstr "重启守护进程"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:156
-msgid "Show daemon logs"
-msgstr "显示守护进程日志"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:157
-msgid "Follow log output"
-msgstr "持续追踪日志输出"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:158
-msgid "Number of lines to show"
-msgstr "显示行数"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:163
-msgid "Initialize default config and directories"
-msgstr "初始化默认配置和目录"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:165
-msgid "Overwrite existing config"
-msgstr "覆盖现有配置"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:168
-msgid "Manage hotwords file"
-msgstr "管理热词文件"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:172
-msgid "Show configured hotwords file path"
-msgstr "显示已配置的热词文件路径"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:176
-msgid "Set hotwords file path"
-msgstr "设置热词文件路径"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:177
-msgid "Path to hotwords file"
-msgstr "热词文件路径"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:181
-msgid "Clear hotwords file path"
-msgstr "清除热词文件路径"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:183
-msgid "Edit hotwords file in editor"
-msgstr "用编辑器编辑热词文件"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:186
-msgid "Manage capture devices"
-msgstr "管理录音设备"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:190
-msgid "List available audio input devices"
-msgstr "列出可用的音频输入设备"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:194
-msgid "Set active capture device"
-msgstr "设置当前录音设备"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:195
-msgid "Device name or 'default'"
-msgstr "设备名称或 'default'"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp
-msgid "Request timeout in milliseconds"
-msgstr "请求超时时间（毫秒）"
-
-#: /home/xifan/code/fcitx5-vinput/src/cli/main.cpp:199
-msgid "Show overall vinput status"
-msgstr "显示 vinput 整体状态"
-#: src/cli
-msgid "ID"
-msgstr "ID"
-#: src/cli
-msgid "LABEL"
-msgstr "标签"
-#: src/cli
-msgid "DESCRIPTION"
-msgstr "描述"
-#: src/cli
-msgid "BASE_URL"
-msgstr "服务地址"
-#: src/cli
-msgid "MODEL"
-msgstr "模型"
-#: src/cli
-msgid "API_KEY"
-msgstr "API 密钥"
-
+#~ msgid "Invalid scene type. Use: input | command | rewrite."
+#~ msgstr "场景类型无效，请使用：input | command | rewrite。"
