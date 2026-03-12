@@ -213,7 +213,9 @@ public:
       : fcitx::CandidateWord(fcitx::Text(DisplayCandidateText(text))),
         engine_(engine), index_(index) {
     if (!comment.empty()) {
+#ifdef VINPUT_FCITX5_CORE_HAVE_SET_COMMENT
       setComment(fcitx::Text(comment));
+#endif
     }
   }
 
