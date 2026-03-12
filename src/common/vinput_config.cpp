@@ -6,6 +6,7 @@
 #include <fcitx-utils/standardpath.h>
 
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 namespace {

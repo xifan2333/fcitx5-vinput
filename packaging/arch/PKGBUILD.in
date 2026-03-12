@@ -1,0 +1,28 @@
+pkgname=fcitx5-vinput
+pkgver=@VINPUT_PKGVER@
+pkgrel=@VINPUT_PKGREL@
+pkgdesc='Offline voice input addon for Fcitx5 with optional OpenAI-compatible postprocess'
+arch=('x86_64')
+url='@VINPUT_PKGURL@'
+license=('GPL3')
+options=(!debug)
+depends=('curl' 'fcitx5' 'libarchive' 'openssl' 'pipewire' 'qt5-base' 'systemd-libs')
+makedepends=('cmake' 'nlohmann-json' 'pkgconf' 'qt5-tools' 'systemd')
+source=('@VINPUT_SOURCE_ARCHIVE@')
+sha256sums=('@VINPUT_SOURCE_SHA256@')
+
+build() {
+    local src_root="${srcdir}/${pkgname}-${pkgver}"
+
+    cmake -S "${src_root}" -B "${srcdir}/build" \
+        -DCMAKE_BUILD_TYPE=None \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DVINPUT_PROJECT_VERSION="${pkgver}" \
+        -DVINPUT_PACKAGE_RELEASE="${pkgrel}" \
+        -DVINPUT_PACKAGE_HOMEPAGE_URL="${url}"
+    cmake --build "${srcdir}/build"
+}
+
+package() {
+    DESTDIR="${pkgdir}" cmake --install "${srcdir}/build"
+}

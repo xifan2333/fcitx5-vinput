@@ -6,9 +6,6 @@ project(fcitx5-vinput VERSION ${VINPUT_PROJECT_VERSION} LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 set(VINPUT_PACKAGE_RELEASE "1"
     CACHE STRING "Package release revision for distro packages")
 set(VINPUT_PACKAGE_CONTACT "fcitx5-vinput maintainers <noreply@github.com>"
@@ -22,6 +19,10 @@ set(VINPUT_PACKAGE_DESCRIPTION_SUMMARY
 find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Config REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
+
+# Override to C++20 after Fcitx5CompilerSettings (which may set an older standard)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(PkgConfig REQUIRED)
 find_package(nlohmann_json 3.2.0 REQUIRED)
 find_package(Gettext REQUIRED)
