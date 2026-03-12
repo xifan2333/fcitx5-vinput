@@ -10,4 +10,4 @@ packaging/arch/*.tar.gz
 .claude/
 .cache/
 compile_commands.json
-.qoder/
+.qoder/*.po~
