@@ -100,7 +100,7 @@ void to_json(json &j, const CoreConfig::Llm &p) {
   j = json{{"enabled", p.enabled},
            {"active_provider", p.activeProvider},
            {"providers", p.providers},
-           {"candidate_count", p.candidateCount},
+           {"postprocess_candidate_count", p.postprocessCandidateCount},
            {"command_candidate_count", p.commandCandidateCount}};
 }
 
@@ -110,7 +110,7 @@ void from_json(const json &j, CoreConfig::Llm &p) {
   if (j.contains("providers")) {
     p.providers = j.at("providers").get<std::vector<LlmProvider>>();
   }
-  p.candidateCount = j.value("candidate_count", p.candidateCount);
+  p.postprocessCandidateCount = j.value("postprocess_candidate_count", p.postprocessCandidateCount);
   p.commandCandidateCount = j.value("command_candidate_count", p.commandCandidateCount);
 }
 

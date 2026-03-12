@@ -8,6 +8,7 @@
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -16,6 +17,9 @@
 #include <QMessageBox>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QTableWidget>
+#include <QTextEdit>
+#include <QTextStream>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -132,13 +136,6 @@ void MainWindow::setupGeneralTab() {
   layout->addStretch();
   tabWidget->addTab(generalTab, tr("General Settings"));
 }
-
-#include <QAbstractItemView>
-#include <QHeaderView>
-#include <QProcess>
-#include <QTableWidget>
-#include <QTextEdit>
-#include <QTimer>
 
 namespace {
 
@@ -282,7 +279,7 @@ QList<ModelEntry> LoadRemoteModelsFromCli(QString *error_out) {
 
 } // namespace
 
-static void setupTable(QTableWidget *t, const QStringList &headers) {
+static void SetupTable(QTableWidget *t, const QStringList &headers) {
   t->setColumnCount(headers.size());
   t->setHorizontalHeaderLabels(headers);
   t->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -304,7 +301,7 @@ void MainWindow::setupModelTab() {
 
   auto *topLayout = new QHBoxLayout();
   tableModels = new QTableWidget();
-  setupTable(tableModels, {tr("Name"), tr("Type"), tr("Language"), tr("Hotwords"), tr("Status")});
+  SetupTable(tableModels, {tr("Name"), tr("Type"), tr("Language"), tr("Hotwords"), tr("Status")});
   topLayout->addWidget(tableModels, 1);
 
   auto *btnLayout = new QVBoxLayout();
@@ -324,7 +321,7 @@ void MainWindow::setupModelTab() {
 
   auto *remoteLayout = new QHBoxLayout();
   tableRemoteModels = new QTableWidget();
-  setupTable(tableRemoteModels, {tr("Name"), tr("Display Name"), tr("Type"), tr("Language"), tr("Size"), tr("Hotwords"), tr("Status")});
+  SetupTable(tableRemoteModels, {tr("Name"), tr("Display Name"), tr("Type"), tr("Language"), tr("Size"), tr("Hotwords"), tr("Status")});
   remoteLayout->addWidget(tableRemoteModels, 1);
 
   btnDownloadModel = new QPushButton(tr("Download Selected"));
@@ -363,7 +360,7 @@ void MainWindow::setupModelTab() {
   QTimer::singleShot(0, this, &MainWindow::refreshModelList);
 }
 
-static QTableWidgetItem *makeCell(const QString &text, const QString &data = {}) {
+static QTableWidgetItem *MakeCell(const QString &text, const QString &data = {}) {
   auto *cell = new QTableWidgetItem(text);
   cell->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
   if (!data.isEmpty())
@@ -382,18 +379,18 @@ void MainWindow::refreshModelList() {
   for (const auto &m : local_models) {
     int row = tableModels->rowCount();
     tableModels->insertRow(row);
-    tableModels->setItem(row, 0, makeCell(m.name, m.name));
-    tableModels->setItem(row, 1, makeCell(m.model_type));
-    tableModels->setItem(row, 2, makeCell(m.language));
+    tableModels->setItem(row, 0, MakeCell(m.name, m.name));
+    tableModels->setItem(row, 1, MakeCell(m.model_type));
+    tableModels->setItem(row, 2, MakeCell(m.language));
     QString hw = m.supports_hotwords ? tr("yes") : tr("no");
-    auto *hwCell = makeCell(hw);
+    auto *hwCell = MakeCell(hw);
     hwCell->setForeground(m.supports_hotwords ? QColor("#2a9d2a") : QColor("#888888"));
     tableModels->setItem(row, 3, hwCell);
     QString status = m.status.isEmpty() ? tr("installed") : m.status;
     if (m.status == "active") status = tr("active");
     else if (m.status == "broken") status = tr("broken");
     else if (m.status == "installed") status = tr("installed");
-    auto *stCell = makeCell(status);
+    auto *stCell = MakeCell(status);
     if (m.status == "active") {
       stCell->setForeground(QColor("#1565c0"));
       QFont f = stCell->font(); f.setBold(true); stCell->setFont(f);
@@ -412,19 +409,19 @@ void MainWindow::refreshModelList() {
   for (const auto &m : remote_models) {
     int row = tableRemoteModels->rowCount();
     tableRemoteModels->insertRow(row);
-    tableRemoteModels->setItem(row, 0, makeCell(m.name, m.name));
-    tableRemoteModels->setItem(row, 1, makeCell(m.display_name));
-    tableRemoteModels->setItem(row, 2, makeCell(m.model_type));
-    tableRemoteModels->setItem(row, 3, makeCell(m.language));
-    tableRemoteModels->setItem(row, 4, makeCell(m.size));
+    tableRemoteModels->setItem(row, 0, MakeCell(m.name, m.name));
+    tableRemoteModels->setItem(row, 1, MakeCell(m.display_name));
+    tableRemoteModels->setItem(row, 2, MakeCell(m.model_type));
+    tableRemoteModels->setItem(row, 3, MakeCell(m.language));
+    tableRemoteModels->setItem(row, 4, MakeCell(m.size));
     QString hw = m.supports_hotwords ? tr("yes") : tr("no");
-    auto *hwCell = makeCell(hw);
+    auto *hwCell = MakeCell(hw);
     hwCell->setForeground(m.supports_hotwords ? QColor("#2a9d2a") : QColor("#888888"));
     tableRemoteModels->setItem(row, 5, hwCell);
     QString remoteStatus = m.status;
     if (m.status == "installed") remoteStatus = tr("installed");
     else if (m.status == "available") remoteStatus = tr("available");
-    auto *stCell = makeCell(remoteStatus);
+    auto *stCell = MakeCell(remoteStatus);
     if (m.status == "installed") {
       stCell->setForeground(QColor("#888888"));
       for (int c = 0; c < tableRemoteModels->columnCount(); ++c) {
@@ -564,7 +561,7 @@ void MainWindow::loadConfigToUi() {
 
   // LLM
   checkLlmEnabled->setChecked(currentConfig.llm.enabled);
-  spinCandidateCount->setValue(currentConfig.llm.candidateCount);
+  spinCandidateCount->setValue(currentConfig.llm.postprocessCandidateCount);
   spinCommandCandidateCount->setValue(currentConfig.llm.commandCandidateCount);
 }
 
@@ -579,7 +576,7 @@ void MainWindow::onSaveClicked() {
   currentConfig.captureDevice = device_value.toStdString();
   currentConfig.activeModel = comboModel->currentText().toStdString();
   currentConfig.llm.enabled = checkLlmEnabled->isChecked();
-  currentConfig.llm.candidateCount = spinCandidateCount->value();
+  currentConfig.llm.postprocessCandidateCount = spinCandidateCount->value();
   currentConfig.llm.commandCandidateCount = spinCommandCandidateCount->value();
 
   currentConfig.hotwordsFile = editHotwordsFile->text().trimmed().toStdString();
@@ -1100,25 +1097,8 @@ void MainWindow::onLlmSetActive() {
 }
 
 // ---------------------------------------------------------------------------
-// Install Worker stubs (ModelInstallWorker not yet wired)
-// ---------------------------------------------------------------------------
-
-void MainWindow::onInstallProgress(quint64 downloaded, quint64 total,
-                                   double speed) {
-  (void)downloaded;
-  (void)total;
-  (void)speed;
-}
-
-void MainWindow::onInstallFinished(bool success, const QString &error) {
-  (void)success;
-  (void)error;
-}
-// ---------------------------------------------------------------------------
 // Hotword Tab
 // ---------------------------------------------------------------------------
-
-#include <QTextStream>
 
 void MainWindow::setupHotwordTab() {
   hotwordTab = new QWidget();

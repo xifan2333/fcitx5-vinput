@@ -35,8 +35,6 @@ private slots:
   void onUseModelClicked();
   void onRemoveModelClicked();
   void onDownloadModelClicked();
-  void onInstallProgress(quint64 downloaded, quint64 total, double speed);
-  void onInstallFinished(bool success, const QString &error);
   void onProcessReadyReadStandardOutput();
   void onProcessReadyReadStandardError();
   void onProcessFinished(int exitCode, int exitStatus);
@@ -129,7 +127,4 @@ private:
 
   // CLI Process
   QProcess *cliProcess = nullptr;
-
-  // Worker
-  class ModelInstallWorker *installWorker_ = nullptr;
 };

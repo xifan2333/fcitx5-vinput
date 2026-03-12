@@ -28,8 +28,8 @@ struct CoreConfig {
     bool enabled{false};
     std::string activeProvider;
     std::vector<LlmProvider> providers;
-    int candidateCount{1};         // postprocess candidate count
-    int commandCandidateCount{1};  // command mode candidate count
+    int postprocessCandidateCount{1};  // postprocess candidate count
+    int commandCandidateCount{1};        // command mode candidate count
   } llm;
 
   struct Scenes {

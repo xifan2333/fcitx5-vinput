@@ -3,7 +3,7 @@
 #include "common/i18n.h"
 #include "common/core_config.h"
 
-int RunHotwordList(Formatter &fmt, const CliContext &ctx) {
+int RunHotwordGet(Formatter &fmt, const CliContext &ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
 
@@ -22,7 +22,7 @@ int RunHotwordList(Formatter &fmt, const CliContext &ctx) {
   return 0;
 }
 
-int RunHotwordLoad(const std::string &file_path, Formatter &fmt,
+int RunHotwordSet(const std::string &file_path, Formatter &fmt,
                    const CliContext &ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();

@@ -407,7 +407,7 @@ PostProcessor::Process(const std::string &raw_text,
   }
 
   const int candidate_count =
-      NormalizeCandidateCount(settings.llm.candidateCount);
+      NormalizeCandidateCount(settings.llm.postprocessCandidateCount);
   if (candidate_count == 0 || scene.prompt.empty()) {
     return vinput::result::PlainTextPayload(normalized);
   }

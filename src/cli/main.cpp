@@ -262,9 +262,9 @@ int main(int argc, char *argv[]) {
 
   // hotword
   else if (hotword_get->parsed()) {
-    return RunHotwordList(*fmt, ctx);
+    return RunHotwordGet(*fmt, ctx);
   } else if (hotword_set->parsed()) {
-    return RunHotwordLoad(hotword_set_path, *fmt, ctx);
+    return RunHotwordSet(hotword_set_path, *fmt, ctx);
   } else if (hotword_clear->parsed()) {
     return RunHotwordClear(*fmt, ctx);
   } else if (hotword_edit->parsed()) {

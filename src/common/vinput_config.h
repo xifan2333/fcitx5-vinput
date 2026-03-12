@@ -11,7 +11,7 @@ inline constexpr const char *kVinputConfigPath = "conf/vinput.conf";
 struct VinputSettings {
   fcitx::KeyList triggerKeys{fcitx::Key(FcitxKey_Alt_R)};
   fcitx::KeyList commandKeys{fcitx::Key(FcitxKey_Control_R)};
-  fcitx::KeyList sceneMenuKey{
+  fcitx::KeyList sceneMenuKeys{
       fcitx::Key(FcitxKey_Alt_R, fcitx::KeyState::Ctrl)};
   fcitx::KeyList pagePrevKeys{
       fcitx::Key(FcitxKey_Page_Up),
@@ -35,7 +35,7 @@ public:
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
                 fcitx::DefaultMarshaller<fcitx::KeyList>,
                 fcitx::ToolTipAnnotation>
-      triggerKey;
+      triggerKeys;
 
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
                 fcitx::DefaultMarshaller<fcitx::KeyList>,
@@ -45,7 +45,7 @@ public:
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
                 fcitx::DefaultMarshaller<fcitx::KeyList>,
                 fcitx::ToolTipAnnotation>
-      sceneMenuKey;
+      sceneMenuKeys;
 
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
                 fcitx::DefaultMarshaller<fcitx::KeyList>,

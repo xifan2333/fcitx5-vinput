@@ -1,4 +1,5 @@
 #include "cli/command_model.h"
+#include "cli/systemd_client.h"
 #include "common/i18n.h"
 #include "cli/progress.h"
 #include "common/core_config.h"
@@ -8,8 +9,6 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
-#include <sys/wait.h>
-#include <unistd.h>
 
 namespace {
 
@@ -225,15 +224,7 @@ int RunModelUse(const std::string& name, Formatter& fmt, const CliContext& /*ctx
     }
 
     // Restart daemon via systemctl
-    const char* argv[] = {"systemctl", "--user", "restart", "vinput-daemon.service", nullptr};
-    pid_t pid = fork();
-    if (pid == 0) {
-        execvp("systemctl", const_cast<char* const*>(argv));
-        _exit(127);
-    } else if (pid > 0) {
-        int status = 0;
-        waitpid(pid, &status, 0);
-    }
+    vinput::cli::SystemctlRestart();
 
     fmt.PrintSuccess(FormatMsg1(_("Active model set to '%s'. Daemon restarted."), name));
     return 0;

@@ -391,7 +391,7 @@ void VinputEngine::setConfig(const fcitx::RawConfig &rawConfig) {
 void VinputEngine::applySettings() {
   trigger_keys_ = settings_.triggerKeys;
   command_keys_ = settings_.commandKeys;
-  scene_menu_key_ = settings_.sceneMenuKey;
+  scene_menu_key_ = settings_.sceneMenuKeys;
   page_prev_keys_ = settings_.pagePrevKeys;
   page_next_keys_ = settings_.pageNextKeys;
 }

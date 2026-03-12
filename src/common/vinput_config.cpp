@@ -78,14 +78,14 @@ std::string PageNextKeysTooltip() {
 } // namespace
 
 VinputConfig::VinputConfig(const VinputSettings &settings)
-    : triggerKey(this, "TriggerKey", TriggerKeyLabel(), settings.triggerKeys,
+    : triggerKeys(this, "TriggerKey", TriggerKeyLabel(), settings.triggerKeys,
                  TriggerKeyListConstrain(), {},
                  fcitx::ToolTipAnnotation(TriggerKeyTooltip())),
       commandKeys(this, "CommandKeys", CommandKeysLabel(), settings.commandKeys,
                   TriggerKeyListConstrain(), {},
                   fcitx::ToolTipAnnotation(CommandKeysTooltip())),
-      sceneMenuKey(this, "SceneMenuKey", SceneMenuKeyLabel(),
-                   settings.sceneMenuKey, SceneMenuKeyListConstrain(), {},
+      sceneMenuKeys(this, "SceneMenuKey", SceneMenuKeyLabel(),
+                   settings.sceneMenuKeys, SceneMenuKeyListConstrain(), {},
                    fcitx::ToolTipAnnotation(SceneMenuKeyTooltip())),
       pagePrevKeys(this, "PagePrevKeys", PagePrevKeysLabel(),
                    settings.pagePrevKeys, TriggerKeyListConstrain(), {},
@@ -98,9 +98,9 @@ VinputConfig::VinputConfig(const VinputSettings &settings)
 
 VinputSettings VinputConfig::settings() const {
   VinputSettings settings;
-  settings.triggerKeys = triggerKey.value();
+  settings.triggerKeys = triggerKeys.value();
   settings.commandKeys = commandKeys.value();
-  settings.sceneMenuKey = sceneMenuKey.value();
+  settings.sceneMenuKeys = sceneMenuKeys.value();
   settings.pagePrevKeys = pagePrevKeys.value();
   settings.pageNextKeys = pageNextKeys.value();
   return settings;

@@ -1,10 +1,10 @@
 #include "cli/command_init.h"
 
 #include <filesystem>
-#include <cstdio>
 
 #include "common/core_config.h"
 #include "common/i18n.h"
+#include "common/path_utils.h"
 
 namespace {
 static std::string FormatMsg1(const char* tmpl, const std::string& a) {
@@ -13,7 +13,6 @@ static std::string FormatMsg1(const char* tmpl, const std::string& a) {
     return buf;
 }
 } // namespace
-#include "common/path_utils.h"
 
 namespace fs = std::filesystem;
 

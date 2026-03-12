@@ -6,7 +6,7 @@ namespace vinput::dbus {
 
 constexpr const char *kBusName = "org.fcitx.Vinput";
 constexpr const char *kObjectPath = "/org/fcitx/Vinput";
-constexpr const char *kInterface = "org.fcitx.Vinput";
+constexpr const char *kInterface = "org.fcitx.Vinput.Service";
 
 constexpr const char *kMethodStartRecording = "StartRecording";
 constexpr const char *kMethodStartCommandRecording = "StartCommandRecording";
