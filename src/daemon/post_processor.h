@@ -12,4 +12,8 @@ public:
   vinput::result::Payload Process(const std::string &raw_text,
                                   const vinput::scene::Definition &scene,
                                   const CoreConfig &settings) const;
+
+  vinput::result::Payload ProcessCommand(const std::string &asr_text,
+                                         const std::string &selected_text,
+                                         const CoreConfig &settings) const;
 };

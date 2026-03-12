@@ -437,3 +437,57 @@ PostProcessor::Process(const std::string &raw_text,
 
   return payload;
 }
+
+vinput::result::Payload
+PostProcessor::ProcessCommand(const std::string &asr_text,
+                              const std::string &selected_text,
+                              const CoreConfig &settings) const {
+  std::string normalized_asr = TrimAsciiWhitespace(asr_text);
+  if (normalized_asr.empty() || selected_text.empty()) {
+    // Can't do anything if there's no command or no selected text
+    return vinput::result::PlainTextPayload(
+        normalized_asr.empty() ? selected_text : normalized_asr);
+  }
+
+  vinput::scene::Definition synthetic_scene;
+  synthetic_scene.prompt =
+      "You are an AI assistant helping with text editing via voice input. "
+      "The user has given a voice command to operate on the selected text. "
+      "Note that the command is transcribed from voice input and may contain "
+      "speech recognition errors — infer the most likely intended operation "
+      "from context. Execute the inferred command on the user's text and "
+      "output ONLY the result. Do not include markdown formatting or "
+      "explanations.\n\nUser voice command (may contain recognition errors): " +
+      normalized_asr;
+
+  const int command_candidate_count =
+      NormalizeCandidateCount(settings.llm.commandCandidateCount);
+
+  auto rewritten =
+      RewriteWithOpenAiCompatible(selected_text, synthetic_scene, settings,
+                                   command_candidate_count);
+
+  vinput::result::Payload payload;
+  std::set<std::string> seen;
+  // 1st: original selected text (always)
+  AppendUniqueCandidate(payload, seen, selected_text, vinput::result::kSourceRaw);
+  // 2nd: ASR recognized command (always)
+  AppendUniqueCandidate(payload, seen, normalized_asr, vinput::result::kSourceAsr);
+  // 3rd+: LLM results (if available)
+  if (rewritten.has_value()) {
+    for (auto &text : *rewritten) {
+      AppendUniqueCandidate(payload, seen, std::move(text), vinput::result::kSourceLlm);
+    }
+  }
+
+  // commitText is the first LLM result
+  payload.commitText = selected_text;
+  for (const auto &c : payload.candidates) {
+    if (c.source == vinput::result::kSourceLlm) {
+      payload.commitText = c.text;
+      break;
+    }
+  }
+
+  return payload;
+}

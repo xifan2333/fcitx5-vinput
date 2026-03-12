@@ -45,11 +45,18 @@ std::string TriggerKeyTooltip() {
   return buf;
 }
 
+std::string CommandKeysLabel() { return _("Command Keys"); }
+
+std::string CommandKeysTooltip() {
+  return _("Press and hold this key to record a voice command to operate on "
+           "the selected text. Default is Right Control.");
+}
+
 std::string SceneMenuKeyLabel() { return _("Postprocess Menu Keys"); }
 
 std::string SceneMenuKeyTooltip() {
   return _("Configure one or more keys to open the postprocess menu. The "
-           "default is F9.");
+           "default is Right Alt + Control.");
 }
 
 std::string PagePrevKeysLabel() { return _("Previous Page Keys"); }
@@ -74,6 +81,9 @@ VinputConfig::VinputConfig(const VinputSettings &settings)
     : triggerKey(this, "TriggerKey", TriggerKeyLabel(), settings.triggerKeys,
                  TriggerKeyListConstrain(), {},
                  fcitx::ToolTipAnnotation(TriggerKeyTooltip())),
+      commandKeys(this, "CommandKeys", CommandKeysLabel(), settings.commandKeys,
+                  TriggerKeyListConstrain(), {},
+                  fcitx::ToolTipAnnotation(CommandKeysTooltip())),
       sceneMenuKey(this, "SceneMenuKey", SceneMenuKeyLabel(),
                    settings.sceneMenuKey, SceneMenuKeyListConstrain(), {},
                    fcitx::ToolTipAnnotation(SceneMenuKeyTooltip())),
@@ -89,6 +99,7 @@ VinputConfig::VinputConfig(const VinputSettings &settings)
 VinputSettings VinputConfig::settings() const {
   VinputSettings settings;
   settings.triggerKeys = triggerKey.value();
+  settings.commandKeys = commandKeys.value();
   settings.sceneMenuKey = sceneMenuKey.value();
   settings.pagePrevKeys = pagePrevKeys.value();
   settings.pageNextKeys = pageNextKeys.value();

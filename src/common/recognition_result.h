@@ -8,7 +8,7 @@ namespace vinput::result {
 
 inline constexpr const char* kSourceRaw = "raw";
 inline constexpr const char* kSourceLlm = "llm";
-inline constexpr const char* kSourceCommand = "command";
+inline constexpr const char* kSourceAsr = "asr";
 inline constexpr const char* kSourceCancel = "cancel";
 
 struct Candidate {

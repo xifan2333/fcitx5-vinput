@@ -56,6 +56,10 @@ bool TryLoadTranslation(QTranslator &translator, const QString &base_name) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+  // Set IM environment for this process only, so Chinese input works in the GUI
+  setenv("QT_IM_MODULE", "fcitx", 0);
+  setenv("XMODIFIERS", "@im=fcitx", 0);
+
   QApplication app(argc, argv);
 
   QTranslator translator;

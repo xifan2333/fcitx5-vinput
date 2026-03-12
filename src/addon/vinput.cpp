@@ -4,6 +4,7 @@
 #include "common/i18n.h"
 #include "common/postprocess_scene.h"
 
+#include <Fcitx5/Module/fcitx-module/clipboard/clipboard_public.h>
 #include <dbus_public.h>
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
@@ -17,7 +18,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include <thread>
 
 using namespace vinput::dbus;
 
@@ -49,16 +49,18 @@ std::string ResultMenuTitle(std::size_t count) {
 
 std::string RecordingPreeditText() { return _("... Recording ..."); }
 
+std::string CommandingPreeditText() { return _("... Commanding ..."); }
+
 std::string InferringPreeditText() { return _("... Recognizing ..."); }
 
 std::string PostprocessingPreeditText() { return _("... Postprocessing ..."); }
 
 std::string ResultCandidateComment(const vinput::result::Candidate &candidate) {
   if (candidate.source == vinput::result::kSourceRaw) {
-    return _("Raw ASR");
+    return _("Original");
   }
-  if (candidate.source == vinput::result::kSourceCommand) {
-    return _("Command");
+  if (candidate.source == vinput::result::kSourceAsr) {
+    return _("Voice Command");
   }
   return std::string();
 }
@@ -90,8 +92,7 @@ std::string DecoratePagedMenuTitle(const std::string &base_title,
   }
 
   char buf[64];
-  std::snprintf(buf, sizeof(buf), _(" (%d/%d)"), current_page + 1,
-                total_pages);
+  std::snprintf(buf, sizeof(buf), _(" (%d/%d)"), current_page + 1, total_pages);
   return base_title + buf;
 }
 
@@ -156,15 +157,6 @@ std::string DisplayTextWithComment(std::string text,
   return text;
 }
 
-void ExecuteShellCommandAsync(std::string command) {
-  if (command.empty()) {
-    return;
-  }
-  std::thread([cmd = std::move(command)]() {
-    std::system(cmd.c_str());
-  }).detach();
-}
-
 bool ChangeCandidatePage(fcitx::InputContext *ic, const std::string &base_title,
                          bool next_page) {
   if (!ic) {
@@ -198,9 +190,7 @@ class SceneCandidateWord : public fcitx::CandidateWord {
 public:
   SceneCandidateWord(VinputEngine *engine, SceneOption option, bool active)
       : fcitx::CandidateWord(fcitx::Text(DisplayTextWithComment(
-            option.label, active
-                              ? _(" (Current)")
-                              : std::string()))),
+            option.label, active ? _(" (Current)") : std::string()))),
         engine_(engine), index_(option.index) {}
 
   void select(fcitx::InputContext *inputContext) const override {
@@ -296,15 +286,50 @@ void VinputEngine::handleKeyEvent(fcitx::Event &event) {
   const int trigger_index = keyEvent.key().keyListIndex(trigger_keys_);
   const bool is_trigger = trigger_index >= 0;
 
-  if (is_trigger && !keyEvent.isRelease()) {
+  const int command_index = keyEvent.key().keyListIndex(command_keys_);
+  const bool is_command = command_index >= 0;
+
+  FCITX_LOG(Info) << "vinput handleKeyEvent: " << keyEvent.key()
+                   << " isRelease=" << keyEvent.isRelease()
+                   << " is_trigger=" << is_trigger
+                   << " is_command=" << is_command;
+
+  if ((is_trigger || is_command) && !keyEvent.isRelease()) {
     cancelPendingStop();
     if (!recording_) {
       recording_ = true;
-      active_trigger_ = trigger_keys_[trigger_index];
+      active_trigger_ = is_trigger ? trigger_keys_[trigger_index]
+                                   : command_keys_[command_index];
       active_ic_ = keyEvent.inputContext();
       hideResultMenu();
-      callStartRecording();
-      updatePreedit(active_ic_, RecordingPreeditText());
+
+      if (is_command) {
+        command_mode_ = true;
+        std::string selected_text;
+        auto &surrounding = active_ic_->surroundingText();
+        if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
+          // 有真实选中文本，从 surrounding text 获取
+          const auto &text = surrounding.text();
+          int from = std::min(surrounding.cursor(), surrounding.anchor());
+          int to = std::max(surrounding.cursor(), surrounding.anchor());
+          selected_text = text.substr(from, to - from);
+        } else if (auto *clipboard = instance_->addonManager().addon("clipboard")) {
+          // fallback：从剪贴板读，仅作为 LLM 上下文，不用于替换
+          selected_text =
+              clipboard->call<fcitx::IClipboard::primary>(active_ic_);
+          if (selected_text.empty()) {
+            selected_text =
+                clipboard->call<fcitx::IClipboard::clipboard>(active_ic_);
+          }
+        }
+        FCITX_LOG(Info) << "vinput: command key pressed, selected_text length=" << selected_text.size();
+        callStartCommandRecording(selected_text);
+        updatePreedit(active_ic_, CommandingPreeditText());
+      } else {
+        FCITX_LOG(Info) << "vinput: trigger key pressed";
+        callStartRecording();
+        updatePreedit(active_ic_, RecordingPreeditText());
+      }
     }
     keyEvent.filterAndAccept();
     return;
@@ -317,7 +342,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event &event) {
     return;
   }
 
-  if (is_trigger && keyEvent.isRelease()) {
+  if ((is_trigger || is_command) && keyEvent.isRelease()) {
     keyEvent.filterAndAccept();
     return;
   }
@@ -349,6 +374,7 @@ void VinputEngine::setConfig(const fcitx::RawConfig &rawConfig) {
 
 void VinputEngine::applySettings() {
   trigger_keys_ = settings_.triggerKeys;
+  command_keys_ = settings_.commandKeys;
   scene_menu_key_ = settings_.sceneMenuKey;
   page_prev_keys_ = settings_.pagePrevKeys;
   page_next_keys_ = settings_.pageNextKeys;
@@ -359,7 +385,8 @@ void VinputEngine::reloadSceneConfig() {
   scene_config_.activeSceneId = core_config.scenes.activeScene;
   scene_config_.scenes = core_config.scenes.definitions;
   if (!scene_config_.scenes.empty()) {
-    active_scene_id_ = vinput::scene::Resolve(scene_config_, active_scene_id_).id;
+    active_scene_id_ =
+        vinput::scene::Resolve(scene_config_, active_scene_id_).id;
   }
 }
 
@@ -670,12 +697,15 @@ void VinputEngine::selectResultCandidate(std::size_t index,
                                          fcitx::InputContext *ic) {
   if (index >= result_candidates_.size()) {
     hideResultMenu();
+    command_mode_ = false;
     return;
   }
 
   const auto &candidate = result_candidates_[index];
   const std::string text = candidate.text;
+  const bool is_command_result = command_mode_;
   hideResultMenu();
+  command_mode_ = false;
   if (!ic) {
     return;
   }
@@ -685,13 +715,18 @@ void VinputEngine::selectResultCandidate(std::size_t index,
     return;
   }
 
-  if (candidate.source == vinput::result::kSourceCommand) {
-    clearPreedit(ic);
-    ExecuteShellCommandAsync(text);
-    return;
-  }
-
   if (!text.empty()) {
+    // command 模式：先用 surrounding text 删除选中内容
+    if (is_command_result) {
+      auto &surrounding = ic->surroundingText();
+      if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
+        int cursor = surrounding.cursor();
+        int anchor = surrounding.anchor();
+        int from = std::min(cursor, anchor);
+        int len = std::abs(cursor - anchor);
+        ic->deleteSurroundingText(from - cursor, len);
+      }
+    }
     clearPreedit(ic);
     ic->commitString(text);
   }
@@ -799,6 +834,15 @@ void VinputEngine::callStartRecording() {
   msg.send();
 }
 
+void VinputEngine::callStartCommandRecording(const std::string &selected_text) {
+  if (!bus_)
+    return;
+  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface,
+                                    kMethodStartCommandRecording);
+  msg << selected_text;
+  msg.send();
+}
+
 void VinputEngine::callStopRecording(const std::string &scene_id) {
   if (!bus_)
     return;
@@ -813,6 +857,7 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message &msg) {
   msg >> payload_text;
 
   if (!active_ic_) {
+    command_mode_ = false;
     return;
   }
 
@@ -820,6 +865,20 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message &msg) {
 
   const auto payload = vinput::result::Parse(payload_text);
   clearPreedit(active_ic_);
+
+  // command 模式：先用 surrounding text 删除选中内容
+  if (command_mode_) {
+    auto &surrounding = active_ic_->surroundingText();
+    if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
+      int cursor = surrounding.cursor();
+      int anchor = surrounding.anchor();
+      int from = std::min(cursor, anchor);
+      int len = std::abs(cursor - anchor);
+      active_ic_->deleteSurroundingText(from - cursor, len);
+    }
+    command_mode_ = false;
+  }
+
   if (payload.candidates.size() > 1) {
     showResultMenu(active_ic_, payload);
     return;
@@ -838,7 +897,7 @@ void VinputEngine::onStatusChanged(fcitx::dbus::Message &msg) {
     return;
 
   if (status == "recording") {
-    updatePreedit(active_ic_, RecordingPreeditText());
+    updatePreedit(active_ic_, command_mode_ ? CommandingPreeditText() : RecordingPreeditText());
   } else if (status == "inferring") {
     updatePreedit(active_ic_, InferringPreeditText());
   } else if (status == "postprocessing") {

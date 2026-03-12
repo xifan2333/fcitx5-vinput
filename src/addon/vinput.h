@@ -46,6 +46,7 @@ private:
   void restartDaemon();
   void setupDBusWatcher();
   void callStartRecording();
+  void callStartCommandRecording(const std::string &selected_text);
   void callStopRecording(const std::string &scene_id);
   void onRecognitionResult(fcitx::dbus::Message &msg);
   void onStatusChanged(fcitx::dbus::Message &msg);
@@ -59,10 +60,12 @@ private:
   std::unique_ptr<fcitx::dbus::Slot> result_slot_;
   std::unique_ptr<fcitx::dbus::Slot> status_slot_;
   bool recording_ = false;
+  bool command_mode_ = false;
   fcitx::InputContext *active_ic_ = nullptr;
   fcitx::InputContext *scene_menu_ic_ = nullptr;
   fcitx::InputContext *result_menu_ic_ = nullptr;
   fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Control_R)};
+  fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_F10)};
   fcitx::KeyList scene_menu_key_{fcitx::Key(FcitxKey_F9)};
   fcitx::KeyList page_prev_keys_{
       fcitx::Key(FcitxKey_Page_Up),
