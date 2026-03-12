@@ -710,3 +710,7 @@ msgstr "模型"
 msgid "API_KEY"
 msgstr "API 密钥"
 
+
+#: src/addon/vinput.cpp
+msgid "Voice Input"
+msgstr "语音输入"

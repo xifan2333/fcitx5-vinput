@@ -50,6 +50,7 @@ private:
   void callStopRecording(const std::string &scene_id);
   void onRecognitionResult(fcitx::dbus::Message &msg);
   void onStatusChanged(fcitx::dbus::Message &msg);
+  void onLlmError(fcitx::dbus::Message &msg);
   void updatePreedit(fcitx::InputContext *ic, const std::string &text);
   void clearPreedit(fcitx::InputContext *ic);
 
@@ -59,6 +60,7 @@ private:
   fcitx::dbus::Bus *bus_ = nullptr;
   std::unique_ptr<fcitx::dbus::Slot> result_slot_;
   std::unique_ptr<fcitx::dbus::Slot> status_slot_;
+  std::unique_ptr<fcitx::dbus::Slot> llm_error_slot_;
   bool recording_ = false;
   bool command_mode_ = false;
   fcitx::InputContext *active_ic_ = nullptr;

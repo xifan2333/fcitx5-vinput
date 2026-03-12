@@ -459,9 +459,9 @@ void MainWindow::onRemoveModelClicked() {
   if (response == QMessageBox::Yes) {
     btnDownloadModel->setEnabled(false);
     btnRemoveModel->setEnabled(false);
-    textLog->append("Removing " + model_name + "...");
+    textLog->append(tr("Removing %1...").arg(model_name));
     cliProcess->start("vinput", QStringList()
-                                    << "model" << "remove" << model_name);
+                                    << "model" << "remove" << "--force" << model_name);
   }
 }
 
@@ -474,7 +474,6 @@ void MainWindow::onDownloadModelClicked() {
     model_name = tableRemoteModels->item(tableRemoteModels->currentRow(), 0)->text();
   btnDownloadModel->setEnabled(false);
   btnRemoveModel->setEnabled(false);
-  textLog->append("Downloading " + model_name + "...");
   cliProcess->start("vinput", QStringList()
                                   << "model" << "add" << model_name);
 }
@@ -798,25 +797,8 @@ void MainWindow::onSceneRemove() {
   sc.activeSceneId = config.scenes.activeScene;
   sc.scenes = config.scenes.definitions;
 
-  bool is_active = (scene_id.toStdString() == sc.activeSceneId);
-  bool is_builtin = (scene_id == "default" || scene_id == "formal" ||
-                     scene_id == "code" || scene_id == "translate");
-
-  if (is_active || is_builtin) {
-    auto response = QMessageBox::question(
-        this, tr("Warning"),
-        tr("The scene '%1' is either active or builtin. Are you SURE you want "
-           "to forcibly remove it?")
-            .arg(scene_id),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-    if (response != QMessageBox::Yes) {
-      return;
-    }
-  }
-
   std::string err;
-  if (!vinput::scene::RemoveScene(&sc, scene_id.toStdString(),
-                                  is_active || is_builtin, &err)) {
+  if (!vinput::scene::RemoveScene(&sc, scene_id.toStdString(), true, &err)) {
     QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
     return;
   }

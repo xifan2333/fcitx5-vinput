@@ -130,8 +130,12 @@ int main(int argc, char *argv[]) {
             current_status = Status::Postprocessing;
             dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
           }
+          std::string llm_error;
           result = post_processor.ProcessCommand(text, job.selected_text,
-                                                 runtime_settings);
+                                                 runtime_settings, &llm_error);
+          if (!llm_error.empty()) {
+            dbus.EmitLlmError(llm_error);
+          }
           text = result.commitText;
         } else {
           const auto &scene =
@@ -140,7 +144,12 @@ int main(int argc, char *argv[]) {
             current_status = Status::Postprocessing;
             dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
           }
-          result = post_processor.Process(text, scene, runtime_settings);
+          std::string llm_error;
+          result = post_processor.Process(text, scene, runtime_settings,
+                                          &llm_error);
+          if (!llm_error.empty()) {
+            dbus.EmitLlmError(llm_error);
+          }
           text = result.commitText;
         }
       }

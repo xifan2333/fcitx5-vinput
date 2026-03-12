@@ -20,6 +20,7 @@ public:
   void FlushEmitQueue(); // main thread only
   void EmitRecognitionResult(const std::string &text);
   void EmitStatusChanged(const std::string &status);
+  void EmitLlmError(const std::string &message);
 
   void SetStartHandler(std::function<void()> handler);
   void SetStartCommandHandler(std::function<void(const std::string &)> handler);
@@ -42,7 +43,8 @@ private:
   int notify_fd_ = -1;
 
   struct PendingEmit {
-    bool is_result;
+    enum class Type { Result, Status, LlmError };
+    Type type;
     std::string payload;
   };
   std::mutex emit_mutex_;

@@ -1,4 +1,5 @@
 build/
+build-test/
 dist/
 packaging/arch/PKGBUILD
 packaging/arch/pkg/

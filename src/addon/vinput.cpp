@@ -5,6 +5,7 @@
 #include "common/postprocess_scene.h"
 
 #include "clipboard_public.h"
+#include "notifications_public.h"
 #include <dbus_public.h>
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
@@ -59,14 +60,17 @@ std::string NoSelectionPreeditText() { return _("Please select text first."); }
 
 std::string LlmNotEnabledPreeditText() { return _("Please enable LLM first."); }
 
-std::string ResultCandidateComment(const vinput::result::Candidate &candidate) {
+std::string ResultCandidateComment(const vinput::result::Candidate &candidate,
+                                    std::size_t llm_index) {
   if (candidate.source == vinput::result::kSourceRaw) {
     return _("Original");
   }
   if (candidate.source == vinput::result::kSourceAsr) {
     return _("Voice Command");
   }
-  return std::string();
+  char buf[8];
+  std::snprintf(buf, sizeof(buf), "%zu", llm_index);
+  return buf;
 }
 
 std::string DisplayCandidateText(std::string text) {
@@ -206,9 +210,12 @@ class ResultCandidateWord : public fcitx::CandidateWord {
 public:
   ResultCandidateWord(VinputEngine *engine, std::size_t index,
                       const std::string &text, const std::string &comment)
-      : fcitx::CandidateWord(fcitx::Text(
-            DisplayTextWithComment(DisplayCandidateText(text), comment))),
-        engine_(engine), index_(index) {}
+      : fcitx::CandidateWord(fcitx::Text(DisplayCandidateText(text))),
+        engine_(engine), index_(index) {
+    if (!comment.empty()) {
+      setComment(fcitx::Text(comment));
+    }
+  }
 
   void select(fcitx::InputContext *inputContext) const override {
     engine_->selectResultCandidate(index_, inputContext);
@@ -268,6 +275,15 @@ void VinputEngine::setupDBusWatcher() {
     onStatusChanged(msg);
     return true;
   });
+
+  fcitx::dbus::MatchRule llm_error_rule(kBusName, kObjectPath, kInterface,
+                                        kSignalLlmError);
+
+  llm_error_slot_ =
+      bus_->addMatch(llm_error_rule, [this](fcitx::dbus::Message &msg) {
+        onLlmError(msg);
+        return true;
+      });
 }
 
 void VinputEngine::handleKeyEvent(fcitx::Event &event) {
@@ -494,13 +510,17 @@ void VinputEngine::showResultMenu(fcitx::InputContext *ic,
       fcitx::CursorPositionAfterPaging::ResetToFirst);
 
   int cursor_index = 0;
+  std::size_t llm_index = 0;
   for (std::size_t i = 0; i < result_candidates_.size(); ++i) {
     const auto &candidate = result_candidates_[i];
+    if (candidate.source == vinput::result::kSourceLlm) {
+      ++llm_index;
+    }
     if (candidate.text == payload.commitText) {
       cursor_index = static_cast<int>(i);
     }
     candidate_list->append<ResultCandidateWord>(
-        this, i, candidate.text, ResultCandidateComment(candidate));
+        this, i, candidate.text, ResultCandidateComment(candidate, llm_index));
   }
   MoveCursorToIndex(candidate_list.get(), cursor_index);
 
@@ -937,6 +957,27 @@ void VinputEngine::onStatusChanged(fcitx::dbus::Message &msg) {
     updatePreedit(active_ic_, PostprocessingPreeditText());
   } else {
     clearPreedit(active_ic_);
+  }
+}
+
+void VinputEngine::onLlmError(fcitx::dbus::Message &msg) {
+  std::string error_message;
+  msg >> error_message;
+
+  if (error_message.empty()) {
+    return;
+  }
+
+  auto *notifications =
+      instance_->addonManager().addon("notifications", true);
+  if (notifications) {
+    notifications->call<fcitx::INotifications::sendNotification>(
+        "fcitx5-vinput", 0, "dialog-error",
+        _("Voice Input"), error_message, std::vector<std::string>{},
+        5000, fcitx::NotificationActionCallback{},
+        fcitx::NotificationClosedCallback{});
+  } else {
+    fprintf(stderr, "vinput: LLM error: %s\n", error_message.c_str());
   }
 }
 

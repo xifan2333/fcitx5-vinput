@@ -695,3 +695,7 @@ msgstr ""
 #: src/cli/command_model.cpp:95 src/cli/command_model.cpp:148
 msgid "yes"
 msgstr ""
+
+#: src/addon/vinput.cpp
+msgid "Voice Input"
+msgstr ""

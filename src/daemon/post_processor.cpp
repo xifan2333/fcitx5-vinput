@@ -213,7 +213,8 @@ ExtractStructuredCandidates(std::string_view content_text) {
 std::optional<std::vector<std::string>>
 RewriteWithOpenAiCompatible(const std::string &text,
                             const vinput::scene::Definition &scene,
-                            const CoreConfig &settings, int candidate_count) {
+                            const CoreConfig &settings, int candidate_count,
+                            std::string *error_out) {
   if (!settings.llm.enabled) {
     return std::nullopt;
   }
@@ -287,18 +288,22 @@ RewriteWithOpenAiCompatible(const std::string &text,
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
 
   if (curl_code != CURLE_OK) {
+    const std::string msg = std::string("LLM request failed: ") + curl_easy_strerror(curl_code);
     fprintf(stderr, "vinput-daemon: LLM request to %s failed: %s\n",
             url.c_str(), curl_easy_strerror(curl_code));
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
+    if (error_out) *error_out = msg;
     return std::nullopt;
   }
 
   if (status_code < 200 || status_code >= 300) {
+    const std::string msg = "HTTP " + std::to_string(status_code) + ": " + response_body;
     fprintf(stderr, "vinput-daemon: LLM request to %s returned HTTP %ld: %s\n",
             url.c_str(), status_code, response_body.c_str());
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
+    if (error_out) *error_out = msg;
     return std::nullopt;
   }
 
@@ -400,7 +405,8 @@ PostProcessor::~PostProcessor() { curl_global_cleanup(); }
 vinput::result::Payload
 PostProcessor::Process(const std::string &raw_text,
                        const vinput::scene::Definition &scene,
-                       const CoreConfig &settings) const {
+                       const CoreConfig &settings,
+                       std::string *error_out) const {
   std::string normalized = TrimAsciiWhitespace(raw_text);
   if (normalized.empty()) {
     return {};
@@ -413,7 +419,8 @@ PostProcessor::Process(const std::string &raw_text,
   }
 
   auto rewritten =
-      RewriteWithOpenAiCompatible(normalized, scene, settings, candidate_count);
+      RewriteWithOpenAiCompatible(normalized, scene, settings, candidate_count,
+                                   error_out);
   if (!rewritten.has_value()) {
     return vinput::result::PlainTextPayload(normalized);
   }
@@ -444,7 +451,8 @@ PostProcessor::Process(const std::string &raw_text,
 vinput::result::Payload
 PostProcessor::ProcessCommand(const std::string &asr_text,
                               const std::string &selected_text,
-                              const CoreConfig &settings) const {
+                              const CoreConfig &settings,
+                              std::string *error_out) const {
   std::string normalized_asr = TrimAsciiWhitespace(asr_text);
   if (normalized_asr.empty() || selected_text.empty()) {
     // Can't do anything if there's no command or no selected text
@@ -468,7 +476,7 @@ PostProcessor::ProcessCommand(const std::string &asr_text,
 
   auto rewritten =
       RewriteWithOpenAiCompatible(selected_text, synthetic_scene, settings,
-                                   command_candidate_count);
+                                   command_candidate_count, error_out);
 
   vinput::result::Payload payload;
   std::set<std::string> seen;

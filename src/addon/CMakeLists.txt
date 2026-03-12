@@ -1,5 +1,6 @@
 find_package(Fcitx5ModuleDBus REQUIRED)
 find_package(Fcitx5ModuleClipboard REQUIRED)
+find_package(Fcitx5ModuleNotifications REQUIRED)
 
 add_library(fcitx5-vinput MODULE
     vinput.cpp
@@ -14,6 +15,7 @@ target_link_libraries(fcitx5-vinput PRIVATE
     Fcitx5::Core
     Fcitx5::Module::DBus
     Fcitx5::Module::Clipboard
+    Fcitx5::Module::Notifications
 )
 target_include_directories(fcitx5-vinput PRIVATE
     ${CMAKE_SOURCE_DIR}/src

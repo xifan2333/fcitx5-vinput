@@ -15,6 +15,7 @@ constexpr const char *kMethodGetStatus = "GetStatus";
 
 constexpr const char *kSignalRecognitionResult = "RecognitionResult";
 constexpr const char *kSignalStatusChanged = "StatusChanged";
+constexpr const char *kSignalLlmError = "LlmError";
 
 enum class Status { Idle, Recording, Inferring, Postprocessing, Error };
 
