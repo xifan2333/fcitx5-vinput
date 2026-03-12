@@ -132,6 +132,7 @@ jobs:
             gettext \
             dpkg-dev \
             file \
+            git \
             curl \
             libcurl4-openssl-dev \
             libssl-dev \
