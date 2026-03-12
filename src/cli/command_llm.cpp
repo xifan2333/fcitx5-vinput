@@ -39,7 +39,7 @@ int RunLlmList(Formatter &fmt, const CliContext &ctx) {
     return 0;
   }
 
-  std::vector<std::string> headers = {"NAME", "BASE_URL", "MODEL", "API_KEY"};
+  std::vector<std::string> headers = {_("NAME"), _("BASE_URL"), _("MODEL"), _("API_KEY")};
   std::vector<std::vector<std::string>> rows;
   for (const auto &p : providers) {
     std::string display_name = p.name;
@@ -53,7 +53,7 @@ int RunLlmList(Formatter &fmt, const CliContext &ctx) {
 
 int RunLlmAdd(const std::string &name, const std::string &base_url,
               const std::string &model, const std::string &api_key,
-              Formatter &fmt, const CliContext &ctx) {
+              int timeout_ms, Formatter &fmt, const CliContext &ctx) {
   (void)ctx;
   auto config = LoadCoreConfig();
   for (const auto &p : config.llm.providers) {
@@ -68,6 +68,7 @@ int RunLlmAdd(const std::string &name, const std::string &base_url,
   provider.base_url = base_url;
   provider.model = model;
   provider.api_key = api_key;
+  provider.timeout_ms = timeout_ms;
   config.llm.providers.push_back(provider);
 
   // Auto-set active provider if this is the first

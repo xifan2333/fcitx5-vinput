@@ -4,6 +4,26 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <wchar.h>
+
+// Returns the display column width of a UTF-8 string (handles CJK wide chars)
+static int DisplayWidth(const std::string& s) {
+  // Convert UTF-8 to wchar_t and use wcswidth
+  size_t len = s.size() + 1;
+  std::vector<wchar_t> wbuf(len);
+  size_t n = mbstowcs(wbuf.data(), s.c_str(), len);
+  if (n == (size_t)-1) return (int)s.size(); // fallback
+  int w = wcswidth(wbuf.data(), n);
+  return w < 0 ? (int)n : w;
+}
+
+// Pad a UTF-8 string to target display width with spaces
+static std::string PadTo(const std::string& s, int target) {
+  int w = DisplayWidth(s);
+  int pad = target - w;
+  if (pad <= 0) return s;
+  return s + std::string(pad, ' ');
+}
 
 // ---- TextFormatter ----
 
@@ -38,22 +58,23 @@ void TextFormatter::PrintTable(const std::vector<std::string>& headers,
                                const std::vector<std::vector<std::string>>& rows) {
   if (headers.empty()) return;
 
-  std::vector<size_t> widths(headers.size(), 0);
+  std::vector<int> widths(headers.size(), 0);
   for (size_t i = 0; i < headers.size(); ++i) {
-    widths[i] = headers[i].size();
+    widths[i] = DisplayWidth(headers[i]);
   }
   for (const auto& row : rows) {
     for (size_t i = 0; i < row.size() && i < widths.size(); ++i) {
-      widths[i] = std::max(widths[i], row[i].size());
+      widths[i] = std::max(widths[i], DisplayWidth(row[i]));
     }
   }
 
   // Print header
   for (size_t i = 0; i < headers.size(); ++i) {
     if (i > 0) std::cout << "  ";
-    std::string cell = headers[i];
-    cell.resize(widths[i], ' ');
-    std::cout << Bold(cell);
+    if (i + 1 < headers.size())
+      std::cout << Bold(PadTo(headers[i], widths[i]));
+    else
+      std::cout << Bold(headers[i]);
   }
   std::cout << "\n";
 
@@ -62,8 +83,10 @@ void TextFormatter::PrintTable(const std::vector<std::string>& headers,
     for (size_t i = 0; i < headers.size(); ++i) {
       if (i > 0) std::cout << "  ";
       std::string cell = (i < row.size()) ? row[i] : "";
-      cell.resize(widths[i], ' ');
-      std::cout << cell;
+      if (i + 1 < headers.size())
+        std::cout << PadTo(cell, widths[i]);
+      else
+        std::cout << cell;
     }
     std::cout << "\n";
   }

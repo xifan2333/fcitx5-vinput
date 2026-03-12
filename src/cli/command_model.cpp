@@ -74,14 +74,15 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
                     {"name", m.name},
                     {"model_type", m.model_type},
                     {"language", m.language},
-                    {"status", state_str}
+                    {"status", state_str},
+                    {"supports_hotwords", m.supports_hotwords}
                 });
             }
             fmt.PrintJson(arr);
             return 0;
         }
 
-        std::vector<std::string> headers = {"NAME", "TYPE", "LANGUAGE", "STATUS"};
+        std::vector<std::string> headers = {_("NAME"), _("TYPE"), _("LANGUAGE"), _("HOTWORDS"), _("STATUS")};
         std::vector<std::vector<std::string>> rows;
         for (const auto& m : models) {
             std::string status_str;
@@ -92,7 +93,8 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
             } else {
                 status_str = std::string("[ ] ") + _("Installed");
             }
-            rows.push_back({m.name, m.model_type, m.language, status_str});
+            std::string hotwords = m.supports_hotwords ? _("yes") : _("no");
+            rows.push_back({m.name, m.model_type, m.language, hotwords, status_str});
         }
         fmt.PrintTable(headers, rows);
         return 0;
@@ -132,6 +134,7 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
                 {"size", FormatSize(m.size_bytes)},
                 {"size_bytes", m.size_bytes},
                 {"status", is_installed(m.name) ? "installed" : "available"},
+                {"supports_hotwords", m.supports_hotwords},
                 {"description", m.description}
             });
         }
@@ -139,11 +142,12 @@ int RunModelList(bool remote, Formatter& fmt, const CliContext& ctx) {
         return 0;
     }
 
-    std::vector<std::string> headers = {"NAME", "TYPE", "LANGUAGE", "SIZE", "STATUS"};
+    std::vector<std::string> headers = {_("NAME"), _("TYPE"), _("LANGUAGE"), _("SIZE"), _("HOTWORDS"), _("STATUS")};
     std::vector<std::vector<std::string>> rows;
     for (const auto& m : remote_models) {
         std::string status = is_installed(m.name) ? _("installed") : _("available");
-        rows.push_back({m.name, m.model_type, m.language, FormatSize(m.size_bytes), status});
+        std::string hotwords = m.supports_hotwords ? _("yes") : _("no");
+        rows.push_back({m.name, m.model_type, m.language, FormatSize(m.size_bytes), hotwords, status});
     }
     fmt.PrintTable(headers, rows);
     return 0;

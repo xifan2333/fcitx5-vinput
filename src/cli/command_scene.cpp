@@ -37,7 +37,7 @@ int RunSceneList(Formatter &fmt, const CliContext &ctx) {
     return 0;
   }
 
-  std::vector<std::string> headers = {"ID", "LABEL", "STATUS"};
+  std::vector<std::string> headers = {_("ID"), _("LABEL"), _("STATUS")};
   std::vector<std::vector<std::string>> rows;
   for (const auto &scene : scenes) {
     std::string label = vinput::scene::DisplayLabel(scene);

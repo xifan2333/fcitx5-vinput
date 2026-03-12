@@ -42,7 +42,7 @@ int RunDeviceList(Formatter &fmt, const CliContext &ctx) {
     return 0;
   }
 
-  std::vector<std::string> headers = {"NAME", "DESCRIPTION", "STATUS"};
+  std::vector<std::string> headers = {_("NAME"), _("DESCRIPTION"), _("STATUS")};
   std::vector<std::vector<std::string>> rows;
 
   {
