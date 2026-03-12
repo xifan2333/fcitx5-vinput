@@ -4,6 +4,11 @@ find_package(Fcitx5ModuleClipboard REQUIRED)
 add_library(fcitx5-vinput MODULE
     vinput.cpp
 )
+
+find_package(Fcitx5Core REQUIRED)
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.12")
+    target_compile_definitions(fcitx5-vinput PRIVATE VINPUT_FCITX5_CORE_HAVE_ADDON_FACTORY_V2)
+endif()
 target_link_libraries(fcitx5-vinput PRIVATE
     vinput-common
     Fcitx5::Core

@@ -967,4 +967,8 @@ VinputEngineFactory::create(fcitx::AddonManager *manager) {
   return new VinputEngine(manager->instance());
 }
 
+#ifdef VINPUT_FCITX5_CORE_HAVE_ADDON_FACTORY_V2
 FCITX_ADDON_FACTORY_V2(vinput, VinputEngineFactory);
+#else
+FCITX_ADDON_FACTORY(VinputEngineFactory);
+#endif
