@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QCheckBox>
+#include <QLineEdit>
 #include <QComboBox>
 #include <QLabel>
 #include <QListWidget>
@@ -51,7 +52,7 @@ private slots:
   void onLlmSetActive();
 
   // Hotword Management
-  void onImportHotwordsClicked();
+  void onBrowseHotwordsClicked();
 
   // Daemon Management
   void refreshDaemonStatus();
@@ -81,6 +82,7 @@ private:
   QComboBox *comboModel;
   QCheckBox *checkLlmEnabled;
   QSpinBox *spinCandidateCount;
+  QSpinBox *spinCommandCandidateCount;
   QComboBox *comboActiveScene;
   QPushButton *btnOpenConfig;
   QPushButton *btnSave;
@@ -109,9 +111,9 @@ private:
   QPushButton *btnLlmSetActive;
 
   // Hotword Tab
+  QLineEdit *editHotwordsFile;
   QTextEdit *textHotwords;
-  QDoubleSpinBox *spinHotwordScore;
-  QPushButton *btnImportHotwords;
+  QPushButton *btnBrowseHotwords;
 
   // Daemon Tab
   QLabel *lblDaemonStatus;

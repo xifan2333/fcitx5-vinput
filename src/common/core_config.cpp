@@ -100,7 +100,8 @@ void to_json(json &j, const CoreConfig::Llm &p) {
   j = json{{"enabled", p.enabled},
            {"active_provider", p.activeProvider},
            {"providers", p.providers},
-           {"candidate_count", p.candidateCount}};
+           {"candidate_count", p.candidateCount},
+           {"command_candidate_count", p.commandCandidateCount}};
 }
 
 void from_json(const json &j, CoreConfig::Llm &p) {
@@ -110,6 +111,7 @@ void from_json(const json &j, CoreConfig::Llm &p) {
     p.providers = j.at("providers").get<std::vector<LlmProvider>>();
   }
   p.candidateCount = j.value("candidate_count", p.candidateCount);
+  p.commandCandidateCount = j.value("command_candidate_count", p.commandCandidateCount);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,8 +144,7 @@ void to_json(json &j, const CoreConfig &p) {
   j["registry_url"] = p.registryUrl;
   j["llm"] = p.llm;
   j["default_language"] = p.defaultLanguage;
-  j["hotwords"] = p.hotwords;
-  j["hotwords_score"] = p.hotwordsScore;
+  j["hotwords_file"] = p.hotwordsFile;
   j["scenes"] = p.scenes;
 }
 
@@ -158,10 +159,7 @@ void from_json(const json &j, CoreConfig &p) {
     p.llm = j.at("llm").get<CoreConfig::Llm>();
   }
   p.defaultLanguage = j.value("default_language", p.defaultLanguage);
-  if (j.contains("hotwords")) {
-    p.hotwords = j.at("hotwords").get<std::vector<std::string>>();
-  }
-  p.hotwordsScore = j.value("hotwords_score", p.hotwordsScore);
+  p.hotwordsFile = j.value("hotwords_file", p.hotwordsFile);
   if (j.contains("scenes")) {
     p.scenes = j.at("scenes").get<CoreConfig::Scenes>();
   }

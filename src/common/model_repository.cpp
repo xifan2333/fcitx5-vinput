@@ -137,6 +137,7 @@ ModelRepository::FetchRegistry(const std::string &registry_url,
       e.size_bytes = item.value("size_bytes", uint64_t{0});
       e.model_type = item.value("model_type", "");
       e.language = item.value("language", "");
+      e.supports_hotwords = item.value("supports_hotwords", false);
       if (item.contains("vinput_model")) {
         e.vinput_model = item["vinput_model"];
       }

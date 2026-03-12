@@ -5,14 +5,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 struct SherpaOnnxOfflineRecognizer;
 
 struct AsrConfig {
   std::string language;
-  std::vector<std::string> hotwords;
-  float hotwords_score = 1.5f;
+  std::string hotwords_file;
   int thread_num = 4;
 };
 

@@ -163,22 +163,22 @@ int main(int argc, char *argv[]) {
   init_cmd->add_flag("--force", init_force, "Overwrite existing config");
 
   // ---- hotword subcommand ----
-  auto *hotword_cmd = app.add_subcommand("hotword", "Manage hotwords");
+  auto *hotword_cmd = app.add_subcommand("hotword", "Manage hotwords file");
   hotword_cmd->require_subcommand(1);
 
-  auto *hotword_list =
-      hotword_cmd->add_subcommand("list", "List configured hotwords");
+  auto *hotword_get =
+      hotword_cmd->add_subcommand("get", "Show configured hotwords file path");
 
-  std::string hotword_load_file;
-  auto *hotword_load = hotword_cmd->add_subcommand(
-      "load", "Load hotwords from file (or - for stdin)");
-  hotword_load->add_option("file", hotword_load_file, "Path to text file")
+  std::string hotword_set_path;
+  auto *hotword_set = hotword_cmd->add_subcommand(
+      "set", "Set hotwords file path");
+  hotword_set->add_option("path", hotword_set_path, "Path to hotwords file")
       ->required();
 
   auto *hotword_clear =
-      hotword_cmd->add_subcommand("clear", "Remove all hotwords");
+      hotword_cmd->add_subcommand("clear", "Clear hotwords file path");
   auto *hotword_edit =
-      hotword_cmd->add_subcommand("edit", "Edit hotwords in editor");
+      hotword_cmd->add_subcommand("edit", "Edit hotwords file in editor");
 
   // ---- device subcommand ----
   auto *device_cmd = app.add_subcommand("device", "Manage capture devices");
@@ -251,10 +251,10 @@ int main(int argc, char *argv[]) {
   }
 
   // hotword
-  else if (hotword_list->parsed()) {
+  else if (hotword_get->parsed()) {
     return RunHotwordList(*fmt, ctx);
-  } else if (hotword_load->parsed()) {
-    return RunHotwordLoad(hotword_load_file, *fmt, ctx);
+  } else if (hotword_set->parsed()) {
+    return RunHotwordLoad(hotword_set_path, *fmt, ctx);
   } else if (hotword_clear->parsed()) {
     return RunHotwordClear(*fmt, ctx);
   } else if (hotword_edit->parsed()) {

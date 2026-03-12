@@ -19,7 +19,6 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
-#include <unordered_set>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle(tr("Vinput Configuration"));
@@ -73,6 +72,16 @@ void MainWindow::setupGeneralTab() {
 
   checkLlmEnabled = new QCheckBox(tr("Enable LLM Global Features"));
   formLayout->addRow(tr("LLM:"), checkLlmEnabled);
+
+  spinCandidateCount = new QSpinBox();
+  spinCandidateCount->setRange(1, 9);
+  spinCandidateCount->setValue(1);
+  formLayout->addRow(tr("Candidate Count:"), spinCandidateCount);
+
+  spinCommandCandidateCount = new QSpinBox();
+  spinCommandCandidateCount->setRange(1, 9);
+  spinCommandCandidateCount->setValue(1);
+  formLayout->addRow(tr("Command Candidate Count:"), spinCommandCandidateCount);
 
   layout->addLayout(formLayout);
 
@@ -486,15 +495,20 @@ void MainWindow::loadConfigToUi() {
   }
 
   // Hotwords
-  spinHotwordScore->setValue(currentConfig.hotwordsScore);
-  QStringList hotwordList;
-  for (const auto &hw : currentConfig.hotwords) {
-    hotwordList << QString::fromStdString(hw);
+  editHotwordsFile->setText(QString::fromStdString(currentConfig.hotwordsFile));
+  if (!currentConfig.hotwordsFile.empty()) {
+    QFile f(QString::fromStdString(currentConfig.hotwordsFile));
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+      textHotwords->setPlainText(QTextStream(&f).readAll());
+    }
+  } else {
+    textHotwords->clear();
   }
-  textHotwords->setPlainText(hotwordList.join("\n"));
 
   // LLM
   checkLlmEnabled->setChecked(currentConfig.llm.enabled);
+  spinCandidateCount->setValue(currentConfig.llm.candidateCount);
+  spinCommandCandidateCount->setValue(currentConfig.llm.commandCandidateCount);
 }
 
 void MainWindow::onSaveClicked() {
@@ -508,18 +522,16 @@ void MainWindow::onSaveClicked() {
   currentConfig.captureDevice = device_value.toStdString();
   currentConfig.activeModel = comboModel->currentText().toStdString();
   currentConfig.llm.enabled = checkLlmEnabled->isChecked();
+  currentConfig.llm.candidateCount = spinCandidateCount->value();
+  currentConfig.llm.commandCandidateCount = spinCommandCandidateCount->value();
 
-  currentConfig.hotwordsScore = spinHotwordScore->value();
-  QStringList lines = textHotwords->toPlainText().split('\n');
-  std::vector<std::string> hotwords;
-  std::unordered_set<std::string> seen;
-  for (const QString &line : lines) {
-    std::string hw = line.trimmed().toStdString();
-    if (!hw.empty() && seen.insert(hw).second) {
-      hotwords.push_back(hw);
+  currentConfig.hotwordsFile = editHotwordsFile->text().trimmed().toStdString();
+  if (!currentConfig.hotwordsFile.empty()) {
+    QFile f(QString::fromStdString(currentConfig.hotwordsFile));
+    if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      QTextStream(&f) << textHotwords->toPlainText();
     }
   }
-  currentConfig.hotwords = hotwords;
 
   if (SaveCoreConfig(currentConfig)) {
     // notify fcitx5 daemon to load new config via dbus
@@ -1035,63 +1047,47 @@ void MainWindow::onInstallFinished(bool success, const QString &error) {
 // Hotword Tab
 // ---------------------------------------------------------------------------
 
-#include <QFileDialog>
 #include <QTextStream>
-#include <unordered_set>
 
 void MainWindow::setupHotwordTab() {
   hotwordTab = new QWidget();
   auto *layout = new QVBoxLayout(hotwordTab);
 
-  auto *formLayout = new QFormLayout();
-  spinHotwordScore = new QDoubleSpinBox();
-  spinHotwordScore->setRange(0.0, 100.0);
-  spinHotwordScore->setSingleStep(1.0);
-  spinHotwordScore->setDecimals(1);
-  formLayout->addRow(tr("Hotword Weight (Score):"), spinHotwordScore);
+  auto *fileLayout = new QHBoxLayout();
+  editHotwordsFile = new QLineEdit();
+  editHotwordsFile->setPlaceholderText(tr("Path to hotwords file..."));
+  btnBrowseHotwords = new QPushButton(tr("Browse..."));
+  fileLayout->addWidget(editHotwordsFile);
+  fileLayout->addWidget(btnBrowseHotwords);
+  layout->addLayout(fileLayout);
 
-  layout->addLayout(formLayout);
-
-  auto *lblWords = new QLabel(tr("Custom Hotwords (One per line):"));
+  auto *lblWords = new QLabel(tr("Hotwords (one per line, optional per-word score: \"word 2.0\"):" ));
   layout->addWidget(lblWords);
 
   textHotwords = new QTextEdit();
   layout->addWidget(textHotwords);
 
-  btnImportHotwords = new QPushButton(tr("Import from File"));
-  layout->addWidget(btnImportHotwords);
-
   tabWidget->addTab(hotwordTab, tr("Hotwords"));
 
-  connect(btnImportHotwords, &QPushButton::clicked, this,
-          &MainWindow::onImportHotwordsClicked);
+  connect(btnBrowseHotwords, &QPushButton::clicked, this,
+          &MainWindow::onBrowseHotwordsClicked);
+  connect(editHotwordsFile, &QLineEdit::editingFinished, this, [this]() {
+    QString path = editHotwordsFile->text().trimmed();
+    if (path.isEmpty()) { textHotwords->clear(); return; }
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text))
+      textHotwords->setPlainText(QTextStream(&f).readAll());
+  });
 }
 
-void MainWindow::onImportHotwordsClicked() {
+void MainWindow::onBrowseHotwordsClicked() {
   QString fileName = QFileDialog::getOpenFileName(
-      this, tr("Import Hotwords"), "", tr("Text Files (*.txt);;All Files (*)"));
-  if (fileName.isEmpty()) {
-    return;
-  }
-
-  QFile file(fileName);
-  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-    QMessageBox::warning(
-        this, tr("Error"),
-        tr("Cannot open file %1:\n%2.")
-            .arg(QDir::toNativeSeparators(fileName), file.errorString()));
-    return;
-  }
-
-  QString existingText = textHotwords->toPlainText();
-  if (!existingText.isEmpty() && !existingText.endsWith('\n')) {
-    existingText += "\n";
-  }
-
-  QTextStream in(&file);
-  QString currentContent = in.readAll();
-
-  textHotwords->setPlainText(existingText + currentContent);
+      this, tr("Select Hotwords File"), "", tr("Text Files (*.txt);;All Files (*)"));
+  if (fileName.isEmpty()) return;
+  editHotwordsFile->setText(fileName);
+  QFile f(fileName);
+  if (f.open(QIODevice::ReadOnly | QIODevice::Text))
+    textHotwords->setPlainText(QTextStream(&f).readAll());
 }
 
 // ---------------------------------------------------------------------------

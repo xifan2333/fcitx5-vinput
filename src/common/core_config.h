@@ -22,14 +22,14 @@ struct CoreConfig {
 
   std::string defaultLanguage{"zh"};
 
-  std::vector<std::string> hotwords;
-  float hotwordsScore{1.5f};
+  std::string hotwordsFile;
 
   struct Llm {
     bool enabled{false};
     std::string activeProvider;
     std::vector<LlmProvider> providers;
-    int candidateCount{1};  // global default
+    int candidateCount{1};         // postprocess candidate count
+    int commandCandidateCount{1};  // command mode candidate count
   } llm;
 
   struct Scenes {

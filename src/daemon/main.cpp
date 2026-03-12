@@ -3,9 +3,9 @@
 #include "common/core_config.h"
 #include "common/dbus_interface.h"
 #include "common/i18n.h"
+#include "common/model_manager.h"
 #include "common/recognition_result.h"
 #include "dbus_service.h"
-#include "common/model_manager.h"
 #include "post_processor.h"
 
 #include <poll.h>
@@ -60,8 +60,7 @@ int main(int argc, char *argv[]) {
   if (!disable_asr) {
     AsrConfig asr_config;
     asr_config.language = startup_settings.defaultLanguage;
-    asr_config.hotwords = startup_settings.hotwords;
-    asr_config.hotwords_score = startup_settings.hotwordsScore;
+    asr_config.hotwords_file = startup_settings.hotwordsFile;
     if (!asr.Init(model_info, asr_config)) {
       fprintf(stderr, "vinput-daemon: ASR engine init failed, exiting\n");
       return 1;
@@ -88,6 +87,8 @@ int main(int argc, char *argv[]) {
   struct InferenceJob {
     std::vector<int16_t> pcm;
     std::string scene_id;
+    bool is_command = false;
+    std::string selected_text;
   };
 
   std::mutex job_mutex;
@@ -100,9 +101,8 @@ int main(int argc, char *argv[]) {
       InferenceJob job;
       {
         std::unique_lock<std::mutex> lock(job_mutex);
-        job_cv.wait(lock, [&]() {
-          return !jobs.empty() || !worker_running.load();
-        });
+        job_cv.wait(lock,
+                    [&]() { return !jobs.empty() || !worker_running.load(); });
         if (!worker_running && jobs.empty()) {
           break;
         }
@@ -125,13 +125,24 @@ int main(int argc, char *argv[]) {
         vinput::scene::Config scene_config;
         scene_config.activeSceneId = runtime_settings.scenes.activeScene;
         scene_config.scenes = runtime_settings.scenes.definitions;
-        const auto &scene = vinput::scene::Resolve(scene_config, job.scene_id);
-        if (runtime_settings.llm.enabled && !scene.prompt.empty()) {
-          current_status = Status::Postprocessing;
-          dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
+        if (job.is_command) {
+          if (runtime_settings.llm.enabled) {
+            current_status = Status::Postprocessing;
+            dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
+          }
+          result = post_processor.ProcessCommand(text, job.selected_text,
+                                                 runtime_settings);
+          text = result.commitText;
+        } else {
+          const auto &scene =
+              vinput::scene::Resolve(scene_config, job.scene_id);
+          if (runtime_settings.llm.enabled && !scene.prompt.empty()) {
+            current_status = Status::Postprocessing;
+            dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
+          }
+          result = post_processor.Process(text, scene, runtime_settings);
+          text = result.commitText;
         }
-        result = post_processor.Process(text, scene, runtime_settings);
-        text = result.commitText;
       }
 
       if (!text.empty()) {
@@ -153,7 +164,12 @@ int main(int argc, char *argv[]) {
     }
   });
 
+  bool current_is_command = false;
+  std::string current_selected_text;
+
   dbus.SetStartHandler([&]() {
+    current_is_command = false;
+    current_selected_text.clear();
     auto runtime_settings = LoadCoreConfig();
     capture.SetTargetObject(runtime_settings.captureDevice);
     if (!capture.BeginRecording()) {
@@ -165,6 +181,25 @@ int main(int argc, char *argv[]) {
     current_status = Status::Recording;
     dbus.EmitStatusChanged(StatusToString(Status::Recording));
     fprintf(stderr, "vinput-daemon: recording started\n");
+  });
+
+  dbus.SetStartCommandHandler([&](const std::string &selected_text) {
+    current_is_command = true;
+    current_selected_text = selected_text;
+    auto runtime_settings = LoadCoreConfig();
+    capture.SetTargetObject(runtime_settings.captureDevice);
+    if (!capture.BeginRecording()) {
+      current_status = Status::Error;
+      dbus.EmitStatusChanged(StatusToString(Status::Error));
+      fprintf(stderr, "vinput-daemon: failed to start command recording\n");
+      return;
+    }
+    current_status = Status::Recording;
+    dbus.EmitStatusChanged(StatusToString(Status::Recording));
+    fprintf(stderr,
+            "vinput-daemon: command recording started (selected_text length: "
+            "%zu chars)\n",
+            selected_text.size());
   });
 
   dbus.SetStopHandler([&](const std::string &scene_id) -> std::string {
@@ -190,8 +225,11 @@ int main(int argc, char *argv[]) {
 
     {
       std::lock_guard<std::mutex> lock(job_mutex);
-      jobs.push_back({std::move(pcm), scene_id});
+      jobs.push_back({std::move(pcm), scene_id, current_is_command,
+                      current_selected_text});
     }
+    current_is_command = false;
+    current_selected_text.clear();
     current_status = Status::Inferring;
     dbus.EmitStatusChanged(StatusToString(Status::Inferring));
     job_cv.notify_one();

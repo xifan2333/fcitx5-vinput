@@ -17,6 +17,7 @@ struct RemoteModelEntry {
   uint64_t size_bytes = 0;
   std::string model_type;
   std::string language;
+  bool supports_hotwords = false;
   nlohmann::json vinput_model; // pre-built vinput-model.json content
 };
 

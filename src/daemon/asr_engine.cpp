@@ -23,19 +23,7 @@ bool AsrEngine::Init(const ModelInfo &info, const AsrConfig &asr_config) {
   // Default decoding configs
   config.decoding_method = "greedy_search";
   config.max_active_paths = 4;
-  config.hotwords_score = asr_config.hotwords_score;
   config.blank_penalty = 0.0f;
-
-  // Write hotwords to temp file if configured
-  if (!asr_config.hotwords.empty()) {
-    auto tmp_dir = std::filesystem::temp_directory_path() / "vinput";
-    std::filesystem::create_directories(tmp_dir);
-    hotwords_tmp_path_ = (tmp_dir / "hotwords.txt").string();
-    std::ofstream f(hotwords_tmp_path_);
-    for (const auto &word : asr_config.hotwords) {
-      f << word << "\n";
-    }
-  }
 
   // Stash file paths to keep c_str() pointers alive through recognizer creation
   const std::string tokens_path = info.File("tokens");
@@ -67,10 +55,6 @@ bool AsrEngine::Init(const ModelInfo &info, const AsrConfig &asr_config) {
   config.model_config.num_threads = asr_config.thread_num;
   config.model_config.provider = "cpu";
 
-  // Hotwords file
-  if (!hotwords_tmp_path_.empty()) {
-    config.hotwords_file = hotwords_tmp_path_.c_str();
-  }
 
   // Optional general model config fields from params
   if (!f_bpe_vocab.empty()) {
@@ -83,10 +67,19 @@ bool AsrEngine::Init(const ModelInfo &info, const AsrConfig &asr_config) {
     config.lm_config.scale =
         std::stof(info.Param("lm_scale", "0.5"));
   }
+  const auto &type = info.model_type;
 
-  // Optional hotwords file
-  if (!f_hotwords_file.empty()) {
-    config.hotwords_file = f_hotwords_file.c_str();
+  // Only paraformer and zipformer_transducer support hotwords_file
+  // with modified_beam_search.
+  const bool type_supports_hotwords = (type == "zipformer_transducer");
+  if (type_supports_hotwords) {
+    if (!asr_config.hotwords_file.empty()) {
+      config.hotwords_file = asr_config.hotwords_file.c_str();
+      config.decoding_method = "modified_beam_search";
+    } else if (!f_hotwords_file.empty()) {
+      config.hotwords_file = f_hotwords_file.c_str();
+      config.decoding_method = "modified_beam_search";
+    }
   }
 
   // Optional rule FSTs/FARs
@@ -96,8 +89,6 @@ bool AsrEngine::Init(const ModelInfo &info, const AsrConfig &asr_config) {
   if (!f_rule_fars.empty()) {
     config.rule_fars = f_rule_fars.c_str();
   }
-
-  const auto &type = info.model_type;
 
   if (type == "paraformer") {
     config.model_config.paraformer.model = f_model.c_str();
