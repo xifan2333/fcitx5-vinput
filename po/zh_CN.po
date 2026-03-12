@@ -42,6 +42,10 @@ msgstr "... 正在录音 ..."
 msgid "Please select text first."
 msgstr "请先选中文本。"
 
+#: src/addon/vinput.cpp
+msgid "Please enable LLM first."
+msgstr "请先启用 LLM 功能。"
+
 #: src/addon/vinput.cpp:53
 msgid "... Commanding ..."
 msgstr "... 正在命令 ..."

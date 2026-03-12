@@ -57,6 +57,8 @@ std::string PostprocessingPreeditText() { return _("... Postprocessing ..."); }
 
 std::string NoSelectionPreeditText() { return _("Please select text first."); }
 
+std::string LlmNotEnabledPreeditText() { return _("Please enable LLM first."); }
+
 std::string ResultCandidateComment(const vinput::result::Candidate &candidate) {
   if (candidate.source == vinput::result::kSourceRaw) {
     return _("Original");
@@ -312,6 +314,17 @@ void VinputEngine::handleKeyEvent(fcitx::Event &event) {
       hideResultMenu();
 
       if (is_command) {
+        // Check LLM is enabled before proceeding
+        {
+          auto core_config = LoadCoreConfig();
+          if (!core_config.llm.enabled ||
+              ResolveActiveLlmProvider(core_config) == nullptr) {
+            recording_ = false;
+            updatePreedit(active_ic_, LlmNotEnabledPreeditText());
+            keyEvent.filterAndAccept();
+            return;
+          }
+        }
         command_mode_ = true;
         std::string selected_text;
         auto &surrounding = active_ic_->surroundingText();

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-03-12 04:14+0800\n"
+"POT-Creation-Date: 2026-03-13 03:05+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,25 +17,37 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/addon/vinput.cpp:94
+#: src/addon/vinput.cpp:95
 #, c-format
 msgid " (%d/%d)"
 msgstr ""
 
-#: src/addon/vinput.cpp:201
+#: src/addon/vinput.cpp:193
 msgid " (Current)"
 msgstr ""
 
-#: src/addon/vinput.cpp:55
+#: src/addon/vinput.cpp:52
+msgid "... Commanding ..."
+msgstr ""
+
+#: src/addon/vinput.cpp:56
 msgid "... Postprocessing ..."
 msgstr ""
 
-#: src/addon/vinput.cpp:53
+#: src/addon/vinput.cpp:54
 msgid "... Recognizing ..."
 msgstr ""
 
-#: src/addon/vinput.cpp:51
+#: src/addon/vinput.cpp:50
 msgid "... Recording ..."
+msgstr ""
+
+#: src/cli/main.cpp:100
+msgid "API key"
+msgstr ""
+
+#: src/cli/command_llm.cpp:42
+msgid "API_KEY"
 msgstr ""
 
 #: src/cli/command_device.cpp:50 src/cli/command_device.cpp:57
@@ -43,26 +55,42 @@ msgstr ""
 msgid "Active"
 msgstr ""
 
-#: src/cli/command_llm.cpp:105
+#: src/cli/command_llm.cpp:106
 #, c-format
 msgid "Active LLM provider set to '%s'."
 msgstr ""
 
-#: src/cli/command_model.cpp:234
+#: src/cli/command_model.cpp:229
 #, c-format
 msgid "Active model set to '%s'. Daemon restarted."
+msgstr ""
+
+#: src/cli/main.cpp:65
+msgid "Add a new scene"
+msgstr ""
+
+#: src/cli/main.cpp:96
+msgid "Add an LLM provider"
+msgstr ""
+
+#: src/cli/command_llm.cpp:42
+msgid "BASE_URL"
+msgstr ""
+
+#: src/cli/main.cpp:98
+msgid "Base URL"
 msgstr ""
 
 #: src/cli/command_model.cpp:91
 msgid "Broken"
 msgstr ""
 
-#: src/cli/command_model.cpp:244
+#: src/cli/command_model.cpp:239
 #, c-format
 msgid "Cannot remove active model '%s'. Use --force to override."
 msgstr ""
 
-#: src/cli/command_llm.cpp:114
+#: src/cli/command_llm.cpp:115
 #, c-format
 msgid "Cannot remove active provider '%s'. Use --force."
 msgstr ""
@@ -72,30 +100,38 @@ msgstr ""
 msgid "Capture device set to '%s'. Restart daemon to apply changes."
 msgstr ""
 
-#: src/addon/vinput.cpp:43
+#: src/addon/vinput.cpp:42
 msgid "Choose Postprocess Menu"
 msgstr ""
 
-#: src/addon/vinput.cpp:47
+#: src/addon/vinput.cpp:46
 #, c-format
 msgid "Choose Result (%zu)"
 msgstr ""
 
-#: src/cli/command_hotword.cpp:106
-msgid "Cleared all hotwords."
-msgstr ""
-
-#: src/addon/vinput.cpp:62
-msgid "Command"
+#: src/cli/main.cpp:185
+msgid "Clear hotwords file path"
 msgstr ""
 
 #: src/common/vinput_config.cpp:48
 msgid "Command Keys"
 msgstr ""
 
-#: src/cli/command_init.cpp:28
+#: src/cli/command_init.cpp:27
 #, c-format
 msgid "Config already exists: %s"
+msgstr ""
+
+#: src/cli/main.cpp:137
+msgid "Config dotpath"
+msgstr ""
+
+#: src/cli/main.cpp:129
+msgid "Config dotpath (e.g. fcitx.triggerKey)"
+msgstr ""
+
+#: src/cli/main.cpp:146
+msgid "Config target: fcitx or extra"
 msgstr ""
 
 #: src/cli/command_config.cpp:41
@@ -108,14 +144,23 @@ msgid ""
 "Right Alt + Control."
 msgstr ""
 
-#: src/cli/command_init.cpp:41
+#. ---- daemon subcommand ----
+#: src/cli/main.cpp:150
+msgid "Control the vinput daemon"
+msgstr ""
+
+#: src/cli/command_init.cpp:40
 #, c-format
 msgid "Created config: %s"
 msgstr ""
 
-#: src/cli/command_init.cpp:63
+#: src/cli/command_init.cpp:62
 #, c-format
 msgid "Created model dir: %s"
+msgstr ""
+
+#: src/cli/command_device.cpp:45
+msgid "DESCRIPTION"
 msgstr ""
 
 #: src/cli/command_status.cpp:18
@@ -149,62 +194,113 @@ msgstr ""
 msgid "Device '%s' not found in PipeWire. Setting it anyway."
 msgstr ""
 
-#: src/cli/command_model.cpp:181
+#: src/cli/main.cpp:199
+msgid "Device name or 'default'"
+msgstr ""
+
+#: src/cli/main.cpp:117
+msgid "Disable LLM processing globally"
+msgstr ""
+
+#: src/cli/main.cpp:70
+msgid "Display label"
+msgstr ""
+
+#: src/cli/main.cpp:41
+msgid "Download and install a model"
+msgstr ""
+
+#: src/cli/command_model.cpp:184
 #, c-format
 msgid "Downloading %s..."
 msgstr ""
 
-#: src/cli/command_hotword.cpp:135
+#: src/cli/main.cpp:187
+msgid "Edit hotwords file in editor"
+msgstr ""
+
+#: src/cli/command_hotword.cpp:61
 msgid "Editor exited with error."
 msgstr ""
 
-#: src/cli/command_init.cpp:68
+#: src/cli/main.cpp:115
+msgid "Enable LLM processing globally"
+msgstr ""
+
+#: src/cli/command_init.cpp:67
 msgid "Everything already initialized"
 msgstr ""
 
-#: src/cli/command_init.cpp:44
+#: src/cli/command_init.cpp:43
 msgid "Failed to create config"
 msgstr ""
 
-#: src/cli/command_init.cpp:59
+#: src/cli/command_init.cpp:58
 #, c-format
 msgid "Failed to create model dir: %s"
 msgstr ""
 
-#: src/cli/command_hotword.cpp:117
-msgid "Failed to create temporary file for editing."
-msgstr ""
-
-#: src/cli/command_hotword.cpp:77
-#, c-format
-msgid "Failed to open file: %s"
-msgstr ""
-
-#: src/cli/command_model.cpp:281
+#: src/cli/command_model.cpp:276
 #, c-format
 msgid "Failed to parse vinput-model.json: %s"
 msgstr ""
 
-#: src/cli/command_model.cpp:275
+#: src/cli/command_model.cpp:270
 #, c-format
 msgid "Failed to read: %s"
 msgstr ""
 
-#: src/cli/command_device.cpp:88 src/cli/command_llm.cpp:79
-#: src/cli/command_llm.cpp:102 src/cli/command_llm.cpp:127
-#: src/cli/command_llm.cpp:143 src/cli/command_llm.cpp:159
+#: src/cli/command_device.cpp:88 src/cli/command_hotword.cpp:31
+#: src/cli/command_hotword.cpp:43 src/cli/command_llm.cpp:80
+#: src/cli/command_llm.cpp:103 src/cli/command_llm.cpp:128
+#: src/cli/command_llm.cpp:144 src/cli/command_llm.cpp:160
 #: src/cli/command_scene.cpp:71 src/cli/command_scene.cpp:94
-#: src/cli/command_scene.cpp:118 src/cli/command_hotword.cpp:85
-#: src/cli/command_hotword.cpp:102
+#: src/cli/command_scene.cpp:118
 msgid "Failed to save config."
 msgstr ""
 
-#: src/cli/command_model.cpp:219
+#: src/cli/command_model.cpp:222
 msgid "Failed to save configuration."
 msgstr ""
 
-#: src/cli/command_hotword.cpp:144
-msgid "Hotwords updated from editor."
+#: src/cli/main.cpp:161
+msgid "Follow log output"
+msgstr ""
+
+#: src/cli/main.cpp:82
+msgid "Force removal of built-in scenes"
+msgstr ""
+
+#: src/cli/main.cpp:126
+msgid "Get a config value by dotpath"
+msgstr ""
+
+#: src/cli/command_model.cpp:84 src/cli/command_model.cpp:144
+msgid "HOTWORDS"
+msgstr ""
+
+#: src/cli/command_hotword.cpp:46
+msgid "Hotwords file path cleared."
+msgstr ""
+
+#: src/cli/command_hotword.cpp:34
+msgid "Hotwords file path saved."
+msgstr ""
+
+#: src/cli/command_hotword.cpp:65
+msgid "Hotwords file updated."
+msgstr ""
+
+#: src/cli/command_scene.cpp:40
+msgid "ID"
+msgstr ""
+
+#: src/cli/main.cpp:37
+msgid "Include remote models from registry"
+msgstr ""
+
+#: src/cli/main.cpp:167
+msgid "Initialize default config and directories"
 msgstr ""
 
 #: src/cli/command_model.cpp:93
@@ -223,23 +319,35 @@ msgid ""
 "postprocess candidate menu. Defaults to Page Up and keypad Page Up."
 msgstr ""
 
-#: src/cli/command_llm.cpp:162
+#: src/cli/command_scene.cpp:40
+msgid "LABEL"
+msgstr ""
+
+#: src/cli/command_model.cpp:84 src/cli/command_model.cpp:144
+msgid "LANGUAGE"
+msgstr ""
+
+#: src/cli/command_llm.cpp:163
 msgid "LLM features are now DISABLED. Restart the daemon to apply."
 msgstr ""
 
-#: src/cli/command_llm.cpp:146
+#: src/cli/command_llm.cpp:147
 msgid "LLM features are now ENABLED. Restart the daemon to apply."
 msgstr ""
 
-#: src/cli/command_llm.cpp:154
+#: src/cli/command_llm.cpp:155
 msgid "LLM is already disabled."
 msgstr ""
 
-#: src/cli/command_llm.cpp:138
+#: src/cli/command_llm.cpp:139
 msgid "LLM is already enabled."
 msgstr ""
 
-#: src/cli/command_llm.cpp:82
+#: src/cli/main.cpp:71
+msgid "LLM prompt"
+msgstr ""
+
+#: src/cli/command_llm.cpp:83
 #, c-format
 msgid "LLM provider '%s' added."
 msgstr ""
@@ -249,48 +357,102 @@ msgstr ""
 msgid "LLM provider '%s' already exists."
 msgstr ""
 
-#: src/cli/command_llm.cpp:97 src/cli/command_llm.cpp:122
+#: src/cli/command_llm.cpp:98 src/cli/command_llm.cpp:123
 #, c-format
 msgid "LLM provider '%s' not found."
 msgstr ""
 
-#: src/cli/command_llm.cpp:130
+#: src/cli/command_llm.cpp:131
 #, c-format
 msgid "LLM provider '%s' removed."
 msgstr ""
 
-#: src/cli/command_hotword.cpp:90
-#, c-format
-msgid "Loaded %zu hotwords."
+#: src/cli/main.cpp:63
+msgid "List all scenes"
 msgstr ""
 
-#: src/cli/command_model.cpp:199
+#: src/cli/main.cpp:194
+msgid "List available audio input devices"
+msgstr ""
+
+#: src/cli/main.cpp:89
+msgid "List configured LLM providers"
+msgstr ""
+
+#: src/cli/main.cpp:35
+msgid "List installed (and optionally remote) models"
+msgstr ""
+
+#: src/cli/command_llm.cpp:42
+msgid "MODEL"
+msgstr ""
+
+#. ---- model subcommand ----
+#: src/cli/main.cpp:30
+msgid "Manage ASR models"
+msgstr ""
+
+#. ---- llm subcommand ----
+#: src/cli/main.cpp:85
+msgid "Manage LLM providers"
+msgstr ""
+
+#. ---- device subcommand ----
+#: src/cli/main.cpp:190
+msgid "Manage capture devices"
+msgstr ""
+
+#. ---- hotword subcommand ----
+#: src/cli/main.cpp:172
+msgid "Manage hotwords file"
+msgstr ""
+
+#. ---- scene subcommand ----
+#: src/cli/main.cpp:60
+msgid "Manage recognition scenes"
+msgstr ""
+
+#: src/cli/command_model.cpp:202
 #, c-format
 msgid "Model '%s' installed successfully."
 msgstr ""
 
-#: src/cli/command_model.cpp:213
+#: src/cli/command_model.cpp:216
 #, c-format
 msgid "Model '%s' is not valid: %s"
 msgstr ""
 
-#: src/cli/command_model.cpp:267
+#: src/cli/command_model.cpp:262
 #, c-format
 msgid "Model '%s' not found at: %s"
 msgstr ""
 
-#: src/cli/command_model.cpp:255
+#: src/cli/command_model.cpp:250
 #, c-format
 msgid "Model '%s' removed."
 msgstr ""
 
-#: src/cli/command_init.cpp:53
+#: src/cli/command_init.cpp:52
 #, c-format
 msgid "Model dir already exists: %s"
 msgstr ""
 
-#: src/cli/command_model.cpp:298
+#: src/cli/main.cpp:42 src/cli/main.cpp:46 src/cli/main.cpp:52
+#: src/cli/main.cpp:57 src/cli/main.cpp:99
+msgid "Model name"
+msgstr ""
+
+#: src/cli/command_device.cpp:45 src/cli/command_llm.cpp:42
+#: src/cli/command_model.cpp:84 src/cli/command_model.cpp:144
+msgid "NAME"
+msgstr ""
+
+#: src/cli/command_model.cpp:293
 msgid "Name"
+msgstr ""
+
+#: src/cli/main.cpp:138
+msgid "New value"
 msgstr ""
 
 #: src/common/vinput_config.cpp:70
@@ -301,22 +463,58 @@ msgstr ""
 msgid "No audio capture devices found or PipeWire is not running."
 msgstr ""
 
-#: src/cli/command_hotword.cpp:33
-msgid "No hotwords configured."
+#: src/cli/command_hotword.cpp:18
+msgid "No hotwords file configured."
 msgstr ""
 
-#: src/cli/command_model.cpp:103 src/cli/command_model.cpp:158
+#: src/cli/command_hotword.cpp:55
+msgid "No hotwords file configured. Use 'hotword set <path>' first."
+msgstr ""
+
+#: src/cli/command_model.cpp:104 src/cli/command_model.cpp:161
 msgid ""
 "No registry URL configured. Set with: vinput config set extra.registry_url "
 "<url>"
+msgstr ""
+
+#: src/cli/main.cpp:162
+msgid "Number of lines to show"
 msgstr ""
 
 #: src/common/vinput_config.cpp:96
 msgid "Open Vinput Settings"
 msgstr ""
 
-#: src/cli/command_model.cpp:299
+#: src/cli/main.cpp:143
+msgid "Open config file in editor"
+msgstr ""
+
+#: src/addon/vinput.cpp:64
+msgid "Original"
+msgstr ""
+
+#: src/cli/main.cpp:27
+msgid "Output in JSON format"
+msgstr ""
+
+#: src/cli/main.cpp:169
+msgid "Overwrite existing config"
+msgstr ""
+
+#: src/cli/command_model.cpp:294
 msgid "Path"
+msgstr ""
+
+#: src/cli/main.cpp:181
+msgid "Path to hotwords file"
+msgstr ""
+
+#: src/addon/vinput.cpp:60
+msgid "Please enable LLM first."
+msgstr ""
+
+#: src/addon/vinput.cpp:58
+msgid "Please select text first."
 msgstr ""
 
 #: src/common/vinput_config.cpp:55
@@ -341,13 +539,54 @@ msgstr ""
 msgid "Previous Page Keys"
 msgstr ""
 
-#: src/addon/vinput.cpp:59
-msgid "Raw ASR"
+#: src/cli/main.cpp:24
+msgid "Print this help message and exit"
 msgstr ""
 
-#: src/cli/command_model.cpp:201
+#: src/cli/main.cpp:97 src/cli/main.cpp:105 src/cli/main.cpp:111
+msgid "Provider name"
+msgstr ""
+
+#: src/cli/main.cpp:121
+msgid "Read or write configuration values"
+msgstr ""
+
+#: src/cli/main.cpp:139
+msgid "Read value from stdin"
+msgstr ""
+
+#: src/cli/main.cpp:79
+msgid "Remove a scene"
+msgstr ""
+
+#: src/cli/main.cpp:110
+msgid "Remove an LLM provider"
+msgstr ""
+
+#: src/cli/main.cpp:51
+msgid "Remove an installed model"
+msgstr ""
+
+#: src/cli/main.cpp:101
+msgid "Request timeout in milliseconds"
+msgstr ""
+
+#: src/cli/main.cpp:156
+msgid "Restart the daemon"
+msgstr ""
+
+#: src/cli/command_model.cpp:204
 #, c-format
 msgid "Run `vinput model use %s` to activate"
+msgstr ""
+
+#: src/cli/command_model.cpp:144
+msgid "SIZE"
+msgstr ""
+
+#: src/cli/command_device.cpp:45 src/cli/command_model.cpp:84
+#: src/cli/command_model.cpp:144 src/cli/command_scene.cpp:40
+msgid "STATUS"
 msgstr ""
 
 #: src/cli/command_scene.cpp:76
@@ -360,22 +599,99 @@ msgstr ""
 msgid "Scene '%s' removed."
 msgstr ""
 
-#: src/cli/command_model.cpp:300
+#: src/cli/main.cpp:69 src/cli/main.cpp:75 src/cli/main.cpp:80
+msgid "Scene ID"
+msgstr ""
+
+#: src/cli/main.cpp:136
+msgid "Set a config value by dotpath"
+msgstr ""
+
+#: src/cli/main.cpp:104
+msgid "Set active LLM provider"
+msgstr ""
+
+#: src/cli/main.cpp:198
+msgid "Set active capture device"
+msgstr ""
+
+#: src/cli/main.cpp:45
+msgid "Set active model"
+msgstr ""
+
+#: src/cli/main.cpp:74
+msgid "Set active scene"
+msgstr ""
+
+#: src/cli/main.cpp:180
+msgid "Set hotwords file path"
+msgstr ""
+
+#: src/cli/main.cpp:176
+msgid "Show configured hotwords file path"
+msgstr ""
+
+#: src/cli/main.cpp:160
+msgid "Show daemon logs"
+msgstr ""
+
+#: src/cli/main.cpp:56
+msgid "Show model details"
+msgstr ""
+
+#. ---- status subcommand ----
+#: src/cli/main.cpp:203
+msgid "Show overall vinput status"
+msgstr ""
+
+#: src/cli/command_model.cpp:295
 msgid "Size"
+msgstr ""
+
+#: src/cli/main.cpp:53 src/cli/main.cpp:112
+msgid "Skip confirmation"
+msgstr ""
+
+#: src/cli/main.cpp:153
+msgid "Start the daemon"
+msgstr ""
+
+#: src/cli/main.cpp:154
+msgid "Stop the daemon"
 msgstr ""
 
 #: src/cli/command_device.cpp:52
 msgid "System Default"
 msgstr ""
 
+#: src/cli/command_model.cpp:84 src/cli/command_model.cpp:144
+msgid "TYPE"
+msgstr ""
+
 #: src/common/vinput_config.cpp:34
 msgid "Trigger Key"
 msgstr ""
 
-#: src/cli/command_model.cpp:145
+#: src/addon/vinput.cpp:67
+msgid "Voice Command"
+msgstr ""
+
+#: src/cli/command_model.cpp:147
 msgid "available"
 msgstr ""
 
-#: src/cli/command_model.cpp:145
+#: src/cli/command_model.cpp:147
 msgid "installed"
+msgstr ""
+
+#: src/cli/command_model.cpp:95 src/cli/command_model.cpp:148
+msgid "no"
+msgstr ""
+
+#: src/cli/main.cpp:22
+msgid "vinput - Voice input model and daemon manager"
+msgstr ""
+
+#: src/cli/command_model.cpp:95 src/cli/command_model.cpp:148
+msgid "yes"
 msgstr ""

@@ -12,7 +12,7 @@ struct VinputSettings {
   fcitx::KeyList triggerKeys{fcitx::Key(FcitxKey_Alt_R)};
   fcitx::KeyList commandKeys{fcitx::Key(FcitxKey_Control_R)};
   fcitx::KeyList sceneMenuKeys{
-      fcitx::Key(FcitxKey_Alt_R, fcitx::KeyState::Ctrl)};
+      fcitx::Key(FcitxKey_Shift_R)};
   fcitx::KeyList pagePrevKeys{
       fcitx::Key(FcitxKey_Page_Up),
       fcitx::Key(FcitxKey_KP_Page_Up),
