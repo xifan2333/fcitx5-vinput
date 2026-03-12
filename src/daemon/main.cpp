@@ -248,12 +248,15 @@ int main(int argc, char *argv[]) {
   fprintf(stderr, "vinput-daemon: running\n");
 
   int dbus_fd = dbus.GetFd();
+  int notify_fd = dbus.GetNotifyFd();
   while (g_running) {
-    struct pollfd fds[1];
+    struct pollfd fds[2];
     fds[0].fd = dbus_fd;
     fds[0].events = POLLIN;
+    fds[1].fd = notify_fd;
+    fds[1].events = POLLIN;
 
-    int ret = poll(fds, 1, 1000);
+    int ret = poll(fds, 2, 1000);
     if (ret < 0) {
       if (errno == EINTR)
         continue;
@@ -261,9 +264,14 @@ int main(int argc, char *argv[]) {
       break;
     }
 
-    if (ret > 0 && (fds[0].revents & POLLIN)) {
-      while (dbus.ProcessOnce()) {
-        // process all pending messages
+    if (ret > 0) {
+      if (fds[1].revents & POLLIN) {
+        dbus.FlushEmitQueue();
+      }
+      if (fds[0].revents & POLLIN) {
+        while (dbus.ProcessOnce()) {
+          // process all pending messages
+        }
       }
     }
   }

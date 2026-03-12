@@ -1,10 +1,12 @@
 #pragma once
 
 #include <systemd/sd-bus.h>
+#include <sys/eventfd.h>
 
 #include <functional>
 #include <mutex>
 #include <string>
+#include <vector>
 
 class DbusService {
 public:
@@ -13,7 +15,9 @@ public:
 
   bool Start();
   int GetFd() const;
+  int GetNotifyFd() const;
   bool ProcessOnce();
+  void FlushEmitQueue(); // main thread only
   void EmitRecognitionResult(const std::string &text);
   void EmitStatusChanged(const std::string &status);
 
@@ -35,7 +39,15 @@ public:
 private:
   sd_bus *bus_ = nullptr;
   sd_bus_slot *slot_ = nullptr;
-  std::recursive_mutex bus_mutex_;
+  int notify_fd_ = -1;
+
+  struct PendingEmit {
+    bool is_result;
+    std::string payload;
+  };
+  std::mutex emit_mutex_;
+  std::vector<PendingEmit> emit_queue_;
+
   std::function<void()> start_handler_;
   std::function<void(const std::string &)> start_command_handler_;
   std::function<std::string(const std::string &scene_id)> stop_handler_;

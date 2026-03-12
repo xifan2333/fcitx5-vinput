@@ -1,6 +1,9 @@
 #include "dbus_service.h"
 #include "common/dbus_interface.h"
 
+#include <sys/eventfd.h>
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstring>
 
@@ -14,6 +17,9 @@ DbusService::~DbusService() {
   }
   if (bus_) {
     sd_bus_flush_close_unref(bus_);
+  }
+  if (notify_fd_ >= 0) {
+    close(notify_fd_);
   }
 }
 
@@ -34,6 +40,12 @@ static const sd_bus_vtable vtable[] = {
 };
 
 bool DbusService::Start() {
+  notify_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+  if (notify_fd_ < 0) {
+    fprintf(stderr, "vinput: failed to create eventfd: %s\n", strerror(errno));
+    return false;
+  }
+
   int ret = sd_bus_open_user(&bus_);
   if (ret < 0) {
     fprintf(stderr, "vinput: failed to open user bus: %s\n", strerror(-ret));
@@ -59,8 +71,9 @@ bool DbusService::Start() {
 
 int DbusService::GetFd() const { return sd_bus_get_fd(bus_); }
 
+int DbusService::GetNotifyFd() const { return notify_fd_; }
+
 bool DbusService::ProcessOnce() {
-  std::lock_guard<std::recursive_mutex> lock(bus_mutex_);
   int ret = sd_bus_process(bus_, nullptr);
   if (ret < 0) {
     fprintf(stderr, "vinput: sd_bus_process failed: %s\n", strerror(-ret));
@@ -69,16 +82,44 @@ bool DbusService::ProcessOnce() {
   return ret > 0;
 }
 
+void DbusService::FlushEmitQueue() {
+  // Drain the eventfd counter
+  uint64_t val;
+  (void)read(notify_fd_, &val, sizeof(val));
+
+  std::vector<PendingEmit> local;
+  {
+    std::lock_guard<std::mutex> lock(emit_mutex_);
+    local.swap(emit_queue_);
+  }
+
+  for (const auto &item : local) {
+    if (item.is_result) {
+      sd_bus_emit_signal(bus_, kObjectPath, kInterface,
+                         kSignalRecognitionResult, "s", item.payload.c_str());
+    } else {
+      sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalStatusChanged,
+                         "s", item.payload.c_str());
+    }
+  }
+}
+
 void DbusService::EmitRecognitionResult(const std::string &text) {
-  std::lock_guard<std::recursive_mutex> lock(bus_mutex_);
-  sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalRecognitionResult,
-                     "s", text.c_str());
+  {
+    std::lock_guard<std::mutex> lock(emit_mutex_);
+    emit_queue_.push_back({true, text});
+  }
+  uint64_t val = 1;
+  (void)write(notify_fd_, &val, sizeof(val));
 }
 
 void DbusService::EmitStatusChanged(const std::string &status) {
-  std::lock_guard<std::recursive_mutex> lock(bus_mutex_);
-  sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalStatusChanged, "s",
-                     status.c_str());
+  {
+    std::lock_guard<std::mutex> lock(emit_mutex_);
+    emit_queue_.push_back({false, status});
+  }
+  uint64_t val = 1;
+  (void)write(notify_fd_, &val, sizeof(val));
 }
 
 void DbusService::SetStartHandler(std::function<void()> handler) {
@@ -101,13 +142,11 @@ void DbusService::SetStatusHandler(std::function<std::string()> handler) {
 
 int DbusService::handleStartRecording(sd_bus_message *m, void *userdata,
                                       sd_bus_error *error) {
-  (void)m;
   (void)error;
   auto *self = static_cast<DbusService *>(userdata);
   if (self->start_handler_) {
     self->start_handler_();
   }
-  std::lock_guard<std::recursive_mutex> lock(self->bus_mutex_);
   return sd_bus_reply_method_return(m, "");
 }
 
@@ -126,7 +165,6 @@ int DbusService::handleStartCommandRecording(sd_bus_message *m, void *userdata,
   if (self->start_command_handler_) {
     self->start_command_handler_(selected_text ? selected_text : "");
   }
-  std::lock_guard<std::recursive_mutex> lock(self->bus_mutex_);
   return sd_bus_reply_method_return(m, "");
 }
 
@@ -146,7 +184,6 @@ int DbusService::handleStopRecording(sd_bus_message *m, void *userdata,
   if (self->stop_handler_) {
     result = self->stop_handler_(scene_id ? scene_id : "");
   }
-  std::lock_guard<std::recursive_mutex> lock(self->bus_mutex_);
   return sd_bus_reply_method_return(m, "s", result.c_str());
 }
 
@@ -158,6 +195,5 @@ int DbusService::handleGetStatus(sd_bus_message *m, void *userdata,
   if (self->status_handler_) {
     status = self->status_handler_();
   }
-  std::lock_guard<std::recursive_mutex> lock(self->bus_mutex_);
   return sd_bus_reply_method_return(m, "s", status.c_str());
 }
