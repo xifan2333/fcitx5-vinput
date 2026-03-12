@@ -1,4 +1,6 @@
 #include "mainwindow.h"
+#include <QAbstractItemView>
+#include <QColor>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -131,8 +133,10 @@ void MainWindow::setupGeneralTab() {
   tabWidget->addTab(generalTab, tr("General Settings"));
 }
 
-#include <QListWidget>
+#include <QAbstractItemView>
+#include <QHeaderView>
 #include <QProcess>
+#include <QTableWidget>
 #include <QTextEdit>
 #include <QTimer>
 
@@ -150,6 +154,7 @@ struct ModelEntry {
   QString language;
   QString status;
   QString size;
+  bool supports_hotwords = false;
 };
 
 bool RunVinputJson(const QStringList &args, QJsonDocument *out_doc,
@@ -239,6 +244,7 @@ QList<ModelEntry> LoadLocalModelsFromCli(QString *error_out) {
     entry.model_type = obj.value("model_type").toString();
     entry.language = obj.value("language").toString();
     entry.status = obj.value("status").toString();
+    entry.supports_hotwords = obj.value("supports_hotwords").toBool(false);
     models.push_back(entry);
   }
   return models;
@@ -268,6 +274,7 @@ QList<ModelEntry> LoadRemoteModelsFromCli(QString *error_out) {
     entry.language = obj.value("language").toString();
     entry.status = obj.value("status").toString();
     entry.size = obj.value("size").toString();
+    entry.supports_hotwords = obj.value("supports_hotwords").toBool(false);
     models.push_back(entry);
   }
   return models;
@@ -275,14 +282,30 @@ QList<ModelEntry> LoadRemoteModelsFromCli(QString *error_out) {
 
 } // namespace
 
+static void setupTable(QTableWidget *t, const QStringList &headers) {
+  t->setColumnCount(headers.size());
+  t->setHorizontalHeaderLabels(headers);
+  t->setSelectionBehavior(QAbstractItemView::SelectRows);
+  t->setSelectionMode(QAbstractItemView::SingleSelection);
+  t->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  t->setAlternatingRowColors(true);
+  t->verticalHeader()->hide();
+  t->horizontalHeader()->setStretchLastSection(true);
+  t->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+}
+
 void MainWindow::setupModelTab() {
   modelTab = new QWidget();
   auto *layout = new QVBoxLayout(modelTab);
 
-  // List and Action Buttons
-  auto *listLayout = new QHBoxLayout();
-  listModels = new QListWidget();
-  listLayout->addWidget(listModels);
+  // --- Installed Models ---
+  auto *lblLocal = new QLabel(tr("<b>Installed Models</b>"));
+  layout->addWidget(lblLocal);
+
+  auto *topLayout = new QHBoxLayout();
+  tableModels = new QTableWidget();
+  setupTable(tableModels, {tr("Name"), tr("Type"), tr("Language"), tr("Hotwords"), tr("Status")});
+  topLayout->addWidget(tableModels, 1);
 
   auto *btnLayout = new QVBoxLayout();
   btnUseModel = new QPushButton(tr("Use Selected"));
@@ -292,32 +315,33 @@ void MainWindow::setupModelTab() {
   btnLayout->addWidget(btnRemoveModel);
   btnLayout->addWidget(btnRefreshModels);
   btnLayout->addStretch();
-  listLayout->addLayout(btnLayout);
+  topLayout->addLayout(btnLayout);
+  layout->addLayout(topLayout);
 
-  layout->addLayout(listLayout);
-
-  // Remote Models
-  auto *lblRemote = new QLabel(tr("Remote Models (Registry):"));
+  // --- Remote Models ---
+  auto *lblRemote = new QLabel(tr("<b>Remote Models (Registry)</b>"));
   layout->addWidget(lblRemote);
 
-  listRemoteModels = new QListWidget();
-  layout->addWidget(listRemoteModels);
+  auto *remoteLayout = new QHBoxLayout();
+  tableRemoteModels = new QTableWidget();
+  setupTable(tableRemoteModels, {tr("Name"), tr("Display Name"), tr("Type"), tr("Language"), tr("Size"), tr("Hotwords"), tr("Status")});
+  remoteLayout->addWidget(tableRemoteModels, 1);
 
-  // Download Area
-  auto *lblDownload = new QLabel(tr("Download Selected Remote Model:"));
-  layout->addWidget(lblDownload);
+  btnDownloadModel = new QPushButton(tr("Download Selected"));
+  auto *dlLayout = new QVBoxLayout();
+  dlLayout->addWidget(btnDownloadModel);
+  dlLayout->addStretch();
+  remoteLayout->addLayout(dlLayout);
+  layout->addLayout(remoteLayout);
 
-  btnDownloadModel = new QPushButton(tr("Download"));
-  layout->addWidget(btnDownloadModel);
-
-  // Log Area
+  // --- Log Area ---
   textLog = new QTextEdit();
   textLog->setReadOnly(true);
+  textLog->setMaximumHeight(100);
   layout->addWidget(textLog);
 
   tabWidget->addTab(modelTab, tr("Model Management"));
 
-  // Connect Slots
   connect(btnUseModel, &QPushButton::clicked, this,
           &MainWindow::onUseModelClicked);
   connect(btnRemoveModel, &QPushButton::clicked, this,
@@ -336,93 +360,126 @@ void MainWindow::setupModelTab() {
           QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
           &MainWindow::onProcessFinished);
 
-  // Initial Refresh
   QTimer::singleShot(0, this, &MainWindow::refreshModelList);
 }
 
+static QTableWidgetItem *makeCell(const QString &text, const QString &data = {}) {
+  auto *cell = new QTableWidgetItem(text);
+  cell->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
+  if (!data.isEmpty())
+    cell->setData(Qt::UserRole, data);
+  return cell;
+}
+
 void MainWindow::refreshModelList() {
-  listModels->clear();
+  tableModels->setRowCount(0);
 
   QString local_err;
   QList<ModelEntry> local_models = LoadLocalModelsFromCli(&local_err);
-  if (!local_err.isEmpty()) {
+  if (!local_err.isEmpty())
     textLog->append(tr("Local model list error: %1").arg(local_err));
-  }
 
   for (const auto &m : local_models) {
-    QString status = m.status.isEmpty() ? "installed" : m.status;
-    QString label = QString("%1  [%2]").arg(m.name, status);
-    if (!m.language.isEmpty() || !m.model_type.isEmpty()) {
-      label += QString("  %1 %2").arg(m.model_type, m.language).trimmed();
+    int row = tableModels->rowCount();
+    tableModels->insertRow(row);
+    tableModels->setItem(row, 0, makeCell(m.name, m.name));
+    tableModels->setItem(row, 1, makeCell(m.model_type));
+    tableModels->setItem(row, 2, makeCell(m.language));
+    QString hw = m.supports_hotwords ? tr("yes") : tr("no");
+    auto *hwCell = makeCell(hw);
+    hwCell->setForeground(m.supports_hotwords ? QColor("#2a9d2a") : QColor("#888888"));
+    tableModels->setItem(row, 3, hwCell);
+    QString status = m.status.isEmpty() ? tr("installed") : m.status;
+    if (m.status == "active") status = tr("active");
+    else if (m.status == "broken") status = tr("broken");
+    else if (m.status == "installed") status = tr("installed");
+    auto *stCell = makeCell(status);
+    if (m.status == "active") {
+      stCell->setForeground(QColor("#1565c0"));
+      QFont f = stCell->font(); f.setBold(true); stCell->setFont(f);
+    } else if (m.status == "broken") {
+      stCell->setForeground(QColor("#c62828"));
     }
-    auto *item = new QListWidgetItem(label, listModels);
-    item->setData(Qt::UserRole, m.name);
+    tableModels->setItem(row, 4, stCell);
   }
 
-  listRemoteModels->clear();
+  tableRemoteModels->setRowCount(0);
   QString remote_err;
   QList<ModelEntry> remote_models = LoadRemoteModelsFromCli(&remote_err);
-  if (!remote_err.isEmpty()) {
+  if (!remote_err.isEmpty())
     textLog->append(tr("Remote model list error: %1").arg(remote_err));
-  }
 
   for (const auto &m : remote_models) {
-    QString display = m.display_name.isEmpty() ? m.name : m.display_name;
-    QString label = QString("%1  [%2]").arg(display, m.status);
-    if (!m.size.isEmpty())
-      label += QString("  %1").arg(m.size);
-    if (!m.model_type.isEmpty() || !m.language.isEmpty()) {
-      label += QString("  %1 %2").arg(m.model_type, m.language).trimmed();
+    int row = tableRemoteModels->rowCount();
+    tableRemoteModels->insertRow(row);
+    tableRemoteModels->setItem(row, 0, makeCell(m.name, m.name));
+    tableRemoteModels->setItem(row, 1, makeCell(m.display_name));
+    tableRemoteModels->setItem(row, 2, makeCell(m.model_type));
+    tableRemoteModels->setItem(row, 3, makeCell(m.language));
+    tableRemoteModels->setItem(row, 4, makeCell(m.size));
+    QString hw = m.supports_hotwords ? tr("yes") : tr("no");
+    auto *hwCell = makeCell(hw);
+    hwCell->setForeground(m.supports_hotwords ? QColor("#2a9d2a") : QColor("#888888"));
+    tableRemoteModels->setItem(row, 5, hwCell);
+    QString remoteStatus = m.status;
+    if (m.status == "installed") remoteStatus = tr("installed");
+    else if (m.status == "available") remoteStatus = tr("available");
+    auto *stCell = makeCell(remoteStatus);
+    if (m.status == "installed") {
+      stCell->setForeground(QColor("#888888"));
+      for (int c = 0; c < tableRemoteModels->columnCount(); ++c) {
+        if (auto *ci = tableRemoteModels->item(row, c))
+          ci->setFlags(ci->flags() & ~Qt::ItemIsEnabled);
+      }
+    } else {
+      stCell->setForeground(QColor("#2a9d2a"));
     }
-    if (!m.display_name.isEmpty() && m.display_name != m.name)
-      label += QString("  (%1)").arg(m.name);
-
-    auto *item = new QListWidgetItem(label, listRemoteModels);
-    item->setData(Qt::UserRole, m.name);
-    if (m.status == "installed")
-      item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+    tableRemoteModels->setItem(row, 6, stCell);
   }
 }
 
 void MainWindow::onUseModelClicked() {
-  if (auto item = listModels->currentItem()) {
-    QString model_name = item->data(Qt::UserRole).toString();
-    if (model_name.isEmpty())
-      model_name = item->text();
-    comboModel->setCurrentText(model_name);
-    tabWidget->setCurrentWidget(generalTab);
-  }
+  auto items = tableModels->selectedItems();
+  if (items.isEmpty()) return;
+  QString model_name = tableModels->item(tableModels->currentRow(), 0)
+                           ->data(Qt::UserRole).toString();
+  if (model_name.isEmpty())
+    model_name = tableModels->item(tableModels->currentRow(), 0)->text();
+  comboModel->setCurrentText(model_name);
+  tabWidget->setCurrentWidget(generalTab);
 }
 
 void MainWindow::onRemoveModelClicked() {
-  if (auto item = listModels->currentItem()) {
-    QString model_name = item->data(Qt::UserRole).toString();
-    if (model_name.isEmpty())
-      model_name = item->text();
-    auto response = QMessageBox::question(
-        this, tr("Confirm"),
-        tr("Are you sure you want to remove model '%1'?").arg(model_name));
-    if (response == QMessageBox::Yes) {
-      btnDownloadModel->setEnabled(false);
-      btnRemoveModel->setEnabled(false);
-      textLog->append("Removing " + model_name + "...");
-      cliProcess->start("vinput", QStringList()
-                                      << "model" << "remove" << model_name);
-    }
+  auto items = tableModels->selectedItems();
+  if (items.isEmpty()) return;
+  QString model_name = tableModels->item(tableModels->currentRow(), 0)
+                           ->data(Qt::UserRole).toString();
+  if (model_name.isEmpty())
+    model_name = tableModels->item(tableModels->currentRow(), 0)->text();
+  auto response = QMessageBox::question(
+      this, tr("Confirm"),
+      tr("Are you sure you want to remove model '%1'?").arg(model_name));
+  if (response == QMessageBox::Yes) {
+    btnDownloadModel->setEnabled(false);
+    btnRemoveModel->setEnabled(false);
+    textLog->append("Removing " + model_name + "...");
+    cliProcess->start("vinput", QStringList()
+                                    << "model" << "remove" << model_name);
   }
 }
 
 void MainWindow::onDownloadModelClicked() {
-  if (auto item = listRemoteModels->currentItem()) {
-    QString model_name = item->data(Qt::UserRole).toString();
-    if (model_name.isEmpty())
-      model_name = item->text();
-    btnDownloadModel->setEnabled(false);
-    btnRemoveModel->setEnabled(false);
-    textLog->append("Downloading " + model_name + "...");
-    cliProcess->start("vinput", QStringList()
-                                    << "model" << "add" << model_name);
-  }
+  auto items = tableRemoteModels->selectedItems();
+  if (items.isEmpty()) return;
+  QString model_name = tableRemoteModels->item(tableRemoteModels->currentRow(), 0)
+                           ->data(Qt::UserRole).toString();
+  if (model_name.isEmpty())
+    model_name = tableRemoteModels->item(tableRemoteModels->currentRow(), 0)->text();
+  btnDownloadModel->setEnabled(false);
+  btnRemoveModel->setEnabled(false);
+  textLog->append("Downloading " + model_name + "...");
+  cliProcess->start("vinput", QStringList()
+                                  << "model" << "add" << model_name);
 }
 
 void MainWindow::onProcessReadyReadStandardOutput() {
@@ -535,7 +592,7 @@ void MainWindow::onSaveClicked() {
 
   if (SaveCoreConfig(currentConfig)) {
     // notify fcitx5 daemon to load new config via dbus
-    QProcess::startDetached("vinput", QStringList() << "daemon" << "reload");
+    QProcess::startDetached("vinput", QStringList() << "daemon" << "restart");
     QMessageBox::information(this, tr("Success"),
                              tr("Settings saved successfully!"));
     close();
@@ -870,11 +927,17 @@ void MainWindow::onLlmAdd() {
   auto *editModel = new QLineEdit();
   auto *editApiKey = new QLineEdit();
   editApiKey->setEchoMode(QLineEdit::Password);
+  auto *spinTimeout = new QSpinBox();
+  spinTimeout->setRange(1000, 300000);
+  spinTimeout->setSingleStep(1000);
+  spinTimeout->setValue(4000);
+  spinTimeout->setSuffix(" ms");
 
   form->addRow(tr("Name:"), editName);
   form->addRow(tr("Base URL:"), editBaseUrl);
   form->addRow(tr("Model:"), editModel);
   form->addRow(tr("API Key:"), editApiKey);
+  form->addRow(tr("Timeout (ms):"), spinTimeout);
 
   auto *buttons =
       new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -905,6 +968,7 @@ void MainWindow::onLlmAdd() {
   provider.base_url = editBaseUrl->text().trimmed().toStdString();
   provider.model = editModel->text().trimmed().toStdString();
   provider.api_key = editApiKey->text().toStdString();
+  provider.timeout_ms = spinTimeout->value();
   config.llm.providers.push_back(provider);
 
   if (config.llm.activeProvider.empty())
@@ -946,11 +1010,17 @@ void MainWindow::onLlmEdit() {
   auto *editModel = new QLineEdit(QString::fromStdString(found->model));
   auto *editApiKey = new QLineEdit(QString::fromStdString(found->api_key));
   editApiKey->setEchoMode(QLineEdit::Password);
+  auto *spinTimeout = new QSpinBox();
+  spinTimeout->setRange(1000, 300000);
+  spinTimeout->setSingleStep(1000);
+  spinTimeout->setValue(found->timeout_ms);
+  spinTimeout->setSuffix(" ms");
 
   form->addRow(tr("Name:"), editName);
   form->addRow(tr("Base URL:"), editBaseUrl);
   form->addRow(tr("Model:"), editModel);
   form->addRow(tr("API Key:"), editApiKey);
+  form->addRow(tr("Timeout (ms):"), spinTimeout);
 
   auto *buttons =
       new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -967,6 +1037,7 @@ void MainWindow::onLlmEdit() {
   found->base_url = editBaseUrl->text().trimmed().toStdString();
   found->model = editModel->text().trimmed().toStdString();
   found->api_key = editApiKey->text().toStdString();
+  found->timeout_ms = spinTimeout->value();
 
   if (!SaveCoreConfig(config)) {
     QMessageBox::critical(this, tr("Error"),
@@ -1067,7 +1138,7 @@ void MainWindow::setupHotwordTab() {
   textHotwords = new QTextEdit();
   layout->addWidget(textHotwords);
 
-  tabWidget->addTab(hotwordTab, tr("Hotwords"));
+  tabWidget->addTab(hotwordTab, tr("Hotword Settings"));
 
   connect(btnBrowseHotwords, &QPushButton::clicked, this,
           &MainWindow::onBrowseHotwordsClicked);

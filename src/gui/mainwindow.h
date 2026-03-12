@@ -3,12 +3,14 @@
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QHeaderView>
 #include <QLabel>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTabWidget>
+#include <QTableWidget>
 #include <QTextEdit>
 
 #include "common/core_config.h"
@@ -88,8 +90,8 @@ private:
   QPushButton *btnSave;
 
   // Model Tab
-  QListWidget *listModels;
-  QListWidget *listRemoteModels;
+  QTableWidget *tableModels;
+  QTableWidget *tableRemoteModels;
   QTextEdit *textLog;
   QPushButton *btnUseModel;
   QPushButton *btnRemoveModel;
