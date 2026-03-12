@@ -4,8 +4,18 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
+
+namespace {
+
+float SafeStof(const std::string &s, float default_val) {
+  try { return std::stof(s); } catch (...) { return default_val; }
+}
+
+int SafeStoi(const std::string &s, int default_val) {
+  try { return std::stoi(s); } catch (...) { return default_val; }
+}
+
+} // namespace
 
 AsrEngine::AsrEngine() = default;
 
@@ -65,7 +75,7 @@ bool AsrEngine::Init(const ModelInfo &info, const AsrConfig &asr_config) {
   if (!f_lm.empty()) {
     config.lm_config.model = f_lm.c_str();
     config.lm_config.scale =
-        std::stof(info.Param("lm_scale", "0.5"));
+        SafeStof(info.Param("lm_scale", "0.5"), 0.5f);
   }
   const auto &type = info.model_type;
 
@@ -108,7 +118,7 @@ bool AsrEngine::Init(const ModelInfo &info, const AsrConfig &asr_config) {
     config.model_config.whisper.language = p_language.c_str();
     config.model_config.whisper.task = "transcribe";
     config.model_config.whisper.tail_paddings =
-        std::stoi(info.Param("tail_paddings", "-1"));
+        SafeStoi(info.Param("tail_paddings", "-1"), -1);
     config.model_config.whisper.enable_token_timestamps =
         info.ParamBool("enable_token_timestamps") ? 1 : 0;
     config.model_config.whisper.enable_segment_timestamps =
@@ -202,13 +212,13 @@ bool AsrEngine::Init(const ModelInfo &info, const AsrConfig &asr_config) {
       config.model_config.funasr_nano.hotwords = p_hotwords.c_str();
     }
     config.model_config.funasr_nano.max_new_tokens =
-        std::stoi(info.Param("max_new_tokens", "1024"));
+        SafeStoi(info.Param("max_new_tokens", "1024"), 1024);
     config.model_config.funasr_nano.temperature =
-        std::stof(info.Param("temperature", "1.0"));
+        SafeStof(info.Param("temperature", "1.0"), 1.0f);
     config.model_config.funasr_nano.top_p =
-        std::stof(info.Param("top_p", "0.9"));
+        SafeStof(info.Param("top_p", "0.9"), 0.9f);
     config.model_config.funasr_nano.seed =
-        std::stoi(info.Param("seed", "0"));
+        SafeStoi(info.Param("seed", "0"), 0);
     config.model_config.model_type = "funasr_nano";
 
   } else {
@@ -282,10 +292,6 @@ void AsrEngine::Shutdown() {
     SherpaOnnxDestroyOfflineRecognizer(recognizer_);
     recognizer_ = nullptr;
     initialized_ = false;
-  }
-  if (!hotwords_tmp_path_.empty()) {
-    std::filesystem::remove(hotwords_tmp_path_);
-    hotwords_tmp_path_.clear();
   }
 }
 

@@ -13,6 +13,7 @@ namespace {
 
 using json = nlohmann::json;
 constexpr std::size_t kMaxLoggedResponseBytes = 2048;
+constexpr std::size_t kMaxResponseBytes = 1 * 1024 * 1024; // 1 MB limit
 
 size_t WriteResponseCallback(char *ptr, size_t size, size_t nmemb,
                              void *userdata) {
@@ -22,6 +23,8 @@ size_t WriteResponseCallback(char *ptr, size_t size, size_t nmemb,
   }
 
   auto *response = static_cast<std::string *>(userdata);
+  if (response->size() + total > kMaxResponseBytes)
+    return 0;
   response->append(ptr, total);
   return total;
 }

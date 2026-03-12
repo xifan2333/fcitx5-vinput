@@ -208,6 +208,8 @@ int main(int argc, char *argv[]) {
     if (pcm.empty()) {
       fprintf(stderr,
               "vinput-daemon: recording stopped with empty audio buffer\n");
+      current_is_command = false;
+      current_selected_text.clear();
       current_status = Status::Idle;
       dbus.EmitStatusChanged(StatusToString(Status::Idle));
       return "";
@@ -218,6 +220,8 @@ int main(int argc, char *argv[]) {
               "vinput-daemon: recording too short, skipping inference: "
               "%zu samples (%.1f ms)\n",
               pcm.size(), static_cast<double>(pcm.size()) * 1000.0 / 16000.0);
+      current_is_command = false;
+      current_selected_text.clear();
       current_status = Status::Idle;
       dbus.EmitStatusChanged(StatusToString(Status::Idle));
       return "";

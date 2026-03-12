@@ -29,5 +29,4 @@ public:
 private:
   const SherpaOnnxOfflineRecognizer *recognizer_ = nullptr;
   bool initialized_ = false;
-  std::string hotwords_tmp_path_;
 };
