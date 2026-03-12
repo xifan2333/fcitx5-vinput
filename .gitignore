@@ -11,3 +11,6 @@ packaging/arch/*.tar.gz
 .cache/
 compile_commands.json
 .qoder/*.po~
+*.po~
+*.orig
+*~
