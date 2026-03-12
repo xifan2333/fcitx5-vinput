@@ -66,13 +66,17 @@ jobs:
             dpkg-dev \
             curl \
             libcurl4-openssl-dev \
+            libssl-dev \
+            libarchive-dev \
             libpipewire-0.3-dev \
             libsystemd-dev \
             libfcitx5core-dev \
             libfcitx5config-dev \
             libfcitx5utils-dev \
             fcitx5-modules-dev \
-            nlohmann-json3-dev
+            nlohmann-json3-dev \
+            qtbase5-dev \
+            qttools5-dev
 
       - uses: actions/download-artifact@v4
         with:
@@ -132,9 +136,13 @@ jobs:
             cmake \
             curl \
             fcitx5 \
+            libarchive \
             nlohmann-json \
+            openssl \
             pipewire \
             pkgconf \
+            qt5-base \
+            qt5-tools \
             systemd
 
       - name: Render PKGBUILD
