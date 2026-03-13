@@ -126,7 +126,8 @@ int main(int argc, char *argv[]) {
         scene_config.activeSceneId = runtime_settings.scenes.activeScene;
         scene_config.scenes = runtime_settings.scenes.definitions;
         if (job.is_command) {
-          if (runtime_settings.llm.enabled) {
+          if (runtime_settings.llm.enabled && 
+              runtime_settings.llm.commandCandidateCount > 0) {
             current_status = Status::Postprocessing;
             dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
           }
@@ -140,7 +141,9 @@ int main(int argc, char *argv[]) {
         } else {
           const auto &scene =
               vinput::scene::Resolve(scene_config, job.scene_id);
-          if (runtime_settings.llm.enabled && !scene.prompt.empty()) {
+          if (runtime_settings.llm.enabled && 
+              runtime_settings.llm.postprocessCandidateCount > 0 &&
+              !scene.prompt.empty()) {
             current_status = Status::Postprocessing;
             dbus.EmitStatusChanged(StatusToString(Status::Postprocessing));
           }
@@ -177,6 +180,10 @@ int main(int argc, char *argv[]) {
   std::string current_selected_text;
 
   dbus.SetStartHandler([&]() {
+    if (current_status == Status::Recording) {
+      fprintf(stderr, "vinput-daemon: already recording, ignoring duplicate start request\n");
+      return;
+    }
     current_is_command = false;
     current_selected_text.clear();
     auto runtime_settings = LoadCoreConfig();
@@ -193,6 +200,10 @@ int main(int argc, char *argv[]) {
   });
 
   dbus.SetStartCommandHandler([&](const std::string &selected_text) {
+    if (current_status == Status::Recording) {
+      fprintf(stderr, "vinput-daemon: already recording, ignoring duplicate command start request\n");
+      return;
+    }
     current_is_command = true;
     current_selected_text = selected_text;
     auto runtime_settings = LoadCoreConfig();

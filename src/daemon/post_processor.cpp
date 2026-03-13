@@ -414,7 +414,7 @@ PostProcessor::Process(const std::string &raw_text,
 
   const int candidate_count =
       NormalizeCandidateCount(settings.llm.postprocessCandidateCount);
-  if (candidate_count == 0 || scene.prompt.empty()) {
+  if (!settings.llm.enabled || candidate_count == 0 || scene.prompt.empty()) {
     return vinput::result::PlainTextPayload(normalized);
   }
 
@@ -473,6 +473,11 @@ PostProcessor::ProcessCommand(const std::string &asr_text,
 
   const int command_candidate_count =
       NormalizeCandidateCount(settings.llm.commandCandidateCount);
+
+  // Early exit if LLM is disabled or candidate count is 0
+  if (!settings.llm.enabled || command_candidate_count == 0) {
+    return vinput::result::PlainTextPayload(normalized_asr);
+  }
 
   auto rewritten =
       RewriteWithOpenAiCompatible(selected_text, synthetic_scene, settings,
