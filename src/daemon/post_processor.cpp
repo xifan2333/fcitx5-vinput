@@ -505,5 +505,9 @@ PostProcessor::ProcessCommand(const std::string &asr_text,
     }
   }
 
+  if (command_candidate_count == 1) {
+    return vinput::result::PlainTextPayload(payload.commitText);
+  }
+
   return payload;
 }
