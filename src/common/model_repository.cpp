@@ -183,6 +183,16 @@ bool ModelRepository::InstallModel(const std::string &registry_url,
     return false;
   }
 
+  // Ensure base_dir exists before mkdtemp
+  {
+    std::error_code mkdir_ec;
+    fs::create_directories(base_dir_, mkdir_ec);
+    if (mkdir_ec) {
+      if (error) *error = "failed to create model directory: " + mkdir_ec.message();
+      return false;
+    }
+  }
+
   // Create temporary directory with random name to avoid symlink race
   std::string tmp_template = (base_dir_ / ".tmp-XXXXXX").string();
   char *tmp_result = mkdtemp(tmp_template.data());
