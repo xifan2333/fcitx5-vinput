@@ -249,6 +249,23 @@ VinputEngine::VinputEngine(fcitx::Instance *instance) : instance_(instance) {
                                fcitx::CapabilityFlag::SurroundingText);
       }));
 
+  eventHandlers_.emplace_back(instance_->watchEvent(
+      fcitx::EventType::InputContextDestroyed,
+      fcitx::EventWatcherPhase::PreInputMethod,
+      [this](fcitx::Event &event) {
+        auto &icEvent = static_cast<fcitx::InputContextEvent &>(event);
+        auto *ic = icEvent.inputContext();
+        if (active_ic_ == ic) {
+          active_ic_ = nullptr;
+        }
+        if (scene_menu_ic_ == ic) {
+          hideSceneMenu();
+        }
+        if (result_menu_ic_ == ic) {
+          hideResultMenu();
+        }
+      }));
+
   auto *dbus_addon = instance_->addonManager().addon("dbus");
   if (dbus_addon) {
     bus_ = dbus_addon->call<fcitx::IDBusModule::bus>();
