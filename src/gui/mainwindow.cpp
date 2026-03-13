@@ -80,8 +80,9 @@ void MainWindow::setupGeneralTab() {
   formLayout->addRow(tr("LLM:"), checkLlmEnabled);
 
   spinCandidateCount = new QSpinBox();
-  spinCandidateCount->setRange(1, 9);
+  spinCandidateCount->setRange(0, 9);
   spinCandidateCount->setValue(1);
+  spinCandidateCount->setSpecialValueText(tr("Disabled (0)"));
   formLayout->addRow(tr("Candidate Count:"), spinCandidateCount);
 
   spinCommandCandidateCount = new QSpinBox();

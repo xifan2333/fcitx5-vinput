@@ -39,14 +39,12 @@ std::string TrimAsciiWhitespace(std::string text) {
   return text.substr(begin, end - begin + 1);
 }
 
-int NormalizeCandidateCount(int candidate_count) {
-  if (candidate_count <= 0) {
-    return 0;
-  }
-  if (candidate_count == 1) {
-    return 1;
-  }
-  return candidate_count >= 2 && candidate_count <= 9 ? candidate_count : 1;
+int NormalizePostprocessCandidateCount(int n) {
+  return n <= 0 ? 0 : n;
+}
+
+int NormalizeCommandCandidateCount(int n) {
+  return n <= 0 ? 1 : n;
 }
 
 std::string BuildJsonCandidateInstruction(int candidate_count) {
@@ -54,7 +52,8 @@ std::string BuildJsonCandidateInstruction(int candidate_count) {
          "\"candidates\". The array should contain up to " +
          std::to_string(candidate_count) +
          " distinct rewritten results as plain strings. Do not include "
-         "markdown, code fences, or explanations.";
+         "markdown, code fences, or explanations. "
+         "Always respond with a JSON object even if there is only one result.";
 }
 
 std::string BuildRequestUrl(const std::string &base_url) {
@@ -243,23 +242,17 @@ RewriteWithOpenAiCompatible(const std::string &text,
 
   std::vector<json> messages = {
       {{"role", "system"}, {"content", scene.prompt}},
+      {{"role", "system"}, {"content", BuildJsonCandidateInstruction(candidate_count)}},
   };
-  if (candidate_count > 1) {
-    messages.push_back(
-        {{"role", "system"},
-         {"content", BuildJsonCandidateInstruction(candidate_count)}});
-  }
   messages.push_back({{"role", "user"}, {"content", text}});
 
   json request = {
       {"model", provider->model},
       {"stream", false},
       {"temperature", 0.2},
+      {"response_format", {{"type", "json_object"}}},
       {"messages", std::move(messages)},
   };
-  if (candidate_count > 1) {
-    request["response_format"] = {{"type", "json_object"}};
-  }
   const std::string request_body = request.dump();
 
   struct curl_slist *headers = nullptr;
@@ -352,29 +345,25 @@ RewriteWithOpenAiCompatible(const std::string &text,
     return std::nullopt;
   }
 
-  if (candidate_count > 1) {
-    std::vector<std::string> structured_candidates;
-    for (const auto &content : contents) {
-      auto parsed = ExtractStructuredCandidates(content);
-      structured_candidates.insert(structured_candidates.end(),
-                                   std::make_move_iterator(parsed.begin()),
-                                   std::make_move_iterator(parsed.end()));
-    }
-
-    if (!structured_candidates.empty()) {
-      curl_slist_free_all(headers);
-      curl_easy_cleanup(curl);
-      return structured_candidates;
-    }
-
-    fprintf(stderr,
-            "vinput-daemon: LLM response from %s did not contain a "
-            "valid JSON candidates array, falling back to plain text\n",
-            url.c_str());
+  std::vector<std::string> structured_candidates;
+  for (const auto &content : contents) {
+    auto parsed = ExtractStructuredCandidates(content);
+    structured_candidates.insert(structured_candidates.end(),
+                                 std::make_move_iterator(parsed.begin()),
+                                 std::make_move_iterator(parsed.end()));
   }
 
   curl_slist_free_all(headers);
   curl_easy_cleanup(curl);
+
+  if (!structured_candidates.empty()) {
+    return structured_candidates;
+  }
+
+  fprintf(stderr,
+          "vinput-daemon: LLM response from %s did not contain a "
+          "valid JSON candidates array, falling back to plain text\n",
+          url.c_str());
   return contents;
 }
 
@@ -413,7 +402,7 @@ PostProcessor::Process(const std::string &raw_text,
   }
 
   const int candidate_count =
-      NormalizeCandidateCount(settings.llm.postprocessCandidateCount);
+      NormalizePostprocessCandidateCount(settings.llm.postprocessCandidateCount);
   if (!settings.llm.enabled || candidate_count == 0 || scene.prompt.empty()) {
     return vinput::result::PlainTextPayload(normalized);
   }
@@ -439,10 +428,6 @@ PostProcessor::Process(const std::string &raw_text,
       payload.commitText = candidate.text;
       break;
     }
-  }
-
-  if (candidate_count == 1 || payload.candidates.size() <= 1) {
-    return vinput::result::PlainTextPayload(payload.commitText);
   }
 
   return payload;
@@ -472,7 +457,7 @@ PostProcessor::ProcessCommand(const std::string &asr_text,
       normalized_asr;
 
   const int command_candidate_count =
-      NormalizeCandidateCount(settings.llm.commandCandidateCount);
+      NormalizeCommandCandidateCount(settings.llm.commandCandidateCount);
 
   // Early exit if LLM is disabled or candidate count is 0
   if (!settings.llm.enabled || command_candidate_count == 0) {
@@ -503,10 +488,6 @@ PostProcessor::ProcessCommand(const std::string &asr_text,
       payload.commitText = c.text;
       break;
     }
-  }
-
-  if (command_candidate_count == 1) {
-    return vinput::result::PlainTextPayload(payload.commitText);
   }
 
   return payload;
