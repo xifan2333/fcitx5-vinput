@@ -951,7 +951,11 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message &msg) {
     command_mode_ = false;
   }
 
-  if (payload.candidates.size() > 1) {
+  int llm_count = 0;
+  for (const auto &c : payload.candidates) {
+    if (c.source == vinput::result::kSourceLlm) ++llm_count;
+  }
+  if (llm_count > 1) {
     showResultMenu(active_ic_, payload);
     return;
   }
