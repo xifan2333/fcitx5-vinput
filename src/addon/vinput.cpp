@@ -936,10 +936,27 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message &msg) {
   hideResultMenu();
 
   const auto payload = vinput::result::Parse(payload_text);
+  const bool is_command = command_mode_;
   clearPreedit(active_ic_);
 
-  // command 模式：先用 surrounding text 删除选中内容
-  if (command_mode_) {
+  if (payload.commitText.empty()) {
+    command_mode_ = false;
+    return;
+  }
+
+  int llm_count = 0;
+  for (const auto &c : payload.candidates) {
+    if (c.source == vinput::result::kSourceLlm) ++llm_count;
+  }
+  if (llm_count > 1) {
+    // command_mode_ stays set so selectResultCandidate knows to delete selection
+    showResultMenu(active_ic_, payload);
+    return;
+  }
+
+  command_mode_ = false;
+
+  if (is_command) {
     auto &surrounding = active_ic_->surroundingText();
     if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
       int cursor = surrounding.cursor();
@@ -948,21 +965,9 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message &msg) {
       int len = std::abs(cursor - anchor);
       active_ic_->deleteSurroundingText(from - cursor, len);
     }
-    command_mode_ = false;
   }
 
-  int llm_count = 0;
-  for (const auto &c : payload.candidates) {
-    if (c.source == vinput::result::kSourceLlm) ++llm_count;
-  }
-  if (llm_count > 1) {
-    showResultMenu(active_ic_, payload);
-    return;
-  }
-
-  if (!payload.commitText.empty()) {
-    active_ic_->commitString(payload.commitText);
-  }
+  active_ic_->commitString(payload.commitText);
 }
 
 void VinputEngine::onStatusChanged(fcitx::dbus::Message &msg) {

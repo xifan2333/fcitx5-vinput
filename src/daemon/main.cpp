@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
         text = asr.Infer(job.pcm);
       }
 
-      auto result = vinput::result::PlainTextPayload(text);
+      vinput::result::Payload result;
       if (!text.empty()) {
         auto runtime_settings = LoadCoreConfig();
         NormalizeCoreConfig(&runtime_settings);

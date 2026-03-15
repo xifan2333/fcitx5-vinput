@@ -19,15 +19,6 @@ std::string JsonString(const json& object, const char* key) {
 
 }  // namespace
 
-Payload PlainTextPayload(const std::string& text) {
-    Payload payload;
-    payload.commitText = text;
-    if (!text.empty()) {
-        payload.candidates.push_back(Candidate{.text = text, .source = kSourceRaw});
-    }
-    return payload;
-}
-
 std::string Serialize(const Payload& payload) {
     json root = {
         {"commit_text", payload.commitText},

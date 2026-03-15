@@ -23,6 +23,5 @@ struct Payload {
 
 std::string Serialize(const Payload& payload);
 Payload Parse(std::string_view payload);
-Payload PlainTextPayload(const std::string& text);
 
 }  // namespace vinput::result
