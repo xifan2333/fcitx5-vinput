@@ -11,6 +11,7 @@
 #include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/key.h>
+#include <fcitx-utils/utf8.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
@@ -365,14 +366,21 @@ void VinputEngine::handleKeyEvent(fcitx::Event &event) {
         auto &surrounding = active_ic_->surroundingText();
         if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
           const auto &text = surrounding.text();
-          int from = std::min(surrounding.cursor(), surrounding.anchor());
-          int to = std::max(surrounding.cursor(), surrounding.anchor());
-          selected_text = text.substr(from, to - from);
+          auto char_from = std::min(surrounding.cursor(), surrounding.anchor());
+          auto char_to = std::max(surrounding.cursor(), surrounding.anchor());
+          if (fcitx::utf8::validate(text)) {
+            auto byte_from = fcitx::utf8::ncharByteLength(text.begin(), char_from);
+            auto byte_len = fcitx::utf8::ncharByteLength(
+                std::next(text.begin(), byte_from), char_to - char_from);
+            selected_text = text.substr(byte_from, byte_len);
+          }
         }
         if (selected_text.empty()) {
           if (auto *clipboard = instance_->addonManager().addon("clipboard")) {
-            selected_text =
-                clipboard->call<fcitx::IClipboard::primary>(active_ic_);
+            auto primary = clipboard->call<fcitx::IClipboard::primary>(active_ic_);
+            if (fcitx::utf8::validate(primary)) {
+              selected_text = std::move(primary);
+            }
           }
         }
         if (selected_text.empty()) {
