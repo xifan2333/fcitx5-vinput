@@ -32,6 +32,15 @@ int SystemctlRestart() {
 
 int JournalctlLogs(bool follow, int lines) {
     std::string lines_str = std::to_string(lines);
+    // use --grep vinput to filter logs
+    // workaround for https://github.com/flatpak/flatpak/issues/5870
+    if (vinput::path::isInsideFlatpak()) {
+        if (follow) {
+            return RunCommand({"journalctl", "--user", "-t", "flatpak", "--grep", "vinput", "-n", lines_str.c_str(), "-f", nullptr});
+        }
+        return RunCommand({"journalctl", "--user", "-t", "flatpak", "--grep", "vinput", "-n", lines_str.c_str(), nullptr});
+    }
+
     if (follow) {
         return RunCommand({"journalctl", "--user-unit", kServiceUnit,
                            "-n", lines_str.c_str(), "-f", nullptr});

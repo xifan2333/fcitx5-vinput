@@ -31,10 +31,12 @@
 #include <QApplication>
 #include <QEventLoop>
 #include <QPalette>
+#include <QSettings>
 #include <algorithm>
 
 #include "common/asr_defaults.h"
 #include "common/llm_defaults.h"
+#include "common/path_utils.h"
 
 namespace {
 
@@ -432,13 +434,21 @@ bool RunVinputJson(const QStringList &args, QJsonDocument *out_doc,
     return false;
   }
 
+  QByteArray output = proc.readAllStandardOutput();
+
   if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
+    // not only stderr, but also try to parse stdout
+    if (out_doc && !output.isEmpty()) {
+      QJsonParseError pe;
+      QJsonDocument data = QJsonDocument::fromJson(output, &pe);
+      if (pe.error == QJsonParseError::NoError)
+        *out_doc = data;
+    }
     if (error_out)
       *error_out = QString::fromUtf8(proc.readAllStandardError()).trimmed();
     return false;
   }
 
-  QByteArray output = proc.readAllStandardOutput();
   QJsonParseError parse_error;
   QJsonDocument doc = QJsonDocument::fromJson(output, &parse_error);
   if (parse_error.error != QJsonParseError::NoError) {
@@ -1785,6 +1795,11 @@ void MainWindow::refreshDaemonStatus() {
   QString err;
   bool ok = RunVinputJson({"status"}, &doc, &err);
 
+  // if daemon is not running, vinput status return code may not be 0
+  // but we can still show "Stopped" instead of "Error:"
+  if (!ok && doc.isObject())
+    ok = true;
+
   if (!ok || !doc.isObject()) {
     lblDaemonStatus->setText(tr("Error: %1").arg(err));
     lblDaemonStatus->setStyleSheet("color: red;");
@@ -1825,6 +1840,26 @@ void MainWindow::onDaemonStart() {
   btnDaemonStart->setEnabled(false);
   QProcess::startDetached("vinput", QStringList() << "daemon" << "start");
   // The timer will catch the state change shortly.
+
+  // Try to show a message box with error logs
+  QTimer::singleShot(1500, this, [this]() {
+    QJsonDocument doc;
+    QString err;
+    RunVinputJson({"status"}, &doc, &err);
+    if (doc.isObject() && !doc.object().value("running").toBool()) {
+      // daemon start failed, try to get logs
+      QProcess logProc;
+      logProc.start("vinput", QStringList() << "daemon" << "logs" << "-n" << "5");
+      logProc.waitForFinished(3000);
+      QString logs = QString::fromUtf8(logProc.readAllStandardOutput() +
+                                       logProc.readAllStandardError()).trimmed();
+      if (!logs.isEmpty()) {
+        QMessageBox::warning(this, tr("Error"),
+                             logs);
+      }
+    }
+    refreshDaemonStatus();
+  });
 }
 
 void MainWindow::onDaemonStop() {
