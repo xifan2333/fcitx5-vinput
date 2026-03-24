@@ -1,0 +1,125 @@
+name: nix-concerns
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - README.md
+      - README_zh.md
+      - .github/workflows/nix-concerns.yml
+
+concurrency:
+  group: nix-concerns-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readme-home-manager-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write temporary Home Manager test flake
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/hm-check"
+          cat > "${RUNNER_TEMP}/hm-check/flake.nix" <<EOF
+          {
+            inputs = {
+              nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+              home-manager.url = "github:nix-community/home-manager";
+              home-manager.inputs.nixpkgs.follows = "nixpkgs";
+              fcitx5-vinput.url = "path:${GITHUB_WORKSPACE}";
+              fcitx5-vinput.inputs.nixpkgs.follows = "nixpkgs";
+            };
+
+            outputs = inputs@{ nixpkgs, home-manager, ... }: let
+              system = "x86_64-linux";
+              pkgs = import nixpkgs { inherit system; };
+            in {
+              homeConfigurations.bad = home-manager.lib.homeManagerConfiguration {
+                inherit pkgs;
+                extraSpecialArgs = { inherit inputs; };
+                modules = [
+                  ({ pkgs, ... }@inputs:
+                  let
+                    fcitx5-vinput = inputs.fcitx5-vinput.packages."\${pkgs.stdenv.hostPlatform.system}".default;
+                  in
+                  {
+                    home.username = "ci";
+                    home.homeDirectory = "/home/ci";
+                    home.stateVersion = "24.11";
+                    home.packages = [
+                      fcitx5-vinput
+                    ];
+                  })
+                ];
+              };
+
+              homeConfigurations.good = home-manager.lib.homeManagerConfiguration {
+                inherit pkgs;
+                extraSpecialArgs = { inherit inputs; };
+                modules = [
+                  ({ pkgs, inputs, ... }:
+                  let
+                    fcitx5-vinput = inputs.fcitx5-vinput.packages."\${pkgs.stdenv.hostPlatform.system}".default;
+                  in
+                  {
+                    home.username = "ci";
+                    home.homeDirectory = "/home/ci";
+                    home.stateVersion = "24.11";
+                    home.packages = [
+                      fcitx5-vinput
+                    ];
+                  })
+                ];
+              };
+            };
+          }
+          EOF
+
+      - name: Confirm README-style module fails to evaluate
+        shell: bash
+        run: |
+          cd "${RUNNER_TEMP}/hm-check"
+          if nix eval .#homeConfigurations.bad.activationPackage.drvPath --raw; then
+            echo "README-style Home Manager example unexpectedly evaluated" >&2
+            exit 1
+          fi
+
+      - name: Confirm corrected Home Manager module evaluates
+        shell: bash
+        run: |
+          cd "${RUNNER_TEMP}/hm-check"
+          nix eval .#homeConfigurations.good.activationPackage.drvPath --raw
+
+  lock-graph:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Confirm flake lock contains multiple nixpkgs nodes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+
+          with open("flake.lock", "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          nodes = [
+              key for key in data["nodes"]
+              if key == "nixpkgs" or key.startswith("nixpkgs_")
+          ]
+
+          print("nixpkgs nodes in flake.lock:", ", ".join(nodes))
+
+          if len(nodes) < 2:
+              raise SystemExit("Expected multiple nixpkgs nodes, but found only one")
+          PY
