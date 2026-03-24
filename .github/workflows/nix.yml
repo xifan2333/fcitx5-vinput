@@ -1,0 +1,36 @@
+name: nix
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - .github/workflows/nix.yml
+
+concurrency:
+  group: nix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show flake outputs
+        run: nix flake show --no-write-lock-file
+
+      - name: Build flake package
+        run: nix build .#packages.x86_64-linux.default --print-build-logs
+
+      - name: Verify dev shell build
+        run: >
+          nix develop .#devShells.x86_64-linux.default
+          -c bash -lc 'cmake -S . -B build -DCMAKE_BUILD_TYPE=Release &&
+          cmake --build build'
