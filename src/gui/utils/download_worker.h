@@ -2,6 +2,8 @@
 
 #include <QThread>
 #include <QString>
+
+#include <chrono>
 #include <functional>
 #include <string>
 
@@ -28,6 +30,9 @@ protected:
 
 private:
     std::function<bool(std::string*)> task_;
+    int last_percent_ = -1;
+    std::chrono::steady_clock::time_point last_progress_emit_{};
+    bool has_progress_emit_ = false;
 };
 
 } // namespace vinput::gui

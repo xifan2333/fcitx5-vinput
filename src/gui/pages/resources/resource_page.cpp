@@ -114,6 +114,17 @@ ResourcePage::ResourcePage(QWidget *parent) : QWidget(parent) {
   textLog_ = new QTextEdit();
   textLog_->setReadOnly(true);
   textLog_->setMaximumHeight(100);
+
+  downloadStatusLabel_ = new QLabel();
+  downloadStatusLabel_->setVisible(false);
+  layout->addWidget(downloadStatusLabel_);
+
+  downloadProgressBar_ = new QProgressBar();
+  downloadProgressBar_->setRange(0, 100);
+  downloadProgressBar_->setValue(0);
+  downloadProgressBar_->setVisible(false);
+  layout->addWidget(downloadProgressBar_);
+
   layout->addWidget(textLog_);
 
   connect(btnUseModel_, &QPushButton::clicked, this,
@@ -428,7 +439,10 @@ void ResourcePage::onRemoveModelClicked() {
 }
 
 void ResourcePage::onDownloadProgress(int percent, QString speed) {
-    textLog_->append(tr("Downloading... %1% at %2").arg(percent).arg(speed));
+    downloadStatusLabel_->setText(tr("Downloading... %1% at %2").arg(percent).arg(speed));
+    downloadStatusLabel_->setVisible(true);
+    downloadProgressBar_->setValue(percent);
+    downloadProgressBar_->setVisible(true);
 }
 
 void ResourcePage::onDownloadError(QString msg) {
@@ -441,6 +455,10 @@ void ResourcePage::onDownloadFinished() {
     btnAddProvider_->setEnabled(true);
     btnAddAdapter_->setEnabled(true);
     btnRemoveModel_->setEnabled(true);
+    downloadStatusLabel_->clear();
+    downloadStatusLabel_->setVisible(false);
+    downloadProgressBar_->setValue(0);
+    downloadProgressBar_->setVisible(false);
     if (downloadWorker_) {
         downloadWorker_->deleteLater();
         downloadWorker_ = nullptr;
@@ -457,9 +475,13 @@ void ResourcePage::onDownloadModelClicked() {
   abortDownload();
   btnDownloadModel_->setEnabled(false);
   btnRemoveModel_->setEnabled(false);
+  downloadStatusLabel_->setText(tr("Preparing download..."));
+  downloadStatusLabel_->setVisible(true);
+  downloadProgressBar_->setValue(0);
+  downloadProgressBar_->setVisible(true);
   
   downloadWorker_ = new DownloadWorker(this);
-  connect(downloadWorker_, &DownloadWorker::progress, this, &ResourcePage::onDownloadProgress);
+  connect(downloadWorker_, &DownloadWorker::progress, this, &ResourcePage::onDownloadProgress, Qt::QueuedConnection);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
   connect(downloadWorker_, &QThread::finished, this, &ResourcePage::onDownloadFinished);
 

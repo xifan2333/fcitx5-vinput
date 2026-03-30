@@ -79,7 +79,9 @@ CreateOfflineRecognizer(const ModelInfo &info, const AsrConfig &asr_config,
   std::string cfg_hotwords;
   std::string cfg_telespeech_path;
 
-  config.model_config.tokens = tokens_path.c_str();
+  if (!tokens_path.empty()) {
+    config.model_config.tokens = tokens_path.c_str();
+  }
   config.model_config.num_threads =
       JsonInt(model_cfg, "num_threads", asr_config.thread_num);
   const std::string provider = JsonString(model_cfg, "provider", "cpu");

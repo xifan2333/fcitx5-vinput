@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QLabel>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTextEdit>
@@ -47,6 +49,8 @@ private:
   QTableWidget *tableAvailableModels_;
   QTableWidget *tableAvailableProviders_;
   QTableWidget *tableAvailableAdapters_;
+  QLabel *downloadStatusLabel_;
+  QProgressBar *downloadProgressBar_;
   QTextEdit *textLog_;
   QPushButton *btnUseModel_;
   QPushButton *btnRemoveModel_;

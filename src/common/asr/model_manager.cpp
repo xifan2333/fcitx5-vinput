@@ -121,6 +121,10 @@ void ResolveModelFileField(const fs::path &dir, const fs::path &model_root,
   info->files[std::string(file_key)] = resolved_path.string();
 }
 
+bool FamilyUsesTokenizerAsset(std::string_view family) {
+  return family == "funasr_nano" || family == "qwen3_asr";
+}
+
 ModelInfo ParseModelJson(const fs::path &dir, const fs::path &json_path,
                          std::string *error) {
   ModelInfo info;
@@ -244,6 +248,24 @@ ModelInfo ParseModelJson(const fs::path &dir, const fs::path &json_path,
 // Check that the tokens file exists (required for all model types)
 bool HasTokens(const ModelInfo &info) {
   return !info.File("tokens").empty() && fs::exists(info.File("tokens"));
+}
+
+bool HasTokenizer(const ModelInfo &info) {
+  return !info.File("tokenizer").empty() && fs::exists(info.File("tokenizer"));
+}
+
+bool HasRequiredTextAsset(const ModelInfo &info) {
+  return FamilyUsesTokenizerAsset(info.family) ? HasTokenizer(info)
+                                               : HasTokens(info);
+}
+
+std::string RequiredTextAssetField(const ModelInfo &info) {
+  return FamilyUsesTokenizerAsset(info.family) ? "model.tokenizer"
+                                               : "model.tokens";
+}
+
+std::string RequiredTextAssetPathKey(const ModelInfo &info) {
+  return FamilyUsesTokenizerAsset(info.family) ? "tokenizer" : "tokens";
 }
 
 // Check that at least one model/encoder file exists
@@ -400,9 +422,10 @@ bool ModelManager::EnsureModels(std::string *error) {
   }
 
   if (!IsDirectoryModelBackend(info)) {
-    if (!HasTokens(info)) {
+    if (!HasRequiredTextAsset(info)) {
       if (error) {
-        *error = "tokens file not found for model '" + model_id_ + "'";
+        *error = RequiredTextAssetPathKey(info) +
+                 " file not found for model '" + model_id_ + "'";
       }
       return false;
     }
@@ -574,13 +597,17 @@ bool ModelManager::Validate(const std::string &model_id,
     return false;
   }
 
-  if (!HasTokens(info)) {
+  if (!HasRequiredTextAsset(info)) {
     if (!IsDirectoryModelBackend(info)) {
-      auto tokens_path = info.File("tokens");
-      if (tokens_path.empty()) {
-        if (error) *error = "vinput-model.json missing required field: model.tokens";
+      const auto path_key = RequiredTextAssetPathKey(info);
+      auto asset_path = info.File(path_key);
+      if (asset_path.empty()) {
+        if (error)
+          *error =
+              "vinput-model.json missing required field: " +
+              RequiredTextAssetField(info);
       } else {
-        if (error) *error = "tokens file not found: " + tokens_path;
+        if (error) *error = path_key + " file not found: " + asset_path;
       }
       return false;
     }

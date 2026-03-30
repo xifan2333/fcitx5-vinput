@@ -2,6 +2,7 @@
 
 #include <curl/curl.h>
 
+#include <chrono>
 #include <fstream>
 #include <string>
 
@@ -22,6 +23,9 @@ struct FileWriter {
 
 struct ProgressState {
   ProgressCallback cb;
+  uint64_t last_downloaded_bytes = 0;
+  std::chrono::steady_clock::time_point last_update_time{};
+  bool has_last_update = false;
 };
 
 size_t WriteToMemory(char *ptr, size_t size, size_t nmemb, void *userdata) {
@@ -50,9 +54,25 @@ int ProgressCallbackFn(void *userdata, curl_off_t dltotal, curl_off_t dlnow,
   if (!state->cb) {
     return 0;
   }
+
+  const uint64_t downloaded_bytes = static_cast<uint64_t>(dlnow);
+  const auto now = std::chrono::steady_clock::now();
   Progress progress;
-  progress.downloaded_bytes = static_cast<uint64_t>(dlnow);
+  progress.downloaded_bytes = downloaded_bytes;
   progress.total_bytes = static_cast<uint64_t>(dltotal > 0 ? dltotal : 0);
+  if (state->has_last_update) {
+    const auto elapsed = now - state->last_update_time;
+    const double elapsed_seconds =
+        std::chrono::duration<double>(elapsed).count();
+    if (elapsed_seconds > 0 &&
+        downloaded_bytes >= state->last_downloaded_bytes) {
+      progress.speed_bps =
+          (downloaded_bytes - state->last_downloaded_bytes) / elapsed_seconds;
+    }
+  }
+  state->last_downloaded_bytes = downloaded_bytes;
+  state->last_update_time = now;
+  state->has_last_update = true;
   state->cb(progress);
   return 0;
 }

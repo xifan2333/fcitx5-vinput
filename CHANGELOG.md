@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.3](https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.0.3) — 2026-03-30
+
+### Bug Fixes
+
+- **models:** Accept tokenizer-based metadata for `funasr_nano` and `qwen3_asr` local models
+- **sherpa-offline:** Only pass `model.tokens` when the model family actually uses it
+
+### Features
+
+- **gui:** Add visible download status/progress UI for resource downloads
+- **downloads:** Report transfer speed and throttle duplicate progress updates
+
+## [2.0.2](https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.0.2) — 2026-03-30
+
+### Bug Fixes
+
+- **command:** Fix null command scene lookup in command mode
+
 ## [2.0.1](https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.0.1) — 2026-03-30
 
 ### Bug Fixes
