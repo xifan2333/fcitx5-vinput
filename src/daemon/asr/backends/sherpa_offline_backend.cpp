@@ -183,6 +183,14 @@ CreateOfflineRecognizer(const ModelInfo &info, const AsrConfig &asr_config,
          if (!config.model_config.model_type)
            config.model_config.model_type = "transducer";
        }},
+      {"nemo_transducer",
+       [&] {
+         config.model_config.transducer.encoder = f_encoder.c_str();
+         config.model_config.transducer.decoder = f_decoder.c_str();
+         config.model_config.transducer.joiner = f_joiner.c_str();
+         if (!config.model_config.model_type)
+           config.model_config.model_type = "nemo_transducer";
+       }},
       {"zipformer_ctc",
        [&] {
          config.model_config.zipformer_ctc.model = f_model.c_str();
