@@ -243,7 +243,11 @@ bool VinputEngine::isReleaseOfActiveTrigger(const fcitx::Key &key) const {
   }
 
   if (release_key.sym() == trigger_key.sym()) {
-    return true;
+    if (trigger_key.states().toInteger() == 0) {
+      return true;
+    }
+    return release_key.states().testAny(trigger_key.states()) &&
+           (release_key.states() & trigger_key.states()) == trigger_key.states();
   }
 
   const auto released_modifier_state =
