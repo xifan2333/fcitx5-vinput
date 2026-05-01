@@ -37,6 +37,17 @@ void SetupTable(QTableWidget *t, const QStringList &headers) {
   t->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
 }
 
+QString LocalModelTitle(const ModelSummary &model,
+                        const vinput::registry::I18nMap &i18n_map) {
+  if (!model.title.empty()) {
+    return QString::fromStdString(model.title);
+  }
+  QString id = QString::fromStdString(model.id);
+  QString titleStr = QString::fromStdString(
+      vinput::registry::LookupI18n(i18n_map, model.id + ".title", ""));
+  return titleStr.isEmpty() ? id : titleStr;
+}
+
 QLineEdit *CreateFilterEdit(const QString &placeholder, QWidget *parent) {
   auto *edit = new QLineEdit(parent);
   edit->setClearButtonEnabled(true);
@@ -263,8 +274,7 @@ void ResourcePage::populateLocalModels(const std::vector<ModelSummary> &models) 
 
   for (const auto &model : models) {
     QString id = QString::fromStdString(model.id);
-    QString titleStr = QString::fromStdString(vinput::registry::LookupI18n(i18n_map, model.id + ".title", ""));
-    QString title = titleStr.isEmpty() ? id : titleStr;
+    QString title = LocalModelTitle(model, i18n_map);
 
     int row = tableInstalledModels_->rowCount();
     tableInstalledModels_->insertRow(row);

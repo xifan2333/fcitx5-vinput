@@ -12,6 +12,8 @@ struct ModelInfo {
   std::string runtime; // "online" or "offline"
   std::string family;  // sherpa-onnx C API family
   std::string model_type; // compatibility alias for family
+  std::string title;
+  std::string description;
   std::string language = "auto";
   bool supports_hotwords = false;
   uint64_t size_bytes = 0;
@@ -50,6 +52,8 @@ struct ModelSummary {
   std::string id;
   ModelState state;
   std::string model_type;
+  std::string title;
+  std::string description;
   std::string language;
   bool supports_hotwords = false;
   uint64_t size_bytes = 0;

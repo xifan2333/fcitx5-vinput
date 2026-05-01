@@ -159,6 +159,8 @@ ModelInfo ParseModelJson(const fs::path &dir, const fs::path &json_path,
     info.runtime = j.value("runtime", "");
     info.family = j.value("family", "");
     info.model_type = info.family;
+    info.title = j.value("title", "");
+    info.description = j.value("description", "");
     info.language = j.value("language", "auto");
     info.supports_hotwords = j.value("supports_hotwords", false);
     info.size_bytes = j.value("size_bytes", uint64_t{0});
@@ -525,6 +527,8 @@ ModelManager::ListDetailed(const std::string &active_model) const {
       json j;
       file >> j;
       s.model_type = j.value("family", "");
+      s.title = j.value("title", "");
+      s.description = j.value("description", "");
       s.language = j.value("language", "auto");
       s.supports_hotwords = j.value("supports_hotwords", false);
       s.size_bytes = j.value("size_bytes", uint64_t{0});

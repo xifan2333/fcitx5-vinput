@@ -780,8 +780,12 @@ void VinputEngine::reloadAsrMenuItems() {
       for (const auto &summary : models) {
         const bool item_active =
             (pid == active_provider) && (summary.id == active_model);
-        const std::string model_title = vinput::registry::LookupI18n(
-            i18n_map, summary.id + ".title", summary.id);
+        std::string model_title = summary.title;
+        if (model_title.empty()) {
+          model_title = vinput::registry::LookupI18n(i18n_map,
+                                                     summary.id + ".title",
+                                                     summary.id);
+        }
         std::string label = model_title + " [local]";
         if (have_backend_state && backend_state.reload_in_progress &&
             pid == backend_state.target_provider_id &&

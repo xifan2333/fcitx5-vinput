@@ -12,6 +12,8 @@
 #include <QThreadPool>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 #include "common/utils/sandbox.h"
 #include "dialogs/asr_provider_dialog.h"
 #include "utils/gui_helpers.h"
@@ -19,6 +21,7 @@
 #include "common/audio/pipewire_device.h"
 #include "gui/utils/config_manager.h"
 #include "gui/utils/i18n_cache.h"
+#include "common/asr/model_manager.h"
 #include "cli/runtime/dbus_client.h"
 #include "cli/runtime/systemd_client.h"
 
@@ -36,6 +39,21 @@ bool ReloadAsrBackend(std::string *error = nullptr) {
     return daemon_error.empty();
   }
   return dbus.ReloadAsrBackend(error);
+}
+
+QString LocalModelTitle(const std::string &model_id, const CoreConfig &config,
+                        const vinput::registry::I18nMap &i18n_map) {
+  ModelManager manager(ResolveModelBaseDir(config).string());
+  const auto models = manager.ListDetailed(model_id);
+  const auto it = std::find_if(models.begin(), models.end(),
+                               [&model_id](const ModelSummary &model) {
+                                 return model.id == model_id;
+                               });
+  if (it != models.end() && !it->title.empty()) {
+    return QString::fromStdString(it->title);
+  }
+  return QString::fromStdString(
+      vinput::registry::LookupI18n(i18n_map, model_id + ".title", model_id));
 }
 
 bool GetAsrBackendState(vinput::dbus::AsrBackendState *state,
@@ -261,8 +279,7 @@ void ControlPage::populateAsrList(
     if (const auto *local = std::get_if<LocalAsrProvider>(&provider)) {
       QString model = QString::fromStdString(local->model);
       if (!model.isEmpty()) {
-        model = QString::fromStdString(vinput::registry::LookupI18n(
-            i18n_map, local->model + ".title", local->model));
+        model = LocalModelTitle(local->model, config, i18n_map);
       }
       display += " · " + (model.isEmpty() ? GuiTranslate("(not set)") : model);
     } else if (const auto *command = std::get_if<CommandAsrProvider>(&provider)) {

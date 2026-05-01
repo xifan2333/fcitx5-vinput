@@ -540,6 +540,24 @@ int RunAsrConfigListModels(bool available, Formatter &fmt, const CliContext &ctx
   }
 
   const auto models = manager.ListDetailed(activeModel);
+  auto resolve_local_title = [&installed_display_map](const ModelSummary &model) {
+    if (!model.title.empty()) {
+      return model.title;
+    }
+    const auto display_it = installed_display_map.find(model.id);
+    return display_it == installed_display_map.end() ? model.id
+                                                     : display_it->second.title;
+  };
+  auto resolve_local_description = [&installed_display_map](
+                                      const ModelSummary &model) {
+    if (!model.description.empty()) {
+      return model.description;
+    }
+    const auto display_it = installed_display_map.find(model.id);
+    return display_it == installed_display_map.end()
+               ? std::string{}
+               : display_it->second.description;
+  };
 
   if (ctx.json_output) {
     nlohmann::json arr = nlohmann::json::array();
@@ -550,14 +568,12 @@ int RunAsrConfigListModels(bool available, Formatter &fmt, const CliContext &ctx
       } else if (model.state == ModelState::Broken) {
         status = "broken";
       }
-      const auto display_it = installed_display_map.find(model.id);
       arr.push_back({
           {"id", vinput::cli::HumanizeResourceId(installed_display_map,
                                                  model.id)},
           {"machine_id", model.id},
-          {"title", display_it == installed_display_map.end()
-                        ? model.id
-                        : display_it->second.title},
+          {"title", resolve_local_title(model)},
+          {"description", resolve_local_description(model)},
           {"model_type", model.model_type},
           {"language", model.language},
           {"supports_hotwords", model.supports_hotwords},
@@ -580,12 +596,9 @@ int RunAsrConfigListModels(bool available, Formatter &fmt, const CliContext &ctx
     } else if (model.state == ModelState::Broken) {
       status = std::string("[!] ") + _("Broken");
     }
-    const auto display_it = installed_display_map.find(model.id);
     rows.push_back({vinput::cli::HumanizeResourceId(installed_display_map,
                                                    model.id),
-                    display_it == installed_display_map.end()
-                        ? model.id
-                        : display_it->second.title,
+                    resolve_local_title(model),
                     model.model_type, model.language,
                     vinput::str::FormatSize(model.size_bytes),
                     model.supports_hotwords ? _("yes") : _("no"), status});
