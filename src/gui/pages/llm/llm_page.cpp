@@ -343,7 +343,7 @@ void LlmPage::onLlmAdd() {
   LlmProvider provider;
   provider.id = name_text.toStdString();
   provider.base_url = base_url_text.toStdString();
-  provider.api_key = editApiKey->text().toStdString();
+  provider.api_key = editApiKey->text().trimmed().toStdString();
   provider.extra_body = std::move(extra_body);
   config.llm.providers.push_back(std::move(provider));
 
@@ -413,8 +413,9 @@ void LlmPage::onLlmEdit() {
   auto it = std::find_if(providers.begin(), providers.end(), [&](const LlmProvider &p) { return p.id == provider_name.toStdString(); });
   if (it != providers.end()) {
       it->base_url = base_url_text.toStdString();
-      if (!editApiKey->text().isEmpty()) {
-          it->api_key = editApiKey->text().toStdString();
+      const QString api_key_text = editApiKey->text().trimmed();
+      if (!api_key_text.isEmpty()) {
+          it->api_key = api_key_text.toStdString();
       }
       it->extra_body = std::move(extra_body);
       if (!ConfigManager::Get().Save(config)) {
