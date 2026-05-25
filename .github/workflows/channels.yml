@@ -15,7 +15,7 @@ on:
         description: Package version, for example 1.1.14
         required: true
       platform:
-        description: Platform to publish (all, copr, ppa, aur, flatpak, nix)
+        description: Platform to publish (all, copr, ppa, aur, flatpak)
         required: true
         default: all
         type: choice
@@ -25,7 +25,6 @@ on:
           - ppa
           - aur
           - flatpak
-          - nix
 
 permissions:
   contents: read
@@ -235,25 +234,3 @@ jobs:
             --field product=fcitx5-vinput \
             --field version=${{ inputs.version }} \
             --field force=true
-
-  nix-cachix:
-    if: ${{ inputs.platform == 'all' || inputs.platform == 'nix' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-
-      - uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-
-      - uses: cachix/cachix-action@v17
-        with:
-          name: fcitx5-vinput
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-
-      - name: Build and push to Cachix
-        run: nix build .#fcitx5-vinput --no-link
