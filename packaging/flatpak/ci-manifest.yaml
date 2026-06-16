@@ -25,8 +25,8 @@ modules:
       - install -m 644 include/sherpa-onnx/c-api/*.h ${FLATPAK_DEST}/include/sherpa-onnx/c-api/
     sources:
       - type: archive
-        url: https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.2/sherpa-onnx-v1.13.2-linux-x64-shared-no-tts.tar.bz2
-        sha256: a1fb5d71811e85fe1fd5856540c6d19614681e222810e266d3b33038f724be75
+        url: https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.3/sherpa-onnx-v1.13.3-linux-x64-shared-no-tts.tar.bz2
+        sha256: e5cbfd96f3666c25d2272d468e337764fce6a4d50ed074e4b8e5021bfd7fefc1
   - name: cli11
     buildsystem: cmake-ninja
     config-opts:
