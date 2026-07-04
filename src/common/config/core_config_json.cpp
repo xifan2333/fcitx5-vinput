@@ -155,11 +155,16 @@ void to_json(json &j, const CoreConfig::Global &g) {
   j = json::object();
   j["default_language"] = g.defaultLanguage;
   j["capture_device"] = g.captureDevice;
+  j["duck_output_while_recording"] = g.duckOutputWhileRecording;
+  j["duck_output_volume"] = g.duckOutputVolume;
 }
 
 void from_json(const json &j, CoreConfig::Global &g) {
   g.defaultLanguage = j.value("default_language", g.defaultLanguage);
   g.captureDevice = j.value("capture_device", g.captureDevice);
+  g.duckOutputWhileRecording =
+      j.value("duck_output_while_recording", g.duckOutputWhileRecording);
+  g.duckOutputVolume = j.value("duck_output_volume", g.duckOutputVolume);
 }
 
 // ---------------------------------------------------------------------------

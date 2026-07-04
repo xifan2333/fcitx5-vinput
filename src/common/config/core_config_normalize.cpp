@@ -1,5 +1,6 @@
 #include "common/config/core_config.h"
 
+#include <algorithm>
 #include <iostream>
 #include <iterator>
 #include <set>
@@ -87,6 +88,11 @@ void NormalizeCoreConfig(CoreConfig *config) {
   if (!config) {
     return;
   }
+
+  // Clamp audio-related knobs to sane ranges.
+  config->asr.inputGain = std::clamp(config->asr.inputGain, 0.1, 10.0);
+  config->global.duckOutputVolume =
+      std::clamp(config->global.duckOutputVolume, 0.0, 1.0);
 
   {
     std::set<std::string> seen;

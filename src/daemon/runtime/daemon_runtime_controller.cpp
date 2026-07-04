@@ -397,8 +397,13 @@ DbusService::MethodResult DaemonRuntimeController::StartRecordingInternal(
 
   if (abort_started_capture) {
     capture_->EndRecording();
+    RestoreOutputIfDucked();
     ScheduleCaptureStopOnMainThread();
     return DbusService::MethodResult::Failure("Daemon is busy.");
+  }
+
+  if (runtime_settings.global.duckOutputWhileRecording) {
+    output_ducker_.Duck(runtime_settings.global.duckOutputVolume);
   }
 
   dbus_->EmitStatusChanged(
@@ -498,6 +503,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
           vinput::dbus::StatusToString(vinput::dbus::Status::Error));
       dbus_->EmitNotification(vinput::dbus::MakeRawError(push_error));
       capture_->EndRecording();
+      RestoreOutputIfDucked();
       ScheduleCaptureStopOnMainThread();
       return;
     }
@@ -555,6 +561,8 @@ void DaemonRuntimeController::EmitStreamingEvents(
   EmitRecognitionEvents(events, dbus_);
 }
 
+void DaemonRuntimeController::RestoreOutputIfDucked() { output_ducker_.Restore(); }
+
 void DaemonRuntimeController::ScheduleCaptureStopOnMainThread() {
   pending_capture_stop_.store(true, std::memory_order_release);
   if (notify_fd_ >= 0) {
@@ -583,6 +591,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(
   if (stop_capture) {
     capture_->EndRecording();
     captured_pcm = capture_->StopAndGetBuffer();
+    RestoreOutputIfDucked();
   }
 
   {
@@ -727,6 +736,7 @@ void DaemonRuntimeController::FlushDeferredActions() {
   }
 
   capture_->Stop();
+  RestoreOutputIfDucked();
   ResetToIdle();
 }
 
@@ -743,6 +753,7 @@ void DaemonRuntimeController::Shutdown() {
   accepting_chunks_.store(false, std::memory_order_relaxed);
   pending_capture_stop_.store(false, std::memory_order_relaxed);
   capture_->Stop();
+  RestoreOutputIfDucked();
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -784,6 +795,7 @@ void DaemonRuntimeController::ResetToIdle() {
     first_non_silent_at_.reset();
     first_partial_logged_ = false;
   }
+  RestoreOutputIfDucked();
   dbus_->EmitStatusChanged(
       vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
   vinput::debug::Log("phase -> idle\n");

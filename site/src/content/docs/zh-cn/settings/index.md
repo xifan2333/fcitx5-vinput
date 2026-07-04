@@ -13,7 +13,9 @@ description: 录音设备、增益、VAD 等基础配置。
 {
   "global": {
     "default_language": "en",
-    "capture_device": "rnnoise_source"
+    "capture_device": "rnnoise_source",
+    "duck_output_while_recording": false,
+    "duck_output_volume": 0.25
   },
   "asr": {
     "normalize_audio": true,
@@ -63,6 +65,21 @@ VAD 检测录音中是否有人在说话。开启后，静音片段会被自动�
 ```bash
 vinput config set /asr/vad/enabled true
 ```
+
+## 录音时降低输出音量
+
+开启 `duck_output_while_recording` 后，Vinput 会在录音期间降低系统输出音量，录音结束后自动恢复。适用于同时使用外放音箱和麦克风的场景——例如边听音乐边口述——避免外放声音被麦克风收进去、干扰识别。
+
+`duck_output_volume` 表示录音期间保留的音量比例（`0.25` 表示保留当前音量的 25%），取值会被限制在 `0.0`–`1.0` 之间。该功能默认关闭。
+
+音量通过 WirePlumber（`wpctl`）调节，因此与系统音量一致并在结束后完整恢复。若系统上没有 WirePlumber（例如某些沙箱环境），该功能会被静默跳过。
+
+```bash
+vinput config set /global/duck_output_while_recording true
+vinput config set /global/duck_output_volume 0.25
+```
+
+以上两项也可在 Vinput GUI 的 **控制** 页面 **音频** 分组中设置。
 
 ## 语言
 

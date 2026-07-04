@@ -1,8 +1,11 @@
 #include "pages/control/control_page.h"
 
+#include <QCheckBox>
+#include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QSpinBox>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -89,11 +92,54 @@ void RunGetAsrBackendStateAsync(ControlPage *page, Callback callback) {
 ControlPage::ControlPage(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
 
+  // Audio section: capture device + audio processing knobs.
+  auto *audioFrame = new QFrame();
+  audioFrame->setFrameShape(QFrame::StyledPanel);
+  auto *audioLayout = new QVBoxLayout(audioFrame);
+  audioLayout->addWidget(new QLabel(tr("<b>Audio</b>")));
+
   auto *formLayout = new QFormLayout();
   comboDevice_ = new QComboBox();
   comboDevice_->setEditable(false);
   formLayout->addRow(tr("Capture Device:"), comboDevice_);
-  layout->addLayout(formLayout);
+
+  chkNormalizeAudio_ = new QCheckBox(tr("Normalize audio"));
+  chkNormalizeAudio_->setToolTip(
+      tr("Apply peak normalization to captured audio before recognition."));
+  formLayout->addRow(QString(), chkNormalizeAudio_);
+
+  spinInputGain_ = new QDoubleSpinBox();
+  spinInputGain_->setRange(0.1, 10.0);
+  spinInputGain_->setSingleStep(0.1);
+  spinInputGain_->setDecimals(1);
+  spinInputGain_->setToolTip(
+      tr("Microphone gain multiplier applied to captured audio."));
+  formLayout->addRow(tr("Input gain:"), spinInputGain_);
+
+  chkVadEnabled_ = new QCheckBox(tr("Trim silence (VAD)"));
+  chkVadEnabled_->setToolTip(
+      tr("Use voice activity detection to trim leading/trailing silence."));
+  formLayout->addRow(QString(), chkVadEnabled_);
+
+  chkDuckOutput_ = new QCheckBox(tr("Reduce output volume while recording"));
+  chkDuckOutput_->setToolTip(
+      tr("Lower the system output volume while recording, then restore it. "
+         "Useful when speaker sound leaks into the microphone."));
+  formLayout->addRow(QString(), chkDuckOutput_);
+
+  spinDuckVolume_ = new QSpinBox();
+  spinDuckVolume_->setRange(0, 100);
+  spinDuckVolume_->setSuffix(tr(" %"));
+  spinDuckVolume_->setToolTip(
+      tr("Fraction of the current output volume to keep while recording."));
+  formLayout->addRow(tr("Output volume while recording:"), spinDuckVolume_);
+
+  connect(chkDuckOutput_, &QCheckBox::toggled, spinDuckVolume_,
+          &QWidget::setEnabled);
+  spinDuckVolume_->setEnabled(chkDuckOutput_->isChecked());
+
+  audioLayout->addLayout(formLayout);
+  layout->addWidget(audioFrame);
 
   layout->addSpacing(20);
 
@@ -187,6 +233,14 @@ void ControlPage::reload() {
   CoreConfig config = ConfigManager::Get().Load();
   QString activeDevice = QString::fromStdString(config.global.captureDevice);
 
+  chkNormalizeAudio_->setChecked(config.asr.normalizeAudio);
+  spinInputGain_->setValue(config.asr.inputGain);
+  chkVadEnabled_->setChecked(config.asr.vad.enabled);
+  chkDuckOutput_->setChecked(config.global.duckOutputWhileRecording);
+  spinDuckVolume_->setValue(
+      static_cast<int>(config.global.duckOutputVolume * 100.0 + 0.5));
+  spinDuckVolume_->setEnabled(chkDuckOutput_->isChecked());
+
   for (const auto& dev : devices) {
     QString name = QString::fromStdString(dev.name);
     QString desc = QString::fromStdString(dev.description);
@@ -208,6 +262,22 @@ QString ControlPage::currentDevice() const {
   if (val.isEmpty())
     val = comboDevice_->currentText();
   return val;
+}
+
+bool ControlPage::normalizeAudio() const {
+  return chkNormalizeAudio_->isChecked();
+}
+
+double ControlPage::inputGain() const { return spinInputGain_->value(); }
+
+bool ControlPage::vadEnabled() const { return chkVadEnabled_->isChecked(); }
+
+bool ControlPage::duckOutputEnabled() const {
+  return chkDuckOutput_->isChecked();
+}
+
+double ControlPage::duckOutputVolume() const {
+  return spinDuckVolume_->value() / 100.0;
 }
 
 void ControlPage::refreshAsrList() {

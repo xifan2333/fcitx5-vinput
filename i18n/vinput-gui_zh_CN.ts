@@ -55,8 +55,56 @@
 <context>
     <name>vinput::gui::ControlPage</name>
     <message>
+        <source>&lt;b&gt;Audio&lt;/b&gt;</source>
+        <translation>&lt;b&gt;音频&lt;/b&gt;</translation>
+    </message>
+    <message>
         <source>Capture Device:</source>
         <translation>录音设备：</translation>
+    </message>
+    <message>
+        <source>Normalize audio</source>
+        <translation>归一化音频</translation>
+    </message>
+    <message>
+        <source>Apply peak normalization to captured audio before recognition.</source>
+        <translation>在识别前对采集到的音频做峰值归一化。</translation>
+    </message>
+    <message>
+        <source>Input gain:</source>
+        <translation>输入增益：</translation>
+    </message>
+    <message>
+        <source>Microphone gain multiplier applied to captured audio.</source>
+        <translation>应用于采集音频的麦克风增益倍数。</translation>
+    </message>
+    <message>
+        <source>Trim silence (VAD)</source>
+        <translation>裁剪静音（VAD）</translation>
+    </message>
+    <message>
+        <source>Use voice activity detection to trim leading/trailing silence.</source>
+        <translation>使用语音活动检测裁剪首尾静音。</translation>
+    </message>
+    <message>
+        <source>Reduce output volume while recording</source>
+        <translation>录音时降低输出音量</translation>
+    </message>
+    <message>
+        <source>Lower the system output volume while recording, then restore it. Useful when speaker sound leaks into the microphone.</source>
+        <translation>录音时降低系统输出音量，结束后恢复。适用于外放声音被麦克风收入、干扰识别的情况。</translation>
+    </message>
+    <message>
+        <source>Output volume while recording:</source>
+        <translation>录音时的输出音量：</translation>
+    </message>
+    <message>
+        <source>Fraction of the current output volume to keep while recording.</source>
+        <translation>录音时保留的当前输出音量比例。</translation>
+    </message>
+    <message>
+        <source> %</source>
+        <translation> %</translation>
     </message>
     <message>
         <source>&lt;b&gt;ASR Providers&lt;/b&gt;</source>

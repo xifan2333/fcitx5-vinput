@@ -38,6 +38,7 @@ Requires:       pipewire
 Requires:       curl
 Requires:       systemd
 Requires:       qt6-qtbase
+Recommends:     wireplumber
 
 # Bundled sherpa-onnx/onnxruntime shared libraries are private runtime
 # dependencies installed under %{_libdir}/fcitx5-vinput/. They should not

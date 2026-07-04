@@ -9,7 +9,9 @@
   },
   "global": {
     "default_language": "zh",
-    "capture_device": "default"
+    "capture_device": "default",
+    "duck_output_while_recording": false,
+    "duck_output_volume": 0.25
   },
   "asr": {
     "active_provider": "sherpa-onnx",

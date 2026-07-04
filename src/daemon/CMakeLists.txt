@@ -30,6 +30,7 @@ add_executable(daemon
     asr/backends/command_streaming_backend.cpp
     audio/audio_capture.cpp
     audio/audio_utils.cpp
+    audio/output_ducker.cpp
     asr/vad_trimmer.cpp
     remote/remote_text_service.cpp
     runtime/dbus_service.cpp

@@ -73,6 +73,8 @@ struct CoreConfig {
   struct Global {
     std::string defaultLanguage;
     std::string captureDevice;
+    bool duckOutputWhileRecording{false};
+    double duckOutputVolume{0.25};
   } global;
 
   struct Llm {

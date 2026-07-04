@@ -29,6 +29,7 @@ Homepage: https://github.com/xifan2333/fcitx5-vinput
 Package: fcitx5-vinput
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, fcitx5
+Recommends: wireplumber
 Description: Offline voice input addon for Fcitx5
  Local offline voice input plugin for Fcitx5, powered by sherpa-onnx
  for on-device speech recognition with optional LLM post-processing

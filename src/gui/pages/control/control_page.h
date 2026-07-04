@@ -1,9 +1,12 @@
 #pragma once
 
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QTimer>
 #include <QWidget>
 
@@ -23,6 +26,13 @@ public:
 
   // Current device value for saving.
   QString currentDevice() const;
+
+  // Current audio-processing values for saving.
+  bool normalizeAudio() const;
+  double inputGain() const;
+  bool vadEnabled() const;
+  bool duckOutputEnabled() const;
+  double duckOutputVolume() const;
 
 signals:
   void configChanged();
@@ -46,6 +56,11 @@ private:
                        const vinput::dbus::AsrBackendState *backend_state);
 
   QComboBox *comboDevice_;
+  QCheckBox *chkNormalizeAudio_;
+  QDoubleSpinBox *spinInputGain_;
+  QCheckBox *chkVadEnabled_;
+  QCheckBox *chkDuckOutput_;
+  QSpinBox *spinDuckVolume_;
   QListWidget *listAsrProviders_;
   QPushButton *btnAsrEdit_;
   QPushButton *btnAsrRemove_;

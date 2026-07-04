@@ -94,6 +94,13 @@ void MainWindow::onSaveClicked() {
     config.global.captureDevice.clear();
   }
 
+  // Save audio processing settings
+  config.asr.normalizeAudio = controlPage_->normalizeAudio();
+  config.asr.inputGain = controlPage_->inputGain();
+  config.asr.vad.enabled = controlPage_->vadEnabled();
+  config.global.duckOutputWhileRecording = controlPage_->duckOutputEnabled();
+  config.global.duckOutputVolume = controlPage_->duckOutputVolume();
+
   // Save hotwords
   QString hotwordsFile = hotwordPage_->hotwordsFilePath();
   for (auto& prov : config.asr.providers) {

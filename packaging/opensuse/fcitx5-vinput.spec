@@ -36,6 +36,7 @@ Requires:       fcitx5
 Requires:       pipewire
 Requires:       curl
 Requires:       systemd
+Recommends:     wireplumber
 
 %description
 Local offline voice input plugin for Fcitx5, powered by sherpa-onnx
