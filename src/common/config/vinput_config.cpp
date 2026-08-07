@@ -2,7 +2,6 @@
 
 #include "common/i18n.h"
 
-#include <fcitx-config/iniparser.h>
 #include <fcitx-utils/standardpath.h>
 
 #include <filesystem>
@@ -88,57 +87,32 @@ std::string TriggerModeLabel() { return _("Trigger Mode"); }
 
 } // namespace
 
-VinputConfig::VinputConfig(const VinputSettings &settings)
+VinputConfig::VinputConfig()
     : triggerMode(this, "TriggerMode", TriggerModeLabel(),
-                  settings.triggerMode, {}, {},
-                  TriggerModeI18NAnnotation()),
-      triggerKeys(this, "TriggerKey", TriggerKeyLabel(), settings.triggerKeys,
-                 TriggerKeyListConstrain(), {},
-                 fcitx::ToolTipAnnotation(TriggerKeyTooltip())),
-      commandKeys(this, "CommandKeys", CommandKeysLabel(), settings.commandKeys,
+                  TriggerMode::Both, {}, {}, TriggerModeI18NAnnotation()),
+      triggerKeys(this, "TriggerKey", TriggerKeyLabel(),
+                  {fcitx::Key(FcitxKey_Alt_R)}, TriggerKeyListConstrain(),
+                  {}, fcitx::ToolTipAnnotation(TriggerKeyTooltip())),
+      commandKeys(this, "CommandKeys", CommandKeysLabel(),
+                  {fcitx::Key(FcitxKey_Control_R)},
                   TriggerKeyListConstrain(), {},
                   fcitx::ToolTipAnnotation(CommandKeysTooltip())),
       sceneMenuKeys(this, "SceneMenuKey", SceneMenuKeyLabel(),
-                   settings.sceneMenuKeys, SceneMenuKeyListConstrain(), {},
+                   {fcitx::Key(FcitxKey_Shift_R)},
+                   SceneMenuKeyListConstrain(), {},
                    fcitx::ToolTipAnnotation(SceneMenuKeyTooltip())),
       asrMenuKeys(this, "AsrMenuKey", AsrMenuKeyLabel(),
-                  settings.asrMenuKeys, SceneMenuKeyListConstrain(), {},
+                  {fcitx::Key(FcitxKey_F8)}, SceneMenuKeyListConstrain(), {},
                   fcitx::ToolTipAnnotation(AsrMenuKeyTooltip())),
       pagePrevKeys(this, "PagePrevKeys", PagePrevKeysLabel(),
-                   settings.pagePrevKeys, TriggerKeyListConstrain(), {},
+                   {fcitx::Key(FcitxKey_Page_Up),
+                    fcitx::Key(FcitxKey_KP_Page_Up)},
+                   TriggerKeyListConstrain(), {},
                    fcitx::ToolTipAnnotation(PagePrevKeysTooltip())),
       pageNextKeys(this, "PageNextKeys", PageNextKeysLabel(),
-                   settings.pageNextKeys, TriggerKeyListConstrain(), {},
+                   {fcitx::Key(FcitxKey_Page_Down),
+                    fcitx::Key(FcitxKey_KP_Page_Down)},
+                   TriggerKeyListConstrain(), {},
                    fcitx::ToolTipAnnotation(PageNextKeysTooltip())),
       modelManager(this, "ModelManager", _("Open Vinput Settings"),
                    "vinput-gui") {}
-
-VinputSettings VinputConfig::settings() const {
-  VinputSettings settings;
-  settings.triggerKeys = triggerKeys.value();
-  settings.commandKeys = commandKeys.value();
-  settings.sceneMenuKeys = sceneMenuKeys.value();
-  settings.asrMenuKeys = asrMenuKeys.value();
-  settings.pagePrevKeys = pagePrevKeys.value();
-  settings.pageNextKeys = pageNextKeys.value();
-  settings.triggerMode = triggerMode.value();
-  return settings;
-}
-
-VinputSettings LoadVinputSettings() {
-  VinputConfig config(VinputSettings{});
-  fcitx::readAsIni(config, fcitx::StandardPath::Type::PkgConfig,
-                   kVinputConfigPath);
-  return config.settings();
-}
-
-bool SaveVinputSettings(const VinputSettings &settings) {
-  VinputConfig config(settings);
-  return fcitx::safeSaveAsIni(config, fcitx::StandardPath::Type::PkgConfig,
-                              kVinputConfigPath);
-}
-
-std::unique_ptr<VinputConfig>
-BuildVinputConfig(const VinputSettings &settings) {
-  return std::make_unique<VinputConfig>(settings);
-}

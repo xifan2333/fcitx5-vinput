@@ -48,7 +48,6 @@ public:
 private:
   void applySettings();
   void reloadSceneConfig();
-  void rebuildUiConfig() const;
   void handleKeyEvent(fcitx::Event &event);
   void showSceneMenu(fcitx::InputContext *ic);
   void hideSceneMenu();
@@ -185,8 +184,7 @@ private:
   std::unique_ptr<fcitx::EventSourceTime> pending_stop_event_;
   std::unique_ptr<fcitx::EventSourceTime> pending_start_event_;
   std::unique_ptr<fcitx::EventSourceTime> status_sync_event_;
-  VinputSettings settings_;
-  mutable std::unique_ptr<VinputConfig> ui_config_;
+  VinputConfig config_;
   int commit_write_count_ = 0;
   TriggerMode trigger_mode_{TriggerMode::Both};
 };

@@ -10,6 +10,7 @@
 #include "dbus/notifier_dbus_object.h"
 
 #include <dbus_public.h>
+#include <fcitx-config/iniparser.h>
 #include <fcitx-utils/event.h>
 #include <fcitx/inputcontext.h>
 
@@ -191,31 +192,32 @@ VinputEngine::~VinputEngine() {
 }
 
 void VinputEngine::reloadConfig() {
-  settings_ = LoadVinputSettings();
+  fcitx::readAsIni(config_, kVinputConfigPath);
   applySettings();
 }
 
-void VinputEngine::save() { SaveVinputSettings(settings_); }
+void VinputEngine::save() {
+  fcitx::safeSaveAsIni(config_, kVinputConfigPath);
+}
 
 const fcitx::Configuration *VinputEngine::getConfig() const {
-  rebuildUiConfig();
-  return ui_config_.get();
+  return &config_;
 }
 
 void VinputEngine::setConfig(const fcitx::RawConfig &rawConfig) {
-  auto config = std::make_unique<VinputConfig>(settings_);
-  config->load(rawConfig, true);
-  settings_ = config->settings();
+  config_.load(rawConfig, true);
   applySettings();
-  SaveVinputSettings(settings_);
+  save();
 }
 
 void VinputEngine::applySettings() {
-  trigger_keys_ = settings_.triggerKeys;
-  command_keys_ = settings_.commandKeys;
-  scene_menu_key_ = settings_.sceneMenuKeys;
-  asr_menu_key_ = settings_.asrMenuKeys;
-  trigger_mode_ = settings_.triggerMode;
+  trigger_keys_ = config_.triggerKeys.value();
+  command_keys_ = config_.commandKeys.value();
+  scene_menu_key_ = config_.sceneMenuKeys.value();
+  asr_menu_key_ = config_.asrMenuKeys.value();
+  page_prev_keys_ = config_.pagePrevKeys.value();
+  page_next_keys_ = config_.pageNextKeys.value();
+  trigger_mode_ = config_.triggerMode.value();
   reloadSceneConfig();
   reloadAsrMenuItems();
 }
@@ -233,10 +235,6 @@ void VinputEngine::reloadSceneConfig() {
     }
   }
   max_context_lines_ = max_cl;
-}
-
-void VinputEngine::rebuildUiConfig() const {
-  ui_config_ = std::make_unique<VinputConfig>(settings_);
 }
 
 void VinputEngine::rememberInputContext(fcitx::InputContext *ic) {
