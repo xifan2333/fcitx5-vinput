@@ -153,7 +153,7 @@ For ASR configuration, scenes & LLM setup, CLI reference, and registry contribut
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=xifan2333/fcitx5-vinput&type=Date)](https://star-history.com/#xifan2333/fcitx5-vinput&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=xifan2333/fcitx5-vinput&type=Date)](https://star-history.dera.page/#xifan2333/fcitx5-vinput&Date)
 
 ## Contributors
 
