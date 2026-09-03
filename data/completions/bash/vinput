@@ -32,7 +32,11 @@ _vinput() {
     local subcommands="init model provider llm adapter hotword device scene config daemon recording rec"
 
     if [[ $cword -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "$subcommands $global_opts" -- "$cur"))
+        if [[ "$cur" == -* ]]; then
+            COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
+        else
+            COMPREPLY=($(compgen -W "$subcommands" -- "$cur"))
+        fi
         return 0
     fi
 
@@ -45,14 +49,22 @@ _vinput() {
             ;;
         model)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "list ls add use remove rm info -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "list ls add use remove rm info" -- "$cur"))
+                fi
             else
                 case "${words[2]}" in
                     list|ls)
                         COMPREPLY=($(compgen -W "-a --available -h --help" -- "$cur"))
                         ;;
                     use|remove|rm|info)
-                        COMPREPLY=($(compgen -W "$(_vinput_installed_models)" -- "$cur"))
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                        else
+                            COMPREPLY=($(compgen -W "$(_vinput_installed_models)" -- "$cur"))
+                        fi
                         ;;
                 esac
             fi
@@ -60,14 +72,22 @@ _vinput() {
             ;;
         provider)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "list ls add use edit e remove rm -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "list ls add use edit e remove rm" -- "$cur"))
+                fi
             else
                 case "${words[2]}" in
                     list|ls)
                         COMPREPLY=($(compgen -W "-a --available -h --help" -- "$cur"))
                         ;;
                     use|edit|e|remove|rm)
-                        COMPREPLY=($(compgen -W "$(_vinput_installed_providers)" -- "$cur"))
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                        else
+                            COMPREPLY=($(compgen -W "$(_vinput_installed_providers)" -- "$cur"))
+                        fi
                         ;;
                 esac
             fi
@@ -75,14 +95,22 @@ _vinput() {
             ;;
         llm)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "list ls add edit e remove rm test -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "list ls add edit e remove rm test" -- "$cur"))
+                fi
             else
                 case "${words[2]}" in
                     add)
                         COMPREPLY=($(compgen -W "-u --base-url -k --api-key -e --extra-body -h --help" -- "$cur"))
                         ;;
                     edit|e|remove|rm|test)
-                        COMPREPLY=($(compgen -W "$(_vinput_installed_llm_providers) -u --base-url -k --api-key -e --extra-body -h --help" -- "$cur"))
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "-u --base-url -k --api-key -e --extra-body -h --help" -- "$cur"))
+                        else
+                            COMPREPLY=($(compgen -W "$(_vinput_installed_llm_providers)" -- "$cur"))
+                        fi
                         ;;
                 esac
             fi
@@ -90,7 +118,11 @@ _vinput() {
             ;;
         adapter)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "list ls add start stop -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "list ls add start stop" -- "$cur"))
+                fi
             else
                 case "${words[2]}" in
                     list|ls)
@@ -102,7 +134,11 @@ _vinput() {
             ;;
         hotword)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "get set clear edit e -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "get set clear edit e" -- "$cur"))
+                fi
             elif [[ "${words[2]}" == "set" ]]; then
                 if declare -F _filedir >/dev/null 2>&1; then
                     _filedir
@@ -114,20 +150,36 @@ _vinput() {
             ;;
         device)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "list ls use -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "list ls use" -- "$cur"))
+                fi
             fi
             return 0
             ;;
         scene)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "list ls add edit e use remove rm -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "list ls add edit e use remove rm" -- "$cur"))
+                fi
             else
                 case "${words[2]}" in
                     add|edit|e)
-                        COMPREPLY=($(compgen -W "$(_vinput_installed_scenes) --id -l --label -t --prompt -p --provider -m --model -c --candidates --timeout --context-lines -h --help" -- "$cur"))
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "--id -l --label -t --prompt -p --provider -m --model -c --candidates --timeout --context-lines -h --help" -- "$cur"))
+                        else
+                            COMPREPLY=($(compgen -W "$(_vinput_installed_scenes)" -- "$cur"))
+                        fi
                         ;;
                     use|remove|rm)
-                        COMPREPLY=($(compgen -W "$(_vinput_installed_scenes)" -- "$cur"))
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                        else
+                            COMPREPLY=($(compgen -W "$(_vinput_installed_scenes)" -- "$cur"))
+                        fi
                         ;;
                 esac
             fi
@@ -135,7 +187,11 @@ _vinput() {
             ;;
         config)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "get set edit e -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "get set edit e" -- "$cur"))
+                fi
             else
                 case "${words[2]}" in
                     edit|e)
@@ -150,7 +206,11 @@ _vinput() {
             ;;
         daemon)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "status start stop restart log -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "status start stop restart log" -- "$cur"))
+                fi
             else
                 case "${words[2]}" in
                     log)
@@ -162,7 +222,11 @@ _vinput() {
             ;;
         recording|rec)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "start stop toggle -h --help" -- "$cur"))
+                if [[ "$cur" == -* ]]; then
+                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
+                else
+                    COMPREPLY=($(compgen -W "start stop toggle" -- "$cur"))
+                fi
             else
                 case "${words[2]}" in
                     stop|toggle)

@@ -385,4 +385,6 @@ _vinput() {
     esac
 }
 
-_vinput "$@"
+if [[ -n "$CURRENT" ]]; then
+    _vinput "$@"
+fi
