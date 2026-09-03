@@ -49,7 +49,12 @@ yay -S fcitx5-vinput-lite-bin
 
 ```bash
 sudo dnf copr enable xifan/fcitx5-vinput-bin
+
+# Full version (with local sherpa-onnx runtime)
 sudo dnf install fcitx5-vinput
+
+# Lite version (cloud-only, zero local ONNX runtime)
+sudo dnf install fcitx5-vinput-lite
 ```
 
 ### Ubuntu 24.04 (PPA)
@@ -57,14 +62,24 @@ sudo dnf install fcitx5-vinput
 ```bash
 sudo add-apt-repository ppa:xifan233/ppa
 sudo apt update
+
+# Full version (with local sherpa-onnx runtime)
 sudo apt install fcitx5-vinput
+
+# Lite version (cloud-only, zero local ONNX runtime)
+sudo apt install fcitx5-vinput-lite
 ```
 
 ### Ubuntu / Debian (manual)
 
 ```bash
 # Download latest .deb from GitHub Releases
+# Full version (with local sherpa-onnx runtime):
 sudo dpkg -i fcitx5-vinput_*.deb
+sudo apt-get install -f
+
+# Lite version (cloud-only, zero local ONNX runtime):
+sudo dpkg -i fcitx5-vinput-lite_*.deb
 sudo apt-get install -f
 ```
 
@@ -96,7 +111,12 @@ Full Home Manager example in the [install docs](https://xifan2333.github.io/fcit
 
 ```bash
 flatpak remote-add --if-not-exists xifan https://xifan2333.github.io/flatpak-auto/xifan.flatpakrepo
+
+# Full version (with local sherpa-onnx runtime)
 flatpak install https://xifan2333.github.io/flatpak-auto/refs/org.fcitx.Fcitx5.Addon.Vinput.flatpakref
+
+# Lite version (cloud-only, zero local ONNX runtime)
+flatpak install https://xifan2333.github.io/flatpak-auto/refs/org.fcitx.Fcitx5.Addon.Vinput.Lite.flatpakref
 ```
 
 After installation, grant the extra permissions and restart Fcitx5:
@@ -110,21 +130,27 @@ flatpak kill org.fcitx.Fcitx5
 
 ### GitHub Releases
 
-Download the package for your system from [GitHub Releases](https://github.com/xifan2333/fcitx5-vinput/releases/latest):
+Download the package for your system from [GitHub Releases](https://github.com/xifan2333/fcitx5-vinput/releases/latest) (both full and lite variants are provided):
 
-- **Debian / Linux Mint / Ubuntu (other)**: `.deb`
-- **openSUSE / Fedora (other)**: `.rpm`
-- **Arch-based**: `.pkg.tar.zst`
-- **Flatpak**: `.flatpak`
-- **Generic Linux**: `_bundled.tar.gz`
+- **Debian / Linux Mint / Ubuntu (other)**: `.deb` (`fcitx5-vinput_*.deb` / `fcitx5-vinput-lite_*.deb`)
+- **openSUSE / Fedora (other)**: `.rpm` (`fcitx5-vinput-*.rpm` / `fcitx5-vinput-lite-*.rpm`)
+- **Arch-based**: `.pkg.tar.zst` (`fcitx5-vinput-*.pkg.tar.zst` / `fcitx5-vinput-lite-*.pkg.tar.zst`)
+- **Flatpak**: `.flatpak` (`fcitx5-vinput.flatpak` / `fcitx5-vinput-lite.flatpak`)
+- **Generic Linux**: `tar.gz` (`*_bundled.tar.gz` / `fcitx5-vinput-lite-*.tar.gz`)
 
 ### Build from source
 
 **Dependencies:** cmake, fcitx5, pipewire, libcurl, nlohmann-json, CLI11, Qt6
 
 ```bash
+# Full version (with local sherpa-onnx ASR runtime)
 sudo bash scripts/build-sherpa-onnx.sh
 cmake --preset release-clang-mold
+cmake --build --preset release-clang-mold
+sudo cmake --install build
+
+# Lite version (pure cloud ASR + LLM, zero sherpa-onnx dependency)
+cmake --preset release-clang-mold -DVINPUT_ENABLE_LOCAL_ASR=OFF
 cmake --build --preset release-clang-mold
 sudo cmake --install build
 ```

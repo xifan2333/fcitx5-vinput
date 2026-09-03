@@ -49,7 +49,12 @@ yay -S fcitx5-vinput-lite-bin
 
 ```bash
 sudo dnf copr enable xifan/fcitx5-vinput-bin
+
+# 完整版（带本地 sherpa-onnx 离线推理）
 sudo dnf install fcitx5-vinput
+
+# 极简 Lite 版（纯云端 ASR + LLM，无本地 ONNX 运行时）
+sudo dnf install fcitx5-vinput-lite
 ```
 
 ### Ubuntu 24.04 (PPA)
@@ -57,14 +62,24 @@ sudo dnf install fcitx5-vinput
 ```bash
 sudo add-apt-repository ppa:xifan233/ppa
 sudo apt update
+
+# 完整版（带本地 sherpa-onnx 离线推理）
 sudo apt install fcitx5-vinput
+
+# 极简 Lite 版（纯云端 ASR + LLM，无本地 ONNX 运行时）
+sudo apt install fcitx5-vinput-lite
 ```
 
 ### Ubuntu / Debian（手动安装）
 
 ```bash
 # 从 GitHub Releases 下载最新 .deb
+# 完整版（带本地 sherpa-onnx 离线推理）：
 sudo dpkg -i fcitx5-vinput_*.deb
+sudo apt-get install -f
+
+# 极简 Lite 版（纯云端 ASR + LLM，无本地 ONNX 运行时）：
+sudo dpkg -i fcitx5-vinput-lite_*.deb
 sudo apt-get install -f
 ```
 
@@ -96,7 +111,12 @@ nixConfig = {
 
 ```bash
 flatpak remote-add --if-not-exists xifan https://xifan2333.github.io/flatpak-auto/xifan.flatpakrepo
+
+# 完整版（带本地 sherpa-onnx 离线推理）
 flatpak install https://xifan2333.github.io/flatpak-auto/refs/org.fcitx.Fcitx5.Addon.Vinput.flatpakref
+
+# 极简 Lite 版（纯云端 ASR + LLM，零本地 ONNX 运行时）
+flatpak install https://xifan2333.github.io/flatpak-auto/refs/org.fcitx.Fcitx5.Addon.Vinput.Lite.flatpakref
 ```
 
 安装后需要授予额外权限并重启 Fcitx5：
@@ -110,21 +130,27 @@ flatpak kill org.fcitx.Fcitx5
 
 ### GitHub Releases
 
-从 [GitHub Releases](https://github.com/xifan2333/fcitx5-vinput/releases/latest) 下载对应安装包：
+从 [GitHub Releases](https://github.com/xifan2333/fcitx5-vinput/releases/latest) 下载对应安装包（均提供完整版与 Lite 极简版）：
 
-- **Debian / Linux Mint / Ubuntu（其他版本）**：`.deb`
-- **openSUSE / Fedora（其他版本）**：`.rpm`
-- **Arch 系**：`.pkg.tar.zst`
-- **Flatpak**：`.flatpak`
-- **通用 Linux**：`_bundled.tar.gz`
+- **Debian / Linux Mint / Ubuntu（其他版本）**：`.deb`（`fcitx5-vinput_*.deb` / `fcitx5-vinput-lite_*.deb`）
+- **openSUSE / Fedora（其他版本）**：`.rpm`（`fcitx5-vinput-*.rpm` / `fcitx5-vinput-lite-*.rpm`）
+- **Arch 系**：`.pkg.tar.zst`（`fcitx5-vinput-*.pkg.tar.zst` / `fcitx5-vinput-lite-*.pkg.tar.zst`）
+- **Flatpak**：`.flatpak`（`fcitx5-vinput.flatpak` / `fcitx5-vinput-lite.flatpak`）
+- **通用 Linux**：`tar.gz`（`*_bundled.tar.gz` / `fcitx5-vinput-lite-*.tar.gz`）
 
 ### 源码构建
 
 **依赖：** cmake、fcitx5、pipewire、libcurl、nlohmann-json、CLI11、Qt6
 
 ```bash
+# 完整版（带本地 sherpa-onnx 离线推理引擎）
 sudo bash scripts/build-sherpa-onnx.sh
 cmake --preset release-clang-mold
+cmake --build --preset release-clang-mold
+sudo cmake --install build
+
+# 极简 Lite 版（纯云端 ASR + LLM，零 sherpa-onnx 依赖）
+cmake --preset release-clang-mold -DVINPUT_ENABLE_LOCAL_ASR=OFF
 cmake --build --preset release-clang-mold
 sudo cmake --install build
 ```
