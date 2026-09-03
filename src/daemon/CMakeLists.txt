@@ -1,7 +1,28 @@
-find_library(SHERPA_ONNX_CXX_LIB sherpa-onnx-cxx-api REQUIRED)
-find_library(SHERPA_ONNX_C_LIB sherpa-onnx-c-api REQUIRED)
-find_library(ONNXRUNTIME_LIB onnxruntime REQUIRED)
-find_path(SHERPA_ONNX_INCLUDE_DIR sherpa-onnx/c-api/c-api.h REQUIRED)
+if(VINPUT_ENABLE_LOCAL_ASR)
+    find_library(SHERPA_ONNX_CXX_LIB sherpa-onnx-cxx-api REQUIRED)
+    find_library(SHERPA_ONNX_C_LIB sherpa-onnx-c-api REQUIRED)
+    find_library(ONNXRUNTIME_LIB onnxruntime REQUIRED)
+    find_path(SHERPA_ONNX_INCLUDE_DIR sherpa-onnx/c-api/c-api.h REQUIRED)
+    get_filename_component(SHERPA_ONNX_RUNTIME_DIR "${SHERPA_ONNX_CXX_LIB}" DIRECTORY)
+
+    set(VINPUT_LOCAL_ASR_SOURCES
+        asr/hotword_utils.cpp
+        asr/backends/sherpa_offline_backend.cpp
+        asr/backends/sherpa_streaming_backend.cpp
+        asr/vad_trimmer.cpp
+    )
+    set(VINPUT_LOCAL_ASR_LIBS
+        ${SHERPA_ONNX_CXX_LIB}
+        ${SHERPA_ONNX_C_LIB}
+    )
+    set(VINPUT_LOCAL_ASR_INCLUDES
+        ${SHERPA_ONNX_INCLUDE_DIR}
+    )
+else()
+    set(VINPUT_LOCAL_ASR_SOURCES)
+    set(VINPUT_LOCAL_ASR_LIBS)
+    set(VINPUT_LOCAL_ASR_INCLUDES)
+endif()
 
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 set(VINPUT_SYSTEMD_SERVICE_FILE
@@ -9,8 +30,7 @@ set(VINPUT_SYSTEMD_SERVICE_FILE
 set(VINPUT_DBUS_SERVICE_FILE
     "${CMAKE_CURRENT_BINARY_DIR}/org.fcitx.Vinput.service")
 
-get_filename_component(SHERPA_ONNX_RUNTIME_DIR "${SHERPA_ONNX_CXX_LIB}" DIRECTORY)
-if(VINPUT_RUNTIME_MODE STREQUAL "bundled")
+if(VINPUT_ENABLE_LOCAL_ASR AND VINPUT_RUNTIME_MODE STREQUAL "bundled")
     if(IS_ABSOLUTE "${VINPUT_RUNTIME_LIBDIR}")
         set(VINPUT_DAEMON_INSTALL_RPATH "${VINPUT_RUNTIME_LIBDIR}")
     else()
@@ -24,15 +44,12 @@ add_executable(daemon
     main.cpp
     asr/runtime/backend_factory.cpp
     asr/runtime/recognition_session_manager.cpp
-    asr/hotword_utils.cpp
-    asr/backends/sherpa_offline_backend.cpp
-    asr/backends/sherpa_streaming_backend.cpp
+    ${VINPUT_LOCAL_ASR_SOURCES}
     asr/backends/command_batch_backend.cpp
     asr/backends/command_streaming_backend.cpp
     audio/audio_capture.cpp
     audio/audio_utils.cpp
     audio/output_ducker.cpp
-    asr/vad_trimmer.cpp
     remote/remote_text_service.cpp
     runtime/dbus_service.cpp
     runtime/daemon_runtime_controller.cpp
@@ -50,7 +67,7 @@ target_compile_definitions(daemon PRIVATE
 target_include_directories(daemon PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${PIPEWIRE_INCLUDE_DIRS}
-    ${SHERPA_ONNX_INCLUDE_DIR}
+    ${VINPUT_LOCAL_ASR_INCLUDES}
 )
 
 target_link_libraries(daemon PRIVATE
@@ -58,18 +75,19 @@ target_link_libraries(daemon PRIVATE
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
     CURL::libcurl
-    ${SHERPA_ONNX_CXX_LIB}
-    ${SHERPA_ONNX_C_LIB}
+    ${VINPUT_LOCAL_ASR_LIBS}
     pthread
 )
 
-set_target_properties(daemon PROPERTIES
-    BUILD_RPATH "${SHERPA_ONNX_RUNTIME_DIR}"
-)
-if(VINPUT_RUNTIME_MODE STREQUAL "bundled")
+if(VINPUT_ENABLE_LOCAL_ASR)
     set_target_properties(daemon PROPERTIES
-        INSTALL_RPATH "${VINPUT_DAEMON_INSTALL_RPATH}"
+        BUILD_RPATH "${SHERPA_ONNX_RUNTIME_DIR}"
     )
+    if(VINPUT_RUNTIME_MODE STREQUAL "bundled")
+        set_target_properties(daemon PROPERTIES
+            INSTALL_RPATH "${VINPUT_DAEMON_INSTALL_RPATH}"
+        )
+    endif()
 endif()
 
 configure_file("${CMAKE_SOURCE_DIR}/systemd/vinput-daemon.service.in"
@@ -88,7 +106,7 @@ install(FILES
     "${VINPUT_DBUS_SERVICE_FILE}"
     DESTINATION "${VINPUT_DBUS_SERVICE_DIR}"
 )
-if(VINPUT_RUNTIME_MODE STREQUAL "bundled")
+if(VINPUT_ENABLE_LOCAL_ASR AND VINPUT_RUNTIME_MODE STREQUAL "bundled")
     install(FILES
         "${SHERPA_ONNX_CXX_LIB}"
         "${SHERPA_ONNX_C_LIB}"
@@ -97,7 +115,7 @@ if(VINPUT_RUNTIME_MODE STREQUAL "bundled")
     )
 endif()
 # VAD model (optional — daemon gracefully degrades if missing)
-if(EXISTS "${CMAKE_SOURCE_DIR}/data/vad/silero_vad.onnx")
+if(VINPUT_ENABLE_LOCAL_ASR AND EXISTS "${CMAKE_SOURCE_DIR}/data/vad/silero_vad.onnx")
     install(FILES "${CMAKE_SOURCE_DIR}/data/vad/silero_vad.onnx"
             DESTINATION "${VINPUT_VAD_MODEL_DIR}")
 endif()

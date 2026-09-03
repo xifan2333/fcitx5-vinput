@@ -4,8 +4,12 @@
 
 #include "daemon/asr/backends/command_batch_backend.h"
 #include "daemon/asr/backends/command_streaming_backend.h"
+
+#include "config.h"
+#if VINPUT_ENABLE_LOCAL_ASR
 #include "daemon/asr/backends/sherpa_offline_backend.h"
 #include "daemon/asr/backends/sherpa_streaming_backend.h"
+#endif
 
 namespace vinput::daemon::asr {
 
@@ -19,6 +23,14 @@ bool IsStreamingCommandProvider(const CommandAsrProvider& provider) {
 
 std::unique_ptr<AsrBackend>
 CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, std::string* error) {
+#if !VINPUT_ENABLE_LOCAL_ASR
+  (void)config;
+  (void)provider;
+  if (error) {
+    *error = "Local ASR support is disabled in this Lite build.";
+  }
+  return nullptr;
+#else
   if (provider.model.empty()) {
     if (error) {
       *error = "Local ASR provider model is not configured.";
@@ -63,6 +75,7 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
         "Unsupported local ASR backend '" + backend_id + "' for provider '" + provider.id + "'.";
   }
   return nullptr;
+#endif
 }
 
 } // namespace
