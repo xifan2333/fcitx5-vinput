@@ -74,8 +74,20 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-24.04
+            mode: bundled
+            enable_local_asr: "ON"
+          - arch: x86_64
+            runner: ubuntu-24.04
+            mode: lite
+            enable_local_asr: "OFF"
           - arch: aarch64
             runner: ubuntu-24.04-arm
+            mode: bundled
+            enable_local_asr: "ON"
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            mode: lite
+            enable_local_asr: "OFF"
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
@@ -89,6 +101,7 @@ jobs:
           path: dist
 
       - name: Install sherpa-onnx build runtime
+        if: matrix.enable_local_asr == 'ON'
         run: |
           prefix="${RUNNER_TEMP}/sherpa-onnx-install"
           tar -xf "dist/${{ needs.source_archive.outputs.source_archive }}"
@@ -100,14 +113,15 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ env.SCCACHE_DIR }}
-          key: sccache-release-tarball-${{ matrix.arch }}-${{ github.ref_name }}
+          key: sccache-release-tarball-${{ matrix.arch }}-${{ matrix.mode }}-${{ github.ref_name }}
           restore-keys: |
-            sccache-release-tarball-${{ matrix.arch }}-
+            sccache-release-tarball-${{ matrix.arch }}-${{ matrix.mode }}-
 
       - name: Configure
         run: |
           cd "fcitx5-vinput-${{ needs.source_archive.outputs.package_version }}"
           cmake --preset ci-clang-mold \
+            -DVINPUT_ENABLE_LOCAL_ASR=${{ matrix.enable_local_asr }} \
             -DVINPUT_PROJECT_VERSION="${{ needs.source_archive.outputs.package_version }}" \
             -DVINPUT_PACKAGE_RELEASE="${{ needs.source_archive.outputs.package_release }}" \
             -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
@@ -126,7 +140,7 @@ jobs:
         run: |
           version="${{ needs.source_archive.outputs.package_version }}"
           release="${{ needs.source_archive.outputs.package_release }}"
-          mode="bundled"
+          mode="${{ matrix.mode }}"
           stage_root="${RUNNER_TEMP}/stage"
           archive_root="fcitx5-vinput_${version}-${release}_linux_${{ matrix.arch }}_${mode}"
           build_root="${GITHUB_WORKSPACE}/fcitx5-vinput-${version}/build"
@@ -139,8 +153,8 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: release-tarball-bundled-${{ matrix.arch }}
-          path: dist/fcitx5-vinput_*_linux_${{ matrix.arch }}_bundled.tar.gz
+          name: release-tarball-${{ matrix.mode }}-${{ matrix.arch }}
+          path: dist/fcitx5-vinput_*_linux_${{ matrix.arch }}_${{ matrix.mode }}.tar.gz
           if-no-files-found: error
 
   build-deb:
@@ -153,18 +167,50 @@ jobs:
             image: ubuntu:24.04
             arch: amd64
             runner: ubuntu-latest
+            mode: full
+            enable_local_asr: "ON"
+          - distro: ubuntu24.04
+            image: ubuntu:24.04
+            arch: amd64
+            runner: ubuntu-latest
+            mode: lite
+            enable_local_asr: "OFF"
           - distro: debian12
             image: debian:12
             arch: amd64
             runner: ubuntu-latest
+            mode: full
+            enable_local_asr: "ON"
+          - distro: debian12
+            image: debian:12
+            arch: amd64
+            runner: ubuntu-latest
+            mode: lite
+            enable_local_asr: "OFF"
           - distro: ubuntu24.04
             image: ubuntu:24.04
             arch: arm64
             runner: ubuntu-24.04-arm
+            mode: full
+            enable_local_asr: "ON"
+          - distro: ubuntu24.04
+            image: ubuntu:24.04
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            mode: lite
+            enable_local_asr: "OFF"
           - distro: debian12
             image: debian:12
             arch: arm64
             runner: ubuntu-24.04-arm
+            mode: full
+            enable_local_asr: "ON"
+          - distro: debian12
+            image: debian:12
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            mode: lite
+            enable_local_asr: "OFF"
     runs-on: ${{ matrix.runner }}
     container:
       image: ${{ matrix.image }}
@@ -180,6 +226,7 @@ jobs:
           path: dist
 
       - name: Prepare distro-native runtime prefix
+        if: matrix.enable_local_asr == 'ON'
         run: |
           prefix="${GITHUB_WORKSPACE}/runtime"
           tar -xf "dist/${{ needs.source_archive.outputs.source_archive }}"
@@ -189,9 +236,9 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ env.SCCACHE_DIR }}
-          key: sccache-release-deb-${{ matrix.distro }}-${{ matrix.arch }}-${{ github.ref_name }}
+          key: sccache-release-deb-${{ matrix.distro }}-${{ matrix.arch }}-${{ matrix.mode }}-${{ github.ref_name }}
           restore-keys: |
-            sccache-release-deb-${{ matrix.distro }}-${{ matrix.arch }}-
+            sccache-release-deb-${{ matrix.distro }}-${{ matrix.arch }}-${{ matrix.mode }}-
 
       - name: Build Debian package
         shell: bash
@@ -200,8 +247,13 @@ jobs:
             sccache --start-server 2>/dev/null || true
           fi
           cd "fcitx5-vinput-${{ needs.source_archive.outputs.package_version }}"
+          prefix_args=()
+          if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
+            prefix_args+=(-DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/runtime")
+          fi
           cmake --preset ci-clang-mold \
-            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/runtime" \
+            -DVINPUT_ENABLE_LOCAL_ASR=${{ matrix.enable_local_asr }} \
+            "${prefix_args[@]}" \
             -DVINPUT_PROJECT_VERSION="${{ needs.source_archive.outputs.package_version }}" \
             -DVINPUT_PACKAGE_RELEASE="${{ needs.source_archive.outputs.package_release }}" \
             -DVINPUT_PACKAGE_CONTACT="${{ github.repository_owner }} <noreply@github.com>" \
@@ -210,13 +262,19 @@ jobs:
           cmake --build --preset ci-clang-mold
           cpack --config build/CPackConfig.cmake -G DEB -B "${GITHUB_WORKSPACE}/dist"
 
-          mv \
-            "${GITHUB_WORKSPACE}/dist/fcitx5-vinput_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.arch }}.deb" \
-            "${GITHUB_WORKSPACE}/dist/fcitx5-vinput_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.distro }}_${{ matrix.arch }}.deb"
+          if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
+            mv \
+              "${GITHUB_WORKSPACE}/dist/fcitx5-vinput_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.arch }}.deb" \
+              "${GITHUB_WORKSPACE}/dist/fcitx5-vinput_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.distro }}_${{ matrix.arch }}.deb"
+          else
+            mv \
+              "${GITHUB_WORKSPACE}/dist/fcitx5-vinput-lite_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.arch }}.deb" \
+              "${GITHUB_WORKSPACE}/dist/fcitx5-vinput-lite_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.distro }}_${{ matrix.arch }}.deb"
+          fi
 
       - uses: actions/upload-artifact@v6
         with:
-          name: release-deb-${{ matrix.distro }}-${{ matrix.arch }}
+          name: release-deb-${{ matrix.distro }}-${{ matrix.arch }}-${{ matrix.mode }}
           path: dist/*.deb
           if-no-files-found: error
 
@@ -255,7 +313,12 @@ jobs:
             packaging/fedora/fcitx5-vinput.spec \
             > "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec"
 
+          # Build Full RPM
           rpmbuild -bb "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
+            --define "_topdir $HOME/rpmbuild"
+
+          # Build Lite RPM
+          rpmbuild -bb --without local_asr "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
             --define "_topdir $HOME/rpmbuild"
 
           mkdir -p dist
@@ -305,7 +368,12 @@ jobs:
             packaging/opensuse/fcitx5-vinput.spec \
             > "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec"
 
+          # Build Full RPM
           rpmbuild -bb "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
+            --define "_topdir $HOME/rpmbuild"
+
+          # Build Lite RPM
+          rpmbuild -bb --without local_asr "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
             --define "_topdir $HOME/rpmbuild"
 
           mkdir -p dist
@@ -333,10 +401,13 @@ jobs:
           name: source-archive
           path: dist
 
-      - name: Render PKGBUILD
+      - name: Render PKGBUILDs
         shell: bash
         run: |
           cp "dist/${{ needs.source_archive.outputs.source_archive }}" packaging/arch/
+          mkdir -p packaging/arch-lite
+          cp "dist/${{ needs.source_archive.outputs.source_archive }}" packaging/arch-lite/
+
           VINPUT_PKGURL="${{ github.server_url }}/${{ github.repository }}" \
             ./scripts/render-arch-pkgbuild.sh \
             packaging/arch/PKGBUILD.in \
@@ -345,17 +416,28 @@ jobs:
             "packaging/arch/${{ needs.source_archive.outputs.source_archive }}" \
             "${{ needs.source_archive.outputs.package_release }}"
 
-      - name: Build Arch package
+          VINPUT_PKGURL="${{ github.server_url }}/${{ github.repository }}" \
+            ./scripts/render-arch-pkgbuild.sh \
+            packaging/arch/PKGBUILD.lite.in \
+            packaging/arch-lite/PKGBUILD \
+            "${{ needs.source_archive.outputs.package_version }}" \
+            "packaging/arch-lite/${{ needs.source_archive.outputs.source_archive }}" \
+            "${{ needs.source_archive.outputs.package_release }}"
+
+      - name: Build Arch packages
         shell: bash
         run: |
           useradd -m builder
           chown -R builder:builder "${GITHUB_WORKSPACE}"
           su builder -c "cd '${GITHUB_WORKSPACE}/packaging/arch' && makepkg --noconfirm --cleanbuild --force"
+          su builder -c "cd '${GITHUB_WORKSPACE}/packaging/arch-lite' && makepkg --noconfirm --cleanbuild --force"
 
       - uses: actions/upload-artifact@v6
         with:
           name: release-arch
-          path: packaging/arch/*.pkg.tar.zst
+          path: |
+            packaging/arch/*.pkg.tar.zst
+            packaging/arch-lite/*.pkg.tar.zst
           if-no-files-found: error
 
   build-flatpak:
@@ -368,7 +450,7 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@v6
-      - name: Render pinned Flatpak manifest
+      - name: Render pinned Flatpak manifests
         shell: bash
         run: |
           cp packaging/flatpak/org.fcitx.Fcitx5.Addon.Vinput.yaml \
@@ -378,16 +460,37 @@ jobs:
             -e "s|@VINPUT_RELEASE_TAG@|${GITHUB_REF_NAME}|g" \
             -e "s|@VINPUT_RELEASE_COMMIT@|${GITHUB_SHA}|g" \
             packaging/flatpak/release-manifest.yaml
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+
+          cp packaging/flatpak/org.fcitx.Fcitx5.Addon.Vinput.lite.yaml \
+            packaging/flatpak/release-manifest-lite.yaml
+          sed -i \
+            -e "s|@FCITX5_RUNTIME_VERSION@|stable|g" \
+            -e "s|@VINPUT_RELEASE_TAG@|${GITHUB_REF_NAME}|g" \
+            -e "s|@VINPUT_RELEASE_COMMIT@|${GITHUB_SHA}|g" \
+            packaging/flatpak/release-manifest-lite.yaml
+
+      - name: Build Full Flatpak bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           manifest-path: packaging/flatpak/release-manifest.yaml
           bundle: fcitx5-vinput.flatpak
           repository-name: flathub
           cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Build Lite Flatpak bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/release-manifest-lite.yaml
+          bundle: fcitx5-vinput-lite.flatpak
+          repository-name: flathub
+          cache-key: flatpak-builder-lite-${{ github.sha }}
+
       - uses: actions/upload-artifact@v6
         with:
           name: flatpak-bundle
-          path: fcitx5-vinput.flatpak
+          path: |
+            fcitx5-vinput.flatpak
+            fcitx5-vinput-lite.flatpak
 
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')

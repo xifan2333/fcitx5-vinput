@@ -25,6 +25,15 @@ on:
           - ppa
           - aur
           - flatpak
+      variant:
+        description: Variant to publish (all, full, lite)
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - full
+          - lite
 
 permissions:
   contents: read
@@ -97,15 +106,15 @@ jobs:
       - name: Install rpmbuild and copr-cli
         run: |
           sudo apt-get update
-          sudo apt-get install -y rpm
-          pip install copr-cli
+          sudo apt-get install -y rpm python3-pip
+          pip install copr-cli --break-system-packages 2>/dev/null || pip install copr-cli
 
-      - name: Build SRPM
+      - name: Build SRPMs
         shell: bash
         run: |
           version="${{ needs.source_archive.outputs.package_version }}"
           source ./scripts/sherpa-onnx-vars.sh
-          mkdir -p "${HOME}/rpmbuild/"{SOURCES,SPECS}
+          mkdir -p "${HOME}/rpmbuild/"{SOURCES,SPECS,SRPMS}
           cp dist/${{ needs.source_archive.outputs.source_archive }} "${HOME}/rpmbuild/SOURCES/"
           curl -fL --retry 3 --retry-delay 2 \
             -o "${HOME}/rpmbuild/SOURCES/${SHERPA_ONNX_ARCHIVE}" \
@@ -117,8 +126,15 @@ jobs:
             packaging/fedora/fcitx5-vinput.spec \
             > "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec"
 
-          rpmbuild -bs "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
-            --define "_topdir $HOME/rpmbuild"
+          if [[ "${{ inputs.variant }}" == "all" || "${{ inputs.variant }}" == "full" ]]; then
+            rpmbuild -bs "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
+              --define "_topdir $HOME/rpmbuild"
+          fi
+
+          if [[ "${{ inputs.variant }}" == "all" || "${{ inputs.variant }}" == "lite" ]]; then
+            rpmbuild -bs --without local_asr "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
+              --define "_topdir $HOME/rpmbuild"
+          fi
 
       - name: Submit to COPR
         shell: bash
@@ -126,8 +142,10 @@ jobs:
           mkdir -p ~/.config
           echo "${{ secrets.COPR_CONFIG }}" > ~/.config/copr
 
-          srpm=$(find ~/rpmbuild/SRPMS -name '*.src.rpm' -print -quit)
-          copr-cli build fcitx5-vinput-bin "${srpm}"
+          for srpm in "${HOME}"/rpmbuild/SRPMS/*.src.rpm; do
+            [[ -f "${srpm}" ]] || continue
+            copr-cli build fcitx5-vinput-bin "${srpm}"
+          done
 
   ppa:
     if: ${{ inputs.platform == 'all' || inputs.platform == 'ppa' }}
@@ -160,7 +178,8 @@ jobs:
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           gpg-connect-agent reloadagent /bye
 
-      - name: Build and upload source package
+      - name: Build and upload Full source package
+        if: ${{ inputs.variant == 'all' || inputs.variant == 'full' }}
         shell: bash
         run: |
           version="${{ needs.source_archive.outputs.package_version }}"
@@ -208,11 +227,41 @@ jobs:
             "${pkg}_source.changes"
           dput ppa:xifan233/ppa "${pkg}_source.changes"
 
+      - name: Build and upload Lite source package
+        if: ${{ inputs.variant == 'all' || inputs.variant == 'lite' }}
+        shell: bash
+        run: |
+          version="${{ needs.source_archive.outputs.package_version }}"
+          ppa_revision="${PPA_REVISION}"
+          pkg="fcitx5-vinput-lite_${version}-1ppa${ppa_revision}~noble1"
+          orig_tar="fcitx5-vinput-lite_${version}.orig.tar.gz"
+
+          rm -rf "fcitx5-vinput-lite-${version}"
+          tar -xf "dist/${{ needs.source_archive.outputs.source_archive }}"
+          mv "fcitx5-vinput-${version}" "fcitx5-vinput-lite-${version}"
+          cp "dist/${{ needs.source_archive.outputs.source_archive }}" "${orig_tar}"
+
+          cd "fcitx5-vinput-lite-${version}"
+          cp -r packaging/debian-lite debian
+          dch --create --package fcitx5-vinput-lite \
+            --newversion "${version}-1ppa${ppa_revision}~noble1" \
+            --distribution noble \
+            "Release ${version} (Lite build)"
+
+          dpkg-buildpackage -S -sa -d --no-sign
+
+          cd ..
+          debsign -k"${GPG_KEY_ID}" \
+            -p"gpg --no-tty --pinentry-mode loopback" \
+            "${pkg}_source.changes"
+          dput ppa:xifan233/ppa "${pkg}_source.changes"
+
   aur:
     if: ${{ inputs.platform == 'all' || inputs.platform == 'aur' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger AUR publish
+      - name: Trigger AUR Full publish
+        if: ${{ inputs.variant == 'all' || inputs.variant == 'full' }}
         env:
           GH_TOKEN: ${{ secrets.AUR_AUTO_PAT }}
         run: |
@@ -221,16 +270,38 @@ jobs:
             --field package=fcitx5-vinput-bin \
             --field force=true
 
+      - name: Trigger AUR Lite publish
+        if: ${{ inputs.variant == 'all' || inputs.variant == 'lite' }}
+        env:
+          GH_TOKEN: ${{ secrets.AUR_AUTO_PAT }}
+        run: |
+          gh workflow run build-and-publish.yml \
+            --repo xifan2333/aur-auto \
+            --field package=fcitx5-vinput-lite-bin \
+            --field force=true
+
   flatpak:
     if: ${{ inputs.platform == 'all' || inputs.platform == 'flatpak' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Flatpak repository publish
+      - name: Trigger Flatpak Full publish
+        if: ${{ inputs.variant == 'all' || inputs.variant == 'full' }}
         env:
           GH_TOKEN: ${{ secrets.FLATPAK_AUTO_PAT || secrets.AUR_AUTO_PAT }}
         run: |
           gh workflow run sync-and-publish.yml \
             --repo xifan2333/flatpak-auto \
             --field product=fcitx5-vinput \
+            --field version=${{ inputs.version }} \
+            --field force=true
+
+      - name: Trigger Flatpak Lite publish
+        if: ${{ inputs.variant == 'all' || inputs.variant == 'lite' }}
+        env:
+          GH_TOKEN: ${{ secrets.FLATPAK_AUTO_PAT || secrets.AUR_AUTO_PAT }}
+        run: |
+          gh workflow run sync-and-publish.yml \
+            --repo xifan2333/flatpak-auto \
+            --field product=fcitx5-vinput-lite \
             --field version=${{ inputs.version }} \
             --field force=true

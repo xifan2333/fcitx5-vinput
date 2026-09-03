@@ -1,0 +1,13 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: fcitx5-vinput-lite
+Upstream-Contact: xifan233 <xifan2333@gmail.com>
+Source: https://github.com/xifan2333/fcitx5-vinput
+
+Files: *
+Copyright: 2026 xifan233
+License: GPL-3.0
+
+License: GPL-3.0
+ On Debian systems, the full text of the GNU General Public
+ License version 3 can be found in the file
+ `/usr/share/common-licenses/GPL-3'.

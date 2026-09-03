@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+DEB_BUILD_OPTIONS := $(strip $(DEB_BUILD_OPTIONS) nocheck)
+export DEB_BUILD_OPTIONS
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	export CC=clang && \
+	export CXX=clang++ && \
+	dh_auto_configure -- -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DVINPUT_ENABLE_LOCAL_ASR=OFF \
+		-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold \
+		-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold \
+		-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=mold
+
+override_dh_auto_test:
+	:
+
+override_dh_dwz:
+	:
+
+override_dh_strip:
+	:

@@ -1,0 +1,37 @@
+pkgname=fcitx5-vinput-lite
+pkgver=@VINPUT_PKGVER@
+pkgrel=@VINPUT_PKGREL@
+pkgdesc='Voice input addon for Fcitx5, built without local ASR'
+arch=('x86_64')
+url='@VINPUT_PKGURL@'
+license=('GPL-3.0-only')
+options=(!debug !lto)
+depends=('curl' 'fcitx5' 'libarchive' 'openssl' 'pipewire' 'qt6-base')
+optdepends=('wireplumber: reduce system output volume while recording')
+makedepends=('clang' 'cli11' 'cmake' 'mold' 'ninja' 'nlohmann-json' 'pkgconf' 'qt6-tools')
+provides=('fcitx5-vinput')
+conflicts=('fcitx5-vinput')
+source=('@VINPUT_SOURCE_ARCHIVE@')
+sha256sums=('@VINPUT_SOURCE_SHA256@')
+
+build() {
+    local src_root="${srcdir}/fcitx5-vinput-${pkgver}"
+    export CC=clang
+    export CXX=clang++
+
+    cmake -S "${src_root}" -B "${srcdir}/build" \
+        -DCMAKE_BUILD_TYPE=None \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DVINPUT_ENABLE_LOCAL_ASR=OFF \
+        -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold \
+        -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold \
+        -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=mold \
+        -DVINPUT_PROJECT_VERSION="${pkgver}" \
+        -DVINPUT_PACKAGE_RELEASE="${pkgrel}" \
+        -DVINPUT_PACKAGE_HOMEPAGE_URL="${url}"
+    cmake --build "${srcdir}/build"
+}
+
+package() {
+    DESTDIR="${pkgdir}" cmake --install "${srcdir}/build"
+}

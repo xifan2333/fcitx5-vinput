@@ -1,0 +1,45 @@
+app-id: org.fcitx.Fcitx5.Addon.Vinput
+branch: lite
+runtime: org.fcitx.Fcitx5
+runtime-version: '@FCITX5_RUNTIME_VERSION@'
+sdk: org.kde.Sdk//6.10
+build-extension: true
+separate-locales: false
+build-options:
+  prefix: /app/addons/Vinput
+  prepend-pkg-config-path: /app/addons/Vinput/lib/pkgconfig
+  no-debuginfo: true
+  strip: true
+cleanup:
+  - /include
+  - "*.la"
+  - "*.a"
+  - /lib/cmake
+  - /lib/pkgconfig
+modules:
+  - name: cli11
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCLI11_BUILD_TESTS=OFF
+      - -DCLI11_BUILD_EXAMPLES=OFF
+    sources:
+      - type: archive
+        url: https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.4.2.tar.gz
+        sha256: f2d893a65c3b1324c50d4e682c0cdc021dd0477ae2c048544f39eed6654b699a
+  - name: fcitx5-vinput
+    buildsystem: cmake-ninja
+    build-options:
+      env:
+        CMAKE_PREFIX_PATH: /app/addons/Vinput:/app
+        CMAKE_LIBRARY_PATH: /app/addons/Vinput/lib
+        CMAKE_INCLUDE_PATH: /app/addons/Vinput/include
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DVINPUT_ENABLE_LOCAL_ASR=OFF
+      - -DVINPUT_BUNDLE_SHERPA_RUNTIME=OFF
+      - -DVINPUT_FETCH_CLI11=OFF
+    sources:
+      - type: git
+        url: https://github.com/xifan2333/fcitx5-vinput
+        tag: '@VINPUT_RELEASE_TAG@'
+        commit: '@VINPUT_RELEASE_COMMIT@'

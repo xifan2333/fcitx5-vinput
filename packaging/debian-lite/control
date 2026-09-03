@@ -1,0 +1,37 @@
+Source: fcitx5-vinput-lite
+Section: utils
+Priority: optional
+Maintainer: xifan233 <xifan2333@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               clang,
+               cmake (>= 3.16),
+               mold,
+               ninja-build,
+               pkg-config,
+               gettext,
+               libcurl4-openssl-dev,
+               libssl-dev,
+               libarchive-dev,
+               libpipewire-0.3-dev,
+               libsystemd-dev,
+               libfcitx5core-dev,
+               libfcitx5config-dev,
+               libfcitx5utils-dev,
+               fcitx5-modules-dev,
+               libcli11-dev,
+               nlohmann-json3-dev,
+               qt6-base-dev,
+               qt6-tools-dev,
+               qt6-tools-dev-tools
+Standards-Version: 4.6.2
+Homepage: https://github.com/xifan2333/fcitx5-vinput
+
+Package: fcitx5-vinput-lite
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, fcitx5
+Provides: fcitx5-vinput (= ${binary:Version})
+Conflicts: fcitx5-vinput
+Recommends: wireplumber
+Description: Voice input addon for Fcitx5 (Lite build)
+ Lightweight cloud voice input plugin for Fcitx5 with cloud ASR
+ providers and LLM post-processing, built without local ASR runtimes.
