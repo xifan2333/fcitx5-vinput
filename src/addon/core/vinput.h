@@ -5,6 +5,7 @@
 #include <fcitx-utils/dbus/bus.h>
 #include <fcitx-utils/eventdispatcher.h>
 #include <fcitx-utils/handlertable.h>
+#include <fcitx-utils/key.h>
 #include <fcitx-utils/trackableobject.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
