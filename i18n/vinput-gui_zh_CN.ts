@@ -468,6 +468,10 @@ Found %2 model(s).</source>
         <source>Invalid extra_body JSON: %1</source>
         <translation>extra_body JSON 无效：%1</translation>
     </message>
+    <message>
+        <source>Are you sure you want to remove LLM adapter &apos;%1&apos;?</source>
+        <translation>确定要移除 LLM 适配器“%1”吗？</translation>
+    </message>
 </context>
 <context>
     <name>vinput::gui::ResourcePage</name>
@@ -658,6 +662,26 @@ Found %2 model(s).</source>
     <message>
         <source>Config saved, but failed to reload ASR backend: %1</source>
         <translation>配置已保存，但重新加载 ASR 后端失败：%1</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove ASR provider &apos;%1&apos;?</source>
+        <translation>确定要移除 ASR 提供商“%1”吗？</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove LLM adapter &apos;%1&apos;?</source>
+        <translation>确定要移除 LLM 适配器“%1”吗？</translation>
+    </message>
+    <message>
+        <source>Removed ASR provider %1.</source>
+        <translation>已移除 ASR 提供商 %1。</translation>
+    </message>
+    <message>
+        <source>Removed LLM adapter %1.</source>
+        <translation>已移除 LLM 适配器 %1。</translation>
+    </message>
+    <message>
+        <source>The local ASR provider cannot be removed.</source>
+        <translation>本地 ASR 提供商不能被移除。</translation>
     </message>
     <message>
         <source>Removed %1.</source>
