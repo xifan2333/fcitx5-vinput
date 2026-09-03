@@ -17,16 +17,32 @@ jobs:
     name: cpp-linter
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Run cpp-linter (PR Review & Formatting)
+      - name: Install build dependencies
+        run: ./scripts/ci-install-build-deps.sh ubuntu24.04
+
+      - name: Install sherpa-onnx runtime
+        run: |
+          prefix="${RUNNER_TEMP}/sherpa-onnx-install"
+          source scripts/sherpa-onnx-vars.sh
+          bash scripts/build-sherpa-onnx.sh "${SHERPA_ONNX_VERSION}" "${prefix}"
+          echo "VINPUT_CMAKE_PREFIX_PATH=${prefix}" >> "${GITHUB_ENV}"
+
+      - name: Configure CMake
+        run: |
+          cmake --preset release-clang-mold \
+            -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
+            -DVINPUT_RUNTIME_MODE=bundled
+
+      - name: Run cpp-linter (Clang-Tidy & Clang-Format)
         uses: cpp-linter/cpp-linter-action@v2
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           style: 'file'
-          tidy-checks: '-*'
+          database: 'build'
           version: '18'
           lines-changed-only: true
           files-changed-only: true
@@ -34,8 +50,8 @@ jobs:
           file-annotations: true
           thread-comments: 'update'
 
-      - name: Fail on formatting violations
-        if: steps.linter.outputs.clang-format-checks-failed > 0
+      - name: Fail on formatting or tidy violations
+        if: steps.linter.outputs.clang-format-checks-failed > 0 || steps.linter.outputs.clang-tidy-checks-failed > 0
         run: |
-          echo "clang-format checks failed! Please run 'mise run fmt' locally."
+          echo "cpp-linter checks failed! Please inspect clang-format and clang-tidy annotations."
           exit 1
