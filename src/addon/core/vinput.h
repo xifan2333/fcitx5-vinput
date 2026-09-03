@@ -136,9 +136,9 @@ private:
   fcitx::InputContext* scene_menu_ic_ = nullptr;
   fcitx::InputContext* asr_menu_ic_ = nullptr;
   fcitx::InputContext* result_menu_ic_ = nullptr;
-  fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Control_R)};
-  fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_F10)};
-  fcitx::KeyList scene_menu_key_{fcitx::Key(FcitxKey_F9)};
+  fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Alt_R)};
+  fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_Control_R)};
+  fcitx::KeyList scene_menu_key_{fcitx::Key(FcitxKey_Shift_R)};
   fcitx::KeyList asr_menu_key_{fcitx::Key(FcitxKey_F8)};
   fcitx::KeyList page_prev_keys_{
       fcitx::Key(FcitxKey_Page_Up),
