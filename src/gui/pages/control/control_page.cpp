@@ -24,6 +24,7 @@
 #include "gui/utils/config_manager.h"
 #include "gui/utils/i18n_cache.h"
 
+#include "config.h"
 #include "dialogs/asr_provider_dialog.h"
 #include "utils/gui_helpers.h"
 
@@ -300,6 +301,11 @@ void ControlPage::populateAsrList(const CoreConfig& config,
   auto i18n_map = I18nCache::Get().GetMap();
 
   for (const auto& provider : config.asr.providers) {
+#if !VINPUT_ENABLE_LOCAL_ASR
+    if (std::holds_alternative<LocalAsrProvider>(provider)) {
+      continue;
+    }
+#endif
     QString id = QString::fromStdString(AsrProviderId(provider));
     QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
 
