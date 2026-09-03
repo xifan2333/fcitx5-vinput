@@ -7,6 +7,8 @@
 #include "cli/config/action.h"
 #include "cli/config/asr_actions.h"
 
+#include "config.h"
+
 namespace vinput::cli::config {
 
 void RegisterHotwordCommands(CLI::App& app, CliAction* action) {
@@ -45,6 +47,7 @@ void RegisterHotwordCommands(CLI::App& app, CliAction* action) {
   });
 }
 
+#if VINPUT_ENABLE_LOCAL_ASR
 void RegisterModelCommands(CLI::App& app, CliAction* action) {
   auto* model = app.add_subcommand("model", _("Manage local ASR models"));
   model->require_subcommand(1);
@@ -96,6 +99,7 @@ void RegisterModelCommands(CLI::App& app, CliAction* action) {
     };
   });
 }
+#endif
 
 void RegisterProviderCommands(CLI::App& app, CliAction* action) {
   auto* provider = app.add_subcommand("provider", _("Manage ASR providers"));
