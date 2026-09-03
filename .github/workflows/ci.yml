@@ -20,7 +20,15 @@ env:
 
 jobs:
   build:
-    name: build-linux
+    name: build-linux-${{ matrix.mode }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: full
+            enable_local_asr: 'ON'
+          - mode: lite
+            enable_local_asr: 'OFF'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -37,6 +45,7 @@ jobs:
         run: python3 scripts/check-i18n.py
 
       - name: Install sherpa-onnx build runtime
+        if: matrix.enable_local_asr == 'ON'
         run: |
           prefix="${RUNNER_TEMP}/sherpa-onnx-install"
           source scripts/sherpa-onnx-vars.sh
@@ -46,15 +55,51 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ env.SCCACHE_DIR }}
-          key: sccache-ci-linux-${{ github.ref_name }}
+          key: sccache-ci-linux-${{ matrix.mode }}-${{ github.ref_name }}
           restore-keys: |
-            sccache-ci-linux-
+            sccache-ci-linux-${{ matrix.mode }}-
 
       - name: Configure
         run: |
           cmake --preset ci-clang-mold \
+            -DVINPUT_ENABLE_LOCAL_ASR=${{ matrix.enable_local_asr }} \
             -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
             -DVINPUT_RUNTIME_MODE=bundled
 
       - name: Build all targets
         run: cmake --build --preset ci-clang-mold
+
+      - name: Verify CLI feature surface
+        shell: bash
+        run: |
+          help_output="$(LANGUAGE=C build/src/cli/vinput --help)"
+          if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
+            grep -Eq '^  model[[:space:]]' <<<"${help_output}"
+          else
+            if grep -Eq '^  model[[:space:]]' <<<"${help_output}"; then
+              echo "Lite build unexpectedly exposes the model command." >&2
+              exit 1
+            fi
+          fi
+
+  build-nix-lite:
+    name: build-nix-lite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build official lite package
+        run: nix build .#fcitx5-vinput-lite --no-link
+
+      - name: Verify lite runtime closure excludes local ASR dependencies
+        run: |
+          if nix path-info --recursive .#fcitx5-vinput-lite | grep -Ei '(openfst|onnxruntime|sherpa-onnx|kaldi|sentencepiece)'; then
+            echo "Lite runtime closure contains a local ASR dependency." >&2
+            exit 1
+          fi

@@ -33,5 +33,14 @@ jobs:
           name: fcitx5-vinput
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      - name: Build and push to Cachix
-        run: nix build .#fcitx5-vinput --no-link
+      - name: Build full and lite packages and push to Cachix
+        run: |
+          nix build .#fcitx5-vinput --no-link
+          nix build .#fcitx5-vinput-lite --no-link
+
+      - name: Verify lite runtime closure excludes local ASR dependencies
+        run: |
+          if nix path-info --recursive .#fcitx5-vinput-lite | grep -Ei '(openfst|onnxruntime|sherpa-onnx|kaldi|sentencepiece)'; then
+            echo "Lite runtime closure contains a local ASR dependency." >&2
+            exit 1
+          fi
