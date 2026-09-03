@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QListWidgetItem>
 #include <QMessageBox>
 #include <QPointer>
 #include <QSpinBox>
