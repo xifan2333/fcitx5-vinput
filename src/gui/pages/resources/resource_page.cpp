@@ -13,6 +13,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
+#include "common/registry/registry_models.h"
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -297,7 +298,7 @@ void ResourcePage::populateLocalModels(const std::vector<ModelSummary>& models) 
   (void)models;
   return;
 #else
-  if (!tableInstalledModels_) {
+  if (tableInstalledModels_ == nullptr) {
     return;
   }
   tableInstalledModels_->setRowCount(0);
@@ -348,7 +349,7 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
   (void)models;
   return;
 #else
-  if (!tableAvailableModels_) {
+  if (tableAvailableModels_ == nullptr) {
     return;
   }
   tableAvailableModels_->setRowCount(0);
@@ -500,7 +501,7 @@ void ResourcePage::refreshAll() {
     std::string adapters_error;
 
 #if VINPUT_ENABLE_LOCAL_ASR
-    ModelRepository repo(baseDir.toStdString());
+    const ModelRepository repo(baseDir.toStdString());
     auto remote_models = repo.FetchRegistry(config, ResolveModelRegistryUrls(config), &models_error,
                                             nullptr, &warnings);
 #else
@@ -577,8 +578,9 @@ void ResourcePage::abortDownload() {
 }
 
 void ResourcePage::onUseModelClicked() {
-  if (!tableInstalledModels_)
+  if (tableInstalledModels_ == nullptr) {
     return;
+  }
   auto items = tableInstalledModels_->selectedItems();
   if (items.isEmpty())
     return;
@@ -615,8 +617,9 @@ void ResourcePage::onUseModelClicked() {
 }
 
 void ResourcePage::onRemoveModelClicked() {
-  if (!tableInstalledModels_)
+  if (tableInstalledModels_ == nullptr) {
     return;
+  }
   auto items = tableInstalledModels_->selectedItems();
   if (items.isEmpty())
     return;
@@ -675,10 +678,14 @@ void ResourcePage::onDownloadError(QString msg) {
 }
 
 void ResourcePage::onDownloadFinished() {
-  btnDownloadModel_->setEnabled(true);
+  if (btnDownloadModel_ != nullptr) {
+    btnDownloadModel_->setEnabled(true);
+  }
   btnAddProvider_->setEnabled(true);
   btnAddAdapter_->setEnabled(true);
-  btnRemoveModel_->setEnabled(true);
+  if (btnRemoveModel_ != nullptr) {
+    btnRemoveModel_->setEnabled(true);
+  }
   downloadStatusLabel_->clear();
   downloadStatusLabel_->setVisible(false);
   downloadProgressBar_->setValue(0);
@@ -692,8 +699,9 @@ void ResourcePage::onDownloadFinished() {
 }
 
 void ResourcePage::onDownloadModelClicked() {
-  if (!tableAvailableModels_)
+  if (tableAvailableModels_ == nullptr) {
     return;
+  }
   auto items = tableAvailableModels_->selectedItems();
   if (items.isEmpty())
     return;
