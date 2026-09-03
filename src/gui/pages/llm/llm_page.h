@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QListWidget>
+#include <QListWidgetItem>
 #include <QPushButton>
 #include <QWidget>
 
