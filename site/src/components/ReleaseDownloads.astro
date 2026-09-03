@@ -37,11 +37,16 @@ class ReleaseDownloads extends HTMLElement {
       .map((a) => ({ name: a.name, url: a.browser_download_url, label: labelFor(a.name, zh) }))
       .filter((a): a is { name: string; url: string; label: string } => a.label != null);
 
-    const order = ['Arch', 'Ubuntu', 'Debian', 'Fedora', 'RPM', 'Flatpak', 'Generic', '通用', 'Source', '源'];
+    const order = ['Arch', 'Ubuntu', 'Debian', 'Fedora', 'RPM', 'Flatpak', 'Generic', '通用', 'Source', '源', '源代'];
     assets.sort((a, b) => {
       const ai = order.findIndex((o) => a.label.startsWith(o));
       const bi = order.findIndex((o) => b.label.startsWith(o));
-      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+      const primary = (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+      if (primary !== 0) return primary;
+      const aLite = a.name.includes('lite') ? 1 : 0;
+      const bLite = b.name.includes('lite') ? 1 : 0;
+      if (aLite !== bLite) return aLite - bLite;
+      return a.name.localeCompare(b.name);
     });
 
     const tag = release.tag_name;
@@ -58,13 +63,17 @@ class ReleaseDownloads extends HTMLElement {
 }
 
 function labelFor(name: string, zh: boolean): string | null {
-  if (name.endsWith('.pkg.tar.zst')) return 'Arch Linux';
-  if (/ubuntu.*\.deb$/.test(name)) return 'Ubuntu 24.04';
-  if (/debian.*\.deb$/.test(name)) return 'Debian 12';
-  if (/\.fc\d+\..*\.rpm$/.test(name)) return 'Fedora';
-  if (/\.rpm$/.test(name)) return zh ? 'RPM（通用）' : 'RPM (generic)';
-  if (name.endsWith('.flatpak')) return 'Flatpak';
-  if (/bundled\.tar\.gz$/.test(name)) return zh ? '通用 Linux（捆绑包）' : 'Generic Linux (bundled)';
+  const isLite = name.includes('lite') || name.includes('-lite');
+  const suffix = isLite ? (zh ? '（Lite 极简版）' : ' (Lite)') : '';
+
+  if (name.endsWith('.pkg.tar.zst')) return `Arch Linux${suffix}`;
+  if (/ubuntu.*\.deb$/.test(name)) return `Ubuntu 24.04${suffix}`;
+  if (/debian.*\.deb$/.test(name)) return `Debian 12${suffix}`;
+  if (/\.fc\d+\..*\.rpm$/.test(name)) return `Fedora${suffix}`;
+  if (/\.rpm$/.test(name)) return zh ? `RPM（通用${isLite ? ' Lite' : ''}）` : `RPM (generic${isLite ? ' Lite' : ''})`;
+  if (name.endsWith('.flatpak')) return `Flatpak${suffix}`;
+  if (/bundled\.tar\.gz$/.test(name)) return zh ? '通用 Linux（捆绑完整版）' : 'Generic Linux (bundled)';
+  if (isLite && name.endsWith('.tar.gz')) return zh ? '通用 Linux（Lite 极简版）' : 'Generic Linux (Lite)';
   if (name.endsWith('.tar.gz')) return zh ? '源代码' : 'Source code';
   return null;
 }
