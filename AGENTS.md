@@ -46,21 +46,23 @@ To avoid ambiguity between functional task planning and toolchain validation, ag
 
 ---
 
-## 4. Standard 5-Step Agent Execution Workflow
+## 4. Strict Chronological Development Workflow (Issue + Draft PR)
 
-All coding agents must strictly operate within this closed-loop lifecycle:
+All coding agents must strictly operate within this closed-loop chronological lifecycle:
 
 ```
 +-------------------------------------------------------------+
-| 1. Task Planning & Draft PR Initialization                  |
+| 1. Pre-Code Initialization (MANDATORY BEFORE ANY CODE)      |
 |    gh issue view <id>                                       |
 |    git checkout -b <type>/issue-<id>-<desc>                 |
-|    gh pr create --draft --body "Closes #<id>\n- [ ] Task..."|
+|    git commit --allow-empty -m "chore: init draft pr..."    |
+|    git push -u origin <branch>                              |
+|    gh pr create --draft (ALL items unchecked: - [ ])        |
 +------------------------------+------------------------------+
                                |
                 +--------------v--------------+
-                | 2. Single-Item Implementation|
-                |    Code ONLY the topmost - [ ]
+                | 2. Code ONLY Task N         |
+                |    Focus ONLY on first - [ ]|
                 +--------------+--------------+
                                |
                 +--------------v--------------+
@@ -71,7 +73,7 @@ All coding agents must strictly operate within this closed-loop lifecycle:
                 +--------------+--------------+
                                |
                 +--------------v--------------+
-                | 4. Atomic Commit & Push     |
+                | 4. Atomic Commit, Push & PR |
                 |    git commit -m "feat:..." |
                 |    git push                 |
                 |    gh pr edit --body (- [x])|
@@ -89,59 +91,55 @@ All coding agents must strictly operate within this closed-loop lifecycle:
                                +-------------------------+
 ```
 
-### Step 1: Task Planning (Issue Analysis & Draft PR Setup)
+### Phase 1: Pre-Code Initialization (MANDATORY BEFORE ANY CODING)
 1. Inspect the issue requirements: `gh issue view <issue_id>`
 2. Create a clean feature branch: `git checkout -b <type>/issue-<id>-<short-description>`
-3. Create a **Draft PR** containing the structured implementation checklist:
+3. Push an initial empty commit to open the Draft PR immediately:
+   ```bash
+   git commit --allow-empty -m "chore: initialize draft pr for issue #<issue_id>"
+   git push -u origin <type>/issue-<id>-<short-description>
+   ```
+4. Create the **Draft PR** containing the structured implementation checklist with ALL items UNCHECKED (`- [ ]`):
    ```bash
    gh pr create --draft \
      --title "<type>: <description> (#<issue_id>)" \
      --body "Closes #<issue_id>
 
    ### Implementation Tasks
-   - [ ] 1. Define data structures in src/common/
+   - [ ] 1. Core data structures in src/common/
    - [ ] 2. Implement logic in src/daemon/
    - [ ] 3. Update i18n and tests"
    ```
+   *(At this stage, the PR progress bar shows: 0 of 3 tasks completed)*
 
-### Step 2: Single-Item Focused Execution
-- **Strict rule**: Focus ONLY on the topmost unchecked task (`- [ ]`).
-- Do not modify unrelated files or bundle multiple tasks together.
-
-### Step 3: Quality Gate & Pre-check (hk / mise)
-- Preview matched rules:
-  ```bash
-  mise run check:plan
-  ```
-- Run safe validation on changed files:
-  ```bash
-  mise run check:changed
-  ```
-- Automated Fix Loops & Structured Output (`--format jsonl`):
-  When resolving linter errors iteratively, agents should use `--format jsonl`:
-  ```bash
-  hk run check --safe --format jsonl
-  ```
-  - Intermediate events stream normalized diagnostics with exact `file`, `line`, and `column` numbers.
-  - The final event is the authoritative summary emitted even when steps fail.
-- Auto-format if needed: `hk fix` (or `mise run fix`).
-- Validate translations: `python3 scripts/check-i18n.py`.
-- If local machine hardware permits: `mise run build-debug`. If resource-constrained, rely on CI.
-
-### Step 4: Atomic Commit, Push & Check Off
-1. Commit with Conventional Commits format referencing the issue:
+### Phase 2: Iterative Execution Loop (ONE TASK AT A TIME)
+Repeat for each unchecked `- [ ]` item:
+1. **Single-Item Code**: Focus ONLY on the topmost unchecked task (`- [ ]`). Do not modify unrelated files.
+2. **Quality Gate Pre-check**:
+   - Preview matched rules: `mise run check:plan`
+   - Run safe validation on changed files: `mise run check:changed`
+   - Automated Fix Loops (`--format jsonl`):
+     ```bash
+     hk run check --safe --format jsonl
+     ```
+   - Auto-format if needed: `hk fix` (or `mise run fix`).
+   - Validate translations: `python3 scripts/check-i18n.py`.
+   - If local machine hardware permits: `mise run build-debug`. If resource-constrained, rely on CI.
+3. **Atomic Commit & Push**:
    ```bash
    git add <modified_files>
    git commit -m "<type>(<scope>): <concise message> (#<issue_id>)"
    git push origin <branch_name>
    ```
-2. Update the Draft PR body to check off the completed item (`- [x]`):
+4. **Update PR Todo (Check Off Task)**:
+   Update the Draft PR body to check off the completed item (`- [x]`):
    ```bash
    gh pr edit --body "..."
    ```
+   *(The PR progress bar dynamically updates: e.g. 1 of 3 tasks completed)*
 
-### Step 5: Final Validation & Merge
-1. Repeat Steps 2-4 until all checklist items are checked (`- [x]`).
+### Phase 3: Final Validation & Merge
+1. Repeat Phase 2 until all checklist items are checked (`- [x]`).
 2. Verify PR CI checks: `gh pr checks`.
 3. (Optional for core changes) Trigger remote matrix dry build: `gh workflow run release.yml && gh run watch`.
 4. Mark PR ready and squash-merge: `gh pr ready && gh pr merge --squash --delete-branch`.
@@ -168,8 +166,9 @@ Compilation strategy should adapt to local hardware capabilities:
 ## 6. Agent Hard Constraints (Red Lines)
 
 1. **No Direct Main Commits**: Never push implementation code directly to `main`.
-2. **No Multi-Task Lump Commits**: Every commit must map to exactly one `- [ ]` task in the PR checklist.
-3. **No Push Without Quality Gate**: Never push code before running `mise run check:changed` or `hk run check --safe`.
-4. **Transparent Progress Tracking**: When asked for status, agents must report progress based on the PR checklist (e.g., "Completed 2 of 4 tasks; currently implementing task 3").
-5. **Hardware-Adaptive Compilation**: On modest hardware, prioritize GitHub Actions CI (`ci.yml` / `release.yml`) over heavy local full builds.
-6. **User-Facing Strings**: Must be wrapped in `_("...")` or `ki18n` for gettext localization. Run `mise run check-i18n` to validate po files.
+2. **Draft PR Pre-Creation**: Draft PR with unchecked items (`- [ ]`) MUST be created before writing implementation code.
+3. **No Multi-Task Lump Commits**: Every commit must map to exactly one `- [ ]` task in the PR checklist.
+4. **No Push Without Quality Gate**: Never push code before running `mise run check:changed` or `hk run check --safe`.
+5. **Transparent Progress Tracking**: When asked for status, agents must report progress based on the PR checklist (e.g., "Completed 2 of 4 tasks; currently implementing task 3").
+6. **Hardware-Adaptive Compilation**: On modest hardware, prioritize GitHub Actions CI (`ci.yml` / `release.yml`) over heavy local full builds.
+7. **User-Facing Strings**: Must be wrapped in `_("...")` or `ki18n` for gettext localization. Run `mise run check-i18n` to validate po files.

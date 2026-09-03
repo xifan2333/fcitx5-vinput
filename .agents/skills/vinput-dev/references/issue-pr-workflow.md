@@ -1,6 +1,6 @@
 # Issue + PR Driven Development Workflow (SOP)
 
-Development must follow an iterative, atomic **Issue -> Draft PR -> Single-Item Loop -> Merge** process.
+Development must follow a strict, chronological **Pre-Code Draft PR -> Single-Item Loop -> Merge** process.
 
 ---
 
@@ -8,21 +8,23 @@ Development must follow an iterative, atomic **Issue -> Draft PR -> Single-Item 
 
 To avoid confusing functional planning with toolchain validation:
 
-1. **Phase A: Task Planning (Pre-development)**:
-   - Defining *what* to build: Issue analysis, module boundaries, and creating the Draft PR `- [ ]` checklist.
-2. **Phase B: Quality Gate Pre-check (Post-edit)**:
-   - Previewing *which* linter steps will execute on edited files via `hk --plan`.
+1. **Phase A: Task Planning (Pre-development - BEFORE CODING)**:
+   - Defining *what* to build: Issue analysis, module boundaries, and opening the Draft PR with an unchecked `- [ ]` checklist.
+2. **Phase B: Quality Gate Pre-check (Post-edit - AFTER EDIT)**:
+   - Previewing *which* linter steps will execute on edited files via `mise run check:plan`.
 
 ---
 
-## 2. The 5-Step Lifecycle
+## 2. Chronological Lifecycle
 
 ```
 +------------------------------------------------------------------------+
-| 1. Identify Requirement -> Create Branch -> Open Draft PR              |
+| 1. Pre-Code Initialization (MANDATORY BEFORE ANY CODE IS WRITTEN)       |
 |    gh issue view <id>                                                  |
 |    git checkout -b <type>/issue-<id>-<name>                            |
-|    gh pr create --draft --body "Closes #<id>\n\n### Tasks\n- [ ] ..."  |
+|    git commit --allow-empty -m "chore: initialize draft pr for #<id>"   |
+|    git push -u origin <type>/issue-<id>-<name>                         |
+|    gh pr create --draft (ALL tasks unchecked: - [ ])                   |
 +-----------------------------------+------------------------------------+
                                     |
                 +-------------------v-------------------+
@@ -32,9 +34,9 @@ To avoid confusing functional planning with toolchain validation:
                                     |
                 +-------------------v-------------------+
                 | 3. Local Quality Gate & Pre-check     |
-                |    hk --plan (preview steps)          |
-                |    hk run check --safe                |
-                |    hk fix (if formatting needed)      |
+                |    mise run check:plan (preview steps)|
+                |    mise run check:changed             |
+                |    mise run fix (if needed)           |
                 +-------------------+-------------------+
                                     |
                 +-------------------v-------------------+
@@ -61,10 +63,19 @@ To avoid confusing functional planning with toolchain validation:
 
 ## 3. Detailed Execution Steps
 
-### 1. Initialize Task & Draft PR
+### Phase 1: Pre-Code Initialization
 ```bash
+# 1. Inspect issue
 gh issue view <issue_id>
+
+# 2. Create feature branch
 git checkout -b feat/issue-<id>-<short-description>
+
+# 3. Initialize branch with empty commit and push
+git commit --allow-empty -m "chore: initialize draft pr for issue #<issue_id>"
+git push -u origin feat/issue-<id>-<short-description>
+
+# 4. Open Draft PR with ALL tasks UNCHECKED (- [ ])
 gh pr create --draft \
   --title "<type>: <concise description> (#<issue_id>)" \
   --body "Closes #<issue_id>
@@ -75,42 +86,37 @@ gh pr create --draft \
 - [ ] 3. Update i18n & unit tests"
 ```
 
-### 2. Execute Single Item
-Pick ONLY the topmost unchecked `- [ ]` item. Do not touch unrelated files.
+### Phase 2: Single-Item Execution Loop
+For each unchecked `- [ ]` task in order:
+1. **Code ONLY Task N**: Pick ONLY the topmost unchecked `- [ ]` item.
+2. **Quality Gate**:
+   ```bash
+   mise run check:plan
+   mise run check:changed
+   # For iterative diagnostics:
+   hk run check --safe --format jsonl
+   ```
+3. **Atomic Commit & Push**:
+   ```bash
+   git add <modified_files>
+   git commit -m "<type>(<scope>): complete task N (#<issue_id>)"
+   git push origin <branch>
+   ```
+4. **Update PR Checklist**:
+   ```bash
+   # Update Draft PR body to check off the completed task (- [x])
+   gh pr edit --body "..."
+   ```
 
-### 3. Verify with `hk`
+### Phase 3: Finalize & Merge
 ```bash
-# Preview matched linters
-{
-  git diff --name-only -z
-  git diff --cached --name-only -z
-  git ls-files --others --exclude-standard -z
-} | hk run check --files0-from - --safe --plan
-
-# Run safe check and auto-format
-hk run check --safe
-hk fix
-```
-
-### 4. Atomic Commit, Push & Check Off
-```bash
-git add <files>
-git commit -m "<type>(<scope>): <message> (#<issue_id>)"
-git push origin <branch>
-
-# Update PR body checklist (replace - [ ] with - [x])
-gh pr edit --body "..."
-```
-
-### 5. Finalize & Merge
-```bash
-# Verify PR CI status
+# 1. Verify PR CI status
 gh pr checks
 
-# (Optional for core changes) Trigger remote matrix dry build
+# 2. (Optional for core changes) Trigger remote matrix dry build
 gh workflow run release.yml && gh run watch
 
-# Mark PR ready and merge
+# 3. Mark PR ready and squash-merge
 gh pr ready
 gh pr merge --squash --delete-branch
 ```
