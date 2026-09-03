@@ -29,7 +29,12 @@ yay -S fcitx5-vinput-lite-bin
 
 ```bash
 sudo dnf copr enable xifan/fcitx5-vinput-bin
+
+# Full version (with local sherpa-onnx runtime)
 sudo dnf install fcitx5-vinput
+
+# Lite version (cloud-only, zero local ONNX runtime)
+sudo dnf install fcitx5-vinput-lite
 ```
 
 ### Ubuntu 24.04 (PPA)
@@ -37,7 +42,12 @@ sudo dnf install fcitx5-vinput
 ```bash
 sudo add-apt-repository ppa:xifan233/ppa
 sudo apt update
+
+# Full version (with local sherpa-onnx runtime)
 sudo apt install fcitx5-vinput
+
+# Lite version (cloud-only, zero local ONNX runtime)
+sudo apt install fcitx5-vinput-lite
 ```
 
 ### Nix (flake)
@@ -124,7 +134,12 @@ in
 
 ```bash
 flatpak remote-add --if-not-exists xifan https://xifan2333.github.io/flatpak-auto/xifan.flatpakrepo
+
+# Full version (with local sherpa-onnx runtime)
 flatpak install https://xifan2333.github.io/flatpak-auto/refs/org.fcitx.Fcitx5.Addon.Vinput.flatpakref
+
+# Lite version (cloud-only, zero local ONNX runtime)
+flatpak install https://xifan2333.github.io/flatpak-auto/refs/org.fcitx.Fcitx5.Addon.Vinput.Lite.flatpakref
 ```
 
 After installation, grant additional permissions and restart Fcitx5:
@@ -138,7 +153,7 @@ flatpak kill org.fcitx.Fcitx5
 
 ## Local install
 
-Download the package for your distribution and install it directly.
+Download the package for your distribution and install it directly. Both **Full** (with local offline sherpa-onnx runtime) and **Lite** (cloud ASR + LLM only) packages are provided.
 
 <ReleaseDownloads lang="en" />
 
@@ -148,10 +163,13 @@ After downloading:
 - **`.rpm`**: `sudo dnf install <file>.rpm`
 - **`.pkg.tar.zst`**: `sudo pacman -U <file>.pkg.tar.zst`
 - **`.flatpak`**: `flatpak install <file>.flatpak`
+- **`.tar.gz`**: Extract and follow bundled install instructions
 
 ## Build from source
 
 **Dependencies:** cmake, fcitx5, pipewire, libcurl, nlohmann-json, CLI11, Qt6
+
+### Full version (with local sherpa-onnx runtime)
 
 ```bash
 sudo bash scripts/build-sherpa-onnx.sh
@@ -170,5 +188,13 @@ sudo mise run install
 ```
 
 The first step downloads the pre-built sherpa-onnx runtime used by local builds and release packaging. Runtime libraries are bundled with the installed artifacts instead of being declared as a separate system package dependency.
+
+### Lite version (pure cloud ASR + LLM, zero sherpa-onnx dependency)
+
+```bash
+cmake --preset release-clang-mold -DVINPUT_ENABLE_LOCAL_ASR=OFF
+cmake --build --preset release-clang-mold
+sudo cmake --install build
+```
 
 Source builds default to the Fcitx5 system prefix (`/usr`) so the addon is installed under the directories Fcitx5 scans.
