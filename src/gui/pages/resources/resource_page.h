@@ -35,7 +35,11 @@ private slots:
   void onRemoveModelClicked();
   void onDownloadModelClicked();
   void onAddProviderClicked();
+  void onRemoveProviderClicked();
   void onAddAdapterClicked();
+  void onRemoveAdapterClicked();
+  void updateProviderButtons();
+  void updateAdapterButtons();
   void onDownloadProgress(int percent, QString speed);
   void onDownloadError(QString msg);
   void onDownloadFinished();
@@ -67,7 +71,9 @@ private:
   QPushButton* btnRemoveModel_;
   QPushButton* btnDownloadModel_;
   QPushButton* btnAddProvider_;
+  QPushButton* btnRemoveProvider_;
   QPushButton* btnAddAdapter_;
+  QPushButton* btnRemoveAdapter_;
   QPushButton* btnRefreshResources_;
   DownloadWorker* downloadWorker_ = nullptr;
   std::vector<RemoteModelEntry> remoteModels_;
