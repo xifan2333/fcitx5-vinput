@@ -151,10 +151,8 @@ ControlPage::ControlPage(QWidget* parent) : QWidget(parent) {
 
   auto* asrBtnLayout = new QVBoxLayout();
   btnAsrEdit_ = new QPushButton(tr("Edit"));
-  btnAsrRemove_ = new QPushButton(tr("Remove"));
   btnAsrSetActive_ = new QPushButton(tr("Activate"));
   asrBtnLayout->addWidget(btnAsrEdit_);
-  asrBtnLayout->addWidget(btnAsrRemove_);
   asrBtnLayout->addWidget(btnAsrSetActive_);
   asrBtnLayout->addStretch();
   asrListLayout->addLayout(asrBtnLayout);
@@ -162,12 +160,10 @@ ControlPage::ControlPage(QWidget* parent) : QWidget(parent) {
   layout->addWidget(asrFrame);
 
   connect(btnAsrEdit_, &QPushButton::clicked, this, &ControlPage::onAsrEdit);
-  connect(btnAsrRemove_, &QPushButton::clicked, this, &ControlPage::onAsrRemove);
   connect(btnAsrSetActive_, &QPushButton::clicked, this, &ControlPage::onAsrSetActive);
   connect(listAsrProviders_, &QListWidget::currentItemChanged, this,
           [this](QListWidgetItem*, QListWidgetItem*) { updateAsrButtons(); });
   btnAsrEdit_->setEnabled(false);
-  btnAsrRemove_->setEnabled(false);
   btnAsrSetActive_->setEnabled(false);
 
   connect(&I18nCache::Get(), &I18nCache::mapUpdated, this, &ControlPage::refreshAsrList);
@@ -363,13 +359,11 @@ void ControlPage::updateAsrButtons() {
   auto* item = listAsrProviders_->currentItem();
   if (!item) {
     btnAsrEdit_->setEnabled(false);
-    btnAsrRemove_->setEnabled(false);
     btnAsrSetActive_->setEnabled(false);
     return;
   }
   const bool is_local = item->data(Qt::UserRole + 1).toString() == "local";
   btnAsrEdit_->setEnabled(!is_local);
-  btnAsrRemove_->setEnabled(!is_local);
   btnAsrSetActive_->setEnabled(true);
 }
 
@@ -443,52 +437,6 @@ void ControlPage::onAsrEdit() {
                                .arg(QString::fromStdString(err)));
     }
   });
-}
-
-void ControlPage::onAsrRemove() {
-  auto* item = listAsrProviders_->currentItem();
-  if (!item)
-    return;
-
-  QString provider_id = item->data(Qt::UserRole).toString();
-  QString provider_title = item->data(Qt::UserRole + 2).toString();
-  if (provider_title.isEmpty()) {
-    provider_title = provider_id;
-  }
-  auto response = QMessageBox::question(
-      this, tr("Confirm"),
-      tr("Are you sure you want to remove ASR provider '%1'?").arg(provider_title));
-  if (response != QMessageBox::Yes)
-    return;
-
-  CoreConfig config = ConfigManager::Get().Load();
-  auto it = std::remove_if(
-      config.asr.providers.begin(), config.asr.providers.end(),
-      [&](const AsrProvider& p) { return AsrProviderId(p) == provider_id.toStdString(); });
-  if (it != config.asr.providers.end()) {
-    if (std::holds_alternative<LocalAsrProvider>(*it)) {
-      QMessageBox::warning(this, tr("Error"), tr("The local ASR provider cannot be removed."));
-      return;
-    }
-    config.asr.providers.erase(it, config.asr.providers.end());
-    if (config.asr.activeProvider == provider_id.toStdString()) {
-      config.asr.activeProvider.clear();
-    }
-
-    if (!ConfigManager::Get().Save(config)) {
-      QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
-      return;
-    }
-    refreshAsrList();
-    emit configChanged();
-    RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-      if (!ok) {
-        QMessageBox::warning(this, tr("Warning"),
-                             tr("Config saved, but failed to reload ASR backend: %1")
-                                 .arg(QString::fromStdString(err)));
-      }
-    });
-  }
 }
 
 void ControlPage::onAsrSetActive() {
