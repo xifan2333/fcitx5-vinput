@@ -210,6 +210,7 @@ void VinputEngine::applySettings() {
   page_prev_keys_ = config_.pagePrevKeys.value();
   page_next_keys_ = config_.pageNextKeys.value();
   trigger_mode_ = config_.triggerMode.value();
+  max_streaming_display_width_ = config_.maxStreamingDisplayWidth.value();
   reloadSceneConfig();
   reloadAsrMenuItems();
 }

@@ -47,5 +47,8 @@ public:
                 fcitx::DefaultMarshaller<fcitx::KeyList>, fcitx::ToolTipAnnotation>
       pageNextKeys;
 
+  fcitx::Option<int, fcitx::IntConstrain, fcitx::DefaultMarshaller<int>, fcitx::ToolTipAnnotation>
+      maxStreamingDisplayWidth;
+
   fcitx::ExternalOption modelManager;
 };

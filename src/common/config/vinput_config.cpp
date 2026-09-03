@@ -97,6 +97,15 @@ std::string TriggerModeLabel() {
   return _("Trigger Mode");
 }
 
+std::string MaxStreamingDisplayWidthLabel() {
+  return _("Max Streaming Display Width");
+}
+
+std::string MaxStreamingDisplayWidthTooltip() {
+  return _("Maximum visual column width for live streaming recognition preview. Older text is "
+           "folded into 'head...tail'. Set to 0 to disable folding. Default is 60.");
+}
+
 } // namespace
 
 VinputConfig::VinputConfig()
@@ -117,4 +126,7 @@ VinputConfig::VinputConfig()
       pageNextKeys(this, "PageNextKeys", PageNextKeysLabel(),
                    {fcitx::Key(FcitxKey_Page_Down), fcitx::Key(FcitxKey_KP_Page_Down)},
                    TriggerKeyListConstrain(), {}, fcitx::ToolTipAnnotation(PageNextKeysTooltip())),
+      maxStreamingDisplayWidth(this, "MaxStreamingDisplayWidth", MaxStreamingDisplayWidthLabel(),
+                               60, fcitx::IntConstrain(0, 500), {},
+                               fcitx::ToolTipAnnotation(MaxStreamingDisplayWidthTooltip())),
       modelManager(this, "ModelManager", _("Open Vinput Settings"), "vinput-gui") {}

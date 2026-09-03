@@ -180,6 +180,7 @@ private:
   std::unique_ptr<fcitx::EventSourceTime> status_sync_event_;
   VinputConfig config_;
   int commit_write_count_ = 0;
+  int max_streaming_display_width_{60};
   TriggerMode trigger_mode_{TriggerMode::Both};
 };
 

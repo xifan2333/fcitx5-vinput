@@ -993,3 +993,9 @@ msgstr ""
 
 msgid "No active ASR provider configured."
 msgstr ""
+
+msgid "Max Streaming Display Width"
+msgstr ""
+
+msgid "Maximum visual column width for live streaming recognition preview. Older text is folded into 'head...tail'. Set to 0 to disable folding. Default is 60."
+msgstr ""

@@ -51,11 +51,16 @@ std::string DaemonNotRespondingPreeditText() {
 }
 
 std::string ComposeLivePreedit(bool command_mode, bool recording, const std::string& partial_text,
-                               const std::string& fallback_text) {
+                               const std::string& fallback_text, int max_display_width = 0) {
   (void)command_mode;
   (void)recording;
   if (partial_text.empty()) {
     return fallback_text;
+  }
+
+  if (max_display_width > 0) {
+    return vinput::str::TruncateMiddleUtf8(partial_text, static_cast<size_t>(max_display_width),
+                                           "...");
   }
 
   return partial_text;
@@ -473,7 +478,8 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::
     session_->command_mode = command_mode;
   }
   status_ic_ = ic;
-  updatePreedit(ic, ComposeLivePreedit(command_mode, false, {}, StartingPreeditText()));
+  updatePreedit(ic, ComposeLivePreedit(command_mode, false, {}, StartingPreeditText(),
+                                       max_streaming_display_width_));
   ensureStatusSync();
 }
 
@@ -503,7 +509,8 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
   status_ic_ = ic;
   updatePreedit(
       ic, ComposeLivePreedit(command_mode, true, session_ ? session_->partial_text : std::string{},
-                             command_mode ? CommandingPreeditText() : RecordingPreeditText()));
+                             command_mode ? CommandingPreeditText() : RecordingPreeditText(),
+                             max_streaming_display_width_));
   ensureStatusSync();
 }
 
@@ -533,7 +540,7 @@ void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
   status_ic_ = ic;
   updatePreedit(ic, ComposeLivePreedit(command_mode, false,
                                        session_ ? session_->partial_text : std::string{},
-                                       preedit_text));
+                                       preedit_text, max_streaming_display_width_));
   ensureStatusSync();
 }
 
@@ -768,7 +775,8 @@ void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
                           session_ ? session_->command_mode : false,
                           session_ && session_->phase == Session::Phase::Recording, partial_text,
                           session_ && session_->command_mode ? CommandingPreeditText()
-                                                             : RecordingPreeditText()));
+                                                             : RecordingPreeditText(),
+                          max_streaming_display_width_));
   }
 }
 

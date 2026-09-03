@@ -1077,3 +1077,9 @@ msgstr "加载 prompt 文件 '%s' 失败。"
 #, c-format
 msgid "Failed to load prompt file '%s': %s"
 msgstr "加载 prompt 文件 '%s' 失败：%s"
+
+msgid "Max Streaming Display Width"
+msgstr "流式识别最大显示列宽"
+
+msgid "Maximum visual column width for live streaming recognition preview. Older text is folded into 'head...tail'. Set to 0 to disable folding. Default is 60."
+msgstr "实时流式识别预览的最大视觉显示列宽。较早的内容会被折叠为“句首...句尾”。设为 0 则禁用折叠。默认值为 60。"
