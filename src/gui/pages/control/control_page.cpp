@@ -162,8 +162,8 @@ ControlPage::ControlPage(QWidget* parent) : QWidget(parent) {
 
   connect(btnAsrEdit_, &QPushButton::clicked, this, &ControlPage::onAsrEdit);
   connect(btnAsrSetActive_, &QPushButton::clicked, this, &ControlPage::onAsrSetActive);
-  connect(listAsrProviders_, &QListWidget::currentItemChanged, this,
-          [this](QListWidgetItem*, QListWidgetItem*) { updateAsrButtons(); });
+  connect(listAsrProviders_, &QListWidget::itemSelectionChanged, this,
+          &ControlPage::updateAsrButtons);
   btnAsrEdit_->setEnabled(false);
   btnAsrSetActive_->setEnabled(false);
 

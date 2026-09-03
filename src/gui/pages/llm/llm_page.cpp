@@ -230,8 +230,7 @@ LlmPage::LlmPage(QWidget* parent) : QWidget(parent) {
   connect(btnAdapterStart_, &QPushButton::clicked, this, &LlmPage::onAdapterStart);
   connect(btnAdapterStop_, &QPushButton::clicked, this, &LlmPage::onAdapterStop);
   connect(btnAdapterRefresh_, &QPushButton::clicked, this, &LlmPage::refreshAdapterList);
-  connect(listAdapters_, &QListWidget::currentItemChanged, this,
-          [this](QListWidgetItem*, QListWidgetItem*) { updateAdapterButtons(); });
+  connect(listAdapters_, &QListWidget::itemSelectionChanged, this, &LlmPage::updateAdapterButtons);
   connect(btnSceneAdd_, &QPushButton::clicked, this, &LlmPage::onSceneAdd);
   connect(btnSceneEdit_, &QPushButton::clicked, this, &LlmPage::onSceneEdit);
   connect(btnSceneRemove_, &QPushButton::clicked, this, &LlmPage::onSceneRemove);
