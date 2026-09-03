@@ -39,61 +39,93 @@
           sherpa-deps = sherpa-onnx.packages.${system};
           commandProviderPath = lib.makeBinPath [ pkgs.python3 ];
           commandProviderLibraryPath = lib.makeLibraryPath [ pkgs.libopus ];
+
+          makeVinputPackage =
+            {
+              pname,
+              enableLocalAsr,
+            }:
+            pkgs.stdenv.mkDerivation {
+              inherit pname version;
+              src = self;
+
+              nativeBuildInputs = with pkgs; [
+                cmake
+                pkg-config
+                gettext
+                fcitx5
+                makeBinaryWrapper
+                qt6.wrapQtAppsHook
+                autoPatchelfHook
+              ];
+
+              buildInputs =
+                (with pkgs; [
+                  fcitx5
+                  systemdLibs
+                  curl
+                  libarchive
+                  openssl
+                  pipewire
+                  qt6.qtbase
+                  cli11
+                  nlohmann_json
+                  clang
+                  mold
+                ])
+                ++ lib.optionals enableLocalAsr [
+                  pkgs.onnxruntime
+                  sherpa-deps.sherpa-onnx
+                ];
+
+              cmakeFlags = [
+                "-DVINPUT_ENABLE_LOCAL_ASR=${if enableLocalAsr then "ON" else "OFF"}"
+                "-DVINPUT_FETCH_CLI11=OFF"
+                "-DCMAKE_BUILD_TYPE=Release"
+                "-DCMAKE_C_COMPILER=clang"
+                "-DCMAKE_CXX_COMPILER=clang++"
+                "-DCMAKE_LINKER=mold"
+                "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold"
+                "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
+              ];
+
+              postInstall = ''
+                ${lib.optionalString enableLocalAsr ''
+                  rm -f $out/lib/fcitx5-vinput/libonnxruntime.so
+                ''}
+
+                for program in "$out"/bin/*; do
+                  wrapProgram "$program" \
+                    --prefix PATH : ${commandProviderPath} \
+                    --prefix LD_LIBRARY_PATH : ${commandProviderLibraryPath}
+                done
+              '';
+
+              meta = {
+                description =
+                  if enableLocalAsr then
+                    "Voice input addon for Fcitx5 with local and cloud ASR"
+                  else
+                    "Voice input addon for Fcitx5, built without local ASR";
+                homepage = "https://github.com/xifan2333/fcitx5-vinput";
+                license = lib.licenses.gpl3Only;
+                platforms = systems;
+                mainProgram = "vinput";
+              };
+            };
         in
-        {
-          fcitx5-vinput = pkgs.stdenv.mkDerivation {
+        rec {
+          fcitx5-vinput = makeVinputPackage {
             pname = "fcitx5-vinput";
-            inherit version;
-            src = self;
-
-            nativeBuildInputs = with pkgs; [
-              cmake
-              pkg-config
-              gettext
-              fcitx5
-              makeBinaryWrapper
-              qt6.wrapQtAppsHook
-              autoPatchelfHook
-            ];
-
-            buildInputs = with pkgs; [
-              fcitx5
-              systemdLibs
-              curl
-              libarchive
-              openssl
-              pipewire
-              onnxruntime
-              qt6.qtbase
-              cli11
-              sherpa-deps.sherpa-onnx
-              nlohmann_json
-              clang
-              mold
-            ];
-
-            cmakeFlags = [
-              "-DVINPUT_FETCH_CLI11=OFF"
-              "-DCMAKE_BUILD_TYPE=Release"
-              "-DCMAKE_C_COMPILER=clang"
-              "-DCMAKE_CXX_COMPILER=clang++"
-              "-DCMAKE_LINKER=mold"
-              "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold"
-              "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
-            ];
-
-            postInstall = ''
-              rm -f $out/lib/fcitx5-vinput/libonnxruntime.so
-
-              for program in $out/bin/*; do
-                wrapProgram "$program" \
-                  --prefix PATH : ${commandProviderPath} \
-                  --prefix LD_LIBRARY_PATH : ${commandProviderLibraryPath}
-              done
-            '';
+            enableLocalAsr = true;
           };
 
-          default = self.packages.${system}.fcitx5-vinput;
+          fcitx5-vinput-lite = makeVinputPackage {
+            pname = "fcitx5-vinput-lite";
+            enableLocalAsr = false;
+          };
+
+          default = fcitx5-vinput;
         }
       );
 
