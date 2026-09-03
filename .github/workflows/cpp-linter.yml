@@ -43,6 +43,7 @@ jobs:
         with:
           style: 'file'
           database: 'build'
+          tidy-checks: ''
           version: '18'
           lines-changed-only: true
           files-changed-only: true
