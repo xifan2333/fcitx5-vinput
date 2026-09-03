@@ -948,7 +948,7 @@ msgstr ""
 
 msgid ""
 "Configure one or more keys to open the postprocess menu. The default is "
-"Right Alt + Control."
+"Right Shift."
 msgstr ""
 
 msgid "ASR Menu Keys"

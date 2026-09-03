@@ -965,8 +965,8 @@ msgstr "后处理选单键"
 
 msgid ""
 "Configure one or more keys to open the postprocess menu. The default is "
-"Right Alt + Control."
-msgstr "可配置多个按键，用于打开后处理选单。默认是右 Alt + Ctrl。"
+"Right Shift."
+msgstr "可配置多个按键，用于打开后处理选单。默认是右 Shift。"
 
 msgid "ASR Menu Keys"
 msgstr "语音识别菜单键"

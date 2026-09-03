@@ -61,7 +61,7 @@ std::string SceneMenuKeyLabel() {
 
 std::string SceneMenuKeyTooltip() {
   return _("Configure one or more keys to open the postprocess menu. The "
-           "default is Right Alt + Control.");
+           "default is Right Shift.");
 }
 
 std::string AsrMenuKeyLabel() {
