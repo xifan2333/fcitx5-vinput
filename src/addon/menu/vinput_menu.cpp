@@ -19,6 +19,7 @@
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/string_utils.h"
 
+#include "config.h"
 #include "core/vinput.h"
 
 namespace {
@@ -752,15 +753,18 @@ void VinputEngine::reloadAsrMenuItems() {
   const auto i18n_map =
       vinput::registry::LoadMergedCachedI18nMap(vinput::registry::DetectPreferredLocale(), nullptr);
 
+#if VINPUT_ENABLE_LOCAL_ASR
   // Local models share one install tree; scan once, then reuse for every local
   // provider row instead of re-walking the disk per provider.
   const auto base_dir = ResolveModelBaseDir(core_config);
   ModelManager manager(base_dir.string());
   const auto local_models = manager.ListDetailed(active_model);
+#endif
 
   for (const auto& provider : core_config.asr.providers) {
     const std::string& pid = AsrProviderId(provider);
     const std::string provider_title = vinput::registry::LookupI18n(i18n_map, pid + ".title", pid);
+#if VINPUT_ENABLE_LOCAL_ASR
     if (std::holds_alternative<LocalAsrProvider>(provider)) {
       for (const auto& summary : local_models) {
         const bool item_active = (pid == active_provider) && (summary.id == active_model);
@@ -782,7 +786,9 @@ void VinputEngine::reloadAsrMenuItems() {
             .active = item_active,
         });
       }
-    } else {
+    } else
+#endif
+        if (!std::holds_alternative<LocalAsrProvider>(provider)) {
       // Command provider — one row
       const bool item_active = (pid == active_provider);
       std::string label = provider_title + " [command]";
