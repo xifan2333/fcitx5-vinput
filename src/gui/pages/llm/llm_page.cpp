@@ -25,11 +25,13 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <filesystem>
 #include <nlohmann/json.hpp>
 
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"
 #include "common/registry/registry_i18n.h"
+#include "common/registry/registry_scripts.h"
 #include "common/scene/postprocess_scene.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -182,10 +184,12 @@ LlmPage::LlmPage(QWidget* parent) : QWidget(parent) {
 
   auto* adapterBtnLayout = new QVBoxLayout();
   btnAdapterEdit_ = new QPushButton(tr("Edit"));
+  btnAdapterRemove_ = new QPushButton(tr("Remove"));
   btnAdapterStart_ = new QPushButton(tr("Start"));
   btnAdapterStop_ = new QPushButton(tr("Stop"));
   btnAdapterRefresh_ = new QPushButton(tr("Refresh"));
   adapterBtnLayout->addWidget(btnAdapterEdit_);
+  adapterBtnLayout->addWidget(btnAdapterRemove_);
   adapterBtnLayout->addWidget(btnAdapterStart_);
   adapterBtnLayout->addWidget(btnAdapterStop_);
   adapterBtnLayout->addWidget(btnAdapterRefresh_);
@@ -219,9 +223,12 @@ LlmPage::LlmPage(QWidget* parent) : QWidget(parent) {
   connect(btnLlmRemove_, &QPushButton::clicked, this, &LlmPage::onLlmRemove);
   connect(btnLlmTest_, &QPushButton::clicked, this, &LlmPage::onLlmTest);
   connect(btnAdapterEdit_, &QPushButton::clicked, this, &LlmPage::onAdapterEdit);
+  connect(btnAdapterRemove_, &QPushButton::clicked, this, &LlmPage::onAdapterRemove);
   connect(btnAdapterStart_, &QPushButton::clicked, this, &LlmPage::onAdapterStart);
   connect(btnAdapterStop_, &QPushButton::clicked, this, &LlmPage::onAdapterStop);
   connect(btnAdapterRefresh_, &QPushButton::clicked, this, &LlmPage::refreshAdapterList);
+  connect(listAdapters_, &QListWidget::currentItemChanged, this,
+          [this](QListWidgetItem*, QListWidgetItem*) { updateAdapterButtons(); });
   connect(btnSceneAdd_, &QPushButton::clicked, this, &LlmPage::onSceneAdd);
   connect(btnSceneEdit_, &QPushButton::clicked, this, &LlmPage::onSceneEdit);
   connect(btnSceneRemove_, &QPushButton::clicked, this, &LlmPage::onSceneRemove);
@@ -292,6 +299,7 @@ void LlmPage::refreshAdapterList() {
     }
     item->setToolTip(tooltip.trimmed());
   }
+  updateAdapterButtons();
 }
 
 void LlmPage::onLlmAdd() {
@@ -592,6 +600,69 @@ void LlmPage::onAdapterEdit() {
 
   refreshAdapterList();
   emit configChanged();
+}
+
+void LlmPage::onAdapterRemove() {
+  auto* item = listAdapters_->currentItem();
+  if (!item)
+    return;
+
+  const QString adapter_id = item->data(Qt::UserRole).toString();
+  QString adapter_title = item->data(Qt::UserRole + 2).toString();
+  if (adapter_title.isEmpty()) {
+    adapter_title = AdapterTitleForGui(adapter_id.toStdString());
+  }
+
+  auto response = QMessageBox::question(
+      this, tr("Confirm"),
+      tr("Are you sure you want to remove LLM adapter '%1'?").arg(adapter_title));
+  if (response != QMessageBox::Yes)
+    return;
+
+  if (vinput::adapter::IsRunning(adapter_id.toStdString())) {
+    vinput::cli::DbusClient dbus;
+    std::string err;
+    dbus.StopAdapter(adapter_id.toStdString(), &err);
+  }
+
+  CoreConfig config = ConfigManager::Get().Load();
+  auto it = std::remove_if(config.llm.adapters.begin(), config.llm.adapters.end(),
+                           [&](const LlmAdapter& a) { return a.id == adapter_id.toStdString(); });
+  if (it == config.llm.adapters.end()) {
+    return;
+  }
+  config.llm.adapters.erase(it, config.llm.adapters.end());
+
+  const auto managed_path = vinput::script::DefaultLocalScriptPath(
+      vinput::script::Kind::kLlmAdapter, adapter_id.toStdString());
+  if (!managed_path.empty()) {
+    std::error_code ec;
+    std::filesystem::remove(managed_path, ec);
+  }
+
+  if (!ConfigManager::Get().Save(config)) {
+    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
+    return;
+  }
+
+  refreshAdapterList();
+  emit configChanged();
+}
+
+void LlmPage::updateAdapterButtons() {
+  auto* item = listAdapters_->currentItem();
+  if (!item) {
+    btnAdapterEdit_->setEnabled(false);
+    btnAdapterRemove_->setEnabled(false);
+    btnAdapterStart_->setEnabled(false);
+    btnAdapterStop_->setEnabled(false);
+    return;
+  }
+  bool running = item->data(Qt::UserRole + 1).toBool();
+  btnAdapterEdit_->setEnabled(true);
+  btnAdapterRemove_->setEnabled(true);
+  btnAdapterStart_->setEnabled(!running);
+  btnAdapterStop_->setEnabled(running);
 }
 
 void LlmPage::onAdapterStart() {
