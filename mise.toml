@@ -19,15 +19,15 @@ description = "Run all hk checks across the repo"
 run = "hk check"
 
 [tasks."check:safe"]
-description = "Run hk safe check across the repo"
-run = "hk run check --safe"
+description = "Run hk check across the repo"
+run = "hk run check"
 
 [tasks."check:plan"]
 description = "Preview hk check execution plan without running tools"
 run = "hk run check --plan"
 
 [tasks."check:changed"]
-description = "Run hk safe check only on modified/staged/untracked files"
+description = "Run hk check only on modified/staged/untracked files"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -35,7 +35,7 @@ set -euo pipefail
   git diff --name-only -z
   git diff --cached --name-only -z
   git ls-files --others --exclude-standard -z
-} | hk run check --files0-from - --safe "$@"
+} | hk run check --files0-from - "$@"
 """
 
 [tasks.fix]

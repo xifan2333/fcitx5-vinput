@@ -29,6 +29,8 @@ set(VINPUT_PACKAGE_DESCRIPTION_SUMMARY
     "Offline voice input addon for Fcitx5 with optional OpenAI-compatible postprocess"
     CACHE STRING "Short description used by generated distro packages")
 
+option(VINPUT_ENABLE_LOCAL_ASR "Build with sherpa-onnx local ASR support" ON)
+
 find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Config REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
