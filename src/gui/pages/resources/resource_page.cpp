@@ -13,9 +13,13 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <filesystem>
+#include <system_error>
+#include <variant>
 
+#include "common/config/core_config_types.h"
 #include "common/llm/adapter_manager.h"
 #include "common/registry/registry_models.h"
+#include "common/registry/registry_scripts.h"
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -855,62 +859,65 @@ void ResourcePage::onAddAdapterClicked() {
 }
 
 void ResourcePage::updateProviderButtons() {
-  int row = tableAvailableProviders_->currentRow();
+  const int row = tableAvailableProviders_->currentRow();
   if (row < 0 || row >= tableAvailableProviders_->rowCount()) {
     btnAddProvider_->setEnabled(false);
     btnRemoveProvider_->setEnabled(false);
     return;
   }
   auto* item = tableAvailableProviders_->item(row, 0);
-  if (!item) {
+  if (item == nullptr) {
     btnAddProvider_->setEnabled(false);
     btnRemoveProvider_->setEnabled(false);
     return;
   }
-  QString id = item->data(Qt::UserRole).toString();
-  CoreConfig config = ConfigManager::Get().Load();
-  bool installed = ResolveAsrProvider(config, id.toStdString()) != nullptr;
+  const QString id = item->data(Qt::UserRole).toString();
+  const CoreConfig config = ConfigManager::Get().Load();
+  const bool installed = ResolveAsrProvider(config, id.toStdString()) != nullptr;
   btnAddProvider_->setEnabled(!installed);
   btnRemoveProvider_->setEnabled(installed);
 }
 
 void ResourcePage::updateAdapterButtons() {
-  int row = tableAvailableAdapters_->currentRow();
+  const int row = tableAvailableAdapters_->currentRow();
   if (row < 0 || row >= tableAvailableAdapters_->rowCount()) {
     btnAddAdapter_->setEnabled(false);
     btnRemoveAdapter_->setEnabled(false);
     return;
   }
   auto* item = tableAvailableAdapters_->item(row, 0);
-  if (!item) {
+  if (item == nullptr) {
     btnAddAdapter_->setEnabled(false);
     btnRemoveAdapter_->setEnabled(false);
     return;
   }
-  QString id = item->data(Qt::UserRole).toString();
-  CoreConfig config = ConfigManager::Get().Load();
-  bool installed = ResolveLlmAdapter(config, id.toStdString()) != nullptr;
+  const QString id = item->data(Qt::UserRole).toString();
+  const CoreConfig config = ConfigManager::Get().Load();
+  const bool installed = ResolveLlmAdapter(config, id.toStdString()) != nullptr;
   btnAddAdapter_->setEnabled(!installed);
   btnRemoveAdapter_->setEnabled(installed);
 }
 
 void ResourcePage::onRemoveProviderClicked() {
-  int row = tableAvailableProviders_->currentRow();
-  if (row < 0 || row >= tableAvailableProviders_->rowCount())
+  const int row = tableAvailableProviders_->currentRow();
+  if (row < 0 || row >= tableAvailableProviders_->rowCount()) {
     return;
+  }
   auto* name_item = tableAvailableProviders_->item(row, 0);
-  if (!name_item)
+  if (name_item == nullptr) {
     return;
-  QString id = name_item->data(Qt::UserRole).toString();
+  }
+  const QString id = name_item->data(Qt::UserRole).toString();
   QString title = name_item->text();
   if (title.isEmpty()) {
     title = id;
   }
 
-  auto response = QMessageBox::question(
+  const auto response = QMessageBox::question(
       this, tr("Confirm"), tr("Are you sure you want to remove ASR provider '%1'?").arg(title));
-  if (response != QMessageBox::Yes)
+  if (response != QMessageBox::Yes) {
     return;
+  }
 
   CoreConfig config = ConfigManager::Get().Load();
   auto it =
@@ -955,22 +962,25 @@ void ResourcePage::onRemoveProviderClicked() {
 }
 
 void ResourcePage::onRemoveAdapterClicked() {
-  int row = tableAvailableAdapters_->currentRow();
-  if (row < 0 || row >= tableAvailableAdapters_->rowCount())
+  const int row = tableAvailableAdapters_->currentRow();
+  if (row < 0 || row >= tableAvailableAdapters_->rowCount()) {
     return;
+  }
   auto* name_item = tableAvailableAdapters_->item(row, 0);
-  if (!name_item)
+  if (name_item == nullptr) {
     return;
-  QString id = name_item->data(Qt::UserRole).toString();
+  }
+  const QString id = name_item->data(Qt::UserRole).toString();
   QString title = name_item->text();
   if (title.isEmpty()) {
     title = id;
   }
 
-  auto response = QMessageBox::question(
+  const auto response = QMessageBox::question(
       this, tr("Confirm"), tr("Are you sure you want to remove LLM adapter '%1'?").arg(title));
-  if (response != QMessageBox::Yes)
+  if (response != QMessageBox::Yes) {
     return;
+  }
 
   if (vinput::adapter::IsRunning(id.toStdString())) {
     vinput::cli::DbusClient dbus;

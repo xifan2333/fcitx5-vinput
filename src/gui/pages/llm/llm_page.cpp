@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QListWidgetItem>
 #include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -25,8 +26,10 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <system_error>
 
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"
@@ -604,8 +607,9 @@ void LlmPage::onAdapterEdit() {
 
 void LlmPage::onAdapterRemove() {
   auto* item = listAdapters_->currentItem();
-  if (!item)
+  if (item == nullptr) {
     return;
+  }
 
   const QString adapter_id = item->data(Qt::UserRole).toString();
   QString adapter_title = item->data(Qt::UserRole + 2).toString();
@@ -613,11 +617,12 @@ void LlmPage::onAdapterRemove() {
     adapter_title = AdapterTitleForGui(adapter_id.toStdString());
   }
 
-  auto response = QMessageBox::question(
+  const auto response = QMessageBox::question(
       this, tr("Confirm"),
       tr("Are you sure you want to remove LLM adapter '%1'?").arg(adapter_title));
-  if (response != QMessageBox::Yes)
+  if (response != QMessageBox::Yes) {
     return;
+  }
 
   if (vinput::adapter::IsRunning(adapter_id.toStdString())) {
     vinput::cli::DbusClient dbus;
@@ -651,14 +656,14 @@ void LlmPage::onAdapterRemove() {
 
 void LlmPage::updateAdapterButtons() {
   auto* item = listAdapters_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     btnAdapterEdit_->setEnabled(false);
     btnAdapterRemove_->setEnabled(false);
     btnAdapterStart_->setEnabled(false);
     btnAdapterStop_->setEnabled(false);
     return;
   }
-  bool running = item->data(Qt::UserRole + 1).toBool();
+  const bool running = item->data(Qt::UserRole + 1).toBool();
   btnAdapterEdit_->setEnabled(true);
   btnAdapterRemove_->setEnabled(true);
   btnAdapterStart_->setEnabled(!running);
