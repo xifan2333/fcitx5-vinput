@@ -2,8 +2,6 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
-#include <fcitx-utils/key.h>
-#include <fcitx-utils/text.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
@@ -35,7 +33,7 @@ constexpr int kMenuPageSize = 10;
 
 struct ParsedPaletteQuery {
   std::optional<PaletteCategory> scope;
-  std::string terms;
+  std::string terms{};
 };
 
 std::string NormalizeSearchText(std::string text) {
@@ -69,7 +67,7 @@ bool MatchesAllTerms(const std::string& haystack, const std::string& query) {
 }
 
 void PopLastUtf8Char(std::string* text) {
-  if (!text || text->empty()) {
+  if (text == nullptr || text->empty()) {
     return;
   }
 
