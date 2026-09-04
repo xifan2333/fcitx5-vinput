@@ -15,6 +15,7 @@
 #include <QSpinBox>
 #include <QThreadPool>
 #include <QVBoxLayout>
+#include <algorithm>
 
 #include "common/audio/pipewire_device.h"
 #include "common/llm/adapter_manager.h"
@@ -92,7 +93,7 @@ template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, 
 template <typename Callback>
 void RunAdapterControlAsync(ControlPage* page, std::string adapter_id, bool start,
                             Callback callback) {
-  QPointer<ControlPage> self(page);
+  const QPointer<ControlPage> self(page);
   QThreadPool::globalInstance()->start(
       [self, adapter_id = std::move(adapter_id), start, callback = std::move(callback)]() mutable {
         vinput::cli::DbusClient dbus;
@@ -527,22 +528,23 @@ void ControlPage::onAsrSetActive() {
 
 void ControlPage::refreshAdapterList() {
   const QString current_selection =
-      listAdapters_->currentItem() ? listAdapters_->currentItem()->data(Qt::UserRole).toString()
-                                   : QString{};
+      (listAdapters_->currentItem() != nullptr)
+          ? listAdapters_->currentItem()->data(Qt::UserRole).toString()
+          : QString{};
 
   listAdapters_->clear();
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
   const auto i18n_map = I18nCache::Get().GetMap();
 
   for (const auto& adapter : config.llm.adapters) {
-    QString id = QString::fromStdString(adapter.id);
-    QString title = QString::fromStdString(
+    const QString id = QString::fromStdString(adapter.id);
+    const QString title = QString::fromStdString(
         vinput::registry::LookupI18n(i18n_map, adapter.id + ".title", adapter.id));
-    bool running = vinput::adapter::IsRunning(adapter.id);
+    const bool running = vinput::adapter::IsRunning(adapter.id);
 
     QString display = title + " · " + (running ? GuiTranslate("running") : GuiTranslate("stopped"));
     display += " · " + (adapter.autoStart ? tr("autostart") : tr("manual"));
-    QString command = QString::fromStdString(adapter.command);
+    const QString command = QString::fromStdString(adapter.command);
     if (!command.isEmpty()) {
       display += " · " + command;
     }
@@ -559,14 +561,16 @@ void ControlPage::refreshAdapterList() {
     }
     if (!adapter.args.empty()) {
       QStringList argsList;
-      for (const auto& a : adapter.args)
+      for (const auto& a : adapter.args) {
         argsList << QString::fromStdString(a);
+      }
       tooltip += "\n" + tr("Args: %1").arg(argsList.join(" "));
     }
     if (!adapter.env.empty()) {
       QStringList envList;
-      for (const auto& [k, v] : adapter.env)
+      for (const auto& [k, v] : adapter.env) {
         envList << QString::fromStdString(k) + "=" + QString::fromStdString(v);
+      }
       tooltip += "\n" + tr("Env: %1").arg(envList.join(" "));
     }
     item->setToolTip(tooltip.trimmed());
@@ -580,7 +584,7 @@ void ControlPage::refreshAdapterList() {
 
 void ControlPage::updateAdapterButtons() {
   auto* item = listAdapters_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     btnAdapterStart_->setEnabled(false);
     btnAdapterStop_->setEnabled(false);
     chkAdapterAutostart_->setEnabled(false);
@@ -601,7 +605,7 @@ void ControlPage::updateAdapterButtons() {
 
 void ControlPage::onAdapterStart() {
   auto* item = listAdapters_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
   const QString adapter_id = item->data(Qt::UserRole).toString();
@@ -622,7 +626,7 @@ void ControlPage::onAdapterStart() {
 
 void ControlPage::onAdapterStop() {
   auto* item = listAdapters_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
   const QString adapter_id = item->data(Qt::UserRole).toString();
@@ -643,7 +647,7 @@ void ControlPage::onAdapterStop() {
 
 void ControlPage::onAdapterAutostartToggled(bool checked) {
   auto* item = listAdapters_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
   const QString adapter_id = item->data(Qt::UserRole).toString();
