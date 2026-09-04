@@ -201,8 +201,16 @@ void SetMenuTitle(fcitx::InputContext* ic, const std::string& base_title,
 
 bool IsCtrlShortcut(const fcitx::Key& key, fcitx::KeySym sym) {
   auto matches = [sym](const fcitx::Key& candidate) {
-    return candidate.sym() == sym && candidate.hasCtrl() && !candidate.hasAlt() &&
-           !candidate.hasSuper();
+    if (candidate.states() != fcitx::KeyState::Ctrl) {
+      return false;
+    }
+    if (candidate.sym() == sym) {
+      return true;
+    }
+
+    const uint32_t expected = fcitx::Key::keySymToUnicode(sym);
+    const uint32_t actual = fcitx::Key::keySymToUnicode(candidate.sym());
+    return expected != 0 && actual != 0 && expected == actual;
   };
 
   return matches(key) || matches(key.normalize());
@@ -421,14 +429,14 @@ void VinputEngine::reloadPaletteItems() {
 #if VINPUT_ENABLE_LOCAL_ASR
   const auto& active_provider = config.asr.activeProvider;
   const bool is_local_active = (active_provider == "sherpa-onnx" || active_provider.empty());
-  vinput::asr::ModelManager model_mgr;
+  ModelManager model_mgr;
   const auto local_models = model_mgr.ListDetailed(ResolvePreferredLocalModel(config));
 
   for (const auto& m : local_models) {
-    if (m.state == vinput::asr::ModelState::Broken) {
+    if (m.state == ModelState::Broken) {
       continue;
     }
-    const bool is_active = is_local_active && (m.state == vinput::asr::ModelState::Active);
+    const bool is_active = is_local_active && (m.state == ModelState::Active);
     std::string display = vinput::registry::LookupI18n(i18n_map, m.id + ".title", m.id);
     if (display.empty()) {
       display = m.id;

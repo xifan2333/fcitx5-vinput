@@ -620,9 +620,10 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
 }
 
 bool VinputEngine::callStartAdapter(const std::string& adapter_id, std::string* error) {
-  if (!bus_ || !daemonSyncAllowed()) {
-    if (error) {
-      *error = bus_ ? _("Daemon access is temporarily throttled.") : "D-Bus is unavailable.";
+  if (bus_ == nullptr || !daemonSyncAllowed()) {
+    if (error != nullptr) {
+      *error = (bus_ != nullptr) ? _("Daemon access is temporarily throttled.")
+                                 : "D-Bus is unavailable.";
     }
     noteDaemonSyncFailure();
     return false;
@@ -634,7 +635,7 @@ bool VinputEngine::callStartAdapter(const std::string& adapter_id, std::string* 
   auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
   if (!reply) {
     noteDaemonSyncFailure();
-    if (error) {
+    if (error != nullptr) {
       *error = _("Failed to contact vinput-daemon.");
     }
     return false;
@@ -642,7 +643,7 @@ bool VinputEngine::callStartAdapter(const std::string& adapter_id, std::string* 
 
   if (reply.isError()) {
     noteDaemonSyncFailure();
-    if (error) {
+    if (error != nullptr) {
       *error = reply.errorMessage();
       if (error->empty()) {
         *error = _("Failed to start adapter.");
@@ -655,9 +656,10 @@ bool VinputEngine::callStartAdapter(const std::string& adapter_id, std::string* 
 }
 
 bool VinputEngine::callStopAdapter(const std::string& adapter_id, std::string* error) {
-  if (!bus_ || !daemonSyncAllowed()) {
-    if (error) {
-      *error = bus_ ? _("Daemon access is temporarily throttled.") : "D-Bus is unavailable.";
+  if (bus_ == nullptr || !daemonSyncAllowed()) {
+    if (error != nullptr) {
+      *error = (bus_ != nullptr) ? _("Daemon access is temporarily throttled.")
+                                 : "D-Bus is unavailable.";
     }
     noteDaemonSyncFailure();
     return false;
@@ -669,7 +671,7 @@ bool VinputEngine::callStopAdapter(const std::string& adapter_id, std::string* e
   auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
   if (!reply) {
     noteDaemonSyncFailure();
-    if (error) {
+    if (error != nullptr) {
       *error = _("Failed to contact vinput-daemon.");
     }
     return false;
@@ -677,7 +679,7 @@ bool VinputEngine::callStopAdapter(const std::string& adapter_id, std::string* e
 
   if (reply.isError()) {
     noteDaemonSyncFailure();
-    if (error) {
+    if (error != nullptr) {
       *error = reply.errorMessage();
       if (error->empty()) {
         *error = _("Failed to stop adapter.");

@@ -2,10 +2,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <fcitx-utils/dbus/bus.h>
 #include <fcitx-utils/eventdispatcher.h>
 #include <fcitx-utils/handlertable.h>
 #include <fcitx-utils/key.h>
+#include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/trackableobject.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
@@ -24,7 +27,7 @@
 
 class VinputNotifierDBusObject;
 
-enum class PaletteCategory {
+enum class PaletteCategory : std::uint8_t {
   Asr,
   Scene,
   CommandModel,

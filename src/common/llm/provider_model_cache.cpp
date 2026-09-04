@@ -219,7 +219,11 @@ bool SetActiveCommandModel(CoreConfig* config, const std::string& provider_id,
   }
 
   NormalizeCoreConfig(config);
-  return SaveCoreConfig(*config, error);
+  const bool ok = SaveCoreConfig(*config);
+  if (!ok && error != nullptr) {
+    *error = "Failed to save core config";
+  }
+  return ok;
 }
 
 } // namespace vinput::llm

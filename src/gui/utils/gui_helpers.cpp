@@ -189,7 +189,8 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
 
   QObject::connect(
       reply, &QNetworkReply::finished, comboModel,
-      [comboModel, reply, timeout, cacheKey, generation]() {
+      [comboModel, reply, timeout, cacheKey, generation,
+       provider_id = provider.id.toStdString()]() {
         timeout->stop();
 
         const bool stale =
@@ -229,7 +230,7 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
             for (const auto& m : models) {
               models_vec.push_back(m.toStdString());
             }
-            vinput::llm::SaveProviderModels(provider.id.toStdString(), models_vec);
+            vinput::llm::SaveProviderModels(provider_id, models_vec);
             ApplyFetchedProviderModels(comboModel, models);
           } else {
             ApplyProviderModelFetchError(comboModel, error);
