@@ -52,8 +52,8 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
 
   if (order.is_command) {
     const auto* cmd_scene = FindCommandScene(settings);
-    if (cmd_scene && cmd_scene->llm_max_candidates > 0 && !cmd_scene->provider_id.empty() &&
-        on_enter_postprocessing) {
+    if (cmd_scene != nullptr && cmd_scene->llm_max_candidates > 0 &&
+        !cmd_scene->provider_id.empty() && on_enter_postprocessing) {
       on_enter_postprocessing();
     }
 

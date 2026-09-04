@@ -1,6 +1,7 @@
 #include "cli/config/scene_actions.h"
 
 #include <nlohmann/json.hpp>
+#include <string>
 
 #include "common/config/core_config.h"
 #include "common/i18n.h"

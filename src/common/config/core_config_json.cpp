@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "common/config/core_config_types.h"
+#include "common/scene/postprocess_scene.h"
 
 using json = nlohmann::ordered_json;
 

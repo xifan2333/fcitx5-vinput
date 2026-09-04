@@ -13,7 +13,9 @@
 #include <string>
 #include <string_view>
 
+#include "common/asr/recognition_result.h"
 #include "common/llm/defaults.h"
+#include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/url_utils.h"
@@ -523,7 +525,7 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
   fallback.commitText = normalized;
 
   const LlmProvider* provider = ResolveLlmProvider(settings, scene.provider_id);
-  if (!provider || max_llm_candidates == 0 || scene.prompt.empty()) {
+  if (provider == nullptr || max_llm_candidates == 0 || scene.prompt.empty()) {
     return fallback;
   }
 
@@ -576,7 +578,7 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
       vinput::scene::NormalizeCandidateCount(command_scene.llm_max_candidates);
 
   const LlmProvider* provider = ResolveLlmProvider(settings, command_scene.provider_id);
-  if (!provider || command_max_llm_candidates == 0) {
+  if (provider == nullptr || command_max_llm_candidates == 0) {
     return fallback;
   }
 
