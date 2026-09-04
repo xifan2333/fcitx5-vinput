@@ -15,11 +15,11 @@
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/path_utils.h"
 
+using json = nlohmann::json;
+
 namespace vinput::llm {
 
 namespace {
-
-using json = nlohmann::json;
 
 bool ReadCacheFile(json* out) {
   if (out == nullptr) {
