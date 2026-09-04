@@ -9,6 +9,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 
@@ -238,8 +239,8 @@ std::string BuildContextPrefix(int max_lines) {
   return result;
 }
 
-std::string BuildConstraintsSuffix(int candidate_count) {
-  if (candidate_count <= 0) {
+std::string BuildConstraintsSuffix(int max_llm_candidates) {
+  if (max_llm_candidates <= 0) {
     return {};
   }
   char buf[768];
@@ -249,11 +250,11 @@ std::string BuildConstraintsSuffix(int candidate_count) {
                 "- Each candidate must contain only the final rewritten text.\n"
                 "- Do not include explanations, Markdown fences, or extra keys.\n"
                 "\n\n## Format\n"
-                "Return EXACTLY %d candidate(s) in a JSON object:\n"
+                "Return up to %d distinct candidate(s) in a JSON object:\n"
                 "```json\n"
-                "{\"candidates\": [\"<string>\", \"<string>\"]}\n"
+                "{\"candidates\": [\"<string>\"]}\n"
                 "```",
-                candidate_count);
+                max_llm_candidates);
   return buf;
 }
 
@@ -282,7 +283,7 @@ void MergeExtraBody(json& request, const nlohmann::json& extra, const LlmProvide
 
 std::optional<std::vector<std::string>>
 RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Definition& scene,
-                            const LlmProvider& provider, int candidate_count,
+                            const LlmProvider& provider, int max_llm_candidates,
                             std::string* error_out, const std::string& task_prompt = {},
                             const std::atomic<bool>* cancel_flag = nullptr,
                             std::string_view asr_var = {}, std::string_view selected_var = {}) {
@@ -320,7 +321,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   }
 
   const std::string context_prefix = BuildContextPrefix(scene.context_lines);
-  const std::string constraints_suffix = BuildConstraintsSuffix(candidate_count);
+  const std::string constraints_suffix = BuildConstraintsSuffix(max_llm_candidates);
 
   // We send a single user message. The output-format constraints are appended
   // verbatim at the end regardless of interpolation, since downstream parsing
@@ -515,37 +516,44 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
     return {};
   }
 
-  const int candidate_count = vinput::scene::NormalizeCandidateCount(scene.candidate_count);
+  const int max_llm_candidates = vinput::scene::NormalizeCandidateCount(scene.llm_max_candidates);
 
   vinput::result::Payload fallback;
   AppendCandidate(fallback, normalized, vinput::result::kSourceRaw);
   fallback.commitText = normalized;
 
   const LlmProvider* provider = ResolveLlmProvider(settings, scene.provider_id);
-  if (!provider || candidate_count == 0 || scene.prompt.empty()) {
+  if (!provider || max_llm_candidates == 0 || scene.prompt.empty()) {
     return fallback;
   }
 
-  auto rewritten = RewriteWithOpenAiCompatible(normalized, scene, *provider, candidate_count,
+  auto rewritten = RewriteWithOpenAiCompatible(normalized, scene, *provider, max_llm_candidates,
                                                error_out, {}, &shutting_down_);
   if (!rewritten.has_value()) {
     return fallback;
   }
 
   vinput::result::Payload payload;
-  AppendCandidate(payload, normalized, vinput::result::kSourceRaw);
-  for (auto& text : *rewritten) {
-    AppendCandidate(payload, std::move(text), vinput::result::kSourceLlm);
-  }
+  std::set<std::string> seen;
 
-  payload.commitText = normalized;
-  for (const auto& candidate : payload.candidates) {
-    if (candidate.source == vinput::result::kSourceLlm) {
-      payload.commitText = candidate.text;
-      break;
+  AppendCandidate(payload, normalized, vinput::result::kSourceRaw);
+  seen.insert(normalized);
+
+  std::string first_llm_text;
+  for (auto& text : *rewritten) {
+    std::string trimmed = std::string(TrimAsciiWhitespace(text));
+    if (trimmed.empty()) {
+      continue;
+    }
+    if (seen.insert(trimmed).second) {
+      if (first_llm_text.empty()) {
+        first_llm_text = trimmed;
+      }
+      AppendCandidate(payload, std::move(trimmed), vinput::result::kSourceLlm);
     }
   }
 
+  payload.commitText = first_llm_text.empty() ? normalized : first_llm_text;
   return payload;
 }
 
@@ -564,11 +572,11 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
     return fallback;
   }
 
-  const int command_candidate_count =
-      vinput::scene::NormalizeCandidateCount(command_scene.candidate_count);
+  const int command_max_llm_candidates =
+      vinput::scene::NormalizeCandidateCount(command_scene.llm_max_candidates);
 
   const LlmProvider* provider = ResolveLlmProvider(settings, command_scene.provider_id);
-  if (!provider || command_candidate_count == 0) {
+  if (!provider || command_max_llm_candidates == 0) {
     return fallback;
   }
 
@@ -612,29 +620,38 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
   // substituted via {{asr}}/{{selected}} (interpolation). Pass empty text to
   // avoid double-appending.
   auto rewritten =
-      RewriteWithOpenAiCompatible("", command_scene, *provider, command_candidate_count, error_out,
-                                  task_prompt, &shutting_down_, asr_var, selected_var);
+      RewriteWithOpenAiCompatible("", command_scene, *provider, command_max_llm_candidates,
+                                  error_out, task_prompt, &shutting_down_, asr_var, selected_var);
 
   vinput::result::Payload payload;
+  std::set<std::string> seen;
+
   // 1st: original selected text (always)
   AppendCandidate(payload, selected_text, vinput::result::kSourceRaw);
-  // 2nd: ASR recognized command (always)
-  AppendCandidate(payload, normalized_asr, vinput::result::kSourceAsr);
-  // 3rd+: LLM results (if available)
+  seen.insert(selected_text);
+
+  // 2nd: ASR recognized command (always, if different from selected_text)
+  if (seen.insert(normalized_asr).second) {
+    AppendCandidate(payload, normalized_asr, vinput::result::kSourceAsr);
+  }
+
+  // 3rd+: LLM results (if available, deduplicated)
+  std::string first_llm_text;
   if (rewritten.has_value()) {
     for (auto& text : *rewritten) {
-      AppendCandidate(payload, std::move(text), vinput::result::kSourceLlm);
+      std::string trimmed = std::string(TrimAsciiWhitespace(text));
+      if (trimmed.empty()) {
+        continue;
+      }
+      if (seen.insert(trimmed).second) {
+        if (first_llm_text.empty()) {
+          first_llm_text = trimmed;
+        }
+        AppendCandidate(payload, std::move(trimmed), vinput::result::kSourceLlm);
+      }
     }
   }
 
-  // commitText is the first LLM result
-  payload.commitText = selected_text;
-  for (const auto& c : payload.candidates) {
-    if (c.source == vinput::result::kSourceLlm) {
-      payload.commitText = c.text;
-      break;
-    }
-  }
-
+  payload.commitText = first_llm_text.empty() ? selected_text : first_llm_text;
   return payload;
 }
