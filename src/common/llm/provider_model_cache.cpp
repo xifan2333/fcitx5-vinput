@@ -15,17 +15,15 @@
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/path_utils.h"
 
-using json = nlohmann::ordered_json;
-
 namespace vinput::llm {
 
 namespace {
 
-bool ReadCacheFile(json* out) {
+bool ReadCacheFile(nlohmann::json* out) {
   if (out == nullptr) {
     return false;
   }
-  *out = json::object();
+  *out = nlohmann::json::object();
 
   const auto path = vinput::path::ProviderModelCachePath();
   std::ifstream ifs(path);
@@ -34,15 +32,15 @@ bool ReadCacheFile(json* out) {
   }
 
   try {
-    *out = json::parse(ifs);
+    *out = nlohmann::json::parse(ifs);
     return out->is_object();
   } catch (...) {
-    *out = json::object();
+    *out = nlohmann::json::object();
     return false;
   }
 }
 
-bool WriteCacheFile(const json& data, std::string* error) {
+bool WriteCacheFile(const nlohmann::json& data, std::string* error) {
   const auto path = vinput::path::ProviderModelCachePath();
   std::error_code ec;
   std::filesystem::create_directories(path.parent_path(), ec);
@@ -76,14 +74,14 @@ bool SaveProviderModels(const std::string& provider_id, const std::vector<std::s
     return false;
   }
 
-  json cache;
+  nlohmann::json cache;
   ReadCacheFile(&cache);
 
   if (!cache.contains("providers") || !cache["providers"].is_object()) {
-    cache["providers"] = json::object();
+    cache["providers"] = nlohmann::json::object();
   }
 
-  json prov_entry = json::object();
+  nlohmann::json prov_entry = nlohmann::json::object();
   prov_entry["models"] = models;
   prov_entry["updated_at"] = static_cast<long long>(std::time(nullptr));
 
@@ -96,7 +94,7 @@ bool RemoveProviderModels(const std::string& provider_id, std::string* error) {
     return true;
   }
 
-  json cache;
+  nlohmann::json cache;
   if (!ReadCacheFile(&cache)) {
     return true;
   }
@@ -117,7 +115,7 @@ std::vector<ModelEntry> LoadActiveModels(const CoreConfig& config) {
     }
   }
 
-  json cache;
+  nlohmann::json cache;
   const bool has_cache = ReadCacheFile(&cache);
   bool cache_modified = false;
 
