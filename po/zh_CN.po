@@ -1083,3 +1083,49 @@ msgstr "流式识别最大显示列宽"
 
 msgid "Maximum visual column width for live streaming recognition preview. Older text is folded into 'head...tail'. Set to 0 to disable folding. Default is 60."
 msgstr "实时流式识别预览的最大视觉显示列宽。较早的内容会被折叠为“句首...句尾”。设为 0 则禁用折叠。默认值为 60。"
+
+msgid "AUTOSTART"
+msgstr "自启动"
+
+#, c-format
+msgid "Adapter '%s' daemon autostart is %s."
+msgstr "适配器 '%s' 随 daemon 自启动状态为：%s。"
+
+#, c-format
+msgid "Adapter '%s' daemon autostart set to %s."
+msgstr "已将适配器 '%s' 随 daemon 自启动设置为：%s。"
+
+#, c-format
+msgid "Adapter '%s' not found."
+msgstr "未找到适配器 '%s'。"
+
+msgid "Cannot specify both --enable and --disable."
+msgstr "不能同时指定 --enable 和 --disable。"
+
+msgid "Configure or show adapter autostart with daemon"
+msgstr "配置或查看适配器是否随 daemon 自启动"
+
+msgid "Disable autostart with daemon"
+msgstr "禁用随 daemon 自启动"
+
+msgid "Enable autostart with daemon"
+msgstr "启用随 daemon 自启动"
+
+#, c-format
+msgid "Invalid autostart state '%s'. Use on/off, true/false, enable/disable."
+msgstr "无效的自启动状态 '%s'。请使用 on/off、true/false 或 enable/disable。"
+
+msgid "Target autostart state (on/off, enable/disable)"
+msgstr "目标自启动状态（on/off，enable/disable）"
+
+msgid "disabled"
+msgstr "已禁用"
+
+msgid "enabled"
+msgstr "已启用"
+
+msgid "running"
+msgstr "运行中"
+
+msgid "stopped"
+msgstr "已停止"

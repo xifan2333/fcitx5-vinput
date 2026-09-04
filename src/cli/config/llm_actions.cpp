@@ -93,20 +93,24 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
             {"args", adapter.args},
             {"env", adapter.env},
             {"running", vinput::adapter::IsRunning(adapter.id)},
+            {"auto_start", adapter.autoStart},
         });
       }
       fmt.PrintJson(arr);
       return 0;
     }
 
-    std::vector<std::string> headers = {_("ID"), _("TITLE"), _("README")};
+    std::vector<std::string> headers = {_("ID"), _("TITLE"), _("STATUS"), _("AUTOSTART"),
+                                        _("README")};
     std::vector<std::vector<std::string>> rows;
     rows.reserve(config.llm.adapters.size());
     for (const auto& adapter : config.llm.adapters) {
       const bool has_entry = installed_display_map.contains(adapter.id);
+      const bool running = vinput::adapter::IsRunning(adapter.id);
       rows.push_back(
           {vinput::cli::HumanizeResourceId(installed_display_map, adapter.id),
            has_entry ? installed_display_map.at(adapter.id).title : "",
+           running ? _("running") : _("stopped"), adapter.autoStart ? _("enabled") : _("disabled"),
            has_entry ? vinput::cli::FormatTerminalLink(
                            ctx, _("Open README"), installed_display_map.at(adapter.id).readme_url)
                      : ""});
@@ -288,6 +292,84 @@ int RunLlmConfigStopAdapter(const std::string& id, Formatter& fmt, const CliCont
     return 1;
   }
   fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' stopped."), id));
+  return 0;
+}
+
+int RunLlmConfigAutostartAdapter(const std::string& id, const std::string& state, bool enable,
+                                 bool disable, Formatter& fmt, const CliContext& ctx) {
+  if (enable && disable) {
+    fmt.PrintError(_("Cannot specify both --enable and --disable."));
+    return 1;
+  }
+
+  CoreConfig config = LoadCoreConfig();
+  std::string error;
+  const std::string resolved_id =
+      vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
+  if (resolved_id.empty()) {
+    fmt.PrintError(error);
+    return 1;
+  }
+
+  auto it = std::find_if(config.llm.adapters.begin(), config.llm.adapters.end(),
+                         [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
+  if (it == config.llm.adapters.end()) {
+    fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found."), id));
+    return 1;
+  }
+
+  bool has_target = false;
+  bool target_state = false;
+  if (enable) {
+    has_target = true;
+    target_state = true;
+  } else if (disable) {
+    has_target = true;
+    target_state = false;
+  } else if (!state.empty()) {
+    std::string lower_state = state;
+    std::transform(lower_state.begin(), lower_state.end(), lower_state.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (lower_state == "on" || lower_state == "true" || lower_state == "1" ||
+        lower_state == "enable" || lower_state == "enabled") {
+      has_target = true;
+      target_state = true;
+    } else if (lower_state == "off" || lower_state == "false" || lower_state == "0" ||
+               lower_state == "disable" || lower_state == "disabled") {
+      has_target = true;
+      target_state = false;
+    } else {
+      fmt.PrintError(vinput::str::FmtStr(
+          _("Invalid autostart state '%s'. Use on/off, true/false, enable/disable."), state));
+      return 1;
+    }
+  }
+
+  if (!has_target) {
+    if (ctx.json_output) {
+      nlohmann::json j = {{"id", resolved_id}, {"auto_start", it->autoStart}};
+      fmt.PrintJson(j);
+      return 0;
+    }
+    fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' daemon autostart is %s."), id,
+                                         it->autoStart ? _("enabled") : _("disabled")));
+    return 0;
+  }
+
+  it->autoStart = target_state;
+  NormalizeCoreConfig(&config);
+  if (!SaveConfigOrFail(config, fmt)) {
+    return 1;
+  }
+
+  if (ctx.json_output) {
+    nlohmann::json j = {{"id", resolved_id}, {"auto_start", it->autoStart}};
+    fmt.PrintJson(j);
+    return 0;
+  }
+
+  fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' daemon autostart set to %s."), id,
+                                       it->autoStart ? _("enabled") : _("disabled")));
   return 0;
 }
 
