@@ -24,20 +24,32 @@
 
 class VinputNotifierDBusObject;
 
-struct AsrMenuItem {
+enum class PaletteCategory {
+  Asr,
+  Scene,
+  CommandModel,
+  Adapter,
+};
+
+struct PaletteItem {
+  PaletteCategory category = PaletteCategory::Scene;
+  std::string id;
+  std::string text;
+  std::string comment;
+  std::string search_text;
+  bool active = false;
   std::string provider_id;
   std::string model_id;
-  std::string display_label;
-  std::string search_text;
-  bool active;
+  std::string scene_id;
+  std::string adapter_id;
+  bool adapter_running = false;
 };
 
 class VinputEngine : public fcitx::AddonInstance {
 public:
   VinputEngine(fcitx::Instance* instance);
   ~VinputEngine() override;
-  void selectScene(std::size_t index, fcitx::InputContext* ic);
-  void selectAsrItem(std::size_t index, fcitx::InputContext* ic);
+  void selectPaletteItem(std::size_t index, fcitx::InputContext* ic);
   void selectResultCandidate(std::size_t index, fcitx::InputContext* ic);
 
   void reloadConfig() override;
@@ -49,18 +61,13 @@ private:
   void applySettings();
   void reloadSceneConfig();
   void handleKeyEvent(fcitx::Event& event);
-  void showSceneMenu(fcitx::InputContext* ic);
-  void hideSceneMenu();
-  void resetSceneMenuState();
-  bool handleSceneMenuKeyEvent(fcitx::KeyEvent& keyEvent);
-  void rebuildSceneMenu(fcitx::InputContext* ic);
-  void showAsrMenu(fcitx::InputContext* ic);
-  void hideAsrMenu();
-  void resetAsrMenuState();
-  bool handleAsrMenuKeyEvent(fcitx::KeyEvent& keyEvent);
-  void reloadAsrMenuItems();
-  void rebuildAsrMenu(fcitx::InputContext* ic);
-  void requestAsrMenuStateRefresh(fcitx::InputContext* ic);
+  void showPaletteMenu(fcitx::InputContext* ic, const std::string& initial_query = {});
+  void hidePaletteMenu();
+  void resetPaletteMenuState();
+  bool handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent);
+  void reloadPaletteItems();
+  void rebuildPaletteMenu(fcitx::InputContext* ic);
+  void requestPaletteStateRefresh(fcitx::InputContext* ic);
   void showResultMenu(fcitx::InputContext* ic, const vinput::result::Payload& payload);
   void hideResultMenu();
   void resetResultMenuState();
@@ -75,6 +82,8 @@ private:
   bool callStartCommandRecording(const std::string& selected_text);
   bool callStopRecording(const std::string& scene_id);
   bool callReloadAsrBackend(std::string* error = nullptr);
+  bool callStartAdapter(const std::string& adapter_id, std::string* error = nullptr);
+  bool callStopAdapter(const std::string& adapter_id, std::string* error = nullptr);
   void onRecognitionResult(fcitx::dbus::Message& msg);
   void onRecognitionPartial(fcitx::dbus::Message& msg);
   void onStatusChanged(fcitx::dbus::Message& msg);
@@ -134,13 +143,12 @@ private:
   std::optional<Session> session_;
   fcitx::InputContext* status_ic_ = nullptr;
   fcitx::InputContext* last_active_ic_ = nullptr;
-  fcitx::InputContext* scene_menu_ic_ = nullptr;
-  fcitx::InputContext* asr_menu_ic_ = nullptr;
+  fcitx::InputContext* palette_menu_ic_ = nullptr;
   fcitx::InputContext* result_menu_ic_ = nullptr;
   fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Alt_R)};
   fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_Control_R)};
-  fcitx::KeyList scene_menu_key_{fcitx::Key(FcitxKey_Shift_R)};
-  fcitx::KeyList asr_menu_key_{fcitx::Key(FcitxKey_F8)};
+  fcitx::KeyList palette_menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
+  fcitx::KeyList asr_menu_key_;
   fcitx::KeyList page_prev_keys_{
       fcitx::Key(FcitxKey_Page_Up),
       fcitx::Key(FcitxKey_KP_Page_Up),
@@ -149,18 +157,14 @@ private:
       fcitx::Key(FcitxKey_Page_Down),
       fcitx::Key(FcitxKey_KP_Page_Down),
   };
-  bool scene_menu_visible_ = false;
-  bool asr_menu_visible_ = false;
+  bool palette_menu_visible_ = false;
   bool result_menu_visible_ = false;
   std::string active_scene_id_;
   vinput::scene::Config scene_config_;
-  std::vector<std::size_t> scene_menu_filtered_indices_;
-  std::string scene_menu_query_;
-  bool scene_menu_filter_mode_ = false;
-  std::vector<AsrMenuItem> asr_menu_items_;
-  std::vector<std::size_t> asr_menu_filtered_indices_;
-  std::string asr_menu_query_;
-  bool asr_menu_filter_mode_ = false;
+  std::vector<PaletteItem> palette_items_;
+  std::vector<std::size_t> palette_filtered_indices_;
+  std::string palette_query_;
+  bool palette_filter_mode_ = false;
   std::optional<std::string> pending_suppressed_commit_text_;
   std::string command_selected_text_;
   std::string context_buffer_text_;

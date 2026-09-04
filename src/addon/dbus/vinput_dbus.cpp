@@ -619,6 +619,76 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
   return true;
 }
 
+bool VinputEngine::callStartAdapter(const std::string& adapter_id, std::string* error) {
+  if (!bus_ || !daemonSyncAllowed()) {
+    if (error) {
+      *error = bus_ ? _("Daemon access is temporarily throttled.") : "D-Bus is unavailable.";
+    }
+    noteDaemonSyncFailure();
+    return false;
+  }
+
+  auto msg =
+      bus_->createMethodCall(kBusName, kObjectPath, kInterface, vinput::dbus::kMethodStartAdapter);
+  msg << adapter_id;
+  auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
+  if (!reply) {
+    noteDaemonSyncFailure();
+    if (error) {
+      *error = _("Failed to contact vinput-daemon.");
+    }
+    return false;
+  }
+
+  if (reply.isError()) {
+    noteDaemonSyncFailure();
+    if (error) {
+      *error = reply.errorMessage();
+      if (error->empty()) {
+        *error = _("Failed to start adapter.");
+      }
+    }
+    return false;
+  }
+  clearDaemonSyncFailure();
+  return true;
+}
+
+bool VinputEngine::callStopAdapter(const std::string& adapter_id, std::string* error) {
+  if (!bus_ || !daemonSyncAllowed()) {
+    if (error) {
+      *error = bus_ ? _("Daemon access is temporarily throttled.") : "D-Bus is unavailable.";
+    }
+    noteDaemonSyncFailure();
+    return false;
+  }
+
+  auto msg =
+      bus_->createMethodCall(kBusName, kObjectPath, kInterface, vinput::dbus::kMethodStopAdapter);
+  msg << adapter_id;
+  auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
+  if (!reply) {
+    noteDaemonSyncFailure();
+    if (error) {
+      *error = _("Failed to contact vinput-daemon.");
+    }
+    return false;
+  }
+
+  if (reply.isError()) {
+    noteDaemonSyncFailure();
+    if (error) {
+      *error = reply.errorMessage();
+      if (error->empty()) {
+        *error = _("Failed to stop adapter.");
+      }
+    }
+    return false;
+  }
+  clearDaemonSyncFailure();
+  return true;
+}
+
 bool VinputEngine::daemonSyncAllowed() const {
   return std::chrono::steady_clock::now() >= daemon_sync_blocked_until_;
 }

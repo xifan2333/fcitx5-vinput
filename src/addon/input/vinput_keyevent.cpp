@@ -46,32 +46,30 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  if (scene_menu_visible_ && handleSceneMenuKeyEvent(keyEvent)) {
+  if (palette_menu_visible_ && handlePaletteMenuKeyEvent(keyEvent)) {
     return;
   }
 
-  if (asr_menu_visible_ && handleAsrMenuKeyEvent(keyEvent)) {
-    return;
-  }
-
-  if (!session_ && keyEvent.key().checkKeyList(asr_menu_key_) && !keyEvent.isRelease()) {
-    showAsrMenu(keyEvent.inputContext());
+  if (!session_ && keyEvent.key().checkKeyList(palette_menu_keys_) && !keyEvent.isRelease()) {
+    showPaletteMenu(keyEvent.inputContext());
     keyEvent.filterAndAccept();
     return;
   }
 
-  if (keyEvent.key().checkKeyList(asr_menu_key_) && keyEvent.isRelease()) {
+  if (keyEvent.key().checkKeyList(palette_menu_keys_) && keyEvent.isRelease()) {
     keyEvent.filterAndAccept();
     return;
   }
 
-  if (!session_ && keyEvent.key().checkKeyList(scene_menu_key_) && !keyEvent.isRelease()) {
-    showSceneMenu(keyEvent.inputContext());
+  if (!session_ && !asr_menu_key_.empty() && keyEvent.key().checkKeyList(asr_menu_key_) &&
+      !keyEvent.isRelease()) {
+    showPaletteMenu(keyEvent.inputContext(), "/a ");
     keyEvent.filterAndAccept();
     return;
   }
 
-  if (keyEvent.key().checkKeyList(scene_menu_key_) && keyEvent.isRelease()) {
+  if (!asr_menu_key_.empty() && keyEvent.key().checkKeyList(asr_menu_key_) &&
+      keyEvent.isRelease()) {
     keyEvent.filterAndAccept();
     return;
   }
@@ -116,6 +114,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       const std::string daemon_status = last_known_daemon_status_;
       if (is_trigger && !session_ && daemon_status == vinput::dbus::kStatusRecording) {
         hideResultMenu();
+        hidePaletteMenu();
         enterRecordingState(ic, trigger, false);
         finishStopRecording();
         keyEvent.filterAndAccept();
@@ -136,6 +135,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
           CLOCK_MONOTONIC, fire_at_usec, 0,
           [this, ic, trigger, is_command](fcitx::EventSourceTime*, uint64_t) {
             hideResultMenu();
+            hidePaletteMenu();
 
             if (is_command) {
               {
@@ -229,6 +229,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     const std::string daemon_status = last_known_daemon_status_;
     if (is_trigger && !session_ && daemon_status == vinput::dbus::kStatusRecording) {
       hideResultMenu();
+      hidePaletteMenu();
       enterRecordingState(ic, trigger, false);
       finishStopRecording();
       keyEvent.filterAndAccept();
@@ -240,6 +241,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       return;
     }
     hideResultMenu();
+    hidePaletteMenu();
 
     if (is_command) {
       // Check command scene has llm_max_candidates > 0 and a valid provider
