@@ -92,7 +92,6 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
             {"command", adapter.command},
             {"args", adapter.args},
             {"env", adapter.env},
-            {"running", vinput::adapter::IsRunning(adapter.id)},
             {"auto_start", adapter.autoStart},
         });
       }

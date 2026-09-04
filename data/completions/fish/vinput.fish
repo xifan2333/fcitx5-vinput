@@ -1,23 +1,23 @@
 # fish completion for vinput
 
 function __fish_vinput_installed_models
-    vinput model list -j 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
+    vinput -j model list 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
 end
 
 function __fish_vinput_installed_scenes
-    vinput scene list -j 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
+    vinput -j scene list 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
 end
 
 function __fish_vinput_installed_providers
-    vinput provider list -j 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
+    vinput -j provider list 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
 end
 
 function __fish_vinput_installed_llm_providers
-    vinput llm list -j 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
+    vinput -j llm list 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
 end
 
 function __fish_vinput_installed_adapters
-    vinput adapter list -j 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
+    vinput -j adapter list 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
 end
 
 # Disable default file completions
