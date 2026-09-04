@@ -179,6 +179,21 @@ public:
     return SubmitRequest(Request::Type::Stop, adapter_id);
   }
 
+  void AutoStart(const CoreConfig& config) {
+    for (const auto& adapter : config.llm.adapters) {
+      if (!adapter.autoStart) {
+        continue;
+      }
+      auto result = StartAdapter(adapter.id);
+      if (!result.ok) {
+        fprintf(stderr, "vinput-daemon: failed to autostart adapter '%s': %s\n", adapter.id.c_str(),
+                result.error.c_str());
+      } else {
+        vinput::debug::Log("autostarted adapter '%s'\n", adapter.id.c_str());
+      }
+    }
+  }
+
 private:
   struct ManagedAdapter {
     std::string id;
@@ -595,6 +610,7 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "vinput-daemon: %s\n", adapter_error.c_str());
     return 1;
   }
+  adapter_supervisor.AutoStart(startup_settings);
 
   runtime_controller.StartWorker();
   std::string remote_error;
