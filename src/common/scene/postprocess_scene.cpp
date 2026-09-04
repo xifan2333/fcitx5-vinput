@@ -75,7 +75,7 @@ void NormalizeDefinition(Definition* scene) {
   if (IsBuiltinSceneId(scene->id)) {
     scene->builtin = true;
   }
-  scene->candidate_count = NormalizeCandidateCount(scene->candidate_count);
+  scene->llm_max_candidates = NormalizeCandidateCount(scene->llm_max_candidates);
   if (scene->timeout_ms <= 0) {
     scene->timeout_ms = kDefaultTimeoutMs;
   }
@@ -88,7 +88,7 @@ bool ValidateDefinition(const Definition& scene, std::string* error, bool requir
   if (require_id && scene.id.empty()) {
     return SetValidationError(error, "Scene id must not be empty.");
   }
-  if (scene.candidate_count < 0) {
+  if (scene.llm_max_candidates < 0) {
     return SetValidationError(error, "Scene candidate count must be 0 or greater.");
   }
   if (scene.timeout_ms <= 0) {
@@ -163,7 +163,7 @@ bool UpdateScene(Config* config, const std::string& id, const Definition& def, s
       updated.provider_id = def.provider_id;
       updated.model = def.model;
       updated.context_lines = def.context_lines;
-      updated.candidate_count = def.candidate_count;
+      updated.llm_max_candidates = def.llm_max_candidates;
       updated.timeout_ms = def.timeout_ms;
       NormalizeDefinition(&updated);
       if (!ValidateDefinition(updated, error)) {

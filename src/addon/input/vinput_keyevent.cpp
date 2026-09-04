@@ -141,7 +141,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
               {
                 auto core_config = LoadCoreConfig();
                 const auto* cmd_scene = FindCommandScene(core_config);
-                if (!cmd_scene || cmd_scene->candidate_count <= 0) {
+                if (!cmd_scene || cmd_scene->llm_max_candidates <= 0) {
                   finishFrontendSession(ic);
                   updatePreedit(ic, CommandDisabledPreeditText());
                   pending_start_event_.reset();
@@ -242,11 +242,11 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     hideResultMenu();
 
     if (is_command) {
-      // Check command scene has candidate_count > 0 and a valid provider
+      // Check command scene has llm_max_candidates > 0 and a valid provider
       {
         auto core_config = LoadCoreConfig();
         const auto* cmd_scene = FindCommandScene(core_config);
-        if (!cmd_scene || cmd_scene->candidate_count <= 0) {
+        if (!cmd_scene || cmd_scene->llm_max_candidates <= 0) {
           finishFrontendSession(ic);
           updatePreedit(ic, CommandDisabledPreeditText());
           keyEvent.filterAndAccept();

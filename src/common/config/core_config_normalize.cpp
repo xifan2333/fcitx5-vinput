@@ -66,7 +66,7 @@ vinput::scene::Definition MakeBuiltinScene(std::string_view id) {
   scene.builtin = true;
   if (id == vinput::scene::kRawSceneId) {
     scene.label = std::string(vinput::scene::kRawSceneLabelKey);
-    scene.candidate_count = 0;
+    scene.llm_max_candidates = 0;
   } else if (id == vinput::scene::kCommandSceneId) {
     scene.label = std::string(vinput::scene::kCommandSceneLabelKey);
     scene.prompt = std::string(kDefaultCommandPrompt);

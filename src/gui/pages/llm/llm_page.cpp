@@ -784,7 +784,7 @@ void LlmPage::onSceneAdd() {
   def.provider_id = comboProvider->currentText().trimmed().toStdString();
   def.model = comboModel->currentText().trimmed().toStdString();
   def.context_lines = spinContextLines->value();
-  def.candidate_count = spinCandidates->value();
+  def.llm_max_candidates = spinCandidates->value();
   def.timeout_ms = spinTimeout->value();
 
   CoreConfig config = ConfigManager::Get().Load();
@@ -835,7 +835,7 @@ void LlmPage::onSceneEdit() {
   spinTimeout->setSuffix(" ms");
   auto* spinCandidates = new QSpinBox();
   spinCandidates->setRange(kMinCandidateCount, kMaxCandidateCount);
-  spinCandidates->setValue(found->candidate_count);
+  spinCandidates->setValue(found->llm_max_candidates);
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(found->context_lines);
@@ -869,7 +869,7 @@ void LlmPage::onSceneEdit() {
   def.provider_id = comboProvider->currentText().trimmed().toStdString();
   def.model = comboModel->currentText().trimmed().toStdString();
   def.context_lines = spinContextLines->value();
-  def.candidate_count = spinCandidates->value();
+  def.llm_max_candidates = spinCandidates->value();
   def.timeout_ms = spinTimeout->value();
 
   std::string err;

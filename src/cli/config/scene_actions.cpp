@@ -22,7 +22,8 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
                      {"prompt", scene.prompt},
                      {"provider_id", scene.provider_id},
                      {"model", scene.model},
-                     {"candidate_count", scene.candidate_count},
+                     {"candidate_count", scene.llm_max_candidates},
+                     {"llm_max_candidates", scene.llm_max_candidates},
                      {"timeout_ms", scene.timeout_ms},
                      {"context_lines", scene.context_lines},
                      {"builtin", scene.builtin},
@@ -41,7 +42,7 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
     std::string provider = scene.provider_id.empty() ? "-" : scene.provider_id;
     std::string model = scene.model.empty() ? "-" : scene.model;
     rows.push_back(
-        {scene.id, label, provider, model, std::to_string(scene.candidate_count), status});
+        {scene.id, label, provider, model, std::to_string(scene.llm_max_candidates), status});
   }
   fmt.PrintTable(headers, rows);
   return 0;
@@ -59,7 +60,7 @@ int RunSceneConfigAdd(const std::string& id, const std::string& label, const std
   def.prompt = vinput::str::TrimAsciiWhitespace(prompt);
   def.provider_id = vinput::str::TrimAsciiWhitespace(provider_id);
   def.model = vinput::str::TrimAsciiWhitespace(model);
-  def.candidate_count = candidate_count;
+  def.llm_max_candidates = candidate_count;
   def.timeout_ms = timeout_ms;
   def.context_lines = context_lines;
 
@@ -147,7 +148,7 @@ int RunSceneConfigEdit(const std::string& id, const std::string& label, const st
   if (hasModel)
     updated.model = vinput::str::TrimAsciiWhitespace(model);
   if (hasCandidates)
-    updated.candidate_count = candidate_count;
+    updated.llm_max_candidates = candidate_count;
   if (hasTimeout)
     updated.timeout_ms = timeout_ms;
   if (hasContextLines)

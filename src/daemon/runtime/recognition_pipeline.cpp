@@ -52,7 +52,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
 
   if (order.is_command) {
     const auto* cmd_scene = FindCommandScene(settings);
-    if (cmd_scene && cmd_scene->candidate_count > 0 && !cmd_scene->provider_id.empty() &&
+    if (cmd_scene && cmd_scene->llm_max_candidates > 0 && !cmd_scene->provider_id.empty() &&
         on_enter_postprocessing) {
       on_enter_postprocessing();
     }
@@ -71,7 +71,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
   }
 
   const auto& scene = vinput::scene::Resolve(scene_config, order.scene_id);
-  if (scene.candidate_count > 0 && !scene.provider_id.empty() && !scene.prompt.empty() &&
+  if (scene.llm_max_candidates > 0 && !scene.provider_id.empty() && !scene.prompt.empty() &&
       on_enter_postprocessing) {
     on_enter_postprocessing();
   }

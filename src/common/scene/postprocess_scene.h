@@ -22,7 +22,7 @@ struct Definition {
   std::string prompt;
   std::string provider_id;
   std::string model;
-  int candidate_count = kDefaultCandidateCount;
+  int llm_max_candidates = kDefaultCandidateCount;
   int timeout_ms = kDefaultTimeoutMs;
   int context_lines = kDefaultContextLines;
   bool builtin = false;
