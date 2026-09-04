@@ -27,6 +27,7 @@ struct LlmAdapter {
   std::string command;
   std::vector<std::string> args;
   std::map<std::string, std::string> env;
+  bool autoStart{false};
 };
 
 struct AsrProviderBase {

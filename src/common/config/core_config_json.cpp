@@ -51,6 +51,9 @@ void to_json(json& j, const LlmAdapter& p) {
   if (!p.env.empty()) {
     j["env"] = p.env;
   }
+  if (p.autoStart) {
+    j["auto_start"] = p.autoStart;
+  }
 }
 
 void from_json(const json& j, LlmAdapter& p) {
@@ -62,6 +65,7 @@ void from_json(const json& j, LlmAdapter& p) {
   if (j.contains("env") && j.at("env").is_object()) {
     p.env = j.at("env").get<std::map<std::string, std::string>>();
   }
+  p.autoStart = j.value("auto_start", p.autoStart);
 }
 
 // ---------------------------------------------------------------------------
