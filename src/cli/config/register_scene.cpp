@@ -25,7 +25,7 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
     std::string prompt;
     std::string providerId;
     std::string model;
-    int candidates = vinput::scene::kDefaultCandidateCount;
+    int llmMaxCandidates = vinput::scene::kDefaultLlmMaxCandidates;
     int timeoutMs = vinput::scene::kDefaultTimeoutMs;
     int contextLines = vinput::scene::kDefaultContextLines;
   };
@@ -36,9 +36,9 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   add->add_option("-t,--prompt", addState->prompt, _("LLM prompt"));
   add->add_option("-p,--provider", addState->providerId, _("LLM provider id"));
   add->add_option("-m,--model", addState->model, _("LLM model id"));
-  add->add_option("-c,--candidates", addState->candidates,
+  add->add_option("-c,--candidates,--llm-max-candidates", addState->llmMaxCandidates,
                   _("Maximum number of LLM candidates (0 to disable LLM)"))
-      ->default_val(vinput::scene::kDefaultCandidateCount);
+      ->default_val(vinput::scene::kDefaultLlmMaxCandidates);
   add->add_option("--timeout", addState->timeoutMs, _("Request timeout in milliseconds"))
       ->default_val(vinput::scene::kDefaultTimeoutMs);
   add->add_option("--context-lines", addState->contextLines,
@@ -47,7 +47,7 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   add->callback([action, addState]() {
     *action = [addState](Formatter& fmt, const CliContext& ctx) {
       return RunSceneConfigAdd(addState->id, addState->label, addState->prompt,
-                               addState->providerId, addState->model, addState->candidates,
+                               addState->providerId, addState->model, addState->llmMaxCandidates,
                                addState->timeoutMs, addState->contextLines, fmt, ctx);
     };
   });
@@ -77,14 +77,14 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
     std::string prompt;
     std::string providerId;
     std::string model;
-    int candidates = vinput::scene::kDefaultCandidateCount;
+    int llmMaxCandidates = vinput::scene::kDefaultLlmMaxCandidates;
     int timeoutMs = vinput::scene::kDefaultTimeoutMs;
     int contextLines = vinput::scene::kDefaultContextLines;
     bool hasLabel = false;
     bool hasPrompt = false;
     bool hasProvider = false;
     bool hasModel = false;
-    bool hasCandidates = false;
+    bool hasLlmMaxCandidates = false;
     bool hasTimeout = false;
     bool hasContextLines = false;
   };
@@ -96,7 +96,7 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   auto* ePmt = edit->add_option("-t,--prompt", editState->prompt, _("LLM prompt"));
   auto* ePrv = edit->add_option("-p,--provider", editState->providerId, _("LLM provider id"));
   auto* eMdl = edit->add_option("-m,--model", editState->model, _("LLM model id"));
-  auto* eCnd = edit->add_option("-c,--candidates", editState->candidates,
+  auto* eCnd = edit->add_option("-c,--candidates,--llm-max-candidates", editState->llmMaxCandidates,
                                 _("Maximum number of LLM candidates (0 to disable LLM)"));
   auto* eTmo =
       edit->add_option("--timeout", editState->timeoutMs, _("Request timeout in milliseconds"));
@@ -107,15 +107,16 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
     editState->hasPrompt = ePmt->count() > 0;
     editState->hasProvider = ePrv->count() > 0;
     editState->hasModel = eMdl->count() > 0;
-    editState->hasCandidates = eCnd->count() > 0;
+    editState->hasLlmMaxCandidates = eCnd->count() > 0;
     editState->hasTimeout = eTmo->count() > 0;
     editState->hasContextLines = eCtx->count() > 0;
     *action = [editState](Formatter& fmt, const CliContext& ctx) {
       return RunSceneConfigEdit(
           editState->id, editState->label, editState->prompt, editState->providerId,
-          editState->model, editState->candidates, editState->timeoutMs, editState->contextLines,
-          editState->hasLabel, editState->hasPrompt, editState->hasProvider, editState->hasModel,
-          editState->hasCandidates, editState->hasTimeout, editState->hasContextLines, fmt, ctx);
+          editState->model, editState->llmMaxCandidates, editState->timeoutMs,
+          editState->contextLines, editState->hasLabel, editState->hasPrompt,
+          editState->hasProvider, editState->hasModel, editState->hasLlmMaxCandidates,
+          editState->hasTimeout, editState->hasContextLines, fmt, ctx);
     };
   });
 }

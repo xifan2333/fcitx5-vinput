@@ -109,7 +109,7 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
   "definitions": [
     {
       "id": "__raw__",
-      "candidate_count": 0
+      "llm_max_candidates": 0
     },
     {
       "id": "default",
@@ -118,7 +118,7 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
       "provider_id": "groq",
       "model": "llama-3.3-70b-versatile",
       "context_lines": 3,
-      "candidate_count": 5
+      "llm_max_candidates": 5
     }
   ]
 }
@@ -130,7 +130,7 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
 **context_lines** (*整数*)
 :   发送给 LLM 的历史上下文行数（`0` 表示不附带上下文）。
 
-**candidate_count** (*整数*, `0` - `9`)
+**llm_max_candidates** (*整数*, `0` - `9`)
 :   向 LLM 请求改写候选的最大数量（设为 `0` 表示不调用 LLM）。改写结果与原始识别文本自动保序去重。去重后若只有单一结果直接自动上屏；若有不同候选则弹出菜单，默认聚焦 LLM 最佳改写，原始文本保留为保底选项（选项 1）。
 
 # VINPUT.CONF 结构 (FCITX5 插件配置)

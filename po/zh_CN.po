@@ -1153,3 +1153,6 @@ msgstr "Adapter '%s' 已重启。"
 
 msgid "Maximum number of LLM candidates (0 to disable LLM)"
 msgstr "LLM 候选的最大返回数量（0 表示不使用 LLM）"
+
+msgid "MAX LLM CANDIDATES"
+msgstr "LLM 最大候选数"

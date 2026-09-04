@@ -6,9 +6,9 @@
 
 namespace vinput::scene {
 
-constexpr int kMinCandidateCount = 0;
-constexpr int kMaxCandidateCount = 9;
-constexpr int kDefaultCandidateCount = 1;
+constexpr int kMinLlmMaxCandidates = 0;
+constexpr int kMaxLlmMaxCandidates = 9;
+constexpr int kDefaultLlmMaxCandidates = 1;
 constexpr int kDefaultTimeoutMs = 4000;
 constexpr int kDefaultContextLines = 0;
 constexpr std::string_view kRawSceneId = "__raw__";
@@ -22,7 +22,7 @@ struct Definition {
   std::string prompt;
   std::string provider_id;
   std::string model;
-  int llm_max_candidates = kDefaultCandidateCount;
+  int llm_max_candidates = kDefaultLlmMaxCandidates;
   int timeout_ms = kDefaultTimeoutMs;
   int context_lines = kDefaultContextLines;
   bool builtin = false;
@@ -33,7 +33,7 @@ struct Config {
   std::vector<Definition> scenes;
 };
 
-int NormalizeCandidateCount(int candidate_count);
+int NormalizeLlmMaxCandidates(int llm_max_candidates);
 bool IsBuiltinSceneId(std::string_view scene_id);
 bool IsBuiltinSceneLabelKey(std::string_view label);
 void NormalizeDefinition(Definition* scene);

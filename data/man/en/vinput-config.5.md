@@ -109,7 +109,7 @@ Defines prompt templates and candidate counts for text rewriting.
   "definitions": [
     {
       "id": "__raw__",
-      "candidate_count": 0
+      "llm_max_candidates": 0
     },
     {
       "id": "default",
@@ -118,7 +118,7 @@ Defines prompt templates and candidate counts for text rewriting.
       "provider_id": "groq",
       "model": "llama-3.3-70b-versatile",
       "context_lines": 3,
-      "candidate_count": 5
+      "llm_max_candidates": 5
     }
   ]
 }
@@ -130,7 +130,7 @@ Defines prompt templates and candidate counts for text rewriting.
 **context_lines** (*integer*)
 :   Number of preceding input lines sent to the LLM as conversational context.
 
-**candidate_count** (*integer*, `0` - `9`)
+**llm_max_candidates** (*integer*, `0` - `9`)
 :   Maximum number of rewritten candidates requested from the LLM (set to `0` to disable LLM for this scene). Candidates are deduplicated with the raw ASR transcript. If only 1 distinct candidate remains, it commits directly to screen; if distinct choices exist, a candidate menu is shown with the primary LLM rewrite focused and the raw transcript preserved as option 1.
 
 # VINPUT.CONF STRUCTURE (FCITX5 ADDON)

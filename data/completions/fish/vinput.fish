@@ -110,7 +110,7 @@ complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcom
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -s t -l prompt -d "LLM prompt"
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -s p -l provider -a "(__fish_vinput_installed_llm_providers)" -d "LLM provider ID"
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -s m -l model -d "LLM model ID"
-complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -s c -l candidates -d "Candidate count"
+complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -s c -l candidates -l llm-max-candidates -d "Maximum number of LLM candidates"
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -l timeout -d "Request timeout in ms"
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -l context-lines -d "Context history lines"
 

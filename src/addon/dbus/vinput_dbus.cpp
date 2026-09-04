@@ -721,16 +721,23 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
     appendContextEntry(asr_candidate->text, "asr");
   }
 
+  int distinct_llm_candidate_count = 0;
   bool commit_from_llm = false;
-  for (const auto& c : payload.candidates) {
-    if (c.source == vinput::result::kSourceLlm && c.text == payload.commitText) {
+  for (const auto& candidate : payload.candidates) {
+    if (candidate.source == vinput::result::kSourceLlm) {
+      ++distinct_llm_candidate_count;
+    }
+    if (candidate.source == vinput::result::kSourceLlm && candidate.text == payload.commitText) {
       commit_from_llm = true;
     }
   }
 
-  // Show candidate menu when multiple distinct choices exist (e.g. LLM rewrite + raw transcript,
-  // or multiple distinct LLM rewrites). Commit directly when only 1 choice remains.
-  if (payload.candidates.size() > 1) {
+  // Dictation presents every distinct choice: raw is option 1 and the primary LLM rewrite is
+  // focused. Command mode keeps its existing behavior because its payload also contains the
+  // selected text and spoken command as metadata candidates.
+  const bool should_show_result_menu =
+      is_command ? distinct_llm_candidate_count > 1 : payload.candidates.size() > 1;
+  if (should_show_result_menu) {
     // Save command mode for result menu interaction
     result_is_command_ = is_command;
     showResultMenu(ic, payload);

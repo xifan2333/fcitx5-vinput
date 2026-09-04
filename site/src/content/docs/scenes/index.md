@@ -35,7 +35,7 @@ Each scene contains:
 | `provider_id` | Bound LLM provider |
 | `model` | Model name to use |
 | `context_lines` | Number of previous text lines sent as context to the LLM |
-| `candidate_count` | Maximum rewritten candidates requested from LLM (0 to disable LLM) |
+| `llm_max_candidates` | Maximum rewritten candidates requested from LLM (0 to disable LLM) |
 
 Rewritten results are deduplicated with the raw ASR transcript. If only 1 distinct text remains (no change), it commits directly to screen; if distinct candidates exist, a selection menu is shown (focused on the primary LLM rewrite, with the raw transcript preserved at option `1`).
 
@@ -56,7 +56,7 @@ Corresponding config:
     "definitions": [
       {
         "id": "__raw__",
-        "candidate_count": 0
+        "llm_max_candidates": 0
       },
       {
         "id": "default",
@@ -65,7 +65,7 @@ Corresponding config:
         "provider_id": "groq",
         "model": "openai/gpt-oss-120b",
         "context_lines": 3,
-        "candidate_count": 5
+        "llm_max_candidates": 5
       }
     ]
   }

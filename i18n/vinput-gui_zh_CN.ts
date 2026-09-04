@@ -449,8 +449,8 @@
         <translation>上下文行数：</translation>
     </message>
     <message>
-        <source>Candidate Count:</source>
-        <translation>候选词数量：</translation>
+        <source>Max LLM Candidates:</source>
+        <translation>LLM 最大候选数：</translation>
     </message>
     <message>
         <source>Timeout (ms):</source>

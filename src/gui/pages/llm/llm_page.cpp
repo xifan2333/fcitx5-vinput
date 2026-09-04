@@ -102,9 +102,7 @@ QPlainTextEdit* MakeExtraBodyEditor(const nlohmann::json* prefill = nullptr) {
 }
 
 constexpr int kDefaultTimeoutMs = vinput::scene::kDefaultTimeoutMs;
-constexpr int kDefaultCandidateCount = 3;
-constexpr int kMinCandidateCount = 1;
-constexpr int kMaxCandidateCount = 10;
+constexpr int kDefaultUiLlmMaxCandidates = 3;
 
 QString SceneLabelForGui(const vinput::scene::Definition& scene) {
   if (scene.id == vinput::scene::kRawSceneId || scene.label == vinput::scene::kRawSceneLabelKey)
@@ -748,9 +746,10 @@ void LlmPage::onSceneAdd() {
   spinTimeout->setSingleStep(1000);
   spinTimeout->setValue(kDefaultTimeoutMs);
   spinTimeout->setSuffix(" ms");
-  auto* spinCandidates = new QSpinBox();
-  spinCandidates->setRange(kMinCandidateCount, kMaxCandidateCount);
-  spinCandidates->setValue(kDefaultCandidateCount);
+  auto* spinLlmMaxCandidates = new QSpinBox();
+  spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
+                                 vinput::scene::kMaxLlmMaxCandidates);
+  spinLlmMaxCandidates->setValue(kDefaultUiLlmMaxCandidates);
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(vinput::scene::kDefaultContextLines);
@@ -763,7 +762,7 @@ void LlmPage::onSceneAdd() {
   form->addRow(tr("Provider:"), comboProvider);
   form->addRow(tr("Model:"), comboModel);
   form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("Candidate Count:"), spinCandidates);
+  form->addRow(tr("Max LLM Candidates:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -784,7 +783,7 @@ void LlmPage::onSceneAdd() {
   def.provider_id = comboProvider->currentText().trimmed().toStdString();
   def.model = comboModel->currentText().trimmed().toStdString();
   def.context_lines = spinContextLines->value();
-  def.llm_max_candidates = spinCandidates->value();
+  def.llm_max_candidates = spinLlmMaxCandidates->value();
   def.timeout_ms = spinTimeout->value();
 
   CoreConfig config = ConfigManager::Get().Load();
@@ -833,9 +832,10 @@ void LlmPage::onSceneEdit() {
   spinTimeout->setSingleStep(1000);
   spinTimeout->setValue(found->timeout_ms);
   spinTimeout->setSuffix(" ms");
-  auto* spinCandidates = new QSpinBox();
-  spinCandidates->setRange(kMinCandidateCount, kMaxCandidateCount);
-  spinCandidates->setValue(found->llm_max_candidates);
+  auto* spinLlmMaxCandidates = new QSpinBox();
+  spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
+                                 vinput::scene::kMaxLlmMaxCandidates);
+  spinLlmMaxCandidates->setValue(found->llm_max_candidates);
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(found->context_lines);
@@ -849,7 +849,7 @@ void LlmPage::onSceneEdit() {
   form->addRow(tr("Provider:"), comboProvider);
   form->addRow(tr("Model:"), comboModel);
   form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("Candidate Count:"), spinCandidates);
+  form->addRow(tr("Max LLM Candidates:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -869,7 +869,7 @@ void LlmPage::onSceneEdit() {
   def.provider_id = comboProvider->currentText().trimmed().toStdString();
   def.model = comboModel->currentText().trimmed().toStdString();
   def.context_lines = spinContextLines->value();
-  def.llm_max_candidates = spinCandidates->value();
+  def.llm_max_candidates = spinLlmMaxCandidates->value();
   def.timeout_ms = spinTimeout->value();
 
   std::string err;

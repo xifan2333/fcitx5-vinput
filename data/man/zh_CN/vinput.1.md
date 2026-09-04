@@ -145,8 +145,8 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 **scene list**
 :   列出所有已定义的场景。
 
-**scene add** **--id** *ID* [**-l**, **--label** *LABEL*] [**-t**, **--prompt** *PROMPT*] [**-p**, **--provider** *PROVIDER_ID*] [**-m**, **--model** *MODEL*] [**-c**, **--candidates** *N*]
-:   添加新的后处理场景。
+**scene add** **--id** *ID* [**-l**, **--label** *LABEL*] [**-t**, **--prompt** *PROMPT*] [**-p**, **--provider** *PROVIDER_ID*] [**-m**, **--model** *MODEL*] [**-c**, **--candidates**, **--llm-max-candidates** *N*]
+:   添加新的后处理场景。*N* 表示向 LLM 请求的不同改写结果最大数量；`0` 表示该场景不使用 LLM。
 
 **scene edit** *ID* [*选项*]
 :   修改已有场景配置。

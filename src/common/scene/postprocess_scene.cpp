@@ -50,14 +50,14 @@ const char* BuiltinSceneLabelFromKey(std::string_view label) {
 
 } // namespace
 
-int NormalizeCandidateCount(int candidate_count) {
-  if (candidate_count < kMinCandidateCount) {
-    return kMinCandidateCount;
+int NormalizeLlmMaxCandidates(int llm_max_candidates) {
+  if (llm_max_candidates < kMinLlmMaxCandidates) {
+    return kMinLlmMaxCandidates;
   }
-  if (candidate_count > kMaxCandidateCount) {
-    return kMaxCandidateCount;
+  if (llm_max_candidates > kMaxLlmMaxCandidates) {
+    return kMaxLlmMaxCandidates;
   }
-  return candidate_count;
+  return llm_max_candidates;
 }
 
 bool IsBuiltinSceneId(std::string_view scene_id) {
@@ -75,7 +75,7 @@ void NormalizeDefinition(Definition* scene) {
   if (IsBuiltinSceneId(scene->id)) {
     scene->builtin = true;
   }
-  scene->llm_max_candidates = NormalizeCandidateCount(scene->llm_max_candidates);
+  scene->llm_max_candidates = NormalizeLlmMaxCandidates(scene->llm_max_candidates);
   if (scene->timeout_ms <= 0) {
     scene->timeout_ms = kDefaultTimeoutMs;
   }
@@ -89,7 +89,7 @@ bool ValidateDefinition(const Definition& scene, std::string* error, bool requir
     return SetValidationError(error, "Scene id must not be empty.");
   }
   if (scene.llm_max_candidates < 0) {
-    return SetValidationError(error, "Scene candidate count must be 0 or greater.");
+    return SetValidationError(error, "Scene LLM max candidates must be 0 or greater.");
   }
   if (scene.timeout_ms <= 0) {
     return SetValidationError(error, "Scene timeout must be greater than 0.");
