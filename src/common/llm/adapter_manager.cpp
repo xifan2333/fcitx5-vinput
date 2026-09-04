@@ -135,8 +135,13 @@ void RemovePidFile(std::string_view adapter_id) {
   fs::remove(PidPath(adapter_id), ec);
 }
 
+pid_t GetPid(std::string_view adapter_id) {
+  const pid_t pid = ReadPid(adapter_id);
+  return ProcessExists(pid) ? pid : -1;
+}
+
 bool IsRunning(std::string_view adapter_id) {
-  return ProcessExists(ReadPid(adapter_id));
+  return GetPid(adapter_id) > 0;
 }
 
 bool Stop(std::string_view adapter_id, std::string* error) {

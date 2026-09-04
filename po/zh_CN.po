@@ -1088,35 +1088,46 @@ msgid "AUTOSTART"
 msgstr "自启动"
 
 #, c-format
-msgid "Adapter '%s' daemon autostart is %s."
-msgstr "适配器 '%s' 随 daemon 自启动状态为：%s。"
-
-#, c-format
-msgid "Adapter '%s' daemon autostart set to %s."
-msgstr "已将适配器 '%s' 随 daemon 自启动设置为：%s。"
-
-#, c-format
 msgid "Adapter '%s' not found."
 msgstr "未找到适配器 '%s'。"
 
-msgid "Cannot specify both --enable and --disable."
-msgstr "不能同时指定 --enable 和 --disable。"
+msgid "List adapter processes and runtime status"
+msgstr "列出适配器进程与运行状态"
 
-msgid "Configure or show adapter autostart with daemon"
-msgstr "配置或查看适配器是否随 daemon 自启动"
-
-msgid "Disable autostart with daemon"
-msgstr "禁用随 daemon 自启动"
-
-msgid "Enable autostart with daemon"
-msgstr "启用随 daemon 自启动"
+msgid "Show adapter status"
+msgstr "显示适配器状态"
 
 #, c-format
-msgid "Invalid autostart state '%s'. Use on/off, true/false, enable/disable."
-msgstr "无效的自启动状态 '%s'。请使用 on/off、true/false 或 enable/disable。"
+msgid "Adapter '%s' enabled to autostart with daemon."
+msgstr "已启用适配器 '%s' 随 daemon 自启动。"
 
-msgid "Target autostart state (on/off, enable/disable)"
-msgstr "目标自启动状态（on/off，enable/disable）"
+#, c-format
+msgid "Adapter '%s' disabled from autostart with daemon."
+msgstr "已禁用适配器 '%s' 随 daemon 自启动。"
+
+msgid "PID"
+msgstr "PID"
+
+msgid "COMMAND"
+msgstr "命令"
+
+msgid "PROPERTY"
+msgstr "属性"
+
+msgid "VALUE"
+msgstr "值"
+
+msgid "Title"
+msgstr "名称"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Autostart"
+msgstr "自启动"
+
+msgid "Args"
+msgstr "参数"
 
 msgid "disabled"
 msgstr "已禁用"

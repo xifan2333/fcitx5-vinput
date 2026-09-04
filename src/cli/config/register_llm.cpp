@@ -98,6 +98,22 @@ void RegisterAdapterCommands(CLI::App& app, CliAction* action) {
     };
   });
 
+  auto* ps = adapter->add_subcommand("ps", _("List adapter processes and runtime status"));
+  ps->callback([action]() {
+    *action = [](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigPsAdapters(fmt, ctx);
+    };
+  });
+
+  auto statusId = std::make_shared<std::string>();
+  auto* status = adapter->add_subcommand("status", _("Show adapter status"));
+  status->add_option("id", *statusId, _("Adapter short ID"))->required();
+  status->callback([action, statusId]() {
+    *action = [statusId](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigStatusAdapter(*statusId, fmt, ctx);
+    };
+  });
+
   auto selector = std::make_shared<std::string>();
   auto* add = adapter->add_subcommand("add", _("Add an adapter"));
   add->add_option("id", *selector, _("Adapter short ID"))->required();
@@ -149,25 +165,6 @@ void RegisterAdapterCommands(CLI::App& app, CliAction* action) {
   disable->callback([action, disableId]() {
     *action = [disableId](Formatter& fmt, const CliContext& ctx) {
       return RunLlmConfigDisableAdapter(*disableId, fmt, ctx);
-    };
-  });
-
-  auto autostartId = std::make_shared<std::string>();
-  auto autostartState = std::make_shared<std::string>();
-  auto autostartEnable = std::make_shared<bool>(false);
-  auto autostartDisable = std::make_shared<bool>(false);
-  auto* autostart =
-      adapter->add_subcommand("autostart", _("Configure or show adapter autostart with daemon"));
-  autostart->add_option("id", *autostartId, _("Adapter short ID"))->required();
-  autostart->add_option("state", *autostartState,
-                        _("Target autostart state (on/off, enable/disable)"));
-  autostart->add_flag("-e,--enable", *autostartEnable, _("Enable autostart with daemon"));
-  autostart->add_flag("-d,--disable", *autostartDisable, _("Disable autostart with daemon"));
-  autostart->callback([action, autostartId, autostartState, autostartEnable, autostartDisable]() {
-    *action = [autostartId, autostartState, autostartEnable,
-               autostartDisable](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigAutostartAdapter(*autostartId, *autostartState, *autostartEnable,
-                                          *autostartDisable, fmt, ctx);
     };
   });
 }
