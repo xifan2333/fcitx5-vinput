@@ -1114,9 +1114,6 @@ msgstr "命令"
 msgid "PROPERTY"
 msgstr "属性"
 
-msgid "VALUE"
-msgstr "值"
-
 msgid "Title"
 msgstr "名称"
 
