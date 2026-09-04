@@ -3,12 +3,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fcitx-utils/key.h>
+#include <fcitx-utils/text.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 #include <memory>
 #include <optional>
-#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -81,17 +81,17 @@ void PopLastUtf8Char(std::string* text) {
 }
 
 void DeleteLastWord(std::string* text) {
-  if (!text || text->empty()) {
+  if (text == nullptr || text->empty()) {
     return;
   }
 
   while (!text->empty() && static_cast<unsigned char>(text->back()) < 0x80 &&
-         std::isspace(static_cast<unsigned char>(text->back()))) {
+         std::isspace(static_cast<unsigned char>(text->back())) != 0) {
     text->pop_back();
   }
   while (!text->empty()) {
-    const unsigned char ch = static_cast<unsigned char>(text->back());
-    if (ch < 0x80 && std::isspace(ch)) {
+    const auto ch = static_cast<unsigned char>(text->back());
+    if (ch < 0x80 && std::isspace(ch) != 0) {
       break;
     }
     PopLastUtf8Char(text);
@@ -101,12 +101,12 @@ void DeleteLastWord(std::string* text) {
 ParsedPaletteQuery ParsePaletteQuery(std::string_view raw_query) {
   ParsedPaletteQuery res;
   std::string_view q = raw_query;
-  while (!q.empty() && std::isspace(static_cast<unsigned char>(q.front()))) {
+  while (!q.empty() && std::isspace(static_cast<unsigned char>(q.front())) != 0) {
     q.remove_prefix(1);
   }
 
   if (q.size() >= 2 && q[0] == '/') {
-    const char c = static_cast<char>(std::tolower(static_cast<unsigned char>(q[1])));
+    const auto c = static_cast<char>(std::tolower(static_cast<unsigned char>(q[1])));
     if (c == 'a') {
       res.scope = PaletteCategory::Asr;
       q.remove_prefix(2);
@@ -122,7 +122,8 @@ ParsedPaletteQuery ParsePaletteQuery(std::string_view raw_query) {
     }
   }
 
-  while (!q.empty() && (std::isspace(static_cast<unsigned char>(q.front())) || q.front() == '/')) {
+  while (!q.empty() &&
+         (std::isspace(static_cast<unsigned char>(q.front())) != 0 || q.front() == '/')) {
     q.remove_prefix(1);
   }
   res.terms = std::string(q);
@@ -191,11 +192,11 @@ std::string DecoratePagedMenuTitle(const std::string& base_title,
 
 void SetMenuTitle(fcitx::InputContext* ic, const std::string& base_title,
                   fcitx::CandidateList* candidate_list) {
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
 
-  fcitx::Text title(DecoratePagedMenuTitle(base_title, candidate_list));
+  const fcitx::Text title(DecoratePagedMenuTitle(base_title, candidate_list));
   ic->inputPanel().setAuxUp(title);
 }
 
