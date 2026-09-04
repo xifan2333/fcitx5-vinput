@@ -19,7 +19,7 @@ namespace vinput::llm {
 
 namespace {
 
-using json = nlohmann::ordered_json;
+using json = nlohmann::json;
 
 bool ReadCacheFile(json* out) {
   if (out == nullptr) {
