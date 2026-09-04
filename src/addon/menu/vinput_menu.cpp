@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fcitx/candidatelist.h>
+#include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 #include <memory>
@@ -33,7 +34,7 @@ constexpr int kMenuPageSize = 10;
 
 struct ParsedPaletteQuery {
   std::optional<PaletteCategory> scope;
-  std::string terms{};
+  std::string terms;
 };
 
 std::string NormalizeSearchText(std::string text) {
@@ -428,7 +429,7 @@ void VinputEngine::reloadPaletteItems() {
 #if VINPUT_ENABLE_LOCAL_ASR
   const auto& active_provider = config.asr.activeProvider;
   const bool is_local_active = (active_provider == "sherpa-onnx" || active_provider.empty());
-  ModelManager model_mgr;
+  const ModelManager model_mgr;
   const auto local_models = model_mgr.ListDetailed(ResolvePreferredLocalModel(config));
 
   for (const auto& m : local_models) {
@@ -463,14 +464,18 @@ void VinputEngine::reloadPaletteItems() {
       continue;
     }
     const bool is_active = (pid == config.asr.activeProvider);
-    std::string title = vinput::registry::LookupI18n(i18n_map, pid + ".title", pid);
+    const std::string title = vinput::registry::LookupI18n(i18n_map, pid + ".title", pid);
     std::string comment = is_active ? _("[*] [ASR]") : _("[ASR]");
+    std::string search_text = pid;
+    search_text += ' ';
+    search_text += title;
+    search_text += " asr";
     palette_items_.push_back(PaletteItem{
         .category = PaletteCategory::Asr,
         .id = pid,
         .text = title,
         .comment = std::move(comment),
-        .search_text = pid + " " + title + " asr",
+        .search_text = std::move(search_text),
         .active = is_active,
         .provider_id = pid,
         .model_id = {},
@@ -522,7 +527,8 @@ void VinputEngine::reloadPaletteItems() {
   // 4. Adapter items
   for (const auto& adapter : config.llm.adapters) {
     const bool running = vinput::adapter::IsRunning(adapter.id);
-    std::string title = vinput::registry::LookupI18n(i18n_map, adapter.id + ".title", adapter.id);
+    const std::string title =
+        vinput::registry::LookupI18n(i18n_map, adapter.id + ".title", adapter.id);
     std::string comment;
     if (running) {
       comment = adapter.autoStart ? _("[running · autostart] [Adapter]") : _("[running] [Adapter]");
@@ -547,7 +553,7 @@ void VinputEngine::reloadPaletteItems() {
 }
 
 void VinputEngine::showPaletteMenu(fcitx::InputContext* ic, const std::string& initial_query) {
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
 
@@ -560,7 +566,7 @@ void VinputEngine::showPaletteMenu(fcitx::InputContext* ic, const std::string& i
 }
 
 void VinputEngine::rebuildPaletteMenu(fcitx::InputContext* ic) {
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
 
@@ -617,7 +623,7 @@ void VinputEngine::hidePaletteMenu() {
 }
 
 bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
-  if (!palette_menu_visible_ || !palette_menu_ic_) {
+  if (!palette_menu_visible_ || palette_menu_ic_ == nullptr) {
     return false;
   }
 
