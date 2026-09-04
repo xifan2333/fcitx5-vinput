@@ -1,6 +1,5 @@
 #pragma once
 
-#include <QCheckBox>
 #include <QWidget>
 #include <map>
 #include <string>

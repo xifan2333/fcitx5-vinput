@@ -16,7 +16,9 @@
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
+#include "cli/utils/cli_context.h"
 #include "cli/utils/cli_helpers.h"
+#include "cli/utils/formatter.h"
 #include "cli/utils/resource_utils.h"
 
 namespace {
@@ -45,6 +47,7 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
   }
 
   if (ctx.json_output) {
+    // NOLINTNEXTLINE(misc-include-cleaner)
     const nlohmann::json j = {{"id", resolved_id}, {"auto_start", it->autoStart}};
     fmt.PrintJson(j);
     return 0;

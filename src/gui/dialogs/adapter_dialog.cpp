@@ -70,6 +70,7 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
     form->addRow(GuiTranslate("Args:"), textArgs);
     form->addRow(GuiTranslate("Env:"), textEnv);
 
+    // NOLINTNEXTLINE(misc-include-cleaner)
     auto* chkAutoStart = new QCheckBox(GuiTranslate("Start with daemon"));
     chkAutoStart->setChecked(initial.autoStart);
     form->addRow(QString(), chkAutoStart);
