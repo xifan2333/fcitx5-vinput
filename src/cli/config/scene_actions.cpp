@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 #include <string>
+#include <vector>
 
 #include "common/config/core_config.h"
 #include "common/i18n.h"
@@ -33,7 +34,7 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
     return 0;
   }
 
-  std::vector<std::string> headers = {
+  const std::vector<std::string> headers = {
       _("ID"), _("LABEL"), _("PROVIDER"), _("MODEL"), _("MAX LLM CANDIDATES"), _("STATUS")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& scene : scenes) {
@@ -140,20 +141,27 @@ int RunSceneConfigEdit(const std::string& id, const std::string& label, const st
   }
 
   vinput::scene::Definition updated = *existing;
-  if (hasLabel)
+  if (hasLabel) {
     updated.label = vinput::str::TrimAsciiWhitespace(label);
-  if (hasPrompt)
+  }
+  if (hasPrompt) {
     updated.prompt = vinput::str::TrimAsciiWhitespace(prompt);
-  if (hasProvider)
+  }
+  if (hasProvider) {
     updated.provider_id = vinput::str::TrimAsciiWhitespace(provider_id);
-  if (hasModel)
+  }
+  if (hasModel) {
     updated.model = vinput::str::TrimAsciiWhitespace(model);
-  if (hasLlmMaxCandidates)
+  }
+  if (hasLlmMaxCandidates) {
     updated.llm_max_candidates = llm_max_candidates;
-  if (hasTimeout)
+  }
+  if (hasTimeout) {
     updated.timeout_ms = timeout_ms;
-  if (hasContextLines)
+  }
+  if (hasContextLines) {
     updated.context_lines = context_lines;
+  }
 
   vinput::scene::Config scene_config = ToSceneConfig(config.scenes);
   std::string error;
@@ -163,8 +171,9 @@ int RunSceneConfigEdit(const std::string& id, const std::string& label, const st
   }
   FromSceneConfig(config.scenes, scene_config);
 
-  if (!SaveConfigOrFail(config, fmt))
+  if (!SaveConfigOrFail(config, fmt)) {
     return 1;
+  }
 
   fmt.PrintSuccess(vinput::str::FmtStr(_("Scene '%s' updated."), id));
   return 0;
