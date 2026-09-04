@@ -1,8 +1,11 @@
 #include "cli/config/llm_actions.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
+#include <string>
+#include <sys/types.h>
 
 #include "common/config/core_config.h"
 #include "common/i18n.h"
@@ -17,6 +20,44 @@
 #include "cli/utils/resource_utils.h"
 
 namespace {
+
+int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, const CliContext& ctx) {
+  CoreConfig config = LoadCoreConfig();
+  std::string error;
+  const std::string resolved_id =
+      vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
+  if (resolved_id.empty()) {
+    fmt.PrintError(error);
+    return 1;
+  }
+
+  auto it = std::find_if(config.llm.adapters.begin(), config.llm.adapters.end(),
+                         [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
+  if (it == config.llm.adapters.end()) {
+    fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found."), id));
+    return 1;
+  }
+
+  it->autoStart = enable;
+  NormalizeCoreConfig(&config);
+  if (!SaveConfigOrFail(config, fmt)) {
+    return 1;
+  }
+
+  if (ctx.json_output) {
+    const nlohmann::json j = {{"id", resolved_id}, {"auto_start", it->autoStart}};
+    fmt.PrintJson(j);
+    return 0;
+  }
+
+  if (enable) {
+    fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' enabled to autostart with daemon."), id));
+  } else {
+    fmt.PrintSuccess(
+        vinput::str::FmtStr(_("Adapter '%s' disabled from autostart with daemon."), id));
+  }
+  return 0;
+}
 
 std::string MaskApiKey(const std::string& key) {
   if (key.size() <= 8) {
@@ -99,7 +140,7 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
       return 0;
     }
 
-    std::vector<std::string> headers = {_("ID"), _("TITLE"), _("AUTOSTART"), _("README")};
+    const std::vector<std::string> headers = {_("ID"), _("TITLE"), _("AUTOSTART"), _("README")};
     std::vector<std::vector<std::string>> rows;
     rows.reserve(config.llm.adapters.size());
     for (const auto& adapter : config.llm.adapters) {
@@ -294,7 +335,7 @@ int RunLlmConfigStopAdapter(const std::string& id, Formatter& fmt, const CliCont
 
 int RunLlmConfigRestartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   std::string error;
   const std::string resolved_id =
       vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
@@ -317,45 +358,6 @@ int RunLlmConfigRestartAdapter(const std::string& id, Formatter& fmt, const CliC
   return 0;
 }
 
-static int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt,
-                               const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
-  std::string error;
-  const std::string resolved_id =
-      vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
-  if (resolved_id.empty()) {
-    fmt.PrintError(error);
-    return 1;
-  }
-
-  auto it = std::find_if(config.llm.adapters.begin(), config.llm.adapters.end(),
-                         [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
-  if (it == config.llm.adapters.end()) {
-    fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found."), id));
-    return 1;
-  }
-
-  it->autoStart = enable;
-  NormalizeCoreConfig(&config);
-  if (!SaveConfigOrFail(config, fmt)) {
-    return 1;
-  }
-
-  if (ctx.json_output) {
-    nlohmann::json j = {{"id", resolved_id}, {"auto_start", it->autoStart}};
-    fmt.PrintJson(j);
-    return 0;
-  }
-
-  if (enable) {
-    fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' enabled to autostart with daemon."), id));
-  } else {
-    fmt.PrintSuccess(
-        vinput::str::FmtStr(_("Adapter '%s' disabled from autostart with daemon."), id));
-  }
-  return 0;
-}
-
 int RunLlmConfigEnableAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   return SetAdapterAutostart(id, true, fmt, ctx);
 }
@@ -365,7 +367,7 @@ int RunLlmConfigDisableAdapter(const std::string& id, Formatter& fmt, const CliC
 }
 
 int RunLlmConfigPsAdapters(Formatter& fmt, const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   const auto installed_display_map =
       vinput::cli::FetchScriptDisplayMap(config, vinput::script::Kind::kLlmAdapter);
 
@@ -390,7 +392,8 @@ int RunLlmConfigPsAdapters(Formatter& fmt, const CliContext& ctx) {
     return 0;
   }
 
-  std::vector<std::string> headers = {_("ID"), _("STATUS"), _("PID"), _("AUTOSTART"), _("COMMAND")};
+  const std::vector<std::string> headers = {_("ID"), _("STATUS"), _("PID"), _("AUTOSTART"),
+                                            _("COMMAND")};
   std::vector<std::vector<std::string>> rows;
   rows.reserve(config.llm.adapters.size());
   for (const auto& adapter : config.llm.adapters) {
@@ -409,7 +412,7 @@ int RunLlmConfigPsAdapters(Formatter& fmt, const CliContext& ctx) {
 }
 
 int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   std::string error;
   const std::string resolved_id =
       vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
@@ -419,7 +422,7 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
   }
 
   const auto* adapter = ResolveLlmAdapter(config, resolved_id);
-  if (!adapter) {
+  if (adapter == nullptr) {
     fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found."), id));
     return 1;
   }
@@ -432,7 +435,7 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
   const bool running = (pid > 0);
 
   if (ctx.json_output) {
-    nlohmann::json j = {
+    const nlohmann::json j = {
         {"id", vinput::cli::HumanizeResourceId(installed_display_map, adapter->id)},
         {"machine_id", adapter->id},
         {"title", title},
@@ -448,7 +451,7 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
     return 0;
   }
 
-  std::vector<std::string> headers = {_("PROPERTY"), _("VALUE")};
+  const std::vector<std::string> headers = {_("PROPERTY"), _("VALUE")};
   std::vector<std::vector<std::string>> rows = {
       {_("ID"), vinput::cli::HumanizeResourceId(installed_display_map, adapter->id)},
       {_("Title"), title},
@@ -460,8 +463,9 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
   if (!adapter->args.empty()) {
     std::string args_joined;
     for (size_t i = 0; i < adapter->args.size(); ++i) {
-      if (i > 0)
+      if (i > 0) {
         args_joined += " ";
+      }
       args_joined += adapter->args[i];
     }
     rows.push_back({_("Args"), args_joined});

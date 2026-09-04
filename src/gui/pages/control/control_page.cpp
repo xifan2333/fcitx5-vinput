@@ -111,7 +111,13 @@ void RunAdapterControlAsync(ControlPage* page, std::string adapter_id, bool star
 
 } // namespace
 
-ControlPage::ControlPage(QWidget* parent) : QWidget(parent) {
+ControlPage::ControlPage(QWidget* parent)
+    : QWidget(parent), comboDevice_(nullptr), chkNormalizeAudio_(nullptr), spinInputGain_(nullptr),
+      chkVadEnabled_(nullptr), chkDuckOutput_(nullptr), spinDuckVolume_(nullptr),
+      listAsrProviders_(nullptr), btnAsrEdit_(nullptr), btnAsrSetActive_(nullptr),
+      listAdapters_(nullptr), btnAdapterStart_(nullptr), btnAdapterStop_(nullptr),
+      chkAdapterAutostart_(nullptr), lblDaemonStatus_(nullptr), btnDaemonStart_(nullptr),
+      btnDaemonStop_(nullptr), btnDaemonRestart_(nullptr), daemonRefreshTimer_(nullptr) {
   auto* layout = new QVBoxLayout(this);
 
   // Audio section: capture device + audio processing knobs.

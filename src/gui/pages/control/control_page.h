@@ -71,10 +71,10 @@ private:
   QPushButton* btnAsrEdit_;
   QPushButton* btnAsrSetActive_;
 
-  QListWidget* listAdapters_ = nullptr;
-  QPushButton* btnAdapterStart_ = nullptr;
-  QPushButton* btnAdapterStop_ = nullptr;
-  QCheckBox* chkAdapterAutostart_ = nullptr;
+  QListWidget* listAdapters_;
+  QPushButton* btnAdapterStart_;
+  QPushButton* btnAdapterStop_;
+  QCheckBox* chkAdapterAutostart_;
 
   QLabel* lblDaemonStatus_;
   QPushButton* btnDaemonStart_;
