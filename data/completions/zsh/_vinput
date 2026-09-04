@@ -334,7 +334,7 @@ _vinput() {
                                         '(-t --prompt)'{-t,--prompt}'[LLM prompt]:prompt:' \
                                         '(-p --provider)'{-p,--provider}'[LLM provider ID]:provider:_vinput_installed_llm_providers' \
                                         '(-m --model)'{-m,--model}'[LLM model ID]:model:' \
-                                        '(-c --count --candidates --max)'{-c,--count,--candidates,--max}'[Maximum number of LLM candidates]:count:' \
+                                        '(-c --count)'{-c,--count}'[Maximum number of LLM candidates]:count:' \
                                         '--timeout[Request timeout in ms]:ms:' \
                                         '--context-lines[Context history lines]:lines:' \
                                         '1:scene:_vinput_installed_scenes' ;;
