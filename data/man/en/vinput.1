@@ -97,7 +97,15 @@ Manage local bridge processes that adapt non\-standard models into
 OpenAI\-compatible endpoints.
 .TP
 \f[B]adapter list\f[R] [\f[B]\-a\f[R], \f[B]\-\-available\f[R]]
-List local adapters, or available remote adapters with \f[B]\-a\f[R].
+List local adapters with autostart status, or available remote adapters
+with \f[B]\-a\f[R].
+.TP
+\f[B]adapter ps\f[R]
+List adapter processes and runtime status (status, PID, autostart, and
+command).
+.TP
+\f[B]adapter status\f[R] \f[I]ID\f[R]
+Show detailed status and configuration properties for an adapter.
 .TP
 \f[B]adapter add\f[R] \f[I]ID\f[R]
 Install an adapter script by \f[I]ID\f[R].
@@ -107,6 +115,15 @@ Start the background adapter process.
 .TP
 \f[B]adapter stop\f[R] \f[I]ID\f[R]
 Stop the running adapter process.
+.TP
+\f[B]adapter restart\f[R] \f[I]ID\f[R]
+Restart the specified adapter process.
+.TP
+\f[B]adapter enable\f[R] \f[I]ID\f[R]
+Enable the adapter to autostart when the daemon starts.
+.TP
+\f[B]adapter disable\f[R] \f[I]ID\f[R]
+Disable the adapter from autostarting with the daemon.
 .SS HOTWORD MANAGEMENT
 Manage domain\-specific vocabulary and custom dictionaries for local
 sherpa\-onnx models.

@@ -91,7 +91,13 @@ Manage OpenAI-compatible LLM endpoints for scene post-processing and text rewrit
 Manage local bridge processes that adapt non-standard models into OpenAI-compatible endpoints.
 
 **adapter list** [**-a**, **--available**]
-:   List local adapters, or available remote adapters with **-a**.
+:   List local adapters with autostart status, or available remote adapters with **-a**.
+
+**adapter ps**
+:   List adapter processes and runtime status (status, PID, autostart, and command).
+
+**adapter status** *ID*
+:   Show detailed status and configuration properties for an adapter.
 
 **adapter add** *ID*
 :   Install an adapter script by *ID*.
@@ -101,6 +107,15 @@ Manage local bridge processes that adapt non-standard models into OpenAI-compati
 
 **adapter stop** *ID*
 :   Stop the running adapter process.
+
+**adapter restart** *ID*
+:   Restart the specified adapter process.
+
+**adapter enable** *ID*
+:   Enable the adapter to autostart when the daemon starts.
+
+**adapter disable** *ID*
+:   Disable the adapter from autostarting with the daemon.
 
 ## HOTWORD MANAGEMENT
 Manage domain-specific vocabulary and custom dictionaries for local sherpa-onnx models.

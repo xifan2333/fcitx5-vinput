@@ -155,15 +155,21 @@ vinput llm remove <id>                  # 删除
 ### GUI 操作
 
 在 Vinput GUI 中进入 **资源 → LLM 适配器**，浏览并安装。
+在 **控制** 页面中管理适配器的启动、停止与是否伴随守护进程自启动。
 
 ### CLI 操作
 
 ```bash
-vinput adapter list             # 列出已安装适配器
-vinput adapter list -a          # 列出可用远程适配器
-vinput adapter add <id>         # 安装
-vinput adapter start <id>       # 启动
-vinput adapter stop <id>        # 停止
+vinput adapter ls               # 列出已安装适配器及自启策略
+vinput adapter list -a          # 浏览可用远程适配器
+vinput adapter ps               # 查看适配器进程运行状态与 PID
+vinput adapter status <id>      # 查看指定适配器的详细状态
+vinput adapter add <id>         # 安装适配器
+vinput adapter start <id>       # 启动适配器进程
+vinput adapter stop <id>        # 停止适配器进程
+vinput adapter restart <id>     # 重启适配器进程
+vinput adapter enable <id>      # 设为随 daemon 自启动
+vinput adapter disable <id>     # 取消随 daemon 自启动
 ```
 
 ## 命令模式

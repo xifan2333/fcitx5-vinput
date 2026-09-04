@@ -85,9 +85,20 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
       "api_key": "YOUR_API_KEY",
       "extra_body": {}
     }
+  ],
+  "adapters": [
+    {
+      "id": "my-adapter",
+      "command": "python3",
+      "args": ["/path/to/entry.py"],
+      "auto_start": true
+    }
   ]
 }
 ```
+
+**adapters[].auto_start** (*布尔值*)
+:   是否在 **vinput-daemon** 启动时自动启动该适配器进程。
 
 ## SCENES 场景后处理配置
 定义用于文字润色、错别字修正或翻译的提示词模板与候选词配置。

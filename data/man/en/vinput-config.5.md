@@ -85,9 +85,20 @@ Defines OpenAI-compatible API endpoints.
       "api_key": "YOUR_API_KEY",
       "extra_body": {}
     }
+  ],
+  "adapters": [
+    {
+      "id": "my-adapter",
+      "command": "python3",
+      "args": ["/path/to/entry.py"],
+      "auto_start": true
+    }
   ]
 }
 ```
+
+**adapters[].auto_start** (*boolean*)
+:   Whether to automatically launch the adapter process when **vinput-daemon** starts.
 
 ## SCENES SECTION
 Defines prompt templates and candidate counts for text rewriting.

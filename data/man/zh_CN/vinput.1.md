@@ -91,7 +91,13 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 管理将非标准本地模型封装为 OpenAI 兼容接口的本地桥接适配进程。
 
 **adapter list** [**-a**, **--available**]
-:   列出本地适配器；使用 **-a** 浏览在线注册表中的可用适配器。
+:   列出本地适配器（显示自启动状态）；使用 **-a** 浏览在线注册表中的可用适配器。
+
+**adapter ps**
+:   列出适配器进程与运行时状态（包括运行状态、PID、自启动策略与启动命令）。
+
+**adapter status** *ID*
+:   查看指定适配器的详细运行状态与配置属性。
 
 **adapter add** *ID*
 :   安装指定 *ID* 的适配器脚本。
@@ -101,6 +107,15 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 
 **adapter stop** *ID*
 :   停止正在运行的适配器进程。
+
+**adapter restart** *ID*
+:   重启指定的适配器进程。
+
+**adapter enable** *ID*
+:   将指定适配器设置为随守护进程自启动。
+
+**adapter disable** *ID*
+:   取消指定适配器随守护进程自启动。
 
 ## 热词表管理
 管理用于增强离线 sherpa-onnx 模型专有名词识别准确率的自定义词表。

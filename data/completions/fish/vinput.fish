@@ -16,6 +16,10 @@ function __fish_vinput_installed_llm_providers
     vinput llm list -j 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
 end
 
+function __fish_vinput_installed_adapters
+    vinput adapter list -j 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
+end
+
 # Disable default file completions
 complete -c vinput -f
 
@@ -71,11 +75,17 @@ complete -c vinput -n "__fish_seen_subcommand_from llm; and __fish_seen_subcomma
 complete -c vinput -n "__fish_seen_subcommand_from llm; and __fish_seen_subcommand_from edit e remove rm test" -a "(__fish_vinput_installed_llm_providers)"
 
 # adapter
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add start stop" -a "list ls" -d "List local or remote adapters"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add start stop" -a add -d "Install an adapter"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add start stop" -a start -d "Start an adapter process"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add start stop" -a stop -d "Stop an adapter process"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a "list ls" -d "List local or remote adapters"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a ps -d "List adapter processes and status"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a status -d "Show adapter status"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a add -d "Install an adapter"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a start -d "Start an adapter process"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a stop -d "Stop an adapter process"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a restart -d "Restart an adapter process"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a enable -d "Enable adapter autostart with daemon"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a disable -d "Disable adapter autostart with daemon"
 complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from list ls" -s a -l available -d "List remote adapters"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from start stop restart enable disable status" -a "(__fish_vinput_installed_adapters)"
 
 # hotword
 complete -c vinput -n "__fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a get -d "Show configured hotword path"

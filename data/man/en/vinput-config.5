@@ -82,9 +82,21 @@ Defines OpenAI\-compatible API endpoints.
       \(dqapi_key\(dq: \(dqYOUR_API_KEY\(dq,
       \(dqextra_body\(dq: {}
     }
+  ],
+  \(dqadapters\(dq: [
+    {
+      \(dqid\(dq: \(dqmy\-adapter\(dq,
+      \(dqcommand\(dq: \(dqpython3\(dq,
+      \(dqargs\(dq: [\(dq/path/to/entry.py\(dq],
+      \(dqauto_start\(dq: \f[B]true\f[R]
+    }
   ]
 }
 .EE
+.TP
+\f[B]adapters[].auto_start\f[R] (\f[I]boolean\f[R])
+Whether to automatically launch the adapter process when
+\f[B]vinput\-daemon\f[R] starts.
 .SS SCENES SECTION
 Defines prompt templates and candidate counts for text rewriting.
 .IP

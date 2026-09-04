@@ -81,9 +81,20 @@ PipeWire 音频采集节点名称，或 \f[CR]\(dqdefault\(dq\f[R]
       \(dqapi_key\(dq: \(dqYOUR_API_KEY\(dq,
       \(dqextra_body\(dq: {}
     }
+  ],
+  \(dqadapters\(dq: [
+    {
+      \(dqid\(dq: \(dqmy\-adapter\(dq,
+      \(dqcommand\(dq: \(dqpython3\(dq,
+      \(dqargs\(dq: [\(dq/path/to/entry.py\(dq],
+      \(dqauto_start\(dq: \f[B]true\f[R]
+    }
   ]
 }
 .EE
+.TP
+\f[B]adapters[].auto_start\f[R] (\f[I]布尔值\f[R])
+是否在 \f[B]vinput\-daemon\f[R] 启动时自动启动该适配器进程。
 .SS SCENES 场景后处理配置
 定义用于文字润色、错别字修正或翻译的提示词模板与候选词配置。
 .IP

@@ -155,15 +155,21 @@ Corresponding config:
 ### GUI
 
 In Vinput GUI, go to **Resources → LLM Adapters** to browse and install.
+Manage adapter start/stop and autostart with daemon on the **Control** page.
 
 ### CLI
 
 ```bash
-vinput adapter list             # List installed adapters
+vinput adapter ls               # List installed adapters with autostart policy
 vinput adapter list -a          # List available remote adapters
-vinput adapter add <id>         # Install
-vinput adapter start <id>       # Start
-vinput adapter stop <id>        # Stop
+vinput adapter ps               # View adapter processes and runtime PID status
+vinput adapter status <id>      # Show detailed status for a specific adapter
+vinput adapter add <id>         # Install an adapter
+vinput adapter start <id>       # Start adapter process
+vinput adapter stop <id>        # Stop adapter process
+vinput adapter restart <id>     # Restart adapter process
+vinput adapter enable <id>      # Enable autostart with daemon
+vinput adapter disable <id>     # Disable autostart with daemon
 ```
 
 ## Command mode

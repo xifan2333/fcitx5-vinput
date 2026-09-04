@@ -89,7 +89,14 @@ Key（可选）及额外的请求体参数（可选）。
 管理将非标准本地模型封装为 OpenAI 兼容接口的本地桥接适配进程。
 .TP
 \f[B]adapter list\f[R] [\f[B]\-a\f[R], \f[B]\-\-available\f[R]]
-列出本地适配器；使用 \f[B]\-a\f[R] 浏览在线注册表中的可用适配器。
+列出本地适配器（显示自启动状态）；使用 \f[B]\-a\f[R]
+浏览在线注册表中的可用适配器。
+.TP
+\f[B]adapter ps\f[R]
+列出适配器进程与运行时状态（包括运行状态、PID、自启动策略与启动命令）。
+.TP
+\f[B]adapter status\f[R] \f[I]ID\f[R]
+查看指定适配器的详细运行状态与配置属性。
 .TP
 \f[B]adapter add\f[R] \f[I]ID\f[R]
 安装指定 \f[I]ID\f[R] 的适配器脚本。
@@ -99,6 +106,15 @@ Key（可选）及额外的请求体参数（可选）。
 .TP
 \f[B]adapter stop\f[R] \f[I]ID\f[R]
 停止正在运行的适配器进程。
+.TP
+\f[B]adapter restart\f[R] \f[I]ID\f[R]
+重启指定的适配器进程。
+.TP
+\f[B]adapter enable\f[R] \f[I]ID\f[R]
+将指定适配器设置为随守护进程自启动。
+.TP
+\f[B]adapter disable\f[R] \f[I]ID\f[R]
+取消指定适配器随守护进程自启动。
 .SS 热词表管理
 管理用于增强离线 sherpa\-onnx 模型专有名词识别准确率的自定义词表。
 .TP

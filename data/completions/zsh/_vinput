@@ -24,6 +24,12 @@ _vinput_installed_llm_providers() {
     _describe -t llm_providers 'configured llm provider' llm_providers
 }
 
+_vinput_installed_adapters() {
+    local -a adapters
+    adapters=(${(f)"$(vinput adapter list -j 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)"})
+    _describe -t adapters 'configured adapter' adapters
+}
+
 _vinput_subcommands() {
     local -a subcommands
     subcommands=(
@@ -92,9 +98,14 @@ _vinput_adapter_cmds() {
     adapter_cmds=(
         'list:List local or remote adapters'
         'ls:List local or remote adapters'
+        'ps:List adapter processes and runtime status'
+        'status:Show adapter status'
         'add:Install an adapter script'
         'start:Start an adapter process'
         'stop:Stop an adapter process'
+        'restart:Restart an adapter process'
+        'enable:Enable adapter autostart with daemon'
+        'disable:Disable adapter autostart with daemon'
     )
     _describe -t adapter_cmds 'adapter command' adapter_cmds
 }
@@ -267,6 +278,10 @@ _vinput() {
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '(-a --available)'{-a,--available}'[List remote adapters]' ;;
+                                start|stop|restart|enable|disable|status)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '1:adapter:_vinput_installed_adapters' ;;
                             esac
                             ;;
                     esac
