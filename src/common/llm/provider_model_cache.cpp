@@ -5,6 +5,7 @@
 #include <fstream>
 #include <ios>
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <set>
 #include <string>
 #include <system_error>
