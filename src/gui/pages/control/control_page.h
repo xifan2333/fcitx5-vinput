@@ -44,6 +44,12 @@ private slots:
   void onAsrEdit();
   void onAsrSetActive();
 
+  void refreshAdapterList();
+  void updateAdapterButtons();
+  void onAdapterStart();
+  void onAdapterStop();
+  void onAdapterAutostartToggled(bool checked);
+
   void refreshDaemonStatus();
   void onDaemonStart();
   void onDaemonStop();
@@ -64,6 +70,11 @@ private:
   QListWidget* listAsrProviders_;
   QPushButton* btnAsrEdit_;
   QPushButton* btnAsrSetActive_;
+
+  QListWidget* listAdapters_;
+  QPushButton* btnAdapterStart_;
+  QPushButton* btnAdapterStop_;
+  QCheckBox* chkAdapterAutostart_;
 
   QLabel* lblDaemonStatus_;
   QPushButton* btnDaemonStart_;
