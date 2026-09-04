@@ -1129,3 +1129,16 @@ msgstr "运行中"
 
 msgid "stopped"
 msgstr "已停止"
+
+msgid "Restart an adapter"
+msgstr "重启适配器"
+
+msgid "Enable adapter autostart with daemon"
+msgstr "启用适配器随 daemon 自启动"
+
+msgid "Disable adapter autostart with daemon"
+msgstr "禁用适配器随 daemon 自启动"
+
+#, c-format
+msgid "Adapter '%s' restarted."
+msgstr "Adapter '%s' 已重启。"

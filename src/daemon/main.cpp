@@ -187,7 +187,7 @@ public:
       auto result = StartAdapter(adapter.id);
       if (!result.ok) {
         fprintf(stderr, "vinput-daemon: failed to autostart adapter '%s': %s\n", adapter.id.c_str(),
-                result.error.c_str());
+                result.message.c_str());
       } else {
         vinput::debug::Log("autostarted adapter '%s'\n", adapter.id.c_str());
       }

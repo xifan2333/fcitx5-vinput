@@ -125,6 +125,33 @@ void RegisterAdapterCommands(CLI::App& app, CliAction* action) {
     };
   });
 
+  auto restartId = std::make_shared<std::string>();
+  auto* restart = adapter->add_subcommand("restart", _("Restart an adapter"));
+  restart->add_option("id", *restartId, _("Adapter short ID"))->required();
+  restart->callback([action, restartId]() {
+    *action = [restartId](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigRestartAdapter(*restartId, fmt, ctx);
+    };
+  });
+
+  auto enableId = std::make_shared<std::string>();
+  auto* enable = adapter->add_subcommand("enable", _("Enable adapter autostart with daemon"));
+  enable->add_option("id", *enableId, _("Adapter short ID"))->required();
+  enable->callback([action, enableId]() {
+    *action = [enableId](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigEnableAdapter(*enableId, fmt, ctx);
+    };
+  });
+
+  auto disableId = std::make_shared<std::string>();
+  auto* disable = adapter->add_subcommand("disable", _("Disable adapter autostart with daemon"));
+  disable->add_option("id", *disableId, _("Adapter short ID"))->required();
+  disable->callback([action, disableId]() {
+    *action = [disableId](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigDisableAdapter(*disableId, fmt, ctx);
+    };
+  });
+
   auto autostartId = std::make_shared<std::string>();
   auto autostartState = std::make_shared<std::string>();
   auto autostartEnable = std::make_shared<bool>(false);

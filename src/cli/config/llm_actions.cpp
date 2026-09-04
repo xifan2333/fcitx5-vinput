@@ -295,6 +295,41 @@ int RunLlmConfigStopAdapter(const std::string& id, Formatter& fmt, const CliCont
   return 0;
 }
 
+int RunLlmConfigRestartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
+  (void)ctx;
+  CoreConfig config = LoadCoreConfig();
+  std::string error;
+  const std::string resolved_id =
+      vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
+  if (resolved_id.empty()) {
+    fmt.PrintError(error);
+    return 1;
+  }
+  vinput::cli::DbusClient dbus;
+  if (vinput::adapter::IsRunning(resolved_id)) {
+    if (!dbus.StopAdapter(resolved_id, &error)) {
+      fmt.PrintError(error);
+      return 1;
+    }
+  }
+  if (!dbus.StartAdapter(resolved_id, &error)) {
+    fmt.PrintError(error);
+    return 1;
+  }
+  fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' restarted."), id));
+  return 0;
+}
+
+int RunLlmConfigEnableAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
+  return RunLlmConfigAutostartAdapter(id, /*state=*/"", /*enable=*/true, /*disable=*/false, fmt,
+                                      ctx);
+}
+
+int RunLlmConfigDisableAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
+  return RunLlmConfigAutostartAdapter(id, /*state=*/"", /*enable=*/false, /*disable=*/true, fmt,
+                                      ctx);
+}
+
 int RunLlmConfigAutostartAdapter(const std::string& id, const std::string& state, bool enable,
                                  bool disable, Formatter& fmt, const CliContext& ctx) {
   if (enable && disable) {
