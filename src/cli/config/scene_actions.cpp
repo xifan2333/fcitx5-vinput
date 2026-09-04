@@ -24,7 +24,7 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
                      {"prompt", scene.prompt},
                      {"provider_id", scene.provider_id},
                      {"model", scene.model},
-                     {"llm_max_candidates", scene.llm_max_candidates},
+                     {"count", scene.llm_max_candidates},
                      {"timeout_ms", scene.timeout_ms},
                      {"context_lines", scene.context_lines},
                      {"builtin", scene.builtin},
@@ -34,8 +34,8 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
     return 0;
   }
 
-  const std::vector<std::string> headers = {
-      _("ID"), _("LABEL"), _("PROVIDER"), _("MODEL"), _("MAX LLM CANDIDATES"), _("STATUS")};
+  const std::vector<std::string> headers = {_("ID"),    _("LABEL"), _("PROVIDER"),
+                                            _("MODEL"), _("COUNT"), _("STATUS")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& scene : scenes) {
     std::string label = vinput::scene::DisplayLabel(scene);

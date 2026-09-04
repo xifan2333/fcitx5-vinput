@@ -145,7 +145,7 @@ Scenes define prompt templates and bound LLM configurations used to rewrite raw 
 **scene list**
 :   List all defined recognition scenes.
 
-**scene add** **--id** *ID* [**-l**, **--label** *LABEL*] [**-t**, **--prompt** *PROMPT*] [**-p**, **--provider** *PROVIDER_ID*] [**-m**, **--model** *MODEL*] [**-c**, **--candidates**, **--llm-max-candidates** *N*]
+**scene add** **--id** *ID* [**-l**, **--label** *LABEL*] [**-t**, **--prompt** *PROMPT*] [**-p**, **--provider** *PROVIDER_ID*] [**-m**, **--model** *MODEL*] [**-c**, **--count** *N*]
 :   Add a new scene definition. *N* is the maximum number of distinct rewrites requested from the LLM; `0` disables LLM processing for the scene.
 
 **scene edit** *ID* [*OPTIONS*]

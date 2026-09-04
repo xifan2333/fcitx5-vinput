@@ -38,7 +38,7 @@
       {
         "id": "__raw__",
         "label": "__label_raw__",
-        "llm_max_candidates": 0
+        "count": 0
       },
       {
         "id": "__command__",

@@ -180,7 +180,7 @@ _vinput() {
                 case "${words[2]}" in
                     add|edit|e)
                         if [[ "$cur" == -* ]]; then
-                            COMPREPLY=($(compgen -W "--id -l --label -t --prompt -p --provider -m --model -c --candidates --llm-max-candidates --timeout --context-lines -h --help" -- "$cur"))
+                            COMPREPLY=($(compgen -W "--id -l --label -t --prompt -p --provider -m --model -c --count --candidates --max --timeout --context-lines -h --help" -- "$cur"))
                         else
                             COMPREPLY=($(compgen -W "$(_vinput_installed_scenes)" -- "$cur"))
                         fi

@@ -762,7 +762,7 @@ void LlmPage::onSceneAdd() {
   form->addRow(tr("Provider:"), comboProvider);
   form->addRow(tr("Model:"), comboModel);
   form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("Max LLM Candidates:"), spinLlmMaxCandidates);
+  form->addRow(tr("Candidate Count:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -849,7 +849,7 @@ void LlmPage::onSceneEdit() {
   form->addRow(tr("Provider:"), comboProvider);
   form->addRow(tr("Model:"), comboModel);
   form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("Max LLM Candidates:"), spinLlmMaxCandidates);
+  form->addRow(tr("Candidate Count:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);

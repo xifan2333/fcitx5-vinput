@@ -106,7 +106,7 @@ Defines prompt templates and candidate counts for text rewriting.
   \(dqdefinitions\(dq: [
     {
       \(dqid\(dq: \(dq__raw__\(dq,
-      \(dqllm_max_candidates\(dq: 0
+      \(dqcount\(dq: 0
     },
     {
       \(dqid\(dq: \(dqdefault\(dq,
@@ -115,7 +115,7 @@ Defines prompt templates and candidate counts for text rewriting.
       \(dqprovider_id\(dq: \(dqgroq\(dq,
       \(dqmodel\(dq: \(dqllama\-3.3\-70b\-versatile\(dq,
       \(dqcontext_lines\(dq: 3,
-      \(dqllm_max_candidates\(dq: 5
+      \(dqcount\(dq: 5
     }
   ]
 }
@@ -129,7 +129,7 @@ ID of the currently selected scene.
 Number of preceding input lines sent to the LLM as conversational
 context.
 .TP
-\f[B]llm_max_candidates\f[R] (\f[I]integer\f[R], \f[CR]0\f[R] \- \f[CR]9\f[R])
+\f[B]count\f[R] (\f[I]integer\f[R], \f[CR]0\f[R] \- \f[CR]9\f[R])
 Maximum number of rewritten candidates requested from the LLM (set to
 \f[CR]0\f[R] to disable LLM for this scene).
 Candidates are deduplicated with the raw ASR transcript.

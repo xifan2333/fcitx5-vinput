@@ -35,7 +35,7 @@ ASR 原始文本 → [场景 prompt + LLM] → 改写后的文本
 | `provider_id` | 绑定的 LLM 提供商 |
 | `model` | 使用的模型名称 |
 | `context_lines` | 发送给 LLM 作为上下文的前文行数 |
-| `llm_max_candidates` | LLM 改写候选最大数量（0 表示不使用 LLM） |
+| `count` | LLM 改写候选最大数量（0 表示不使用 LLM） |
 
 改写结果会自动与原始识别文本进行保序去重。去重后若只有一个结果（未作修改）直接自动上屏；若产生不同表达则弹出候选菜单供选择（默认高亮第 2 项 LLM 润色版，按 `1` 即可随时选回 ASR 原始文本）。
 
@@ -56,7 +56,7 @@ ASR 原始文本 → [场景 prompt + LLM] → 改写后的文本
     "definitions": [
       {
         "id": "__raw__",
-        "llm_max_candidates": 0
+        "count": 0
       },
       {
         "id": "default",
@@ -65,7 +65,7 @@ ASR 原始文本 → [场景 prompt + LLM] → 改写后的文本
         "provider_id": "groq",
         "model": "openai/gpt-oss-120b",
         "context_lines": 3,
-        "llm_max_candidates": 5
+        "count": 5
       }
     ]
   }

@@ -192,7 +192,7 @@ void to_json(json& j, const Definition& d) {
     j["model"] = d.model;
   }
   if (d.llm_max_candidates != vinput::scene::kDefaultLlmMaxCandidates) {
-    j["llm_max_candidates"] = d.llm_max_candidates;
+    j["count"] = d.llm_max_candidates;
   }
   if (d.timeout_ms != vinput::scene::kDefaultTimeoutMs) {
     j["timeout_ms"] = d.timeout_ms;
@@ -208,8 +208,12 @@ void from_json(const json& j, Definition& d) {
   d.prompt = j.value("prompt", std::string{});
   d.provider_id = j.value("provider_id", std::string{});
   d.model = j.value("model", std::string{});
-  if (j.contains("llm_max_candidates")) {
+  if (j.contains("count")) {
+    d.llm_max_candidates = j.value("count", vinput::scene::kDefaultLlmMaxCandidates);
+  } else if (j.contains("llm_max_candidates")) {
     d.llm_max_candidates = j.value("llm_max_candidates", vinput::scene::kDefaultLlmMaxCandidates);
+  } else if (j.contains("max")) {
+    d.llm_max_candidates = j.value("max", vinput::scene::kDefaultLlmMaxCandidates);
   } else {
     // Backward compatibility for configurations written before v2.3.14.
     d.llm_max_candidates = j.value("candidate_count", vinput::scene::kDefaultLlmMaxCandidates);
