@@ -130,6 +130,9 @@ Defines prompt templates and candidate counts for text rewriting.
 **context_lines** (*integer*)
 :   Number of preceding input lines sent to the LLM as conversational context.
 
+**candidate_count** (*integer*, `0` - `9`)
+:   Maximum number of rewritten candidates requested from the LLM (set to `0` to disable LLM for this scene). Candidates are deduplicated with the raw ASR transcript. If only 1 distinct candidate remains, it commits directly to screen; if distinct choices exist, a candidate menu is shown with the primary LLM rewrite focused and the raw transcript preserved as option 1.
+
 # VINPUT.CONF STRUCTURE (FCITX5 ADDON)
 
 The Fcitx5 addon configuration file is stored in INI format at *~/.config/fcitx5/conf/vinput.conf*.

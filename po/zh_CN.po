@@ -1150,3 +1150,6 @@ msgstr "禁用适配器随 daemon 自启动"
 #, c-format
 msgid "Adapter '%s' restarted."
 msgstr "Adapter '%s' 已重启。"
+
+msgid "Maximum number of LLM candidates (0 to disable LLM)"
+msgstr "LLM 候选的最大返回数量（0 表示不使用 LLM）"

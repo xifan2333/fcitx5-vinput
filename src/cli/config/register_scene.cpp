@@ -36,7 +36,8 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   add->add_option("-t,--prompt", addState->prompt, _("LLM prompt"));
   add->add_option("-p,--provider", addState->providerId, _("LLM provider id"));
   add->add_option("-m,--model", addState->model, _("LLM model id"));
-  add->add_option("-c,--candidates", addState->candidates, _("Candidate count"))
+  add->add_option("-c,--candidates", addState->candidates,
+                  _("Maximum number of LLM candidates (0 to disable LLM)"))
       ->default_val(vinput::scene::kDefaultCandidateCount);
   add->add_option("--timeout", addState->timeoutMs, _("Request timeout in milliseconds"))
       ->default_val(vinput::scene::kDefaultTimeoutMs);
@@ -95,7 +96,8 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   auto* ePmt = edit->add_option("-t,--prompt", editState->prompt, _("LLM prompt"));
   auto* ePrv = edit->add_option("-p,--provider", editState->providerId, _("LLM provider id"));
   auto* eMdl = edit->add_option("-m,--model", editState->model, _("LLM model id"));
-  auto* eCnd = edit->add_option("-c,--candidates", editState->candidates, _("Candidate count"));
+  auto* eCnd = edit->add_option("-c,--candidates", editState->candidates,
+                                _("Maximum number of LLM candidates (0 to disable LLM)"));
   auto* eTmo =
       edit->add_option("--timeout", editState->timeoutMs, _("Request timeout in milliseconds"));
   auto* eCtx = edit->add_option("--context-lines", editState->contextLines,
