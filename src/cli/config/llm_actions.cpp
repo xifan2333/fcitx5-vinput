@@ -47,9 +47,7 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
   }
 
   if (ctx.json_output) {
-    // NOLINTNEXTLINE(misc-include-cleaner)
-    const nlohmann::json j = {{"id", resolved_id}, {"auto_start", it->autoStart}};
-    fmt.PrintJson(j);
+    fmt.PrintJson({{"id", resolved_id}, {"auto_start", it->autoStart}});
     return 0;
   }
 
@@ -438,7 +436,7 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
   const bool running = (pid > 0);
 
   if (ctx.json_output) {
-    const nlohmann::json j = {
+    fmt.PrintJson({
         {"id", vinput::cli::HumanizeResourceId(installed_display_map, adapter->id)},
         {"machine_id", adapter->id},
         {"title", title},
@@ -449,8 +447,7 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
         {"command", adapter->command},
         {"args", adapter->args},
         {"env", adapter->env},
-    };
-    fmt.PrintJson(j);
+    });
     return 0;
   }
 

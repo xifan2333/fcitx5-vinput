@@ -9,6 +9,7 @@
 #include <QMessageBox>
 #include <QTextEdit>
 #include <QVBoxLayout>
+#include <QtWidgets/qcheckbox.h>
 
 #include "utils/gui_helpers.h"
 
@@ -70,7 +71,6 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
     form->addRow(GuiTranslate("Args:"), textArgs);
     form->addRow(GuiTranslate("Env:"), textEnv);
 
-    // NOLINTNEXTLINE(misc-include-cleaner)
     auto* chkAutoStart = new QCheckBox(GuiTranslate("Start with daemon"));
     chkAutoStart->setChecked(initial.autoStart);
     form->addRow(QString(), chkAutoStart);

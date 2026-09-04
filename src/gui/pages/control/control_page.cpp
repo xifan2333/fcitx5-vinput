@@ -112,7 +112,11 @@ void RunAdapterControlAsync(ControlPage* page, std::string adapter_id, bool star
 
 } // namespace
 
-ControlPage::ControlPage(QWidget* parent) : QWidget(parent) {
+ControlPage::ControlPage(QWidget* parent)
+    : QWidget(parent), listAdapters_(new QListWidget(this)),
+      btnAdapterStart_(new QPushButton(tr("Start"), this)),
+      btnAdapterStop_(new QPushButton(tr("Stop"), this)),
+      chkAdapterAutostart_(new QCheckBox(tr("Start with daemon"), this)) {
   auto* layout = new QVBoxLayout(this);
 
   // Audio section: capture device + audio processing knobs.
@@ -203,14 +207,9 @@ ControlPage::ControlPage(QWidget* parent) : QWidget(parent) {
   adapterLayout->addWidget(adapterTitle);
 
   auto* adapterListLayout = new QHBoxLayout();
-  // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
-  listAdapters_ = new QListWidget();
   adapterListLayout->addWidget(listAdapters_);
 
   auto* adapterBtnLayout = new QVBoxLayout();
-  btnAdapterStart_ = new QPushButton(tr("Start"));
-  btnAdapterStop_ = new QPushButton(tr("Stop"));
-  chkAdapterAutostart_ = new QCheckBox(tr("Start with daemon"));
   chkAdapterAutostart_->setToolTip(
       tr("Automatically start this adapter when vinput-daemon starts."));
   adapterBtnLayout->addWidget(btnAdapterStart_);
