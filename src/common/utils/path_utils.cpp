@@ -172,4 +172,8 @@ std::filesystem::path ReadNotificationsPath() {
   return VinputCacheDir() / "read_notifications";
 }
 
+std::filesystem::path ProviderModelCachePath() {
+  return VinputCacheDir() / "provider_models.json";
+}
+
 } // namespace vinput::path

@@ -8,6 +8,7 @@ set(VINPUT_CONFIG_SOURCES
     config/config_router.cpp
     config/vinput_config.cpp
     scene/postprocess_scene.cpp
+    llm/provider_model_cache.cpp
     i18n.cpp
     utils/path_utils.cpp
     utils/sandbox.cpp

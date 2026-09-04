@@ -21,4 +21,5 @@ std::filesystem::path ManagedLlmAdapterDir();
 std::filesystem::path AdapterRuntimeDir();
 std::filesystem::path ContextCachePath();
 std::filesystem::path ReadNotificationsPath();
+std::filesystem::path ProviderModelCachePath();
 } // namespace vinput::path
