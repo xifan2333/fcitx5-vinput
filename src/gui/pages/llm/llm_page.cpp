@@ -30,6 +30,7 @@
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <system_error>
+#include <vector>
 
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"

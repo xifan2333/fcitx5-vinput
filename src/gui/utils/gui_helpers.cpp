@@ -11,6 +11,7 @@
 #include <QNetworkRequest>
 #include <QTimer>
 #include <QUrl>
+#include <vector>
 
 #include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
