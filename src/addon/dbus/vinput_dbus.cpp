@@ -721,16 +721,16 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
     appendContextEntry(asr_candidate->text, "asr");
   }
 
-  int llm_count = 0;
   bool commit_from_llm = false;
   for (const auto& c : payload.candidates) {
-    if (c.source == vinput::result::kSourceLlm)
-      ++llm_count;
     if (c.source == vinput::result::kSourceLlm && c.text == payload.commitText) {
       commit_from_llm = true;
     }
   }
-  if (llm_count > 1) {
+
+  // Show candidate menu when multiple distinct choices exist (e.g. LLM rewrite + raw transcript,
+  // or multiple distinct LLM rewrites). Commit directly when only 1 choice remains.
+  if (payload.candidates.size() > 1) {
     // Save command mode for result menu interaction
     result_is_command_ = is_command;
     showResultMenu(ic, payload);
