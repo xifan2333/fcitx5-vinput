@@ -2,10 +2,12 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <fcitx-utils/i18n.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
+#include <fcitx/text.h>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -15,6 +17,7 @@
 #include <vector>
 
 #include "common/asr/model_manager.h"
+#include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/i18n.h"
@@ -978,7 +981,7 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
 }
 
 void VinputEngine::selectResultCandidate(std::size_t index, fcitx::InputContext* ic) {
-  if (index >= result_candidates_.size() || !ic) {
+  if (index >= result_candidates_.size() || ic == nullptr) {
     hideResultMenu();
     return;
   }
@@ -994,10 +997,10 @@ void VinputEngine::selectResultCandidate(std::size_t index, fcitx::InputContext*
   if (result_is_command_) {
     auto& surrounding = ic->surroundingText();
     if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
-      int cursor = surrounding.cursor();
-      int anchor = surrounding.anchor();
-      int from = std::min(cursor, anchor);
-      int to = std::max(cursor, anchor);
+      const auto cursor = static_cast<int>(surrounding.cursor());
+      const auto anchor = static_cast<int>(surrounding.anchor());
+      const int from = std::min(cursor, anchor);
+      const int to = std::max(cursor, anchor);
       ic->deleteSurroundingText(from - cursor, to - from);
     }
     result_is_command_ = false;
