@@ -9,13 +9,19 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QListWidget>
 #include <QListWidgetItem>
 #include <QMessageBox>
 #include <QPointer>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QThreadPool>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QtWidgets/qcheckbox.h>
+#include <QtWidgets/qlistwidget.h>
+#include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qwidget.h>
 #include <algorithm>
 
 #include "common/audio/pipewire_device.h"
