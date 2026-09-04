@@ -15,7 +15,7 @@
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/path_utils.h"
 
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;
 
 namespace vinput::llm {
 
