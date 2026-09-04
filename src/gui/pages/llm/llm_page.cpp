@@ -127,11 +127,11 @@ QString AdapterTitleForGui(const std::string& adapter_id) {
 
 // Convert between AdapterData (GUI dialog) and LlmAdapter (config).
 AdapterData AdapterDataFromConfig(const LlmAdapter& a) {
-  return {a.id, a.command, a.args, a.env};
+  return {a.id, a.command, a.args, a.env, a.autoStart};
 }
 
 LlmAdapter LlmAdapterFromDialog(const AdapterData& d) {
-  return {d.id, d.command, d.args, d.env};
+  return {d.id, d.command, d.args, d.env, d.autoStart};
 }
 
 template <typename Callback>
@@ -272,6 +272,7 @@ void LlmPage::refreshAdapterList() {
     bool running = vinput::adapter::IsRunning(adapter.id);
 
     QString display = title + " · " + (running ? GuiTranslate("running") : GuiTranslate("stopped"));
+    display += " · " + (adapter.autoStart ? tr("autostart") : tr("manual"));
     QString command = QString::fromStdString(adapter.command);
     if (!command.isEmpty()) {
       display += " · " + command;
@@ -281,9 +282,11 @@ void LlmPage::refreshAdapterList() {
     item->setData(Qt::UserRole, id);
     item->setData(Qt::UserRole + 1, running);
     item->setData(Qt::UserRole + 2, title);
+    item->setData(Qt::UserRole + 3, adapter.autoStart);
 
     // Build tooltip
     QString tooltip;
+    tooltip += tr("Autostart: %1").arg(adapter.autoStart ? tr("enabled") : tr("disabled"));
     if (!command.isEmpty()) {
       tooltip += "\n" + tr("Command: %1").arg(command);
     }

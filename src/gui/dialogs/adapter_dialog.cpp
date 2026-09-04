@@ -1,5 +1,6 @@
 #include "dialogs/adapter_dialog.h"
 
+#include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -68,6 +69,11 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
     form->addRow(GuiTranslate("Command / Interpreter:"), editCommand);
     form->addRow(GuiTranslate("Args:"), textArgs);
     form->addRow(GuiTranslate("Env:"), textEnv);
+
+    auto* chkAutoStart = new QCheckBox(GuiTranslate("Start with daemon"));
+    chkAutoStart->setChecked(initial.autoStart);
+    form->addRow(QString(), chkAutoStart);
+
     layout->addLayout(form);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -81,6 +87,7 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
 
     out_data->id = initial.id;
     out_data->command = editCommand->text().trimmed().toStdString();
+    out_data->autoStart = chkAutoStart->isChecked();
     out_data->args.clear();
     for (const QString& arg : NonEmptyLines(textArgs->toPlainText())) {
       out_data->args.push_back(arg.toStdString());

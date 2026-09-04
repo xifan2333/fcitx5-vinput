@@ -13,6 +13,7 @@ struct AdapterData {
   std::string command;
   std::vector<std::string> args;
   std::map<std::string, std::string> env;
+  bool autoStart{false};
 };
 
 // Show a dialog to edit an adapter's command/args/env.

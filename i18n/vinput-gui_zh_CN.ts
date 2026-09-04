@@ -51,6 +51,10 @@
         <source>Details</source>
         <translation>查看详情</translation>
     </message>
+    <message>
+        <source>Start with daemon</source>
+        <translation>随守护进程启动</translation>
+    </message>
 </context>
 <context>
     <name>vinput::gui::ControlPage</name>
@@ -222,6 +226,38 @@
         <source>The local ASR provider cannot be removed.</source>
         <translation>内置的本地语音识别不可移除。</translation>
     </message>
+    <message>
+        <source>&lt;b&gt;Adapters&lt;/b&gt;</source>
+        <translation>&lt;b&gt;适配器&lt;/b&gt;</translation>
+    </message>
+    <message>
+        <source>Start with daemon</source>
+        <translation>随守护进程启动</translation>
+    </message>
+    <message>
+        <source>Automatically start this adapter when vinput-daemon starts.</source>
+        <translation>当 vinput-daemon 启动时自动启动此适配器。</translation>
+    </message>
+    <message>
+        <source>autostart</source>
+        <translation>自启动</translation>
+    </message>
+    <message>
+        <source>manual</source>
+        <translation>手动</translation>
+    </message>
+    <message>
+        <source>Command: %1</source>
+        <translation>命令：%1</translation>
+    </message>
+    <message>
+        <source>Args: %1</source>
+        <translation>参数：%1</translation>
+    </message>
+    <message>
+        <source>Env: %1</source>
+        <translation>环境变量：%1</translation>
+    </message>
 </context>
 <context>
     <name>vinput::gui::HotwordPage</name>
@@ -367,6 +403,26 @@
     <message>
         <source>Edit Scene</source>
         <translation>编辑场景</translation>
+    </message>
+    <message>
+        <source>autostart</source>
+        <translation>自启动</translation>
+    </message>
+    <message>
+        <source>manual</source>
+        <translation>手动</translation>
+    </message>
+    <message>
+        <source>Autostart: %1</source>
+        <translation>自启动：%1</translation>
+    </message>
+    <message>
+        <source>enabled</source>
+        <translation>已启用</translation>
+    </message>
+    <message>
+        <source>disabled</source>
+        <translation>已禁用</translation>
     </message>
     <message>
         <source>ID:</source>
