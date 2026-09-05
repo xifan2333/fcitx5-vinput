@@ -794,7 +794,7 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   auto* cursor_list = candidate_list ? candidate_list->toCursorMovable() : nullptr;
   const auto normalized_key = keyEvent.key().normalize();
   const bool printable_filter_input = IsPrintableMenuInput(keyEvent.key());
-  const bool handled_key = keyEvent.key().checkKeyList(palette_menu_keys_) ||
+  const bool handled_key = keyEvent.key().checkKeyList(menu_keys_) ||
                            IsPagePrevKey(keyEvent.key()) || IsPageNextKey(keyEvent.key()) ||
                            keyEvent.key().digitSelection() >= 0 || IsBackspaceKey(keyEvent.key()) ||
                            IsUpKey(keyEvent.key()) || IsDownKey(keyEvent.key()) ||
@@ -814,7 +814,7 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return false;
   }
 
-  if (keyEvent.key().checkKeyList(palette_menu_keys_)) {
+  if (keyEvent.key().checkKeyList(menu_keys_)) {
     hidePaletteMenu();
     keyEvent.filterAndAccept();
     return true;

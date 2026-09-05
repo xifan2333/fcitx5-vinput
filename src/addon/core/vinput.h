@@ -132,7 +132,7 @@ private:
   fcitx::InputContext* result_menu_ic_ = nullptr;
   fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Alt_R)};
   fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_Control_R)};
-  fcitx::KeyList palette_menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
+  fcitx::KeyList menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
   fcitx::KeyList page_prev_keys_{
       fcitx::Key(FcitxKey_Page_Up),
       fcitx::Key(FcitxKey_KP_Page_Up),
