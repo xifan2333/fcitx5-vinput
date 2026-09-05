@@ -45,9 +45,10 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   add->add_option("--context-lines", addState->contextLines,
                   _("Number of previous lines sent as LLM context"))
       ->default_val(vinput::scene::kDefaultContextLines);
-  add->add_flag("--show-raw,!--no-show-raw", addState->showRaw,
-                _("Include raw ASR transcript in candidate options"))
-      ->default_val(true);
+  add->add_option("--show-raw", addState->showRaw,
+                  _("Include raw ASR transcript in candidate options (true/false)"))
+      ->expected(0, 1)
+      ->default_str("true");
   add->callback([action, addState]() {
     *action = [addState](Formatter& fmt, const CliContext& ctx) {
       return RunSceneConfigAdd(addState->id, addState->label, addState->prompt,
@@ -109,8 +110,10 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
       edit->add_option("--timeout", editState->timeoutMs, _("Request timeout in milliseconds"));
   auto* eCtx = edit->add_option("--context-lines", editState->contextLines,
                                 _("Number of previous lines sent as LLM context"));
-  auto* eRaw = edit->add_flag("--show-raw,!--no-show-raw", editState->showRaw,
-                              _("Include raw ASR transcript in candidate options"));
+  auto* eRaw = edit->add_option("--show-raw", editState->showRaw,
+                                _("Include raw ASR transcript in candidate options (true/false)"))
+                   ->expected(0, 1)
+                   ->default_str("true");
   edit->callback([action, editState, eLbl, ePmt, ePrv, eMdl, eCnd, eTmo, eCtx, eRaw]() {
     editState->hasLabel = eLbl->count() > 0;
     editState->hasPrompt = ePmt->count() > 0;

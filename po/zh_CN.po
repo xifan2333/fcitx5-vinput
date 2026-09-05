@@ -1228,8 +1228,8 @@ msgstr "停止适配器失败。"
 msgid "ASR provider '%s' is a local provider, which is not supported in this Lite build."
 msgstr "ASR 提供商 '%s' 为本地提供商，当前轻量版不支持。"
 
-msgid "Include raw ASR transcript in candidate options"
-msgstr "在候选词选项中包含原始语音文本"
+msgid "Include raw ASR transcript in candidate options (true/false)"
+msgstr "在候选词选项中包含原始语音文本 (true/false)"
 
 msgid "SHOW_RAW"
 msgstr "包含原句"

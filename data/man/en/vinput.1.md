@@ -145,8 +145,8 @@ Scenes define prompt templates and bound LLM configurations used to rewrite raw 
 **scene list**
 :   List all defined recognition scenes.
 
-**scene add** **--id** *ID* [**-l**, **--label** *LABEL*] [**-t**, **--prompt** *PROMPT*] [**-p**, **--provider** *PROVIDER_ID*] [**-m**, **--model** *MODEL*] [**-c**, **--count** *N*] [**--show-raw**|**--no-show-raw**]
-:   Add a new scene definition. *N* is the maximum number of distinct rewrites requested from the LLM; `0` disables LLM processing for the scene. Use **--no-show-raw** to exclude the raw ASR transcript from candidates, allowing single-candidate rewrites to commit directly to screen.
+**scene add** **--id** *ID* [**-l**, **--label** *LABEL*] [**-t**, **--prompt** *PROMPT*] [**-p**, **--provider** *PROVIDER_ID*] [**-m**, **--model** *MODEL*] [**-c**, **--count** *N*] [**--show-raw** [*BOOL*]]
+:   Add a new scene definition. *N* is the maximum number of distinct rewrites requested from the LLM; `0` disables LLM processing for the scene. Pass **--show-raw false** to exclude the raw ASR transcript from candidates, allowing single-candidate rewrites to commit directly to screen.
 
 **scene edit** *ID* [*OPTIONS*]
 :   Modify an existing scene configuration.
