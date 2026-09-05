@@ -1,8 +1,5 @@
 # bash completion for vinput
 
-_vinput_installed_models() {
-    vinput -j model list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4
-}
 
 _vinput_installed_scenes() {
     vinput -j scene list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4
@@ -33,7 +30,7 @@ _vinput() {
     fi
 
     local global_opts="-j --json -h --help -v --version"
-    local subcommands="init model provider llm adapter hotword device scene config daemon recording rec"
+    local subcommands="init provider llm adapter device scene config daemon recording rec"
 
     if [[ $cword -eq 1 ]]; then
         if [[ "$cur" == -* ]]; then
@@ -49,29 +46,6 @@ _vinput() {
     case "$cmd" in
         init)
             COMPREPLY=($(compgen -W "-f --force -h --help" -- "$cur"))
-            return 0
-            ;;
-        model)
-            if [[ $cword -eq 2 ]]; then
-                if [[ "$cur" == -* ]]; then
-                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
-                else
-                    COMPREPLY=($(compgen -W "list ls add use remove rm info" -- "$cur"))
-                fi
-            else
-                case "${words[2]}" in
-                    list|ls)
-                        COMPREPLY=($(compgen -W "-a --available -h --help" -- "$cur"))
-                        ;;
-                    use|remove|rm|info)
-                        if [[ "$cur" == -* ]]; then
-                            COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
-                        else
-                            COMPREPLY=($(compgen -W "$(_vinput_installed_models)" -- "$cur"))
-                        fi
-                        ;;
-                esac
-            fi
             return 0
             ;;
         provider)
@@ -140,22 +114,6 @@ _vinput() {
                         fi
                         ;;
                 esac
-            fi
-            return 0
-            ;;
-        hotword)
-            if [[ $cword -eq 2 ]]; then
-                if [[ "$cur" == -* ]]; then
-                    COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
-                else
-                    COMPREPLY=($(compgen -W "get set clear edit e" -- "$cur"))
-                fi
-            elif [[ "${words[2]}" == "set" ]]; then
-                if declare -F _filedir >/dev/null 2>&1; then
-                    _filedir
-                else
-                    COMPREPLY=($(compgen -f -- "$cur"))
-                fi
             fi
             return 0
             ;;

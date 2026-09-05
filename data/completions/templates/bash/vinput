@@ -1,8 +1,10 @@
 # bash completion for vinput
 
+# @BEGIN_LOCAL_ASR@
 _vinput_installed_models() {
     vinput -j model list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4
 }
+# @END_LOCAL_ASR@
 
 _vinput_installed_scenes() {
     vinput -j scene list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4
@@ -33,7 +35,12 @@ _vinput() {
     fi
 
     local global_opts="-j --json -h --help -v --version"
+# @BEGIN_LOCAL_ASR@
     local subcommands="init model provider llm adapter hotword device scene config daemon recording rec"
+# @END_LOCAL_ASR@
+# @BEGIN_LITE_ONLY@
+    local subcommands="init provider llm adapter device scene config daemon recording rec"
+# @END_LITE_ONLY@
 
     if [[ $cword -eq 1 ]]; then
         if [[ "$cur" == -* ]]; then
@@ -51,6 +58,7 @@ _vinput() {
             COMPREPLY=($(compgen -W "-f --force -h --help" -- "$cur"))
             return 0
             ;;
+# @BEGIN_LOCAL_ASR@
         model)
             if [[ $cword -eq 2 ]]; then
                 if [[ "$cur" == -* ]]; then
@@ -74,6 +82,7 @@ _vinput() {
             fi
             return 0
             ;;
+# @END_LOCAL_ASR@
         provider)
             if [[ $cword -eq 2 ]]; then
                 if [[ "$cur" == -* ]]; then
@@ -143,6 +152,7 @@ _vinput() {
             fi
             return 0
             ;;
+# @BEGIN_LOCAL_ASR@
         hotword)
             if [[ $cword -eq 2 ]]; then
                 if [[ "$cur" == -* ]]; then
@@ -159,6 +169,7 @@ _vinput() {
             fi
             return 0
             ;;
+# @END_LOCAL_ASR@
         device)
             if [[ $cword -eq 2 ]]; then
                 if [[ "$cur" == -* ]]; then

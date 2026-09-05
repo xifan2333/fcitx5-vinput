@@ -1,12 +1,5 @@
 #compdef vinput
 
-_vinput_installed_models() {
-    local -a models
-    models=(${(f)"$(vinput -j model list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)"})
-    if (( $#models )); then
-        _describe -t models 'installed model' models
-    fi
-}
 
 _vinput_installed_scenes() {
     local -a scenes
@@ -44,11 +37,9 @@ _vinput_subcommands() {
     local -a subcommands
     subcommands=(
         'init:Initialize default config and directories'
-        'model:Manage offline local ASR models'
         'provider:Manage cloud ASR providers'
         'llm:Manage LLM providers'
         'adapter:Manage LLM adapters'
-        'hotword:Manage hotword file'
         'device:Manage audio capture devices'
         'scene:Manage recognition scenes'
         'config:Read or write configuration values'
@@ -59,19 +50,6 @@ _vinput_subcommands() {
     _describe -t subcommands 'vinput subcommand' subcommands
 }
 
-_vinput_model_cmds() {
-    local -a model_cmds
-    model_cmds=(
-        'list:List installed or remote models'
-        'ls:List installed or remote models'
-        'add:Download and install a model'
-        'use:Set active local ASR model'
-        'remove:Uninstall a local model'
-        'rm:Uninstall a local model'
-        'info:Show model details'
-    )
-    _describe -t model_cmds 'model command' model_cmds
-}
 
 _vinput_provider_cmds() {
     local -a provider_cmds
@@ -120,17 +98,6 @@ _vinput_adapter_cmds() {
     _describe -t adapter_cmds 'adapter command' adapter_cmds
 }
 
-_vinput_hotword_cmds() {
-    local -a hotword_cmds
-    hotword_cmds=(
-        'get:Show configured hotword file path'
-        'set:Set hotword file path'
-        'clear:Clear hotword file path'
-        'edit:Edit hotword file in editor'
-        'e:Edit hotword file in editor'
-    )
-    _describe -t hotword_cmds 'hotword command' hotword_cmds
-}
 
 _vinput_device_cmds() {
     local -a device_cmds
@@ -211,26 +178,6 @@ _vinput() {
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                         '(-f --force)'{-f,--force}'[Overwrite existing config]'
                     ;;
-                model)
-                    _arguments -C \
-                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
-                        '1:command:_vinput_model_cmds' \
-                        '*::arg:->model_args' && return 0
-                    case $state in
-                        model_args)
-                            case $words[1] in
-                                list|ls)
-                                    _arguments \
-                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
-                                        '(-a --available)'{-a,--available}'[List remote models]' ;;
-                                use|remove|rm|info)
-                                    _arguments \
-                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
-                                        '1:model:_vinput_installed_models' ;;
-                            esac
-                            ;;
-                    esac
-                    ;;
                 provider)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
@@ -292,22 +239,6 @@ _vinput() {
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '1:adapter:_vinput_installed_adapters' ;;
-                            esac
-                            ;;
-                    esac
-                    ;;
-                hotword)
-                    _arguments -C \
-                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
-                        '1:command:_vinput_hotword_cmds' \
-                        '*::arg:->hotword_args' && return 0
-                    case $state in
-                        hotword_args)
-                            case $words[1] in
-                                set)
-                                    _arguments \
-                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
-                                        '1:file:_files' ;;
                             esac
                             ;;
                     esac
