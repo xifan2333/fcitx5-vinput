@@ -170,9 +170,9 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
 
   auto* adaptersTab = new QWidget(this);
   auto* adaptersLayout = new QVBoxLayout(adaptersTab);
-  auto* lblAdapters = new QLabel(tr("<b>Available LLM Adapters</b>"));
+  auto* lblAdapters = new QLabel(tr("<b>Available Adapters</b>"));
   adaptersLayout->addWidget(lblAdapters);
-  filterAvailableAdapters_ = CreateFilterEdit(tr("Filter available LLM adapters..."), adaptersTab);
+  filterAvailableAdapters_ = CreateFilterEdit(tr("Filter available adapters..."), adaptersTab);
   adaptersLayout->addWidget(filterAvailableAdapters_);
 
   auto* adapterLayout = new QHBoxLayout();
@@ -188,7 +188,7 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
   adapterBtnLayout->addStretch();
   adapterLayout->addLayout(adapterBtnLayout);
   adaptersLayout->addLayout(adapterLayout, 1);
-  resourceTabs_->addTab(adaptersTab, tr("LLM Adapters"));
+  resourceTabs_->addTab(adaptersTab, tr("Adapters"));
 
   textLog_ = new QTextEdit();
   textLog_->setReadOnly(true);

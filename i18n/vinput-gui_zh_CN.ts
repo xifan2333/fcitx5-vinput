@@ -1030,18 +1030,18 @@ Found %2 model(s).</source>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="173" />
-        <source>&lt;b&gt;Available LLM Adapters&lt;/b&gt;</source>
-        <translation>&lt;b&gt;可用 LLM 适配器&lt;/b&gt;</translation>
+        <source>&lt;b&gt;Available Adapters&lt;/b&gt;</source>
+        <translation>&lt;b&gt;可用适配器&lt;/b&gt;</translation>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="175" />
-        <source>Filter available LLM adapters...</source>
-        <translation>筛选可用 LLM 适配器...</translation>
+        <source>Filter available adapters...</source>
+        <translation>筛选可用适配器...</translation>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="191" />
-        <source>LLM Adapters</source>
-        <translation>LLM 适配器</translation>
+        <source>Adapters</source>
+        <translation>适配器</translation>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="280" />
