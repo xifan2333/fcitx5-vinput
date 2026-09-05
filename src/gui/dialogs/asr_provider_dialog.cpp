@@ -14,7 +14,10 @@
 #include <QTextEdit>
 #include <QVBoxLayout>
 
+#include "config.h"
+#if VINPUT_ENABLE_LOCAL_ASR
 #include "common/asr/model_manager.h"
+#endif
 
 #include "gui/utils/config_manager.h"
 
@@ -59,6 +62,9 @@ void UpdateFieldState(QComboBox* comboType, QComboBox* comboModel, QLineEdit* ed
 }
 
 QStringList LoadLocalModelIds() {
+#if !VINPUT_ENABLE_LOCAL_ASR
+  return {};
+#else
   CoreConfig config = ConfigManager::Get().Load();
   ModelManager manager(ResolveModelBaseDir(config).string());
   auto models = manager.ListDetailed("");
@@ -69,6 +75,7 @@ QStringList LoadLocalModelIds() {
     }
   }
   return ids;
+#endif
 }
 
 } // namespace
@@ -92,7 +99,9 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     auto* textEnv = new QTextEdit();
     auto* spinTimeout = new QSpinBox();
 
+#if VINPUT_ENABLE_LOCAL_ASR
     comboType->addItem(GuiTranslate("local"), QString(kLocalType));
+#endif
     comboType->addItem(GuiTranslate("command"), QString(kCommandType));
     textArgs->setMaximumHeight(90);
     textEnv->setMaximumHeight(90);
@@ -112,7 +121,11 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     if (existing) {
       initial = *existing;
     } else {
+#if VINPUT_ENABLE_LOCAL_ASR
       initial.type = kLocalType;
+#else
+      initial.type = kCommandType;
+#endif
       initial.timeout_ms = 15000;
     }
 
@@ -176,12 +189,15 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     out_data->type = type.toStdString();
     out_data->timeout_ms = spinTimeout->value();
 
+#if VINPUT_ENABLE_LOCAL_ASR
     if (type == kLocalType) {
       out_data->model = comboModel->currentText().trimmed().toStdString();
       out_data->command.clear();
       out_data->args.clear();
       out_data->env.clear();
-    } else {
+    } else
+#endif
+    {
       const QString command = editCommand->text().trimmed();
       if (command.isEmpty()) {
         QMessageBox::warning(parent, GuiTranslate("Error"),

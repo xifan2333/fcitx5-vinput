@@ -1223,3 +1223,7 @@ msgstr "启动适配器失败。"
 
 msgid "Failed to stop adapter."
 msgstr "停止适配器失败。"
+
+#, c-format
+msgid "ASR provider '%s' is a local provider, which is not supported in this Lite build."
+msgstr "ASR 提供商 '%s' 为本地提供商，当前轻量版不支持。"

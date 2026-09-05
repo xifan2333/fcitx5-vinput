@@ -14,6 +14,8 @@
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
 
+#include "config.h"
+
 namespace vinput::gui {
 
 class ControlPage : public QWidget {
@@ -31,7 +33,9 @@ public:
   // Current audio-processing values for saving.
   bool normalizeAudio() const;
   double inputGain() const;
+#if VINPUT_ENABLE_LOCAL_ASR
   bool vadEnabled() const;
+#endif
   bool duckOutputEnabled() const;
   double duckOutputVolume() const;
 
@@ -64,7 +68,9 @@ private:
   QComboBox* comboDevice_;
   QCheckBox* chkNormalizeAudio_;
   QDoubleSpinBox* spinInputGain_;
+#if VINPUT_ENABLE_LOCAL_ASR
   QCheckBox* chkVadEnabled_;
+#endif
   QCheckBox* chkDuckOutput_;
   QSpinBox* spinDuckVolume_;
   QListWidget* listAsrProviders_;

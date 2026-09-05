@@ -34,7 +34,7 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 :   初始化默认配置文件及相关目录（创建于 *~/.config/vinput* 和 *~/.local/share/vinput*）。若指定 **-f**，则会覆盖已有配置。
 
 ## 本地模型管理
-管理基于 **sherpa-onnx** 的离线语音识别模型。
+管理基于 **sherpa-onnx** 的离线语音识别模型（在 Lite 轻量版中不可用）。
 
 **model list** [**-a**, **--available**]
 :   列出本地已安装的模型。若附加 **-a** 或 **--available**，则从在线注册表检索可用模型列表。
@@ -118,7 +118,7 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 :   取消指定适配器随守护进程自启动。
 
 ## 热词表管理
-管理用于增强离线 sherpa-onnx 模型专有名词识别准确率的自定义词表。
+管理用于增强离线 sherpa-onnx 模型专有名词识别准确率的自定义词表（在 Lite 轻量版中不可用）。
 
 **hotword get**
 :   显示当前生效的热词文件路径。

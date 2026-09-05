@@ -148,9 +148,11 @@ ControlPage::ControlPage(QWidget* parent)
   spinInputGain_->setToolTip(tr("Microphone gain multiplier applied to captured audio."));
   formLayout->addRow(tr("Input gain:"), spinInputGain_);
 
+#if VINPUT_ENABLE_LOCAL_ASR
   chkVadEnabled_ = new QCheckBox(tr("Trim silence (VAD)"));
   chkVadEnabled_->setToolTip(tr("Use voice activity detection to trim leading/trailing silence."));
   formLayout->addRow(QString(), chkVadEnabled_);
+#endif
 
   chkDuckOutput_ = new QCheckBox(tr("Reduce output volume while recording"));
   chkDuckOutput_->setToolTip(tr("Lower the system output volume while recording, then restore it. "
@@ -287,7 +289,9 @@ void ControlPage::reload() {
 
   chkNormalizeAudio_->setChecked(config.asr.normalizeAudio);
   spinInputGain_->setValue(config.asr.inputGain);
+#if VINPUT_ENABLE_LOCAL_ASR
   chkVadEnabled_->setChecked(config.asr.vad.enabled);
+#endif
   chkDuckOutput_->setChecked(config.global.duckOutputWhileRecording);
   spinDuckVolume_->setValue(static_cast<int>(config.global.duckOutputVolume * 100.0 + 0.5));
   spinDuckVolume_->setEnabled(chkDuckOutput_->isChecked());
@@ -324,9 +328,11 @@ double ControlPage::inputGain() const {
   return spinInputGain_->value();
 }
 
+#if VINPUT_ENABLE_LOCAL_ASR
 bool ControlPage::vadEnabled() const {
-  return chkVadEnabled_->isChecked();
+  return chkVadEnabled_ != nullptr && chkVadEnabled_->isChecked();
 }
+#endif
 
 bool ControlPage::duckOutputEnabled() const {
   return chkDuckOutput_->isChecked();
@@ -479,12 +485,15 @@ void ControlPage::onAsrEdit() {
   config.asr.providers.erase(it, config.asr.providers.end());
 
   // Add new
+#if VINPUT_ENABLE_LOCAL_ASR
   if (updated.type == "local") {
     LocalAsrProvider p;
     p.model = updated.model;
     p.timeoutMs = updated.timeout_ms;
     config.asr.providers.push_back(p);
-  } else {
+  } else
+#endif
+  {
     CommandAsrProvider p;
     p.id = updated.id;
     p.command = updated.command;

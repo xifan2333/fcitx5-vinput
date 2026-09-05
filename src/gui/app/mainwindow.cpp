@@ -21,8 +21,11 @@
 #include "gui/utils/download_worker.h"
 #include "gui/utils/i18n_cache.h"
 
+#include "config.h"
 #include "pages/control/control_page.h"
+#if VINPUT_ENABLE_LOCAL_ASR
 #include "pages/hotwords/hotword_page.h"
+#endif
 #include "pages/llm/llm_page.h"
 #include "pages/resources/resource_page.h"
 
@@ -42,12 +45,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   controlPage_ = new vinput::gui::ControlPage(this);
   resourcePage_ = new vinput::gui::ResourcePage(this);
   llmPage_ = new vinput::gui::LlmPage(this);
+#if VINPUT_ENABLE_LOCAL_ASR
   hotwordPage_ = new vinput::gui::HotwordPage(this);
+#endif
 
   tabWidget_->addTab(controlPage_, tr("Control"));
   tabWidget_->addTab(resourcePage_, tr("Resources"));
   tabWidget_->addTab(llmPage_, tr("LLM"));
+#if VINPUT_ENABLE_LOCAL_ASR
   tabWidget_->addTab(hotwordPage_, tr("Hotwords"));
+#endif
 
   // Cross-page refresh: any config change reloads affected pages.
   connect(controlPage_, &vinput::gui::ControlPage::configChanged, this, &MainWindow::reloadAll);
@@ -94,10 +101,13 @@ void MainWindow::onSaveClicked() {
   // Save audio processing settings
   config.asr.normalizeAudio = controlPage_->normalizeAudio();
   config.asr.inputGain = controlPage_->inputGain();
+#if VINPUT_ENABLE_LOCAL_ASR
   config.asr.vad.enabled = controlPage_->vadEnabled();
+#endif
   config.global.duckOutputWhileRecording = controlPage_->duckOutputEnabled();
   config.global.duckOutputVolume = controlPage_->duckOutputVolume();
 
+#if VINPUT_ENABLE_LOCAL_ASR
   // Save hotwords
   QString hotwordsFile = hotwordPage_->hotwordsFilePath();
   for (auto& prov : config.asr.providers) {
@@ -116,6 +126,7 @@ void MainWindow::onSaveClicked() {
       QTextStream(&f) << hotwordPage_->hotwordsContent();
     }
   }
+#endif
 
   if (!vinput::gui::ConfigManager::Get().Save(config)) {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));

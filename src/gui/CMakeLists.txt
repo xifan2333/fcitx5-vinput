@@ -22,7 +22,6 @@ set(VINPUT_GUI_SOURCES
     pages/control/control_page.cpp
     pages/resources/resource_page.cpp
     pages/llm/llm_page.cpp
-    pages/hotwords/hotword_page.cpp
     ${CMAKE_SOURCE_DIR}/src/common/audio/pipewire_device.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/runtime/dbus_client.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/runtime/systemd_client.cpp
@@ -37,8 +36,12 @@ set(VINPUT_GUI_HEADERS
     pages/control/control_page.h
     pages/resources/resource_page.h
     pages/llm/llm_page.h
-    pages/hotwords/hotword_page.h
 )
+
+if(VINPUT_ENABLE_LOCAL_ASR)
+    list(APPEND VINPUT_GUI_SOURCES pages/hotwords/hotword_page.cpp)
+    list(APPEND VINPUT_GUI_HEADERS pages/hotwords/hotword_page.h)
+endif()
 
 add_executable(gui
     ${VINPUT_GUI_SOURCES}

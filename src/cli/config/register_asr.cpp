@@ -11,6 +11,7 @@
 
 namespace vinput::cli::config {
 
+#if VINPUT_ENABLE_LOCAL_ASR
 void RegisterHotwordCommands(CLI::App& app, CliAction* action) {
   auto* hotword = app.add_subcommand("hotword", _("Manage hotword file"));
   hotword->require_subcommand(1);
@@ -46,6 +47,7 @@ void RegisterHotwordCommands(CLI::App& app, CliAction* action) {
     };
   });
 }
+#endif
 
 #if VINPUT_ENABLE_LOCAL_ASR
 void RegisterModelCommands(CLI::App& app, CliAction* action) {

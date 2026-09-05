@@ -73,11 +73,25 @@ jobs:
         shell: bash
         run: |
           help_output="$(LANGUAGE=C build/src/cli/vinput --help)"
+          version_output="$(build/src/cli/vinput -v)"
           if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
             grep -Eq '^  model[[:space:]]' <<<"${help_output}"
+            grep -Eq '^  hotword[[:space:]]' <<<"${help_output}"
+            if grep -q 'lite' <<<"${version_output}"; then
+              echo "Full build version unexpectedly contains 'lite': ${version_output}" >&2
+              exit 1
+            fi
           else
             if grep -Eq '^  model[[:space:]]' <<<"${help_output}"; then
               echo "Lite build unexpectedly exposes the model command." >&2
+              exit 1
+            fi
+            if grep -Eq '^  hotword[[:space:]]' <<<"${help_output}"; then
+              echo "Lite build unexpectedly exposes the hotword command." >&2
+              exit 1
+            fi
+            if ! grep -q -- '-lite' <<<"${version_output}"; then
+              echo "Lite build version does not contain '-lite': ${version_output}" >&2
               exit 1
             fi
           fi

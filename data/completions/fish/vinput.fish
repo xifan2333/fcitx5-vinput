@@ -20,6 +20,17 @@ function __fish_vinput_installed_adapters
     vinput -j adapter list 2>/dev/null | string match -r '"id":\s*"([^"]+)"' | string replace -r '"id":\s*"([^"]+)"' '$1'
 end
 
+function __fish_vinput_is_lite
+    if not set -q _vinput_is_lite
+        if vinput -v 2>/dev/null | string match -q '*lite*'
+            set -g _vinput_is_lite 1
+        else
+            set -g _vinput_is_lite 0
+        end
+    end
+    test "$_vinput_is_lite" = 1
+end
+
 # Disable default file completions
 complete -c vinput -f
 
@@ -30,11 +41,11 @@ complete -c vinput -s v -l version -d "Display program version and exit"
 
 # Top-level commands
 complete -c vinput -n "__fish_use_subcommand" -a init -d "Initialize default config and directories"
-complete -c vinput -n "__fish_use_subcommand" -a model -d "Manage offline local ASR models"
+complete -c vinput -n "__fish_use_subcommand; and not __fish_vinput_is_lite" -a model -d "Manage offline local ASR models"
 complete -c vinput -n "__fish_use_subcommand" -a provider -d "Manage cloud ASR providers"
 complete -c vinput -n "__fish_use_subcommand" -a llm -d "Manage LLM providers"
 complete -c vinput -n "__fish_use_subcommand" -a adapter -d "Manage LLM adapters"
-complete -c vinput -n "__fish_use_subcommand" -a hotword -d "Manage hotword file"
+complete -c vinput -n "__fish_use_subcommand; and not __fish_vinput_is_lite" -a hotword -d "Manage hotword file"
 complete -c vinput -n "__fish_use_subcommand" -a device -d "Manage audio capture devices"
 complete -c vinput -n "__fish_use_subcommand" -a scene -d "Manage recognition scenes"
 complete -c vinput -n "__fish_use_subcommand" -a config -d "Read or write configuration values"
@@ -46,13 +57,13 @@ complete -c vinput -n "__fish_use_subcommand" -a rec -d "Control voice recording
 complete -c vinput -n "__fish_seen_subcommand_from init" -s f -l force -d "Overwrite existing config"
 
 # model
-complete -c vinput -n "__fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a "list ls" -d "List installed or remote models"
-complete -c vinput -n "__fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a add -d "Download and install model"
-complete -c vinput -n "__fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a use -d "Set active local model"
-complete -c vinput -n "__fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a "remove rm" -d "Uninstall local model"
-complete -c vinput -n "__fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a info -d "Show model details"
-complete -c vinput -n "__fish_seen_subcommand_from model; and __fish_seen_subcommand_from list ls" -s a -l available -d "List remote models"
-complete -c vinput -n "__fish_seen_subcommand_from model; and __fish_seen_subcommand_from use remove rm info" -a "(__fish_vinput_installed_models)"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a "list ls" -d "List installed or remote models"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a add -d "Download and install model"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a use -d "Set active local model"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a "remove rm" -d "Uninstall local model"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from model; and not __fish_seen_subcommand_from list ls add use remove rm info" -a info -d "Show model details"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from model; and __fish_seen_subcommand_from list ls" -s a -l available -d "List remote models"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from model; and __fish_seen_subcommand_from use remove rm info" -a "(__fish_vinput_installed_models)"
 
 # provider
 complete -c vinput -n "__fish_seen_subcommand_from provider; and not __fish_seen_subcommand_from list ls add use edit e remove rm" -a "list ls" -d "List configured or remote providers"
@@ -88,11 +99,11 @@ complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subc
 complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from start stop restart enable disable status" -a "(__fish_vinput_installed_adapters)"
 
 # hotword
-complete -c vinput -n "__fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a get -d "Show configured hotword path"
-complete -c vinput -n "__fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a set -d "Set hotword file path"
-complete -c vinput -n "__fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a clear -d "Clear hotword file path"
-complete -c vinput -n "__fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a "edit e" -d "Edit hotword file in editor"
-complete -c vinput -n "__fish_seen_subcommand_from hotword; and __fish_seen_subcommand_from set" -F
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a get -d "Show configured hotword path"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a set -d "Set hotword file path"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a clear -d "Clear hotword file path"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a "edit e" -d "Edit hotword file in editor"
+complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from hotword; and __fish_seen_subcommand_from set" -F
 
 # device
 complete -c vinput -n "__fish_seen_subcommand_from device; and not __fish_seen_subcommand_from list ls use" -a "list ls" -d "List available audio input devices"
