@@ -109,7 +109,7 @@ def ts_untranslated(path: Path) -> set[str]:
 
 
 def find_lupdate() -> str | None:
-    for cmd in ("lupdate-qt6", "lupdate"):
+    for cmd in ("lupdate-qt6", "lupdate6", "lupdate"):
         if subprocess.run(["which", cmd], capture_output=True).returncode == 0:
             return cmd
     return None
