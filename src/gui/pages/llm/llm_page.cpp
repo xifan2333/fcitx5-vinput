@@ -110,10 +110,10 @@ constexpr int kDefaultUiLlmMaxCandidates = 3;
 
 QString SceneLabelForGui(const vinput::scene::Definition& scene) {
   if (scene.id == vinput::scene::kRawSceneId || scene.label == vinput::scene::kRawSceneLabelKey)
-    return GuiTranslate("Raw");
+    return LlmPage::tr("Raw");
   if (scene.id == vinput::scene::kCommandSceneId ||
       scene.label == vinput::scene::kCommandSceneLabelKey)
-    return GuiTranslate("Command");
+    return LlmPage::tr("Command");
   if (!scene.label.empty())
     return QString::fromStdString(scene.label);
   return QString::fromStdString(scene.id);
@@ -273,7 +273,7 @@ void LlmPage::refreshAdapterList() {
     QString title = AdapterTitleForGui(adapter.id);
     bool running = vinput::adapter::IsRunning(adapter.id);
 
-    QString display = title + " · " + (running ? GuiTranslate("running") : GuiTranslate("stopped"));
+    QString display = title + " · " + (running ? tr("running") : tr("stopped"));
     display += " · " + (adapter.autoStart ? tr("autostart") : tr("manual"));
     QString command = QString::fromStdString(adapter.command);
     if (!command.isEmpty()) {

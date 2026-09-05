@@ -27,6 +27,10 @@ namespace vinput::gui {
 
 namespace {
 
+struct AsrProviderDialog {
+  Q_DECLARE_TR_FUNCTIONS(AsrProviderDialog)
+};
+
 constexpr char kLocalType[] = "local";
 constexpr char kCommandType[] = "command";
 
@@ -100,13 +104,13 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     auto* spinTimeout = new QSpinBox();
 
 #if VINPUT_ENABLE_LOCAL_ASR
-    comboType->addItem(GuiTranslate("local"), QString(kLocalType));
+    comboType->addItem(AsrProviderDialog::tr("local"), QString(kLocalType));
 #endif
-    comboType->addItem(GuiTranslate("command"), QString(kCommandType));
+    comboType->addItem(AsrProviderDialog::tr("command"), QString(kCommandType));
     textArgs->setMaximumHeight(90);
     textEnv->setMaximumHeight(90);
-    textArgs->setPlaceholderText(GuiTranslate("One argument per line"));
-    textEnv->setPlaceholderText(GuiTranslate("One KEY=VALUE entry per line"));
+    textArgs->setPlaceholderText(AsrProviderDialog::tr("One argument per line"));
+    textEnv->setPlaceholderText(AsrProviderDialog::tr("One KEY=VALUE entry per line"));
     spinTimeout->setRange(1000, 300000);
     spinTimeout->setSingleStep(1000);
     spinTimeout->setSuffix(" ms");
@@ -157,13 +161,13 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
                                         spinTimeout);
                      });
 
-    form->addRow(GuiTranslate("Name:"), editName);
-    form->addRow(GuiTranslate("Type:"), comboType);
-    form->addRow(GuiTranslate("Model:"), comboModel);
-    form->addRow(GuiTranslate("Command / Interpreter:"), editCommand);
-    form->addRow(GuiTranslate("Args:"), textArgs);
-    form->addRow(GuiTranslate("Env:"), textEnv);
-    form->addRow(GuiTranslate("Timeout (ms):"), spinTimeout);
+    form->addRow(AsrProviderDialog::tr("Name:"), editName);
+    form->addRow(AsrProviderDialog::tr("Type:"), comboType);
+    form->addRow(AsrProviderDialog::tr("Model:"), comboModel);
+    form->addRow(AsrProviderDialog::tr("Command / Interpreter:"), editCommand);
+    form->addRow(AsrProviderDialog::tr("Args:"), textArgs);
+    form->addRow(AsrProviderDialog::tr("Env:"), textEnv);
+    form->addRow(AsrProviderDialog::tr("Timeout (ms):"), spinTimeout);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -180,8 +184,8 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     const QString name = editName->text().trimmed();
     const QString type = comboType->currentData().toString();
     if (name.isEmpty()) {
-      QMessageBox::warning(parent, GuiTranslate("Error"),
-                           GuiTranslate("Provider name must not be empty."));
+      QMessageBox::warning(parent, AsrProviderDialog::tr("Error"),
+                           AsrProviderDialog::tr("Provider name must not be empty."));
       continue;
     }
 
@@ -200,8 +204,8 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     {
       const QString command = editCommand->text().trimmed();
       if (command.isEmpty()) {
-        QMessageBox::warning(parent, GuiTranslate("Error"),
-                             GuiTranslate("Command providers require a command."));
+        QMessageBox::warning(parent, AsrProviderDialog::tr("Error"),
+                             AsrProviderDialog::tr("Command providers require a command."));
         continue;
       }
       out_data->command = command.toStdString();
@@ -212,7 +216,7 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
       }
       QString env_error;
       if (!ParseCommandEnv(textEnv->toPlainText(), &out_data->env, &env_error)) {
-        QMessageBox::warning(parent, GuiTranslate("Error"), env_error);
+        QMessageBox::warning(parent, AsrProviderDialog::tr("Error"), env_error);
         continue;
       }
     }

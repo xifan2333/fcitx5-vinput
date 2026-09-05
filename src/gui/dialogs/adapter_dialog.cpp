@@ -17,6 +17,10 @@ namespace vinput::gui {
 
 namespace {
 
+struct AdapterDialog {
+  Q_DECLARE_TR_FUNCTIONS(AdapterDialog)
+};
+
 QString JoinArgLines(const std::vector<std::string>& args) {
   std::string joined;
   for (std::size_t i = 0; i < args.size(); ++i) {
@@ -47,7 +51,7 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
 
   while (true) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(GuiTranslate("Configure LLM Adapter"));
+    dialog.setWindowTitle(AdapterDialog::tr("Configure LLM Adapter"));
 
     auto* layout = new QVBoxLayout(&dialog);
 
@@ -58,20 +62,20 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
 
     textArgs->setMaximumHeight(90);
     textEnv->setMaximumHeight(120);
-    textArgs->setPlaceholderText(GuiTranslate("One argument per line"));
-    textEnv->setPlaceholderText(GuiTranslate("One KEY=VALUE entry per line"));
-    editCommand->setPlaceholderText(GuiTranslate("Command or interpreter"));
+    textArgs->setPlaceholderText(AdapterDialog::tr("One argument per line"));
+    textEnv->setPlaceholderText(AdapterDialog::tr("One KEY=VALUE entry per line"));
+    editCommand->setPlaceholderText(AdapterDialog::tr("Command or interpreter"));
 
     editCommand->setText(QString::fromStdString(initial.command));
     textArgs->setPlainText(JoinArgLines(initial.args));
     textEnv->setPlainText(JoinEnvLines(initial.env));
 
-    form->addRow(GuiTranslate("Adapter ID:"), new QLabel(QString::fromStdString(initial.id)));
-    form->addRow(GuiTranslate("Command / Interpreter:"), editCommand);
-    form->addRow(GuiTranslate("Args:"), textArgs);
-    form->addRow(GuiTranslate("Env:"), textEnv);
+    form->addRow(AdapterDialog::tr("Adapter ID:"), new QLabel(QString::fromStdString(initial.id)));
+    form->addRow(AdapterDialog::tr("Command / Interpreter:"), editCommand);
+    form->addRow(AdapterDialog::tr("Args:"), textArgs);
+    form->addRow(AdapterDialog::tr("Env:"), textEnv);
 
-    auto* chkAutoStart = new QCheckBox(GuiTranslate("Start with daemon"));
+    auto* chkAutoStart = new QCheckBox(AdapterDialog::tr("Start with daemon"));
     chkAutoStart->setChecked(initial.autoStart);
     form->addRow(QString(), chkAutoStart);
 
@@ -95,7 +99,7 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
     }
     QString env_error;
     if (!ParseCommandEnv(textEnv->toPlainText(), &out_data->env, &env_error)) {
-      QMessageBox::warning(parent, GuiTranslate("Error"), env_error);
+      QMessageBox::warning(parent, AdapterDialog::tr("Error"), env_error);
       continue;
     }
 

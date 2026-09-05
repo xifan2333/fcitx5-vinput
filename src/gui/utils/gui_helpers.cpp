@@ -21,9 +21,11 @@
 
 namespace vinput::gui {
 
-QString GuiTranslate(const char* sourceText) {
-  return QCoreApplication::translate("MainWindow", sourceText);
-}
+namespace {
+struct GuiHelpers {
+  Q_DECLARE_TR_FUNCTIONS(GuiHelpers)
+};
+} // namespace
 
 QStringList NonEmptyLines(const QString& text) {
   QStringList lines;
@@ -47,7 +49,7 @@ QTableWidgetItem* MakeCell(const QString& text, const QString& data) {
 bool ValidateProviderInput(const QString& name, const QString& base_url, QString* error_out) {
   if (name.trimmed().isEmpty()) {
     if (error_out) {
-      *error_out = GuiTranslate("Provider name must not be empty.");
+      *error_out = GuiHelpers::tr("Provider name must not be empty.");
     }
     return false;
   }
@@ -56,7 +58,7 @@ bool ValidateProviderInput(const QString& name, const QString& base_url, QString
   if (!url.isValid() || url.scheme().isEmpty() || url.host().isEmpty() ||
       (url.scheme() != "http" && url.scheme() != "https")) {
     if (error_out) {
-      *error_out = GuiTranslate("Base URL must be a valid http:// or https:// URL.");
+      *error_out = GuiHelpers::tr("Base URL must be a valid http:// or https:// URL.");
     }
     return false;
   }
@@ -75,7 +77,7 @@ bool ParseCommandEnv(const QString& text, std::map<std::string, std::string>* en
     const int pos = line.indexOf('=');
     if (pos <= 0) {
       if (error_out) {
-        *error_out = GuiTranslate("Invalid env entry '%1'. Use KEY=VALUE.").arg(line);
+        *error_out = GuiHelpers::tr("Invalid env entry '%1'. Use KEY=VALUE.").arg(line);
       }
       return false;
     }
@@ -106,7 +108,7 @@ void ApplyFetchedProviderModels(QComboBox* comboModel, const QStringList& models
   comboModel->setToolTip(QString());
   if (auto* lineEdit = comboModel->lineEdit()) {
     lineEdit->setPlaceholderText(
-        models.isEmpty() ? GuiTranslate("No models returned. You can type one manually.")
+        models.isEmpty() ? GuiHelpers::tr("No models returned. You can type one manually.")
                          : QString());
   }
   comboModel->addItems(models);
@@ -124,8 +126,8 @@ void ApplyProviderModelFetchError(QComboBox* comboModel, const QString& error) {
   comboModel->setToolTip(error);
   if (auto* lineEdit = comboModel->lineEdit()) {
     lineEdit->setPlaceholderText(
-        GuiTranslate("Failed to load models. Type one manually or reselect "
-                     "the provider to retry."));
+        GuiHelpers::tr("Failed to load models. Type one manually or reselect "
+                       "the provider to retry."));
   }
 
   const QString desiredModel = comboModel->property("vinput_desired_model").toString();
@@ -162,7 +164,7 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
   comboModel->clear();
   comboModel->setToolTip(QString());
   if (auto* lineEdit = comboModel->lineEdit()) {
-    lineEdit->setPlaceholderText(GuiTranslate("Loading models..."));
+    lineEdit->setPlaceholderText(GuiHelpers::tr("Loading models..."));
   }
 
   const std::string url_str =
@@ -206,7 +208,7 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
           const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll(), &parseError);
           if (parseError.error != QJsonParseError::NoError || !doc.isObject() ||
               !doc.object().value("data").isArray()) {
-            error = GuiTranslate("Provider returned invalid JSON for /v1/models.");
+            error = GuiHelpers::tr("Provider returned invalid JSON for /v1/models.");
           } else {
             const QJsonArray data = doc.object().value("data").toArray();
             for (const auto& v : data) {
