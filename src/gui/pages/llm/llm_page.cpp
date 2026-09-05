@@ -27,6 +27,7 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QtWidgets/qcheckbox.h>
 #include <algorithm>
 #include <filesystem>
 #include <nlohmann/json.hpp>
