@@ -2,12 +2,12 @@
   "id": 13,
   "timestamp": 1788591340,
   "title": {
-    "en_US": "Vinput 2.3.14 — Unified Command Palette, Candidate Deduplication & Model Cache",
-    "zh_CN": "Vinput 2.3.14 — 统一命令面板、候选保序去重与零延迟模型缓存"
+    "en_US": "Vinput 2.3.14 — Breaking Migration: Unified Command Palette & Config Cleanup",
+    "zh_CN": "Vinput 2.3.14 — 重要兼容性变更：统一命令面板与配置迁移"
   },
   "text": {
-    "en_US": "Introduced Unified Command Palette (Shift_R) with registered quick commands (/model, /asr, /scene, /proc) and global search; implemented order-preserving candidate deduplication with raw transcript preserved as fallback option 1; added zero-latency local model cache; streamlined scene candidate schema to 'count' (existing users can sync via GUI 'Save Settings' or 'vinput init -f').",
-    "zh_CN": "推出统一命令面板（Shift_R 唤起），基于命令注册表支持 /model、/asr、/scene、/proc 与全局盲打搜索；新增候选保序去重，原始识别文本永远作为选项 1 安全保底；新增零延迟本地模型缓存；精简场景配置字段为 count（老用户在 GUI 点击一次『保存设置』或运行 vinput init -f 即可自动同步格式）。"
+    "en_US": "Important breaking/migration notes: Vinput 2.3.14 replaces the legacy F8 ASR menu with the Shift_R Unified Command Palette and removes the old AsrMenuKey/F8-specific configuration; scene candidate settings are normalized to count; LLM candidates now keep the raw transcript as option 1 and deduplicate processed candidates in order. After upgrading, open the GUI and click Save Settings once, or run vinput init -f, to sync your config. If you customized F8, candidate counts, or scene workflows, migrate them to the new /model, /asr, /scene, and /proc commands.",
+    "zh_CN": "重要兼容性/迁移提示：Vinput 2.3.14 将旧 F8 ASR 菜单替换为 Shift_R 统一命令面板，并移除旧的 AsrMenuKey/F8 独立配置；场景候选配置统一收敛为 count；LLM 候选现在固定保留原始识别文本为选项 1，并对后处理候选做保序去重。升级后请在 GUI 点击一次『保存设置』，或运行 vinput init -f 同步配置。若你曾自定义 F8、候选数量或场景工作流，请迁移到新的 /model、/asr、/scene、/proc 命令。"
   },
   "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.14"
 }
