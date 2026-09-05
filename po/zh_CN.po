@@ -964,17 +964,9 @@ msgid "Postprocess Menu Keys"
 msgstr "后处理选单键"
 
 msgid ""
-"Configure one or more keys to open the postprocess menu. The default is "
-"Right Shift."
-msgstr "可配置多个按键，用于打开后处理选单。默认是右 Shift。"
-
-msgid "ASR Menu Keys"
-msgstr "语音识别菜单键"
-
-msgid ""
-"Configure one or more keys to open the ASR provider / model selection menu. "
-"The default is F8."
-msgstr "可配置多个按键，用于打开语音识别引擎 / 模型选择菜单。默认是 F8。"
+"Configure one or more keys to open the unified command palette (/model, "
+"/asr, /scene, /proc). The default is Right Shift."
+msgstr "配置打开统一命令面板（/model、/asr、/scene、/proc）的一个或多个快捷键。默认是右 Shift。"
 
 msgid "Previous Page Keys"
 msgstr "上一页键"
@@ -1157,26 +1149,60 @@ msgstr "LLM 候选的最大返回数量（0 表示不使用 LLM）"
 msgid "COUNT"
 msgstr "数量"
 
-msgid "Palette (/a /s /m /p)"
-msgstr "命令面板 (/a /s /m /p)"
+msgid "Command Palette"
+msgstr "命令面板"
 
-msgid "ASR /a"
-msgstr "语音识别 /a"
+msgid "Cmd-Model"
+msgstr "Cmd-Model"
 
-msgid "Scenes /s"
-msgstr "场景 /s"
+msgid "Cmd-Model *"
+msgstr "Cmd-Model *"
 
-msgid "Command Models /m"
-msgstr "指令模型 /m"
+msgid "ASR"
+msgstr "ASR"
 
-msgid "Adapters /p"
-msgstr "适配器 /p"
+msgid "ASR *"
+msgstr "ASR *"
+
+msgid "Scene"
+msgstr "Scene"
+
+msgid "Scene *"
+msgstr "Scene *"
+
+msgid "Proc"
+msgstr "Proc"
+
+msgid "Proc (running · autostart)"
+msgstr "Proc (运行中 · 自启)"
+
+msgid "Proc (running)"
+msgstr "Proc (运行中)"
+
+msgid "Proc (stopped · autostart)"
+msgstr "Proc (已停止 · 自启)"
+
+msgid "Proc (stopped)"
+msgstr "Proc (已停止)"
+
+#, c-format
+msgid "Search: %s"
+msgstr "搜索: %s"
+
+msgid "Switch command model"
+msgstr "切换划词指令模型"
+
+msgid "Switch ASR provider or model"
+msgstr "切换 ASR 提供商或模型"
+
+msgid "Switch dictation scene"
+msgstr "切换听写场景"
+
+msgid "Manage adapter processes"
+msgstr "管理适配器进程"
 
 msgid "Command Palette Keys"
 msgstr "命令面板快捷键"
-
-msgid "ASR Menu Keys (Legacy)"
-msgstr "ASR 菜单快捷键（传统）"
 
 #, c-format
 msgid "Command model set to '%s / %s'."
@@ -1197,33 +1223,3 @@ msgstr "启动适配器失败。"
 
 msgid "Failed to stop adapter."
 msgstr "停止适配器失败。"
-
-msgid "[*] [ASR]"
-msgstr "[*] [ASR]"
-
-msgid "[*] [Model]"
-msgstr "[*] [Model]"
-
-msgid "[*] [Scene]"
-msgstr "[*] [Scene]"
-
-msgid "[ASR]"
-msgstr "[ASR]"
-
-msgid "[Model]"
-msgstr "[Model]"
-
-msgid "[Scene]"
-msgstr "[Scene]"
-
-msgid "[running · autostart] [Adapter]"
-msgstr "[运行中 · 自启] [Adapter]"
-
-msgid "[running] [Adapter]"
-msgstr "[运行中] [Adapter]"
-
-msgid "[stopped · autostart] [Adapter]"
-msgstr "[已停止 · 自启] [Adapter]"
-
-msgid "[stopped] [Adapter]"
-msgstr "[已停止] [Adapter]"

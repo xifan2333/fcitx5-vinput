@@ -173,8 +173,7 @@ Open **Vinput GUI** → **Resources → Models** → download and activate a mod
 |-----|---------|----------|
 | Trigger Key | `Alt_R` | Tap to toggle recording; hold to push-to-talk |
 | Command Key | `Control_R` | Hold after selecting text to modify with voice |
-| ASR Menu Key | `F8` | Open ASR provider / model switcher |
-| Scene Menu Key | `Shift_R` | Open scene switcher |
+| Command Palette Key | `Shift_R` | Open unified command palette (/model, /asr, /scene, /proc) |
 
 All keys can be customized in Fcitx5 configuration.
 

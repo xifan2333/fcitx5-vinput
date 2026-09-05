@@ -131,7 +131,7 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
 :   发送给 LLM 的历史上下文行数（`0` 表示不附带上下文）。
 
 **count** (*整数*, `0` - `9`)
-:   向 LLM 请求改写候选的最大数量（设为 `0` 表示不调用 LLM）。改写结果与原始识别文本自动保序去重。去重后若只有单一结果直接自动上屏；若有不同候选则弹出菜单，默认聚焦 LLM 最佳改写，原始文本保留为保底选项（选项 1）。
+:   LLM 最大条目数。向 LLM 请求改写候选的最大数量（设为 `0` 表示不调用 LLM）。改写结果与原始识别文本自动保序去重。去重后若只有单一结果直接自动上屏；若有不同候选则弹出菜单，默认聚焦 LLM 最佳改写，原始文本保留为保底选项（选项 1）。
 
 # VINPUT.CONF 结构 (FCITX5 插件配置)
 
@@ -143,7 +143,6 @@ TriggerMode=Both
 TriggerKey=Alt_R
 CommandKeys=Control_R
 SceneMenuKey=Shift_R
-AsrMenuKey=F8
 PagePrevKeys=Page_Up,KP_Page_Up
 PageNextKeys=Page_Down,KP_Page_Down
 MaxStreamingDisplayWidth=60
@@ -159,10 +158,7 @@ MaxStreamingDisplayWidth=60
 :   对选中文本执行划词语音指令的按键（默认：右 Control）。
 
 **SceneMenuKey** (*按键列表*)
-:   打开后处理场景选择菜单的快捷键（默认：右 Shift）。
-
-**AsrMenuKey** (*按键列表*)
-:   打开 ASR 语音识别引擎切换菜单的快捷键（默认：F8）。
+:   打开统一命令面板（Command Palette）的快捷键（默认：右 Shift）。
 
 **MaxStreamingDisplayWidth** (*整数*, `0` - `500`)
 :   实时流式识别预览的最大视觉显示列宽。超出时自动将较早文字折叠为“句首...句尾”。设为 `0` 则禁用折叠（默认：`60`）。

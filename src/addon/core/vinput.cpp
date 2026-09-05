@@ -94,6 +94,7 @@ void ensureDaemonServiceInstalled() {
 VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
   vinput::i18n::Init();
   ensureDaemonServiceInstalled();
+  initializePaletteRegistry();
   reloadConfig();
   event_dispatcher_.attach(&instance_->eventLoop());
 
@@ -203,7 +204,6 @@ void VinputEngine::applySettings() {
   trigger_keys_ = config_.triggerKeys.value();
   command_keys_ = config_.commandKeys.value();
   palette_menu_keys_ = config_.sceneMenuKeys.value();
-  asr_menu_key_ = config_.asrMenuKeys.value();
   page_prev_keys_ = config_.pagePrevKeys.value();
   page_next_keys_ = config_.pageNextKeys.value();
   trigger_mode_ = config_.triggerMode.value();
