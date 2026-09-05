@@ -331,8 +331,8 @@
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/control/control_page.cpp" line="213" />
-        <source>&lt;b&gt;Adapters&lt;/b&gt;</source>
-        <translation>&lt;b&gt;适配器&lt;/b&gt;</translation>
+        <source>&lt;b&gt;LLM Adapters&lt;/b&gt;</source>
+        <translation>&lt;b&gt;LLM 适配器&lt;/b&gt;</translation>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/control/control_page.cpp" line="221" />

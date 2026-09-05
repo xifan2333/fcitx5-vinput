@@ -210,7 +210,7 @@ ControlPage::ControlPage(QWidget* parent)
   adapterFrame->setFrameShape(QFrame::StyledPanel);
   auto* adapterLayout = new QVBoxLayout(adapterFrame);
 
-  auto* adapterTitle = new QLabel(tr("<b>Adapters</b>"));
+  auto* adapterTitle = new QLabel(tr("<b>LLM Adapters</b>"));
   adapterLayout->addWidget(adapterTitle);
 
   auto* adapterListLayout = new QHBoxLayout();
