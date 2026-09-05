@@ -130,6 +130,7 @@ Number of preceding input lines sent to the LLM as conversational
 context.
 .TP
 \f[B]count\f[R] (\f[I]integer\f[R], \f[CR]0\f[R] \- \f[CR]9\f[R])
+Maximum LLM candidate count.
 Maximum number of rewritten candidates requested from the LLM (set to
 \f[CR]0\f[R] to disable LLM for this scene).
 Candidates are deduplicated with the raw ASR transcript.
@@ -146,7 +147,6 @@ TriggerMode=Both
 TriggerKey=Alt_R
 CommandKeys=Control_R
 SceneMenuKey=Shift_R
-AsrMenuKey=F8
 PagePrevKeys=Page_Up,KP_Page_Up
 PageNextKeys=Page_Down,KP_Page_Down
 MaxStreamingDisplayWidth=60
@@ -165,11 +165,7 @@ Keys used to record a voice command on selected text (default: Right
 Control).
 .TP
 \f[B]SceneMenuKey\f[R] (\f[I]key list\f[R])
-Keys used to open the postprocess scene selection menu (default: Right
-Shift).
-.TP
-\f[B]AsrMenuKey\f[R] (\f[I]key list\f[R])
-Keys used to open the ASR provider / model selection menu (default: F8).
+Keys used to open the unified command palette (default: Right Shift).
 .TP
 \f[B]MaxStreamingDisplayWidth\f[R] (\f[I]integer\f[R], \f[CR]0\f[R] \- \f[CR]500\f[R])
 Maximum visual column width for live streaming recognition preview.

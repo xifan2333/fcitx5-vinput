@@ -131,7 +131,7 @@ Defines prompt templates and candidate counts for text rewriting.
 :   Number of preceding input lines sent to the LLM as conversational context.
 
 **count** (*integer*, `0` - `9`)
-:   Maximum number of rewritten candidates requested from the LLM (set to `0` to disable LLM for this scene). Candidates are deduplicated with the raw ASR transcript. If only 1 distinct candidate remains, it commits directly to screen; if distinct choices exist, a candidate menu is shown with the primary LLM rewrite focused and the raw transcript preserved as option 1.
+:   Maximum LLM candidate count. Maximum number of rewritten candidates requested from the LLM (set to `0` to disable LLM for this scene). Candidates are deduplicated with the raw ASR transcript. If only 1 distinct candidate remains, it commits directly to screen; if distinct choices exist, a candidate menu is shown with the primary LLM rewrite focused and the raw transcript preserved as option 1.
 
 # VINPUT.CONF STRUCTURE (FCITX5 ADDON)
 
@@ -143,7 +143,6 @@ TriggerMode=Both
 TriggerKey=Alt_R
 CommandKeys=Control_R
 SceneMenuKey=Shift_R
-AsrMenuKey=F8
 PagePrevKeys=Page_Up,KP_Page_Up
 PageNextKeys=Page_Down,KP_Page_Down
 MaxStreamingDisplayWidth=60
@@ -159,10 +158,7 @@ MaxStreamingDisplayWidth=60
 :   Keys used to record a voice command on selected text (default: Right Control).
 
 **SceneMenuKey** (*key list*)
-:   Keys used to open the postprocess scene selection menu (default: Right Shift).
-
-**AsrMenuKey** (*key list*)
-:   Keys used to open the ASR provider / model selection menu (default: F8).
+:   Keys used to open the unified command palette (default: Right Shift).
 
 **MaxStreamingDisplayWidth** (*integer*, `0` - `500`)
 :   Maximum visual column width for live streaming recognition preview. Older text is folded into 'head...tail' to keep the preedit tooltip within bounds. Set to `0` to disable folding (default: `60`).
