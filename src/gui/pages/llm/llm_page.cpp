@@ -755,6 +755,7 @@ void LlmPage::onSceneAdd() {
   spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
                                  vinput::scene::kMaxLlmMaxCandidates);
   spinLlmMaxCandidates->setValue(kDefaultUiLlmMaxCandidates);
+  spinLlmMaxCandidates->setToolTip(tr("Maximum number of LLM rewrite results (0 to disable LLM)."));
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(vinput::scene::kDefaultContextLines);
@@ -769,7 +770,7 @@ void LlmPage::onSceneAdd() {
   form->addRow(tr("Provider:"), comboProvider);
   form->addRow(tr("Model:"), comboModel);
   form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("Candidate Count:"), spinLlmMaxCandidates);
+  form->addRow(tr("LLM Max Results:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
   form->addRow(QString(), chkShowRaw);
 
@@ -845,6 +846,7 @@ void LlmPage::onSceneEdit() {
   spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
                                  vinput::scene::kMaxLlmMaxCandidates);
   spinLlmMaxCandidates->setValue(found->llm_max_candidates);
+  spinLlmMaxCandidates->setToolTip(tr("Maximum number of LLM rewrite results (0 to disable LLM)."));
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(found->context_lines);
@@ -860,7 +862,7 @@ void LlmPage::onSceneEdit() {
   form->addRow(tr("Provider:"), comboProvider);
   form->addRow(tr("Model:"), comboModel);
   form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("Candidate Count:"), spinLlmMaxCandidates);
+  form->addRow(tr("LLM Max Results:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
   form->addRow(QString(), chkShowRaw);
 
