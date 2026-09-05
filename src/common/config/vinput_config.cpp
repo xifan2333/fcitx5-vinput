@@ -1,5 +1,6 @@
 #include "common/config/vinput_config.h"
 
+#include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/standardpath.h>
 #include <filesystem>
 #include <string>
