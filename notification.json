@@ -1,13 +1,13 @@
 {
-  "id": 16,
-  "timestamp": 1788626058,
+  "id": 17,
+  "timestamp": 1788641907,
   "title": {
-    "en_US": "Vinput 2.3.16 — Direct commit toggle, empty prompt support & GUI i18n",
-    "zh_CN": "Vinput 2.3.16 — 后处理直接上屏、允许空 Prompt 与 GUI 界面完整汉化"
+    "en_US": "Vinput 2.3.17 — GUI adapter label alignment & cleanups",
+    "zh_CN": "Vinput 2.3.17 — GUI 适配器标签统一与界面精简"
   },
   "text": {
-    "en_US": "1) Direct Commit via show_raw: Scenes can now configure show_raw (default true). Set --show-raw false (or uncheck in GUI) to exclude the raw transcript from candidate options. When an adapter or LLM produces a single clean result, it commits directly to the screen without popping up a candidate menu.\n\n2) Optional Scene Prompt: Scene prompts are no longer mandatory. Adapters and custom proxies with built-in rules can leave prompt empty without requiring a dummy placeholder.\n\n3) Complete GUI Localization: Standard dialog buttons (OK/Cancel) and previously untranslated dialog fields now follow the system language seamlessly.",
-    "zh_CN": "1）单结果直接上屏（show_raw）：后处理场景新增 show_raw 配置项（默认开启）。在场景中传入 --show-raw false（或在 GUI 中取消勾选）可在候选列表中排除原始语音转写文本；当适配器或 LLM 仅输出单一结果时直接上屏，不再弹出候选词菜单，完美配合清洗类适配器。\n\n2）场景 Prompt 允许留空：后处理场景定义不再强制要求填写提示词。内置处理规则的适配器或自定义代理可直接将 prompt 留空，告别无意义的占位符。\n\n3）GUI 界面完整汉化：全面解决适配器对话框等界面的英文混杂问题，标准对话框按钮（确定/取消）现已完美跟随系统语言。"
+    "en_US": "1) Unified LLM Adapter Labels: Control, Resources, and LLM pages now consistently use 'LLM Adapters' across all tabs and section headers.\n\n2) Cleaned UI Layout: Removed redundant introductory label text above the LLM adapters list for a cleaner, distraction-free interface.",
+    "zh_CN": "1）统一 LLM 适配器文案：控制面板、资源页面与 LLM 页面的分栏与标签页标题全部统一为「LLM 适配器」，语义更一致。\n\n2）精简界面排版：移除了 LLM 适配器列表上方冗余的介绍文字，界面更加清爽直观。"
   },
-  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.16"
+  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.17"
 }
