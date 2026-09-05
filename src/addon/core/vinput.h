@@ -25,28 +25,9 @@
 #include "common/dbus/error_info.h"
 #include "common/scene/postprocess_scene.h"
 
+#include "menu/palette_command.h"
+
 class VinputNotifierDBusObject;
-
-enum class PaletteCategory : std::uint8_t {
-  Asr,
-  Scene,
-  CommandModel,
-  Adapter,
-};
-
-struct PaletteItem {
-  PaletteCategory category = PaletteCategory::Scene;
-  std::string id;
-  std::string text;
-  std::string comment;
-  std::string search_text;
-  bool active = false;
-  std::string provider_id;
-  std::string model_id;
-  std::string scene_id;
-  std::string adapter_id;
-  bool adapter_running = false;
-};
 
 class VinputEngine : public fcitx::AddonInstance {
 public:
@@ -63,6 +44,7 @@ public:
 private:
   void applySettings();
   void reloadSceneConfig();
+  void initializePaletteRegistry();
   void handleKeyEvent(fcitx::Event& event);
   void showPaletteMenu(fcitx::InputContext* ic, const std::string& initial_query = {});
   void hidePaletteMenu();
@@ -151,7 +133,6 @@ private:
   fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Alt_R)};
   fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_Control_R)};
   fcitx::KeyList palette_menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
-  fcitx::KeyList asr_menu_key_;
   fcitx::KeyList page_prev_keys_{
       fcitx::Key(FcitxKey_Page_Up),
       fcitx::Key(FcitxKey_KP_Page_Up),
@@ -164,10 +145,10 @@ private:
   bool result_menu_visible_ = false;
   std::string active_scene_id_;
   vinput::scene::Config scene_config_;
+  PaletteCommandRegistry palette_registry_;
   std::vector<PaletteItem> palette_items_;
   std::vector<std::size_t> palette_filtered_indices_;
   std::string palette_query_;
-  bool palette_filter_mode_ = false;
   std::optional<std::string> pending_suppressed_commit_text_;
   std::string command_selected_text_;
   std::string context_buffer_text_;

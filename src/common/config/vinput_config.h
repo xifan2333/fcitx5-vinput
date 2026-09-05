@@ -37,10 +37,6 @@ public:
 
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
                 fcitx::DefaultMarshaller<fcitx::KeyList>, fcitx::ToolTipAnnotation>
-      asrMenuKeys;
-
-  fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
-                fcitx::DefaultMarshaller<fcitx::KeyList>, fcitx::ToolTipAnnotation>
       pagePrevKeys;
 
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,

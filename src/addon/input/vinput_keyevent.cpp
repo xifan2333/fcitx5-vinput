@@ -61,19 +61,6 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  if (!session_ && !asr_menu_key_.empty() && keyEvent.key().checkKeyList(asr_menu_key_) &&
-      !keyEvent.isRelease()) {
-    showPaletteMenu(keyEvent.inputContext(), "/a ");
-    keyEvent.filterAndAccept();
-    return;
-  }
-
-  if (!asr_menu_key_.empty() && keyEvent.key().checkKeyList(asr_menu_key_) &&
-      keyEvent.isRelease()) {
-    keyEvent.filterAndAccept();
-    return;
-  }
-
   const int trigger_index = keyEvent.key().keyListIndex(trigger_keys_);
   const bool is_trigger = trigger_index >= 0;
 

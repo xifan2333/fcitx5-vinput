@@ -36,8 +36,9 @@ namespace {
 constexpr int kMenuPageSize = 10;
 
 struct ParsedPaletteQuery {
-  std::optional<PaletteCategory> scope;
+  const PaletteCommand* command = nullptr;
   std::string terms;
+  bool is_command_mode = false;
 };
 
 std::string NormalizeSearchText(std::string text) {
@@ -82,46 +83,33 @@ void PopLastUtf8Char(std::string* text) {
   text->erase(pos);
 }
 
-void DeleteLastWord(std::string* text) {
-  if (text == nullptr || text->empty()) {
-    return;
-  }
-
-  while (!text->empty() && static_cast<unsigned char>(text->back()) < 0x80 &&
-         std::isspace(static_cast<unsigned char>(text->back())) != 0) {
-    text->pop_back();
-  }
-  while (!text->empty()) {
-    const auto ch = static_cast<unsigned char>(text->back());
-    if (ch < 0x80 && std::isspace(ch) != 0) {
-      break;
-    }
-    PopLastUtf8Char(text);
-  }
-}
-
-ParsedPaletteQuery ParsePaletteQuery(std::string_view raw_query) {
+ParsedPaletteQuery ParsePaletteQuery(std::string_view raw_query,
+                                     const PaletteCommandRegistry& registry) {
   ParsedPaletteQuery res;
   std::string_view q = raw_query;
   while (!q.empty() && std::isspace(static_cast<unsigned char>(q.front())) != 0) {
     q.remove_prefix(1);
   }
 
-  if (q.size() >= 2 && q[0] == '/') {
-    const auto c = static_cast<char>(std::tolower(static_cast<unsigned char>(q[1])));
-    if (c == 'a') {
-      res.scope = PaletteCategory::Asr;
-      q.remove_prefix(2);
-    } else if (c == 's') {
-      res.scope = PaletteCategory::Scene;
-      q.remove_prefix(2);
-    } else if (c == 'm') {
-      res.scope = PaletteCategory::CommandModel;
-      q.remove_prefix(2);
-    } else if (c == 'p') {
-      res.scope = PaletteCategory::Adapter;
-      q.remove_prefix(2);
+  if (q.empty()) {
+    return res;
+  }
+
+  if (q.front() == '/') {
+    res.is_command_mode = true;
+    q.remove_prefix(1);
+
+    std::size_t token_end = 0;
+    while (token_end < q.size() && !std::isspace(static_cast<unsigned char>(q[token_end])) &&
+           q[token_end] != '/') {
+      ++token_end;
     }
+
+    const std::string_view token = q.substr(0, token_end);
+    if (!token.empty()) {
+      res.command = registry.findByNameOrAlias(token);
+    }
+    q.remove_prefix(token_end);
   }
 
   while (!q.empty() &&
@@ -132,30 +120,23 @@ ParsedPaletteQuery ParsePaletteQuery(std::string_view raw_query) {
   return res;
 }
 
-std::string PaletteMenuTitle(const ParsedPaletteQuery& parsed, bool filter_mode) {
-  std::string base;
-  if (parsed.scope.has_value()) {
-    switch (*parsed.scope) {
-    case PaletteCategory::Asr:
-      base = _("ASR /a");
-      break;
-    case PaletteCategory::Scene:
-      base = _("Scenes /s");
-      break;
-    case PaletteCategory::CommandModel:
-      base = _("Command Models /m");
-      break;
-    case PaletteCategory::Adapter:
-      base = _("Adapters /p");
-      break;
+std::string PaletteMenuTitle(const ParsedPaletteQuery& parsed) {
+  if (parsed.command != nullptr) {
+    if (!parsed.terms.empty()) {
+      return parsed.command->title + ": " + parsed.terms;
     }
-  } else {
-    base = _("Palette (/a /s /m /p)");
+    return parsed.command->title;
   }
-  if (filter_mode || !parsed.terms.empty()) {
-    return base + ": " + parsed.terms;
+
+  if (parsed.is_command_mode) {
+    return _("Command Palette");
   }
-  return base;
+
+  if (!parsed.terms.empty()) {
+    return vinput::str::FmtStr(_("Search: %s"), parsed.terms.c_str());
+  }
+
+  return _("Command Palette");
 }
 
 std::string ResultMenuTitle(std::size_t count) {
@@ -202,23 +183,6 @@ void SetMenuTitle(fcitx::InputContext* ic, const std::string& base_title,
   ic->inputPanel().setAuxUp(title);
 }
 
-bool IsCtrlShortcut(const fcitx::Key& key, fcitx::KeySym sym) {
-  auto matches = [sym](const fcitx::Key& candidate) {
-    if (candidate.states() != fcitx::KeyState::Ctrl) {
-      return false;
-    }
-    if (candidate.sym() == sym) {
-      return true;
-    }
-
-    const uint32_t expected = fcitx::Key::keySymToUnicode(sym);
-    const uint32_t actual = fcitx::Key::keySymToUnicode(candidate.sym());
-    return expected != 0 && actual != 0 && expected == actual;
-  };
-
-  return matches(key) || matches(key.normalize());
-}
-
 bool IsPureModifierKey(const fcitx::Key& key) {
   return key.normalize().isModifier();
 }
@@ -257,10 +221,6 @@ bool IsEscapeKey(const fcitx::Key& key) {
   return IsKeySym(key, FcitxKey_Escape);
 }
 
-bool IsSlashKey(const fcitx::Key& key) {
-  return IsKeySym(key, FcitxKey_slash);
-}
-
 bool IsBackspaceKey(const fcitx::Key& key) {
   return IsKeySym(key, FcitxKey_BackSpace);
 }
@@ -273,15 +233,13 @@ bool IsDownKey(const fcitx::Key& key) {
   return IsKeySym(key, FcitxKey_Down);
 }
 
-bool IsPrintableMenuInput(const fcitx::Key& key, bool filter_mode) {
-  if (!filter_mode) {
+bool IsPrintableMenuInput(const fcitx::Key& key) {
+  if (IsEnterKey(key) || IsEscapeKey(key) || IsBackspaceKey(key) || IsUpKey(key) ||
+      IsDownKey(key) || IsPagePrevKey(key) || IsPageNextKey(key) || IsPureModifierKey(key)) {
     return false;
   }
 
-  if (IsEnterKey(key) || IsEscapeKey(key) || IsSlashKey(key) || IsBackspaceKey(key) ||
-      IsUpKey(key) || IsDownKey(key) || IsPagePrevKey(key) || IsPageNextKey(key) ||
-      IsCtrlShortcut(key, FcitxKey_w) || IsCtrlShortcut(key, FcitxKey_u) ||
-      IsPureModifierKey(key)) {
+  if (key.digitSelection() >= 0) {
     return false;
   }
 
@@ -422,136 +380,312 @@ private:
 
 } // namespace
 
-void VinputEngine::reloadPaletteItems() {
-  palette_items_.clear();
-  const auto config = LoadCoreConfig();
-  const auto i18n_map =
-      vinput::registry::LoadMergedCachedI18nMap(vinput::registry::DetectPreferredLocale(), nullptr);
+void VinputEngine::initializePaletteRegistry() {
+  palette_registry_.clear();
 
-  // 1. ASR items
+  // 1. Model (/model, alias /m)
+  palette_registry_.registerCommand(PaletteCommand{
+      .id = "model",
+      .name = "model",
+      .alias = "m",
+      .title = _("Cmd-Model"),
+      .comment = _("Cmd-Model"),
+      .description = _("Switch command model"),
+      .category = PaletteCategory::CommandModel,
+      .getItems =
+          [](VinputEngine* /*engine*/) {
+            std::vector<PaletteItem> items;
+            const auto config = LoadCoreConfig();
+            const auto active_models = vinput::llm::LoadActiveModels(config);
+            for (const auto& m : active_models) {
+              std::string comment = m.active_for_command ? _("Cmd-Model *") : _("Cmd-Model");
+              items.push_back(PaletteItem{
+                  .category = PaletteCategory::CommandModel,
+                  .id = m.full_id,
+                  .text = m.provider_id + " / " + m.model,
+                  .comment = std::move(comment),
+                  .search_text = m.full_id + " " + m.provider_id + " " + m.model + " model cmd",
+                  .active = m.active_for_command,
+                  .provider_id = m.provider_id,
+                  .model_id = m.model,
+                  .scene_id = {},
+                  .adapter_id = {},
+                  .adapter_running = false,
+                  .is_command_entry = false,
+                  .command_token = {},
+              });
+            }
+            return items;
+          },
+      .onSelect =
+          [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
+            auto core_config = LoadCoreConfig();
+            std::string error;
+            if (!vinput::llm::SetActiveCommandModel(&core_config, item.provider_id, item.model_id,
+                                                    &error)) {
+              engine->notifyError(error.empty() ? _("Failed to set command model.") : error);
+              return;
+            }
+            engine->notifyInfo(vinput::str::FmtStr(_("Command model set to '%s / %s'."),
+                                                   item.provider_id.c_str(),
+                                                   item.model_id.c_str()));
+          },
+  });
+
+  // 2. ASR (/asr, alias /a)
+  palette_registry_.registerCommand(PaletteCommand{
+      .id = "asr",
+      .name = "asr",
+      .alias = "a",
+      .title = _("ASR"),
+      .comment = _("ASR"),
+      .description = _("Switch ASR provider or model"),
+      .category = PaletteCategory::Asr,
+      .getItems =
+          [](VinputEngine* /*engine*/) {
+            std::vector<PaletteItem> items;
+            const auto config = LoadCoreConfig();
+            const auto i18n_map = vinput::registry::LoadMergedCachedI18nMap(
+                vinput::registry::DetectPreferredLocale(), nullptr);
+
 #if VINPUT_ENABLE_LOCAL_ASR
-  const auto& active_provider = config.asr.activeProvider;
-  const bool is_local_active = (active_provider == "sherpa-onnx" || active_provider.empty());
-  const ModelManager model_mgr;
-  const auto local_models = model_mgr.ListDetailed(ResolvePreferredLocalModel(config));
+            const auto& active_provider = config.asr.activeProvider;
+            const bool is_local_active =
+                (active_provider == "sherpa-onnx" || active_provider.empty());
+            const ModelManager model_mgr;
+            const auto local_models = model_mgr.ListDetailed(ResolvePreferredLocalModel(config));
 
-  for (const auto& m : local_models) {
-    if (m.state == ModelState::Broken) {
-      continue;
-    }
-    const bool is_active = is_local_active && (m.state == ModelState::Active);
-    std::string display = vinput::registry::LookupI18n(i18n_map, m.id + ".title", m.id);
-    if (display.empty()) {
-      display = m.id;
-    }
-    std::string comment = is_active ? _("[*] [ASR]") : _("[ASR]");
-    palette_items_.push_back(PaletteItem{
-        .category = PaletteCategory::Asr,
-        .id = m.id,
-        .text = display,
-        .comment = std::move(comment),
-        .search_text = m.id + " " + display + " asr",
-        .active = is_active,
-        .provider_id = "sherpa-onnx",
-        .model_id = m.id,
-        .scene_id = {},
-        .adapter_id = {},
-        .adapter_running = false,
-    });
-  }
+            for (const auto& m : local_models) {
+              if (m.state == ModelState::Broken) {
+                continue;
+              }
+              const bool is_active = is_local_active && (m.state == ModelState::Active);
+              std::string display = vinput::registry::LookupI18n(i18n_map, m.id + ".title", m.id);
+              if (display.empty()) {
+                display = m.id;
+              }
+              std::string comment = is_active ? _("ASR *") : _("ASR");
+              items.push_back(PaletteItem{
+                  .category = PaletteCategory::Asr,
+                  .id = m.id,
+                  .text = display,
+                  .comment = std::move(comment),
+                  .search_text = m.id + " " + display + " asr",
+                  .active = is_active,
+                  .provider_id = "sherpa-onnx",
+                  .model_id = m.id,
+                  .scene_id = {},
+                  .adapter_id = {},
+                  .adapter_running = false,
+                  .is_command_entry = false,
+                  .command_token = {},
+              });
+            }
 #endif
 
-  for (const auto& prov : config.asr.providers) {
-    const std::string pid = AsrProviderId(prov);
-    if (pid.empty() || pid == "sherpa-onnx") {
-      continue;
+            for (const auto& prov : config.asr.providers) {
+              const std::string pid = AsrProviderId(prov);
+              if (pid.empty() || pid == "sherpa-onnx") {
+                continue;
+              }
+              const bool is_active = (pid == config.asr.activeProvider);
+              const std::string title = vinput::registry::LookupI18n(i18n_map, pid + ".title", pid);
+              std::string comment = is_active ? _("ASR *") : _("ASR");
+              std::string search_text = pid;
+              search_text += ' ';
+              search_text += title;
+              search_text += " asr";
+              items.push_back(PaletteItem{
+                  .category = PaletteCategory::Asr,
+                  .id = pid,
+                  .text = title,
+                  .comment = std::move(comment),
+                  .search_text = std::move(search_text),
+                  .active = is_active,
+                  .provider_id = pid,
+                  .model_id = {},
+                  .scene_id = {},
+                  .adapter_id = {},
+                  .adapter_running = false,
+                  .is_command_entry = false,
+                  .command_token = {},
+              });
+            }
+            return items;
+          },
+      .onSelect =
+          [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
+            auto core_config = LoadCoreConfig();
+            core_config.asr.activeProvider = item.provider_id;
+            if (!item.model_id.empty()) {
+              std::string error;
+              if (!SetPreferredLocalModel(&core_config, item.model_id, &error)) {
+                engine->notifyError(error);
+                return;
+              }
+            }
+            if (!SaveCoreConfig(core_config)) {
+              engine->notifyError(_("Failed to save ASR config."));
+              return;
+            }
+            if (!engine->queryDaemonStatus().empty()) {
+              std::string reload_error;
+              if (!engine->callReloadAsrBackend(&reload_error)) {
+                engine->notifyError(reload_error.empty() ? _("Failed to reload ASR backend.")
+                                                         : reload_error);
+                return;
+              }
+            }
+            engine->notifyInfo(
+                vinput::str::FmtStr(_("ASR switch requested for '%s'."), item.text.c_str()));
+          },
+  });
+
+  // 3. Scene (/scene, alias /s)
+  palette_registry_.registerCommand(PaletteCommand{
+      .id = "scene",
+      .name = "scene",
+      .alias = "s",
+      .title = _("Scene"),
+      .comment = _("Scene"),
+      .description = _("Switch dictation scene"),
+      .category = PaletteCategory::Scene,
+      .getItems =
+          [](VinputEngine* /*engine*/) {
+            std::vector<PaletteItem> items;
+            const auto config = LoadCoreConfig();
+            for (const auto& scene : config.scenes.definitions) {
+              const bool is_active = (scene.id == config.scenes.activeScene);
+              const std::string label = vinput::scene::DisplayLabel(scene);
+              std::string comment = is_active ? _("Scene *") : _("Scene");
+              items.push_back(PaletteItem{
+                  .category = PaletteCategory::Scene,
+                  .id = scene.id,
+                  .text = label,
+                  .comment = std::move(comment),
+                  .search_text = scene.id + " " + label + " scene",
+                  .active = is_active,
+                  .provider_id = {},
+                  .model_id = {},
+                  .scene_id = scene.id,
+                  .adapter_id = {},
+                  .adapter_running = false,
+                  .is_command_entry = false,
+                  .command_token = {},
+              });
+            }
+            return items;
+          },
+      .onSelect =
+          [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
+            auto core_config = LoadCoreConfig();
+            core_config.scenes.activeScene = item.scene_id;
+            if (!SaveCoreConfig(core_config)) {
+              engine->notifyError(_("Failed to save scene config."));
+              return;
+            }
+            engine->active_scene_id_ = item.scene_id;
+            engine->notifyInfo(
+                vinput::str::FmtStr(_("Scene switched to '%s'."), item.text.c_str()));
+          },
+  });
+
+  // 4. Proc (/proc, alias /p)
+  palette_registry_.registerCommand(PaletteCommand{
+      .id = "proc",
+      .name = "proc",
+      .alias = "p",
+      .title = _("Proc"),
+      .comment = _("Proc"),
+      .description = _("Manage adapter processes"),
+      .category = PaletteCategory::Adapter,
+      .getItems =
+          [](VinputEngine* /*engine*/) {
+            std::vector<PaletteItem> items;
+            const auto config = LoadCoreConfig();
+            const auto i18n_map = vinput::registry::LoadMergedCachedI18nMap(
+                vinput::registry::DetectPreferredLocale(), nullptr);
+            for (const auto& adapter : config.llm.adapters) {
+              const bool running = vinput::adapter::IsRunning(adapter.id);
+              const std::string title =
+                  vinput::registry::LookupI18n(i18n_map, adapter.id + ".title", adapter.id);
+              std::string comment =
+                  running
+                      ? (adapter.autoStart ? _("Proc (running · autostart)") : _("Proc (running)"))
+                      : (adapter.autoStart ? _("Proc (stopped · autostart)") : _("Proc (stopped)"));
+              items.push_back(PaletteItem{
+                  .category = PaletteCategory::Adapter,
+                  .id = adapter.id,
+                  .text = title,
+                  .comment = std::move(comment),
+                  .search_text = adapter.id + " " + title + (running ? " running" : " stopped") +
+                                 " adapter proc ps",
+                  .active = false,
+                  .provider_id = {},
+                  .model_id = {},
+                  .scene_id = {},
+                  .adapter_id = adapter.id,
+                  .adapter_running = running,
+                  .is_command_entry = false,
+                  .command_token = {},
+              });
+            }
+            return items;
+          },
+      .onSelect =
+          [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
+            std::string error;
+            if (item.adapter_running) {
+              if (!engine->callStopAdapter(item.adapter_id, &error)) {
+                engine->notifyError(error.empty() ? _("Failed to stop adapter.") : error);
+                return;
+              }
+              engine->notifyInfo(
+                  vinput::str::FmtStr(_("Adapter '%s' stopped."), item.text.c_str()));
+            } else {
+              if (!engine->callStartAdapter(item.adapter_id, &error)) {
+                engine->notifyError(error.empty() ? _("Failed to start adapter.") : error);
+                return;
+              }
+              engine->notifyInfo(
+                  vinput::str::FmtStr(_("Adapter '%s' started."), item.text.c_str()));
+            }
+          },
+  });
+}
+
+void VinputEngine::reloadPaletteItems() {
+  palette_items_.clear();
+
+  for (const auto& cmd : palette_registry_.commands()) {
+    std::string text = "/" + cmd.name;
+    if (!cmd.alias.empty()) {
+      text += " (/" + cmd.alias + ")";
     }
-    const bool is_active = (pid == config.asr.activeProvider);
-    const std::string title = vinput::registry::LookupI18n(i18n_map, pid + ".title", pid);
-    std::string comment = is_active ? _("[*] [ASR]") : _("[ASR]");
-    std::string search_text = pid;
-    search_text += ' ';
-    search_text += title;
-    search_text += " asr";
+    std::string search_text = cmd.name + " " + cmd.alias + " " + cmd.description;
     palette_items_.push_back(PaletteItem{
-        .category = PaletteCategory::Asr,
-        .id = pid,
-        .text = title,
-        .comment = std::move(comment),
+        .category = cmd.category,
+        .id = "cmd:" + cmd.id,
+        .text = std::move(text),
+        .comment = cmd.description,
         .search_text = std::move(search_text),
-        .active = is_active,
-        .provider_id = pid,
-        .model_id = {},
-        .scene_id = {},
-        .adapter_id = {},
-        .adapter_running = false,
-    });
-  }
-
-  // 2. Scene items
-  for (const auto& scene : config.scenes.definitions) {
-    const bool is_active = (scene.id == config.scenes.activeScene);
-    const std::string label = vinput::scene::DisplayLabel(scene);
-    std::string comment = is_active ? _("[*] [Scene]") : _("[Scene]");
-    palette_items_.push_back(PaletteItem{
-        .category = PaletteCategory::Scene,
-        .id = scene.id,
-        .text = label,
-        .comment = std::move(comment),
-        .search_text = scene.id + " " + label + " scene",
-        .active = is_active,
-        .provider_id = {},
-        .model_id = {},
-        .scene_id = scene.id,
-        .adapter_id = {},
-        .adapter_running = false,
-    });
-  }
-
-  // 3. Command Model items
-  const auto active_models = vinput::llm::LoadActiveModels(config);
-  for (const auto& m : active_models) {
-    std::string comment = m.active_for_command ? _("[*] [Model]") : _("[Model]");
-    palette_items_.push_back(PaletteItem{
-        .category = PaletteCategory::CommandModel,
-        .id = m.full_id,
-        .text = m.provider_id + " / " + m.model,
-        .comment = std::move(comment),
-        .search_text = m.full_id + " " + m.provider_id + " " + m.model + " model",
-        .active = m.active_for_command,
-        .provider_id = m.provider_id,
-        .model_id = m.model,
-        .scene_id = {},
-        .adapter_id = {},
-        .adapter_running = false,
-    });
-  }
-
-  // 4. Adapter items
-  for (const auto& adapter : config.llm.adapters) {
-    const bool running = vinput::adapter::IsRunning(adapter.id);
-    const std::string title =
-        vinput::registry::LookupI18n(i18n_map, adapter.id + ".title", adapter.id);
-    std::string comment;
-    if (running) {
-      comment = adapter.autoStart ? _("[running · autostart] [Adapter]") : _("[running] [Adapter]");
-    } else {
-      comment = adapter.autoStart ? _("[stopped · autostart] [Adapter]") : _("[stopped] [Adapter]");
-    }
-    palette_items_.push_back(PaletteItem{
-        .category = PaletteCategory::Adapter,
-        .id = adapter.id,
-        .text = title,
-        .comment = std::move(comment),
-        .search_text =
-            adapter.id + " " + title + (running ? " running" : " stopped") + " adapter ps",
         .active = false,
         .provider_id = {},
         .model_id = {},
         .scene_id = {},
-        .adapter_id = adapter.id,
-        .adapter_running = running,
+        .adapter_id = {},
+        .adapter_running = false,
+        .is_command_entry = true,
+        .command_token = cmd.alias.empty() ? cmd.name : cmd.alias,
     });
+  }
+
+  for (const auto& cmd : palette_registry_.commands()) {
+    if (cmd.getItems) {
+      auto items = cmd.getItems(this);
+      palette_items_.insert(palette_items_.end(), std::make_move_iterator(items.begin()),
+                            std::make_move_iterator(items.end()));
+    }
   }
 }
 
@@ -564,7 +698,6 @@ void VinputEngine::showPaletteMenu(fcitx::InputContext* ic, const std::string& i
   palette_menu_ic_ = ic;
   palette_menu_visible_ = true;
   palette_query_ = initial_query;
-  palette_filter_mode_ = !initial_query.empty();
   rebuildPaletteMenu(ic);
 }
 
@@ -573,16 +706,38 @@ void VinputEngine::rebuildPaletteMenu(fcitx::InputContext* ic) {
     return;
   }
 
-  const ParsedPaletteQuery parsed = ParsePaletteQuery(palette_query_);
+  const ParsedPaletteQuery parsed = ParsePaletteQuery(palette_query_, palette_registry_);
   palette_filtered_indices_.clear();
 
   for (std::size_t i = 0; i < palette_items_.size(); ++i) {
     const auto& item = palette_items_[i];
-    if (parsed.scope.has_value() && item.category != *parsed.scope) {
+
+    if (item.is_command_entry) {
+      if (palette_query_.empty()) {
+        palette_filtered_indices_.push_back(i);
+      } else if (parsed.is_command_mode && parsed.command == nullptr) {
+        if (parsed.terms.empty() || MatchesAllTerms(item.search_text, parsed.terms)) {
+          palette_filtered_indices_.push_back(i);
+        }
+      }
       continue;
     }
-    if (parsed.terms.empty() || MatchesAllTerms(item.search_text, parsed.terms)) {
-      palette_filtered_indices_.push_back(i);
+
+    if (palette_query_.empty()) {
+      continue;
+    }
+
+    if (parsed.command != nullptr) {
+      if (item.category != parsed.command->category) {
+        continue;
+      }
+      if (parsed.terms.empty() || MatchesAllTerms(item.search_text, parsed.terms)) {
+        palette_filtered_indices_.push_back(i);
+      }
+    } else if (!parsed.is_command_mode) {
+      if (MatchesAllTerms(item.search_text, parsed.terms)) {
+        palette_filtered_indices_.push_back(i);
+      }
     }
   }
 
@@ -598,7 +753,7 @@ void VinputEngine::rebuildPaletteMenu(fcitx::InputContext* ic) {
   }
   SelectFirstCandidate(candidate_list.get());
 
-  SetMenuTitle(ic, PaletteMenuTitle(parsed, palette_filter_mode_), candidate_list.get());
+  SetMenuTitle(ic, PaletteMenuTitle(parsed), candidate_list.get());
   ic->inputPanel().setCandidateList(std::move(candidate_list));
   ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
 }
@@ -607,7 +762,6 @@ void VinputEngine::resetPaletteMenuState() {
   palette_menu_ic_ = nullptr;
   palette_menu_visible_ = false;
   palette_query_.clear();
-  palette_filter_mode_ = false;
   palette_filtered_indices_.clear();
 }
 
@@ -634,16 +788,13 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   auto candidate_list = palette_menu_ic_->inputPanel().candidateList();
   auto* cursor_list = candidate_list ? candidate_list->toCursorMovable() : nullptr;
   const auto normalized_key = keyEvent.key().normalize();
-  const bool printable_filter_input = IsPrintableMenuInput(keyEvent.key(), palette_filter_mode_);
-  const bool handled_key =
-      keyEvent.key().checkKeyList(palette_menu_keys_) ||
-      (!asr_menu_key_.empty() && keyEvent.key().checkKeyList(asr_menu_key_)) ||
-      IsPagePrevKey(keyEvent.key()) || IsPageNextKey(keyEvent.key()) ||
-      keyEvent.key().digitSelection() >= 0 || IsSlashKey(keyEvent.key()) ||
-      IsBackspaceKey(keyEvent.key()) || IsCtrlShortcut(keyEvent.key(), FcitxKey_w) ||
-      IsCtrlShortcut(keyEvent.key(), FcitxKey_u) || IsUpKey(keyEvent.key()) ||
-      IsDownKey(keyEvent.key()) || IsEnterKey(keyEvent.key()) || IsEscapeKey(keyEvent.key()) ||
-      IsPureModifierKey(keyEvent.key()) || printable_filter_input;
+  const bool printable_filter_input = IsPrintableMenuInput(keyEvent.key());
+  const bool handled_key = keyEvent.key().checkKeyList(palette_menu_keys_) ||
+                           IsPagePrevKey(keyEvent.key()) || IsPageNextKey(keyEvent.key()) ||
+                           keyEvent.key().digitSelection() >= 0 || IsBackspaceKey(keyEvent.key()) ||
+                           IsUpKey(keyEvent.key()) || IsDownKey(keyEvent.key()) ||
+                           IsEnterKey(keyEvent.key()) || IsEscapeKey(keyEvent.key()) ||
+                           IsPureModifierKey(keyEvent.key()) || printable_filter_input;
 
   if (keyEvent.isRelease()) {
     if (!handled_key) {
@@ -658,8 +809,7 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return false;
   }
 
-  if (keyEvent.key().checkKeyList(palette_menu_keys_) ||
-      (!asr_menu_key_.empty() && keyEvent.key().checkKeyList(asr_menu_key_))) {
+  if (keyEvent.key().checkKeyList(palette_menu_keys_)) {
     hidePaletteMenu();
     keyEvent.filterAndAccept();
     return true;
@@ -671,9 +821,8 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (IsEscapeKey(keyEvent.key())) {
-    if (palette_filter_mode_ || !palette_query_.empty()) {
+    if (!palette_query_.empty()) {
       palette_query_.clear();
-      palette_filter_mode_ = false;
       rebuildPaletteMenu(palette_menu_ic_);
     } else {
       hidePaletteMenu();
@@ -682,39 +831,13 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
-  if (IsSlashKey(keyEvent.key())) {
-    palette_filter_mode_ = true;
-    palette_query_.append("/");
-    rebuildPaletteMenu(palette_menu_ic_);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (IsBackspaceKey(keyEvent.key()) && palette_filter_mode_) {
+  if (IsBackspaceKey(keyEvent.key())) {
     if (!palette_query_.empty()) {
       PopLastUtf8Char(&palette_query_);
+      rebuildPaletteMenu(palette_menu_ic_);
     } else {
-      palette_filter_mode_ = false;
+      hidePaletteMenu();
     }
-    rebuildPaletteMenu(palette_menu_ic_);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (palette_filter_mode_ && IsCtrlShortcut(keyEvent.key(), FcitxKey_w)) {
-    DeleteLastWord(&palette_query_);
-    if (palette_query_.empty()) {
-      palette_filter_mode_ = false;
-    }
-    rebuildPaletteMenu(palette_menu_ic_);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (palette_filter_mode_ && IsCtrlShortcut(keyEvent.key(), FcitxKey_u)) {
-    palette_query_.clear();
-    palette_filter_mode_ = false;
-    rebuildPaletteMenu(palette_menu_ic_);
     keyEvent.filterAndAccept();
     return true;
   }
@@ -728,15 +851,15 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (IsPagePrevKey(keyEvent.key())) {
-    const ParsedPaletteQuery parsed = ParsePaletteQuery(palette_query_);
-    ChangeCandidatePage(palette_menu_ic_, PaletteMenuTitle(parsed, palette_filter_mode_), false);
+    const ParsedPaletteQuery parsed = ParsePaletteQuery(palette_query_, palette_registry_);
+    ChangeCandidatePage(palette_menu_ic_, PaletteMenuTitle(parsed), false);
     keyEvent.filterAndAccept();
     return true;
   }
 
   if (IsPageNextKey(keyEvent.key())) {
-    const ParsedPaletteQuery parsed = ParsePaletteQuery(palette_query_);
-    ChangeCandidatePage(palette_menu_ic_, PaletteMenuTitle(parsed, palette_filter_mode_), true);
+    const ParsedPaletteQuery parsed = ParsePaletteQuery(palette_query_, palette_registry_);
+    ChangeCandidatePage(palette_menu_ic_, PaletteMenuTitle(parsed), true);
     keyEvent.filterAndAccept();
     return true;
   }
@@ -781,80 +904,25 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   return false;
 }
 
-void VinputEngine::selectPaletteItem(std::size_t index, fcitx::InputContext* /*ic*/) {
+void VinputEngine::selectPaletteItem(std::size_t index, fcitx::InputContext* ic) {
   if (index >= palette_items_.size()) {
     hidePaletteMenu();
     return;
   }
 
   const auto item = palette_items_[index];
+
+  if (item.is_command_entry) {
+    palette_query_ = "/" + item.command_token + " ";
+    rebuildPaletteMenu(palette_menu_ic_ ? palette_menu_ic_ : ic);
+    return;
+  }
+
   hidePaletteMenu();
 
-  switch (item.category) {
-  case PaletteCategory::Asr: {
-    auto core_config = LoadCoreConfig();
-    core_config.asr.activeProvider = item.provider_id;
-    if (!item.model_id.empty()) {
-      std::string error;
-      if (!SetPreferredLocalModel(&core_config, item.model_id, &error)) {
-        notifyError(error);
-        return;
-      }
-    }
-    if (!SaveCoreConfig(core_config)) {
-      notifyError(_("Failed to save ASR config."));
-      return;
-    }
-    if (!queryDaemonStatus().empty()) {
-      std::string reload_error;
-      if (!callReloadAsrBackend(&reload_error)) {
-        notifyError(reload_error.empty() ? _("Failed to reload ASR backend.") : reload_error);
-        return;
-      }
-    }
-    notifyInfo(vinput::str::FmtStr(_("ASR switch requested for '%s'."), item.text.c_str()));
-    break;
-  }
-  case PaletteCategory::Scene: {
-    auto core_config = LoadCoreConfig();
-    core_config.scenes.activeScene = item.scene_id;
-    if (!SaveCoreConfig(core_config)) {
-      notifyError(_("Failed to save scene config."));
-      return;
-    }
-    active_scene_id_ = item.scene_id;
-    notifyInfo(vinput::str::FmtStr(_("Scene switched to '%s'."), item.text.c_str()));
-    break;
-  }
-  case PaletteCategory::CommandModel: {
-    auto core_config = LoadCoreConfig();
-    std::string error;
-    if (!vinput::llm::SetActiveCommandModel(&core_config, item.provider_id, item.model_id,
-                                            &error)) {
-      notifyError(error.empty() ? _("Failed to set command model.") : error);
-      return;
-    }
-    notifyInfo(vinput::str::FmtStr(_("Command model set to '%s / %s'."), item.provider_id.c_str(),
-                                   item.model_id.c_str()));
-    break;
-  }
-  case PaletteCategory::Adapter: {
-    std::string error;
-    if (item.adapter_running) {
-      if (!callStopAdapter(item.adapter_id, &error)) {
-        notifyError(error.empty() ? _("Failed to stop adapter.") : error);
-        return;
-      }
-      notifyInfo(vinput::str::FmtStr(_("Adapter '%s' stopped."), item.text.c_str()));
-    } else {
-      if (!callStartAdapter(item.adapter_id, &error)) {
-        notifyError(error.empty() ? _("Failed to start adapter.") : error);
-        return;
-      }
-      notifyInfo(vinput::str::FmtStr(_("Adapter '%s' started."), item.text.c_str()));
-    }
-    break;
-  }
+  const auto* cmd = palette_registry_.findByCategory(item.category);
+  if (cmd && cmd->onSelect) {
+    cmd->onSelect(this, item, ic);
   }
 }
 
