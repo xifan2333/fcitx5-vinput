@@ -26,10 +26,13 @@ msgstr ""
 msgid "... Recognizing ..."
 msgstr ""
 
-msgid "... Postprocessing ..."
+msgid "... Postprocessing ... (Esc: Cancel)"
 msgstr ""
 
-msgid "... Applying command ..."
+msgid "... Postprocessing ... (Enter: Use raw ASR text, Esc: Cancel)"
+msgstr ""
+
+msgid "... Applying command ... (Esc: Cancel)"
 msgstr ""
 
 #, c-format

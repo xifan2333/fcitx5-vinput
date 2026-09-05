@@ -42,12 +42,13 @@ std::string InferringPreeditText() {
   return _("... Recognizing ...");
 }
 
-std::string PostprocessingPreeditText() {
-  return _("... Postprocessing ...");
+std::string PostprocessingPreeditText(bool command_mode) {
+  return command_mode ? _("... Postprocessing ... (Esc: Cancel)")
+                      : _("... Postprocessing ... (Enter: Use raw ASR text, Esc: Cancel)");
 }
 
 std::string ApplyingCommandPreeditText() {
-  return _("... Applying command ...");
+  return _("... Applying command ... (Esc: Cancel)");
 }
 
 std::string CommandTranscriptPreeditText(const std::string& text) {
@@ -435,6 +436,16 @@ bool VinputEngine::callStopRecording(const std::string& scene_id) {
   return true;
 }
 
+void VinputEngine::callCancelPostprocessing(bool commit_raw_text) {
+  if (bus_ == nullptr) {
+    return;
+  }
+
+  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodCancelPostprocessing);
+  msg << commit_raw_text;
+  msg.send();
+}
+
 void VinputEngine::ensureStatusSync() {
   const bool needs_sync = session_.has_value() || status_ic_ != nullptr;
   if (!needs_sync) {
@@ -777,8 +788,8 @@ void VinputEngine::applyDaemonStatusLocally(const std::string& status,
   }
 
   if (status == kStatusPostprocessing) {
-    enterBusyState(ic, session_ ? session_->command_mode : prefer_command_mode,
-                   PostprocessingPreeditText(), true);
+    const bool command_mode = session_ ? session_->command_mode : prefer_command_mode;
+    enterBusyState(ic, command_mode, PostprocessingPreeditText(command_mode), true);
     return;
   }
 
@@ -887,7 +898,8 @@ void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
   rememberInputContext(ic);
   session_->transcript_text = transcript_text;
   if (session_->phase == Session::Phase::Postprocessing) {
-    enterBusyState(ic, session_->command_mode, PostprocessingPreeditText(), true);
+    enterBusyState(ic, session_->command_mode, PostprocessingPreeditText(session_->command_mode),
+                   true);
     return;
   }
 
