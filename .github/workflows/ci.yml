@@ -76,6 +76,8 @@ jobs:
           if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
             grep -Eq '^  model[[:space:]]' <<<"${help_output}"
             grep -Eq '^  hotword[[:space:]]' <<<"${help_output}"
+            grep -Eq 'subcommands=.*model' build/completions/bash/vinput
+            grep -Eq 'subcommands=.*hotword' build/completions/bash/vinput
           else
             if grep -Eq '^  model[[:space:]]' <<<"${help_output}"; then
               echo "Lite build unexpectedly exposes the model command." >&2
@@ -83,6 +85,14 @@ jobs:
             fi
             if grep -Eq '^  hotword[[:space:]]' <<<"${help_output}"; then
               echo "Lite build unexpectedly exposes the hotword command." >&2
+              exit 1
+            fi
+            if grep -Eq 'subcommands=.*model' build/completions/bash/vinput; then
+              echo "Lite bash completion unexpectedly includes model." >&2
+              exit 1
+            fi
+            if grep -Eq 'subcommands=.*hotword' build/completions/bash/vinput; then
+              echo "Lite bash completion unexpectedly includes hotword." >&2
               exit 1
             fi
           fi

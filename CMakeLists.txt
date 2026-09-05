@@ -146,17 +146,37 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_MANDIR}/zh_CN/man7
 )
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+set(VINPUT_GEN_COMPLETIONS_DIR "${CMAKE_CURRENT_BINARY_DIR}/completions")
+set(VINPUT_LOCAL_ASR_COMPLETION_FLAG "--enable-local-asr")
+if(NOT VINPUT_ENABLE_LOCAL_ASR)
+    set(VINPUT_LOCAL_ASR_COMPLETION_FLAG "--disable-local-asr")
+endif()
+
+execute_process(
+    COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_SOURCE_DIR}/scripts/generate-completions.py"
+        "${VINPUT_LOCAL_ASR_COMPLETION_FLAG}"
+        --src-dir "${CMAKE_SOURCE_DIR}/data/completions"
+        --out-dir "${VINPUT_GEN_COMPLETIONS_DIR}"
+    RESULT_VARIABLE VINPUT_GEN_COMPLETIONS_RESULT
+)
+if(NOT VINPUT_GEN_COMPLETIONS_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to generate shell completions.")
+endif()
+
 # Install shell completions
 install(FILES
-    ${CMAKE_SOURCE_DIR}/data/completions/bash/vinput
+    ${VINPUT_GEN_COMPLETIONS_DIR}/bash/vinput
     DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions
 )
 install(FILES
-    ${CMAKE_SOURCE_DIR}/data/completions/zsh/_vinput
+    ${VINPUT_GEN_COMPLETIONS_DIR}/zsh/_vinput
     DESTINATION ${CMAKE_INSTALL_DATADIR}/zsh/site-functions
 )
 install(FILES
-    ${CMAKE_SOURCE_DIR}/data/completions/fish/vinput.fish
+    ${VINPUT_GEN_COMPLETIONS_DIR}/fish/vinput.fish
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fish/vendor_completions.d
 )
 

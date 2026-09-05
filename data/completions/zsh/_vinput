@@ -1,5 +1,6 @@
 #compdef vinput
 
+# @BEGIN_LOCAL_ASR@
 _vinput_installed_models() {
     local -a models
     models=(${(f)"$(vinput -j model list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)"})
@@ -7,6 +8,7 @@ _vinput_installed_models() {
         _describe -t models 'installed model' models
     fi
 }
+# @END_LOCAL_ASR@
 
 _vinput_installed_scenes() {
     local -a scenes
@@ -44,11 +46,15 @@ _vinput_subcommands() {
     local -a subcommands
     subcommands=(
         'init:Initialize default config and directories'
+# @BEGIN_LOCAL_ASR@
         'model:Manage offline local ASR models'
+# @END_LOCAL_ASR@
         'provider:Manage cloud ASR providers'
         'llm:Manage LLM providers'
         'adapter:Manage LLM adapters'
+# @BEGIN_LOCAL_ASR@
         'hotword:Manage hotword file'
+# @END_LOCAL_ASR@
         'device:Manage audio capture devices'
         'scene:Manage recognition scenes'
         'config:Read or write configuration values'
@@ -59,6 +65,7 @@ _vinput_subcommands() {
     _describe -t subcommands 'vinput subcommand' subcommands
 }
 
+# @BEGIN_LOCAL_ASR@
 _vinput_model_cmds() {
     local -a model_cmds
     model_cmds=(
@@ -72,6 +79,7 @@ _vinput_model_cmds() {
     )
     _describe -t model_cmds 'model command' model_cmds
 }
+# @END_LOCAL_ASR@
 
 _vinput_provider_cmds() {
     local -a provider_cmds
@@ -120,6 +128,7 @@ _vinput_adapter_cmds() {
     _describe -t adapter_cmds 'adapter command' adapter_cmds
 }
 
+# @BEGIN_LOCAL_ASR@
 _vinput_hotword_cmds() {
     local -a hotword_cmds
     hotword_cmds=(
@@ -131,6 +140,7 @@ _vinput_hotword_cmds() {
     )
     _describe -t hotword_cmds 'hotword command' hotword_cmds
 }
+# @END_LOCAL_ASR@
 
 _vinput_device_cmds() {
     local -a device_cmds
@@ -211,6 +221,7 @@ _vinput() {
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                         '(-f --force)'{-f,--force}'[Overwrite existing config]'
                     ;;
+# @BEGIN_LOCAL_ASR@
                 model)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
@@ -231,6 +242,7 @@ _vinput() {
                             ;;
                     esac
                     ;;
+# @END_LOCAL_ASR@
                 provider)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
@@ -296,6 +308,7 @@ _vinput() {
                             ;;
                     esac
                     ;;
+# @BEGIN_LOCAL_ASR@
                 hotword)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
@@ -312,6 +325,7 @@ _vinput() {
                             ;;
                     esac
                     ;;
+# @END_LOCAL_ASR@
                 device)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
