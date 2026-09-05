@@ -177,12 +177,6 @@ LlmPage::LlmPage(QWidget* parent) : QWidget(parent) {
   listLayout->addLayout(btnLayout);
   layout->addLayout(listLayout);
 
-  auto* hint =
-      new QLabel(tr("LLM adapters are local OpenAI-compatible bridge processes. Install them "
-                    "from the Resources page, then manage runtime here."));
-  hint->setWordWrap(true);
-  layout->addWidget(hint);
-
   auto* adapterLayout = new QHBoxLayout();
   listAdapters_ = new QListWidget();
   adapterLayout->addWidget(listAdapters_);
@@ -201,7 +195,7 @@ LlmPage::LlmPage(QWidget* parent) : QWidget(parent) {
   adapterBtnLayout->addStretch();
   adapterLayout->addLayout(adapterBtnLayout);
 
-  layout->addWidget(new QLabel(tr("<b>Installed Adapters</b>")));
+  layout->addWidget(new QLabel(tr("<b>LLM Adapters</b>")));
   layout->addLayout(adapterLayout);
 
   // Scenes section
