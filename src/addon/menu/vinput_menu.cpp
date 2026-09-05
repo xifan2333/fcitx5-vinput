@@ -15,8 +15,10 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "config.h"
 #if VINPUT_ENABLE_LOCAL_ASR
 #include "common/asr/model_manager.h"
 #endif
@@ -31,7 +33,6 @@
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/string_utils.h"
 
-#include "config.h"
 #include "core/vinput.h"
 #include "menu/palette_command.h"
 
