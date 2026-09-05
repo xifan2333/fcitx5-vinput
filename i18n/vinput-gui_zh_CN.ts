@@ -55,6 +55,114 @@
         <source>Start with daemon</source>
         <translation>随守护进程启动</translation>
     </message>
+    <message>
+        <source>Configure LLM Adapter</source>
+        <translation>配置 LLM 适配器</translation>
+    </message>
+    <message>
+        <source>Adapter ID:</source>
+        <translation>适配器 ID：</translation>
+    </message>
+    <message>
+        <source>Command / Interpreter:</source>
+        <translation>命令 / 解释器：</translation>
+    </message>
+    <message>
+        <source>Args:</source>
+        <translation>参数：</translation>
+    </message>
+    <message>
+        <source>Env:</source>
+        <translation>环境变量：</translation>
+    </message>
+    <message>
+        <source>One argument per line</source>
+        <translation>每行一个参数</translation>
+    </message>
+    <message>
+        <source>One KEY=VALUE entry per line</source>
+        <translation>每行一个 KEY=VALUE 条目</translation>
+    </message>
+    <message>
+        <source>Command or interpreter</source>
+        <translation>命令或解释器</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>名称：</translation>
+    </message>
+    <message>
+        <source>Type:</source>
+        <translation>类型：</translation>
+    </message>
+    <message>
+        <source>Model:</source>
+        <translation>模型：</translation>
+    </message>
+    <message>
+        <source>Timeout (ms):</source>
+        <translation>超时（毫秒）：</translation>
+    </message>
+    <message>
+        <source>local</source>
+        <translation>本地</translation>
+    </message>
+    <message>
+        <source>command</source>
+        <translation>命令</translation>
+    </message>
+    <message>
+        <source>Provider name must not be empty.</source>
+        <translation>提供程序名称不能为空。</translation>
+    </message>
+    <message>
+        <source>Command providers require a command.</source>
+        <translation>命令类型的提供程序需要填写命令。</translation>
+    </message>
+    <message>
+        <source>Loading models...</source>
+        <translation>正在加载模型…</translation>
+    </message>
+    <message>
+        <source>No models returned. You can type one manually.</source>
+        <translation>未返回任何模型，可手动输入。</translation>
+    </message>
+    <message>
+        <source>Invalid env entry &apos;%1&apos;. Use KEY=VALUE.</source>
+        <translation>无效的环境变量条目“%1”，请使用 KEY=VALUE 格式。</translation>
+    </message>
+    <message>
+        <source>Base URL must be a valid http:// or https:// URL.</source>
+        <translation>Base URL 必须是有效的 http:// 或 https:// 地址。</translation>
+    </message>
+    <message>
+        <source>Provider returned invalid JSON for /v1/models.</source>
+        <translation>提供程序的 /v1/models 返回了无效的 JSON。</translation>
+    </message>
+    <message>
+        <source>Failed to load models. Type one manually or reselect the provider to retry.</source>
+        <translation>模型加载失败，可手动输入或重新选择提供程序重试。</translation>
+    </message>
+    <message>
+        <source>running</source>
+        <translation>运行中</translation>
+    </message>
+    <message>
+        <source>stopped</source>
+        <translation>已停止</translation>
+    </message>
+    <message>
+        <source>(not set)</source>
+        <translation>（未设置）</translation>
+    </message>
+    <message>
+        <source>Raw</source>
+        <translation>原始</translation>
+    </message>
+    <message>
+        <source>Command</source>
+        <translation>命令</translation>
+    </message>
 </context>
 <context>
     <name>vinput::gui::ControlPage</name>
