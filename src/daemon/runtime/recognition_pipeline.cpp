@@ -71,8 +71,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
   }
 
   const auto& scene = vinput::scene::Resolve(scene_config, order.scene_id);
-  if (scene.llm_max_candidates > 0 && !scene.provider_id.empty() && !scene.prompt.empty() &&
-      on_enter_postprocessing) {
+  if (scene.llm_max_candidates > 0 && !scene.provider_id.empty() && on_enter_postprocessing) {
     on_enter_postprocessing();
   }
 

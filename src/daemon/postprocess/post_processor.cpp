@@ -289,10 +289,6 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
                             std::string* error_out, const std::string& task_prompt = {},
                             const std::atomic<bool>* cancel_flag = nullptr,
                             std::string_view asr_var = {}, std::string_view selected_var = {}) {
-  if (scene.prompt.empty() && task_prompt.empty()) {
-    return std::nullopt;
-  }
-
   CurlGuard guard;
   guard.curl = curl_easy_init();
   if (!guard.curl) {
@@ -525,7 +521,7 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
   fallback.commitText = normalized;
 
   const LlmProvider* provider = ResolveLlmProvider(settings, scene.provider_id);
-  if (provider == nullptr || max_llm_candidates == 0 || scene.prompt.empty()) {
+  if (provider == nullptr || max_llm_candidates == 0) {
     return fallback;
   }
 
