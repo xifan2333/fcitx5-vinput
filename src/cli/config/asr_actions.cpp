@@ -7,16 +7,20 @@
 #include <optional>
 #include <vector>
 
-#include "common/asr/model_manager.h"
 #include "common/config/core_config.h"
 #include "common/dbus/asr_backend_state_utils.h"
 #include "common/i18n.h"
 #include "common/registry/registry_i18n.h"
-#include "common/registry/registry_models.h"
 #include "common/registry/registry_scripts.h"
-#include "common/utils/download_progress.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/string_utils.h"
+
+#include "config.h"
+#if VINPUT_ENABLE_LOCAL_ASR
+#include "common/asr/model_manager.h"
+#include "common/registry/registry_models.h"
+#include "common/utils/download_progress.h"
+#endif
 
 #include "cli/runtime/dbus_client.h"
 #include "cli/utils/cli_helpers.h"
@@ -85,6 +89,7 @@ bool SaveAsrConfigAndReload(const CoreConfig& config, Formatter& fmt) {
   return true;
 }
 
+#if VINPUT_ENABLE_LOCAL_ASR
 const LocalAsrProvider* PreferredLocalProvider(const CoreConfig& config) {
   const AsrProvider* provider = ResolvePreferredLocalAsrProvider(config);
   if (!provider) {
@@ -109,6 +114,7 @@ LocalAsrProvider* PreferredLocalProvider(CoreConfig* config) {
   }
   return nullptr;
 }
+#endif
 
 std::filesystem::path ResolveExistingFilePath(const std::string& candidate) {
   if (candidate.empty()) {
@@ -166,11 +172,18 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
   CoreConfig config = LoadCoreConfig();
   const auto display_map =
       vinput::cli::FetchScriptDisplayMap(config, vinput::script::Kind::kAsrProvider);
+#if VINPUT_ENABLE_LOCAL_ASR
   const auto model_display_map = vinput::cli::FetchModelDisplayMap(config);
+#endif
 
   if (ctx.json_output) {
     nlohmann::json providers = nlohmann::json::array();
     for (const auto& provider : config.asr.providers) {
+#if !VINPUT_ENABLE_LOCAL_ASR
+      if (std::holds_alternative<LocalAsrProvider>(provider)) {
+        continue;
+      }
+#endif
       const std::string machine_id = AsrProviderId(provider);
       nlohmann::json entry = {
           {"id", vinput::cli::HumanizeResourceId(display_map, machine_id)},
@@ -192,10 +205,13 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
         }
       }
 
+#if VINPUT_ENABLE_LOCAL_ASR
       if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
         entry["model"] = vinput::cli::HumanizeResourceId(model_display_map, local->model);
         entry["hotwords_file"] = local->hotwordsFile;
-      } else if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
+      } else
+#endif
+          if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
         entry["command"] = command->command;
         entry["args"] = command->args;
         entry["env"] = command->env;
@@ -210,16 +226,23 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
                                       _("ACTIVE"), _("MODEL"), _("README")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& provider : config.asr.providers) {
+#if !VINPUT_ENABLE_LOCAL_ASR
+    if (std::holds_alternative<LocalAsrProvider>(provider)) {
+      continue;
+    }
+#endif
     const std::string id = AsrProviderId(provider);
     const auto display_it = display_map.find(id);
     const std::string type = std::string(AsrProviderType(provider));
     const std::string active = id == config.asr.activeProvider ? _("yes") : _("no");
     std::string model = "-";
+#if VINPUT_ENABLE_LOCAL_ASR
     if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
       model = local->model.empty()
                   ? _("(not set)")
                   : vinput::cli::HumanizeResourceId(model_display_map, local->model);
     }
+#endif
     rows.push_back({vinput::cli::HumanizeResourceId(display_map, id),
                     display_it == display_map.end() ? "" : display_it->second.title, type, active,
                     model,
@@ -280,6 +303,16 @@ int RunAsrConfigUse(const std::string& id, Formatter& fmt, const CliContext& ctx
     fmt.PrintError(error);
     return 1;
   }
+
+#if !VINPUT_ENABLE_LOCAL_ASR
+  const auto* target_provider = ResolveAsrProvider(config, resolved_id);
+  if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
+    fmt.PrintError(vinput::str::FmtStr(
+        _("ASR provider '%s' is a local provider, which is not supported in this Lite build."),
+        resolved_id));
+    return 1;
+  }
+#endif
 
   config.asr.activeProvider = resolved_id;
   if (!SaveAsrConfigAndReload(config, fmt)) {
@@ -445,6 +478,7 @@ int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ct
   return 0;
 }
 
+#if VINPUT_ENABLE_LOCAL_ASR
 int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx) {
   CoreConfig config = LoadCoreConfig();
   ModelManager manager(ResolveModelBaseDir(config).string());
@@ -806,3 +840,4 @@ int RunAsrConfigEditHotword(Formatter& fmt, const CliContext& ctx) {
   fmt.PrintSuccess(_("Hotwords file updated."));
   return 0;
 }
+#endif
