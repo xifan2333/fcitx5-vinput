@@ -6,8 +6,8 @@
     "zh_CN": "Vinput 2.3.14 — 统一命令面板、候选保序去重与零延迟模型缓存"
   },
   "text": {
-    "en_US": "Introduced Unified Command Palette (Shift_R) with scoped slash filters (/a, /s, /m, /p) and global search; implemented order-preserving candidate deduplication with raw transcript preserved as fallback option 1; added zero-latency local model cache; streamlined scene candidate schema to 'count' (existing users can sync via GUI 'Save Settings' or 'vinput init -f').",
-    "zh_CN": "推出统一命令面板（Shift_R 唤起），支持 /a 切换 ASR、/s 切换场景、/m 切换划词模型、/p 启停适配器与全局盲打搜索；新增候选保序去重，原始识别文本永远作为选项 1 安全保底；新增零延迟本地模型缓存；精简场景配置字段为 count（老用户在 GUI 点击一次『保存设置』或运行 vinput init -f 即可自动同步格式）。"
+    "en_US": "Introduced Unified Command Palette (Shift_R) with registered quick commands (/model, /asr, /scene, /proc) and global search; implemented order-preserving candidate deduplication with raw transcript preserved as fallback option 1; added zero-latency local model cache; streamlined scene candidate schema to 'count' (existing users can sync via GUI 'Save Settings' or 'vinput init -f').",
+    "zh_CN": "推出统一命令面板（Shift_R 唤起），基于命令注册表支持 /model、/asr、/scene、/proc 与全局盲打搜索；新增候选保序去重，原始识别文本永远作为选项 1 安全保底；新增零延迟本地模型缓存；精简场景配置字段为 count（老用户在 GUI 点击一次『保存设置』或运行 vinput init -f 即可自动同步格式）。"
   },
   "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.14"
 }
