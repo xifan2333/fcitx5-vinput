@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QDir>
+#include <QLibraryInfo>
 #include <QLocale>
 #include <QStandardPaths>
 #include <QTranslator>
@@ -66,6 +67,14 @@ int main(int argc, char* argv[]) {
   QTranslator translator;
   if (TryLoadTranslation(translator, "vinput-gui")) {
     app.installTranslator(&translator);
+  }
+
+  // Qt's own translations (qtbase_*) cover standard dialog buttons such as
+  // OK/Cancel in QDialogButtonBox.
+  QTranslator qtTranslator;
+  if (qtTranslator.load(QLocale::system(), QStringLiteral("qtbase"), QStringLiteral("_"),
+                        QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
+    app.installTranslator(&qtTranslator);
   }
 
   MainWindow window;
