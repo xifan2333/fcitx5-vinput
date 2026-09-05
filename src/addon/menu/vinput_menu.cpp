@@ -8,6 +8,7 @@
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -101,7 +102,7 @@ ParsedPaletteQuery ParsePaletteQuery(std::string_view raw_query,
     q.remove_prefix(1);
 
     std::size_t token_end = 0;
-    while (token_end < q.size() && !std::isspace(static_cast<unsigned char>(q[token_end])) &&
+    while (token_end < q.size() && std::isspace(static_cast<unsigned char>(q[token_end])) == 0 &&
            q[token_end] != '/') {
       ++token_end;
     }
@@ -610,10 +611,13 @@ void VinputEngine::initializePaletteRegistry() {
               const bool running = vinput::adapter::IsRunning(adapter.id);
               const std::string title =
                   vinput::registry::LookupI18n(i18n_map, adapter.id + ".title", adapter.id);
-              std::string comment =
-                  running
-                      ? (adapter.autoStart ? _("Proc (running · autostart)") : _("Proc (running)"))
-                      : (adapter.autoStart ? _("Proc (stopped · autostart)") : _("Proc (stopped)"));
+              const bool is_autostart = adapter.autoStart;
+              std::string comment;
+              if (running) {
+                comment = is_autostart ? _("Proc (running · autostart)") : _("Proc (running)");
+              } else {
+                comment = is_autostart ? _("Proc (stopped · autostart)") : _("Proc (stopped)");
+              }
               items.push_back(PaletteItem{
                   .category = PaletteCategory::Adapter,
                   .id = adapter.id,
@@ -915,14 +919,14 @@ void VinputEngine::selectPaletteItem(std::size_t index, fcitx::InputContext* ic)
 
   if (item.is_command_entry) {
     palette_query_ = "/" + item.command_token + " ";
-    rebuildPaletteMenu(palette_menu_ic_ ? palette_menu_ic_ : ic);
+    rebuildPaletteMenu(palette_menu_ic_ != nullptr ? palette_menu_ic_ : ic);
     return;
   }
 
   hidePaletteMenu();
 
   const auto* cmd = palette_registry_.findByCategory(item.category);
-  if (cmd && cmd->onSelect) {
+  if (cmd != nullptr && cmd->onSelect) {
     cmd->onSelect(this, item, ic);
   }
 }
