@@ -40,15 +40,24 @@ _vinput_installed_adapters() {
     fi
 }
 
+_vinput_is_lite() {
+    if [[ -z "${_VINPUT_IS_LITE:-}" ]]; then
+        if vinput -v 2>/dev/null | grep -q -- '-lite'; then
+            _VINPUT_IS_LITE=1
+        else
+            _VINPUT_IS_LITE=0
+        fi
+    fi
+    (( _VINPUT_IS_LITE ))
+}
+
 _vinput_subcommands() {
     local -a subcommands
     subcommands=(
         'init:Initialize default config and directories'
-        'model:Manage offline local ASR models'
         'provider:Manage cloud ASR providers'
         'llm:Manage LLM providers'
         'adapter:Manage LLM adapters'
-        'hotword:Manage hotword file'
         'device:Manage audio capture devices'
         'scene:Manage recognition scenes'
         'config:Read or write configuration values'
@@ -56,6 +65,12 @@ _vinput_subcommands() {
         'recording:Control voice recording'
         'rec:Control voice recording (alias)'
     )
+    if ! _vinput_is_lite; then
+        subcommands+=(
+            'model:Manage offline local ASR models'
+            'hotword:Manage hotword file'
+        )
+    fi
     _describe -t subcommands 'vinput subcommand' subcommands
 }
 
@@ -212,6 +227,7 @@ _vinput() {
                         '(-f --force)'{-f,--force}'[Overwrite existing config]'
                     ;;
                 model)
+                    _vinput_is_lite && return 0
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                         '1:command:_vinput_model_cmds' \
@@ -297,6 +313,7 @@ _vinput() {
                     esac
                     ;;
                 hotword)
+                    _vinput_is_lite && return 0
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                         '1:command:_vinput_hotword_cmds' \

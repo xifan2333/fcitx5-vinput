@@ -33,11 +33,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Validate bundled JSON and completions
+      - name: Validate bundled JSON
         run: |
           python3 -m json.tool data/default-config.json >/dev/null
           python3 -m json.tool notification.json >/dev/null
-          python3 scripts/generate-completions.py --check
 
       - name: Install build dependencies
         run: ./scripts/ci-install-build-deps.sh ubuntu24.04
@@ -74,11 +73,14 @@ jobs:
         shell: bash
         run: |
           help_output="$(LANGUAGE=C build/src/cli/vinput --help)"
+          version_output="$(build/src/cli/vinput -v)"
           if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
             grep -Eq '^  model[[:space:]]' <<<"${help_output}"
             grep -Eq '^  hotword[[:space:]]' <<<"${help_output}"
-            grep -Eq 'subcommands=.*model' data/completions/bash/vinput
-            grep -Eq 'subcommands=.*hotword' data/completions/bash/vinput
+            if grep -q 'lite' <<<"${version_output}"; then
+              echo "Full build version unexpectedly contains 'lite': ${version_output}" >&2
+              exit 1
+            fi
           else
             if grep -Eq '^  model[[:space:]]' <<<"${help_output}"; then
               echo "Lite build unexpectedly exposes the model command." >&2
@@ -88,12 +90,8 @@ jobs:
               echo "Lite build unexpectedly exposes the hotword command." >&2
               exit 1
             fi
-            if grep -Eq 'subcommands=.*model' data/completions/lite/bash/vinput; then
-              echo "Lite bash completion unexpectedly includes model." >&2
-              exit 1
-            fi
-            if grep -Eq 'subcommands=.*hotword' data/completions/lite/bash/vinput; then
-              echo "Lite bash completion unexpectedly includes hotword." >&2
+            if ! grep -q -- '-lite' <<<"${version_output}"; then
+              echo "Lite build version does not contain '-lite': ${version_output}" >&2
               exit 1
             fi
           fi

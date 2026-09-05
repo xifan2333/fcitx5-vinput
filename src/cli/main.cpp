@@ -13,13 +13,23 @@
 
 #include "config.h"
 
+namespace {
+
+#if VINPUT_ENABLE_LOCAL_ASR
+constexpr char kCliVersion[] = VINPUT_VERSION;
+#else
+constexpr char kCliVersion[] = VINPUT_VERSION "-lite";
+#endif
+
+} // namespace
+
 int main(int argc, char* argv[]) {
   vinput::i18n::Init();
 
   CLI::App app{_("vinput - Voice input manager")};
   app.require_subcommand(0, 1);
   app.set_help_flag("-h,--help", _("Print this help message and exit"));
-  app.set_version_flag("-v,--version", VINPUT_VERSION,
+  app.set_version_flag("-v,--version", kCliVersion,
                        _("Display program version information and exit"));
 
   bool json_output = false;

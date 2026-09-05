@@ -147,22 +147,16 @@ install(FILES
 )
 
 # Install shell completions
-if(VINPUT_ENABLE_LOCAL_ASR)
-    set(VINPUT_COMPLETIONS_DIR "${CMAKE_SOURCE_DIR}/data/completions")
-else()
-    set(VINPUT_COMPLETIONS_DIR "${CMAKE_SOURCE_DIR}/data/completions/lite")
-endif()
-
 install(FILES
-    ${VINPUT_COMPLETIONS_DIR}/bash/vinput
+    ${CMAKE_SOURCE_DIR}/data/completions/bash/vinput
     DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions
 )
 install(FILES
-    ${VINPUT_COMPLETIONS_DIR}/zsh/_vinput
+    ${CMAKE_SOURCE_DIR}/data/completions/zsh/_vinput
     DESTINATION ${CMAKE_INSTALL_DATADIR}/zsh/site-functions
 )
 install(FILES
-    ${VINPUT_COMPLETIONS_DIR}/fish/vinput.fish
+    ${CMAKE_SOURCE_DIR}/data/completions/fish/vinput.fish
     DESTINATION ${CMAKE_INSTALL_DATADIR}/fish/vendor_completions.d
 )
 

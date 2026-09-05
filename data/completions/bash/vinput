@@ -20,6 +20,17 @@ _vinput_installed_adapters() {
     vinput -j adapter list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4
 }
 
+_vinput_is_lite() {
+    if [[ -z "${_VINPUT_IS_LITE:-}" ]]; then
+        if vinput -v 2>/dev/null | grep -q -- '-lite'; then
+            _VINPUT_IS_LITE=1
+        else
+            _VINPUT_IS_LITE=0
+        fi
+    fi
+    [[ "$_VINPUT_IS_LITE" -eq 1 ]]
+}
+
 _vinput() {
     local cur prev words cword
     if declare -F _init_completion >/dev/null 2>&1; then
@@ -34,6 +45,9 @@ _vinput() {
 
     local global_opts="-j --json -h --help -v --version"
     local subcommands="init model provider llm adapter hotword device scene config daemon recording rec"
+    if _vinput_is_lite; then
+        subcommands="init provider llm adapter device scene config daemon recording rec"
+    fi
 
     if [[ $cword -eq 1 ]]; then
         if [[ "$cur" == -* ]]; then
@@ -52,6 +66,9 @@ _vinput() {
             return 0
             ;;
         model)
+            if _vinput_is_lite; then
+                return 0
+            fi
             if [[ $cword -eq 2 ]]; then
                 if [[ "$cur" == -* ]]; then
                     COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
@@ -144,6 +161,9 @@ _vinput() {
             return 0
             ;;
         hotword)
+            if _vinput_is_lite; then
+                return 0
+            fi
             if [[ $cword -eq 2 ]]; then
                 if [[ "$cur" == -* ]]; then
                     COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
