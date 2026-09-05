@@ -17,7 +17,9 @@
 #include <utility>
 #include <vector>
 
+#if VINPUT_ENABLE_LOCAL_ASR
 #include "common/asr/model_manager.h"
+#endif
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
@@ -486,8 +488,11 @@ void VinputEngine::initializePaletteRegistry() {
 #endif
 
             for (const auto& prov : config.asr.providers) {
+              if (std::holds_alternative<LocalAsrProvider>(prov)) {
+                continue;
+              }
               const std::string pid = AsrProviderId(prov);
-              if (pid.empty() || pid == "sherpa-onnx") {
+              if (pid.empty()) {
                 continue;
               }
               const bool is_active = (pid == config.asr.activeProvider);
@@ -518,6 +523,16 @@ void VinputEngine::initializePaletteRegistry() {
       .onSelect =
           [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
             auto core_config = LoadCoreConfig();
+#if !VINPUT_ENABLE_LOCAL_ASR
+            const auto* target_provider = ResolveAsrProvider(core_config, item.provider_id);
+            if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
+              engine->notifyError(
+                  vinput::str::FmtStr(_("ASR provider '%s' is a local provider, which is not "
+                                        "supported in this Lite build."),
+                                      item.provider_id.c_str()));
+              return;
+            }
+#endif
             core_config.asr.activeProvider = item.provider_id;
             if (!item.model_id.empty()) {
               std::string error;
