@@ -54,7 +54,7 @@ Keybindings can be customized in Fcitx5 Configuration → Addons → Vinput:
 :   Hold after selecting text in any application to modify or rewrite the selection using voice instructions.
 
 **Shift_R** (Command Palette Key)
-:   Open the unified interactive command palette with scoped slash filtering (`/a` for ASR, `/s` for scenes, `/m` for command models, `/p` for adapter processes) and global search.
+:   Open the unified interactive command palette with registered quick commands (`/model` or `/m` for command models, `/asr` or `/a` for ASR, `/scene` or `/s` for scenes, `/proc` or `/p` for adapters) and instant global search.
 
 **Page Up** / **Page Down**, **Up** / **Down**, **1**-**9**
 :   Navigate and select candidate text.
