@@ -136,7 +136,14 @@ Maximum number of rewritten candidates requested from the LLM (set to
 Candidates are deduplicated with the raw ASR transcript.
 If only 1 distinct candidate remains, it commits directly to screen; if
 distinct choices exist, a candidate menu is shown with the primary LLM
-rewrite focused and the raw transcript preserved as option 1.
+rewrite focused and the raw transcript preserved as option 1 (when
+\f[CR]show_raw\f[R] is true).
+.TP
+\f[B]show_raw\f[R] (\f[I]boolean\f[R], default \f[CR]true\f[R])
+Whether to include the raw ASR transcript in the candidate options.
+When disabled (\f[CR]false\f[R]), the candidate array contains only
+LLM/adapter results, enabling immediate direct\-commit to screen when a
+single rewrite is returned.
 .SH VINPUT.CONF STRUCTURE (FCITX5 ADDON)
 The Fcitx5 addon configuration file is stored in INI format at
 \f[I]\(ti/.config/fcitx5/conf/vinput.conf\f[R].

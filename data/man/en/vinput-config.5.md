@@ -131,7 +131,10 @@ Defines prompt templates and candidate counts for text rewriting.
 :   Number of preceding input lines sent to the LLM as conversational context.
 
 **count** (*integer*, `0` - `9`)
-:   Maximum LLM candidate count. Maximum number of rewritten candidates requested from the LLM (set to `0` to disable LLM for this scene). Candidates are deduplicated with the raw ASR transcript. If only 1 distinct candidate remains, it commits directly to screen; if distinct choices exist, a candidate menu is shown with the primary LLM rewrite focused and the raw transcript preserved as option 1.
+:   Maximum LLM candidate count. Maximum number of rewritten candidates requested from the LLM (set to `0` to disable LLM for this scene). Candidates are deduplicated with the raw ASR transcript. If only 1 distinct candidate remains, it commits directly to screen; if distinct choices exist, a candidate menu is shown with the primary LLM rewrite focused and the raw transcript preserved as option 1 (when `show_raw` is true).
+
+**show_raw** (*boolean*, default `true`)
+:   Whether to include the raw ASR transcript in the candidate options. When disabled (`false`), the candidate array contains only LLM/adapter results, enabling immediate direct-commit to screen when a single rewrite is returned.
 
 # VINPUT.CONF STRUCTURE (FCITX5 ADDON)
 

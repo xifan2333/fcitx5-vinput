@@ -124,6 +124,8 @@ complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcom
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -s c -l count -d "Maximum number of LLM candidates"
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -l timeout -d "Request timeout in ms"
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -l context-lines -d "Context history lines"
+complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -l show-raw -d "Include raw ASR transcript in candidate options"
+complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -l no-show-raw -d "Do not include raw ASR transcript in candidate options"
 
 # config
 complete -c vinput -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from get set edit e" -a get -d "Get a config value by JSON Pointer"

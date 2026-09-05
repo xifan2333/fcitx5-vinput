@@ -457,6 +457,10 @@
         <translation>超时（毫秒）：</translation>
     </message>
     <message>
+        <source>Include raw transcript in candidate options</source>
+        <translation>在候选词选项中包含原始语音文本</translation>
+    </message>
+    <message>
         <source>Are you sure you want to remove scene &apos;%1&apos;?</source>
         <translation>确定要移除场景&quot;%1&quot;吗？</translation>
     </message>
