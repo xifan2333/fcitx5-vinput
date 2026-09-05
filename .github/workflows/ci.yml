@@ -75,9 +75,14 @@ jobs:
           help_output="$(LANGUAGE=C build/src/cli/vinput --help)"
           if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
             grep -Eq '^  model[[:space:]]' <<<"${help_output}"
+            grep -Eq '^  hotword[[:space:]]' <<<"${help_output}"
           else
             if grep -Eq '^  model[[:space:]]' <<<"${help_output}"; then
               echo "Lite build unexpectedly exposes the model command." >&2
+              exit 1
+            fi
+            if grep -Eq '^  hotword[[:space:]]' <<<"${help_output}"; then
+              echo "Lite build unexpectedly exposes the hotword command." >&2
               exit 1
             fi
           fi

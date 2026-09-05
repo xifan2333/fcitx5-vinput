@@ -31,7 +31,8 @@ vinput \- fcitx5\-vinput 命令行控制与管理工具
 \f[I]\(ti/.local/share/vinput\f[R]）。若指定
 \f[B]\-f\f[R]，则会覆盖已有配置。
 .SS 本地模型管理
-管理基于 \f[B]sherpa\-onnx\f[R] 的离线语音识别模型。
+管理基于 \f[B]sherpa\-onnx\f[R] 的离线语音识别模型（在 Lite
+轻量版中不可用）。
 .TP
 \f[B]model list\f[R] [\f[B]\-a\f[R], \f[B]\-\-available\f[R]]
 列出本地已安装的模型。若附加 \f[B]\-a\f[R] 或
@@ -116,7 +117,8 @@ Key（可选）及额外的请求体参数（可选）。
 \f[B]adapter disable\f[R] \f[I]ID\f[R]
 取消指定适配器随守护进程自启动。
 .SS 热词表管理
-管理用于增强离线 sherpa\-onnx 模型专有名词识别准确率的自定义词表。
+管理用于增强离线 sherpa\-onnx 模型专有名词识别准确率的自定义词表（在
+Lite 轻量版中不可用）。
 .TP
 \f[B]hotword get\f[R]
 显示当前生效的热词文件路径。

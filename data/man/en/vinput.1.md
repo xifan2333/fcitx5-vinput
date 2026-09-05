@@ -34,7 +34,7 @@ It allows users to manage offline speech recognition (ASR) models, cloud ASR pro
 :   Initialize default configuration files and directories under *~/.config/vinput* and *~/.local/share/vinput*. If **-f** is specified, existing configuration will be overwritten.
 
 ## MODEL MANAGEMENT
-Manage offline local speech recognition models powered by **sherpa-onnx**.
+Manage offline local speech recognition models powered by **sherpa-onnx** (not available in the Lite package).
 
 **model list** [**-a**, **--available**]
 :   List installed models. If **-a** or **--available** is passed, list models available in the remote registry.
@@ -118,7 +118,7 @@ Manage local bridge processes that adapt non-standard models into OpenAI-compati
 :   Disable the adapter from autostarting with the daemon.
 
 ## HOTWORD MANAGEMENT
-Manage domain-specific vocabulary and custom dictionaries for local sherpa-onnx models.
+Manage domain-specific vocabulary and custom dictionaries for local sherpa-onnx models (not available in the Lite package).
 
 **hotword get**
 :   Show the path of the currently configured hotwords file.
