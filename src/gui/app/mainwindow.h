@@ -3,11 +3,15 @@
 #include <QMainWindow>
 #include <QTabWidget>
 
+#include "config.h"
+
 namespace vinput::gui {
 class ControlPage;
 class ResourcePage;
 class LlmPage;
+#if VINPUT_ENABLE_LOCAL_ASR
 class HotwordPage;
+#endif
 } // namespace vinput::gui
 
 class MainWindow : public QMainWindow {
@@ -31,5 +35,7 @@ private:
   vinput::gui::ControlPage* controlPage_;
   vinput::gui::ResourcePage* resourcePage_;
   vinput::gui::LlmPage* llmPage_;
+#if VINPUT_ENABLE_LOCAL_ASR
   vinput::gui::HotwordPage* hotwordPage_;
+#endif
 };

@@ -589,6 +589,9 @@ void ResourcePage::abortDownload() {
 }
 
 void ResourcePage::onUseModelClicked() {
+#if !VINPUT_ENABLE_LOCAL_ASR
+  return;
+#else
   if (tableInstalledModels_ == nullptr) {
     return;
   }
@@ -625,9 +628,13 @@ void ResourcePage::onUseModelClicked() {
                         "Backend reload is in progress.")
                          .arg(model_title));
   });
+#endif
 }
 
 void ResourcePage::onRemoveModelClicked() {
+#if !VINPUT_ENABLE_LOCAL_ASR
+  return;
+#else
   if (tableInstalledModels_ == nullptr) {
     return;
   }
@@ -674,6 +681,7 @@ void ResourcePage::onRemoveModelClicked() {
       });
     }
   }
+#endif
 }
 
 void ResourcePage::onDownloadProgress(int percent, QString speed) {
@@ -710,6 +718,9 @@ void ResourcePage::onDownloadFinished() {
 }
 
 void ResourcePage::onDownloadModelClicked() {
+#if !VINPUT_ENABLE_LOCAL_ASR
+  return;
+#else
   if (tableAvailableModels_ == nullptr) {
     return;
   }
@@ -757,6 +768,7 @@ void ResourcePage::onDownloadModelClicked() {
   });
   textLog_->append(tr("Starting download for %1...").arg(model_title));
   downloadWorker_->start();
+#endif
 }
 
 void ResourcePage::onAddProviderClicked() {
