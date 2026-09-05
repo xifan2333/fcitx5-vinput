@@ -142,7 +142,7 @@ The Fcitx5 addon configuration file is stored in INI format at *~/.config/fcitx5
 TriggerMode=Both
 TriggerKey=Alt_R
 CommandKeys=Control_R
-SceneMenuKey=Shift_R
+MenuKey=Shift_R
 PagePrevKeys=Page_Up,KP_Page_Up
 PageNextKeys=Page_Down,KP_Page_Down
 MaxStreamingDisplayWidth=60
@@ -157,8 +157,8 @@ MaxStreamingDisplayWidth=60
 **CommandKeys** (*key list*)
 :   Keys used to record a voice command on selected text (default: Right Control).
 
-**SceneMenuKey** (*key list*)
-:   Keys used to open the unified command palette (default: Right Shift).
+**MenuKey** (*key list*)
+:   Keys used to open the unified command palette (default: Right Shift). This replaces the old `SceneMenuKey`; `AsrMenuKey` was removed.
 
 **MaxStreamingDisplayWidth** (*integer*, `0` - `500`)
 :   Maximum visual column width for live streaming recognition preview. Older text is folded into 'head...tail' to keep the preedit tooltip within bounds. Set to `0` to disable folding (default: `60`).

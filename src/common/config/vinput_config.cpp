@@ -15,7 +15,7 @@ fcitx::ListConstrain<fcitx::KeyConstrain> TriggerKeyListConstrain() {
   });
 }
 
-fcitx::ListConstrain<fcitx::KeyConstrain> SceneMenuKeyListConstrain() {
+fcitx::ListConstrain<fcitx::KeyConstrain> MenuKeyListConstrain() {
   return fcitx::KeyListConstrain(fcitx::KeyConstrainFlags{
       fcitx::KeyConstrainFlag::AllowModifierOnly,
       fcitx::KeyConstrainFlag::AllowModifierLess,
@@ -55,11 +55,11 @@ std::string CommandKeysTooltip() {
            "Right Control.");
 }
 
-std::string SceneMenuKeyLabel() {
+std::string MenuKeyLabel() {
   return _("Command Palette Keys");
 }
 
-std::string SceneMenuKeyTooltip() {
+std::string MenuKeyTooltip() {
   return _("Configure one or more keys to open the unified command palette (/model, /asr, /scene, "
            "/proc). The default is Right Shift.");
 }
@@ -106,9 +106,8 @@ VinputConfig::VinputConfig()
                   TriggerKeyListConstrain(), {}, fcitx::ToolTipAnnotation(TriggerKeyTooltip())),
       commandKeys(this, "CommandKeys", CommandKeysLabel(), {fcitx::Key(FcitxKey_Control_R)},
                   TriggerKeyListConstrain(), {}, fcitx::ToolTipAnnotation(CommandKeysTooltip())),
-      sceneMenuKeys(this, "SceneMenuKey", SceneMenuKeyLabel(), {fcitx::Key(FcitxKey_Shift_R)},
-                    SceneMenuKeyListConstrain(), {},
-                    fcitx::ToolTipAnnotation(SceneMenuKeyTooltip())),
+      menuKeys(this, "MenuKey", MenuKeyLabel(), {fcitx::Key(FcitxKey_Shift_R)},
+               MenuKeyListConstrain(), {}, fcitx::ToolTipAnnotation(MenuKeyTooltip())),
       pagePrevKeys(this, "PagePrevKeys", PagePrevKeysLabel(),
                    {fcitx::Key(FcitxKey_Page_Up), fcitx::Key(FcitxKey_KP_Page_Up)},
                    TriggerKeyListConstrain(), {}, fcitx::ToolTipAnnotation(PagePrevKeysTooltip())),

@@ -142,7 +142,7 @@ Fcitx5 插件的配置文件为 INI 格式，位于 *~/.config/fcitx5/conf/vinpu
 TriggerMode=Both
 TriggerKey=Alt_R
 CommandKeys=Control_R
-SceneMenuKey=Shift_R
+MenuKey=Shift_R
 PagePrevKeys=Page_Up,KP_Page_Up
 PageNextKeys=Page_Down,KP_Page_Down
 MaxStreamingDisplayWidth=60
@@ -157,8 +157,8 @@ MaxStreamingDisplayWidth=60
 **CommandKeys** (*按键列表*)
 :   对选中文本执行划词语音指令的按键（默认：右 Control）。
 
-**SceneMenuKey** (*按键列表*)
-:   打开统一命令面板（Command Palette）的快捷键（默认：右 Shift）。
+**MenuKey** (*按键列表*)
+:   打开统一命令面板（Command Palette）的快捷键（默认：右 Shift）。它替代旧的 `SceneMenuKey`；`AsrMenuKey` 已移除。
 
 **MaxStreamingDisplayWidth** (*整数*, `0` - `500`)
 :   实时流式识别预览的最大视觉显示列宽。超出时自动将较早文字折叠为“句首...句尾”。设为 `0` 则禁用折叠（默认：`60`）。

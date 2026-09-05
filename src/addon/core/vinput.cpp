@@ -203,7 +203,7 @@ void VinputEngine::setConfig(const fcitx::RawConfig& rawConfig) {
 void VinputEngine::applySettings() {
   trigger_keys_ = config_.triggerKeys.value();
   command_keys_ = config_.commandKeys.value();
-  palette_menu_keys_ = config_.sceneMenuKeys.value();
+  menu_keys_ = config_.menuKeys.value();
   page_prev_keys_ = config_.pagePrevKeys.value();
   page_next_keys_ = config_.pageNextKeys.value();
   trigger_mode_ = config_.triggerMode.value();

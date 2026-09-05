@@ -50,13 +50,13 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  if (!session_ && keyEvent.key().checkKeyList(palette_menu_keys_) && !keyEvent.isRelease()) {
+  if (!session_ && keyEvent.key().checkKeyList(menu_keys_) && !keyEvent.isRelease()) {
     showPaletteMenu(keyEvent.inputContext());
     keyEvent.filterAndAccept();
     return;
   }
 
-  if (keyEvent.key().checkKeyList(palette_menu_keys_) && keyEvent.isRelease()) {
+  if (keyEvent.key().checkKeyList(menu_keys_) && keyEvent.isRelease()) {
     keyEvent.filterAndAccept();
     return;
   }

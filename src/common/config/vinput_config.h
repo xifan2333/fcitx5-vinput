@@ -33,7 +33,7 @@ public:
 
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
                 fcitx::DefaultMarshaller<fcitx::KeyList>, fcitx::ToolTipAnnotation>
-      sceneMenuKeys;
+      menuKeys;
 
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
                 fcitx::DefaultMarshaller<fcitx::KeyList>, fcitx::ToolTipAnnotation>
