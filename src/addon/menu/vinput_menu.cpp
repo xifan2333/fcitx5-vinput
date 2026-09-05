@@ -426,7 +426,7 @@ void VinputEngine::reloadPaletteItems() {
   palette_items_.clear();
   const auto config = LoadCoreConfig();
   const auto i18n_map =
-      vinput::registry::FetchMergedI18nMap(config, vinput::registry::DetectPreferredLocale());
+      vinput::registry::LoadMergedCachedI18nMap(vinput::registry::DetectPreferredLocale(), nullptr);
 
   // 1. ASR items
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -587,7 +587,8 @@ void VinputEngine::rebuildPaletteMenu(fcitx::InputContext* ic) {
   }
 
   auto candidate_list = std::make_unique<fcitx::CommonCandidateList>();
-  candidate_list->setPageSize(kMenuPageSize);
+  candidate_list->setPageSize(instance_->globalConfig().defaultPageSize());
+  candidate_list->setSelectionKey(fcitx::Key::keyListFromString("1 2 3 4 5 6 7 8 9 0"));
   candidate_list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
   candidate_list->setCursorPositionAfterPaging(fcitx::CursorPositionAfterPaging::ResetToFirst);
 
@@ -658,8 +659,13 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (keyEvent.key().checkKeyList(palette_menu_keys_) ||
-      (!asr_menu_key_.empty() && keyEvent.key().checkKeyList(asr_menu_key_)) ||
-      IsPureModifierKey(keyEvent.key())) {
+      (!asr_menu_key_.empty() && keyEvent.key().checkKeyList(asr_menu_key_))) {
+    hidePaletteMenu();
+    keyEvent.filterAndAccept();
+    return true;
+  }
+
+  if (IsPureModifierKey(keyEvent.key())) {
     keyEvent.filterAndAccept();
     return true;
   }
