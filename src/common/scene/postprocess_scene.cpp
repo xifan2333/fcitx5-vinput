@@ -17,10 +17,6 @@ bool HasModel(const Definition& scene) {
   return !scene.model.empty();
 }
 
-bool HasPrompt(const Definition& scene) {
-  return !scene.prompt.empty();
-}
-
 bool SetValidationError(std::string* error, std::string message) {
   if (error) {
     *error = std::move(message);
@@ -99,9 +95,6 @@ bool ValidateDefinition(const Definition& scene, std::string* error, bool requir
   const bool has_model = HasModel(scene);
   if (has_provider != has_model) {
     return SetValidationError(error, "Scene provider and model must be configured together.");
-  }
-  if ((has_provider || has_model) && !HasPrompt(scene)) {
-    return SetValidationError(error, "Scene prompt must not be empty when provider/model is set.");
   }
   return true;
 }
