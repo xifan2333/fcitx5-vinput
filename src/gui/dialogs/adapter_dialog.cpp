@@ -9,7 +9,10 @@
 #include <QMessageBox>
 #include <QTextEdit>
 #include <QVBoxLayout>
+#include <QtCore/qcoreapplication.h>
 #include <QtWidgets/qcheckbox.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qmessagebox.h>
 
 #include "utils/gui_helpers.h"
 

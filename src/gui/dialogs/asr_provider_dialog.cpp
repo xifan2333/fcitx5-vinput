@@ -13,6 +13,8 @@
 #include <QSpinBox>
 #include <QTextEdit>
 #include <QVBoxLayout>
+#include <QtCore/qcoreapplication.h>
+#include <QtWidgets/qmessagebox.h>
 
 #include "config.h"
 #if VINPUT_ENABLE_LOCAL_ASR

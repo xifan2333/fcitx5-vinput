@@ -11,6 +11,7 @@
 #include <QNetworkRequest>
 #include <QTimer>
 #include <QUrl>
+#include <QtCore/qcoreapplication.h>
 #include <vector>
 
 #include "common/llm/defaults.h"
