@@ -4,6 +4,8 @@
 #include <QLocale>
 #include <QStandardPaths>
 #include <QTranslator>
+#include <QtCore/qlibraryinfo.h>
+#include <QtCore/qstringliteral.h>
 
 #include "mainwindow.h"
 
@@ -66,7 +68,7 @@ int main(int argc, char* argv[]) {
 
   QTranslator translator;
   if (TryLoadTranslation(translator, "vinput-gui")) {
-    app.installTranslator(&translator);
+    QCoreApplication::installTranslator(&translator);
   }
 
   // Qt's own translations (qtbase_*) cover standard dialog buttons such as
@@ -74,7 +76,7 @@ int main(int argc, char* argv[]) {
   QTranslator qtTranslator;
   if (qtTranslator.load(QLocale::system(), QStringLiteral("qtbase"), QStringLiteral("_"),
                         QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
-    app.installTranslator(&qtTranslator);
+    QCoreApplication::installTranslator(&qtTranslator);
   }
 
   MainWindow window;
