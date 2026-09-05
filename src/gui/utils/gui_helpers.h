@@ -7,9 +7,6 @@
 
 namespace vinput::gui {
 
-// Translate helper for non-QObject contexts.
-QString GuiTranslate(const char* sourceText);
-
 // Split text into non-empty trimmed lines.
 QStringList NonEmptyLines(const QString& text);
 

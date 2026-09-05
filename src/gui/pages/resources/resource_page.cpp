@@ -544,20 +544,20 @@ void ResourcePage::refreshAll() {
           self->remoteAdapters_ = std::move(remote_adapters);
 
           if (!models_error.empty()) {
-            self->textLog_->append(
-                self->tr("Models fetch error: %1").arg(QString::fromStdString(models_error)));
+            self->textLog_->append(ResourcePage::tr("Models fetch error: %1")
+                                       .arg(QString::fromStdString(models_error)));
           }
           if (!providers_error.empty()) {
-            self->textLog_->append(
-                self->tr("Providers fetch error: %1").arg(QString::fromStdString(providers_error)));
+            self->textLog_->append(ResourcePage::tr("Providers fetch error: %1")
+                                       .arg(QString::fromStdString(providers_error)));
           }
           if (!adapters_error.empty()) {
-            self->textLog_->append(
-                self->tr("Adapters fetch error: %1").arg(QString::fromStdString(adapters_error)));
+            self->textLog_->append(ResourcePage::tr("Adapters fetch error: %1")
+                                       .arg(QString::fromStdString(adapters_error)));
           }
           for (const auto& warning : warnings) {
             self->textLog_->append(
-                self->tr("Registry warning: %1").arg(QString::fromStdString(warning)));
+                ResourcePage::tr("Registry warning: %1").arg(QString::fromStdString(warning)));
           }
 
           // Paint remotes with the current map first so rows appear even

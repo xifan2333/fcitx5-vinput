@@ -37,7 +37,6 @@
 
 #include "config.h"
 #include "dialogs/asr_provider_dialog.h"
-#include "utils/gui_helpers.h"
 
 namespace vinput::gui {
 
@@ -392,7 +391,7 @@ void ControlPage::populateAsrList(const CoreConfig& config,
         model = QString::fromStdString(
             vinput::registry::LookupI18n(i18n_map, local->model + ".title", local->model));
       }
-      display += " · " + (model.isEmpty() ? GuiTranslate("(not set)") : model);
+      display += " · " + (model.isEmpty() ? tr("(not set)") : model);
     } else if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
       display += " · " + QString::fromStdString(command->command);
     }
@@ -558,7 +557,7 @@ void ControlPage::refreshAdapterList() {
         vinput::registry::LookupI18n(i18n_map, adapter.id + ".title", adapter.id));
     const bool running = vinput::adapter::IsRunning(adapter.id);
 
-    QString display = title + " · " + (running ? GuiTranslate("running") : GuiTranslate("stopped"));
+    QString display = title + " · " + (running ? tr("running") : tr("stopped"));
     display += " · " + (adapter.autoStart ? tr("autostart") : tr("manual"));
     const QString command = QString::fromStdString(adapter.command);
     if (!command.isEmpty()) {
@@ -735,7 +734,7 @@ void ControlPage::onDaemonStart() {
       }
       if (!result.ok()) {
         vinput::cli::NotifyDaemonNotification(result.notification);
-        QMessageBox::critical(self, self->tr("Error"),
+        QMessageBox::critical(self, ControlPage::tr("Error"),
                               QString::fromStdString(result.failure_message));
       }
       self->refreshDaemonStatus();
@@ -772,7 +771,7 @@ void ControlPage::onDaemonRestart() {
       }
       if (!result.ok()) {
         vinput::cli::NotifyDaemonNotification(result.notification);
-        QMessageBox::critical(self, self->tr("Error"),
+        QMessageBox::critical(self, ControlPage::tr("Error"),
                               QString::fromStdString(result.failure_message));
       }
       self->refreshDaemonStatus();
