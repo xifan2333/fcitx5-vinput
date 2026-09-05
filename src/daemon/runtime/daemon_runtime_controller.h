@@ -36,6 +36,7 @@ public:
   DbusService::MethodResult StartRecording();
   DbusService::MethodResult StartCommandRecording(const std::string& selected_text);
   DbusService::MethodResult StopRecording(const std::string& scene_id);
+  DbusService::MethodResult CancelPostprocessing(bool commit_raw_text);
   DbusService::MethodResult ReloadAsrBackend();
   std::string GetStatus() const;
   vinput::dbus::AsrBackendState GetAsrBackendState() const;
@@ -46,6 +47,14 @@ public:
   void Shutdown();
 
 private:
+  enum class PostprocessingState : std::uint8_t {
+    Inactive,
+    Dictation,
+    Command,
+    Discard,
+    CommitRaw
+  };
+
   DbusService::MethodResult StartRecordingInternal(bool is_command,
                                                    const std::string& selected_text);
   bool SynchronizeAsrBackend(std::string* error = nullptr);
@@ -54,7 +63,8 @@ private:
   void ScheduleCaptureStopOnMainThread();
   void RestoreOutputIfDucked();
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> ReleaseActiveSessionLocked();
-  void SetPhase(vinput::dbus::Status new_phase);
+  void EnterPostprocessing(bool command_mode);
+  PostprocessingState TakePostprocessingState();
   void ResetToIdle();
   void WorkerMain();
 
@@ -69,6 +79,8 @@ private:
   mutable std::mutex session_io_mutex_;
   std::condition_variable worker_cv_;
   vinput::dbus::Status phase_ = vinput::dbus::Status::Idle;
+  PostprocessingState postprocessing_state_ = PostprocessingState::Inactive;
+  std::atomic<bool> postprocessing_cancel_requested_{false};
   std::optional<RecognitionOrder> current_order_;
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> active_session_;
   vinput::daemon::asr::BackendDescriptor active_backend_;

@@ -267,6 +267,9 @@ msgstr "语音输入守护进程暂时不可用。"
 msgid "Command Palette"
 msgstr "命令面板"
 
+msgid "Requested post-processing action is not available."
+msgstr "请求的后处理操作当前不可用。"
+
 #, c-format
 msgid "Search: %s"
 msgstr "搜索: %s"

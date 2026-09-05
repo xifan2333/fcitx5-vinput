@@ -259,6 +259,9 @@ msgstr ""
 msgid "Recording is not active."
 msgstr ""
 
+msgid "Requested post-processing action is not available."
+msgstr ""
+
 #, c-format
 msgid "Switched scene to '%s'."
 msgstr ""

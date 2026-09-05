@@ -14,6 +14,8 @@
 #include <string_view>
 
 #include "common/asr/recognition_result.h"
+#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/llm/defaults.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
@@ -50,8 +52,15 @@ struct CurlGuard {
 };
 
 struct CurlRequestContext {
-  const std::atomic<bool>* cancel_flag = nullptr;
+  const std::atomic<bool>* shutdown_flag = nullptr;
+  const std::atomic<bool>* request_cancel_flag = nullptr;
 };
+
+bool CancellationRequested(const CurlRequestContext& ctx) {
+  return (ctx.shutdown_flag != nullptr && ctx.shutdown_flag->load(std::memory_order_relaxed)) ||
+         (ctx.request_cancel_flag != nullptr &&
+          ctx.request_cancel_flag->load(std::memory_order_relaxed));
+}
 
 size_t WriteResponseCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const size_t total = size * nmemb;
@@ -68,10 +77,7 @@ size_t WriteResponseCallback(char* ptr, size_t size, size_t nmemb, void* userdat
 
 int ProgressCallback(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
   const auto* ctx = static_cast<const CurlRequestContext*>(clientp);
-  if (!ctx || !ctx->cancel_flag) {
-    return 0;
-  }
-  return ctx->cancel_flag->load(std::memory_order_relaxed) ? 1 : 0;
+  return ctx != nullptr && CancellationRequested(*ctx) ? 1 : 0;
 }
 
 std::string_view TrimAsciiWhitespace(std::string_view text) {
@@ -287,8 +293,18 @@ std::optional<std::vector<std::string>>
 RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Definition& scene,
                             const LlmProvider& provider, int max_llm_candidates,
                             std::string* error_out, const std::string& task_prompt = {},
-                            const std::atomic<bool>* cancel_flag = nullptr,
+                            const std::atomic<bool>* shutdown_flag = nullptr,
+                            const std::atomic<bool>* request_cancel_flag = nullptr,
                             std::string_view asr_var = {}, std::string_view selected_var = {}) {
+  CurlRequestContext request_context{.shutdown_flag = shutdown_flag,
+                                     .request_cancel_flag = request_cancel_flag};
+  if (CancellationRequested(request_context)) {
+    if (error_out != nullptr) {
+      error_out->clear();
+    }
+    return std::nullopt;
+  }
+
   CurlGuard guard;
   guard.curl = curl_easy_init();
   if (!guard.curl) {
@@ -397,7 +413,6 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   std::string response_body;
   curl_easy_setopt(guard.curl, CURLOPT_URL, url.c_str());
   curl_easy_setopt(guard.curl, CURLOPT_WRITEDATA, &response_body);
-  CurlRequestContext request_context{.cancel_flag = cancel_flag};
   curl_easy_setopt(guard.curl, CURLOPT_NOPROGRESS, 0L);
   curl_easy_setopt(guard.curl, CURLOPT_XFERINFOFUNCTION, ProgressCallback);
   curl_easy_setopt(guard.curl, CURLOPT_XFERINFODATA, &request_context);
@@ -409,11 +424,11 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   curl_easy_getinfo(guard.curl, CURLINFO_TOTAL_TIME, &total_time_sec);
   const double total_time_ms = total_time_sec * 1000.0;
 
-  const bool cancelled = curl_code == CURLE_ABORTED_BY_CALLBACK && cancel_flag &&
-                         cancel_flag->load(std::memory_order_relaxed);
+  const bool cancelled =
+      curl_code == CURLE_ABORTED_BY_CALLBACK && CancellationRequested(request_context);
 
   if (cancelled) {
-    vinput::debug::Log("LLM request provider=%s url=%s cancelled during shutdown after %.1fms\n",
+    vinput::debug::Log("LLM request provider=%s url=%s cancelled after %.1fms\n",
                        provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(),
                        total_time_ms);
     if (error_out) {
@@ -507,8 +522,8 @@ void PostProcessor::Shutdown() {
 
 vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
                                                const vinput::scene::Definition& scene,
-                                               const CoreConfig& settings,
-                                               std::string* error_out) const {
+                                               const CoreConfig& settings, std::string* error_out,
+                                               const std::atomic<bool>* cancel_flag) const {
   std::string normalized = std::string(TrimAsciiWhitespace(raw_text));
   if (normalized.empty()) {
     return {};
@@ -526,7 +541,7 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
   }
 
   auto rewritten = RewriteWithOpenAiCompatible(normalized, scene, *provider, max_llm_candidates,
-                                               error_out, {}, &shutting_down_);
+                                               error_out, {}, &shutting_down_, cancel_flag);
   if (!rewritten.has_value()) {
     return fallback;
   }
@@ -569,7 +584,8 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
 vinput::result::Payload
 PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& selected_text,
                               const vinput::scene::Definition& command_scene,
-                              const CoreConfig& settings, std::string* error_out) const {
+                              const CoreConfig& settings, std::string* error_out,
+                              const std::atomic<bool>* cancel_flag) const {
   std::string normalized_asr = std::string(TrimAsciiWhitespace(asr_text));
 
   vinput::result::Payload fallback;
@@ -628,9 +644,9 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
   // Data is already embedded in task_prompt (legacy XML tags) or will be
   // substituted via {{asr}}/{{selected}} (interpolation). Pass empty text to
   // avoid double-appending.
-  auto rewritten =
-      RewriteWithOpenAiCompatible("", command_scene, *provider, command_max_llm_candidates,
-                                  error_out, task_prompt, &shutting_down_, asr_var, selected_var);
+  auto rewritten = RewriteWithOpenAiCompatible("", command_scene, *provider,
+                                               command_max_llm_candidates, error_out, task_prompt,
+                                               &shutting_down_, cancel_flag, asr_var, selected_var);
 
   vinput::result::Payload payload;
   std::set<std::string> seen;
