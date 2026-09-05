@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <fcitx/inputcontext.h>
 #include <functional>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -52,9 +51,9 @@ class PaletteCommandRegistry {
 public:
   void registerCommand(PaletteCommand command);
   void clear();
-  const PaletteCommand* findByNameOrAlias(std::string_view token) const;
-  const PaletteCommand* findByCategory(PaletteCategory category) const;
-  const std::vector<PaletteCommand>& commands() const { return commands_; }
+  [[nodiscard]] const PaletteCommand* findByNameOrAlias(std::string_view token) const;
+  [[nodiscard]] const PaletteCommand* findByCategory(PaletteCategory category) const;
+  [[nodiscard]] const std::vector<PaletteCommand>& commands() const { return commands_; }
 
 private:
   std::vector<PaletteCommand> commands_;

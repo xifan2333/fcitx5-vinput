@@ -2,13 +2,16 @@
 
 #include <algorithm>
 #include <cctype>
+#include <string>
+#include <string_view>
+#include <utility>
 
 namespace {
 
 std::string ToLower(std::string_view str) {
   std::string res;
   res.reserve(str.size());
-  for (char ch : str) {
+  for (const char ch : str) {
     res.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
   }
   return res;

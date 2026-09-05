@@ -30,6 +30,7 @@
 
 #include "config.h"
 #include "core/vinput.h"
+#include "menu/palette_command.h"
 
 namespace {
 
