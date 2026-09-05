@@ -1,54 +1,54 @@
 <?xml version='1.0' encoding='utf-8'?>
-<TS version="2.1" language="zh_CN">
+<TS version="2.1" language="ts_ZA">
 <context>
     <name>AdapterDialog</name>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="54" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="57" />
         <source>Configure LLM Adapter</source>
         <translation>配置 LLM 适配器</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="65" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="68" />
         <source>One argument per line</source>
         <translation>每行一个参数</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="66" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="69" />
         <source>One KEY=VALUE entry per line</source>
         <translation>每行一个 KEY=VALUE 条目</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="67" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="70" />
         <source>Command or interpreter</source>
         <translation>命令或解释器</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="73" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="76" />
         <source>Adapter ID:</source>
         <translation>适配器 ID：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="74" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="77" />
         <source>Command / Interpreter:</source>
         <translation>命令 / 解释器：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="75" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="78" />
         <source>Args:</source>
         <translation>参数：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="76" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="79" />
         <source>Env:</source>
         <translation>环境变量：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="78" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="81" />
         <source>Start with daemon</source>
         <translation>随守护进程启动</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="102" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/adapter_dialog.cpp" line="105" />
         <source>Error</source>
         <translation>错误</translation>
     </message>
@@ -56,74 +56,74 @@
 <context>
     <name>AsrProviderDialog</name>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="107" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="109" />
         <source>local</source>
         <translation>本地</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="109" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="111" />
         <source>command</source>
         <translation>命令</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="112" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="114" />
         <source>One argument per line</source>
         <translation>每行一个参数</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="113" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="115" />
         <source>One KEY=VALUE entry per line</source>
         <translation>每行一个 KEY=VALUE 条目</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="164" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="166" />
         <source>Name:</source>
         <translation>名称：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="165" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="167" />
         <source>Type:</source>
         <translation>类型：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="166" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="168" />
         <source>Model:</source>
         <translation>模型：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="167" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="169" />
         <source>Command / Interpreter:</source>
         <translation>命令 / 解释器：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="168" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="170" />
         <source>Args:</source>
         <translation>参数：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="169" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="171" />
         <source>Env:</source>
         <translation>环境变量：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="170" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="172" />
         <source>Timeout (ms):</source>
         <translation>超时（毫秒）：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="187" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="207" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="219" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="189" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="209" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="221" />
         <source>Error</source>
         <translation>错误</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="188" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="190" />
         <source>Provider name must not be empty.</source>
         <translation>提供程序名称不能为空。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="208" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/dialogs/asr_provider_dialog.cpp" line="210" />
         <source>Command providers require a command.</source>
         <translation>命令类型的提供程序需要填写命令。</translation>
     </message>
@@ -131,37 +131,37 @@
 <context>
     <name>GuiHelpers</name>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="52" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="53" />
         <source>Provider name must not be empty.</source>
         <translation>提供程序名称不能为空。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="61" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="62" />
         <source>Base URL must be a valid http:// or https:// URL.</source>
         <translation>Base URL 必须是有效的 http:// 或 https:// 地址。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="80" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="81" />
         <source>Invalid env entry '%1'. Use KEY=VALUE.</source>
         <translation>无效的环境变量条目“%1”，请使用 KEY=VALUE 格式。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="111" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="112" />
         <source>No models returned. You can type one manually.</source>
         <translation>未返回任何模型，可手动输入。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="129" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="130" />
         <source>Failed to load models. Type one manually or reselect the provider to retry.</source>
         <translation>模型加载失败，可手动输入或重新选择提供程序重试。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="167" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="168" />
         <source>Loading models...</source>
         <translation>正在加载模型…</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="211" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/utils/gui_helpers.cpp" line="212" />
         <source>Provider returned invalid JSON for /v1/models.</source>
         <translation>提供程序的 /v1/models 返回了无效的 JSON。</translation>
     </message>
@@ -331,8 +331,8 @@
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/control/control_page.cpp" line="213" />
-        <source>&lt;b&gt;Adapters&lt;/b&gt;</source>
-        <translation>&lt;b&gt;适配器&lt;/b&gt;</translation>
+        <source>&lt;b&gt;LLM Adapters&lt;/b&gt;</source>
+        <translation>&lt;b&gt;LLM 适配器&lt;/b&gt;</translation>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/control/control_page.cpp" line="221" />
@@ -522,27 +522,27 @@
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="81" />
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="89" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="343" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="354" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="366" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="418" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="438" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="473" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="337" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="348" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="360" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="412" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="432" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="467" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="492" />
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="498" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="504" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="599" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="611" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="660" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="701" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="723" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="808" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="813" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="897" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="902" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="928" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="933" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="593" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="605" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="654" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="695" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="717" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="802" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="807" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="891" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="896" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="922" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="927" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="946" />
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="952" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="958" />
         <source>Error</source>
         <translation>错误</translation>
     </message>
@@ -578,325 +578,320 @@
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="168" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="214" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="208" />
         <source>Add</source>
         <translation>添加</translation>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="169" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="191" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="215" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="185" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="209" />
         <source>Edit</source>
         <translation>编辑</translation>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="170" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="192" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="216" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="186" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="210" />
         <source>Remove</source>
         <translation>移除</translation>
     </message>
     <message>
         <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="171" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="536" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="530" />
         <source>Test</source>
         <translation>测试</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="181" />
-        <source>LLM adapters are local OpenAI-compatible bridge processes. Install them from the Resources page, then manage runtime here.</source>
-        <translation>LLM 适配器是本地 OpenAI 兼容桥接进程。从资源页面安装后，可在此管理运行状态。</translation>
-    </message>
-    <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="193" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="187" />
         <source>Start</source>
         <translation>启动</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="194" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="188" />
         <source>Stop</source>
         <translation>停止</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="195" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="189" />
         <source>Refresh</source>
         <translation>刷新</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="204" />
-        <source>&lt;b&gt;Installed Adapters&lt;/b&gt;</source>
-        <translation>&lt;b&gt;已安装适配器&lt;/b&gt;</translation>
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="198" />
+        <source>&lt;b&gt;LLM Adapters&lt;/b&gt;</source>
+        <translation>&lt;b&gt;LLM 适配器&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="208" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="202" />
         <source>&lt;b&gt;Scenes&lt;/b&gt;</source>
         <translation>&lt;b&gt;场景&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="217" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="211" />
         <source>Activate</source>
         <translation>激活</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="276" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="270" />
         <source>running</source>
         <translation>运行中</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="276" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="270" />
         <source>stopped</source>
         <translation>已停止</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="277" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="271" />
         <source>autostart</source>
         <translation>自启动</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="277" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="271" />
         <source>manual</source>
         <translation>手动</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="291" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="285" />
         <source>Autostart: %1</source>
         <translation>自启动：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="291" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="285" />
         <source>enabled</source>
         <translation>已启用</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="291" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="285" />
         <source>disabled</source>
         <translation>已禁用</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="293" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="287" />
         <source>Command: %1</source>
         <translation>命令：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="299" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="293" />
         <source>Args: %1</source>
         <translation>参数：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="305" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="299" />
         <source>Env: %1</source>
         <translation>环境变量：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="314" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="308" />
         <source>Add LLM Provider</source>
         <translation>添加 LLM 提供商</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="323" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="399" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="317" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="393" />
         <source>Name:</source>
         <translation>名称：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="324" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="400" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="318" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="394" />
         <source>Base URL:</source>
         <translation>地址：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="325" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="401" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="319" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="395" />
         <source>API Key:</source>
         <translation>密钥：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="326" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="402" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="320" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="396" />
         <source>Extra body (JSON):</source>
         <translation>附加请求体 (JSON)：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="354" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="348" />
         <source>LLM provider '%1' already exists.</source>
         <translation>LLM 提供者 '%1' 已存在。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="366" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="438" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="473" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="611" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="660" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="813" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="902" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="933" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="958" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="360" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="432" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="467" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="605" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="654" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="807" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="896" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="927" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="952" />
         <source>Failed to save config.</source>
         <translation>保存配置失败。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="388" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="382" />
         <source>Edit LLM Provider</source>
         <translation>编辑 LLM 提供商</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="396" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="390" />
         <source>Leave empty to keep current key</source>
         <translation>留空保持当前密钥不变</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="454" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="632" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="922" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="448" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="626" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="916" />
         <source>Confirm</source>
         <translation>确认</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="455" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="449" />
         <source>Are you sure you want to remove LLM provider '%1'?</source>
         <translation>确定要移除 LLM 提供商"%1"吗？</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="482" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="476" />
         <source>Scenes Updated</source>
         <translation>场景已更新</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="483" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="477" />
         <source>Removed provider '%1' and cleared it from %2 scene(s).</source>
         <translation>已移除提供商"%1"，并从 %2 个场景中清除了它的引用。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="498" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="492" />
         <source>Provider '%1' not found.</source>
         <translation>未找到提供商"%1"。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="504" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="498" />
         <source>Provider base_url is empty.</source>
         <translation>提供商 base_url 为空。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="512" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="506" />
         <source>Testing...</source>
         <translation>测试中...</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="540" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="547" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="534" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="541" />
         <source>Test Failed</source>
         <translation>测试失败</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="541" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="535" />
         <source>Connection to '%1' failed:
 %2</source>
         <translation>连接"%1"失败：
 %2</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="548" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="542" />
         <source>Invalid response from '%1'.</source>
         <translation>"%1"返回了无效的响应。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="565" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="559" />
         <source>Connected to '%1'.
 Found %2 model(s).</source>
         <translation>已连接"%1"。
 找到 %2 个模型。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="569" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="563" />
         <source>Test Succeeded</source>
         <translation>测试成功</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="600" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="594" />
         <source>Adapter '%1' not found in configuration.</source>
         <translation>配置中未找到适配器"%1"。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="633" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="627" />
         <source>Are you sure you want to remove LLM adapter '%1'?</source>
         <translation>确定要移除 LLM 适配器“%1”吗？</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="704" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="698" />
         <source>LLM Adapter Started</source>
         <translation>LLM 适配器已启动</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="705" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="699" />
         <source>Adapter '%1' started.</source>
         <translation>适配器"%1"已启动。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="746" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="740" />
         <source>Add Scene</source>
         <translation>添加场景</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="767" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="857" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="761" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="851" />
         <source>Include raw transcript in candidate options</source>
         <translation>在候选词选项中包含原始语音文本</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="772" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="863" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="766" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="857" />
         <source>ID:</source>
         <translation>ID：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="773" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="864" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="767" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="858" />
         <source>Label:</source>
         <translation>标签：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="774" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="865" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="768" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="859" />
         <source>Prompt:</source>
         <translation>提示词：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="775" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="866" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="769" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="860" />
         <source>Provider:</source>
         <translation>提供者：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="776" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="867" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="770" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="861" />
         <source>Model:</source>
         <translation>模型：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="777" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="868" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="771" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="862" />
         <source>Context Lines:</source>
         <translation>上下文行数：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="778" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="869" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="772" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="863" />
         <source>Candidate Count:</source>
         <translation>候选数量：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="779" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="870" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="773" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="864" />
         <source>Timeout (ms):</source>
         <translation>超时（毫秒）：</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="834" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="828" />
         <source>Edit Scene</source>
         <translation>编辑场景</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="922" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/llm/llm_page.cpp" line="916" />
         <source>Are you sure you want to remove scene '%1'?</source>
         <translation>确定要移除场景"%1"吗？</translation>
     </message>
@@ -1106,132 +1101,132 @@ Found %2 model(s).</source>
         <translation>正在获取远程注册表...</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="548" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="547" />
         <source>Models fetch error: %1</source>
         <translation>获取模型出错：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="552" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="551" />
         <source>Providers fetch error: %1</source>
         <translation>获取提供者出错：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="557" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="555" />
         <source>Adapters fetch error: %1</source>
         <translation>获取适配器出错：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="562" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="560" />
         <source>Registry warning: %1</source>
         <translation>注册表警告：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="613" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="617" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="661" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="669" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="679" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="944" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="961" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="1021" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="611" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="615" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="659" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="667" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="677" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="942" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="959" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="1019" />
         <source>Error</source>
         <translation>错误</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="617" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="669" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="961" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="1021" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="615" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="667" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="959" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="1019" />
         <source>Failed to save config.</source>
         <translation>保存配置失败。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="624" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="970" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="622" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="968" />
         <source>Warning</source>
         <translation>警告</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="625" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="680" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="971" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="623" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="678" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="969" />
         <source>Config saved, but failed to reload ASR backend: %1</source>
         <translation>配置已保存，但重新加载 ASR 后端失败：%1</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="629" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="627" />
         <source>Selected model '%1' saved as the preferred local ASR model. Backend reload is in progress.</source>
         <translation>已将所选模型"%1"保存为首选本地 ASR 模型。后端正在重新加载。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="654" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="931" />
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="994" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="652" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="929" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="992" />
         <source>Confirm</source>
         <translation>确认</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="654" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="652" />
         <source>Are you sure you want to remove model '%1'?</source>
         <translation>确定要移除模型"%1"吗？</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="673" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="671" />
         <source>Removed %1.</source>
         <translation>已移除 %1。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="690" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="688" />
         <source>Downloading... %1% at %2</source>
         <translation>正在下载... %1% 速度 %2</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="697" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="695" />
         <source>Download Error</source>
         <translation>下载错误</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="742" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="740" />
         <source>Preparing download...</source>
         <translation>正在准备下载...</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="771" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="769" />
         <source>Starting download for %1...</source>
         <translation>开始下载 %1...</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="822" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="820" />
         <source>Installing provider %1...</source>
         <translation>正在安装提供者 %1...</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="871" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="869" />
         <source>Installing adapter %1...</source>
         <translation>正在安装适配器 %1...</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="931" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="929" />
         <source>Are you sure you want to remove ASR provider '%1'?</source>
         <translation>确定要移除 ASR 提供商“%1”吗？</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="944" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="942" />
         <source>The local ASR provider cannot be removed.</source>
         <translation>本地 ASR 提供商不能被移除。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="964" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="962" />
         <source>Removed ASR provider %1.</source>
         <translation>已移除 ASR 提供商 %1。</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="994" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="992" />
         <source>Are you sure you want to remove LLM adapter '%1'?</source>
         <translation>确定要移除 LLM 适配器“%1”吗？</translation>
     </message>
     <message>
-        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="1024" />
+        <location filename="../home/xifan/Code/fcitx5-vinput/src/gui/pages/resources/resource_page.cpp" line="1022" />
         <source>Removed LLM adapter %1.</source>
         <translation>已移除 LLM 适配器 %1。</translation>
     </message>
