@@ -200,6 +200,9 @@ void to_json(json& j, const Definition& d) {
   if (d.context_lines != vinput::scene::kDefaultContextLines) {
     j["context_lines"] = d.context_lines;
   }
+  if (!d.show_raw) {
+    j["show_raw"] = false;
+  }
 }
 
 void from_json(const json& j, Definition& d) {
@@ -211,6 +214,7 @@ void from_json(const json& j, Definition& d) {
   d.llm_max_candidates = j.value("count", vinput::scene::kDefaultLlmMaxCandidates);
   d.timeout_ms = j.value("timeout_ms", vinput::scene::kDefaultTimeoutMs);
   d.context_lines = j.value("context_lines", vinput::scene::kDefaultContextLines);
+  d.show_raw = j.value("show_raw", true);
 }
 
 } // namespace vinput::scene

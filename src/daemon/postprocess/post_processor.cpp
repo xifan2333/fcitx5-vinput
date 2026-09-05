@@ -538,8 +538,10 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
   vinput::result::Payload payload;
   std::set<std::string> seen;
 
-  AppendCandidate(payload, normalized, vinput::result::kSourceRaw);
-  seen.insert(normalized);
+  if (scene.show_raw) {
+    AppendCandidate(payload, normalized, vinput::result::kSourceRaw);
+    seen.insert(normalized);
+  }
 
   std::string first_llm_text;
   int accepted_llm_candidates = 0;
@@ -558,6 +560,10 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
         break;
       }
     }
+  }
+
+  if (payload.candidates.empty()) {
+    return fallback;
   }
 
   payload.commitText = first_llm_text.empty() ? normalized : first_llm_text;

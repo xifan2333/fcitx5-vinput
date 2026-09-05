@@ -1,5 +1,6 @@
 #include "pages/llm/llm_page.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -26,6 +27,7 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QtWidgets/qcheckbox.h>
 #include <algorithm>
 #include <filesystem>
 #include <nlohmann/json.hpp>
@@ -762,6 +764,8 @@ void LlmPage::onSceneAdd() {
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(vinput::scene::kDefaultContextLines);
+  auto* chkShowRaw = new QCheckBox(tr("Include raw transcript in candidate options"));
+  chkShowRaw->setChecked(true);
 
   SetupProviderModelCombos(comboProvider, comboModel);
 
@@ -773,6 +777,7 @@ void LlmPage::onSceneAdd() {
   form->addRow(tr("Context Lines:"), spinContextLines);
   form->addRow(tr("Candidate Count:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
+  form->addRow(QString(), chkShowRaw);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
   connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -794,6 +799,7 @@ void LlmPage::onSceneAdd() {
   def.context_lines = spinContextLines->value();
   def.llm_max_candidates = spinLlmMaxCandidates->value();
   def.timeout_ms = spinTimeout->value();
+  def.show_raw = chkShowRaw->isChecked();
 
   CoreConfig config = ConfigManager::Get().Load();
   std::string err;
@@ -848,6 +854,8 @@ void LlmPage::onSceneEdit() {
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(found->context_lines);
+  auto* chkShowRaw = new QCheckBox(tr("Include raw transcript in candidate options"));
+  chkShowRaw->setChecked(found->show_raw);
 
   SetupProviderModelCombos(comboProvider, comboModel, QString::fromStdString(found->provider_id),
                            QString::fromStdString(found->model));
@@ -860,6 +868,7 @@ void LlmPage::onSceneEdit() {
   form->addRow(tr("Context Lines:"), spinContextLines);
   form->addRow(tr("Candidate Count:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
+  form->addRow(QString(), chkShowRaw);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
   connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -880,6 +889,7 @@ void LlmPage::onSceneEdit() {
   def.context_lines = spinContextLines->value();
   def.llm_max_candidates = spinLlmMaxCandidates->value();
   def.timeout_ms = spinTimeout->value();
+  def.show_raw = chkShowRaw->isChecked();
 
   std::string err;
   sc = ToSceneConfig(config.scenes);

@@ -153,10 +153,13 @@ rewrite raw ASR text.
 \f[B]scene list\f[R]
 List all defined recognition scenes.
 .TP
-\f[B]scene add\f[R] \f[B]\-\-id\f[R] \f[I]ID\f[R] [\f[B]\-l\f[R], \f[B]\-\-label\f[R] \f[I]LABEL\f[R]] [\f[B]\-t\f[R], \f[B]\-\-prompt\f[R] \f[I]PROMPT\f[R]] [\f[B]\-p\f[R], \f[B]\-\-provider\f[R] \f[I]PROVIDER_ID\f[R]] [\f[B]\-m\f[R], \f[B]\-\-model\f[R] \f[I]MODEL\f[R]] [\f[B]\-c\f[R], \f[B]\-\-count\f[R] \f[I]N\f[R]]
+\f[B]scene add\f[R] \f[B]\-\-id\f[R] \f[I]ID\f[R] [\f[B]\-l\f[R], \f[B]\-\-label\f[R] \f[I]LABEL\f[R]] [\f[B]\-t\f[R], \f[B]\-\-prompt\f[R] \f[I]PROMPT\f[R]] [\f[B]\-p\f[R], \f[B]\-\-provider\f[R] \f[I]PROVIDER_ID\f[R]] [\f[B]\-m\f[R], \f[B]\-\-model\f[R] \f[I]MODEL\f[R]] [\f[B]\-c\f[R], \f[B]\-\-count\f[R] \f[I]N\f[R]] [\f[B]\-\-show\-raw\f[R] [\f[I]BOOL\f[R]]]
 Add a new scene definition.
 \f[I]N\f[R] is the maximum number of distinct rewrites requested from
 the LLM; \f[CR]0\f[R] disables LLM processing for the scene.
+Pass \f[B]\-\-show\-raw false\f[R] to exclude the raw ASR transcript
+from candidates, allowing single\-candidate rewrites to commit directly
+to screen.
 .TP
 \f[B]scene edit\f[R] \f[I]ID\f[R] [\f[I]OPTIONS\f[R]]
 Modify an existing scene configuration.
