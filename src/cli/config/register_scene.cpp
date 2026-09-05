@@ -28,6 +28,7 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
     int llmMaxCandidates = vinput::scene::kDefaultLlmMaxCandidates;
     int timeoutMs = vinput::scene::kDefaultTimeoutMs;
     int contextLines = vinput::scene::kDefaultContextLines;
+    bool showRaw = true;
   };
   auto addState = std::make_shared<AddState>();
   auto* add = scene->add_subcommand("add", _("Add a new scene"));
@@ -44,11 +45,15 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   add->add_option("--context-lines", addState->contextLines,
                   _("Number of previous lines sent as LLM context"))
       ->default_val(vinput::scene::kDefaultContextLines);
+  add->add_flag("--show-raw,!--no-show-raw", addState->showRaw,
+                _("Include raw ASR transcript in candidate options"))
+      ->default_val(true);
   add->callback([action, addState]() {
     *action = [addState](Formatter& fmt, const CliContext& ctx) {
       return RunSceneConfigAdd(addState->id, addState->label, addState->prompt,
                                addState->providerId, addState->model, addState->llmMaxCandidates,
-                               addState->timeoutMs, addState->contextLines, fmt, ctx);
+                               addState->timeoutMs, addState->contextLines, addState->showRaw, fmt,
+                               ctx);
     };
   });
 
@@ -80,6 +85,7 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
     int llmMaxCandidates = vinput::scene::kDefaultLlmMaxCandidates;
     int timeoutMs = vinput::scene::kDefaultTimeoutMs;
     int contextLines = vinput::scene::kDefaultContextLines;
+    bool showRaw = true;
     bool hasLabel = false;
     bool hasPrompt = false;
     bool hasProvider = false;
@@ -87,6 +93,7 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
     bool hasLlmMaxCandidates = false;
     bool hasTimeout = false;
     bool hasContextLines = false;
+    bool hasShowRaw = false;
   };
   auto editState = std::make_shared<EditState>();
   auto* edit = scene->add_subcommand("edit", _("Edit a scene"));
@@ -102,7 +109,9 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
       edit->add_option("--timeout", editState->timeoutMs, _("Request timeout in milliseconds"));
   auto* eCtx = edit->add_option("--context-lines", editState->contextLines,
                                 _("Number of previous lines sent as LLM context"));
-  edit->callback([action, editState, eLbl, ePmt, ePrv, eMdl, eCnd, eTmo, eCtx]() {
+  auto* eRaw = edit->add_flag("--show-raw,!--no-show-raw", editState->showRaw,
+                              _("Include raw ASR transcript in candidate options"));
+  edit->callback([action, editState, eLbl, ePmt, ePrv, eMdl, eCnd, eTmo, eCtx, eRaw]() {
     editState->hasLabel = eLbl->count() > 0;
     editState->hasPrompt = ePmt->count() > 0;
     editState->hasProvider = ePrv->count() > 0;
@@ -110,13 +119,14 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
     editState->hasLlmMaxCandidates = eCnd->count() > 0;
     editState->hasTimeout = eTmo->count() > 0;
     editState->hasContextLines = eCtx->count() > 0;
+    editState->hasShowRaw = eRaw->count() > 0;
     *action = [editState](Formatter& fmt, const CliContext& ctx) {
       return RunSceneConfigEdit(
           editState->id, editState->label, editState->prompt, editState->providerId,
           editState->model, editState->llmMaxCandidates, editState->timeoutMs,
-          editState->contextLines, editState->hasLabel, editState->hasPrompt,
+          editState->contextLines, editState->showRaw, editState->hasLabel, editState->hasPrompt,
           editState->hasProvider, editState->hasModel, editState->hasLlmMaxCandidates,
-          editState->hasTimeout, editState->hasContextLines, fmt, ctx);
+          editState->hasTimeout, editState->hasContextLines, editState->hasShowRaw, fmt, ctx);
     };
   });
 }
