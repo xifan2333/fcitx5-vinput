@@ -30,9 +30,11 @@
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <system_error>
+#include <vector>
 
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"
+#include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
 #include "common/scene/postprocess_scene.h"
@@ -459,6 +461,7 @@ void LlmPage::onLlmRemove() {
   int cleared_scene_refs = 0;
   if (it != providers.end()) {
     providers.erase(it);
+    vinput::llm::RemoveProviderModels(provider_name.toStdString());
     vinput::scene::Config sc = ToSceneConfig(config.scenes);
     cleared_scene_refs = vinput::scene::ClearProviderReferences(&sc, provider_name.toStdString());
     if (cleared_scene_refs > 0) {
@@ -550,6 +553,12 @@ void LlmPage::onLlmTest() {
                 models.append(id);
             }
             models.sort();
+            std::vector<std::string> models_vec;
+            models_vec.reserve(models.size());
+            for (const auto& m : models) {
+              models_vec.push_back(m.toStdString());
+            }
+            vinput::llm::SaveProviderModels(provider_id.toStdString(), models_vec);
             QString msg =
                 tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(models.size());
             if (!models.isEmpty()) {

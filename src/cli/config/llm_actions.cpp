@@ -11,6 +11,7 @@
 #include "common/i18n.h"
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"
+#include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/string_utils.h"
@@ -486,6 +487,7 @@ int RunLlmConfigRemove(const std::string& id, Formatter& fmt, const CliContext& 
   }
 
   providers.erase(it);
+  vinput::llm::RemoveProviderModels(id);
   if (!SaveConfigOrFail(config, fmt)) {
     return 1;
   }
@@ -616,6 +618,8 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
       }
     }
   }
+
+  vinput::llm::SaveProviderModels(id, models);
 
   if (ctx.json_output) {
     nlohmann::json result = {

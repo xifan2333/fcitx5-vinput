@@ -125,11 +125,8 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                               if (last_active_ic_ == ic) {
                                 last_active_ic_ = nullptr;
                               }
-                              if (scene_menu_ic_ == ic) {
-                                resetSceneMenuState();
-                              }
-                              if (asr_menu_ic_ == ic) {
-                                resetAsrMenuState();
+                              if (palette_menu_ic_ == ic) {
+                                resetPaletteMenuState();
                               }
                               if (result_menu_ic_ == ic) {
                                 resetResultMenuState();
@@ -205,14 +202,14 @@ void VinputEngine::setConfig(const fcitx::RawConfig& rawConfig) {
 void VinputEngine::applySettings() {
   trigger_keys_ = config_.triggerKeys.value();
   command_keys_ = config_.commandKeys.value();
-  scene_menu_key_ = config_.sceneMenuKeys.value();
+  palette_menu_keys_ = config_.sceneMenuKeys.value();
   asr_menu_key_ = config_.asrMenuKeys.value();
   page_prev_keys_ = config_.pagePrevKeys.value();
   page_next_keys_ = config_.pageNextKeys.value();
   trigger_mode_ = config_.triggerMode.value();
   max_streaming_display_width_ = config_.maxStreamingDisplayWidth.value();
   reloadSceneConfig();
-  reloadAsrMenuItems();
+  reloadPaletteItems();
 }
 
 void VinputEngine::reloadSceneConfig() {

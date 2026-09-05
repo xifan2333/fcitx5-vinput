@@ -53,11 +53,8 @@ Keybindings can be customized in Fcitx5 Configuration → Addons → Vinput:
 **Control_R** (Command Key)
 :   Hold after selecting text in any application to modify or rewrite the selection using voice instructions.
 
-**F8** (ASR Menu Key)
-:   Open the interactive switcher popup to switch ASR models or cloud providers at runtime.
-
-**Shift_R** (Scene Menu Key)
-:   Open the scene switcher popup to toggle LLM rewriting prompts on the fly.
+**Shift_R** (Command Palette Key)
+:   Open the unified interactive command palette with scoped slash filtering (`/a` for ASR, `/s` for scenes, `/m` for command models, `/p` for adapter processes) and global search.
 
 **Page Up** / **Page Down**, **Up** / **Down**, **1**-**9**
 :   Navigate and select candidate text.

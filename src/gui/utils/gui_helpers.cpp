@@ -11,8 +11,10 @@
 #include <QNetworkRequest>
 #include <QTimer>
 #include <QUrl>
+#include <vector>
 
 #include "common/llm/defaults.h"
+#include "common/llm/provider_model_cache.h"
 #include "common/utils/url_utils.h"
 
 #include "gui/utils/config_manager.h"
@@ -188,7 +190,8 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
 
   QObject::connect(
       reply, &QNetworkReply::finished, comboModel,
-      [comboModel, reply, timeout, cacheKey, generation]() {
+      [comboModel, reply, timeout, cacheKey, generation,
+       provider_id = provider.id.toStdString()]() {
         timeout->stop();
 
         const bool stale =
@@ -223,6 +226,12 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
         if (!stale) {
           if (success) {
             cache.insert(cacheKey, models);
+            std::vector<std::string> models_vec;
+            models_vec.reserve(models.size());
+            for (const auto& m : models) {
+              models_vec.push_back(m.toStdString());
+            }
+            vinput::llm::SaveProviderModels(provider_id, models_vec);
             ApplyFetchedProviderModels(comboModel, models);
           } else {
             ApplyProviderModelFetchError(comboModel, error);

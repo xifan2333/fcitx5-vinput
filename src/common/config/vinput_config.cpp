@@ -56,21 +56,21 @@ std::string CommandKeysTooltip() {
 }
 
 std::string SceneMenuKeyLabel() {
-  return _("Postprocess Menu Keys");
+  return _("Command Palette Keys");
 }
 
 std::string SceneMenuKeyTooltip() {
-  return _("Configure one or more keys to open the postprocess menu. The "
+  return _("Configure one or more keys to open the unified command palette (/a, /s, /m, /p). The "
            "default is Right Shift.");
 }
 
 std::string AsrMenuKeyLabel() {
-  return _("ASR Menu Keys");
+  return _("ASR Menu Keys (Legacy)");
 }
 
 std::string AsrMenuKeyTooltip() {
   return _("Configure one or more keys to open the ASR provider / model "
-           "selection menu. The default is F8.");
+           "selection menu. Defaults to none.");
 }
 
 std::string PagePrevKeysLabel() {
@@ -118,8 +118,8 @@ VinputConfig::VinputConfig()
       sceneMenuKeys(this, "SceneMenuKey", SceneMenuKeyLabel(), {fcitx::Key(FcitxKey_Shift_R)},
                     SceneMenuKeyListConstrain(), {},
                     fcitx::ToolTipAnnotation(SceneMenuKeyTooltip())),
-      asrMenuKeys(this, "AsrMenuKey", AsrMenuKeyLabel(), {fcitx::Key(FcitxKey_F8)},
-                  SceneMenuKeyListConstrain(), {}, fcitx::ToolTipAnnotation(AsrMenuKeyTooltip())),
+      asrMenuKeys(this, "AsrMenuKey", AsrMenuKeyLabel(), {}, SceneMenuKeyListConstrain(), {},
+                  fcitx::ToolTipAnnotation(AsrMenuKeyTooltip())),
       pagePrevKeys(this, "PagePrevKeys", PagePrevKeysLabel(),
                    {fcitx::Key(FcitxKey_Page_Up), fcitx::Key(FcitxKey_KP_Page_Up)},
                    TriggerKeyListConstrain(), {}, fcitx::ToolTipAnnotation(PagePrevKeysTooltip())),
