@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdio>
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
@@ -7,6 +8,7 @@
 #include <tuple>
 
 #include "common/asr/recognition_result.h"
+#include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/dbus/error_info.h"
 #include "common/i18n.h"
@@ -23,6 +25,8 @@ using namespace vinput::dbus;
 namespace {
 
 constexpr uint64_t kStatusSyncIntervalUsec = 200 * 1000;
+constexpr auto kPolledIdleRecoveryDelay =
+    std::chrono::milliseconds(vinput::runtime::kDbusCallTimeoutMs);
 std::string StartingPreeditText() {
   return _("... Starting ...");
 }
@@ -42,6 +46,14 @@ std::string PostprocessingPreeditText() {
   return _("... Postprocessing ...");
 }
 
+std::string ApplyingCommandPreeditText() {
+  return _("... Applying command ...");
+}
+
+std::string CommandTranscriptPreeditText(const std::string& text) {
+  return vinput::str::FmtStr(_("Command: %s"), text.c_str());
+}
+
 std::string DaemonUnavailablePreeditText() {
   return _("Voice input daemon is unavailable.");
 }
@@ -50,20 +62,20 @@ std::string DaemonNotRespondingPreeditText() {
   return _("Voice input daemon is not responding.");
 }
 
-std::string ComposeLivePreedit(bool command_mode, bool recording, const std::string& partial_text,
-                               const std::string& fallback_text, int max_display_width = 0) {
-  (void)command_mode;
-  (void)recording;
-  if (partial_text.empty()) {
+std::string LimitPreviewText(const std::string& text, int max_display_width) {
+  if (max_display_width <= 0) {
+    return text;
+  }
+  return vinput::str::TruncateMiddleUtf8(text, static_cast<size_t>(max_display_width), "...");
+}
+
+std::string ComposeLivePreedit(const std::string& transcript_text, const std::string& fallback_text,
+                               int max_display_width = 0) {
+  if (transcript_text.empty()) {
     return fallback_text;
   }
 
-  if (max_display_width > 0) {
-    return vinput::str::TruncateMiddleUtf8(partial_text, static_cast<size_t>(max_display_width),
-                                           "...");
-  }
-
-  return partial_text;
+  return LimitPreviewText(transcript_text, max_display_width);
 }
 
 std::string AppendDetail(std::string summary, const std::string& detail) {
@@ -337,10 +349,10 @@ bool VinputEngine::callStartRecording() {
           auto* ic = resolveFrontendInputContext();
           finishFrontendSession(ic);
           if (ic) {
-            updatePreedit(ic, reply
-                                  ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
-                                                            DaemonUnavailablePreeditText())
-                                  : DaemonUnavailablePreeditText());
+            updateVoicePresentation(
+                ic, reply ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
+                                                    DaemonUnavailablePreeditText())
+                          : DaemonUnavailablePreeditText());
           }
           return true;
         }
@@ -373,10 +385,10 @@ bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
           auto* ic = resolveFrontendInputContext();
           finishFrontendSession(ic);
           if (ic) {
-            updatePreedit(ic, reply
-                                  ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
-                                                            DaemonUnavailablePreeditText())
-                                  : DaemonUnavailablePreeditText());
+            updateVoicePresentation(
+                ic, reply ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
+                                                    DaemonUnavailablePreeditText())
+                          : DaemonUnavailablePreeditText());
           }
           return true;
         }
@@ -406,10 +418,10 @@ bool VinputEngine::callStopRecording(const std::string& scene_id) {
           auto* ic = resolveFrontendInputContext();
           finishFrontendSession(ic);
           if (ic) {
-            updatePreedit(ic, reply
-                                  ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
-                                                            DaemonUnavailablePreeditText())
-                                  : DaemonUnavailablePreeditText());
+            updateVoicePresentation(
+                ic, reply ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
+                                                    DaemonUnavailablePreeditText())
+                          : DaemonUnavailablePreeditText());
           }
           return true;
         }
@@ -461,7 +473,7 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::
   }
   rememberInputContext(ic);
   if (status_ic_ && status_ic_ != ic) {
-    clearPreedit(status_ic_);
+    clearVoicePresentation(status_ic_);
   }
   if (!session_) {
     session_.emplace(Session{Session::Phase::PendingStart,
@@ -478,8 +490,8 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::
     session_->command_mode = command_mode;
   }
   status_ic_ = ic;
-  updatePreedit(ic, ComposeLivePreedit(command_mode, false, {}, StartingPreeditText(),
-                                       max_streaming_display_width_));
+  updateVoicePresentation(
+      ic, ComposeLivePreedit({}, StartingPreeditText(), max_streaming_display_width_));
   ensureStatusSync();
 }
 
@@ -490,8 +502,11 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
   }
   rememberInputContext(ic);
   if (status_ic_ && status_ic_ != ic) {
-    clearPreedit(status_ic_);
+    clearVoicePresentation(status_ic_);
   }
+  const bool stop_after_start = trigger_mode_ == TriggerMode::Hold && session_ &&
+                                session_->phase == Session::Phase::PendingStart &&
+                                session_->trigger_released;
   if (!session_) {
     session_.emplace(Session{Session::Phase::Recording,
                              ic,
@@ -507,52 +522,60 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
     session_->command_mode = command_mode;
   }
   status_ic_ = ic;
-  updatePreedit(
-      ic, ComposeLivePreedit(command_mode, true, session_ ? session_->partial_text : std::string{},
+  updateVoicePresentation(
+      ic, ComposeLivePreedit(session_ ? session_->transcript_text : std::string{},
                              command_mode ? CommandingPreeditText() : RecordingPreeditText(),
                              max_streaming_display_width_));
   ensureStatusSync();
+  if (stop_after_start) {
+    scheduleStopRecording();
+  }
 }
 
 void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
-                                  const std::string& preedit_text) {
+                                  const std::string& preedit_text, bool postprocessing) {
   if (!ic) {
     return;
   }
   rememberInputContext(ic);
   if (status_ic_ && status_ic_ != ic) {
-    clearPreedit(status_ic_);
+    clearVoicePresentation(status_ic_);
   }
+  const auto phase = postprocessing ? Session::Phase::Postprocessing : Session::Phase::Inferring;
   if (!session_) {
-    session_.emplace(Session{Session::Phase::Busy,
-                             ic,
-                             fcitx::Key(),
-                             std::chrono::steady_clock::now(),
-                             command_mode,
-                             {},
-                             {}});
+    session_.emplace(
+        Session{phase, ic, fcitx::Key(), std::chrono::steady_clock::now(), command_mode, {}, {}});
   } else {
-    session_->phase = Session::Phase::Busy;
+    session_->phase = phase;
     session_->ic = ic;
     session_->trigger = fcitx::Key();
     session_->command_mode = command_mode;
   }
   status_ic_ = ic;
-  updatePreedit(ic, ComposeLivePreedit(command_mode, false,
-                                       session_ ? session_->partial_text : std::string{},
-                                       preedit_text, max_streaming_display_width_));
+  if (postprocessing && !session_->transcript_text.empty()) {
+    const auto transcript =
+        LimitPreviewText(command_mode ? CommandTranscriptPreeditText(session_->transcript_text)
+                                      : session_->transcript_text,
+                         max_streaming_display_width_);
+    updateVoicePresentation(ic, command_mode ? ApplyingCommandPreeditText() : preedit_text,
+                            transcript);
+  } else {
+    updateVoicePresentation(ic, ComposeLivePreedit(session_->transcript_text, preedit_text,
+                                                   max_streaming_display_width_));
+  }
   ensureStatusSync();
 }
 
 void VinputEngine::finishFrontendSession(fcitx::InputContext* fallback_ic) {
   auto* ic = session_ ? session_->ic : (fallback_ic ? fallback_ic : status_ic_);
   session_.reset();
+  polled_idle_since_.reset();
   command_selected_text_.clear();
   if (status_ic_ == ic) {
     status_ic_ = nullptr;
   }
   if (ic) {
-    clearPreedit(ic);
+    clearVoicePresentation(ic);
   }
   stopStatusSyncIfIdle();
 }
@@ -715,12 +738,27 @@ void VinputEngine::syncFrontendWithDaemonStatus(fcitx::InputContext* fallback_ic
     return;
   }
 
+  if (status == kStatusIdle && session_) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!polled_idle_since_) {
+      polled_idle_since_ = now;
+    }
+    if (now - *polled_idle_since_ < kPolledIdleRecoveryDelay) {
+      return;
+    }
+  }
+  polled_idle_since_.reset();
+
   applyDaemonStatusLocally(status, fallback_ic, prefer_command_mode);
 }
 
 void VinputEngine::applyDaemonStatusLocally(const std::string& status,
                                             fcitx::InputContext* fallback_ic,
                                             bool prefer_command_mode) {
+  if (status == kStatusIdle && !session_ && status_ic_ == nullptr) {
+    return;
+  }
+
   auto* ic = resolveFrontendInputContext(fallback_ic);
   if (!ic) {
     return;
@@ -740,7 +778,7 @@ void VinputEngine::applyDaemonStatusLocally(const std::string& status,
 
   if (status == kStatusPostprocessing) {
     enterBusyState(ic, session_ ? session_->command_mode : prefer_command_mode,
-                   PostprocessingPreeditText());
+                   PostprocessingPreeditText(), true);
     return;
   }
 
@@ -761,8 +799,6 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
   }
 
   rememberInputContext(ic);
-
-  hideResultMenu();
 
   const auto payload = vinput::result::Parse(payload_text);
   finishFrontendSession(ic);
@@ -836,8 +872,12 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
 }
 
 void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
-  std::string partial_text;
-  msg >> partial_text;
+  std::string transcript_text;
+  msg >> transcript_text;
+
+  if (!session_ || transcript_text.empty()) {
+    return;
+  }
 
   auto* ic = resolveFrontendInputContext();
   if (!ic) {
@@ -845,24 +885,23 @@ void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
   }
 
   rememberInputContext(ic);
+  session_->transcript_text = transcript_text;
+  if (session_->phase == Session::Phase::Postprocessing) {
+    enterBusyState(ic, session_->command_mode, PostprocessingPreeditText(), true);
+    return;
+  }
 
-  if (session_) {
-    session_->partial_text = partial_text;
-  }
-  if (!partial_text.empty()) {
-    updatePreedit(ic, ComposeLivePreedit(
-                          session_ ? session_->command_mode : false,
-                          session_ && session_->phase == Session::Phase::Recording, partial_text,
-                          session_ && session_->command_mode ? CommandingPreeditText()
-                                                             : RecordingPreeditText(),
-                          max_streaming_display_width_));
-  }
+  updateVoicePresentation(ic, ComposeLivePreedit(transcript_text,
+                                                 session_->command_mode ? CommandingPreeditText()
+                                                                        : RecordingPreeditText(),
+                                                 max_streaming_display_width_));
 }
 
 void VinputEngine::onStatusChanged(fcitx::dbus::Message& msg) {
   std::string status;
   msg >> status;
   last_known_daemon_status_ = status;
+  polled_idle_since_.reset();
 
   auto* ic = resolveFrontendInputContext();
   if (ic) {
@@ -884,7 +923,6 @@ void VinputEngine::onDaemonNotification(fcitx::dbus::Message& msg) {
 
   if (IsErrorLikeNotification(notification)) {
     auto* ic = resolveFrontendInputContext();
-    hideResultMenu();
     finishFrontendSession(ic);
   }
 
@@ -953,21 +991,26 @@ void VinputEngine::notifyInfo(const std::string& message) {
   }
 }
 
-void VinputEngine::updatePreedit(fcitx::InputContext* ic, const std::string& text) {
+void VinputEngine::dismissMenusForVoiceActivity() {
+  hidePaletteMenu();
+  hideResultMenu();
+}
+
+void VinputEngine::updateVoicePresentation(fcitx::InputContext* ic, const std::string& preedit_text,
+                                           const std::string& aux_down_text) {
   if (!ic)
     return;
+  dismissMenusForVoiceActivity();
   fcitx::Text preedit;
-  preedit.append(text);
+  preedit.append(preedit_text);
+  fcitx::Text aux_down;
+  aux_down.append(aux_down_text);
   ic->inputPanel().setPreedit(preedit);
+  ic->inputPanel().setAuxDown(aux_down);
   ic->updatePreedit();
   ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
 }
 
-void VinputEngine::clearPreedit(fcitx::InputContext* ic) {
-  if (!ic)
-    return;
-  fcitx::Text empty;
-  ic->inputPanel().setPreedit(empty);
-  ic->updatePreedit();
-  ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+void VinputEngine::clearVoicePresentation(fcitx::InputContext* ic) {
+  updateVoicePresentation(ic, {});
 }

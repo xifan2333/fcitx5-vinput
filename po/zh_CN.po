@@ -37,6 +37,13 @@ msgstr "语音输入守护进程不可用。"
 msgid "Voice input daemon is not responding."
 msgstr "语音输入守护进程无响应。"
 
+msgid "... Applying command ..."
+msgstr "... 正在应用命令 ..."
+
+#, c-format
+msgid "Command: %s"
+msgstr "命令：%s"
+
 msgid ""
 "Local ASR model configuration is missing. Please configure a model first."
 msgstr "本地 ASR 模型配置缺失。请先配置模型。"

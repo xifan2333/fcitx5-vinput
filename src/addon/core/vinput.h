@@ -89,15 +89,18 @@ private:
   void enterPendingStartState(fcitx::InputContext* ic, const fcitx::Key& trigger,
                               bool command_mode);
   void enterRecordingState(fcitx::InputContext* ic, const fcitx::Key& trigger, bool command_mode);
-  void enterBusyState(fcitx::InputContext* ic, bool command_mode, const std::string& preedit_text);
+  void enterBusyState(fcitx::InputContext* ic, bool command_mode, const std::string& preedit_text,
+                      bool postprocessing = false);
   void finishFrontendSession(fcitx::InputContext* fallback_ic = nullptr);
   void syncFrontendWithDaemonStatus(fcitx::InputContext* fallback_ic = nullptr,
                                     bool prefer_command_mode = false);
   void rememberInputContext(fcitx::InputContext* ic);
   fcitx::InputContext*
   resolveFrontendInputContext(fcitx::InputContext* fallback_ic = nullptr) const;
-  void updatePreedit(fcitx::InputContext* ic, const std::string& text);
-  void clearPreedit(fcitx::InputContext* ic);
+  void dismissMenusForVoiceActivity();
+  void updateVoicePresentation(fcitx::InputContext* ic, const std::string& preedit_text,
+                               const std::string& aux_down_text = {});
+  void clearVoicePresentation(fcitx::InputContext* ic);
   void appendContextEntry(const std::string& text, const char* source);
   void flushContextBuffer();
   void accumulateContextBuffer(const std::string& text, fcitx::InputContext* ic);
@@ -116,14 +119,14 @@ private:
   std::unique_ptr<fcitx::dbus::Slot> pending_start_call_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_stop_call_slot_;
   struct Session {
-    enum class Phase { PendingStart, Recording, Busy };
+    enum class Phase : std::uint8_t { PendingStart, Recording, Inferring, Postprocessing };
     Phase phase;
     fcitx::InputContext* ic;
     fcitx::Key trigger;
     std::chrono::steady_clock::time_point press_time;
     bool command_mode = false;
     bool trigger_released = false;
-    std::string partial_text;
+    std::string transcript_text;
   };
   std::optional<Session> session_;
   fcitx::InputContext* status_ic_ = nullptr;
@@ -160,6 +163,7 @@ private:
   std::chrono::steady_clock::time_point last_trigger_time_;
   std::chrono::steady_clock::time_point daemon_sync_blocked_until_{};
   std::string last_known_daemon_status_;
+  std::optional<std::chrono::steady_clock::time_point> polled_idle_since_;
   vinput::dbus::AsrBackendState cached_asr_backend_state_;
   bool has_cached_asr_backend_state_ = false;
   std::atomic<uint64_t> asr_state_refresh_seq_{0};
