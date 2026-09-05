@@ -15,7 +15,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 PO_FILE = PROJECT_ROOT / "po" / "zh_CN.po"
 TS_FILE = PROJECT_ROOT / "i18n" / "vinput-gui_zh_CN.ts"
 
-SRC_DIRS = ["src/cli", "src/common", "src/addon"]
+SRC_DIRS = ["src/cli", "src/common", "src/addon", "src/daemon"]
 
 # Colors (disabled when not a terminal)
 if sys.stdout.isatty():
@@ -25,14 +25,31 @@ else:
 
 
 def extract_po_msgids(path: str) -> set[str]:
-    """Extract msgid strings from a .po/.pot file (skip header)."""
+    """Extract msgid strings from a .po/.pot file (skip header and obsolete #~)."""
     ids = set()
     with open(path, encoding="utf-8") as f:
         text = f.read()
-    for m in re.finditer(r'^msgid "(.*)"$', text, re.MULTILINE):
-        val = m.group(1)
-        if val:
-            ids.add(val)
+    for entry in re.split(r"\n\n+", text):
+        lines = [line.strip() for line in entry.splitlines() if line.strip()]
+        if not lines or lines[0].startswith("#~"):
+            continue
+        msgid_parts = []
+        in_msgid = False
+        for line in lines:
+            if line.startswith("msgid "):
+                in_msgid = True
+                m = re.match(r'^msgid\s+"(.*)"$', line)
+                if m:
+                    msgid_parts.append(m.group(1).encode().decode("unicode_escape", "ignore"))
+            elif in_msgid and line.startswith('"') and line.endswith('"'):
+                m = re.match(r'^"(.*)"$', line)
+                if m:
+                    msgid_parts.append(m.group(1).encode().decode("unicode_escape", "ignore"))
+            elif line.startswith("msgstr "):
+                in_msgid = False
+        full_id = "".join(msgid_parts)
+        if full_id:
+            ids.add(full_id)
     return ids
 
 
@@ -52,14 +69,39 @@ def extract_po_untranslated(path: str) -> set[str]:
     ids = set()
     with open(path, encoding="utf-8") as f:
         text = f.read()
-    # Split into entries by double newline
     for entry in re.split(r"\n\n+", text):
-        if entry.startswith("#~"):
+        lines = [line.strip() for line in entry.splitlines() if line.strip()]
+        if not lines or lines[0].startswith("#~"):
             continue
-        mid = re.search(r'^msgid "(.*)"$', entry, re.MULTILINE)
-        mstr = re.search(r'^msgstr "(.*)"$', entry, re.MULTILINE)
-        if mid and mid.group(1) and mstr and not mstr.group(1):
-            ids.add(mid.group(1))
+        msgid_parts = []
+        msgstr_parts = []
+        in_msgid = False
+        in_msgstr = False
+        for line in lines:
+            if line.startswith("msgid "):
+                in_msgid = True
+                in_msgstr = False
+                m = re.match(r'^msgid\s+"(.*)"$', line)
+                if m:
+                    msgid_parts.append(m.group(1).encode().decode("unicode_escape", "ignore"))
+            elif in_msgid and line.startswith('"') and line.endswith('"'):
+                m = re.match(r'^"(.*)"$', line)
+                if m:
+                    msgid_parts.append(m.group(1).encode().decode("unicode_escape", "ignore"))
+            elif line.startswith("msgstr "):
+                in_msgid = False
+                in_msgstr = True
+                m = re.match(r'^msgstr\s+"(.*)"$', line)
+                if m:
+                    msgstr_parts.append(m.group(1).encode().decode("unicode_escape", "ignore"))
+            elif in_msgstr and line.startswith('"') and line.endswith('"'):
+                m = re.match(r'^"(.*)"$', line)
+                if m:
+                    msgstr_parts.append(m.group(1).encode().decode("unicode_escape", "ignore"))
+        full_id = "".join(msgid_parts)
+        full_str = "".join(msgstr_parts)
+        if full_id and not full_str.strip():
+            ids.add(full_id)
     return ids
 
 
@@ -156,17 +198,16 @@ def main() -> int:
         )
 
         pot_ids = extract_po_msgids(tmp_pot)
-        po_ids = extract_po_msgids(str(PO_FILE)) - extract_po_obsolete_msgids(
-            str(PO_FILE)
-        )
+        po_ids = extract_po_msgids(str(PO_FILE))
 
         # Missing: in source but not in .po
         for mid in sorted(pot_ids - po_ids):
             print(f"{RED}MISSING:{RESET} {mid}")
             po_missing += 1
 
-        # Obsolete: marked #~ in .po
-        for mid in sorted(extract_po_obsolete_msgids(str(PO_FILE))):
+        # Obsolete: in .po but no longer in source, or marked #~
+        obsolete_ids = (po_ids - pot_ids) | extract_po_obsolete_msgids(str(PO_FILE))
+        for mid in sorted(obsolete_ids):
             print(f"{YELLOW}OBSOLETE:{RESET} {mid}")
             po_obsolete += 1
 
