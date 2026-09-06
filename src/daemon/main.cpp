@@ -583,6 +583,10 @@ int main(int argc, char* argv[]) {
     return runtime_controller.StopRecording(scene_id);
   });
 
+  dbus.SetCancelPostprocessingHandler([&](bool commit_raw_text) {
+    return runtime_controller.CancelPostprocessing(commit_raw_text);
+  });
+
   dbus.SetStatusHandler([&]() -> std::string { return runtime_controller.GetStatus(); });
   dbus.SetAsrBackendStateHandler(
       [&]() -> vinput::dbus::AsrBackendState { return runtime_controller.GetAsrBackendState(); });

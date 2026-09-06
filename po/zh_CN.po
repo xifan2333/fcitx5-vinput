@@ -28,8 +28,11 @@ msgstr "... 正在命令 ..."
 msgid "... Recognizing ..."
 msgstr "... 正在识别 ..."
 
-msgid "... Postprocessing ..."
-msgstr "... 正在后处理 ..."
+msgid "... Postprocessing ... (Esc: Cancel)"
+msgstr "... 正在后处理 ...（Esc：取消）"
+
+msgid "... Postprocessing ... (Enter: Use raw ASR text, Esc: Cancel)"
+msgstr "... 正在后处理 ...（Enter：使用原始 ASR 文本，Esc：取消）"
 
 msgid "Voice input daemon is unavailable."
 msgstr "语音输入守护进程不可用。"
@@ -37,8 +40,8 @@ msgstr "语音输入守护进程不可用。"
 msgid "Voice input daemon is not responding."
 msgstr "语音输入守护进程无响应。"
 
-msgid "... Applying command ..."
-msgstr "... 正在应用命令 ..."
+msgid "... Applying command ... (Esc: Cancel)"
+msgstr "... 正在应用命令 ...（Esc：取消）"
 
 #, c-format
 msgid "Command: %s"
@@ -266,6 +269,9 @@ msgstr "语音输入守护进程暂时不可用。"
 
 msgid "Command Palette"
 msgstr "命令面板"
+
+msgid "Requested post-processing action is not available."
+msgstr "请求的后处理操作当前不可用。"
 
 #, c-format
 msgid "Search: %s"

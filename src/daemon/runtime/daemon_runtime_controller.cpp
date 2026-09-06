@@ -1,15 +1,18 @@
 #include "daemon/runtime/daemon_runtime_controller.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <span>
 #include <stdexcept>
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <utility>
 
+#include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
@@ -207,6 +210,28 @@ DbusService::MethodResult DaemonRuntimeController::StartRecording() {
 DbusService::MethodResult
 DaemonRuntimeController::StartCommandRecording(const std::string& selected_text) {
   return StartRecordingInternal(true, selected_text);
+}
+
+DbusService::MethodResult DaemonRuntimeController::CancelPostprocessing(bool commit_raw_text) {
+  bool accepted = false;
+  {
+    const std::scoped_lock lock(state_mutex_);
+    accepted = postprocessing_state_ == PostprocessingState::Dictation ||
+               (!commit_raw_text && postprocessing_state_ == PostprocessingState::Command);
+    if (accepted) {
+      postprocessing_state_ =
+          commit_raw_text ? PostprocessingState::CommitRaw : PostprocessingState::Discard;
+      postprocessing_cancel_requested_.store(true, std::memory_order_relaxed);
+    }
+  }
+  if (!accepted) {
+    return DbusService::MethodResult::Failure(
+        _("Requested post-processing action is not available."));
+  }
+
+  vinput::debug::Log("post-processing cancellation requested action=%s\n",
+                     commit_raw_text ? "commit-raw" : "discard");
+  return DbusService::MethodResult::Success();
 }
 
 bool DaemonRuntimeController::SynchronizeAsrBackend(std::string* error) {
@@ -759,19 +784,30 @@ void DaemonRuntimeController::Shutdown() {
   }
 }
 
-void DaemonRuntimeController::SetPhase(vinput::dbus::Status new_phase) {
+void DaemonRuntimeController::EnterPostprocessing(bool command_mode) {
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    phase_ = new_phase;
+    const std::scoped_lock lock(state_mutex_);
+    postprocessing_state_ =
+        command_mode ? PostprocessingState::Command : PostprocessingState::Dictation;
+    phase_ = vinput::dbus::Status::Postprocessing;
   }
-  dbus_->EmitStatusChanged(vinput::dbus::StatusToString(new_phase));
+  dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Postprocessing));
+}
+
+DaemonRuntimeController::PostprocessingState DaemonRuntimeController::TakePostprocessingState() {
+  const std::scoped_lock lock(state_mutex_);
+  const auto state = postprocessing_state_;
+  postprocessing_state_ = PostprocessingState::Inactive;
+  return state;
 }
 
 void DaemonRuntimeController::ResetToIdle() {
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     start_recording_in_progress_ = false;
     phase_ = vinput::dbus::Status::Idle;
+    postprocessing_state_ = PostprocessingState::Inactive;
+    postprocessing_cancel_requested_.store(false, std::memory_order_relaxed);
     current_order_.reset();
     current_is_command_ = false;
     current_selected_text_.clear();
@@ -844,8 +880,20 @@ void DaemonRuntimeController::WorkerMain() {
         order.session.reset();
       }
 
+      postprocessing_cancel_requested_.store(false, std::memory_order_relaxed);
       auto pipeline_result = pipeline_->Process(
-          order, runtime_settings, [&]() { SetPhase(vinput::dbus::Status::Postprocessing); });
+          order, runtime_settings, [&]() { EnterPostprocessing(order.is_command); },
+          &postprocessing_cancel_requested_);
+      const auto postprocessing_action = TakePostprocessingState();
+      if (postprocessing_action == PostprocessingState::CommitRaw) {
+        pipeline_result.payload.commitText = order.recognized_text;
+        pipeline_result.payload.candidates = {
+            {.text = order.recognized_text, .source = vinput::result::kSourceRaw}};
+        pipeline_result.errors.clear();
+      } else if (postprocessing_action == PostprocessingState::Discard) {
+        pipeline_result.payload = {};
+        pipeline_result.errors.clear();
+      }
       for (const auto& error : pipeline_result.errors) {
         if (!error.raw_message.empty()) {
           fprintf(stderr, "vinput-daemon: processing error: %s\n", error.raw_message.c_str());
@@ -854,9 +902,11 @@ void DaemonRuntimeController::WorkerMain() {
       }
       dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
     } catch (const std::exception& e) {
+      (void)TakePostprocessingState();
       fprintf(stderr, "vinput-daemon: worker exception: %s\n", e.what());
       dbus_->EmitNotification(vinput::dbus::MakeRawError(e.what()));
     } catch (...) {
+      (void)TakePostprocessingState();
       fprintf(stderr, "vinput-daemon: worker unknown exception\n");
       dbus_->EmitNotification(vinput::dbus::MakeErrorInfo(
           vinput::dbus::kErrorCodeProcessingUnknown, {}, {}, "Unknown error during processing"));

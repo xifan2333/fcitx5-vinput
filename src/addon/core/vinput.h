@@ -66,6 +66,7 @@ private:
   bool callStartRecording();
   bool callStartCommandRecording(const std::string& selected_text);
   bool callStopRecording(const std::string& scene_id);
+  void callCancelPostprocessing(bool commit_raw_text);
   bool callReloadAsrBackend(std::string* error = nullptr);
   bool callStartAdapter(const std::string& adapter_id, std::string* error = nullptr);
   bool callStopAdapter(const std::string& adapter_id, std::string* error = nullptr);
@@ -164,6 +165,7 @@ private:
   std::chrono::steady_clock::time_point daemon_sync_blocked_until_{};
   std::string last_known_daemon_status_;
   std::optional<std::chrono::steady_clock::time_point> polled_idle_since_;
+  std::optional<fcitx::Key> pending_postprocessing_release_;
   vinput::dbus::AsrBackendState cached_asr_backend_state_;
   bool has_cached_asr_backend_state_ = false;
   std::atomic<uint64_t> asr_state_refresh_seq_{0};

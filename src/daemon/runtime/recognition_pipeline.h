@@ -1,12 +1,13 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "common/asr/recognition_result.h"
-#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/dbus/error_info.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
@@ -35,9 +36,9 @@ class RecognitionPipeline {
 public:
   explicit RecognitionPipeline(PostProcessor* post_processor);
 
-  RecognitionPipelineResult
-  Process(const RecognitionOrder& order, const CoreConfig& settings,
-          const std::function<void()>& on_enter_postprocessing = {}) const;
+  RecognitionPipelineResult Process(const RecognitionOrder& order, const CoreConfig& settings,
+                                    const std::function<void()>& on_enter_postprocessing = {},
+                                    const std::atomic<bool>* cancel_flag = nullptr) const;
 
 private:
   PostProcessor* post_processor_ = nullptr;

@@ -1,5 +1,6 @@
 #include <chrono>
 #include <fcitx-utils/key.h>
+#include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/inputcontext.h>
 #include <string>
@@ -43,6 +44,27 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   auto& keyEvent = static_cast<fcitx::KeyEvent&>(event);
   rememberInputContext(keyEvent.inputContext());
 
+  if (pending_postprocessing_release_ && keyEvent.isRelease() &&
+      keyEvent.key().normalize().sym() == pending_postprocessing_release_->normalize().sym()) {
+    pending_postprocessing_release_.reset();
+    keyEvent.filterAndAccept();
+    return;
+  }
+
+  if (session_ && session_->phase == Session::Phase::Postprocessing &&
+      last_known_daemon_status_ == vinput::dbus::kStatusPostprocessing) {
+    const bool discard = keyEvent.key().check(FcitxKey_Escape);
+    const bool commit_raw = !session_->command_mode && (keyEvent.key().check(FcitxKey_Return) ||
+                                                        keyEvent.key().check(FcitxKey_KP_Enter));
+    if (discard || commit_raw) {
+      if (!keyEvent.isRelease()) {
+        pending_postprocessing_release_ = keyEvent.key();
+        callCancelPostprocessing(commit_raw);
+      }
+      keyEvent.filterAndAccept();
+      return;
+    }
+  }
   const int trigger_index = keyEvent.key().keyListIndex(trigger_keys_);
   const bool is_trigger = trigger_index >= 0;
   const int command_index = keyEvent.key().keyListIndex(command_keys_);
