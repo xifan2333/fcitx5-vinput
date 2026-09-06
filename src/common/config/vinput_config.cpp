@@ -103,6 +103,13 @@ std::string MaxStreamingDisplayWidthTooltip() {
 VinputConfig::VinputConfig()
     : triggerMode(this, "TriggerMode", TriggerModeLabel(), TriggerMode::Both, {}, {},
                   TriggerModeI18NAnnotation()),
+      holdActivationDelay(
+          this, "HoldActivationDelay", _("Hold activation delay (ms)"), 300,
+          fcitx::IntConstrain(100, 2000), {},
+          fcitx::ToolTipAnnotation(
+              _("Delay before recording in Hold mode and the tap/hold boundary in Both mode. "
+                "In Both mode, non-modifier shortcuts still start recording immediately. "
+                "Tap mode ignores this setting."))),
       triggerKeys(this, "TriggerKey", TriggerKeyLabel(), {fcitx::Key(FcitxKey_Alt_R)},
                   TriggerKeyListConstrain(), {}, fcitx::ToolTipAnnotation(TriggerKeyTooltip())),
       commandKeys(this, "CommandKeys", CommandKeysLabel(), {fcitx::Key(FcitxKey_Control_R)},
