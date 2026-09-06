@@ -56,13 +56,15 @@ static const struct pw_stream_events kEvents = {
 
 static void* QuitAfter(void* arg) {
   struct CaptureData* data = arg;
-  sleep(3);
+  sleep(5);
   pw_main_loop_quit(data->loop);
   return NULL;
 }
 
 int main(int argc, char** argv) {
-  const int use_mono = argc > 1 && strcmp(argv[1], "mono") == 0;
+  const char* mode = argc > 1 ? argv[1] : "unknown";
+  const int use_mono = strcmp(mode, "mono") == 0 || strcmp(mode, "imono") == 0;
+  const int use_inactive = mode[0] == 'i';
   const char* target = argc > 2 ? argv[2] : NULL;
 
   pw_init(&argc, &argv);
@@ -77,7 +79,7 @@ int main(int argc, char** argv) {
     pw_properties_set(properties, PW_KEY_TARGET_OBJECT, target);
     fprintf(stderr, "target.object=%s\n", target);
   }
-  fprintf(stderr, "position=%s\n", use_mono ? "MONO" : "UNKNOWN");
+  fprintf(stderr, "mode=%s\n", mode);
 
   data.stream = pw_stream_new_simple(pw_main_loop_get_loop(data.loop), "vinput-repro", properties,
                                      &kEvents, &data);
@@ -94,11 +96,22 @@ int main(int argc, char** argv) {
   const struct spa_pod* params[1];
   params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &raw_info);
 
+  int flags = PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS;
+  if (use_inactive) {
+    flags |= PW_STREAM_FLAG_INACTIVE;
+  }
   int ret = pw_stream_connect(data.stream, PW_DIRECTION_INPUT, PW_ID_ANY,
-                              PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS, params, 1);
+                              (enum pw_stream_flags)flags, params, 1);
   if (ret < 0) {
     fprintf(stderr, "pw_stream_connect failed: %s\n", strerror(-ret));
     return 1;
+  }
+
+  if (use_inactive) {
+    fprintf(stderr, "(inactive) waiting 1s before set_active(true)\n");
+    sleep(1);
+    ret = pw_stream_set_active(data.stream, true);
+    fprintf(stderr, "(inactive) set_active ret=%d\n", ret);
   }
 
   pthread_t thread;

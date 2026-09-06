@@ -130,24 +130,43 @@ fi
 PLAY_PID=$!
 sleep 1
 
-echo "=== UNKNOWN ==="
+echo "=== UNKNOWN direct ==="
 if [[ -n "$SOURCE" ]]; then
   /tmp/repro-issue-169-capture unknown "$SOURCE" | tee /tmp/unknown.out
 else
   /tmp/repro-issue-169-capture unknown | tee /tmp/unknown.out
 fi
 
-echo "=== MONO ==="
+sleep 1
+echo "=== MONO direct ==="
 if [[ -n "$SOURCE" ]]; then
   /tmp/repro-issue-169-capture mono "$SOURCE" | tee /tmp/mono.out
 else
   /tmp/repro-issue-169-capture mono | tee /tmp/mono.out
 fi
 
+sleep 1
+echo "=== UNKNOWN inactive-then-active ==="
+if [[ -n "$SOURCE" ]]; then
+  /tmp/repro-issue-169-capture iunknown "$SOURCE" | tee /tmp/iunknown.out
+else
+  /tmp/repro-issue-169-capture iunknown | tee /tmp/iunknown.out
+fi
+
+sleep 1
+echo "=== MONO inactive-then-active ==="
+if [[ -n "$SOURCE" ]]; then
+  /tmp/repro-issue-169-capture imono "$SOURCE" | tee /tmp/imono.out
+else
+  /tmp/repro-issue-169-capture imono | tee /tmp/imono.out
+fi
+
 echo "=== pw-link ==="
 pw-link -l || true
 kill "$PLAY_PID" 2>/dev/null || true
 echo "=== summary ==="
-echo "unknown $(cat /tmp/unknown.out)"
-echo "mono    $(cat /tmp/mono.out)"
+echo "unknown-direct $(cat /tmp/unknown.out)"
+echo "mono-direct    $(cat /tmp/mono.out)"
+echo "unknown-inact  $(cat /tmp/iunknown.out)"
+echo "mono-inact     $(cat /tmp/imono.out)"
 EOF
