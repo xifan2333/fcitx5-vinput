@@ -4,7 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <pipewire/stream.h>
 #include <spa/param/audio/format-utils.h>
+#include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
 
 #include "common/utils/debug_log.h"
@@ -152,6 +154,19 @@ void AudioCapture::onParamChanged(void* userdata, uint32_t id, const struct spa_
           info.channels, info.format);
 }
 
+void AudioCapture::onStateChanged(void* userdata, enum pw_stream_state old,
+                                  enum pw_stream_state state, const char* error) {
+  (void)userdata;
+  const char* err_str = (error != nullptr && error[0] != '\0') ? error : nullptr;
+  vinput::debug::Log("capture stream state: %s -> %s%s%s\n", pw_stream_state_as_string(old),
+                     pw_stream_state_as_string(state), err_str != nullptr ? " error=" : "",
+                     err_str != nullptr ? err_str : "");
+  if (state == PW_STREAM_STATE_ERROR) {
+    fprintf(stderr, "vinput: PipeWire stream error: %s\n",
+            err_str != nullptr ? err_str : "unknown error");
+  }
+}
+
 bool AudioCapture::Start(std::string* error) {
   if (loop_) {
     return true;
@@ -210,6 +225,7 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
   stream_events_.version = PW_VERSION_STREAM_EVENTS;
   stream_events_.param_changed = onParamChanged;
   stream_events_.process = onProcess;
+  stream_events_.state_changed = onStateChanged;
 
   std::string target_object = CurrentTargetObject();
 
@@ -248,6 +264,7 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
   raw_info.format = SPA_AUDIO_FORMAT_S16_LE;
   raw_info.rate = 16000;
   raw_info.channels = 1;
+  raw_info.position[0] = SPA_AUDIO_CHANNEL_MONO;
   const struct spa_pod* params[1];
   params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &raw_info);
 

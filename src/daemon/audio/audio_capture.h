@@ -7,6 +7,7 @@
 #include <mutex>
 #include <optional>
 #include <pipewire/pipewire.h>
+#include <pipewire/stream.h>
 #include <pipewire/thread-loop.h>
 #include <spa/param/audio/format-utils.h>
 #include <span>
@@ -58,6 +59,8 @@ public:
 private:
   static void onProcess(void* userdata);
   static void onParamChanged(void* userdata, uint32_t id, const struct spa_pod* param);
+  static void onStateChanged(void* userdata, enum pw_stream_state old, enum pw_stream_state state,
+                             const char* error);
   bool CreateStream(bool start_inactive, std::string* error = nullptr);
   bool SetStreamActive(bool active, std::string* error = nullptr);
   void DestroyStream();
