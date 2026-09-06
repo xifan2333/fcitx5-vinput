@@ -19,7 +19,7 @@ https://github.com/user-attachments/assets/5a548a68-153c-4842-bab6-926f30bb720e
 ## Features
 
 - **Two trigger modes** — tap to toggle recording, or hold to push-to-talk
-- **Local & cloud ASR** — offline [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) models or cloud providers (Doubao, Aliyun Bailian, ElevenLabs, OpenAI-compatible), switchable at runtime with `F8`
+- **Local & cloud ASR** — offline [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) models or cloud providers (Doubao, Aliyun Bailian, ElevenLabs, OpenAI-compatible), switchable at runtime from the command palette (`Shift_R` → `/asr`)
 - **LLM post-processing** — error correction, formatting, translation via scenes
 - **Command mode** — select text, speak an instruction, release to apply
 - **GUI & CLI** — `vinput-gui` for quick setup, `vinput` CLI for full control

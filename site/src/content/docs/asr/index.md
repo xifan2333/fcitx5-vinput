@@ -17,7 +17,7 @@ Vinput provides three complementary ASR mechanisms:
 - **Cloud providers** — Third-party ASR APIs (Doubao, Aliyun Bailian, ElevenLabs, OpenAI, etc.). Typically better accuracy, but requires network and API keys.
 - **Hotwords** — Domain-specific vocabulary to improve recognition of proper nouns with local models (supported by some models).
 
-Local models and cloud providers are **mutually exclusive** — switch between them at runtime with the `F8` menu. Hotwords take effect when a local model is active.
+Local models and cloud providers are **mutually exclusive** — switch between them at runtime from the command palette (`Shift_R` → `/asr`). Hotwords take effect when a local model is active.
 
 ## Local models
 
