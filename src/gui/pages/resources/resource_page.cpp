@@ -487,7 +487,7 @@ void ResourcePage::populateRemoteProviders(
       linkLabel->setAlignment(Qt::AlignCenter);
       linkLabel->setStyleSheet(QStringLiteral("background: transparent;"));
       tableAvailableProviders_->setCellWidget(row, 4, linkLabel);
-      tableAvailableProviders_->setItem(row, 4, MakeCell(tr("Open README"), readme_url));
+      tableAvailableProviders_->setItem(row, 4, MakeCell(QString{}, readme_url));
     } else {
       auto* emptyCell = MakeCell(QStringLiteral("-"));
       emptyCell->setTextAlignment(Qt::AlignCenter);
@@ -533,7 +533,7 @@ void ResourcePage::populateRemoteAdapters(
       linkLabel->setAlignment(Qt::AlignCenter);
       linkLabel->setStyleSheet(QStringLiteral("background: transparent;"));
       tableAvailableAdapters_->setCellWidget(row, 3, linkLabel);
-      tableAvailableAdapters_->setItem(row, 3, MakeCell(tr("Open README"), readme_url));
+      tableAvailableAdapters_->setItem(row, 3, MakeCell(QString{}, readme_url));
     } else {
       auto* emptyCell = MakeCell(QStringLiteral("-"));
       emptyCell->setTextAlignment(Qt::AlignCenter);
