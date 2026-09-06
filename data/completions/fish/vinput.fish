@@ -128,9 +128,11 @@ complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcom
 complete -c vinput -n "__fish_seen_subcommand_from scene; and __fish_seen_subcommand_from add edit e" -l raw-prev -a "true false" -d "Preview raw ASR transcript in floating panel during postprocessing (true/false)"
 
 # config
-complete -c vinput -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from get set edit e" -a get -d "Get a config value by JSON Pointer"
-complete -c vinput -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from get set edit e" -a set -d "Set a config value by JSON Pointer"
-complete -c vinput -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from get set edit e" -a "edit e" -d "Open config in editor"
+complete -c vinput -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from get set edit e migrate" -a get -d "Get a config value by JSON Pointer"
+complete -c vinput -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from get set edit e migrate" -a set -d "Set a config value by JSON Pointer"
+complete -c vinput -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from get set edit e migrate" -a "edit e" -d "Open config in editor"
+complete -c vinput -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from get set edit e migrate" -a migrate -d "Migrate legacy configuration files to current format"
+complete -c vinput -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from migrate" -s n -l dry-run -d "Preview migration changes without modifying files"
 complete -c vinput -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from edit e" -a "core fcitx"
 complete -c vinput -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from set" -s i -l stdin -d "Read value from stdin"
 

@@ -4,8 +4,10 @@
 #include <iostream>
 #include <string>
 
+#include "common/config/config_migration.h"
 #include "common/config/config_router.h"
 #include "common/i18n.h"
+#include "common/utils/string_utils.h"
 
 #include "cli/utils/editor_utils.h"
 
@@ -53,4 +55,60 @@ int RunConfigDomainEdit(const std::string& target, Formatter& fmt, const CliCont
   }
   auto file_path = vinput::config::GetEditTarget(target);
   return OpenInEditor(file_path);
+}
+
+int RunConfigMigrate(bool dry_run, Formatter& fmt, const CliContext& ctx) {
+  const auto report = vinput::migration::RunConfigMigration(dry_run);
+
+  if (!report.error.empty()) {
+    fmt.PrintError(report.error);
+    return 1;
+  }
+
+  if (ctx.json_output) {
+    nlohmann::json j;
+    j["needed"] = report.needed;
+    j["applied"] = report.applied;
+    j["dry_run"] = dry_run;
+    j["config_file"] = report.config_file.string();
+    j["conf_file"] = report.conf_file.string();
+    j["config_backup"] = report.config_backup.string();
+    j["conf_backup"] = report.conf_backup.string();
+    nlohmann::json changes = nlohmann::json::array();
+    for (const auto& ch : report.changes) {
+      changes.push_back({{"file", ch.file}, {"description", ch.description}});
+    }
+    j["changes"] = changes;
+    fmt.PrintJson(j);
+    return 0;
+  }
+
+  if (!report.needed) {
+    fmt.PrintSuccess(_("Configuration is already up to date. No migration needed."));
+    return 0;
+  }
+
+  if (dry_run) {
+    fmt.PrintSuccess(_("Pending migration changes:"));
+  } else {
+    fmt.PrintSuccess(_("Configuration migration completed successfully:"));
+  }
+
+  if (!report.config_backup.empty()) {
+    fmt.PrintInfo(
+        vinput::str::FmtStr(_("Backed up core config to: %s"), report.config_backup.c_str()));
+  }
+  if (!report.conf_backup.empty()) {
+    fmt.PrintInfo(
+        vinput::str::FmtStr(_("Backed up addon config to: %s"), report.conf_backup.c_str()));
+  }
+
+  const std::vector<std::string> headers = {_("FILE"), _("CHANGE")};
+  std::vector<std::vector<std::string>> rows;
+  for (const auto& ch : report.changes) {
+    rows.push_back({ch.file, ch.description});
+  }
+  fmt.PrintTable(headers, rows);
+
+  return 0;
 }

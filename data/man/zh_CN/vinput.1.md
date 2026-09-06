@@ -166,6 +166,9 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 **config edit** *TARGET*
 :   在 `$EDITOR` 中打开配置文件。*TARGET* 必须为 **core**（*~/.config/vinput/config.json*）或 **fcitx**（*~/.config/fcitx5/conf/vinput.conf*）。
 
+**config migrate** [**-n**, **--dry-run**]
+:   将旧版配置文件平滑迁移至当前最新格式（自动备份原配置文件至 `backups/`）。传入 **-n** 可预览将要进行的改动而不写入文件。
+
 ## 守护进程控制
 **daemon status**
 :   查看 **vinput-daemon** 的运行状态（PID、活动模型、D-Bus 连接等）。
