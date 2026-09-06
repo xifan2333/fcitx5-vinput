@@ -231,6 +231,9 @@ _vinput() {
                     set)
                         COMPREPLY=($(compgen -W "-i --stdin" -- "$cur"))
                         ;;
+                    migrate)
+                        COMPREPLY=($(compgen -W "-n --dry-run -h --help" -- "$cur"))
+                        ;;
                 esac
             fi
             return 0
