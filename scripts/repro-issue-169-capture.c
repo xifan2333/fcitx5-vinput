@@ -1,5 +1,4 @@
 #define _GNU_SOURCE
-#include <math.h>
 #include <pipewire/pipewire.h>
 #include <pthread.h>
 #include <spa/param/audio/format-utils.h>

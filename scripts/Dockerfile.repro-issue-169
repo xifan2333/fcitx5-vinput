@@ -1,0 +1,8 @@
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pipewire wireplumber pipewire-pulse pipewire-bin \
+    libpipewire-0.3-dev gcc pkg-config ffmpeg python3 \
+    dbus dbus-user-session alsa-utils ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
