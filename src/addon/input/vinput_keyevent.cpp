@@ -20,6 +20,7 @@ namespace {
 constexpr auto kReleaseDebounce = std::chrono::milliseconds(500);
 constexpr auto kToggleThreshold = std::chrono::milliseconds(300);
 constexpr auto kTriggerDebounce = std::chrono::milliseconds(80);
+constexpr auto kModifierOnlyKeyTimeout = std::chrono::milliseconds(250);
 
 std::string NoSelectionPreeditText() {
   return _("Please select text first.");
@@ -80,27 +81,16 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   }
 
   if (!voice_trigger_press) {
+    if (!is_trigger && !is_command && handleCommandPaletteHotkey(keyEvent)) {
+      return;
+    }
+
     if (result_menu_visible_ && handleResultMenuKeyEvent(keyEvent)) {
       return;
     }
 
     if (palette_menu_visible_ && handlePaletteMenuKeyEvent(keyEvent)) {
       return;
-    }
-
-    if (!is_trigger && !is_command) {
-      if (!session_ && keyEvent.key().checkKeyList(menu_keys_) && !keyEvent.isRelease()) {
-        if (!voice_start_pending) {
-          showPaletteMenu(keyEvent.inputContext());
-        }
-        keyEvent.filterAndAccept();
-        return;
-      }
-
-      if (keyEvent.key().checkKeyList(menu_keys_) && keyEvent.isRelease()) {
-        keyEvent.filterAndAccept();
-        return;
-      }
     }
   }
 
@@ -390,6 +380,64 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     keyEvent.filterAndAccept();
     return;
   }
+}
+
+bool VinputEngine::handleCommandPaletteHotkey(fcitx::KeyEvent& keyEvent) {
+  const auto event_key = keyEvent.key();
+  const bool was_armed = menu_hotkey_armed_;
+  const fcitx::Key last_pressed = menu_hotkey_pressed_;
+  menu_hotkey_armed_ = false;
+
+  if (keyEvent.isRelease()) {
+    if (was_armed && event_key.normalize().isReleaseOfModifier(last_pressed.normalize())) {
+      const auto held = std::chrono::steady_clock::now() - menu_hotkey_pressed_time_;
+      if (held <= kModifierOnlyKeyTimeout) {
+        toggleCommandPalette(keyEvent.inputContext());
+      }
+      keyEvent.filter();
+      return true;
+    }
+    if (event_key.checkKeyList(menu_keys_) && !event_key.isModifier()) {
+      keyEvent.filterAndAccept();
+      return true;
+    }
+    return false;
+  }
+
+  const int menu_index = event_key.keyListIndex(menu_keys_);
+  if (menu_index < 0) {
+    return false;
+  }
+
+  if (session_) {
+    return false;
+  }
+
+  if (event_key.isModifier()) {
+    menu_hotkey_armed_ = true;
+    menu_hotkey_pressed_ = menu_keys_[menu_index];
+    menu_hotkey_pressed_time_ = std::chrono::steady_clock::now();
+    keyEvent.filter();
+    return true;
+  }
+
+  toggleCommandPalette(keyEvent.inputContext());
+  keyEvent.filterAndAccept();
+  return true;
+}
+
+void VinputEngine::toggleCommandPalette(fcitx::InputContext* ic) {
+  if (palette_menu_visible_) {
+    hidePaletteMenu();
+    return;
+  }
+  if (session_) {
+    return;
+  }
+  if (pending_start_event_ && pending_start_event_->isEnabled()) {
+    return;
+  }
+  showPaletteMenu(ic);
 }
 
 bool VinputEngine::isReleaseOfActiveTrigger(const fcitx::Key& key) const {
