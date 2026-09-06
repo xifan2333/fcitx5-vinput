@@ -25,7 +25,8 @@ struct Definition {
   int llm_max_candidates = kDefaultLlmMaxCandidates;
   int timeout_ms = kDefaultTimeoutMs;
   int context_lines = kDefaultContextLines;
-  bool show_raw = true;
+  bool raw_cand = true;
+  bool raw_prev = true;
   bool builtin = false;
 };
 

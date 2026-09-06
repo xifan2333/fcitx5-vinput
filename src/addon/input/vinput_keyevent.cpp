@@ -55,8 +55,9 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   if (session_ && session_->phase == Session::Phase::Postprocessing &&
       last_known_daemon_status_ == vinput::dbus::kStatusPostprocessing) {
     const bool discard = keyEvent.key().check(FcitxKey_Escape);
-    const bool commit_raw = !session_->command_mode && (keyEvent.key().check(FcitxKey_Return) ||
-                                                        keyEvent.key().check(FcitxKey_KP_Enter));
+    const bool commit_raw =
+        session_->raw_prev && !session_->command_mode &&
+        (keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter));
     if (discard || commit_raw) {
       if (!keyEvent.isRelease()) {
         pending_postprocessing_release_ = keyEvent.key();
@@ -508,6 +509,7 @@ void VinputEngine::finishStopRecording() {
   }
   const auto& scene = vinput::scene::Resolve(scene_config_, active_scene_id_);
   active_scene_id_ = scene.id;
+  session_->raw_prev = scene.raw_prev;
   session_->trigger = fcitx::Key();
   enterBusyState(session_->ic, session_->command_mode, _("... Recognizing ..."));
   callStopRecording(scene.id);

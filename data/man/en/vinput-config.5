@@ -135,15 +135,22 @@ Maximum number of rewritten candidates requested from the LLM (set to
 \f[CR]0\f[R] to disable LLM for this scene).
 Candidates are deduplicated with the raw ASR transcript.
 If only 1 distinct candidate remains, it commits directly to screen; if
-distinct choices exist, a candidate menu is shown with the primary LLM
-rewrite focused and the raw transcript preserved as option 1 (when
-\f[CR]show_raw\f[R] is true).
+distinct choices exist, a candidate menu is shown defaulting to option 1
+(the raw ASR transcript when \f[CR]raw_cand\f[R] is true, followed by
+rewrite candidates).
 .TP
-\f[B]show_raw\f[R] (\f[I]boolean\f[R], default \f[CR]true\f[R])
-Whether to include the raw ASR transcript in the candidate options.
-When disabled (\f[CR]false\f[R]), the candidate array contains only
-LLM/adapter results, enabling immediate direct\-commit to screen when a
-single rewrite is returned.
+\f[B]raw_cand\f[R] (\f[I]boolean\f[R], default \f[CR]true\f[R])
+Whether to include the raw speech transcript in candidate options.
+When disabled (\f[CR]false\f[R]), the candidate choices only contain
+LLM/adapter rewrites, committing directly if only 1 result exists
+(compatible with legacy \f[CR]show_raw\f[R]).
+.TP
+\f[B]raw_prev\f[R] (\f[I]boolean\f[R], default \f[CR]true\f[R])
+Whether to preview the raw transcript in the floating panel during
+postprocessing and allow pressing Enter to use it immediately.
+When disabled (\f[CR]false\f[R]), postprocessing remains as a compact
+single line without expanding the lower transcript box, eliminating
+visual flicker for fast local adapters.
 .SH VINPUT.CONF STRUCTURE (FCITX5 ADDON)
 The Fcitx5 addon configuration file is stored in INI format at
 \f[I]\(ti/.config/fcitx5/conf/vinput.conf\f[R].

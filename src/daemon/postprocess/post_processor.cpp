@@ -549,7 +549,7 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
   vinput::result::Payload payload;
   std::set<std::string> seen;
 
-  if (scene.show_raw) {
+  if (scene.raw_cand) {
     AppendCandidate(payload, normalized, vinput::result::kSourceRaw);
     seen.insert(normalized);
   }

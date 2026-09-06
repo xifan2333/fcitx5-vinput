@@ -158,6 +158,8 @@ bool UpdateScene(Config* config, const std::string& id, const Definition& def, s
       updated.context_lines = def.context_lines;
       updated.llm_max_candidates = def.llm_max_candidates;
       updated.timeout_ms = def.timeout_ms;
+      updated.raw_cand = def.raw_cand;
+      updated.raw_prev = def.raw_prev;
       NormalizeDefinition(&updated);
       if (!ValidateDefinition(updated, error)) {
         return false;

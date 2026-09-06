@@ -27,7 +27,8 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
                      {"count", scene.llm_max_candidates},
                      {"timeout_ms", scene.timeout_ms},
                      {"context_lines", scene.context_lines},
-                     {"show_raw", scene.show_raw},
+                     {"raw_cand", scene.raw_cand},
+                     {"raw_prev", scene.raw_prev},
                      {"builtin", scene.builtin},
                      {"active", active}});
     }
@@ -36,7 +37,7 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
   }
 
   const std::vector<std::string> headers = {_("ID"),    _("LABEL"),    _("PROVIDER"), _("MODEL"),
-                                            _("COUNT"), _("SHOW_RAW"), _("STATUS")};
+                                            _("COUNT"), _("RAW_CAND"), _("RAW_PREV"), _("STATUS")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& scene : scenes) {
     std::string label = vinput::scene::DisplayLabel(scene);
@@ -44,7 +45,8 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
     std::string provider = scene.provider_id.empty() ? "-" : scene.provider_id;
     std::string model = scene.model.empty() ? "-" : scene.model;
     rows.push_back({scene.id, label, provider, model, std::to_string(scene.llm_max_candidates),
-                    scene.show_raw ? _("yes") : _("no"), status});
+                    scene.raw_cand ? _("yes") : _("no"), scene.raw_prev ? _("yes") : _("no"),
+                    status});
   }
   fmt.PrintTable(headers, rows);
   return 0;
@@ -52,8 +54,8 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
 
 int RunSceneConfigAdd(const std::string& id, const std::string& label, const std::string& prompt,
                       const std::string& provider_id, const std::string& model,
-                      int llm_max_candidates, int timeout_ms, int context_lines, bool show_raw,
-                      Formatter& fmt, const CliContext& ctx) {
+                      int llm_max_candidates, int timeout_ms, int context_lines, bool raw_cand,
+                      bool raw_prev, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
 
@@ -66,7 +68,8 @@ int RunSceneConfigAdd(const std::string& id, const std::string& label, const std
   def.llm_max_candidates = llm_max_candidates;
   def.timeout_ms = timeout_ms;
   def.context_lines = context_lines;
-  def.show_raw = show_raw;
+  def.raw_cand = raw_cand;
+  def.raw_prev = raw_prev;
 
   vinput::scene::Config scene_config = ToSceneConfig(config.scenes);
   std::string error;
@@ -123,10 +126,11 @@ int RunSceneConfigRemove(const std::string& id, bool force, Formatter& fmt, cons
 
 int RunSceneConfigEdit(const std::string& id, const std::string& label, const std::string& prompt,
                        const std::string& provider_id, const std::string& model,
-                       int llm_max_candidates, int timeout_ms, int context_lines, bool show_raw,
-                       bool hasLabel, bool hasPrompt, bool hasProvider, bool hasModel,
-                       bool hasLlmMaxCandidates, bool hasTimeout, bool hasContextLines,
-                       bool hasShowRaw, Formatter& fmt, const CliContext& ctx) {
+                       int llm_max_candidates, int timeout_ms, int context_lines, bool raw_cand,
+                       bool raw_prev, bool hasLabel, bool hasPrompt, bool hasProvider,
+                       bool hasModel, bool hasLlmMaxCandidates, bool hasTimeout,
+                       bool hasContextLines, bool hasRawCand, bool hasRawPrev, Formatter& fmt,
+                       const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
 
@@ -164,8 +168,11 @@ int RunSceneConfigEdit(const std::string& id, const std::string& label, const st
   if (hasContextLines) {
     updated.context_lines = context_lines;
   }
-  if (hasShowRaw) {
-    updated.show_raw = show_raw;
+  if (hasRawCand) {
+    updated.raw_cand = raw_cand;
+  }
+  if (hasRawPrev) {
+    updated.raw_prev = raw_prev;
   }
 
   vinput::scene::Config scene_config = ToSceneConfig(config.scenes);

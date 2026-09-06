@@ -762,8 +762,14 @@ void LlmPage::onSceneAdd() {
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(vinput::scene::kDefaultContextLines);
-  auto* chkShowRaw = new QCheckBox(tr("Include raw transcript in candidate options"));
-  chkShowRaw->setChecked(true);
+  auto* chkRawCand = new QCheckBox(tr("Include raw transcript in candidate options"));
+  chkRawCand->setChecked(true);
+  chkRawCand->setToolTip(
+      tr("Whether to include raw speech text as option 1 in candidate options."));
+  auto* chkRawPrev = new QCheckBox(tr("Preview raw transcript during postprocessing"));
+  chkRawPrev->setChecked(true);
+  chkRawPrev->setToolTip(
+      tr("Whether to preview raw speech text in the floating panel during postprocessing."));
 
   SetupProviderModelCombos(comboProvider, comboModel);
 
@@ -775,7 +781,8 @@ void LlmPage::onSceneAdd() {
   form->addRow(tr("Context Lines:"), spinContextLines);
   form->addRow(tr("LLM Max Results:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
-  form->addRow(QString(), chkShowRaw);
+  form->addRow(QString(), chkRawCand);
+  form->addRow(QString(), chkRawPrev);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
   connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -797,7 +804,8 @@ void LlmPage::onSceneAdd() {
   def.context_lines = spinContextLines->value();
   def.llm_max_candidates = spinLlmMaxCandidates->value();
   def.timeout_ms = spinTimeout->value();
-  def.show_raw = chkShowRaw->isChecked();
+  def.raw_cand = chkRawCand->isChecked();
+  def.raw_prev = chkRawPrev->isChecked();
 
   CoreConfig config = ConfigManager::Get().Load();
   std::string err;
@@ -854,8 +862,14 @@ void LlmPage::onSceneEdit() {
   auto* spinContextLines = new QSpinBox();
   spinContextLines->setRange(0, 9999);
   spinContextLines->setValue(found->context_lines);
-  auto* chkShowRaw = new QCheckBox(tr("Include raw transcript in candidate options"));
-  chkShowRaw->setChecked(found->show_raw);
+  auto* chkRawCand = new QCheckBox(tr("Include raw transcript in candidate options"));
+  chkRawCand->setChecked(found->raw_cand);
+  chkRawCand->setToolTip(
+      tr("Whether to include raw speech text as option 1 in candidate options."));
+  auto* chkRawPrev = new QCheckBox(tr("Preview raw transcript during postprocessing"));
+  chkRawPrev->setChecked(found->raw_prev);
+  chkRawPrev->setToolTip(
+      tr("Whether to preview raw speech text in the floating panel during postprocessing."));
 
   SetupProviderModelCombos(comboProvider, comboModel, QString::fromStdString(found->provider_id),
                            QString::fromStdString(found->model));
@@ -868,7 +882,8 @@ void LlmPage::onSceneEdit() {
   form->addRow(tr("Context Lines:"), spinContextLines);
   form->addRow(tr("LLM Max Results:"), spinLlmMaxCandidates);
   form->addRow(tr("Timeout (ms):"), spinTimeout);
-  form->addRow(QString(), chkShowRaw);
+  form->addRow(QString(), chkRawCand);
+  form->addRow(QString(), chkRawPrev);
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
   connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -889,7 +904,8 @@ void LlmPage::onSceneEdit() {
   def.context_lines = spinContextLines->value();
   def.llm_max_candidates = spinLlmMaxCandidates->value();
   def.timeout_ms = spinTimeout->value();
-  def.show_raw = chkShowRaw->isChecked();
+  def.raw_cand = chkRawCand->isChecked();
+  def.raw_prev = chkRawPrev->isChecked();
 
   std::string err;
   sc = ToSceneConfig(config.scenes);

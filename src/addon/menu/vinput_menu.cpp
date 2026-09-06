@@ -294,17 +294,6 @@ int CurrentSelectionIndex(fcitx::CandidateList* candidate_list) {
   return current_page * kMenuPageSize + current_index;
 }
 
-void MoveCursorToIndex(fcitx::CandidateList* candidate_list, int target_index) {
-  auto* cursor_list = candidate_list ? candidate_list->toCursorMovable() : nullptr;
-  if (!cursor_list || target_index <= 0) {
-    return;
-  }
-
-  for (int i = 0; i < target_index; ++i) {
-    cursor_list->nextCandidate();
-  }
-}
-
 void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
   if (!candidate_list || candidate_list->totalSize() <= 0) {
     return;
@@ -956,16 +945,11 @@ void VinputEngine::showResultMenu(fcitx::InputContext* ic, const vinput::result:
   candidate_list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
   candidate_list->setCursorPositionAfterPaging(fcitx::CursorPositionAfterPaging::ResetToFirst);
 
-  int cursor_index = 0;
   for (std::size_t i = 0; i < result_candidates_.size(); ++i) {
     const auto& candidate = result_candidates_[i];
-    if (candidate.text == payload.commitText) {
-      cursor_index = static_cast<int>(i);
-    }
     candidate_list->append<ResultCandidateWord>(this, i, candidate.text,
                                                 ResultCandidateComment(candidate));
   }
-  MoveCursorToIndex(candidate_list.get(), cursor_index);
 
   SetMenuTitle(ic, ResultMenuTitle(result_candidates_.size()), candidate_list.get());
   ic->inputPanel().setCandidateList(std::move(candidate_list));
