@@ -23,6 +23,9 @@ public:
                 TriggerModeI18NAnnotation>
       triggerMode;
 
+  fcitx::Option<int, fcitx::IntConstrain, fcitx::DefaultMarshaller<int>, fcitx::ToolTipAnnotation>
+      holdActivationDelay;
+
   fcitx::Option<fcitx::KeyList, fcitx::ListConstrain<fcitx::KeyConstrain>,
                 fcitx::DefaultMarshaller<fcitx::KeyList>, fcitx::ToolTipAnnotation>
       triggerKeys;

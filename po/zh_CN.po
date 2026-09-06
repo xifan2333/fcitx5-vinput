@@ -1165,6 +1165,12 @@ msgstr "均可"
 msgid "Hold"
 msgstr "长按"
 
+msgid "Hold activation delay (ms)"
+msgstr "长按激活延迟（毫秒）"
+
+msgid "Delay before recording in Hold mode and the tap/hold boundary in Both mode. In Both mode, non-modifier shortcuts still start recording immediately. Tap mode ignores this setting."
+msgstr "长按模式下开始录音前的等待时间，同时也是两者模式下区分点按与长按的阈值。两者模式下，非纯修饰键快捷键仍在按下时立即开始录音。点按模式忽略此设置。"
+
 msgid "Tap"
 msgstr "短按"
 

@@ -140,21 +140,36 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
 
 # VINPUT.CONF 结构 (FCITX5 插件配置)
 
-Fcitx5 插件的配置文件为 INI 格式，位于 *~/.config/fcitx5/conf/vinput.conf*。
+Fcitx5 插件使用 INI 格式的配置文件 *~/.config/fcitx5/conf/vinput.conf*。
 
 ```ini
-[Trigger]
 TriggerMode=Both
-TriggerKey=Alt_R
-CommandKeys=Control_R
-MenuKey=Shift_R
-PagePrevKeys=Page_Up,KP_Page_Up
-PageNextKeys=Page_Down,KP_Page_Down
+HoldActivationDelay=300
 MaxStreamingDisplayWidth=60
+
+[TriggerKey]
+0=Alt_R
+[CommandKeys]
+0=Control_R
+[MenuKey]
+0=Shift_R
+[PagePrevKeys]
+0=Page_Up
+1=KP_Page_Up
+[PageNextKeys]
+0=Page_Down
+1=KP_Page_Down
 ```
 
 **TriggerMode** (*枚举值: Tap, Hold, Both*)
-:   按键触发模式。`Tap` 短按切换开始/停止；`Hold` 长按说话松开识别；`Both` 短按长按均可。
+:   `Tap` 点按切换录音；`Hold` 按住说话、松开停止；`Both` 同时支持这两种方式。
+
+    单个或多个修饰键组成的快捷键（如 `Control_R`、`Control+Shift_L`），点按时在全部松开后触发。按住修饰键快捷键期间，按下其他键会取消本次操作，并丢弃此次长按已开始的录音。
+
+    单修饰键快捷键会占用该键的按下和松开；多修饰键组合仍将按键传给应用，供单独使用各修饰键，但应用也可能响应同一组合。其他按键保留修饰键状态（如 `Ctrl+C`）；鼠标点击不会取消快捷键。
+
+**HoldActivationDelay** (*整数*, `100` - `2000`)
+:   长按判定时长，单位毫秒（默认：`300`）。在 Hold 模式下设置激活延迟，在 Both 模式下区分点按与长按。
 
 **TriggerKey** (*按键列表*)
 :   触发语音录音的快捷键（默认：右 Alt）。
@@ -163,7 +178,7 @@ MaxStreamingDisplayWidth=60
 :   对选中文本执行划词语音指令的按键（默认：右 Control）。
 
 **MenuKey** (*按键列表*)
-:   打开统一命令面板（Command Palette）的快捷键（默认：右 Shift）。它替代旧的 `SceneMenuKey`；`AsrMenuKey` 已移除。
+:   打开统一命令面板的快捷键（默认：右 Shift）。纯修饰键快捷键点按后打开，其他快捷键按下时打开。
 
 **MaxStreamingDisplayWidth** (*整数*, `0` - `500`)
 :   实时流式识别预览的最大视觉显示列宽。超出时自动将较早文字折叠为“句首...句尾”。设为 `0` 则禁用折叠（默认：`60`）。

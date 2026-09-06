@@ -69,6 +69,11 @@ jobs:
       - name: Build all targets
         run: cmake --build --preset ci-clang-mold
 
+      - name: Run tests
+        run: |
+          command -v dbus-run-session
+          ctest --test-dir build --output-on-failure
+
       - name: Verify CLI feature surface
         shell: bash
         run: |

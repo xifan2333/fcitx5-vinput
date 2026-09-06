@@ -140,21 +140,36 @@ Defines prompt templates and candidate counts for text rewriting.
 
 # VINPUT.CONF STRUCTURE (FCITX5 ADDON)
 
-The Fcitx5 addon configuration file is stored in INI format at *~/.config/fcitx5/conf/vinput.conf*.
+The Fcitx5 addon uses the INI configuration file *~/.config/fcitx5/conf/vinput.conf*.
 
 ```ini
-[Trigger]
 TriggerMode=Both
-TriggerKey=Alt_R
-CommandKeys=Control_R
-MenuKey=Shift_R
-PagePrevKeys=Page_Up,KP_Page_Up
-PageNextKeys=Page_Down,KP_Page_Down
+HoldActivationDelay=300
 MaxStreamingDisplayWidth=60
+
+[TriggerKey]
+0=Alt_R
+[CommandKeys]
+0=Control_R
+[MenuKey]
+0=Shift_R
+[PagePrevKeys]
+0=Page_Up
+1=KP_Page_Up
+[PageNextKeys]
+0=Page_Down
+1=KP_Page_Down
 ```
 
 **TriggerMode** (*enum: Tap, Hold, Both*)
-:   Trigger activation mode. `Tap` toggles recording; `Hold` records while key is pressed; `Both` enables tap-to-toggle and hold-to-talk.
+:   `Tap` toggles recording; `Hold` records while the shortcut is held; `Both` supports either.
+
+    Single- and multi-modifier shortcuts, such as `Control_R` or `Control+Shift_L`, activate taps when all bound keys are released. Pressing another key while holding a modifier shortcut cancels it and discards any recording started by that hold.
+
+    A single-modifier binding reserves that key's presses and releases; multi-modifier chords leave their key events available to apps, which may also respond to the chord. Other keys retain modifier state (such as `Ctrl+C`); mouse clicks do not cancel shortcuts.
+
+**HoldActivationDelay** (*integer*, `100` - `2000`)
+:   Hold threshold in milliseconds (default: `300`). Sets the activation delay in Hold mode and distinguishes taps from holds in Both mode.
 
 **TriggerKey** (*key list*)
 :   Keys used to trigger voice recording (default: Right Alt).
@@ -163,7 +178,7 @@ MaxStreamingDisplayWidth=60
 :   Keys used to record a voice command on selected text (default: Right Control).
 
 **MenuKey** (*key list*)
-:   Keys used to open the unified command palette (default: Right Shift). This replaces the old `SceneMenuKey`; `AsrMenuKey` was removed.
+:   Keys used to open the unified command palette (default: Right Shift). Tap modifier-only shortcuts to open it; other shortcuts open it on press.
 
 **MaxStreamingDisplayWidth** (*integer*, `0` - `500`)
 :   Maximum visual column width for live streaming recognition preview. Older text is folded into 'head...tail' to keep the preedit tooltip within bounds. Set to `0` to disable folding (default: `60`).

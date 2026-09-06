@@ -586,6 +586,8 @@ int main(int argc, char* argv[]) {
   dbus.SetCancelPostprocessingHandler([&](bool commit_raw_text) {
     return runtime_controller.CancelPostprocessing(commit_raw_text);
   });
+  dbus.SetCancelOperationHandler(
+      [&](bool commit_raw_text) { return runtime_controller.CancelOperation(commit_raw_text); });
 
   dbus.SetStatusHandler([&]() -> std::string { return runtime_controller.GetStatus(); });
   dbus.SetAsrBackendStateHandler(

@@ -116,6 +116,9 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
                               auto& icEvent = static_cast<fcitx::InputContextEvent&>(event);
                               auto* ic = icEvent.inputContext();
+                              if (modifier_ic_ == ic || pending_start_ic_ == ic) {
+                                resetPendingGestures();
+                              }
                               if (session_ && session_->ic == ic) {
                                 session_.reset();
                                 polled_idle_since_.reset();
@@ -137,6 +140,16 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                                 flushContextBuffer();
                               }
                             }));
+
+  for (auto type : {fcitx::EventType::InputContextFocusOut, fcitx::EventType::InputContextReset}) {
+    eventHandlers_.emplace_back(instance_->watchEvent(
+        type, fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
+          auto* ic = static_cast<fcitx::InputContextEvent&>(event).inputContext();
+          if (modifier_ic_ == ic || pending_start_ic_ == ic) {
+            resetPendingGestures();
+          }
+        }));
+  }
 
   eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextCommitString,
@@ -167,9 +180,11 @@ VinputEngine::~VinputEngine() {
   status_sync_event_.reset();
   pending_stop_event_.reset();
   pending_start_event_.reset();
+  modifier_timer_.reset();
 
   pending_stop_call_slot_.reset();
   pending_start_call_slot_.reset();
+  pending_cancel_call_slot_.reset();
 
   error_slot_.reset();
   status_slot_.reset();
@@ -202,12 +217,32 @@ void VinputEngine::setConfig(const fcitx::RawConfig& rawConfig) {
 }
 
 void VinputEngine::applySettings() {
+  resetPendingGestures();
   trigger_keys_ = config_.triggerKeys.value();
   command_keys_ = config_.commandKeys.value();
   menu_keys_ = config_.menuKeys.value();
   page_prev_keys_ = config_.pagePrevKeys.value();
   page_next_keys_ = config_.pageNextKeys.value();
   trigger_mode_ = config_.triggerMode.value();
+  hold_activation_delay_ = std::chrono::milliseconds(config_.holdActivationDelay.value());
+  const auto mode = trigger_mode_ == TriggerMode::Tap    ? ModifierGesture::Mode::Tap
+                    : trigger_mode_ == TriggerMode::Hold ? ModifierGesture::Mode::Hold
+                                                         : ModifierGesture::Mode::Both;
+  std::vector<ModifierGesture::Binding> bindings;
+  const auto add = [&](const fcitx::KeyList& keys, ModifierGesture::Action action) {
+    for (const auto& key : keys) {
+      if (key.isModifier()) {
+        const bool palette = action == ModifierGesture::Action::Palette;
+        bindings.push_back(
+            {key, action, palette ? ModifierGesture::Mode::Tap : mode, hold_activation_delay_,
+             palette ? std::optional(std::chrono::milliseconds(250)) : std::nullopt});
+      }
+    }
+  };
+  add(trigger_keys_, ModifierGesture::Action::Dictation);
+  add(command_keys_, ModifierGesture::Action::Command);
+  add(menu_keys_, ModifierGesture::Action::Palette);
+  modifier_gesture_.setBindings(std::move(bindings));
   max_streaming_display_width_ = config_.maxStreamingDisplayWidth.value();
   reloadSceneConfig();
   reloadPaletteItems();

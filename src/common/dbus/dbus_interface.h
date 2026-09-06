@@ -17,6 +17,10 @@ constexpr const char* kNotifierInterface = "org.fcitx.Fcitx5.Vinput1";
 constexpr const char* kMethodStartRecording = "StartRecording";
 constexpr const char* kMethodStartCommandRecording = "StartCommandRecording";
 constexpr const char* kMethodStopRecording = "StopRecording";
+constexpr const char* kMethodCancelOperation = "CancelOperation";
+// Deprecated D-Bus method: new callers should use CancelOperation.
+// Retained for compatibility with older clients; only cancels post-processing
+// and never discards an active recording.
 constexpr const char* kMethodCancelPostprocessing = "CancelPostprocessing";
 constexpr const char* kMethodGetStatus = "GetStatus";
 constexpr const char* kMethodGetAsrBackendState = "GetAsrBackendState";
