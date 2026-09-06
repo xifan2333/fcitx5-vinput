@@ -25,6 +25,7 @@
 #include "common/dbus/error_info.h"
 #include "common/scene/postprocess_scene.h"
 
+#include "input/modifier_gesture.h"
 #include "menu/palette_command.h"
 
 class VinputNotifierDBusObject;
@@ -42,10 +43,16 @@ public:
   void setConfig(const fcitx::RawConfig& config) override;
 
 private:
+  friend struct VinputCancellationTest;
   void applySettings();
   void reloadSceneConfig();
   void initializePaletteRegistry();
   void handleKeyEvent(fcitx::Event& event);
+  void activateVoiceTrigger(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command);
+  void dispatchModifierGesture(const ModifierGesture::Result& result, fcitx::InputContext* ic);
+  void updateModifierTimer();
+  void resetPendingGestures();
+  void cancelModifierRecording();
   void showPaletteMenu(fcitx::InputContext* ic, const std::string& initial_query = {});
   void hidePaletteMenu();
   void resetPaletteMenuState();
@@ -67,8 +74,9 @@ private:
   void setupDBusWatcher();
   bool callStartRecording();
   bool callStartCommandRecording(const std::string& selected_text);
+  bool handleStartRecordingReply(fcitx::dbus::Message& reply);
+  void callCancelOperation(bool commit_raw_text);
   bool callStopRecording(const std::string& scene_id);
-  void callCancelPostprocessing(bool commit_raw_text);
   bool callReloadAsrBackend(std::string* error = nullptr);
   bool callStartAdapter(const std::string& adapter_id, std::string* error = nullptr);
   bool callStopAdapter(const std::string& adapter_id, std::string* error = nullptr);
@@ -121,6 +129,8 @@ private:
   std::unique_ptr<fcitx::dbus::Slot> error_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_start_call_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_stop_call_slot_;
+  std::unique_ptr<fcitx::dbus::Slot> pending_cancel_call_slot_;
+  bool recording_cancel_requested_ = false;
   struct Session {
     enum class Phase : std::uint8_t { PendingStart, Recording, Inferring, Postprocessing };
     Phase phase;
@@ -131,6 +141,7 @@ private:
     bool trigger_released = false;
     bool raw_prev = true;
     std::string transcript_text;
+    bool stop_on_release = false;
   };
   std::optional<Session> session_;
   fcitx::InputContext* status_ic_ = nullptr;
@@ -140,9 +151,10 @@ private:
   fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Alt_R)};
   fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_Control_R)};
   fcitx::KeyList menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
-  bool menu_hotkey_armed_ = false;
-  fcitx::Key menu_hotkey_pressed_;
-  std::chrono::steady_clock::time_point menu_hotkey_pressed_time_;
+  ModifierGesture modifier_gesture_;
+  fcitx::InputContext* modifier_ic_ = nullptr;
+  std::unique_ptr<fcitx::EventSourceTime> modifier_timer_;
+  fcitx::InputContext* pending_start_ic_ = nullptr;
   fcitx::KeyList page_prev_keys_{
       fcitx::Key(FcitxKey_Page_Up),
       fcitx::Key(FcitxKey_KP_Page_Up),
@@ -183,6 +195,7 @@ private:
   int commit_write_count_ = 0;
   int max_streaming_display_width_{60};
   TriggerMode trigger_mode_{TriggerMode::Both};
+  std::chrono::milliseconds hold_activation_delay_{300};
 };
 
 class VinputEngineFactory : public fcitx::AddonFactory {

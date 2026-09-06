@@ -6,6 +6,7 @@ add_library(addon MODULE
     core/vinput.cpp
     dbus/vinput_dbus.cpp
     input/vinput_keyevent.cpp
+    input/modifier_gesture.cpp
     menu/palette_command.cpp
     menu/vinput_menu.cpp
 )

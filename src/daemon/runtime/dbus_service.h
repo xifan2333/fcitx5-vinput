@@ -47,6 +47,7 @@ public:
   void SetStartHandler(std::function<MethodResult()> handler);
   void SetStartCommandHandler(std::function<MethodResult(const std::string&)> handler);
   void SetStopHandler(std::function<MethodResult(const std::string& scene_id)> handler);
+  void SetCancelOperationHandler(std::function<MethodResult(bool commit_raw_text)> handler);
   void SetCancelPostprocessingHandler(std::function<MethodResult(bool commit_raw_text)> handler);
   void SetStatusHandler(std::function<std::string()> handler);
   void SetAsrBackendStateHandler(std::function<vinput::dbus::AsrBackendState()> handler);
@@ -57,6 +58,7 @@ public:
   static int handleStartRecording(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStartCommandRecording(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStopRecording(sd_bus_message* m, void* userdata, sd_bus_error* error);
+  static int handleCancelOperation(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleCancelPostprocessing(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleGetStatus(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleGetAsrBackendState(sd_bus_message* m, void* userdata, sd_bus_error* error);
@@ -81,6 +83,7 @@ private:
   std::function<MethodResult()> start_handler_;
   std::function<MethodResult(const std::string&)> start_command_handler_;
   std::function<MethodResult(const std::string& scene_id)> stop_handler_;
+  std::function<MethodResult(bool commit_raw_text)> cancel_operation_handler_;
   std::function<MethodResult(bool commit_raw_text)> cancel_postprocessing_handler_;
   std::function<std::string()> status_handler_;
   std::function<vinput::dbus::AsrBackendState()> asr_backend_state_handler_;

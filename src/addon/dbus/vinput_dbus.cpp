@@ -346,22 +346,7 @@ bool VinputEngine::callStartRecording() {
   auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStartRecording);
   pending_start_call_slot_ =
       msg.callAsync(vinput::runtime::kDbusCallTimeoutUsec, [this](fcitx::dbus::Message& reply) {
-        auto slot = std::move(pending_start_call_slot_);
-        if (!reply || reply.isError()) {
-          noteDaemonSyncFailure();
-          fprintf(stderr, "vinput: StartRecording rejected by daemon\n");
-          auto* ic = resolveFrontendInputContext();
-          finishFrontendSession(ic);
-          if (ic) {
-            updateVoicePresentation(
-                ic, reply ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
-                                                    DaemonUnavailablePreeditText())
-                          : DaemonUnavailablePreeditText());
-          }
-          return true;
-        }
-        clearDaemonSyncFailure();
-        return true;
+        return handleStartRecordingReply(reply);
       });
   if (!pending_start_call_slot_) {
     noteDaemonSyncFailure();
@@ -382,28 +367,69 @@ bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
   msg << selected_text;
   pending_start_call_slot_ =
       msg.callAsync(vinput::runtime::kDbusCallTimeoutUsec, [this](fcitx::dbus::Message& reply) {
-        auto slot = std::move(pending_start_call_slot_);
-        if (!reply || reply.isError()) {
-          noteDaemonSyncFailure();
-          fprintf(stderr, "vinput: StartCommandRecording rejected by daemon\n");
-          auto* ic = resolveFrontendInputContext();
-          finishFrontendSession(ic);
-          if (ic) {
-            updateVoicePresentation(
-                ic, reply ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
-                                                    DaemonUnavailablePreeditText())
-                          : DaemonUnavailablePreeditText());
-          }
-          return true;
-        }
-        clearDaemonSyncFailure();
-        return true;
+        return handleStartRecordingReply(reply);
       });
   if (!pending_start_call_slot_) {
     noteDaemonSyncFailure();
     return false;
   }
   return true;
+}
+
+bool VinputEngine::handleStartRecordingReply(fcitx::dbus::Message& reply) {
+  auto slot = std::move(pending_start_call_slot_);
+  if (!reply || reply.isError()) {
+    noteDaemonSyncFailure();
+    auto* ic = resolveFrontendInputContext();
+    const bool cancelled = recording_cancel_requested_;
+    recording_cancel_requested_ = false;
+    finishFrontendSession(ic);
+    if (ic && !cancelled) {
+      updateVoicePresentation(ic, reply ? RenderMethodCallFailure(reply.errorName(),
+                                                                  reply.errorMessage(),
+                                                                  DaemonUnavailablePreeditText())
+                                        : DaemonUnavailablePreeditText());
+    }
+    return true;
+  }
+  clearDaemonSyncFailure();
+  if (recording_cancel_requested_) {
+    callCancelOperation(false);
+  }
+  return true;
+}
+
+void VinputEngine::callCancelOperation(bool commit_raw_text) {
+  if (!bus_ || pending_cancel_call_slot_) {
+    return;
+  }
+  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodCancelOperation);
+  msg << commit_raw_text;
+  const bool cancelling_recording = recording_cancel_requested_;
+  pending_cancel_call_slot_ = msg.callAsync(
+      vinput::runtime::kDbusCallTimeoutUsec,
+      [this, cancelling_recording](fcitx::dbus::Message& reply) {
+        auto slot = std::move(pending_cancel_call_slot_);
+        if (!reply || reply.isError()) {
+          noteDaemonSyncFailure();
+          notifyError(reply ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
+                                                      DaemonUnavailablePreeditText())
+                            : DaemonUnavailablePreeditText());
+          // Retain the discard intent; never turn a failed cancel into a commit.
+          ensureStatusSync();
+          return true;
+        }
+        clearDaemonSyncFailure();
+        if (cancelling_recording) {
+          recording_cancel_requested_ = false;
+          finishFrontendSession();
+        }
+        return true;
+      });
+  if (!pending_cancel_call_slot_) {
+    noteDaemonSyncFailure();
+    notifyError(DaemonUnavailablePreeditText());
+  }
 }
 
 bool VinputEngine::callStopRecording(const std::string& scene_id) {
@@ -439,18 +465,8 @@ bool VinputEngine::callStopRecording(const std::string& scene_id) {
   return true;
 }
 
-void VinputEngine::callCancelPostprocessing(bool commit_raw_text) {
-  if (bus_ == nullptr) {
-    return;
-  }
-
-  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodCancelPostprocessing);
-  msg << commit_raw_text;
-  msg.send();
-}
-
 void VinputEngine::ensureStatusSync() {
-  const bool needs_sync = session_.has_value() || status_ic_ != nullptr;
+  const bool needs_sync = recording_cancel_requested_ || session_ || status_ic_;
   if (!needs_sync) {
     stopStatusSyncIfIdle();
     return;
@@ -461,7 +477,7 @@ void VinputEngine::ensureStatusSync() {
         CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + kStatusSyncIntervalUsec, 0,
         [this](fcitx::EventSourceTime* event, uint64_t) {
           syncFrontendWithDaemonStatus();
-          if (!(session_.has_value() || status_ic_ != nullptr)) {
+          if (!(recording_cancel_requested_ || session_ || status_ic_)) {
             return false;
           }
           event->setNextInterval(kStatusSyncIntervalUsec);
@@ -475,7 +491,7 @@ void VinputEngine::ensureStatusSync() {
 }
 
 void VinputEngine::stopStatusSyncIfIdle() {
-  if (status_sync_event_ && !(session_.has_value() || status_ic_ != nullptr)) {
+  if (status_sync_event_ && !(recording_cancel_requested_ || session_ || status_ic_)) {
     status_sync_event_->setEnabled(false);
   }
 }
@@ -518,9 +534,8 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
   if (status_ic_ && status_ic_ != ic) {
     clearVoicePresentation(status_ic_);
   }
-  const bool stop_after_start = trigger_mode_ == TriggerMode::Hold && session_ &&
-                                session_->phase == Session::Phase::PendingStart &&
-                                session_->trigger_released;
+  const bool stop_after_start = session_ && session_->phase == Session::Phase::PendingStart &&
+                                session_->trigger_released && session_->stop_on_release;
   if (!session_) {
     session_.emplace(Session{Session::Phase::Recording,
                              ic,
@@ -773,6 +788,13 @@ void VinputEngine::syncFrontendWithDaemonStatus(fcitx::InputContext* fallback_ic
 void VinputEngine::applyDaemonStatusLocally(const std::string& status,
                                             fcitx::InputContext* fallback_ic,
                                             bool prefer_command_mode) {
+  if (recording_cancel_requested_) {
+    if (status == kStatusIdle && !pending_start_call_slot_ && !pending_cancel_call_slot_) {
+      recording_cancel_requested_ = false;
+      finishFrontendSession(fallback_ic);
+    }
+    return;
+  }
   if (status == kStatusIdle && !session_ && status_ic_ == nullptr) {
     return;
   }
@@ -806,6 +828,9 @@ void VinputEngine::applyDaemonStatusLocally(const std::string& status,
 }
 
 void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
+  if (recording_cancel_requested_) {
+    return;
+  }
   std::string payload_text;
   msg >> payload_text;
 
@@ -892,6 +917,9 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
 }
 
 void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
+  if (recording_cancel_requested_) {
+    return;
+  }
   std::string transcript_text;
   msg >> transcript_text;
 
@@ -943,7 +971,7 @@ void VinputEngine::onDaemonNotification(fcitx::dbus::Message& msg) {
     return;
   }
 
-  if (IsErrorLikeNotification(notification)) {
+  if (IsErrorLikeNotification(notification) && !recording_cancel_requested_) {
     auto* ic = resolveFrontendInputContext();
     finishFrontendSession(ic);
   }

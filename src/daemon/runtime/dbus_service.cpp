@@ -48,6 +48,8 @@ static const sd_bus_vtable vtable[] = {
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodStopRecording, "s", "s", &DbusService::handleStopRecording,
                   SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD(kMethodCancelOperation, "b", "", &DbusService::handleCancelOperation,
+                  SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodCancelPostprocessing, "b", "", &DbusService::handleCancelPostprocessing,
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodGetStatus, "", "s", &DbusService::handleGetStatus,
@@ -200,6 +202,11 @@ void DbusService::SetStopHandler(std::function<MethodResult(const std::string& s
   stop_handler_ = std::move(handler);
 }
 
+void DbusService::SetCancelOperationHandler(
+    std::function<MethodResult(bool commit_raw_text)> handler) {
+  cancel_operation_handler_ = std::move(handler);
+}
+
 void DbusService::SetCancelPostprocessingHandler(
     std::function<MethodResult(bool commit_raw_text)> handler) {
   cancel_postprocessing_handler_ = std::move(handler);
@@ -266,6 +273,23 @@ int DbusService::handleStopRecording(sd_bus_message* m, void* userdata, sd_bus_e
     result = self->stop_handler_(scene_id ? scene_id : "");
   }
   return ReplyWithMethodResult(m, error, result, "s");
+}
+
+int DbusService::handleCancelOperation(sd_bus_message* m, void* userdata, sd_bus_error* error) {
+  auto* self = static_cast<DbusService*>(userdata);
+  MethodResult result;
+  int commit_raw_text = 0;
+  const int ret = sd_bus_message_read(m, "b", &commit_raw_text);
+  if (ret < 0) {
+    return ret;
+  }
+  if (self->cancel_operation_handler_) {
+    result = self->cancel_operation_handler_(commit_raw_text != 0);
+  }
+  // Deliver queued partial/status updates before acknowledging cancellation,
+  // so the caller can safely stop suppressing them when it receives the reply.
+  self->FlushEmitQueue();
+  return ReplyWithMethodResult(m, error, result, "");
 }
 
 int DbusService::handleCancelPostprocessing(sd_bus_message* m, void* userdata,
