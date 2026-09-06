@@ -93,7 +93,7 @@ private:
                               bool command_mode);
   void enterRecordingState(fcitx::InputContext* ic, const fcitx::Key& trigger, bool command_mode);
   void enterBusyState(fcitx::InputContext* ic, bool command_mode, const std::string& preedit_text,
-                      bool postprocessing = false);
+                      bool postprocessing = false, bool raw_prev = true);
   void finishFrontendSession(fcitx::InputContext* fallback_ic = nullptr);
   void syncFrontendWithDaemonStatus(fcitx::InputContext* fallback_ic = nullptr,
                                     bool prefer_command_mode = false);
@@ -129,6 +129,7 @@ private:
     std::chrono::steady_clock::time_point press_time;
     bool command_mode = false;
     bool trigger_released = false;
+    bool raw_prev = true;
     std::string transcript_text;
   };
   std::optional<Session> session_;

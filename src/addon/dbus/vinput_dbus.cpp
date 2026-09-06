@@ -42,9 +42,12 @@ std::string InferringPreeditText() {
   return _("... Recognizing ...");
 }
 
-std::string PostprocessingPreeditText(bool command_mode) {
-  return command_mode ? _("... Postprocessing ... (Esc: Cancel)")
-                      : _("... Postprocessing ... (Enter: Use raw ASR text, Esc: Cancel)");
+std::string PostprocessingPreeditText(bool command_mode, bool raw_prev = true) {
+  if (command_mode) {
+    return _("... Applying command ... (Esc: Cancel)");
+  }
+  return raw_prev ? _("... Postprocessing ... (Enter: Use raw ASR text, Esc: Cancel)")
+                  : _("... Postprocessing ... (Esc: Cancel)");
 }
 
 std::string ApplyingCommandPreeditText() {
@@ -544,7 +547,8 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
 }
 
 void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
-                                  const std::string& preedit_text, bool postprocessing) {
+                                  const std::string& preedit_text, bool postprocessing,
+                                  bool raw_prev) {
   if (!ic) {
     return;
   }
@@ -554,16 +558,19 @@ void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
   }
   const auto phase = postprocessing ? Session::Phase::Postprocessing : Session::Phase::Inferring;
   if (!session_) {
-    session_.emplace(
-        Session{phase, ic, fcitx::Key(), std::chrono::steady_clock::now(), command_mode, {}, {}});
+    session_.emplace(Session{
+        phase, ic, fcitx::Key(), std::chrono::steady_clock::now(), command_mode, {}, raw_prev, {}});
   } else {
     session_->phase = phase;
     session_->ic = ic;
     session_->trigger = fcitx::Key();
     session_->command_mode = command_mode;
+    session_->raw_prev = raw_prev;
   }
   status_ic_ = ic;
-  if (postprocessing && !session_->transcript_text.empty()) {
+  if (postprocessing && !session_->raw_prev) {
+    updateVoicePresentation(ic, preedit_text);
+  } else if (postprocessing && !session_->transcript_text.empty()) {
     const auto transcript =
         LimitPreviewText(command_mode ? CommandTranscriptPreeditText(session_->transcript_text)
                                       : session_->transcript_text,
@@ -789,7 +796,9 @@ void VinputEngine::applyDaemonStatusLocally(const std::string& status,
 
   if (status == kStatusPostprocessing) {
     const bool command_mode = session_ ? session_->command_mode : prefer_command_mode;
-    enterBusyState(ic, command_mode, PostprocessingPreeditText(command_mode), true);
+    const bool raw_prev = session_ ? session_->raw_prev : true;
+    enterBusyState(ic, command_mode, PostprocessingPreeditText(command_mode, raw_prev), true,
+                   raw_prev);
     return;
   }
 
@@ -898,8 +907,9 @@ void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
   rememberInputContext(ic);
   session_->transcript_text = transcript_text;
   if (session_->phase == Session::Phase::Postprocessing) {
-    enterBusyState(ic, session_->command_mode, PostprocessingPreeditText(session_->command_mode),
-                   true);
+    enterBusyState(ic, session_->command_mode,
+                   PostprocessingPreeditText(session_->command_mode, session_->raw_prev), true,
+                   session_->raw_prev);
     return;
   }
 

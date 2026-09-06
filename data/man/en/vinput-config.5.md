@@ -130,10 +130,13 @@ Defines prompt templates and candidate counts for text rewriting.
 :   Number of preceding input lines sent to the LLM as conversational context.
 
 **count** (*integer*, `0` - `9`)
-:   Maximum LLM candidate count. Maximum number of rewritten candidates requested from the LLM (set to `0` to disable LLM for this scene). Candidates are deduplicated with the raw ASR transcript. If only 1 distinct candidate remains, it commits directly to screen; if distinct choices exist, a candidate menu is shown with the primary LLM rewrite focused and the raw transcript preserved as option 1 (when `show_raw` is true).
+:   Maximum LLM candidate count. Maximum number of rewritten candidates requested from the LLM (set to `0` to disable LLM for this scene). Candidates are deduplicated with the raw ASR transcript. If only 1 distinct candidate remains, it commits directly to screen; if distinct choices exist, a candidate menu is shown defaulting to option 1 (the raw ASR transcript when `raw_cand` is true, followed by rewrite candidates).
 
-**show_raw** (*boolean*, default `true`)
-:   Whether to include the raw ASR transcript in the candidate options. When disabled (`false`), the candidate array contains only LLM/adapter results, enabling immediate direct-commit to screen when a single rewrite is returned.
+**raw_cand** (*boolean*, default `true`)
+:   Whether to include the raw speech transcript in candidate options. When disabled (`false`), the candidate choices only contain LLM/adapter rewrites, committing directly if only 1 result exists (compatible with legacy `show_raw`).
+
+**raw_prev** (*boolean*, default `true`)
+:   Whether to preview the raw transcript in the floating panel during postprocessing and allow pressing Enter to use it immediately. When disabled (`false`), postprocessing remains as a compact single line without expanding the lower transcript box, eliminating visual flicker for fast local adapters.
 
 # VINPUT.CONF STRUCTURE (FCITX5 ADDON)
 

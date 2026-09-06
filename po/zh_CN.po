@@ -952,6 +952,9 @@ msgstr "发送给 LLM 作为上下文的前文行数"
 msgid "Include raw ASR transcript in candidate options (true/false)"
 msgstr "在候选词选项中包含原始语音文本 (true/false)"
 
+msgid "Preview raw ASR transcript in floating panel during postprocessing (true/false)"
+msgstr "在后处理期间于浮动面板中预览原始 ASR 文本 (true/false)"
+
 msgid "Set active scene"
 msgstr "设置当前场景"
 
@@ -970,8 +973,11 @@ msgstr "提供者"
 msgid "COUNT"
 msgstr "数量"
 
-msgid "SHOW_RAW"
-msgstr "包含原句"
+msgid "RAW_CAND"
+msgstr "候选原句"
+
+msgid "RAW_PREV"
+msgstr "预览原句"
 
 #, c-format
 msgid "Scene '%s' added."
