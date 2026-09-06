@@ -1,13 +1,13 @@
 {
-  "id": 17,
-  "timestamp": 1788641907,
+  "id": 18,
+  "timestamp": 1788663450,
   "title": {
-    "en_US": "Vinput 2.3.17 — GUI adapter label alignment & cleanups",
-    "zh_CN": "Vinput 2.3.17 — GUI 适配器标签统一与界面精简"
+    "en_US": "Vinput 2.3.18 — Clarified LLM candidates count & translation cleanups",
+    "zh_CN": "Vinput 2.3.18 — 明确场景 LLM 最大结果数与翻译路径净化"
   },
   "text": {
-    "en_US": "1) Unified LLM Adapter Labels: Control, Resources, and LLM pages now consistently use 'LLM Adapters' across all tabs and section headers.\n\n2) Cleaned UI Layout: Removed redundant introductory label text above the LLM adapters list for a cleaner, distraction-free interface.",
-    "zh_CN": "1）统一 LLM 适配器文案：控制面板、资源页面与 LLM 页面的分栏与标签页标题全部统一为「LLM 适配器」，语义更一致。\n\n2）精简界面排版：移除了 LLM 适配器列表上方冗余的介绍文字，界面更加清爽直观。"
+    "en_US": "1) Clarified LLM Candidate Count: The candidate count setting in the scene dialog is now clearly labeled as 'LLM Max Results' with an informative tooltip, preventing confusion with the final candidate menu count.\n\n2) Cleaned Translation Metadata: Standardized all location paths in the Qt translation catalog to clean repository-relative paths.",
+    "zh_CN": "1）明确场景 LLM 最大结果数：后处理场景配置中的“候选数量”正式更名为“LLM 最大结果数”，并新增详细悬停提示，彻底解除与输入法候选词浮窗总条数的歧义。\n\n2）净化翻译元数据路径：将 Qt 翻译文件中的本地开发路径全面重构为标准相对路径，保证开源仓库规范与整洁。"
   },
-  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.17"
+  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.18"
 }
