@@ -217,7 +217,7 @@ void from_json(const json& j, Definition& d) {
   d.llm_max_candidates = j.value("count", vinput::scene::kDefaultLlmMaxCandidates);
   d.timeout_ms = j.value("timeout_ms", vinput::scene::kDefaultTimeoutMs);
   d.context_lines = j.value("context_lines", vinput::scene::kDefaultContextLines);
-  d.raw_cand = j.value("raw_cand", j.value("show_raw", true));
+  d.raw_cand = j.value("raw_cand", true);
   d.raw_prev = j.value("raw_prev", true);
 }
 
