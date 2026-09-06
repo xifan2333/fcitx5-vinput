@@ -46,7 +46,7 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   add->add_option("--context-lines", addState->contextLines,
                   _("Number of previous lines sent as LLM context"))
       ->default_val(vinput::scene::kDefaultContextLines);
-  add->add_option("--raw-cand,--show-raw", addState->rawCand,
+  add->add_option("--raw-cand", addState->rawCand,
                   _("Include raw ASR transcript in candidate options (true/false)"))
       ->expected(0, 1)
       ->default_str("true");
@@ -119,7 +119,7 @@ void RegisterSceneCommands(CLI::App& app, CliAction* action) {
   auto* eCtx = edit->add_option("--context-lines", editState->contextLines,
                                 _("Number of previous lines sent as LLM context"));
   auto* eRawCand =
-      edit->add_option("--raw-cand,--show-raw", editState->rawCand,
+      edit->add_option("--raw-cand", editState->rawCand,
                        _("Include raw ASR transcript in candidate options (true/false)"))
           ->expected(0, 1)
           ->default_str("true");

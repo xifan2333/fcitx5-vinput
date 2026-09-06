@@ -354,7 +354,8 @@ _vinput() {
                                         '(-c --count)'{-c,--count}'[Maximum number of LLM candidates]:count:' \
                                         '--timeout[Request timeout in ms]:ms:' \
                                         '--context-lines[Context history lines]:lines:' \
-                                        '--show-raw[Include raw ASR transcript in candidate options (true/false)]' \
+                                        '--raw-cand[Include raw ASR transcript in candidate options (true/false)]' \
+                                        '--raw-prev[Preview raw ASR transcript in floating panel during postprocessing (true/false)]' \
                                         '1:scene:_vinput_installed_scenes' ;;
                                 use|remove|rm)
                                     _arguments \
