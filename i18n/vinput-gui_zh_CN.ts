@@ -170,63 +170,68 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="33"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="37"/>
         <source>Vinput Configuration</source>
         <translation>Vinput 配置</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="52"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="56"/>
         <source>Control</source>
         <translation>控制</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="53"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="57"/>
         <source>Resources</source>
         <translation>资源</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="54"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="58"/>
         <source>LLM</source>
         <translation>LLM</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="56"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="60"/>
         <source>Hotwords</source>
         <translation>热词</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="66"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="70"/>
         <source>Open Config</source>
         <translation>打开配置</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="69"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="73"/>
         <source>Save Settings</source>
         <translation>保存设置</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="132"/>
-        <location filename="../src/gui/app/mainwindow.cpp" line="139"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="136"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="143"/>
         <source>Error</source>
         <translation>错误</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="132"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="136"/>
         <source>Failed to save config.</source>
         <translation>保存配置失败。</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="142"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="146"/>
         <source>Success</source>
         <translation>成功</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="142"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="146"/>
         <source>Settings saved successfully!</source>
         <translation>设置已成功保存！</translation>
     </message>
     <message>
-        <location filename="../src/gui/app/mainwindow.cpp" line="264"/>
+        <location filename="../src/gui/app/mainwindow.cpp" line="267"/>
+        <source>Copy</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/app/mainwindow.cpp" line="269"/>
         <source>Details</source>
         <translation>查看详情</translation>
     </message>
@@ -906,348 +911,348 @@ Found %2 model(s).</source>
 <context>
     <name>vinput::gui::ResourcePage</name>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="96"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="100"/>
         <source>&lt;b&gt;Installed Models&lt;/b&gt;</source>
         <translation>&lt;b&gt;已安装模型&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="98"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="102"/>
         <source>Filter installed models...</source>
         <translation>筛选已安装模型...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="104"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="108"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="104"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="125"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="108"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="129"/>
         <source>Type</source>
         <translation>类型</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="104"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="125"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="108"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="129"/>
         <source>Language</source>
         <translation>语言</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="104"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="126"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="108"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="130"/>
         <source>Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="104"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="126"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="108"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="130"/>
         <source>Hotwords</source>
         <translation>热词</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="104"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="126"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="158"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="183"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="108"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="130"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="162"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="187"/>
         <source>Status</source>
         <translation>状态</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="108"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="112"/>
         <source>Use</source>
         <translation>使用</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="109"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="162"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="187"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="113"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="166"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="191"/>
         <source>Remove</source>
         <translation>移除</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="110"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="144"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="114"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="148"/>
         <source>Refresh</source>
         <translation>刷新</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="118"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="122"/>
         <source>&lt;b&gt;Available Models&lt;/b&gt;</source>
         <translation>&lt;b&gt;可用模型&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="120"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="124"/>
         <source>Filter available models...</source>
         <translation>筛选可用模型...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="125"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="158"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="183"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="129"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="162"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="187"/>
         <source>Title</source>
         <translation>标题</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="125"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="158"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="183"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="129"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="162"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="187"/>
         <source>Description</source>
         <translation>描述</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="129"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="133"/>
         <source>Download</source>
         <translation>下载</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="135"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="139"/>
         <source>Models</source>
         <translation>模型</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="149"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="153"/>
         <source>&lt;b&gt;Available ASR Providers&lt;/b&gt;</source>
         <translation>&lt;b&gt;可用 ASR 提供商&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="152"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="156"/>
         <source>Filter available ASR providers...</source>
         <translation>筛选可用 ASR 提供商...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="158"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="162"/>
         <source>Mode</source>
         <translation>模式</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="158"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="183"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="162"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="187"/>
         <source>README</source>
         <translation>文档</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="161"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="186"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="165"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="190"/>
         <source>Install</source>
         <translation>安装</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="172"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="176"/>
         <source>ASR Providers</source>
         <translation>ASR 提供商</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="176"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="180"/>
         <source>&lt;b&gt;Available LLM Adapters&lt;/b&gt;</source>
         <translation>&lt;b&gt;可用 LLM 适配器&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="178"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="182"/>
         <source>Filter available LLM adapters...</source>
         <translation>筛选可用 LLM 适配器...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="194"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="198"/>
         <source>LLM Adapters</source>
         <translation>LLM 适配器</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="307"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="311"/>
         <source>I18n cache reload error: %1</source>
         <translation>i18n 缓存重载错误：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="312"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="316"/>
         <source>Registry fetch completed.</source>
         <translation>注册表获取完成。</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="372"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="430"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="376"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="434"/>
         <source>yes</source>
         <translation>是</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="372"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="430"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="376"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="434"/>
         <source>no</source>
         <translation>否</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="376"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="380"/>
         <source>active</source>
         <translation>激活</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="378"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="382"/>
         <source>broken</source>
         <translation>损坏</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="380"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="434"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="473"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="519"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="384"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="438"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="477"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="523"/>
         <source>installed</source>
         <translation>已安装</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="434"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="473"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="519"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="438"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="477"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="523"/>
         <source>available</source>
         <translation>可下载</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="470"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="474"/>
         <source>stream</source>
         <translation>流式</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="470"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="474"/>
         <source>non-stream</source>
         <translation>非流式</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="481"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="486"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="527"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="532"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="485"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="490"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="531"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="536"/>
         <source>Open README</source>
         <translation>查看文档</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="559"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="563"/>
         <source>Fetching remote registry...</source>
         <translation>正在获取远程注册表...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="604"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="608"/>
         <source>Models fetch error: %1</source>
         <translation>获取模型出错：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="608"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="612"/>
         <source>Providers fetch error: %1</source>
         <translation>获取提供者出错：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="612"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="616"/>
         <source>Adapters fetch error: %1</source>
         <translation>获取适配器出错：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="617"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="621"/>
         <source>Registry warning: %1</source>
         <translation>注册表警告：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="668"/>
         <location filename="../src/gui/pages/resources/resource_page.cpp" line="672"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="716"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="724"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="734"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="999"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1016"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1076"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="676"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="720"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="728"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="738"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1003"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1020"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1080"/>
         <source>Error</source>
         <translation>错误</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="672"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="724"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1016"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1076"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="676"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="728"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1020"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1080"/>
         <source>Failed to save config.</source>
         <translation>保存配置失败。</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="679"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1025"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="683"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1029"/>
         <source>Warning</source>
         <translation>警告</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="680"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="735"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1026"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="684"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="739"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1030"/>
         <source>Config saved, but failed to reload ASR backend: %1</source>
         <translation>配置已保存，但重新加载 ASR 后端失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="684"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="688"/>
         <source>Selected model &apos;%1&apos; saved as the preferred local ASR model. Backend reload is in progress.</source>
         <translation>已将所选模型&quot;%1&quot;保存为首选本地 ASR 模型。后端正在重新加载。</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="709"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="986"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1049"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="713"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="990"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1053"/>
         <source>Confirm</source>
         <translation>确认</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="709"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="713"/>
         <source>Are you sure you want to remove model &apos;%1&apos;?</source>
         <translation>确定要移除模型&quot;%1&quot;吗？</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="728"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="732"/>
         <source>Removed %1.</source>
         <translation>已移除 %1。</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="745"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="749"/>
         <source>Downloading... %1% at %2</source>
         <translation>正在下载... %1% 速度 %2</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="752"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="756"/>
         <source>Download Error</source>
         <translation>下载错误</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="797"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="801"/>
         <source>Preparing download...</source>
         <translation>正在准备下载...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="826"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="830"/>
         <source>Starting download for %1...</source>
         <translation>开始下载 %1...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="877"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="881"/>
         <source>Installing provider %1...</source>
         <translation>正在安装提供者 %1...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="926"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="930"/>
         <source>Installing adapter %1...</source>
         <translation>正在安装适配器 %1...</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="986"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="990"/>
         <source>Are you sure you want to remove ASR provider &apos;%1&apos;?</source>
         <translation>确定要移除 ASR 提供商“%1”吗？</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="999"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1003"/>
         <source>The local ASR provider cannot be removed.</source>
         <translation>本地 ASR 提供商不能被移除。</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1019"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1023"/>
         <source>Removed ASR provider %1.</source>
         <translation>已移除 ASR 提供商 %1。</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1049"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1053"/>
         <source>Are you sure you want to remove LLM adapter &apos;%1&apos;?</source>
         <translation>确定要移除 LLM 适配器“%1”吗？</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1079"/>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1083"/>
         <source>Removed LLM adapter %1.</source>
         <translation>已移除 LLM 适配器 %1。</translation>
     </message>
