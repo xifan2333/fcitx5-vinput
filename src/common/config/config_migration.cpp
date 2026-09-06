@@ -226,15 +226,19 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
   std::string ini_content;
   bool has_ini = false;
   if (std::filesystem::exists(report.conf_file)) {
-    if (vinput::file::ReadTextFile(report.conf_file, &ini_content, &read_error)) {
-      has_ini = true;
+    if (!vinput::file::ReadTextFile(report.conf_file, &ini_content, &read_error)) {
+      report.error = "Failed to read " + report.conf_file.string() + ": " + read_error;
+      return report;
     }
+    has_ini = true;
   }
 
   if (!has_json && !has_ini) {
     report.needed = false;
     return report;
   }
+
+  const std::string original_ini = ini_content;
 
   for (const auto& step : RegisteredSteps()) {
     step.apply(root_json, ini_content, report.changes);
@@ -250,35 +254,51 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     return report;
   }
 
+  bool json_changed = false;
+  bool ini_changed = false;
+  for (const auto& ch : report.changes) {
+    if (ch.file == "config.json") {
+      json_changed = true;
+    } else if (ch.file == "vinput.conf") {
+      ini_changed = true;
+    }
+  }
+
   const std::string ts = CurrentTimestampStr();
 
-  // 1. Back up and write config.json
-  if (has_json) {
-    const auto backup_dir = report.config_file.parent_path() / "backups";
+  // Back up originals before rewriting any live config file.
+  if (json_changed && has_json) {
+    const auto backup_file =
+        report.config_file.parent_path() / "backups" / ("config.json.bak." + ts);
     std::string err;
-    vinput::file::EnsureParentDirectory(backup_dir / "placeholder", &err);
-    const auto backup_file = backup_dir / ("config.json.bak." + ts);
-    if (vinput::file::AtomicWriteTextFile(backup_file, json_content, &err)) {
-      report.config_backup = backup_file;
+    if (!vinput::file::AtomicWriteTextFile(backup_file, json_content, &err)) {
+      report.error = "Failed to back up " + report.config_file.string() + ": " + err;
+      return report;
     }
+    report.config_backup = backup_file;
+  }
 
+  if (ini_changed && has_ini) {
+    const auto backup_file = report.conf_file.parent_path() / "backups" / ("vinput.conf.bak." + ts);
+    std::string err;
+    if (!vinput::file::AtomicWriteTextFile(backup_file, original_ini, &err)) {
+      report.error = "Failed to back up " + report.conf_file.string() + ": " + err;
+      return report;
+    }
+    report.conf_backup = backup_file;
+  }
+
+  if (json_changed && has_json) {
     const std::string updated_json = root_json.dump(4) + "\n";
+    std::string err;
     if (!vinput::file::AtomicWriteTextFile(report.config_file, updated_json, &err)) {
       report.error = "Failed to write updated " + report.config_file.string() + ": " + err;
       return report;
     }
   }
 
-  // 2. Back up and write vinput.conf
-  if (has_ini) {
-    const auto backup_dir = report.conf_file.parent_path() / "backups";
+  if (ini_changed && has_ini) {
     std::string err;
-    vinput::file::EnsureParentDirectory(backup_dir / "placeholder", &err);
-    const auto backup_file = backup_dir / ("vinput.conf.bak." + ts);
-    if (vinput::file::AtomicWriteTextFile(backup_file, ini_content, &err)) {
-      report.conf_backup = backup_file;
-    }
-
     if (!vinput::file::AtomicWriteTextFile(report.conf_file, ini_content + "\n", &err)) {
       report.error = "Failed to write updated " + report.conf_file.string() + ": " + err;
       return report;
