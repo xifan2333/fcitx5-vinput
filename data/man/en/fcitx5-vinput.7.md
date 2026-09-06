@@ -3,7 +3,6 @@ title: FCITX5-VINPUT
 section: 7
 header: fcitx5-vinput Manual
 footer: fcitx5-vinput
-date: September 2026
 ...
 
 # NAME

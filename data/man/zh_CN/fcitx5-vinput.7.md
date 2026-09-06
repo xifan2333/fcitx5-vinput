@@ -3,7 +3,6 @@ title: FCITX5-VINPUT
 section: 7
 header: fcitx5-vinput 手册
 footer: fcitx5-vinput
-date: 2026年9月
 ...
 
 # 名称
