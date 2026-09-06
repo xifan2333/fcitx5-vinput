@@ -1,6 +1,7 @@
 #include "pages/resources/resource_page.h"
 
 #include <QAbstractItemView>
+#include <QDesktopServices>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -10,6 +11,7 @@
 #include <QTabWidget>
 #include <QThreadPool>
 #include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <filesystem>
@@ -152,7 +154,8 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
 
   auto* providerLayout = new QHBoxLayout();
   tableAvailableProviders_ = new QTableWidget();
-  SetupTable(tableAvailableProviders_, {tr("Title"), tr("Description"), tr("Mode"), tr("Status")});
+  SetupTable(tableAvailableProviders_,
+             {tr("Title"), tr("Description"), tr("Mode"), tr("Status"), tr("README")});
   providerLayout->addWidget(tableAvailableProviders_, 1);
 
   btnAddProvider_ = new QPushButton(tr("Install"));
@@ -177,7 +180,7 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
 
   auto* adapterLayout = new QHBoxLayout();
   tableAvailableAdapters_ = new QTableWidget();
-  SetupTable(tableAvailableAdapters_, {tr("Title"), tr("Description"), tr("Status")});
+  SetupTable(tableAvailableAdapters_, {tr("Title"), tr("Description"), tr("Status"), tr("README")});
   adapterLayout->addWidget(tableAvailableAdapters_, 1);
 
   btnAddAdapter_ = new QPushButton(tr("Install"));
@@ -224,6 +227,30 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
           &ResourcePage::updateProviderButtons);
   connect(tableAvailableAdapters_, &QTableWidget::itemSelectionChanged, this,
           &ResourcePage::updateAdapterButtons);
+  connect(tableAvailableProviders_, &QTableWidget::cellDoubleClicked, this,
+          [this](int row, int col) {
+            if (col == 4) {
+              const auto* item = tableAvailableProviders_->item(row, col);
+              if (item) {
+                const QString url = item->data(Qt::UserRole).toString();
+                if (!url.isEmpty()) {
+                  QDesktopServices::openUrl(QUrl(url));
+                }
+              }
+            }
+          });
+  connect(tableAvailableAdapters_, &QTableWidget::cellDoubleClicked, this,
+          [this](int row, int col) {
+            if (col == 3) {
+              const auto* item = tableAvailableAdapters_->item(row, col);
+              if (item) {
+                const QString url = item->data(Qt::UserRole).toString();
+                if (!url.isEmpty()) {
+                  QDesktopServices::openUrl(QUrl(url));
+                }
+              }
+            }
+          });
   connect(filterAvailableProviders_, &QLineEdit::textChanged, this,
           [this](const QString& text) { applyTableFilter(tableAvailableProviders_, text); });
   connect(filterAvailableAdapters_, &QLineEdit::textChanged, this,
@@ -447,6 +474,21 @@ void ResourcePage::populateRemoteProviders(
 
     auto* stCell = MakeCell(status);
     tableAvailableProviders_->setItem(row, 3, stCell);
+
+    const QString readme_url = QString::fromStdString(entry.readme_url);
+    if (!readme_url.isEmpty()) {
+      auto* linkLabel = new QLabel(QStringLiteral("<a href=\"%1\">%2</a>")
+                                       .arg(readme_url.toHtmlEscaped(), tr("Open README")));
+      linkLabel->setOpenExternalLinks(true);
+      linkLabel->setAlignment(Qt::AlignCenter);
+      linkLabel->setStyleSheet(QStringLiteral("background: transparent;"));
+      tableAvailableProviders_->setCellWidget(row, 4, linkLabel);
+      tableAvailableProviders_->setItem(row, 4, MakeCell(tr("Open README"), readme_url));
+    } else {
+      auto* emptyCell = MakeCell(QStringLiteral("-"));
+      emptyCell->setTextAlignment(Qt::AlignCenter);
+      tableAvailableProviders_->setItem(row, 4, emptyCell);
+    }
   }
 
   applyTableFilter(tableAvailableProviders_, filterAvailableProviders_->text());
@@ -478,6 +520,21 @@ void ResourcePage::populateRemoteAdapters(
 
     auto* stCell = MakeCell(status);
     tableAvailableAdapters_->setItem(row, 2, stCell);
+
+    const QString readme_url = QString::fromStdString(entry.readme_url);
+    if (!readme_url.isEmpty()) {
+      auto* linkLabel = new QLabel(QStringLiteral("<a href=\"%1\">%2</a>")
+                                       .arg(readme_url.toHtmlEscaped(), tr("Open README")));
+      linkLabel->setOpenExternalLinks(true);
+      linkLabel->setAlignment(Qt::AlignCenter);
+      linkLabel->setStyleSheet(QStringLiteral("background: transparent;"));
+      tableAvailableAdapters_->setCellWidget(row, 3, linkLabel);
+      tableAvailableAdapters_->setItem(row, 3, MakeCell(tr("Open README"), readme_url));
+    } else {
+      auto* emptyCell = MakeCell(QStringLiteral("-"));
+      emptyCell->setTextAlignment(Qt::AlignCenter);
+      tableAvailableAdapters_->setItem(row, 3, emptyCell);
+    }
   }
 
   applyTableFilter(tableAvailableAdapters_, filterAvailableAdapters_->text());
