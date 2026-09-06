@@ -97,6 +97,7 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     dialog.setWindowTitle(title);
 
     auto* form = new QFormLayout();
+    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     auto* editName = new QLineEdit();
     auto* comboType = new QComboBox();
     auto* comboModel = new QComboBox();

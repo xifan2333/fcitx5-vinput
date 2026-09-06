@@ -131,6 +131,7 @@ ControlPage::ControlPage(QWidget* parent)
   audioLayout->addWidget(new QLabel(tr("<b>Audio</b>")));
 
   auto* formLayout = new QFormLayout();
+  formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   comboDevice_ = new QComboBox();
   comboDevice_->setEditable(false);
   formLayout->addRow(tr("Capture Device:"), comboDevice_);
