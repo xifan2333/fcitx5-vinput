@@ -740,6 +740,7 @@ void LlmPage::onSceneAdd() {
   dialog.setWindowTitle(tr("Add Scene"));
 
   auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   auto* editId = new QLineEdit();
   auto* editLabel = new QLineEdit();
   auto* editPrompt = new QTextEdit();
@@ -829,6 +830,7 @@ void LlmPage::onSceneEdit() {
   dialog.setWindowTitle(tr("Edit Scene"));
 
   auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   auto* editId = new QLineEdit(scene_id);
   editId->setReadOnly(true);
   auto* editLabel = new QLineEdit(QString::fromStdString(found->label));
