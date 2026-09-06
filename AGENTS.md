@@ -175,3 +175,20 @@ Compilation strategy should adapt to local hardware capabilities:
 6. **Hardware-Adaptive Compilation**: On modest hardware, prioritize GitHub Actions CI (`ci.yml` / `release.yml`) over heavy local full builds.
 7. **User-Facing Strings**: Must be wrapped in `_("...")` or `ki18n` for gettext localization. Run `mise run check-i18n` to validate po files.
 8. **No Force-Pushing to Contributor Forks (Open-Source Etiquette)**: Never force-push (`git push -f`) to an external contributor's personal fork or PR branch, even if GitHub's "Allow edits by maintainers" is technically enabled. Overwriting a contributor's commit history breaks their local workspace and violates open-source collaboration boundaries. When a contributor's PR encounters conflicts (e.g., following an earlier PR merge), either politely ask the contributor to rebase via a PR comment, or integrate the changes purely within upstream local/temporary branches without modifying the contributor's remote repository.
+
+---
+
+## 7. In-App Release Notification Specification (`notification.json`)
+
+When preparing releases, `notification.json` notifies users on GUI startup. Agents must follow these rules:
+
+1. **Configuration Breaking Changes (配置破坏性更新)**:
+   - **Content Format: "Prompt for Agent"**: Must be structured as an actionable migration prompt that both human users can read and agents/AIs can execute directly. Must include:
+     - **Target Version Boundary**: Explicitly state the starting version (e.g. `【Target: Upgrading to vX.Y.Z or newer】`).
+     - **Option 1 (Fast Reset)**: One-liner terminal command `vinput init -f` to reset to default configs.
+     - **Option 2 (Manual/AI Migration)**: Exact file paths (`~/.config/fcitx5/conf/vinput.conf`, `~/.config/vinput/config.json`) and specific key renaming/addition rules.
+   - **Retention Period (5 Patch Releases or Next Minor)**:
+     - Retain the breaking change migration prompt as the primary notification body across **5 consecutive patch releases** (or until the next minor release, e.g. `v2.4.0`).
+     - During this retention window, intermediate pure feature/bugfix releases should retain the migration prompt and append a concise patch changelog at the end. This prevents users who skip patch versions from missing critical migration instructions.
+2. **Standard Releases (Non-Breaking Changes)**:
+   - Record version highlights and bug fixes concisely in bilingual (`en_US` and `zh_CN`) format.

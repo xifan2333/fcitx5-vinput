@@ -39,3 +39,20 @@ Compilation strategy should adapt to the local machine's hardware capabilities, 
 ### Mode 2: Official Release Publication (Git Tag `v*`)
 - **Command**: `mise run release <version>` (e.g. `mise run release 2.3.9`)
 - **Behavior**: Verifies that the `VERSION` file matches the git tag, runs the complete matrix build, extracts changelog notes via `git-cliff`, and automatically creates and publishes the official GitHub Release with all binary packages attached.
+
+---
+
+## 4. In-App Release Notification Specification (`notification.json`)
+
+When publishing releases, `notification.json` triggers startup notifications in the GUI:
+
+1. **Configuration Breaking Changes (配置破坏性更新)**:
+   - **Content Format: "Prompt for Agent"**: Must be structured as an actionable migration prompt that human users can follow and agents/AIs can execute directly:
+     - **Target Version Boundary**: Explicitly state the starting version (e.g. `【Target: Upgrading to vX.Y.Z or newer】`).
+     - **Option 1 (Fast Reset)**: One-liner command `vinput init -f` to reset to default configs.
+     - **Option 2 (Manual/AI Migration)**: Exact file paths (`~/.config/fcitx5/conf/vinput.conf`, `~/.config/vinput/config.json`) and specific key renaming/addition rules.
+   - **Retention Period (5 Patch Releases or Next Minor)**:
+     - Retain the breaking change migration prompt as the primary notification body across **5 consecutive patch releases** (or until the next minor release, e.g. `v2.4.0`).
+     - During this retention window, intermediate pure feature/bugfix releases should retain the migration prompt and append a concise patch changelog at the end. This prevents users who skip patch versions from missing critical migration instructions.
+2. **Standard Releases (Non-Breaking Changes)**:
+   - Record version highlights and bug fixes concisely in bilingual (`en_US` and `zh_CN`) format.

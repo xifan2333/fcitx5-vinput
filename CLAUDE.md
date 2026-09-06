@@ -28,6 +28,9 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
 - **No Force-Push to Contributor Forks**: Never `git push -f` to external contributors' forks or branches. Ask them to rebase or handle conflicts within upstream branches only.
 - **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
 - **Hardware-Adaptive Compilation**: Prioritize GitHub Actions CI over heavy local builds on modest hardware.
+- **Notification Specification (`notification.json`)**:
+  - *Breaking Changes*: Must format as an actionable "Prompt for Agent" migration guide with target version boundary, `vinput init -f`, and exact file/key rules. Retain across 5 patch releases (or until next minor) so skip-version users don't miss it.
+  - *Standard Releases*: Concise bilingual feature/fix changelog.
 
 ## Ecosystem Repositories
 - **Core Engine (C++20)**: [xifan2333/fcitx5-vinput](https://github.com/xifan2333/fcitx5-vinput) (`~/Code/fcitx5-vinput`)
