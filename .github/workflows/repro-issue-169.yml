@@ -1,0 +1,29 @@
+name: repro-issue-169
+
+on:
+  push:
+    branches:
+      - ci/repro-issue-169
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install PipeWire 0.3 and WirePlumber 0.4
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pipewire wireplumber pipewire-pulse pipewire-bin \
+            pipewire-audio-client-libraries libpipewire-0.3-dev \
+            gcc pkg-config ffmpeg python3
+
+      - name: Run channel-position capture repro
+        run: |
+          chmod +x scripts/repro-issue-169.sh
+          dbus-run-session -- bash scripts/repro-issue-169.sh
