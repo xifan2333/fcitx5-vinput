@@ -13,6 +13,10 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QtCore/qnamespace.h>
+#include <QtCore/qstringliteral.h>
+#include <QtCore/qurl.h>
+#include <QtGui/qdesktopservices.h>
 #include <algorithm>
 #include <filesystem>
 #include <system_error>
@@ -231,7 +235,7 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
           [this](int row, int col) {
             if (col == 4) {
               const auto* item = tableAvailableProviders_->item(row, col);
-              if (item) {
+              if (item != nullptr) {
                 const QString url = item->data(Qt::UserRole).toString();
                 if (!url.isEmpty()) {
                   QDesktopServices::openUrl(QUrl(url));
@@ -243,7 +247,7 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
           [this](int row, int col) {
             if (col == 3) {
               const auto* item = tableAvailableAdapters_->item(row, col);
-              if (item) {
+              if (item != nullptr) {
                 const QString url = item->data(Qt::UserRole).toString();
                 if (!url.isEmpty()) {
                   QDesktopServices::openUrl(QUrl(url));
