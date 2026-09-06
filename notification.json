@@ -1,13 +1,13 @@
 {
-  "id": 21,
-  "timestamp": 1788687527,
+  "id": 22,
+  "timestamp": 1788692269,
   "title": {
-    "en_US": "Vinput 2.3.21 — README documentation links in resource tables",
-    "zh_CN": "Vinput 2.3.21 — 资源页面新增文档链接"
+    "en_US": "Vinput ≥ 2.3.15 Configuration Migration Instructions (Breaking Changes)",
+    "zh_CN": "Vinput ≥ 2.3.15 配置迁移与操作指令（破坏性更新须知）"
   },
   "text": {
-    "en_US": "1) Direct Documentation Links: Added a README column with clickable links in the ASR Providers and LLM Adapters tables, allowing instant access to configuration guides, required environment variables, and notes before installing.",
-    "zh_CN": "1）资源表格支持查看文档：在资源页面的“可用 ASR 提供商”与“可用 LLM 适配器”表格中新增“文档”列，支持直接点击或双击打开对应脚本在 GitHub 上的 README 使用说明与配置指南。"
+    "en_US": "【Target: Upgrading to v2.3.15 or newer】\nDue to breaking changes in configuration fields, please follow the migration steps below (you can also copy-paste this prompt alongside your config files to an AI to update them automatically):\n\n▶ Option 1: Fast Reset (Recommended if no custom scenes)\nRun in terminal:\n  vinput init -f\nThis generates a fresh set of default configuration files.\n\n▶ Option 2: Manual Migration (Preserving custom configs)\nUpdate the following two files according to these exact rules:\n\n1. Addon Keys Config (~/.config/fcitx5/conf/vinput.conf):\n- Remove deprecated SceneMenuKey and AsrMenuKey entries.\n- Add or update: MenuKey=Shift_R (Right Shift release toggles command palette).\n- Add: MaxStreamingDisplayWidth=60 (optional, max streaming fold width).\n\n2. Core Config (~/.config/vinput/config.json):\n- In scenes.items, rename all 'candidate_count' keys to 'count'.\n- Add 'show_raw': true to scene objects (controls whether raw transcript is included in candidates).\n- If legacy 'adaptors' key exists under 'llm', rename to 'adapters'.",
+    "zh_CN": "【适用版本：升级到 v2.3.15 及以上版本】\n从旧版升级后，因配置字段规范化引入了破坏性变更，请执行以下迁移（可直接将本段说明与配置文件发给 AI 自动完成修改）：\n\n▶ 方式一：一键快速重置（无需保留自定义配置的推荐方式）\n在终端直接执行：\n  vinput init -f\n即可自动生成最新版本的全套默认配置文件。\n\n▶ 方式二：手动迁移（保留已有自定义配置）\n请按以下规则修改两处配置文件：\n\n1. 插件按键配置（~/.config/fcitx5/conf/vinput.conf）：\n- 删除已废弃的 SceneMenuKey 与 AsrMenuKey 行。\n- 补充或更新键名：MenuKey=Shift_R （默认单击释放右 Shift 唤出命令面板）。\n- 补充参数：MaxStreamingDisplayWidth=60 （可选，流式预览折叠列宽）。\n\n2. 核心配置文件（~/.config/vinput/config.json）：\n- 将 scenes.items 数组中所有的 'candidate_count' 键名重命名为 'count'。\n- 在每个场景项中补充 'show_raw': true （控制候选词列表中是否展示原始识别文本）。\n- 若 llm 下存在极早期拼写的 'adaptors'，统一更名为 'adapters'。"
   },
-  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.21"
+  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.22"
 }
