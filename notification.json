@@ -1,13 +1,13 @@
 {
-  "id": 19,
-  "timestamp": 1788666780,
+  "id": 20,
+  "timestamp": 1788683076,
   "title": {
-    "en_US": "Vinput 2.3.19 — PipeWire mono channel fix & diagnostics",
-    "zh_CN": "Vinput 2.3.19 — 修复 PipeWire 单声道连线与完善调试状态"
+    "en_US": "Vinput 2.3.20 — Live transcript, post-processing controls & UI fixes",
+    "zh_CN": "Vinput 2.3.20 — 实时展示识别文本、后处理快捷控制与界面适配"
   },
   "text": {
-    "en_US": "1) Fix PipeWire Capture on Older Systems: Explicitly specify SPA_AUDIO_CHANNEL_MONO in stream configuration, allowing session managers (like WirePlumber 0.4.8 on Ubuntu 22.04) to successfully route and link physical stereo microphone hardware to the capture stream.\n\n2) PipeWire State Diagnostics: Hooked state_changed listener to report real-time stream state transitions in daemon logs for improved observability.",
-    "zh_CN": "1）修复老版本系统 PipeWire 录音连线问题：在音频流参数中显式指定 SPA_AUDIO_CHANNEL_MONO，解决 Ubuntu 22.04 / WirePlumber 0.4.8 等早期会话管理器无法将物理立体声麦克风阵列连线到采集流导致的静音问题。\n\n2）完善底层音频状态诊断：新增 state_changed 状态机监听，可在调试日志中实时查看 PipeWire 流连接与错误状态。"
+    "en_US": "1) Live Transcript & Post-Processing Controls: Real-time recognition text is now immediately visible while LLM post-processing runs. Press Escape to cancel or Enter to use raw dictation directly.\n\n2) Modifier Key Command Palette: Open the command palette / action menu smoothly on modifier key release (e.g. Shift_R).\n\n3) UI Form Layout Fit: Fixed QFormLayout dropdown combos failing to stretch properly under KDE Breeze and other desktop themes.",
+    "zh_CN": "1）实时展示识别文本与快捷控制：语音识别完成后立即上屏原始文本，并在 LLM 后处理期间持续可见；支持按 Escape 取消后处理，或按 Enter 直接上屏原始识别文本。\n\n2）修饰键唤出动作菜单：支持单击并释放 Shift_R 等修饰键直接唤出命令面板与动作菜单，操作更自然顺畅。\n\n3）界面主题自适应：修复 KDE Breeze 等桌面主题下表单下拉选框未能自适应拉伸的问题。"
   },
-  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.19"
+  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.20"
 }
