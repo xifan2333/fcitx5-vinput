@@ -24,11 +24,70 @@ local linters = new Mapping<String, Step> {
   ["detect-private-key"] = Builtins.detect_private_key
 }
 
-local pre_push_steps = new Mapping<String, Step> {
-  ["guard-fork-push"] {
-    stdin = "{{hook_stdin}}"
-    check = "bash scripts/guard-pre-push.sh {{hook_args}}"
-  }
+local pre_push_guard = new Step {
+  stdin = "{{hook_stdin}}"
+  shell = "bash -o errexit -c"
+  check = #"
+    set -euo pipefail
+
+    is_null_oid() {
+      [[ "${1:-}" =~ ^0{40}$ ]]
+    }
+
+    is_official_upstream() {
+      local url="${1:-}"
+      [ -z "${url}" ] && return 0
+      local normalized
+      normalized=$(echo "${url}" | tr '[:upper:]' '[:lower:]' | sed -E 's|\.git$||')
+      [[ "${normalized}" =~ (github\.com[:/])?xifan2333/fcitx5-vinput$ ]]
+    }
+
+    is_force_push() {
+      local local_oid="$1"
+      local remote_oid="$2"
+
+      if is_null_oid "${remote_oid}" || is_null_oid "${local_oid}"; then
+        return 1
+      fi
+
+      if git merge-base --is-ancestor "${remote_oid}" "${local_oid}" 2>/dev/null; then
+        return 1
+      fi
+      return 0
+    }
+
+    audit_push() {
+      local remote_name="${1:-}"
+      local remote_url="${2:-$(git config --get "remote.${remote_name}.url" || true)}"
+      local is_upstream=false
+      if is_official_upstream "${remote_url}"; then
+        is_upstream=true
+      fi
+
+      while read -r local_ref local_oid remote_ref remote_oid; do
+        [ -z "${local_ref:-}" ] && continue
+
+        if [ "${remote_ref}" = "refs/heads/main" ] && is_force_push "${local_oid}" "${remote_oid}"; then
+          echo "ERROR [hk pre-push]: Force-pushing to 'main' is prohibited." >&2
+          exit 1
+        fi
+
+        if [ "${is_upstream}" = false ]; then
+          if is_force_push "${local_oid}" "${remote_oid}"; then
+            echo "ERROR [hk pre-push]: Force-pushing to contributor fork (${remote_url}) is prohibited." >&2
+            exit 1
+          fi
+
+          if [ "${VINPUT_ALLOW_FORK_PUSH:-0}" != "1" ]; then
+            echo "ERROR [hk pre-push]: Pushing to contributor fork (${remote_url}) is blocked. Set VINPUT_ALLOW_FORK_PUSH=1 to override." >&2
+            exit 1
+          fi
+        fi
+      done
+    }
+
+    audit_push {{hook_args}}
+  "#
 }
 
 hooks {
@@ -39,7 +98,9 @@ hooks {
   }
 
   ["pre-push"] {
-    steps = pre_push_steps
+    steps {
+      ["guard-push"] = pre_push_guard
+    }
   }
 
   ["check"] {
