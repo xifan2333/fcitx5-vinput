@@ -118,6 +118,7 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                               auto* ic = icEvent.inputContext();
                               if (session_ && session_->ic == ic) {
                                 session_.reset();
+                                polled_idle_since_.reset();
                               }
                               if (status_ic_ == ic) {
                                 status_ic_ = nullptr;

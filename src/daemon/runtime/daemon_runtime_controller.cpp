@@ -117,30 +117,6 @@ void ApplyRecognitionEvents(
   }
 }
 
-void EmitRecognitionEvents(const std::vector<vinput::daemon::asr::RecognitionEvent>& events,
-                           DbusService* dbus) {
-  if (!dbus) {
-    return;
-  }
-  for (const auto& event : events) {
-    switch (event.kind) {
-    case vinput::daemon::asr::RecognitionEventKind::PartialText:
-    case vinput::daemon::asr::RecognitionEventKind::FinalText:
-      if (!event.text.empty()) {
-        dbus->EmitRecognitionPartial(event.text);
-      }
-      break;
-    case vinput::daemon::asr::RecognitionEventKind::Error:
-      if (!event.error.empty()) {
-        dbus->EmitNotification(vinput::dbus::ClassifyErrorText(event.error));
-      }
-      break;
-    case vinput::daemon::asr::RecognitionEventKind::Completed:
-      break;
-    }
-  }
-}
-
 vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
     const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
     std::mutex* session_io_mutex, std::string* error) {
@@ -514,7 +490,6 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
     }
 
     bool keep_processing = false;
-    bool emit_events = false;
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       if (active_session_ != session) {
@@ -526,8 +501,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
                                pending_chunk_pcm_.begin() +
                                    static_cast<std::ptrdiff_t>(chunk_to_push.size()));
       ApplyRecognitionEvents(events, &latest_final_text_, &first_partial_logged_,
-                             recording_started_at_, first_non_silent_at_, nullptr);
-      emit_events = !events.empty();
+                             recording_started_at_, first_non_silent_at_, dbus_);
       keep_processing = pending_chunk_pcm_.size() >= kStreamingChunkSamples;
       if (keep_processing) {
         chunk_to_push.assign(pending_chunk_pcm_.begin(),
@@ -538,10 +512,6 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
       } else {
         chunk_to_push.clear();
       }
-    }
-
-    if (emit_events) {
-      EmitRecognitionEvents(events, dbus_);
     }
 
     if (!keep_processing) {
@@ -867,6 +837,8 @@ void DaemonRuntimeController::WorkerMain() {
         }
         if (!result.text.empty()) {
           order.recognized_text = std::move(result.text);
+          // RecognitionPartial is also the protocol's transcript-update signal.
+          dbus_->EmitRecognitionPartial(order.recognized_text);
         }
         order.pcm.clear();
         order.session.reset();

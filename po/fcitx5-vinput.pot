@@ -29,6 +29,13 @@ msgstr ""
 msgid "... Postprocessing ..."
 msgstr ""
 
+msgid "... Applying command ..."
+msgstr ""
+
+#, c-format
+msgid "Command: %s"
+msgstr ""
+
 msgid ""
 "Local ASR model configuration is missing. Please configure a model first."
 msgstr ""
