@@ -24,11 +24,22 @@ local linters = new Mapping<String, Step> {
   ["detect-private-key"] = Builtins.detect_private_key
 }
 
+local pre_push_steps = new Mapping<String, Step> {
+  ["guard-fork-push"] {
+    stdin = "{{hook_stdin}}"
+    check = "bash scripts/guard-pre-push.sh {{hook_args}}"
+  }
+}
+
 hooks {
   ["pre-commit"] {
     fix = true
     stash = "patch-file"
     steps = linters
+  }
+
+  ["pre-push"] {
+    steps = pre_push_steps
   }
 
   ["check"] {
