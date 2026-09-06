@@ -23,6 +23,12 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
   - *Pre-release Matrix Dry Build*: `gh workflow run release.yml && gh run watch`
   - *Local Incremental (Powerful hardware only)*: `mise run dev` -> `mise run build-debug`
 
+## Hard Constraints (Red Lines)
+- **No Direct Main Commits**: Always develop via feature branches and Draft PRs.
+- **No Force-Push to Contributor Forks**: Never `git push -f` to external contributors' forks or branches. Ask them to rebase or handle conflicts within upstream branches only.
+- **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
+- **Hardware-Adaptive Compilation**: Prioritize GitHub Actions CI over heavy local builds on modest hardware.
+
 ## Ecosystem Repositories
 - **Core Engine (C++20)**: [xifan2333/fcitx5-vinput](https://github.com/xifan2333/fcitx5-vinput) (`~/Code/fcitx5-vinput`)
 - **Cloud ASR / LLM Scenes Registry**: [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) (`~/Code/vinput-registry`)

@@ -66,11 +66,12 @@ Read **[references/issue-pr-workflow.md](references/issue-pr-workflow.md)**
 - Single-item local atomic commits, unified push on completion, and updating PR checklist checkboxes (`- [x]`).
 - Finalizing, marking ready (`gh pr ready`), and squash merging.
 
-### Task: Working in a Fork / Submitting a PR
+### Task: Working in a Fork / Reviewing External PRs
 Read **[references/fork-guide.md](references/fork-guide.md)**
 - Setting up `upstream` remote and rebasing on `upstream/main`.
 - The 4-step Pre-PR Code Health Check pipeline and diff audit checklist.
 - Conventional commit rules and upstream PR submission (`gh pr create --repo xifan2333/fcitx5-vinput`).
+- Maintainer collaboration etiquette: Never `git push -f` to external contributors' forks or branches. If a PR has conflicts from an earlier merge, ask the author to rebase or handle integration on upstream branches only.
 
 ### Task: Compiling, Building, or Running CI
 Read **[references/compilation-ci.md](references/compilation-ci.md)**
@@ -87,5 +88,5 @@ Read **[references/ecosystem.md](references/ecosystem.md)**
 
 ### Task: Debugging Audio Capture or Daemon Issues
 Read **[references/audio-debugging.md](references/audio-debugging.md)**
-- Inspecting live `vinput-daemon.service` journal logs and `--debug` mode.
+- Inspecting live `vinput-daemon.service` journal logs and `VINPUT_DEBUG=1` mode.
 - Benchmarking PipeWire stream cold-start latency.

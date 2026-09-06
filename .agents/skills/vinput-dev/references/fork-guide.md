@@ -126,3 +126,16 @@ gh pr create \
 gh pr checks
 ```
 If upstream `ci` or `cpp-linter` reports failure, fix locally with `hk fix`, commit, and push to fork branch.
+
+---
+
+## 5. Maintainer Review & Etiquette for External PRs
+
+When reviewing and handling pull requests submitted by external contributors:
+
+1. **Never Force-Push to Contributor Forks**: Even if GitHub's "Allow edits by maintainers" is technically enabled, maintainers and AI agents must **NEVER** run `git push -f` on an external contributor's personal repository branch. Overwriting their git history corrupts their local workspace and violates open-source trust boundaries.
+2. **Handling Post-Merge Conflicts**: When merging an earlier PR introduces merge conflicts into another open PR from a contributor:
+   - Politely leave a comment on the PR asking the author to rebase:
+     > *"PR #<id> has merged into main, introducing a minor conflict. Could you please rebase your branch on latest main?"*
+   - Keep the rebase and revision ownership with the original author.
+3. **If Upstream Direct Integration is Required**: Resolve conflicts strictly on an upstream temporary branch without modifying or pushing to the contributor's fork remote.
