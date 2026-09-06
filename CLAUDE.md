@@ -29,7 +29,7 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
 - **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
 - **Hardware-Adaptive Compilation**: Prioritize GitHub Actions CI over heavy local builds on modest hardware.
 - **Notification Specification (`notification.json`)**:
-  - *Breaking Changes*: Must format as an actionable "Prompt for Agent" migration guide with target version boundary, `vinput init -f`, and exact file/key rules. Retain across 5 patch releases (or until next minor) so skip-version users don't miss it.
+  - *Breaking Changes*: Add a versioned step to ConfigMigration (`src/common/config/config_migration.cpp`) first. The GUI notice is an actionable "Prompt for Agent" with target version, `vinput init -f`, and `vinput config migrate [--dry-run]` — do not list per-key rename recipes. Retain across 5 patch releases (or until next minor).
   - *Standard Releases*: Concise bilingual feature/fix changelog.
 
 ## Ecosystem Repositories

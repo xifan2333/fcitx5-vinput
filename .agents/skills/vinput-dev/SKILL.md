@@ -78,7 +78,7 @@ Read **[references/compilation-ci.md](references/compilation-ci.md)**
 - Hardware-adaptive compilation: CI-first on modest machines; local incremental builds on powerful machines.
 - The two usages of `release.yml`: Remote multi-arch matrix validation (Dry Run) vs official release publishing.
 - GitHub Actions workflow matrix (`ci.yml`, `channels.yml`, `nix-cache.yml`).
-- Release notification specification: breaking change "Prompt for Agent" format and 5-version retention policy.
+- Release notification specification: breaking changes must land in ConfigMigration first; the GUI notice teaches `vinput config migrate` (not field-by-field recipes) and is retained for 5 patches.
 
 ### Task: Modifying Cloud ASR, LLM Scenes, AUR, or Flatpak Repos
 Read **[references/ecosystem.md](references/ecosystem.md)**

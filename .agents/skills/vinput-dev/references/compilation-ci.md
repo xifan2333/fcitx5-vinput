@@ -47,10 +47,11 @@ Compilation strategy should adapt to the local machine's hardware capabilities, 
 When publishing releases, `notification.json` triggers startup notifications in the GUI:
 
 1. **Configuration Breaking Changes (配置破坏性更新)**:
-   - **Content Format: "Prompt for Agent"**: Must be structured as an actionable migration prompt that human users can follow and agents/AIs can execute directly:
+   - **MUST update ConfigMigration first**: Add a versioned step in `src/common/config/config_migration.cpp` (`RegisteredSteps`) using the helpers (`RenameField`, `EnsureField`, `ReplaceIniKey`, `RemoveIniKey`). The migration engine is the source of truth. Do not leave field-rename recipes only in `notification.json`.
+   - **Content Format: "Prompt for Agent"**: An actionable prompt that humans and agents can execute directly:
      - **Target Version Boundary**: Explicitly state the starting version (e.g. `【Target: Upgrading to vX.Y.Z or newer】`).
-     - **Option 1 (Fast Reset)**: One-liner command `vinput init -f` to reset to default configs.
-     - **Option 2 (Manual/AI Migration)**: Exact file paths (`~/.config/fcitx5/conf/vinput.conf`, `~/.config/vinput/config.json`) and specific key renaming/addition rules.
+     - **Option 1 (Fast Reset)**: One-liner `vinput init -f` to regenerate default configs.
+     - **Option 2 (In-place migrate)**: `vinput config migrate --dry-run` to preview, then `vinput config migrate` to apply (automatic backups under `backups/`). Do **not** list per-key rename/addition recipes in the notification.
    - **Retention Period (5 Patch Releases or Next Minor)**:
      - Retain the breaking change migration prompt as the primary notification body across **5 consecutive patch releases** (or until the next minor release, e.g. `v2.4.0`).
      - During this retention window, intermediate pure feature/bugfix releases should retain the migration prompt and append a concise patch changelog at the end. This prevents users who skip patch versions from missing critical migration instructions.
