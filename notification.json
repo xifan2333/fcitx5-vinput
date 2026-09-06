@@ -1,13 +1,13 @@
 {
-  "id": 18,
-  "timestamp": 1788663450,
+  "id": 19,
+  "timestamp": 1788666780,
   "title": {
-    "en_US": "Vinput 2.3.18 — Clarified LLM candidates count & translation cleanups",
-    "zh_CN": "Vinput 2.3.18 — 明确场景 LLM 最大结果数与翻译路径净化"
+    "en_US": "Vinput 2.3.19 — PipeWire mono channel fix & diagnostics",
+    "zh_CN": "Vinput 2.3.19 — 修复 PipeWire 单声道连线与完善调试状态"
   },
   "text": {
-    "en_US": "1) Clarified LLM Candidate Count: The candidate count setting in the scene dialog is now clearly labeled as 'LLM Max Results' with an informative tooltip, preventing confusion with the final candidate menu count.\n\n2) Cleaned Translation Metadata: Standardized all location paths in the Qt translation catalog to clean repository-relative paths.",
-    "zh_CN": "1）明确场景 LLM 最大结果数：后处理场景配置中的“候选数量”正式更名为“LLM 最大结果数”，并新增详细悬停提示，彻底解除与输入法候选词浮窗总条数的歧义。\n\n2）净化翻译元数据路径：将 Qt 翻译文件中的本地开发路径全面重构为标准相对路径，保证开源仓库规范与整洁。"
+    "en_US": "1) Fix PipeWire Capture on Older Systems: Explicitly specify SPA_AUDIO_CHANNEL_MONO in stream configuration, allowing session managers (like WirePlumber 0.4.8 on Ubuntu 22.04) to successfully route and link physical stereo microphone hardware to the capture stream.\n\n2) PipeWire State Diagnostics: Hooked state_changed listener to report real-time stream state transitions in daemon logs for improved observability.",
+    "zh_CN": "1）修复老版本系统 PipeWire 录音连线问题：在音频流参数中显式指定 SPA_AUDIO_CHANNEL_MONO，解决 Ubuntu 22.04 / WirePlumber 0.4.8 等早期会话管理器无法将物理立体声麦克风阵列连线到采集流导致的静音问题。\n\n2）完善底层音频状态诊断：新增 state_changed 状态机监听，可在调试日志中实时查看 PipeWire 流连接与错误状态。"
   },
-  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.18"
+  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.19"
 }
