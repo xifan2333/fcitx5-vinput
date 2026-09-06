@@ -16,13 +16,17 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qcoreevent.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qstringliteral.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qdesktopservices.h>
 #include <QtGui/qevent.h>
 #include <QtGui/qpainter.h>
+#include <QtWidgets/qstyle.h>
 #include <QtWidgets/qstyleditemdelegate.h>
+#include <QtWidgets/qstyleoption.h>
 #include <algorithm>
 #include <filesystem>
 #include <system_error>
@@ -67,7 +71,7 @@ public:
   bool editorEvent(QEvent* event, QAbstractItemModel* model, const QStyleOptionViewItem& option,
                    const QModelIndex& index) override {
     if (event != nullptr && event->type() == QEvent::MouseButtonRelease) {
-      const auto* mouseEvent = static_cast<const QMouseEvent*>(event);
+      const auto* mouseEvent = dynamic_cast<const QMouseEvent*>(event);
       if (mouseEvent != nullptr && mouseEvent->button() == Qt::LeftButton) {
         const QString url = index.data(Qt::UserRole).toString();
         if (!url.isEmpty()) {
