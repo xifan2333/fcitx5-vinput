@@ -13,25 +13,25 @@ echo "Generating man pages with pandoc..."
 
 for lang in en zh_CN; do
     echo "  Processing [${lang}]..."
-    pandoc --from=markdown-smart -s -t man \
-        "${ROOT_DIR}/data/man/${lang}/vinput.1.md" \
-        -o "${ROOT_DIR}/data/man/${lang}/vinput.1"
-    
-    pandoc --from=markdown-smart -s -t man \
-        "${ROOT_DIR}/data/man/${lang}/vinput-daemon.1.md" \
-        -o "${ROOT_DIR}/data/man/${lang}/vinput-daemon.1"
-    
-    pandoc --from=markdown-smart -s -t man \
-        "${ROOT_DIR}/data/man/${lang}/vinput-gui.1.md" \
-        -o "${ROOT_DIR}/data/man/${lang}/vinput-gui.1"
-    
-    pandoc --from=markdown-smart -s -t man \
-        "${ROOT_DIR}/data/man/${lang}/vinput-config.5.md" \
-        -o "${ROOT_DIR}/data/man/${lang}/vinput-config.5"
+    if [ -n "${SOURCE_DATE_EPOCH:-}" ]; then
+        if [ "${lang}" = "zh_CN" ]; then
+            man_date="$(date -d "@${SOURCE_DATE_EPOCH}" +'%Y年%-m月' 2>/dev/null || date -r "${SOURCE_DATE_EPOCH}" +'%Y年%-m月' 2>/dev/null || date +'%Y年%-m月')"
+        else
+            man_date="$(LC_TIME=C date -d "@${SOURCE_DATE_EPOCH}" +'%B %Y' 2>/dev/null || LC_TIME=C date -r "${SOURCE_DATE_EPOCH}" +'%B %Y' 2>/dev/null || LC_TIME=C date +'%B %Y')"
+        fi
+    else
+        if [ "${lang}" = "zh_CN" ]; then
+            man_date="$(date +'%Y年%-m月')"
+        else
+            man_date="$(LC_TIME=C date +'%B %Y')"
+        fi
+    fi
 
-    pandoc --from=markdown-smart -s -t man \
-        "${ROOT_DIR}/data/man/${lang}/fcitx5-vinput.7.md" \
-        -o "${ROOT_DIR}/data/man/${lang}/fcitx5-vinput.7"
+    for name in vinput.1 vinput-daemon.1 vinput-gui.1 vinput-config.5 fcitx5-vinput.7; do
+        pandoc --from=markdown-smart -s -t man -V date="${man_date}" \
+            "${ROOT_DIR}/data/man/${lang}/${name}.md" \
+            -o "${ROOT_DIR}/data/man/${lang}/${name}"
+    done
 done
 
 echo "Man pages generated successfully."

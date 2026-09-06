@@ -3,7 +3,6 @@ title: VINPUT-GUI
 section: 1
 header: fcitx5-vinput User Manual
 footer: fcitx5-vinput
-date: August 2024
 ...
 
 # NAME

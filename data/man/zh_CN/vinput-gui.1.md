@@ -3,7 +3,6 @@ title: VINPUT-GUI
 section: 1
 header: fcitx5-vinput 用户手册
 footer: fcitx5-vinput
-date: 2024年8月
 ...
 
 # 名称
