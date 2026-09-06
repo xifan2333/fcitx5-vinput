@@ -7,16 +7,26 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QPointer>
+#include <QStyledItemDelegate>
 #include <QTabWidget>
 #include <QThreadPool>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qcoreevent.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qstringliteral.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qdesktopservices.h>
+#include <QtGui/qevent.h>
+#include <QtGui/qpainter.h>
+#include <QtWidgets/qstyle.h>
+#include <QtWidgets/qstyleditemdelegate.h>
+#include <QtWidgets/qstyleoption.h>
 #include <algorithm>
 #include <filesystem>
 #include <system_error>
@@ -40,6 +50,39 @@
 namespace vinput::gui {
 
 namespace {
+
+class LinkDelegate : public QStyledItemDelegate {
+public:
+  using QStyledItemDelegate::QStyledItemDelegate;
+
+  void paint(QPainter* painter, const QStyleOptionViewItem& option,
+             const QModelIndex& index) const override {
+    QStyleOptionViewItem opt = option;
+    initStyleOption(&opt, index);
+    if (!index.data(Qt::UserRole).toString().isEmpty()) {
+      opt.font.setUnderline(true);
+      if ((opt.state & QStyle::State_Selected) == 0) {
+        opt.palette.setColor(QPalette::Text, opt.palette.link().color());
+      }
+    }
+    QStyledItemDelegate::paint(painter, opt, index);
+  }
+
+  bool editorEvent(QEvent* event, QAbstractItemModel* model, const QStyleOptionViewItem& option,
+                   const QModelIndex& index) override {
+    if (event != nullptr && event->type() == QEvent::MouseButtonRelease) {
+      const auto* mouseEvent = dynamic_cast<const QMouseEvent*>(event);
+      if (mouseEvent != nullptr && mouseEvent->button() == Qt::LeftButton) {
+        const QString url = index.data(Qt::UserRole).toString();
+        if (!url.isEmpty()) {
+          QDesktopServices::openUrl(QUrl(url));
+          return true;
+        }
+      }
+    }
+    return QStyledItemDelegate::editorEvent(event, model, option, index);
+  }
+};
 
 void SetupTable(QTableWidget* t, const QStringList& headers) {
   t->setColumnCount(headers.size());
@@ -160,6 +203,7 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
   tableAvailableProviders_ = new QTableWidget();
   SetupTable(tableAvailableProviders_,
              {tr("Title"), tr("Description"), tr("Mode"), tr("Status"), tr("README")});
+  tableAvailableProviders_->setItemDelegateForColumn(4, new LinkDelegate(tableAvailableProviders_));
   providerLayout->addWidget(tableAvailableProviders_, 1);
 
   btnAddProvider_ = new QPushButton(tr("Install"));
@@ -185,6 +229,7 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
   auto* adapterLayout = new QHBoxLayout();
   tableAvailableAdapters_ = new QTableWidget();
   SetupTable(tableAvailableAdapters_, {tr("Title"), tr("Description"), tr("Status"), tr("README")});
+  tableAvailableAdapters_->setItemDelegateForColumn(3, new LinkDelegate(tableAvailableAdapters_));
   adapterLayout->addWidget(tableAvailableAdapters_, 1);
 
   btnAddAdapter_ = new QPushButton(tr("Install"));
@@ -481,13 +526,9 @@ void ResourcePage::populateRemoteProviders(
 
     const QString readme_url = QString::fromStdString(entry.readme_url);
     if (!readme_url.isEmpty()) {
-      auto* linkLabel = new QLabel(QStringLiteral("<a href=\"%1\">%2</a>")
-                                       .arg(readme_url.toHtmlEscaped(), tr("Open README")));
-      linkLabel->setOpenExternalLinks(true);
-      linkLabel->setAlignment(Qt::AlignCenter);
-      linkLabel->setStyleSheet(QStringLiteral("background: transparent;"));
-      tableAvailableProviders_->setCellWidget(row, 4, linkLabel);
-      tableAvailableProviders_->setItem(row, 4, MakeCell(QString{}, readme_url));
+      auto* item = MakeCell(tr("Open README"), readme_url);
+      item->setTextAlignment(Qt::AlignCenter);
+      tableAvailableProviders_->setItem(row, 4, item);
     } else {
       auto* emptyCell = MakeCell(QStringLiteral("-"));
       emptyCell->setTextAlignment(Qt::AlignCenter);
@@ -527,13 +568,9 @@ void ResourcePage::populateRemoteAdapters(
 
     const QString readme_url = QString::fromStdString(entry.readme_url);
     if (!readme_url.isEmpty()) {
-      auto* linkLabel = new QLabel(QStringLiteral("<a href=\"%1\">%2</a>")
-                                       .arg(readme_url.toHtmlEscaped(), tr("Open README")));
-      linkLabel->setOpenExternalLinks(true);
-      linkLabel->setAlignment(Qt::AlignCenter);
-      linkLabel->setStyleSheet(QStringLiteral("background: transparent;"));
-      tableAvailableAdapters_->setCellWidget(row, 3, linkLabel);
-      tableAvailableAdapters_->setItem(row, 3, MakeCell(QString{}, readme_url));
+      auto* item = MakeCell(tr("Open README"), readme_url);
+      item->setTextAlignment(Qt::AlignCenter);
+      tableAvailableAdapters_->setItem(row, 3, item);
     } else {
       auto* emptyCell = MakeCell(QStringLiteral("-"));
       emptyCell->setTextAlignment(Qt::AlignCenter);
