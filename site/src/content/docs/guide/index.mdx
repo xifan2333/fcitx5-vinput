@@ -49,6 +49,10 @@ You can also manually place a model directory in `~/.local/share/vinput/models/<
 - **Tap** `Alt_R` to start recording, tap again to stop and recognize
 - **Hold** `Alt_R` to record, release to recognize (push-to-talk)
 
+Single- and multi-modifier shortcuts activate taps when all bound keys are released. Holds start after the **Hold activation delay** (default **300 ms**, configurable in Fcitx5). Pressing another key while holding a modifier shortcut cancels it and discards any recording started by that hold.
+
+A single-modifier binding reserves that key's presses and releases; multi-modifier chords leave their key events available to apps, which may also respond to the chord. Other keys retain modifier state (such as `Ctrl+C`); mouse clicks do not cancel shortcuts.
+
 ## ASR providers
 
 Besides the built-in local model, you can install cloud ASR providers for different speed, quality, or cost trade-offs.

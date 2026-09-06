@@ -177,6 +177,10 @@ Open **Vinput GUI** → **Resources → Models** → download and activate a mod
 
 All keys can be customized in Fcitx5 configuration.
 
+Single- and multi-modifier shortcuts activate taps when all bound keys are released. Holds start after the **Hold activation delay** (default **300 ms**, configurable in Fcitx5). Pressing another key while holding a modifier shortcut cancels it and discards any recording started by that hold.
+
+A single-modifier binding reserves that key's presses and releases; multi-modifier chords leave their key events available to apps, which may also respond to the chord. Other keys retain modifier state (such as `Ctrl+C`); mouse clicks do not cancel shortcuts.
+
 ## Documentation
 
 For ASR configuration, scenes & LLM setup, CLI reference, and registry contribution guide, see the [documentation site](https://xifan2333.github.io/fcitx5-vinput/).
