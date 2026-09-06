@@ -2,14 +2,16 @@
 
 #include <chrono>
 #include <ctime>
+#include <exception>
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "common/utils/file_utils.h"

@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "common/config/config_migration.h"
 #include "common/config/config_router.h"
@@ -75,6 +76,7 @@ int RunConfigMigrate(bool dry_run, Formatter& fmt, const CliContext& ctx) {
     j["config_backup"] = report.config_backup.string();
     j["conf_backup"] = report.conf_backup.string();
     nlohmann::json changes = nlohmann::json::array();
+    changes.get_ptr<nlohmann::json::array_t*>()->reserve(report.changes.size());
     for (const auto& ch : report.changes) {
       changes.push_back({{"file", ch.file}, {"description", ch.description}});
     }
@@ -105,6 +107,7 @@ int RunConfigMigrate(bool dry_run, Formatter& fmt, const CliContext& ctx) {
 
   const std::vector<std::string> headers = {_("FILE"), _("CHANGE")};
   std::vector<std::vector<std::string>> rows;
+  rows.reserve(report.changes.size());
   for (const auto& ch : report.changes) {
     rows.push_back({ch.file, ch.description});
   }
