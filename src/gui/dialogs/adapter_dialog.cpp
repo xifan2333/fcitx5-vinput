@@ -59,6 +59,7 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
     auto* layout = new QVBoxLayout(&dialog);
 
     auto* form = new QFormLayout();
+    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     auto* editCommand = new QLineEdit();
     auto* textArgs = new QTextEdit();
     auto* textEnv = new QTextEdit();

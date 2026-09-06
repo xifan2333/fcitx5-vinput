@@ -308,6 +308,7 @@ void LlmPage::onLlmAdd() {
   dialog.setWindowTitle(tr("Add LLM Provider"));
 
   auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   auto* editName = new QLineEdit();
   auto* editBaseUrl = new QLineEdit();
   auto* editApiKey = new QLineEdit();
@@ -382,6 +383,7 @@ void LlmPage::onLlmEdit() {
   dialog.setWindowTitle(tr("Edit LLM Provider"));
 
   auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   auto* editName = new QLineEdit(provider_name);
   editName->setReadOnly(true);
   auto* editBaseUrl = new QLineEdit(current_base_url);
@@ -740,6 +742,7 @@ void LlmPage::onSceneAdd() {
   dialog.setWindowTitle(tr("Add Scene"));
 
   auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   auto* editId = new QLineEdit();
   auto* editLabel = new QLineEdit();
   auto* editPrompt = new QTextEdit();
@@ -829,6 +832,7 @@ void LlmPage::onSceneEdit() {
   dialog.setWindowTitle(tr("Edit Scene"));
 
   auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   auto* editId = new QLineEdit(scene_id);
   editId->setReadOnly(true);
   auto* editLabel = new QLineEdit(QString::fromStdString(found->label));
