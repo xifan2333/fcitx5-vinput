@@ -61,9 +61,6 @@ public:
     initStyleOption(&opt, index);
     if (!index.data(Qt::UserRole).toString().isEmpty()) {
       opt.font.setUnderline(true);
-      if ((opt.state & QStyle::State_Selected) == 0) {
-        opt.palette.setColor(QPalette::Text, opt.palette.link().color());
-      }
     }
     QStyledItemDelegate::paint(painter, opt, index);
   }
