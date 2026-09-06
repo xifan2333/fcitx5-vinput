@@ -141,7 +141,7 @@ private:
   fcitx::KeyList menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
   bool menu_hotkey_armed_ = false;
   fcitx::Key menu_hotkey_pressed_;
-  std::chrono::steady_clock::time_point menu_hotkey_pressed_time_{};
+  std::chrono::steady_clock::time_point menu_hotkey_pressed_time_;
   fcitx::KeyList page_prev_keys_{
       fcitx::Key(FcitxKey_Page_Up),
       fcitx::Key(FcitxKey_KP_Page_Up),
