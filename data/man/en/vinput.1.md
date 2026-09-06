@@ -166,6 +166,9 @@ Scenes define prompt templates and bound LLM configurations used to rewrite raw 
 **config edit** *TARGET*
 :   Open the configuration file in `$EDITOR`. *TARGET* must be either **core** (*~/.config/vinput/config.json*) or **fcitx** (*~/.config/fcitx5/conf/vinput.conf*).
 
+**config migrate** [**-n**, **--dry-run**]
+:   Migrate legacy configuration files in-place to the latest format (with automatic backups saved under `backups/`). Pass **-n** to preview pending changes without modifying files.
+
 ## DAEMON CONTROL
 **daemon status**
 :   Show the runtime status of **vinput-daemon** (PID, active model, D-Bus connection).

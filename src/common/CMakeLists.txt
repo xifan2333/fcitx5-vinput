@@ -6,6 +6,7 @@ set(VINPUT_CONFIG_SOURCES
     config/core_config_resolve.cpp
     config/core_config_json.cpp
     config/config_router.cpp
+    config/config_migration.cpp
     config/vinput_config.cpp
     scene/postprocess_scene.cpp
     llm/provider_model_cache.cpp

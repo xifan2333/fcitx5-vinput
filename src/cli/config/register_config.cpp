@@ -43,6 +43,17 @@ void RegisterConfigCommands(CLI::App& app, CliAction* action) {
       return RunConfigDomainEdit(*editTarget, fmt, ctx);
     };
   });
+
+  auto dryRun = std::make_shared<bool>(false);
+  auto* migrate =
+      config->add_subcommand("migrate", _("Migrate legacy configuration files to current format"));
+  migrate->add_flag("-n,--dry-run", *dryRun,
+                    _("Preview migration changes without modifying files"));
+  migrate->callback([action, dryRun]() {
+    *action = [dryRun](Formatter& fmt, const CliContext& ctx) {
+      return RunConfigMigrate(*dryRun, fmt, ctx);
+    };
+  });
 }
 
 } // namespace vinput::cli::config

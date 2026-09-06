@@ -173,6 +173,11 @@ ASR 识别出的原始文本进行重写与润色。
 在 \f[CR]$EDITOR\f[R] 中打开配置文件。\f[I]TARGET\f[R] 必须为
 \f[B]core\f[R]（\f[I]\(ti/.config/vinput/config.json\f[R]）或
 \f[B]fcitx\f[R]（\f[I]\(ti/.config/fcitx5/conf/vinput.conf\f[R]）。
+.TP
+\f[B]config migrate\f[R] [\f[B]\-n\f[R], \f[B]\-\-dry\-run\f[R]]
+将旧版配置文件平滑迁移至当前最新格式（自动备份原配置文件至
+\f[CR]backups/\f[R]）。传入 \f[B]\-n\f[R]
+可预览将要进行的改动而不写入文件。
 .SS 守护进程控制
 .TP
 \f[B]daemon status\f[R]

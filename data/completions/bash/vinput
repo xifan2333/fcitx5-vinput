@@ -221,7 +221,7 @@ _vinput() {
                 if [[ "$cur" == -* ]]; then
                     COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
                 else
-                    COMPREPLY=($(compgen -W "get set edit e" -- "$cur"))
+                    COMPREPLY=($(compgen -W "get set edit e migrate" -- "$cur"))
                 fi
             else
                 case "${words[2]}" in
@@ -230,6 +230,9 @@ _vinput() {
                         ;;
                     set)
                         COMPREPLY=($(compgen -W "-i --stdin" -- "$cur"))
+                        ;;
+                    migrate)
+                        COMPREPLY=($(compgen -W "-n --dry-run -h --help" -- "$cur"))
                         ;;
                 esac
             fi

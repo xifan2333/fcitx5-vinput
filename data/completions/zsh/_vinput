@@ -179,6 +179,7 @@ _vinput_config_cmds() {
         'set:Set a config value by JSON Pointer'
         'edit:Open config file in editor'
         'e:Open config file in editor'
+        'migrate:Migrate legacy configuration files to current format'
     )
     _describe -t config_cmds 'config command' config_cmds
 }
@@ -387,6 +388,10 @@ _vinput() {
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '1:path:' ;;
+                                migrate)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-n --dry-run)'{-n,--dry-run}'[Preview migration changes without modifying files]' ;;
                             esac
                             ;;
                     esac

@@ -1183,3 +1183,32 @@ msgstr "未配置活跃的 ASR 提供商。"
 
 msgid "Recording is not active."
 msgstr "当前未在录音。"
+
+#, c-format
+msgid "Backed up addon config to: %s"
+msgstr "插件配置已备份至：%s"
+
+#, c-format
+msgid "Backed up core config to: %s"
+msgstr "核心配置已备份至：%s"
+
+msgid "CHANGE"
+msgstr "变更内容"
+
+msgid "Configuration is already up to date. No migration needed."
+msgstr "配置已经是最新版本，无需迁移。"
+
+msgid "Configuration migration completed successfully:"
+msgstr "配置迁移已顺利完成："
+
+msgid "FILE"
+msgstr "文件"
+
+msgid "Migrate legacy configuration files to current format"
+msgstr "将旧版配置文件迁移至当前格式"
+
+msgid "Pending migration changes:"
+msgstr "待应用的迁移变更："
+
+msgid "Preview migration changes without modifying files"
+msgstr "预览迁移变更而不修改文件"

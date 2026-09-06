@@ -186,6 +186,11 @@ Open the configuration file in \f[CR]$EDITOR\f[R].
 \f[I]TARGET\f[R] must be either \f[B]core\f[R]
 (\f[I]\(ti/.config/vinput/config.json\f[R]) or \f[B]fcitx\f[R]
 (\f[I]\(ti/.config/fcitx5/conf/vinput.conf\f[R]).
+.TP
+\f[B]config migrate\f[R] [\f[B]\-n\f[R], \f[B]\-\-dry\-run\f[R]]
+Migrate legacy configuration files in\-place to the latest format (with
+automatic backups saved under \f[CR]backups/\f[R]).
+Pass \f[B]\-n\f[R] to preview pending changes without modifying files.
 .SS DAEMON CONTROL
 .TP
 \f[B]daemon status\f[R]
