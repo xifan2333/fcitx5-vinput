@@ -21,7 +21,7 @@ jobs:
           sudo apt-get install -y \
             pipewire wireplumber pipewire-pulse pipewire-bin \
             pipewire-audio-client-libraries libpipewire-0.3-dev \
-            gcc pkg-config ffmpeg python3
+            gcc pkg-config ffmpeg python3 pulseaudio-utils
 
       - name: Run channel-position capture repro
         run: |

@@ -20,15 +20,21 @@ first_source_name() {
   pw-dump | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
+nodes = []
 for node in data:
     if node.get("type") != "PipeWire:Interface:Node":
         continue
     props = node.get("info", {}).get("props", {})
     media = props.get("media.class", "")
-    name = props.get("node.name", "")
-    if media == "Audio/Source" or str(name).endswith(".monitor"):
+    name = str(props.get("node.name", ""))
+    if media == "Audio/Source" or name.endswith(".monitor"):
+        nodes.append(name)
+for name in nodes:
+    if "repro" in name:
         print(name)
-        break
+        raise SystemExit
+if nodes:
+    print(nodes[0])
 '
 }
 
@@ -53,6 +59,13 @@ WIREPLUMBER_PID=$!
 sleep 2
 pw-cli info 0
 
+echo "=== create stereo null sink ==="
+pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=repro-sink media.class=Audio/Sink object.linger=true audio.channels=2 audio.position=[FL,FR] }' || true
+if command -v pactl >/dev/null; then
+  pactl load-module module-null-sink sink_name=repro-pulse channels=2 channel_map=front-left,front-right || true
+fi
+sleep 1
+
 echo "=== nodes before playback ==="
 list_audio_nodes || true
 
@@ -60,7 +73,7 @@ gcc -O2 -o /tmp/repro-issue-169-capture scripts/repro-issue-169-capture.c \
   $(pkg-config --cflags --libs libpipewire-0.3) -pthread
 
 ffmpeg -nostdin -y -f lavfi -i sine=frequency=440:sample_rate=48000:duration=8 -ac 2 /tmp/sine.wav >/tmp/ffmpeg.log 2>&1
-pw-cat --playback --rate 48000 --channels 2 /tmp/sine.wav >/tmp/pw-cat.log 2>&1 &
+pw-cat --playback --rate 48000 --channels 2 --target repro-sink /tmp/sine.wav >/tmp/pw-cat.log 2>&1 &
 PLAY_PID=$!
 sleep 1
 
