@@ -1,13 +1,13 @@
 {
-  "id": 20,
-  "timestamp": 1788683076,
+  "id": 21,
+  "timestamp": 1788687527,
   "title": {
-    "en_US": "Vinput 2.3.20 — Live transcript, post-processing controls & UI fixes",
-    "zh_CN": "Vinput 2.3.20 — 实时展示识别文本、后处理快捷控制与界面适配"
+    "en_US": "Vinput 2.3.21 — README documentation links in resource tables",
+    "zh_CN": "Vinput 2.3.21 — 资源页面新增文档链接"
   },
   "text": {
-    "en_US": "1) Live Transcript & Post-Processing Controls: Real-time recognition text is now immediately visible while LLM post-processing runs. Press Escape to cancel or Enter to use raw dictation directly.\n\n2) Modifier Key Command Palette: Open the command palette / action menu smoothly on modifier key release (e.g. Shift_R).\n\n3) UI Form Layout Fit: Fixed QFormLayout dropdown combos failing to stretch properly under KDE Breeze and other desktop themes.",
-    "zh_CN": "1）实时展示识别文本与快捷控制：语音识别完成后立即上屏原始文本，并在 LLM 后处理期间持续可见；支持按 Escape 取消后处理，或按 Enter 直接上屏原始识别文本。\n\n2）修饰键唤出动作菜单：支持单击并释放 Shift_R 等修饰键直接唤出命令面板与动作菜单，操作更自然顺畅。\n\n3）界面主题自适应：修复 KDE Breeze 等桌面主题下表单下拉选框未能自适应拉伸的问题。"
+    "en_US": "1) Direct Documentation Links: Added a README column with clickable links in the ASR Providers and LLM Adapters tables, allowing instant access to configuration guides, required environment variables, and notes before installing.",
+    "zh_CN": "1）资源表格支持查看文档：在资源页面的“可用 ASR 提供商”与“可用 LLM 适配器”表格中新增“文档”列，支持直接点击或双击打开对应脚本在 GitHub 上的 README 使用说明与配置指南。"
   },
-  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.20"
+  "url": "https://github.com/xifan2333/fcitx5-vinput/releases/tag/v2.3.21"
 }
