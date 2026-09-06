@@ -42,12 +42,23 @@ Compilation strategy should adapt to the local machine's hardware capabilities, 
 
 ---
 
-## 4. In-App Release Notification Specification (`notification.json`)
+## 4. ConfigMigration for Breaking Schema Changes
+
+When a feature or refactor **incompatibly** changes user config (`~/.config/vinput/config.json` or `~/.config/fcitx5/conf/vinput.conf`):
+
+1. Add a versioned step in `src/common/config/config_migration.cpp` (`RegisteredSteps`) in the **same PR** as the schema change.
+2. Use helpers: `RenameField`, `EnsureField` / `EnsureFieldInArray`, `ReplaceIniKey`, `RemoveIniKey`.
+3. Do **not** keep legacy field aliases in runtime parsers.
+4. Users and agents upgrade with `vinput config migrate` (`--dry-run` to preview). Backups go under `backups/`.
+
+The engine is the source of truth. `notification.json` only teaches the command; it must not contain per-key rename recipes.
+
+## 5. In-App Release Notification Specification (`notification.json`)
 
 When publishing releases, `notification.json` triggers startup notifications in the GUI:
 
 1. **Configuration Breaking Changes (配置破坏性更新)**:
-   - **MUST update ConfigMigration first**: Add a versioned step in `src/common/config/config_migration.cpp` (`RegisteredSteps`) using the helpers (`RenameField`, `EnsureField`, `ReplaceIniKey`, `RemoveIniKey`). The migration engine is the source of truth. Do not leave field-rename recipes only in `notification.json`.
+   - Schema work belongs in ConfigMigration (section 4), not in this file. `notification.json` only teaches how to run the tool.
    - **Content Format: "Prompt for Agent"**: An actionable prompt that humans and agents can execute directly:
      - **Target Version Boundary**: Explicitly state the starting version (e.g. `【Target: Upgrading to vX.Y.Z or newer】`).
      - **Option 1 (Fast Reset)**: One-liner `vinput init -f` to regenerate default configs.

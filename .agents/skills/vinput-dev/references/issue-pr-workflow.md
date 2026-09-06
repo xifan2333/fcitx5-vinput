@@ -87,6 +87,8 @@ gh pr create --draft \
 - [ ] 3. Update i18n & unit tests"
 ```
 
+If the issue incompatibly changes `config.json` or `vinput.conf` keys, the checklist **must** include a task to add a `RegisteredSteps` entry in `src/common/config/config_migration.cpp`. Do not add runtime aliases; users migrate with `vinput config migrate`.
+
 ### Phase 2: Single-Item Execution Loop
 For each unchecked `- [ ]` task in order:
 1. **Code ONLY Task N**: Pick ONLY the topmost unchecked `- [ ]` item.

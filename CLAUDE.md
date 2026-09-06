@@ -28,8 +28,9 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
 - **No Force-Push to Contributor Forks**: Never `git push -f` to external contributors' forks or branches. Ask them to rebase or handle conflicts within upstream branches only.
 - **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
 - **Hardware-Adaptive Compilation**: Prioritize GitHub Actions CI over heavy local builds on modest hardware.
+- **Breaking Config Changes**: If user-facing keys in `config.json` / `vinput.conf` change incompatibly, add a versioned ConfigMigration step (`src/common/config/config_migration.cpp` `RegisteredSteps`) in the **same PR**. No runtime aliases. Users run `vinput config migrate`.
 - **Notification Specification (`notification.json`)**:
-  - *Breaking Changes*: Add a versioned step to ConfigMigration (`src/common/config/config_migration.cpp`) first. The GUI notice is an actionable "Prompt for Agent" with target version, `vinput init -f`, and `vinput config migrate [--dry-run]` — do not list per-key rename recipes. Retain across 5 patch releases (or until next minor).
+  - *Breaking Changes*: "Prompt for Agent" with target version, `vinput init -f`, and `vinput config migrate [--dry-run]`. Do not list per-key recipes. Retain across 5 patch releases (or until next minor).
   - *Standard Releases*: Concise bilingual feature/fix changelog.
 
 ## Ecosystem Repositories

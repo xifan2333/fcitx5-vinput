@@ -11,7 +11,7 @@ Guidelines, dual-planning model, and hard constraints for AI coding agents worki
 - `src/addon/`: Fcitx5 input method addon (Qt/C++, hotkey triggers like `Alt_R` / `Shift_R`, push-to-talk, D-Bus client).
 - `src/daemon/`: Core daemon (`vinput-daemon`), handles PipeWire audio recording, sherpa-onnx inference, cloud ASR engines, LLM scene transformations, D-Bus service (`org.fcitx.Vinput`).
 - `src/cli/`: Standalone `vinput` CLI for manual recording, profile switching, and status inspection.
-- `src/common/`: Shared types, configuration structs (`nlohmann-json`), D-Bus XML interfaces.
+- `src/common/`: Shared types, configuration structs (`nlohmann-json`), isolated ConfigMigration engine (`config/config_migration.cpp`), D-Bus XML interfaces.
 - `po/` & `i18n/`: Translations (Gettext and Qt `.ts` / `.qm`).
 
 ---
@@ -175,6 +175,7 @@ Compilation strategy should adapt to local hardware capabilities:
 6. **Hardware-Adaptive Compilation**: On modest hardware, prioritize GitHub Actions CI (`ci.yml` / `release.yml`) over heavy local full builds.
 7. **User-Facing Strings**: Must be wrapped in `_("...")` or `ki18n` for gettext localization. Run `mise run check-i18n` to validate po files.
 8. **No Force-Pushing to Contributor Forks (Open-Source Etiquette)**: Never force-push (`git push -f`) to an external contributor's personal fork or PR branch, even if GitHub's "Allow edits by maintainers" is technically enabled. Overwriting a contributor's commit history breaks their local workspace and violates open-source collaboration boundaries. When a contributor's PR encounters conflicts (e.g., following an earlier PR merge), either politely ask the contributor to rebase via a PR comment, or integrate the changes purely within upstream local/temporary branches without modifying the contributor's remote repository.
+9. **Breaking Config Changes Must Update ConfigMigration**: If a change renames, removes, splits, or otherwise incompatibly changes a user-facing key in `~/.config/vinput/config.json` or `~/.config/fcitx5/conf/vinput.conf`, add a versioned step to `src/common/config/config_migration.cpp` (`RegisteredSteps`) in the **same PR**, using `RenameField` / `EnsureField` / `ReplaceIniKey` / `RemoveIniKey`. Do not add runtime compatibility aliases. Users and agents migrate with `vinput config migrate`.
 
 ---
 
@@ -183,7 +184,7 @@ Compilation strategy should adapt to local hardware capabilities:
 When preparing releases, `notification.json` notifies users on GUI startup. Agents must follow these rules:
 
 1. **Configuration Breaking Changes (配置破坏性更新)**:
-   - **MUST update ConfigMigration first**: Add a versioned step in `src/common/config/config_migration.cpp` (`RegisteredSteps`) using the helpers (`RenameField`, `EnsureField`, `ReplaceIniKey`, `RemoveIniKey`). The migration engine is the source of truth. Do not leave field-rename recipes only in `notification.json`.
+   - Schema work belongs in ConfigMigration (Hard Constraint 9), not in this file. `notification.json` only teaches how to run the tool.
    - **Content Format: "Prompt for Agent"**: An actionable prompt that humans and agents can execute directly. Must include:
      - **Target Version Boundary**: Explicitly state the starting version (e.g. `【Target: Upgrading to vX.Y.Z or newer】`).
      - **Option 1 (Fast Reset)**: One-liner `vinput init -f` to regenerate default configs.

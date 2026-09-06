@@ -27,7 +27,7 @@ Verify target repository before making changes:
 - `src/addon/`: Fcitx5 addon (Qt/C++, hotkey triggers, floating UI, D-Bus client).
 - `src/daemon/`: Background daemon (`vinput-daemon`, PipeWire audio capture, sherpa-onnx runtime, cloud ASR, LLM post-processing scenes, D-Bus service `org.fcitx.Vinput`).
 - `src/cli/`: Standalone `vinput` CLI utility.
-- `src/common/`: Shared structs, configuration loading (`nlohmann::json`), D-Bus interfaces.
+- `src/common/`: Shared structs, configuration loading (`nlohmann::json`), isolated ConfigMigration (`config/config_migration.cpp`), D-Bus interfaces.
 - `po/` & `i18n/`: Localization catalogs.
 
 ---
@@ -65,6 +65,7 @@ Read **[references/issue-pr-workflow.md](references/issue-pr-workflow.md)**
 - The 5-step Issue + Draft PR lifecycle (`gh pr create --draft`).
 - Single-item local atomic commits, unified push on completion, and updating PR checklist checkboxes (`- [x]`).
 - Finalizing, marking ready (`gh pr ready`), and squash merging.
+- If the change incompatibly renames/removes/splits `config.json` or `vinput.conf` keys, the PR checklist **must** include a ConfigMigration `RegisteredSteps` task. No runtime aliases.
 
 ### Task: Working in a Fork / Reviewing External PRs
 Read **[references/fork-guide.md](references/fork-guide.md)**
@@ -78,7 +79,7 @@ Read **[references/compilation-ci.md](references/compilation-ci.md)**
 - Hardware-adaptive compilation: CI-first on modest machines; local incremental builds on powerful machines.
 - The two usages of `release.yml`: Remote multi-arch matrix validation (Dry Run) vs official release publishing.
 - GitHub Actions workflow matrix (`ci.yml`, `channels.yml`, `nix-cache.yml`).
-- Release notification specification: breaking changes must land in ConfigMigration first; the GUI notice teaches `vinput config migrate` (not field-by-field recipes) and is retained for 5 patches.
+- ConfigMigration is mandatory for breaking config schema changes; GUI notices teach `vinput config migrate` (not field recipes) and are retained for 5 patches.
 
 ### Task: Modifying Cloud ASR, LLM Scenes, AUR, or Flatpak Repos
 Read **[references/ecosystem.md](references/ecosystem.md)**
