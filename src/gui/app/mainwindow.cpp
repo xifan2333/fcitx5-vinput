@@ -1,7 +1,9 @@
 #include "mainwindow.h"
 
+#include <QClipboard>
 #include <QDesktopServices>
 #include <QFile>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLocale>
 #include <QMessageBox>
@@ -9,6 +11,8 @@
 #include <QTextStream>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QtGui/qclipboard.h>
+#include <QtGui/qguiapplication.h>
 #include <fstream>
 #include <nlohmann/json.hpp>
 
@@ -260,12 +264,15 @@ void MainWindow::onNotificationReady(QString id, QString title, QString text, QS
   msgBox.setWindowTitle(title);
   msgBox.setText(text);
   msgBox.setIcon(QMessageBox::Information);
+  auto* copyBtn = msgBox.addButton(tr("Copy"), QMessageBox::ActionRole);
   auto* detailBtn =
       url.isEmpty() ? nullptr : msgBox.addButton(tr("Details"), QMessageBox::ActionRole);
   msgBox.addButton(QMessageBox::Ok);
   msgBox.exec();
 
-  if (detailBtn && msgBox.clickedButton() == detailBtn) {
+  if (copyBtn != nullptr && msgBox.clickedButton() == copyBtn) {
+    QGuiApplication::clipboard()->setText(text);
+  } else if (detailBtn != nullptr && msgBox.clickedButton() == detailBtn) {
     QDesktopServices::openUrl(QUrl(url));
   }
 
