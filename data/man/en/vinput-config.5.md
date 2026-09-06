@@ -3,7 +3,7 @@ title: VINPUT-CONFIG
 section: 5
 header: fcitx5-vinput File Formats
 footer: fcitx5-vinput
-date: August 2024
+date: September 2026
 ...
 
 # NAME

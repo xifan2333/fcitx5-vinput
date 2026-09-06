@@ -3,7 +3,7 @@ title: VINPUT-CONFIG
 section: 5
 header: fcitx5-vinput 文件格式
 footer: fcitx5-vinput
-date: 2024年8月
+date: 2026年9月
 ...
 
 # 名称
