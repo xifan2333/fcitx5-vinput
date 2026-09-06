@@ -8,7 +8,7 @@ Guidelines, dual-planning model, and hard constraints for AI coding agents worki
 
 `fcitx5-vinput` is a voice input system for Fcitx5 providing local (sherpa-onnx) and cloud ASR, LLM post-processing, and cross-distro packaging.
 
-- `src/addon/`: Fcitx5 input method addon (Qt/C++, hotkey triggers like `F8`, push-to-talk, D-Bus client).
+- `src/addon/`: Fcitx5 input method addon (Qt/C++, hotkey triggers like `Alt_R` / `Shift_R`, push-to-talk, D-Bus client).
 - `src/daemon/`: Core daemon (`vinput-daemon`), handles PipeWire audio recording, sherpa-onnx inference, cloud ASR engines, LLM scene transformations, D-Bus service (`org.fcitx.Vinput`).
 - `src/cli/`: Standalone `vinput` CLI for manual recording, profile switching, and status inspection.
 - `src/common/`: Shared types, configuration structs (`nlohmann-json`), D-Bus XML interfaces.

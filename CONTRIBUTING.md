@@ -62,11 +62,18 @@ Key rules:
 
 ## Translations
 
-Translation files are in `po/`. To add a new language:
+Gettext catalogs live in `po/`. The `.pot` template is not committed.
+To add a language, extract strings from source and run `msginit`:
 
-1. Copy `po/fcitx5-vinput.pot` to `po/<lang>.po`
-2. Fill in the translations
-3. Submit a PR
+```bash
+xgettext --keyword=_ --keyword=N_ --language=C++ --from-code=UTF-8 \
+  --no-location --sort-by-file \
+  -o - \
+  $(find src/cli src/common src/addon src/daemon \( -name '*.cpp' -o -name '*.h' \)) \
+| msginit --locale=ja_JP --input=- --output=po/ja.po
+```
+
+Then add the new `.po` file to `po/CMakeLists.txt` and submit a PR.
 
 ## Code Style
 

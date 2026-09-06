@@ -19,7 +19,7 @@ https://github.com/user-attachments/assets/5a548a68-153c-4842-bab6-926f30bb720e
 ## 功能特性
 
 - **两种触发模式** — 短按切换录音，长按即说即停（push-to-talk）
-- **本地与云端 ASR** — 离线 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 模型或云端提供商（豆包、阿里百炼、ElevenLabs、OpenAI 兼容），`F8` 运行时切换
+- **本地与云端 ASR** — 离线 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 模型或云端提供商（豆包、阿里百炼、ElevenLabs、OpenAI 兼容），右 Shift 打开命令面板后用 `/asr` 运行时切换
 - **LLM 后处理** — 通过场景实现纠错、格式化、翻译
 - **命令模式** — 选中文本，语音指令直接改写
 - **GUI 与 CLI** — `vinput-gui` 快速上手，`vinput` CLI 完整控制
