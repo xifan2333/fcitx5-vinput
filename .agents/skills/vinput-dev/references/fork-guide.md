@@ -72,7 +72,7 @@ hk check
 
 ### Step 2.2: Validate Translations & Configurations
 ```bash
-# Verify Gettext .po files match src/ strings and .pot template
+# Verify Gettext .po files match src/ strings
 python3 scripts/check-i18n.py
 
 # Verify default JSON configs parse correctly
