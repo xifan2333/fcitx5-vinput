@@ -11,7 +11,12 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
 - **Execution Loop (ONE ITEM AT A TIME)**:
   - Code task N -> `mise run check:changed` (or `hk fix`) -> local atomic commit -> Repeat for all tasks
   - Structured fix stream: `hk run check --safe --format jsonl`
-  - Finish: `git push origin <branch>` -> `gh pr edit --body` (update tasks to `- [x]`) -> `gh pr ready && gh pr merge --squash --delete-branch`
+  - Finish: `git push origin <branch>` -> `gh pr edit --body` (update tasks to `- [x]`) -> `gh pr ready`
+- **Review-Fix Loop (POST-READY)**:
+  - Check CI & Bots: `gh pr checks` and `gh pr view --comments`
+  - Ingest feedback: Extract `> Prompt for AI Agents` from CodeRabbit, or `Proposed fix` from Cursor Bugbot
+  - Defensive fix & local verify: `mise run check:changed` -> `git commit -m "fix(review): ..."` -> `git push`
+  - Finalize: Once all CI and bot checks are green, `gh pr merge --squash --delete-branch`
 - **Quality Gate Tasks (`mise`)**:
   - `mise run check:changed`: Run safe check only on modified files
   - `mise run check:plan`: Preview execution plan without running tools
@@ -29,6 +34,9 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
 - **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
 - **Hardware-Adaptive Compilation**: Prioritize GitHub Actions CI over heavy local builds on modest hardware.
 - **Breaking Config Changes**: If user-facing keys in `config.json` / `vinput.conf` change incompatibly, add a versioned ConfigMigration step (`src/common/config/config_migration.cpp` `RegisteredSteps`) in the **same PR**. No runtime aliases. Users run `vinput config migrate`.
+- **Zero-Tolerance on Suppressing Diagnostics**: Never add `// NOLINT`, `#pragma GCC/clang diagnostic ignored`, or `-Wno-*` in CMake. Fix the root cause cleanly.
+- **PR Micro-Slicing**: Keep functional code changes <300 lines; break large epics into stacked micro-PRs.
+- **AI Attribution & Disclosure**: Append `*AI-assisted — Tool: <tool>; model: <model>; version: <version>.*` to PR descriptions and significant automated review fixes.
 - **Notification Specification (`notification.json`)**:
   - *Breaking Changes*: "Prompt for Agent" with target version, `vinput init -f`, and `vinput config migrate [--dry-run]`. Do not list per-key recipes. Retain across 5 patch releases (or until next minor).
   - *Standard Releases*: Concise bilingual feature/fix changelog.
