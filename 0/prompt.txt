@@ -1,0 +1,1 @@
+skill 和 agent.md claude.md 添加notification 规范，如果 配置 breakingchange 通知内容为 prompt for agent 的迁移指南，如果没有，就记录变更即可，你觉得以几个版本为 这个 breakingchange 的提醒周期呢？
