@@ -1,0 +1,1 @@
+可以 /llm  吧 provider/model 的形式 for commond mode  我感觉好像这样是最好。嗯， 不过到底用什么指令我们还有待商讨 /a /c /s 都有可能就是嗯只是记录下这个想法
