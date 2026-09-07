@@ -1,0 +1,1 @@
+不完善，还需要 添加 关联项目 @~/Code/vinput-registry 这个我也在github 还有 @~/Code/aur-auto/ 也在 github
