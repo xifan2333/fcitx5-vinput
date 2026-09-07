@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <ctime>
 #include <fcitx-utils/event.h>
-#include <fcitx-utils/eventloopinterface.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
@@ -12,6 +11,7 @@
 #include <fcitx/inputcontext.h>
 #include <iterator>
 #include <string>
+#include <time.h>
 #include <utility>
 
 #include "common/config/core_config.h"
@@ -48,15 +48,11 @@ std::string DaemonNotRespondingPreeditText() {
 
 } // namespace
 
-void VinputEngine::cancelModifierHoldTimer() {
+void VinputEngine::cancelInterruptedRecording() {
+  cancelPendingStop();
   if (modifier_hold_event_ && modifier_hold_event_->isEnabled()) {
     modifier_hold_event_->setEnabled(false);
   }
-}
-
-void VinputEngine::cancelInterruptedRecording() {
-  cancelPendingStop();
-  cancelModifierHoldTimer();
   if (session_ && (session_->phase == Session::Phase::Recording ||
                    session_->phase == Session::Phase::PendingStart)) {
     auto* target_ic = session_->ic;
@@ -238,7 +234,9 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
         return;
       }
 
-      cancelModifierHoldTimer();
+      if (modifier_hold_event_ && modifier_hold_event_->isEnabled()) {
+        modifier_hold_event_->setEnabled(false);
+      }
       pending_modifier_.action = modAction;
       pending_modifier_.key = origKey;
       pending_modifier_.press_time = std::chrono::steady_clock::now();
@@ -256,8 +254,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
 
         modifier_hold_event_ = instance_->eventLoop().addTimeEvent(
             CLOCK_MONOTONIC, fire_at_usec, 0,
-            [this, target_ic = ic, action = modAction, trigger = origKey](fcitx::EventSourceTime*,
-                                                                          uint64_t) {
+            [this, target_ic = ic, action = modAction, trigger = origKey](auto*, uint64_t) {
               if (target_ic == nullptr) {
                 pending_modifier_.reset();
                 return false;
@@ -281,7 +278,9 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     // This indicates a combination (e.g. Ctrl+C, Alt+Tab, Shift+A). Interrupt and pass through!
     if (pending_modifier_.action != ModifierAction::None || modifier_hold_active_ ||
         (session_ && session_->stop_on_release && !session_->trigger_released)) {
-      cancelModifierHoldTimer();
+      if (modifier_hold_event_ && modifier_hold_event_->isEnabled()) {
+        modifier_hold_event_->setEnabled(false);
+      }
       if (modifier_hold_active_ ||
           (session_ && session_->stop_on_release && !session_->trigger_released)) {
         cancelInterruptedRecording();
@@ -293,10 +292,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     }
 
     // 3.3 Non-modifier trigger keys (e.g. F8, Pause, etc.)
-    const int trigger_index = keyEvent.key().keyListIndex(trigger_keys_);
-    const bool is_trigger = !isModifier && trigger_index >= 0;
-    const int command_index = keyEvent.key().keyListIndex(command_keys_);
-    const bool is_command = !isModifier && command_index >= 0;
+    const int trigger_index = !isModifier ? keyEvent.key().keyListIndex(trigger_keys_) : -1;
+    const bool is_trigger = trigger_index >= 0;
+    const int command_index = !isModifier ? keyEvent.key().keyListIndex(command_keys_) : -1;
+    const bool is_command = command_index >= 0;
 
     if (is_trigger || is_command) {
       auto now = std::chrono::steady_clock::now();
@@ -331,8 +330,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
                 std::chrono::duration_cast<std::chrono::microseconds>(hold_activation_delay_)
                     .count());
         pending_start_event_ = instance_->eventLoop().addTimeEvent(
-            CLOCK_MONOTONIC, fire_at_usec, 0,
-            [this, ic, trigger, is_command](fcitx::EventSourceTime*, uint64_t) {
+            CLOCK_MONOTONIC, fire_at_usec, 0, [this, ic, trigger, is_command](auto*, uint64_t) {
               startVoiceRecording(ic, trigger, is_command);
               if (session_) {
                 session_->stop_on_release = true;
@@ -359,7 +357,9 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     // 4.1 Single-modifier release (native isReleaseOfModifier disambiguation)
     if (pending_modifier_.action != ModifierAction::None &&
         origKey.isReleaseOfModifier(pending_modifier_.key)) {
-      cancelModifierHoldTimer();
+      if (modifier_hold_event_ && modifier_hold_event_->isEnabled()) {
+        modifier_hold_event_->setEnabled(false);
+      }
       const auto action = pending_modifier_.action;
       const auto trigger_key = pending_modifier_.key;
       auto* target_ic = pending_modifier_.ic;
@@ -408,10 +408,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     }
 
     // 4.3 Non-modifier trigger release handling
-    const int trigger_index = keyEvent.key().keyListIndex(trigger_keys_);
-    const bool is_trigger = !isModifier && trigger_index >= 0;
-    const int command_index = keyEvent.key().keyListIndex(command_keys_);
-    const bool is_command = !isModifier && command_index >= 0;
+    const int trigger_index = !isModifier ? keyEvent.key().keyListIndex(trigger_keys_) : -1;
+    const bool is_trigger = trigger_index >= 0;
+    const int command_index = !isModifier ? keyEvent.key().keyListIndex(command_keys_) : -1;
+    const bool is_command = command_index >= 0;
 
     if (is_trigger || is_command) {
       if (trigger_mode_ == TriggerMode::Hold && pending_start_event_ &&
@@ -503,11 +503,11 @@ void VinputEngine::scheduleStopRecording() {
           std::chrono::duration_cast<std::chrono::microseconds>(kReleaseDebounce).count());
 
   if (!pending_stop_event_) {
-    pending_stop_event_ = instance_->eventLoop().addTimeEvent(
-        CLOCK_MONOTONIC, fire_at_usec, 0, [this](fcitx::EventSourceTime*, uint64_t) {
-          finishStopRecording();
-          return false;
-        });
+    pending_stop_event_ = instance_->eventLoop().addTimeEvent(CLOCK_MONOTONIC, fire_at_usec, 0,
+                                                              [this](auto*, uint64_t) {
+                                                                finishStopRecording();
+                                                                return false;
+                                                              });
     pending_stop_event_->setOneShot();
     return;
   }

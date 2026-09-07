@@ -121,7 +121,9 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                                 polled_idle_since_.reset();
                               }
                               if (pending_modifier_.ic == ic) {
-                                cancelModifierHoldTimer();
+                                if (modifier_hold_event_ && modifier_hold_event_->isEnabled()) {
+                                  modifier_hold_event_->setEnabled(false);
+                                }
                                 pending_modifier_.reset();
                                 modifier_hold_active_ = false;
                               }

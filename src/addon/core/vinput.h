@@ -130,8 +130,8 @@ private:
     bool command_mode = false;
     bool trigger_released = false;
     bool raw_prev = true;
-    bool stop_on_release = false;
     std::string transcript_text;
+    bool stop_on_release = false;
   };
   std::optional<Session> session_;
   fcitx::InputContext* status_ic_ = nullptr;
@@ -160,7 +160,6 @@ private:
   bool modifier_hold_active_ = false;
   std::chrono::milliseconds hold_activation_delay_{300};
 
-  void cancelModifierHoldTimer();
   void cancelInterruptedRecording();
   void startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command);
 
