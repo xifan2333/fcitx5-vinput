@@ -7,6 +7,7 @@
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/instance.h>
 #include <iostream>
+#include <string>
 
 #include "core/vinput.h"
 

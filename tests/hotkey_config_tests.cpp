@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdio>
 #include <fcitx-config/iniparser.h>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -12,7 +13,8 @@ int main() {
   assert(default_config.holdActivationDelay.value() == 300);
   assert(default_config.triggerMode.value() == TriggerMode::Both);
 
-  const std::string tmp_path = "/tmp/vinput_test_config.conf";
+  const std::string tmp_path =
+      (std::filesystem::temp_directory_path() / "vinput_test_config.conf").string();
   {
     std::ofstream ofs(tmp_path);
     ofs << "TriggerMode=Hold\n"

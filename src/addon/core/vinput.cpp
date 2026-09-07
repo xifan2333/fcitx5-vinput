@@ -117,6 +117,11 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                               auto& icEvent = static_cast<fcitx::InputContextEvent&>(event);
                               auto* ic = icEvent.inputContext();
                               if (session_ && session_->ic == ic) {
+                                if (session_->phase == Session::Phase::PendingStart ||
+                                    session_->phase == Session::Phase::Recording ||
+                                    session_->phase == Session::Phase::Postprocessing) {
+                                  callCancelOperation(false);
+                                }
                                 session_.reset();
                                 polled_idle_since_.reset();
                               }
