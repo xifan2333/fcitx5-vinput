@@ -1,0 +1,63 @@
+你给的参考对吗 ？void InputState::copyTo(InputContextProperty *other) {
+    auto *otherState = static_cast<InputState *>(other);
+    if (otherState->active_ == active_ && otherState->localIM_ == localIM_) {
+        return;
+    }
+
+    if (otherState->ic_->hasFocus()) {
+        FCITX_DEBUG() << "Sync state to focused ic: "
+                      << otherState->ic_->program();
+        CheckInputMethodChanged imChangedRAII(otherState->ic_, d_ptr);
+        otherState->active_ = active_;
+        otherState->localIM_ = localIM_;
+    } else {
+        otherState->active_ = active_;
+        otherState->localIM_ = localIM_;
+    }
+}
+
+void InputState::reset() {
+#ifdef ENABLE_KEYBOARD
+    if (xkbComposeState_) {
+        xkb_compose_state_reset(xkbComposeState_.get());
+    }
+#endif
+    pendingGroupIndex_ = 0;
+    keyReleased_ = -1;
+    lastKeyPressed_ = Key();
+    lastKeyPressedTime_ = 0;
+    totallyReleased_ = true;
+}
+
+void InputState::hideInputMethodInfo() {
+    if (!imInfoTimer_) {
+        return;
+    }
+    imInfoTimer_.reset();
+    auto &panel = ic_->inputPanel();
+    if (panel.overlayMessage().size() == 1 &&
+        panel.overlayMessage().stringAt(0) == lastInfo_) {
+        panel.setOverlayMessage(Text());
+        ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+    }
+}
+
+#ifdef ENABLE_KEYBOARD
+void InputState::resetXkbState() {
+    lastXkbLayout_.clear();
+    xkbState_.reset();
+}
+#endif
+
+CheckInputMethodChanged::CheckInputMethodChanged(InputContext *ic,
+                                                 InstancePrivate *instance)
+    : instance_(instance->q_func()), instancePrivate_(instance),
+      ic_(ic->watch()), inputMethod_(instance_->inputMethod(ic)),
+      reason_(InputMethodSwitchedReason::Other) {
+    auto *inputState = ic->propertyFor(&instance->inputStateFactory_);
+    if (!inputState->imChanged_) {
+        inputState->imChanged_ = this;
+    } else {
+        ic_.unwatch();
+    }
+}
