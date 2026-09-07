@@ -1,0 +1,23 @@
+I2026-09-05 15:26:25.960773 instance.cpp:1440] Override Enabled Addons: {}
+I2026-09-05 15:26:25.970177 instance.cpp:1441] Override Disabled Addons: {}
+I2026-09-05 15:26:25.982536 addonmanager.cpp:204] Loaded addon wayland
+I2026-09-05 15:26:25.985711 addonmanager.cpp:204] Loaded addon imselector
+I2026-09-05 15:26:25.997045 xcbconnection.cpp:198] Connecting to X11 display, display name::0.
+I2026-09-05 15:26:25.997340 xcbconnection.cpp:203] X11 display: :0 is xwayland.
+I2026-09-05 15:26:25.997633 addonmanager.cpp:204] Loaded addon xcb
+I2026-09-05 15:26:26.002043 addonmanager.cpp:204] Loaded addon quickphrase
+I2026-09-05 15:26:26.002656 addonmanager.cpp:204] Loaded addon waylandim
+I2026-09-05 15:26:26.004896 keyboard.cpp:229] Attempting to load keyboard from: ["/usr/share/xkeyboard-config-2"] Rule: evdev
+I2026-09-05 15:26:26.018459 addonmanager.cpp:204] Loaded addon keyboard
+I2026-09-05 15:26:26.020428 addonmanager.cpp:204] Loaded addon clipboard
+I2026-09-05 15:26:26.020870 addonmanager.cpp:204] Loaded addon unicode
+E2026-09-05 15:26:26.022013 addonloader.cpp:96] Failed to create addon: dbus Unable to request dbus name. Is there another fcitx already running?
+I2026-09-05 15:26:26.022125 addonmanager.cpp:200] Could not load addon dbus
+I2026-09-05 15:26:26.022201 addonmanager.cpp:306] Unloading addon unicode
+I2026-09-05 15:26:26.022268 addonmanager.cpp:306] Unloading addon clipboard
+I2026-09-05 15:26:26.022364 addonmanager.cpp:306] Unloading addon keyboard
+I2026-09-05 15:26:26.022680 addonmanager.cpp:306] Unloading addon waylandim
+I2026-09-05 15:26:26.022726 addonmanager.cpp:306] Unloading addon quickphrase
+I2026-09-05 15:26:26.022980 addonmanager.cpp:306] Unloading addon xcb
+I2026-09-05 15:26:26.023171 addonmanager.cpp:306] Unloading addon imselector
+I2026-09-05 15:26:26.023220 addonmanager.cpp:306] Unloading addon wayland
