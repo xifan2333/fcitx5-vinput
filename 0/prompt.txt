@@ -1,0 +1,2 @@
+刚才给 adapter 添加 enable、disable、restart、
+ autostart 嗯， 这个是对的， 这个是对的， 但是那什么不对， 就是你通过 config 然后去给 config 的快捷， 有一些快捷的方法， 这个是不对的。先不要改代码， 先讨论。
