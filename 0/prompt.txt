@@ -1,0 +1,1 @@
+先别急， 先回答我的问题。 为什么每个函数都调用  EnsureI18nInitialized();
