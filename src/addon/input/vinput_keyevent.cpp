@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <fcitx-utils/event.h>
+#include <fcitx-utils/eventloopinterface.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>

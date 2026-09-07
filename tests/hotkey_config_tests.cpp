@@ -8,11 +8,11 @@
 #include "common/config/vinput_config.h"
 
 int main() {
-  VinputConfig config;
-  assert(config.holdActivationDelay.value() == 300);
-  assert(config.triggerMode.value() == TriggerMode::Both);
-  assert(config.holdActivationDelay.constrain().min() == 100);
-  assert(config.holdActivationDelay.constrain().max() == 2000);
+  const VinputConfig default_config;
+  assert(default_config.holdActivationDelay.value() == 300);
+  assert(default_config.triggerMode.value() == TriggerMode::Both);
+  assert(default_config.holdActivationDelay.constrain().min() == 100);
+  assert(default_config.holdActivationDelay.constrain().max() == 2000);
 
   const std::string tmp_path = "/tmp/vinput_test_config.conf";
   {
@@ -22,11 +22,12 @@ int main() {
         << "HoldActivationDelay=500\n";
   }
 
-  fcitx::readAsIni(config, tmp_path);
+  VinputConfig custom_config;
+  fcitx::readAsIni(custom_config, tmp_path);
   std::remove(tmp_path.c_str());
 
-  assert(config.holdActivationDelay.value() == 500);
-  assert(config.triggerMode.value() == TriggerMode::Hold);
+  assert(custom_config.holdActivationDelay.value() == 500);
+  assert(custom_config.triggerMode.value() == TriggerMode::Hold);
 
   std::cout << "All hotkey config tests passed!\n";
   return 0;
