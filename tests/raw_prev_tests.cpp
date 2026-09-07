@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysymgen.h>
+#include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/inputpanel.h>
