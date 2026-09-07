@@ -11,7 +11,6 @@
 #include <fcitx/inputcontext.h>
 #include <iterator>
 #include <string>
-#include <time.h>
 #include <utility>
 
 #include "common/config/core_config.h"
