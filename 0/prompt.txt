@@ -1,0 +1,1 @@
+不是 不要单独的 version 原有的 -v 和--version 就够用
