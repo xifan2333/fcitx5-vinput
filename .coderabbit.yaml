@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "zh-CN"
+reviews:
+  profile: "chill"
+  auto_review:
+    drafts: false
+    ignore_title_keywords:
+      - "chore: release"
+      - "chore: initialize draft pr"
+      - "chore(release)"
+  tools:
+    github-checks:
+      enabled: true
+    shellcheck:
+      enabled: true
+chat:
+  auto_reply: true

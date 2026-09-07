@@ -1,0 +1,8 @@
+{
+  "triggerOnDrafts": false,
+  "disabledLabels": [
+    "draft",
+    "wip"
+  ],
+  "ignoreKeywords": "chore: release\nchore: initialize draft pr\nchore(release)"
+}
