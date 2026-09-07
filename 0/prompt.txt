@@ -1,0 +1,5 @@
+方案 A（保持纯本地原子 Commit）：每个 Task 在本
+       地完成质量自检后执行 git commit（保证 Commit 依
+       然是一对一的原子提交），但在全部 Task 完成或需要
+       看 CI 时再执行一次 git push，这样远程只会跑最后
+       一次完整的 CI。
