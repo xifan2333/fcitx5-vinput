@@ -25,7 +25,7 @@
 
 namespace {
 
-constexpr clockid_t kDefaultClock = 1; // POSIX CLOCK_MONOTONIC
+constexpr auto kDefaultClock = 1; // POSIX CLOCK_MONOTONIC
 constexpr auto kReleaseDebounce = std::chrono::milliseconds(500);
 constexpr auto kTriggerDebounce = std::chrono::milliseconds(80);
 
