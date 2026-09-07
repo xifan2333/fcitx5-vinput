@@ -229,8 +229,15 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       }
 
       // If already recording in Tap mode, pressing trigger again toggles it off
-      if (session_ && session_->phase == Session::Phase::Recording && session_->trigger_released) {
-        finishStopRecording();
+      if (session_ &&
+          (session_->phase == Session::Phase::Recording ||
+           session_->phase == Session::Phase::PendingStart) &&
+          session_->trigger_released) {
+        if (session_->phase == Session::Phase::Recording) {
+          finishStopRecording();
+        } else {
+          cancelInterruptedRecording();
+        }
         keyEvent.filterAndAccept();
         return;
       }

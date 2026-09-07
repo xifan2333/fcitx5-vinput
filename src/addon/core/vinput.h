@@ -42,12 +42,12 @@ public:
   void save() override;
   const fcitx::Configuration* getConfig() const override;
   void setConfig(const fcitx::RawConfig& config) override;
+  void handleKeyEvent(fcitx::Event& event);
 
 private:
   void applySettings();
   void reloadSceneConfig();
   void initializePaletteRegistry();
-  void handleKeyEvent(fcitx::Event& event);
   void showPaletteMenu(fcitx::InputContext* ic, const std::string& initial_query = {});
   void hidePaletteMenu();
   void resetPaletteMenuState();

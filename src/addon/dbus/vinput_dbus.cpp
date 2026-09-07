@@ -495,8 +495,10 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::
                              trigger,
                              std::chrono::steady_clock::now(),
                              command_mode,
+                             false,
+                             true,
                              {},
-                             {}});
+                             false});
   } else {
     session_->phase = Session::Phase::PendingStart;
     session_->ic = ic;
@@ -527,8 +529,10 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
                              trigger,
                              std::chrono::steady_clock::now(),
                              command_mode,
+                             false,
+                             true,
                              {},
-                             {}});
+                             false});
   } else {
     session_->phase = Session::Phase::Recording;
     session_->ic = ic;

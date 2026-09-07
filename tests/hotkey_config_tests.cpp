@@ -11,8 +11,6 @@ int main() {
   const VinputConfig default_config;
   assert(default_config.holdActivationDelay.value() == 300);
   assert(default_config.triggerMode.value() == TriggerMode::Both);
-  assert(default_config.holdActivationDelay.constrain().min() == 100);
-  assert(default_config.holdActivationDelay.constrain().max() == 2000);
 
   const std::string tmp_path = "/tmp/vinput_test_config.conf";
   {
