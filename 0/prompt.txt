@@ -1,0 +1,1 @@
+自启动的 cli 的命令应该类似 systemctl 用 enable disable restart 我觉得应该是这样
