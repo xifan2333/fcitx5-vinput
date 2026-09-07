@@ -98,6 +98,14 @@ std::string MaxStreamingDisplayWidthTooltip() {
            "folded into 'head...tail'. Set to 0 to disable folding. Default is 60.");
 }
 
+std::string HoldActivationDelayLabel() {
+  return _("Hold Activation Delay (ms)");
+}
+
+std::string HoldActivationDelayTooltip() {
+  return _("Delay in milliseconds before hold recording activates (100-2000 ms, default: 300 ms).");
+}
+
 } // namespace
 
 VinputConfig::VinputConfig()
@@ -118,4 +126,7 @@ VinputConfig::VinputConfig()
       maxStreamingDisplayWidth(this, "MaxStreamingDisplayWidth", MaxStreamingDisplayWidthLabel(),
                                60, fcitx::IntConstrain(0, 500), {},
                                fcitx::ToolTipAnnotation(MaxStreamingDisplayWidthTooltip())),
+      holdActivationDelay(this, "HoldActivationDelay", HoldActivationDelayLabel(), 300,
+                          fcitx::IntConstrain(100, 2000), {},
+                          fcitx::ToolTipAnnotation(HoldActivationDelayTooltip())),
       modelManager(this, "ModelManager", _("Open Vinput Settings"), "vinput-gui") {}

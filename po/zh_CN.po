@@ -1156,6 +1156,15 @@ msgstr ""
 "实时流式识别预览的最大视觉显示列宽。较早的内容会被折叠为“句首...句尾”。设为 "
 "0 则禁用折叠。默认值为 60。"
 
+msgid "Hold Activation Delay (ms)"
+msgstr "长按激活延迟 (毫秒)"
+
+msgid ""
+"Delay in milliseconds before hold recording activates (100-2000 ms, default: "
+"300 ms)."
+msgstr ""
+"长按录音激活前的延迟毫秒数 (100-2000 毫秒，默认：300 毫秒)。"
+
 msgid "Open Vinput Settings"
 msgstr "打开 Vinput 设置"
 
