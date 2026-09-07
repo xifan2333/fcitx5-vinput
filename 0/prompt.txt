@@ -1,0 +1,1 @@
+我看mise作者好像由一套很好的工作流 通过 issue 和 pr bot 以及 skill https://github.com/jdx/mise/pull/12905 帮我研究下他是咋实现的
