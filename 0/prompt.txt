@@ -1,0 +1,1 @@
+本机编译很慢先不编译了，看看能配置这个不 https://github.com/cpp-linter 这个组织好多 cpp 相关的项目
