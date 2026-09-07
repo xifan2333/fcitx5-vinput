@@ -1,0 +1,1 @@
+I propose another feature. Instead of showing only the raw text, we show all of the sequences (including the raw text). However, we now shows the streaming text returned by the LLM. Considering that we can do nothing at LLM postprocessing, the user can determine the better one when generating. This leverages the idle time of users. 嗯， 这个方案的意思是什么？
