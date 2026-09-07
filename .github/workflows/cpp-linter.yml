@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: cpp-linter-${{ github.ref }}
@@ -49,7 +48,23 @@ jobs:
           files-changed-only: true
           step-summary: true
           file-annotations: true
-          thread-comments: 'update'
+          thread-comments: 'false'
+
+      - name: Save PR info and report
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          mkdir -p pr-report
+          echo "${{ github.event.pull_request.number }}" > pr-report/pr_number
+          echo "${{ steps.linter.outputs.clang-format-checks-failed }}" > pr-report/format_failed
+          echo "${{ steps.linter.outputs.clang-tidy-checks-failed }}" > pr-report/tidy_failed
+
+      - name: Upload artifact for PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-report
+          path: pr-report/
+          retention-days: 1
 
       - name: Fail on formatting or tidy violations
         if: steps.linter.outputs.clang-format-checks-failed > 0 || steps.linter.outputs.clang-tidy-checks-failed > 0
