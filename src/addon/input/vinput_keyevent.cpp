@@ -330,8 +330,17 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
                 std::chrono::duration_cast<std::chrono::microseconds>(hold_activation_delay_)
                     .count());
         pending_start_event_ = instance_->eventLoop().addTimeEvent(
-            kDefaultClock, fire_at_usec, 0, [this, ic, trigger, is_command](auto*, uint64_t) {
-              startVoiceRecording(ic, trigger, is_command);
+            kDefaultClock, fire_at_usec, 0,
+            [this,
+             ic_ref = ic != nullptr ? ic->watch()
+                                    : fcitx::TrackableObjectReference<fcitx::InputContext>(),
+             trigger, is_command](auto*, uint64_t) {
+              auto* target_ic = ic_ref.get();
+              if (target_ic == nullptr) {
+                pending_start_event_.reset();
+                return false;
+              }
+              startVoiceRecording(target_ic, trigger, is_command);
               if (session_) {
                 session_->stop_on_release = true;
               }
@@ -377,6 +386,9 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
         if (session_ && session_->phase == Session::Phase::Recording) {
           session_->trigger_released = true;
           scheduleStopRecording();
+        } else if (session_ && session_->phase == Session::Phase::PendingStart) {
+          session_->trigger_released = true;
+          session_->stop_on_release = true;
         }
       } else {
         // Tap mode: short press (< hold delay) toggles recording or opens menu

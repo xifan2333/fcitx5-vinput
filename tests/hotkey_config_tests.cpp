@@ -17,8 +17,7 @@ int main() {
   const std::string tmp_path = "/tmp/vinput_test_config.conf";
   {
     std::ofstream ofs(tmp_path);
-    ofs << "[Config]\n"
-        << "TriggerMode=Hold\n"
+    ofs << "TriggerMode=Hold\n"
         << "HoldActivationDelay=500\n";
   }
 

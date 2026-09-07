@@ -258,6 +258,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
   }
 
   if (session_to_cancel) {
+    const std::scoped_lock io_lock(session_io_mutex_);
     session_to_cancel->Cancel();
   }
 
