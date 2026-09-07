@@ -43,4 +43,12 @@ target_link_libraries(modifier-key-tests PRIVATE
     ${SDBUS_LIBRARIES}
 )
 
+find_package(Fcitx5Core REQUIRED)
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.12")
+    target_compile_definitions(modifier-key-tests PRIVATE VINPUT_FCITX5_CORE_HAVE_ADDON_FACTORY_V2)
+endif()
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.9")
+    target_compile_definitions(modifier-key-tests PRIVATE VINPUT_FCITX5_CORE_HAVE_SET_COMMENT)
+endif()
+
 add_test(NAME modifier-key-tests COMMAND modifier-key-tests)
