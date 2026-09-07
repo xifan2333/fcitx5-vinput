@@ -124,11 +124,12 @@ Once marked ready, monitor CI and review bot outputs:
 # 1. Check CI status
 gh pr checks
 
-# 2. Inspect review bot comments
+# 2. Inspect review bot comments (top-level and line-level threads)
 gh pr view --comments
+gh api repos/:owner/:repo/pulls/<pr_id>/comments
 ```
 
-- **CodeRabbit**: Look for `> Prompt for AI Agents` blocks and treat them as targeted repair instructions.
+- **CodeRabbit**: Look for `> Prompt for AI Agents` blocks and treat them as candidate repair instructions.
 - **Cursor Bugbot**: Inspect line-level bugs and apply valid `Proposed fix` suggestions.
 - **Greptile**: Address cross-file architectural warnings when Confidence $\ge$ 4.
 - **Fix & Push**:
@@ -144,8 +145,8 @@ gh pr view --comments
 # 1. Verify all checks pass
 gh pr checks
 
-# 2. (Optional for core changes) Trigger remote matrix dry build
-gh workflow run release.yml && gh run watch
+# 2. (Optional for core changes) Trigger remote matrix dry build against PR branch
+gh workflow run release.yml --ref <branch_name> && gh run watch
 
 # 3. Perform squash-merge and delete branch
 gh pr merge --squash --delete-branch

@@ -31,8 +31,8 @@ Compilation strategy should adapt to the local machine's hardware capabilities, 
 ## 3. The Two Usages of `release.yml`
 
 ### Mode 1: Remote Matrix Validation (Dry Run via `workflow_dispatch`)
-- **Command**: `gh workflow run release.yml && gh run watch`
-- **Behavior**: Compiles the code across the entire runner matrix (`ubuntu-24.04` x86_64, `ubuntu-24.04-arm` aarch64, Arch chroot, Fedora container, Flatpak builder). Uploads all build artifacts (`.deb`, `.rpm`, `.pkg.tar.zst`, `.flatpak`, source tarball) to GitHub Actions summary.
+- **Command**: `gh workflow run release.yml --ref <branch_name> && gh run watch`
+- **Behavior**: Compiles the code across the entire runner matrix (`ubuntu-24.04` x86_64, `ubuntu-24.04-arm` aarch64, Arch chroot, Fedora container, Flatpak builder) for the specified branch. Uploads all build artifacts (`.deb`, `.rpm`, `.pkg.tar.zst`, `.flatpak`, source tarball) to GitHub Actions summary.
 - **Safety**: Does **NOT** publish a GitHub Release because the `publish-release` job requires a `refs/tags/v*` ref.
 - **When to use**: Whenever you want to test whether all architectures and packaging targets compile cleanly before tagging.
 

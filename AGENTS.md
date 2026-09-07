@@ -26,8 +26,11 @@ Guidelines, dual-planning model, and hard constraints for AI coding agents worki
 | **`vinput-registry`** | [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) | `~/Code/vinput-registry` | Resource catalog: index for local ASR models (`models.json`), cloud ASR provider scripts (`providers.json` + `resources/providers/`), and LLM scene adapters (`adapters.json` + `resources/adapters/`). |
 | **`aur-auto`** | [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) | `~/Code/aur-auto` | Arch User Repository (AUR) automation: tracks `fcitx5-vinput` releases via `pkgs/fcitx5-vinput-bin/`, tests in clean chroot, and publishes to AUR. |
 | **`flatpak-auto`** | [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) | `~/Code/flatpak-auto` | Flatpak repository automation: tracks releases via `products/fcitx5-vinput/`, imports bundles into shared OSTree repo, and publishes `.flatpakref` / `.flatpakrepo` to GitHub Pages. |
-| **`fcitx5`** (Upstream) | [fcitx/fcitx5](https://github.com/fcitx/fcitx5) | External | Upstream input method framework: addon lifecycle, event pipeline, key/modifier handling reference. |
-| **`sherpa-onnx`** (Upstream) | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | External | Upstream local ASR engine: onnxruntime inference, VAD segmentation, offline model runtime. |
+| **`fcitx5`** (Upstream) | [fcitx/fcitx5](https://github.com/fcitx/fcitx5) | External | Upstream input method framework: addon lifecycle, event pipeline, key/modifier handling reference. (Context7: `fcitx/fcitx5`) |
+| **`sherpa-onnx`** (Upstream) | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | External | Upstream local ASR engine: onnxruntime inference, VAD segmentation, offline model runtime. (Context7: `k2-fsa/sherpa-onnx`) |
+| **`pipewire`** (Upstream) | [pipewire/pipewire](https://github.com/pipewire/pipewire) | External | Upstream audio framework: low-latency stream capture, SPA format negotiation, ringbuffers. (Context7: `pipewire/pipewire`) |
+| **`cli11`** (Upstream) | [cliutils/cli11](https://github.com/cliutils/cli11) | External | Upstream CLI framework: modern C++ option validation, subcommand routing. (Context7: `cliutils/cli11`) |
+| **`qt6`** (Upstream) | [qt/qtbase](https://github.com/qt/qtbase) | External | Upstream GUI framework: desktop settings UI, custom item delegates, form layouts. (Context7: `websites/doc_qt_io_qt-6`) |
 
 - **Adding / Modifying Cloud ASR or LLM Scenes**: Work in `~/Code/vinput-registry`.
 - **Packaging / AUR Release Tracking**: Work in `~/Code/aur-auto` (`pkgs/fcitx5-vinput-bin/`).
@@ -167,9 +170,10 @@ Once the PR is marked ready, CI gates and review bots automatically analyze the 
 
 1. **Poll Check Status & Feedback**:
    - Verify CI status: `gh pr checks`
-   - Inspect bot comments: `gh pr view <pr_id> --comments`
+   - Inspect PR top-level comments: `gh pr view <pr_id> --comments`
+   - Inspect line-level review comments and threads: retrieve review threads via GitHub API (`gh api repos/:owner/:repo/pulls/<pr_id>/comments`) or Web UI to capture all inline Bugbot and CodeRabbit remarks.
 2. **Review Bot Feedback Ingestion**:
-   - **CodeRabbit**: Extract the dedicated `> Prompt for AI Agents` structured blocks as authoritative, defensive repair instructions.
+   - **CodeRabbit**: Extract the dedicated `> Prompt for AI Agents` structured blocks as candidate repair instructions.
    - **Cursor Bugbot**: Inspect inline findings (especially `Functional Correctness` and `Security`), reviewing any provided `Proposed fix` diffs.
    - **Greptile**: Inspect cross-file dependency warnings and architecture consistency alerts when Confidence $\ge$ 4.
 3. **Defensive Fix & Verification**:
@@ -185,7 +189,10 @@ Once the PR is marked ready, CI gates and review bots automatically analyze the 
 
 ### Phase 5: Final Squash-Merge
 1. Confirm all CI checks are green (`gh pr checks`).
-2. (Optional for core changes) Trigger remote matrix dry build: `gh workflow run release.yml && gh run watch`.
+2. (Optional for core changes) Trigger remote matrix dry build against the PR head branch:
+   ```bash
+   gh workflow run release.yml --ref <branch_name> && gh run watch
+   ```
 3. Perform squash-merge and delete the remote branch:
    ```bash
    gh pr merge --squash --delete-branch
@@ -226,6 +233,13 @@ Compilation strategy should adapt to local hardware capabilities:
 12. **AI Attribution & Disclosure (AI 贡献披露规范)**: When an AI agent authors PR descriptions, automated review fixes, or substantive review comments, append standard disclosure at the bottom:
     `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*`
     Always use exact runtime model identifiers. Never guess or omit.
+13. **Upstream-First API Policy & Context7 Grounding (上游优先与文档锚定)**:
+    - **`src/addon/`**: Must adhere to upstream Fcitx5 architecture and patterns. Prohibited from maintaining external ad-hoc key/gesture state machines. Fetch canonical documentation via `context7_docs(libraryId: "fcitx/fcitx5")`.
+    - **`src/daemon/asr/`**: Must use upstream `sherpa-onnx` C/C++ APIs for recognition and VAD. Prohibited from authoring custom energy-detection or audio-chopping glue wheels. Fetch documentation via `context7_docs(libraryId: "k2-fsa/sherpa-onnx")`.
+    - **`src/daemon/audio/`**: Must use upstream PipeWire C API for low-latency stream capture and SPA ringbuffers. Fetch documentation via `context7_docs(libraryId: "pipewire/pipewire")`.
+    - **`src/cli/`**: Must follow CLI11 modern C++ validator and subcommand architecture. Fetch documentation via `context7_docs(libraryId: "cliutils/cli11")`.
+    - **`src/gui/`**: Must follow Qt 6 Widgets, Model/View delegates, and layout conventions. Fetch documentation via `context7_docs(libraryId: "websites/doc_qt_io_qt-6")`.
+    - Agents must query Context7 before implementing non-trivial changes across these five pillars to prevent hallucinations and maintain upstream parity.
 
 ---
 

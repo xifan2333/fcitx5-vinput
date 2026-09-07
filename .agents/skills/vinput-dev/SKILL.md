@@ -19,8 +19,11 @@ Verify target repository before making changes:
 | **`vinput-registry`** | Cloud ASR provider scripts, LLM scene adapters, Model index | `~/Code/vinput-registry` / [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) |
 | **`aur-auto`** | Arch Linux AUR packaging automation (`fcitx5-vinput-bin`) | `~/Code/aur-auto` / [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) |
 | **`flatpak-auto`** | Flatpak OSTree repository & flatpakref automation | `~/Code/flatpak-auto` / [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) |
-| **`fcitx5`** (Upstream) | Fcitx5 core framework reference, event loop & modifier handling | [fcitx/fcitx5](https://github.com/fcitx/fcitx5) |
-| **`sherpa-onnx`** (Upstream) | Local speech recognition & VAD engine runtime | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) |
+| **`fcitx5`** (Upstream) | Fcitx5 core framework reference, event loop & modifier handling (Context7: `fcitx/fcitx5`) | [fcitx/fcitx5](https://github.com/fcitx/fcitx5) |
+| **`sherpa-onnx`** (Upstream) | Local speech recognition & VAD engine runtime (Context7: `k2-fsa/sherpa-onnx`) | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) |
+| **`pipewire`** (Upstream) | Low-latency audio stream capture & SPA buffers (Context7: `pipewire/pipewire`) | [pipewire/pipewire](https://github.com/pipewire/pipewire) |
+| **`cli11`** (Upstream) | Modern C++ CLI option parser & subcommand routing (Context7: `cliutils/cli11`) | [cliutils/cli11](https://github.com/cliutils/cli11) |
+| **`qt6`** (Upstream) | Desktop GUI widgets, item delegates, layouts (Context7: `websites/doc_qt_io_qt-6`) | [qt/qtbase](https://github.com/qt/qtbase) |
 
 ---
 
@@ -66,8 +69,9 @@ Read **[references/issue-pr-workflow.md](references/issue-pr-workflow.md)**
 - Dual-planning model: Task Planning (Issue breakdown) vs Quality Gate Pre-check (`hk --plan`).
 - The 5-stage Issue + Draft PR lifecycle (`gh pr create --draft`).
 - Single-item local atomic commits, unified push on completion, and updating PR checklist checkboxes (`- [x]`).
-- Post-Ready Review-Fix loop: Ingest CodeRabbit `Prompt for AI Agents` and Cursor Bugbot `Proposed fix` diffs, defensively verify and commit atomic fixes.
-- Hard limits: Zero tolerance on suppressing diagnostics (`// NOLINT`, `-Wno-*`), keep PR micro-slices under 300 lines of functional code.
+- Post-Ready Review-Fix loop: Ingest CodeRabbit `Prompt for AI Agents`, Cursor Bugbot `Proposed fix` diffs, and Greptile alerts (Confidence >= 4); defensively verify and commit atomic fixes.
+- Hard limits: Zero tolerance on suppressing diagnostics (`// NOLINT`, `// NOLINTNEXTLINE`, `-Wno-*`), keep PR micro-slices under 300 lines of functional code.
+- Upstream-first policy: Ground implementation in upstream canonical docs via Context7 (`fcitx/fcitx5`, `k2-fsa/sherpa-onnx`, `pipewire/pipewire`, `cliutils/cli11`, `websites/doc_qt_io_qt-6`).
 - If the change incompatibly renames/removes/splits `config.json` or `vinput.conf` keys, the PR checklist **must** include a ConfigMigration `RegisteredSteps` task. No runtime aliases.
 
 ### Task: Working in a Fork / Reviewing External PRs
