@@ -1,14 +1,16 @@
 #include <cstdlib>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
+#include <fcitx-utils/keysymgen.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/instance.h>
 #include <filesystem>
 #include <iostream>
-#include <memory>
+#include <stdlib.h>
 #include <string>
+#include <unistd.h>
 
 #include "core/vinput.h"
 
@@ -27,6 +29,10 @@ public:
       : fcitx::InputContext(instance.inputContextManager()) {
     created();
   }
+  TestInputContext(const TestInputContext&) = delete;
+  TestInputContext& operator=(const TestInputContext&) = delete;
+  TestInputContext(TestInputContext&&) = delete;
+  TestInputContext& operator=(TestInputContext&&) = delete;
   ~TestInputContext() override { destroy(); }
   [[nodiscard]] const char* frontend() const override { return "test"; }
 
@@ -51,6 +57,10 @@ struct TestEnvironment {
       setenv(var, p.c_str(), 1);
     }
   }
+  TestEnvironment(const TestEnvironment&) = delete;
+  TestEnvironment& operator=(const TestEnvironment&) = delete;
+  TestEnvironment(TestEnvironment&&) = delete;
+  TestEnvironment& operator=(TestEnvironment&&) = delete;
   ~TestEnvironment() { std::filesystem::remove_all(directory); }
 };
 
