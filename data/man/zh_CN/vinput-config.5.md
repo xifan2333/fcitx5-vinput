@@ -168,6 +168,9 @@ MaxStreamingDisplayWidth=60
 **MaxStreamingDisplayWidth** (*整数*, `0` - `500`)
 :   实时流式识别预览的最大视觉显示列宽。超出时自动将较早文字折叠为“句首...句尾”。设为 `0` 则禁用折叠（默认：`60`）。
 
+**HoldActivationDelay** (*整数*, `100` - `2000`)
+:   长按录音激活前的延迟毫秒数。取值范围 100 到 2000 毫秒（默认：`300`）。
+
 # 文件
 *~/.config/vinput/config.json*
 :   用户核心配置文件。

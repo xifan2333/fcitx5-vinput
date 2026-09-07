@@ -168,6 +168,9 @@ MaxStreamingDisplayWidth=60
 **MaxStreamingDisplayWidth** (*integer*, `0` - `500`)
 :   Maximum visual column width for live streaming recognition preview. Older text is folded into 'head...tail' to keep the preedit tooltip within bounds. Set to `0` to disable folding (default: `60`).
 
+**HoldActivationDelay** (*integer*, `100` - `2000`)
+:   Delay in milliseconds before hold recording activates. Set between 100 and 2000 ms (default: `300`).
+
 # FILES
 *~/.config/vinput/config.json*
 :   User core configuration file.

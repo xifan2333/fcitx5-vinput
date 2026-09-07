@@ -172,6 +172,10 @@ Shift）。它替代旧的 \f[CR]SceneMenuKey\f[R]；\f[CR]AsrMenuKey\f[R]
 \f[B]MaxStreamingDisplayWidth\f[R] (\f[I]整数\f[R], \f[CR]0\f[R] \- \f[CR]500\f[R])
 实时流式识别预览的最大视觉显示列宽。超出时自动将较早文字折叠为\(lq句首...句尾\(rq。设为
 \f[CR]0\f[R] 则禁用折叠（默认：\f[CR]60\f[R]）。
+.TP
+\f[B]HoldActivationDelay\f[R] (\f[I]整数\f[R], \f[CR]100\f[R] \- \f[CR]2000\f[R])
+长按录音激活前的延迟毫秒数。
+取值范围 100 到 2000 毫秒（默认：\f[CR]300\f[R]）。
 .SH 文件
 .TP
 \f[I]\(ti/.config/vinput/config.json\f[R]
