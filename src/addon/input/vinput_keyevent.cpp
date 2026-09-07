@@ -25,6 +25,7 @@
 
 namespace {
 
+constexpr clockid_t kDefaultClock = 1; // POSIX CLOCK_MONOTONIC
 constexpr auto kReleaseDebounce = std::chrono::milliseconds(500);
 constexpr auto kTriggerDebounce = std::chrono::milliseconds(80);
 
@@ -246,13 +247,13 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       if (modAction != ModifierAction::Menu &&
           (trigger_mode_ == TriggerMode::Hold || trigger_mode_ == TriggerMode::Both)) {
         const auto fire_at_usec =
-            fcitx::now(CLOCK_MONOTONIC) +
+            fcitx::now(kDefaultClock) +
             static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::microseconds>(hold_activation_delay_)
                     .count());
 
         modifier_hold_event_ = instance_->eventLoop().addTimeEvent(
-            CLOCK_MONOTONIC, fire_at_usec, 0,
+            kDefaultClock, fire_at_usec, 0,
             [this, target_ic = ic, action = modAction, trigger = origKey](auto*, uint64_t) {
               if (target_ic == nullptr) {
                 pending_modifier_.reset();
@@ -324,12 +325,12 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       if (trigger_mode_ == TriggerMode::Hold) {
         cancelPendingStart();
         const auto fire_at_usec =
-            fcitx::now(CLOCK_MONOTONIC) +
+            fcitx::now(kDefaultClock) +
             static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::microseconds>(hold_activation_delay_)
                     .count());
         pending_start_event_ = instance_->eventLoop().addTimeEvent(
-            CLOCK_MONOTONIC, fire_at_usec, 0, [this, ic, trigger, is_command](auto*, uint64_t) {
+            kDefaultClock, fire_at_usec, 0, [this, ic, trigger, is_command](auto*, uint64_t) {
               startVoiceRecording(ic, trigger, is_command);
               if (session_) {
                 session_->stop_on_release = true;
@@ -497,12 +498,12 @@ void VinputEngine::cancelPendingStart() {
 
 void VinputEngine::scheduleStopRecording() {
   const auto fire_at_usec =
-      fcitx::now(CLOCK_MONOTONIC) +
+      fcitx::now(kDefaultClock) +
       static_cast<uint64_t>(
           std::chrono::duration_cast<std::chrono::microseconds>(kReleaseDebounce).count());
 
   if (!pending_stop_event_) {
-    pending_stop_event_ = instance_->eventLoop().addTimeEvent(CLOCK_MONOTONIC, fire_at_usec, 0,
+    pending_stop_event_ = instance_->eventLoop().addTimeEvent(kDefaultClock, fire_at_usec, 0,
                                                               [this](auto*, uint64_t) {
                                                                 finishStopRecording();
                                                                 return false;
