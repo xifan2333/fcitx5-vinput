@@ -218,7 +218,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
 
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::lock_guard<std::mutex> lock(state_mutex_);
     if (phase_ == vinput::dbus::Status::Recording) {
       accepting_chunks_.store(false, std::memory_order_relaxed);
       stop_capture = true;
@@ -262,7 +262,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
   }
 
   if (apply_pending_reload) {
-    ApplyPendingAsrBackendReload();
+    MaybeApplyPendingAsrBackendReload();
   }
 
   return DbusService::MethodResult::Success();

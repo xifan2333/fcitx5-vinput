@@ -146,7 +146,14 @@ private:
     ModifierAction action = ModifierAction::None;
     fcitx::Key key;
     std::chrono::steady_clock::time_point press_time;
-    fcitx::TrackableObjectReference<fcitx::InputContext> ic;
+    fcitx::InputContext* ic = nullptr;
+
+    void reset() {
+      action = ModifierAction::None;
+      key = fcitx::Key();
+      press_time = {};
+      ic = nullptr;
+    }
   };
   PendingModifier pending_modifier_;
   std::unique_ptr<fcitx::EventSourceTime> modifier_hold_event_;

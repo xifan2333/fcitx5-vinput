@@ -1,10 +1,16 @@
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <fcitx-utils/event.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
+#include <fcitx-utils/log.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/inputcontext.h>
+#include <iterator>
 #include <string>
+#include <utility>
 
 #include "common/config/core_config.h"
 #include "common/config/vinput_config.h"
@@ -231,9 +237,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       }
 
       cancelModifierHoldTimer();
-      pending_modifier_ = {modAction, origKey, std::chrono::steady_clock::now(),
-                           ic != nullptr ? ic->watch()
-                                         : fcitx::TrackableObjectReference<fcitx::InputContext>()};
+      pending_modifier_.action = modAction;
+      pending_modifier_.key = origKey;
+      pending_modifier_.press_time = std::chrono::steady_clock::now();
+      pending_modifier_.ic = ic;
       modifier_hold_active_ = false;
 
       // Start hold timer for dictation/command if in Hold or Both mode
@@ -247,11 +254,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
 
         modifier_hold_event_ = instance_->eventLoop().addTimeEvent(
             CLOCK_MONOTONIC, fire_at_usec, 0,
-            [this, ic_ref = pending_modifier_.ic, action = modAction,
-             trigger = origKey](fcitx::EventSourceTime*, uint64_t) {
-              auto* target_ic = ic_ref.get();
+            [this, target_ic = ic, action = modAction, trigger = origKey](fcitx::EventSourceTime*,
+                                                                          uint64_t) {
               if (target_ic == nullptr) {
-                pending_modifier_ = {};
+                pending_modifier_.reset();
                 return false;
               }
               modifier_hold_active_ = true;
@@ -278,7 +284,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
           (session_ && session_->stop_on_release && !session_->trigger_released)) {
         cancelInterruptedRecording();
       }
-      pending_modifier_ = {};
+      pending_modifier_.reset();
       modifier_hold_active_ = false;
       // Let the interrupting key pass through untouched to the client application
       return;
@@ -354,9 +360,9 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       cancelModifierHoldTimer();
       const auto action = pending_modifier_.action;
       const auto trigger_key = pending_modifier_.key;
-      auto* target_ic = pending_modifier_.ic.get();
+      auto* target_ic = pending_modifier_.ic;
       const bool was_hold = modifier_hold_active_;
-      pending_modifier_ = {};
+      pending_modifier_.reset();
       modifier_hold_active_ = false;
 
       if (target_ic == nullptr) {
