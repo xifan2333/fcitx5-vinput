@@ -1,6 +1,12 @@
 #include <cstdlib>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/key.h>
+#include <fcitx-utils/keysym.h>
+#include <fcitx-utils/keysymgen.h>
+#include <fcitx/event.h>
+#include <fcitx/inputcontext.h>
+#include <fcitx/inputcontextmanager.h>
+#include <fcitx/instance.h>
 #include <iostream>
 #include <string>
 
