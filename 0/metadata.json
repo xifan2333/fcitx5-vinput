@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "47b14951771f",
+  "session_id": "01a0630b-7bfb-7a61-b474-2f2b9b0e6754",
+  "strategy": "import",
+  "created_at": "2026-09-02T18:57:20.304Z",
+  "commit_sha": "ac1352cc5c1ffe41252fdc7dfedd5891a7a36c74",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "agent": "Pi",
+  "model": "gemini-3.7-flash",
+  "checkpoint_transcript_start": 397,
+  "transcript_lines_at_start": 397,
+  "compact_transcript_start": 209,
+  "token_usage": {
+    "input_tokens": 9940,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 460196,
+    "output_tokens": 2596,
+    "api_call_count": 2
+  },
+  "kind": "imported"
+}
