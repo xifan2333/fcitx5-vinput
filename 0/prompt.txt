@@ -1,0 +1,1 @@
+我觉得可以装 lupdate 或者  用 mise 安装
