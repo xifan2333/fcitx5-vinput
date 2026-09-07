@@ -19,6 +19,8 @@ Verify target repository before making changes:
 | **`vinput-registry`** | Cloud ASR provider scripts, LLM scene adapters, Model index | `~/Code/vinput-registry` / [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) |
 | **`aur-auto`** | Arch Linux AUR packaging automation (`fcitx5-vinput-bin`) | `~/Code/aur-auto` / [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) |
 | **`flatpak-auto`** | Flatpak OSTree repository & flatpakref automation | `~/Code/flatpak-auto` / [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) |
+| **`fcitx5`** (Upstream) | Fcitx5 core framework reference, event loop & modifier handling | [fcitx/fcitx5](https://github.com/fcitx/fcitx5) |
+| **`sherpa-onnx`** (Upstream) | Local speech recognition & VAD engine runtime | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) |
 
 ---
 

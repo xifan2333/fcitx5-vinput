@@ -26,6 +26,8 @@ Guidelines, dual-planning model, and hard constraints for AI coding agents worki
 | **`vinput-registry`** | [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) | `~/Code/vinput-registry` | Resource catalog: index for local ASR models (`models.json`), cloud ASR provider scripts (`providers.json` + `resources/providers/`), and LLM scene adapters (`adapters.json` + `resources/adapters/`). |
 | **`aur-auto`** | [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) | `~/Code/aur-auto` | Arch User Repository (AUR) automation: tracks `fcitx5-vinput` releases via `pkgs/fcitx5-vinput-bin/`, tests in clean chroot, and publishes to AUR. |
 | **`flatpak-auto`** | [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) | `~/Code/flatpak-auto` | Flatpak repository automation: tracks releases via `products/fcitx5-vinput/`, imports bundles into shared OSTree repo, and publishes `.flatpakref` / `.flatpakrepo` to GitHub Pages. |
+| **`fcitx5`** (Upstream) | [fcitx/fcitx5](https://github.com/fcitx/fcitx5) | External | Upstream input method framework: addon lifecycle, event pipeline, key/modifier handling reference. |
+| **`sherpa-onnx`** (Upstream) | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | External | Upstream local ASR engine: onnxruntime inference, VAD segmentation, offline model runtime. |
 
 - **Adding / Modifying Cloud ASR or LLM Scenes**: Work in `~/Code/vinput-registry`.
 - **Packaging / AUR Release Tracking**: Work in `~/Code/aur-auto` (`pkgs/fcitx5-vinput-bin/`).

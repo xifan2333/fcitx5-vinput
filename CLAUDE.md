@@ -41,11 +41,13 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
   - *Breaking Changes*: "Prompt for Agent" with target version, `vinput init -f`, and `vinput config migrate [--dry-run]`. Do not list per-key recipes. Retain across 5 patch releases (or until next minor).
   - *Standard Releases*: Concise bilingual feature/fix changelog.
 
-## Ecosystem Repositories
+## Ecosystem Repositories & Upstream
 - **Core Engine (C++20)**: [xifan2333/fcitx5-vinput](https://github.com/xifan2333/fcitx5-vinput) (`~/Code/fcitx5-vinput`)
 - **Cloud ASR / LLM Scenes Registry**: [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) (`~/Code/vinput-registry`)
 - **Arch AUR Packaging Automation**: [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) (`~/Code/aur-auto`)
 - **Flatpak OSTree Repository Automation**: [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) (`~/Code/flatpak-auto`)
+- **Upstream Input Method Framework**: [fcitx/fcitx5](https://github.com/fcitx/fcitx5) (API reference, key/modifier event loop)
+- **Upstream Local ASR Inference**: [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (VAD & onnx model runtime)
 
 ## Unified Project Skill
 - **`vinput-dev`** (`.agents/skills/vinput-dev/SKILL.md`): Architecture, Dual-planning, Fork contribution, pre-PR code health-check, Issue+PR workflow, PipeWire debugging, ecosystem extension, release packaging.
