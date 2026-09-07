@@ -1,0 +1,1 @@
+skill文档里不要特殊的 emoji 还有补充关联项目 @~/Code/flatpak-auto/
