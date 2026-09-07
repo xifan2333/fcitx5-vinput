@@ -1,0 +1,1 @@
+那就是也支持 /a  <engine> /s <scene> /m <model> 这样的 filter 还是全局，然后 model 应该是 provider/model 的形式，因为没办法输入中文，所以 filter 依赖 id 可以吗？
