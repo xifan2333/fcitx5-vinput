@@ -120,6 +120,11 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                                 session_.reset();
                                 polled_idle_since_.reset();
                               }
+                              if (pending_modifier_.ic.get() == ic) {
+                                cancelModifierHoldTimer();
+                                pending_modifier_ = {};
+                                modifier_hold_active_ = false;
+                              }
                               if (status_ic_ == ic) {
                                 status_ic_ = nullptr;
                                 stopStatusSyncIfIdle();
@@ -167,6 +172,7 @@ VinputEngine::~VinputEngine() {
   status_sync_event_.reset();
   pending_stop_event_.reset();
   pending_start_event_.reset();
+  modifier_hold_event_.reset();
 
   pending_stop_call_slot_.reset();
   pending_start_call_slot_.reset();
@@ -209,6 +215,7 @@ void VinputEngine::applySettings() {
   page_next_keys_ = config_.pageNextKeys.value();
   trigger_mode_ = config_.triggerMode.value();
   max_streaming_display_width_ = config_.maxStreamingDisplayWidth.value();
+  hold_activation_delay_ = std::chrono::milliseconds(config_.holdActivationDelay.value());
   reloadSceneConfig();
   reloadPaletteItems();
 }

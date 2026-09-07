@@ -1,5 +1,6 @@
 #include <chrono>
 #include <fcitx-utils/key.h>
+#include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/inputcontext.h>
@@ -18,9 +19,7 @@
 namespace {
 
 constexpr auto kReleaseDebounce = std::chrono::milliseconds(500);
-constexpr auto kToggleThreshold = std::chrono::milliseconds(300);
 constexpr auto kTriggerDebounce = std::chrono::milliseconds(80);
-constexpr auto kModifierOnlyKeyTimeout = std::chrono::milliseconds(250);
 
 std::string NoSelectionPreeditText() {
   return _("Please select text first.");
@@ -41,10 +40,127 @@ std::string DaemonNotRespondingPreeditText() {
 
 } // namespace
 
+void VinputEngine::cancelModifierHoldTimer() {
+  if (modifier_hold_event_ && modifier_hold_event_->isEnabled()) {
+    modifier_hold_event_->setEnabled(false);
+  }
+}
+
+void VinputEngine::cancelInterruptedRecording() {
+  cancelPendingStop();
+  cancelModifierHoldTimer();
+  if (session_ && (session_->phase == Session::Phase::Recording ||
+                   session_->phase == Session::Phase::PendingStart)) {
+    auto* target_ic = session_->ic;
+    callCancelOperation(false);
+    finishFrontendSession(target_ic);
+    clearVoicePresentation(target_ic);
+  }
+}
+
+void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key& trigger,
+                                       bool is_command) {
+  if (ic == nullptr) {
+    return;
+  }
+  dismissMenusForVoiceActivity();
+  cancelPendingStop();
+
+  const std::string daemon_status = last_known_daemon_status_;
+  if (!is_command && !session_ && daemon_status == vinput::dbus::kStatusRecording) {
+    enterRecordingState(ic, trigger, false);
+    finishStopRecording();
+    return;
+  }
+  if (!daemon_status.empty() && daemon_status != vinput::dbus::kStatusIdle) {
+    applyDaemonStatusLocally(daemon_status, ic, is_command);
+    return;
+  }
+
+  if (is_command) {
+    {
+      auto core_config = LoadCoreConfig();
+      const auto* cmd_scene = FindCommandScene(core_config);
+      if (cmd_scene == nullptr || cmd_scene->llm_max_candidates <= 0) {
+        finishFrontendSession(ic);
+        updateVoicePresentation(ic, CommandDisabledPreeditText());
+        return;
+      }
+      if (cmd_scene->provider_id.empty() ||
+          ResolveLlmProvider(core_config, cmd_scene->provider_id) == nullptr) {
+        finishFrontendSession(ic);
+        updateVoicePresentation(ic, CommandNoProviderPreeditText());
+        return;
+      }
+    }
+    std::string selected_text;
+    auto& surrounding = ic->surroundingText();
+    if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
+      const auto& text = surrounding.text();
+      auto char_from = std::min(surrounding.cursor(), surrounding.anchor());
+      auto char_to = std::max(surrounding.cursor(), surrounding.anchor());
+      if (fcitx::utf8::validate(text)) {
+        auto byte_from = fcitx::utf8::ncharByteLength(text.begin(), char_from);
+        auto byte_len =
+            fcitx::utf8::ncharByteLength(std::next(text.begin(), byte_from), char_to - char_from);
+        selected_text = text.substr(byte_from, byte_len);
+      }
+    }
+    if (selected_text.empty()) {
+      if (auto* clipboard = instance_->addonManager().addon("clipboard")) {
+        auto primary = clipboard->call<fcitx::IClipboard::primary>(ic);
+        if (fcitx::utf8::validate(primary)) {
+          selected_text = std::move(primary);
+        }
+      }
+    }
+    if (selected_text.empty()) {
+      if (status_ic_ == ic) {
+        finishFrontendSession(ic);
+      } else {
+        clearVoicePresentation(ic);
+      }
+      vinput::debug::Log("command trigger ignored because no selection text is available\n");
+      updateVoicePresentation(ic, NoSelectionPreeditText());
+      return;
+    }
+    enterPendingStartState(ic, trigger, true);
+    FCITX_LOG(Debug) << "vinput: command key activated, selected_text length="
+                     << selected_text.size();
+    if (!callStartCommandRecording(selected_text)) {
+      finishFrontendSession(ic);
+      if (bus_ == nullptr) {
+        vinput::debug::Log("command trigger fallback: daemon bus unavailable\n");
+        updateVoicePresentation(ic, DaemonUnavailablePreeditText());
+      } else if (!daemonSyncAllowed()) {
+        vinput::debug::Log(
+            "command trigger fallback: daemon sync throttled after timeout/failure\n");
+        updateVoicePresentation(ic, DaemonNotRespondingPreeditText());
+      }
+    }
+  } else {
+    enterPendingStartState(ic, trigger, false);
+    FCITX_LOG(Debug) << "vinput: trigger key activated";
+    if (!callStartRecording()) {
+      finishFrontendSession(ic);
+      if (bus_ == nullptr) {
+        vinput::debug::Log("record trigger fallback: daemon bus unavailable\n");
+        updateVoicePresentation(ic, DaemonUnavailablePreeditText());
+      } else if (!daemonSyncAllowed()) {
+        vinput::debug::Log(
+            "record trigger fallback: daemon sync throttled after timeout/failure\n");
+        updateVoicePresentation(ic, DaemonNotRespondingPreeditText());
+      }
+    }
+  }
+}
+
 void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   auto& keyEvent = static_cast<fcitx::KeyEvent&>(event);
-  rememberInputContext(keyEvent.inputContext());
+  auto* ic = keyEvent.inputContext();
+  rememberInputContext(ic);
 
+  // 1. Postprocessing cancellation handling (Escape = discard, Enter = commit raw)
   if (pending_postprocessing_release_ && keyEvent.isRelease() &&
       keyEvent.key().normalize().sym() == pending_postprocessing_release_->normalize().sym()) {
     pending_postprocessing_release_.reset();
@@ -67,362 +183,256 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       return;
     }
   }
-  const int trigger_index = keyEvent.key().keyListIndex(trigger_keys_);
-  const bool is_trigger = trigger_index >= 0;
-  const int command_index = keyEvent.key().keyListIndex(command_keys_);
-  const bool is_command = command_index >= 0;
-  const bool voice_trigger_press = (is_trigger || is_command) && !keyEvent.isRelease();
-  const bool voice_start_pending = pending_start_event_ && pending_start_event_->isEnabled();
 
-  if (trigger_mode_ == TriggerMode::Hold && (is_trigger || is_command) && keyEvent.isRelease() &&
-      voice_start_pending) {
-    cancelPendingStart();
-    keyEvent.filterAndAccept();
+  // 2. Active menus consume keyboard navigation first
+  if (result_menu_visible_ && handleResultMenuKeyEvent(keyEvent)) {
+    return;
+  }
+  if (palette_menu_visible_ && handlePaletteMenuKeyEvent(keyEvent)) {
     return;
   }
 
-  if (!voice_trigger_press) {
-    if (!is_trigger && !is_command && handleCommandPaletteHotkey(keyEvent)) {
-      return;
+  const auto origKey = keyEvent.origKey().normalize();
+  const bool isModifier = origKey.isModifier();
+
+  // Helper to classify single-modifier actions
+  auto checkModifierAction = [&](const fcitx::Key& k) -> ModifierAction {
+    if (!k.isModifier()) {
+      return ModifierAction::None;
     }
-
-    if (result_menu_visible_ && handleResultMenuKeyEvent(keyEvent)) {
-      return;
+    if (k.checkKeyList(trigger_keys_)) {
+      return ModifierAction::Dictation;
     }
-
-    if (palette_menu_visible_ && handlePaletteMenuKeyEvent(keyEvent)) {
-      return;
+    if (k.checkKeyList(command_keys_)) {
+      return ModifierAction::Command;
     }
-  }
-
-  FCITX_LOG(Debug) << "vinput handleKeyEvent: " << keyEvent.key()
-                   << " is_release=" << keyEvent.isRelease() << " is_trigger=" << is_trigger
-                   << " is_command=" << is_command;
-
-  if ((is_trigger || is_command) && !keyEvent.isRelease()) {
-    auto now = std::chrono::steady_clock::now();
-    const auto since_last = now - last_trigger_time_;
-    last_trigger_time_ = now;
-    if (since_last < kTriggerDebounce) {
-      keyEvent.filterAndAccept();
-      return;
+    if (k.checkKeyList(menu_keys_)) {
+      return ModifierAction::Menu;
     }
+    return ModifierAction::None;
+  };
 
-    dismissMenusForVoiceActivity();
-    cancelPendingStop();
+  const ModifierAction modAction = checkModifierAction(origKey);
 
-    if (session_ && session_->phase == Session::Phase::Recording && session_->trigger_released) {
-      finishStopRecording();
-      keyEvent.filterAndAccept();
-      return;
-    }
-    if (session_) {
-      ensureStatusSync();
-      keyEvent.filterAndAccept();
-      return;
-    }
+  // 3. Key Press Phase
+  if (!keyEvent.isRelease()) {
+    // 3.1 Single-modifier shortcut press
+    if (modAction != ModifierAction::None) {
+      if (keyEvent.rawKey().states().test(fcitx::KeyState::Repeat)) {
+        keyEvent.filter();
+        return;
+      }
 
-    auto* ic = keyEvent.inputContext();
-    auto trigger = is_trigger ? trigger_keys_[trigger_index] : command_keys_[command_index];
-
-    // Hold mode: defer start until key held >= kToggleThreshold
-    if (trigger_mode_ == TriggerMode::Hold) {
-      const std::string daemon_status = last_known_daemon_status_;
-      if (is_trigger && !session_ && daemon_status == vinput::dbus::kStatusRecording) {
-        enterRecordingState(ic, trigger, false);
+      // If already recording in Tap mode, pressing trigger again toggles it off
+      if (session_ && session_->phase == Session::Phase::Recording && session_->trigger_released) {
         finishStopRecording();
         keyEvent.filterAndAccept();
         return;
       }
-      if (!daemon_status.empty() && daemon_status != vinput::dbus::kStatusIdle) {
-        applyDaemonStatusLocally(daemon_status, ic, is_command);
+
+      cancelModifierHoldTimer();
+      pending_modifier_ = {modAction, origKey, std::chrono::steady_clock::now(),
+                           ic != nullptr ? ic->watch()
+                                         : fcitx::TrackableObjectReference<fcitx::InputContext>()};
+      modifier_hold_active_ = false;
+
+      // Start hold timer for dictation/command if in Hold or Both mode
+      if (modAction != ModifierAction::Menu &&
+          (trigger_mode_ == TriggerMode::Hold || trigger_mode_ == TriggerMode::Both)) {
+        const auto fire_at_usec =
+            fcitx::now(CLOCK_MONOTONIC) +
+            static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(hold_activation_delay_)
+                    .count());
+
+        modifier_hold_event_ = instance_->eventLoop().addTimeEvent(
+            CLOCK_MONOTONIC, fire_at_usec, 0,
+            [this, ic_ref = pending_modifier_.ic, action = modAction,
+             trigger = origKey](fcitx::EventSourceTime*, uint64_t) {
+              auto* target_ic = ic_ref.get();
+              if (target_ic == nullptr) {
+                pending_modifier_ = {};
+                return false;
+              }
+              modifier_hold_active_ = true;
+              startVoiceRecording(target_ic, trigger, action == ModifierAction::Command);
+              if (session_) {
+                session_->stop_on_release = true;
+              }
+              return false;
+            });
+        modifier_hold_event_->setOneShot();
+      }
+
+      // Pass modifier press through to client to preserve shortcut chords
+      keyEvent.filter();
+      return;
+    }
+
+    // 3.2 Any non-matching key pressed while a modifier is pending or active
+    // This indicates a combination (e.g. Ctrl+C, Alt+Tab, Shift+A). Interrupt and pass through!
+    if (pending_modifier_.action != ModifierAction::None || modifier_hold_active_ ||
+        (session_ && session_->stop_on_release && !session_->trigger_released)) {
+      cancelModifierHoldTimer();
+      if (modifier_hold_active_ ||
+          (session_ && session_->stop_on_release && !session_->trigger_released)) {
+        cancelInterruptedRecording();
+      }
+      pending_modifier_ = {};
+      modifier_hold_active_ = false;
+      // Let the interrupting key pass through untouched to the client application
+      return;
+    }
+
+    // 3.3 Non-modifier trigger keys (e.g. F8, Pause, etc.)
+    const int trigger_index = keyEvent.key().keyListIndex(trigger_keys_);
+    const bool is_trigger = !isModifier && trigger_index >= 0;
+    const int command_index = keyEvent.key().keyListIndex(command_keys_);
+    const bool is_command = !isModifier && command_index >= 0;
+
+    if (is_trigger || is_command) {
+      auto now = std::chrono::steady_clock::now();
+      const auto since_last = now - last_trigger_time_;
+      last_trigger_time_ = now;
+      if (since_last < kTriggerDebounce) {
         keyEvent.filterAndAccept();
         return;
       }
 
-      cancelPendingStart();
-      const auto fire_at_usec =
-          fcitx::now(CLOCK_MONOTONIC) +
-          static_cast<uint64_t>(
-              std::chrono::duration_cast<std::chrono::microseconds>(kToggleThreshold).count());
-      pending_start_event_ = instance_->eventLoop().addTimeEvent(
-          CLOCK_MONOTONIC, fire_at_usec, 0,
-          [this, ic, trigger, is_command](fcitx::EventSourceTime*, uint64_t) {
-            if (is_command) {
-              {
-                auto core_config = LoadCoreConfig();
-                const auto* cmd_scene = FindCommandScene(core_config);
-                if (cmd_scene == nullptr || cmd_scene->llm_max_candidates <= 0) {
-                  finishFrontendSession(ic);
-                  updateVoicePresentation(ic, CommandDisabledPreeditText());
-                  pending_start_event_.reset();
-                  return false;
-                }
-                if (cmd_scene->provider_id.empty() ||
-                    ResolveLlmProvider(core_config, cmd_scene->provider_id) == nullptr) {
-                  finishFrontendSession(ic);
-                  updateVoicePresentation(ic, CommandNoProviderPreeditText());
-                  pending_start_event_.reset();
-                  return false;
-                }
+      dismissMenusForVoiceActivity();
+      cancelPendingStop();
+
+      if (session_ && session_->phase == Session::Phase::Recording && session_->trigger_released) {
+        finishStopRecording();
+        keyEvent.filterAndAccept();
+        return;
+      }
+      if (session_) {
+        ensureStatusSync();
+        keyEvent.filterAndAccept();
+        return;
+      }
+
+      auto trigger = is_trigger ? trigger_keys_[trigger_index] : command_keys_[command_index];
+
+      if (trigger_mode_ == TriggerMode::Hold) {
+        cancelPendingStart();
+        const auto fire_at_usec =
+            fcitx::now(CLOCK_MONOTONIC) +
+            static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(hold_activation_delay_)
+                    .count());
+        pending_start_event_ = instance_->eventLoop().addTimeEvent(
+            CLOCK_MONOTONIC, fire_at_usec, 0,
+            [this, ic, trigger, is_command](fcitx::EventSourceTime*, uint64_t) {
+              startVoiceRecording(ic, trigger, is_command);
+              if (session_) {
+                session_->stop_on_release = true;
               }
-              std::string selected_text;
-              auto& surrounding = ic->surroundingText();
-              if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
-                const auto& text = surrounding.text();
-                auto char_from = std::min(surrounding.cursor(), surrounding.anchor());
-                auto char_to = std::max(surrounding.cursor(), surrounding.anchor());
-                if (fcitx::utf8::validate(text)) {
-                  auto byte_from = fcitx::utf8::ncharByteLength(text.begin(), char_from);
-                  auto byte_len = fcitx::utf8::ncharByteLength(std::next(text.begin(), byte_from),
-                                                               char_to - char_from);
-                  selected_text = text.substr(byte_from, byte_len);
-                }
-              }
-              if (selected_text.empty()) {
-                if (auto* clipboard = instance_->addonManager().addon("clipboard")) {
-                  auto primary = clipboard->call<fcitx::IClipboard::primary>(ic);
-                  if (fcitx::utf8::validate(primary)) {
-                    selected_text = std::move(primary);
-                  }
-                }
-              }
-              if (selected_text.empty()) {
-                if (status_ic_ == ic) {
-                  finishFrontendSession(ic);
-                } else {
-                  clearVoicePresentation(ic);
-                }
-                vinput::debug::Log("command trigger ignored because no selection text is "
-                                   "available\n");
-                updateVoicePresentation(ic, NoSelectionPreeditText());
-                pending_start_event_.reset();
-                return false;
-              }
-              enterPendingStartState(ic, trigger, true);
-              FCITX_LOG(Debug) << "vinput: command key held, selected_text length="
-                               << selected_text.size();
-              if (!callStartCommandRecording(selected_text)) {
-                finishFrontendSession(ic);
-                if (!bus_) {
-                  vinput::debug::Log("command trigger fallback: daemon bus unavailable\n");
-                  updateVoicePresentation(ic, DaemonUnavailablePreeditText());
-                } else if (!daemonSyncAllowed()) {
-                  vinput::debug::Log("command trigger fallback: daemon sync throttled "
-                                     "after timeout/failure\n");
-                  updateVoicePresentation(ic, DaemonNotRespondingPreeditText());
-                }
-              }
-            } else {
-              enterPendingStartState(ic, trigger, false);
-              FCITX_LOG(Debug) << "vinput: trigger key held";
-              if (!callStartRecording()) {
-                finishFrontendSession(ic);
-                if (!bus_) {
-                  vinput::debug::Log("record trigger fallback: daemon bus unavailable\n");
-                  updateVoicePresentation(ic, DaemonUnavailablePreeditText());
-                } else if (!daemonSyncAllowed()) {
-                  vinput::debug::Log("record trigger fallback: daemon sync throttled "
-                                     "after timeout/failure\n");
-                  updateVoicePresentation(ic, DaemonNotRespondingPreeditText());
-                }
-              }
-            }
-            pending_start_event_.reset();
-            return false;
-          });
-      pending_start_event_->setOneShot();
+              pending_start_event_.reset();
+              return false;
+            });
+        pending_start_event_->setOneShot();
+      } else {
+        startVoiceRecording(ic, trigger, is_command);
+      }
       keyEvent.filterAndAccept();
       return;
     }
 
-    // Tap / Both mode: start immediately on press
-    const std::string daemon_status = last_known_daemon_status_;
-    if (is_trigger && !session_ && daemon_status == vinput::dbus::kStatusRecording) {
-      enterRecordingState(ic, trigger, false);
-      finishStopRecording();
-      keyEvent.filterAndAccept();
+    // Check non-modifier command palette shortcut
+    if (!isModifier && handleCommandPaletteHotkey(keyEvent)) {
       return;
     }
-    if (!daemon_status.empty() && daemon_status != vinput::dbus::kStatusIdle) {
-      applyDaemonStatusLocally(daemon_status, ic, is_command);
-      keyEvent.filterAndAccept();
-      return;
-    }
-    if (is_command) {
-      // Check command scene has llm_max_candidates > 0 and a valid provider
-      {
-        auto core_config = LoadCoreConfig();
-        const auto* cmd_scene = FindCommandScene(core_config);
-        if (cmd_scene == nullptr || cmd_scene->llm_max_candidates <= 0) {
-          finishFrontendSession(ic);
-          updateVoicePresentation(ic, CommandDisabledPreeditText());
-          keyEvent.filterAndAccept();
-          return;
-        }
-        if (cmd_scene->provider_id.empty() ||
-            ResolveLlmProvider(core_config, cmd_scene->provider_id) == nullptr) {
-          finishFrontendSession(ic);
-          updateVoicePresentation(ic, CommandNoProviderPreeditText());
-          keyEvent.filterAndAccept();
-          return;
-        }
+  }
+
+  // 4. Key Release Phase
+  if (keyEvent.isRelease()) {
+    // 4.1 Single-modifier release (native isReleaseOfModifier disambiguation)
+    if (pending_modifier_.action != ModifierAction::None &&
+        origKey.isReleaseOfModifier(pending_modifier_.key)) {
+      cancelModifierHoldTimer();
+      const auto action = pending_modifier_.action;
+      const auto trigger_key = pending_modifier_.key;
+      auto* target_ic = pending_modifier_.ic.get();
+      const bool was_hold = modifier_hold_active_;
+      pending_modifier_ = {};
+      modifier_hold_active_ = false;
+
+      if (target_ic == nullptr) {
+        keyEvent.filter();
+        return;
       }
-      std::string selected_text;
-      auto& surrounding = ic->surroundingText();
-      if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
-        const auto& text = surrounding.text();
-        auto char_from = std::min(surrounding.cursor(), surrounding.anchor());
-        auto char_to = std::max(surrounding.cursor(), surrounding.anchor());
-        if (fcitx::utf8::validate(text)) {
-          auto byte_from = fcitx::utf8::ncharByteLength(text.begin(), char_from);
-          auto byte_len =
-              fcitx::utf8::ncharByteLength(std::next(text.begin(), byte_from), char_to - char_from);
-          selected_text = text.substr(byte_from, byte_len);
+
+      if (was_hold) {
+        // Hold mode: stop recording and recognize on release
+        if (session_ && session_->phase == Session::Phase::Recording) {
+          session_->trigger_released = true;
+          scheduleStopRecording();
         }
-      }
-      if (selected_text.empty()) {
-        if (auto* clipboard = instance_->addonManager().addon("clipboard")) {
-          auto primary = clipboard->call<fcitx::IClipboard::primary>(ic);
-          if (fcitx::utf8::validate(primary)) {
-            selected_text = std::move(primary);
+      } else {
+        // Tap mode: short press (< hold delay) toggles recording or opens menu
+        if (action == ModifierAction::Menu) {
+          toggleCommandPalette(target_ic);
+        } else if (trigger_mode_ == TriggerMode::Tap || trigger_mode_ == TriggerMode::Both) {
+          startVoiceRecording(target_ic, trigger_key, action == ModifierAction::Command);
+          if (session_) {
+            session_->trigger_released = true;
+            session_->stop_on_release = false;
           }
         }
       }
-      if (selected_text.empty()) {
-        if (status_ic_ == ic) {
-          finishFrontendSession(ic);
-        } else {
-          clearVoicePresentation(ic);
-        }
-        vinput::debug::Log("command trigger ignored because no selection text is available\n");
-        updateVoicePresentation(ic, NoSelectionPreeditText());
-        keyEvent.filterAndAccept();
-        return;
-      }
-      enterPendingStartState(ic, trigger, true);
-      FCITX_LOG(Debug) << "vinput: command key pressed, selected_text length="
-                       << selected_text.size();
-      if (!callStartCommandRecording(selected_text)) {
-        finishFrontendSession(ic);
-        if (!bus_) {
-          vinput::debug::Log("command trigger fallback: daemon bus unavailable\n");
-          updateVoicePresentation(ic, DaemonUnavailablePreeditText());
-        } else if (!daemonSyncAllowed()) {
-          vinput::debug::Log("command trigger fallback: daemon sync throttled "
-                             "after timeout/failure\n");
-          updateVoicePresentation(ic, DaemonNotRespondingPreeditText());
-        }
-      }
-    } else {
-      enterPendingStartState(ic, trigger, false);
-      FCITX_LOG(Debug) << "vinput: trigger key pressed";
-      if (!callStartRecording()) {
-        finishFrontendSession(ic);
-        if (!bus_) {
-          vinput::debug::Log("record trigger fallback: daemon bus unavailable\n");
-          updateVoicePresentation(ic, DaemonUnavailablePreeditText());
-        } else if (!daemonSyncAllowed()) {
-          vinput::debug::Log("record trigger fallback: daemon sync throttled "
-                             "after timeout/failure\n");
-          updateVoicePresentation(ic, DaemonNotRespondingPreeditText());
-        }
-      }
-    }
-    keyEvent.filterAndAccept();
-    return;
-  }
 
-  // Hold mode: cancel deferred start on early release, otherwise push-to-talk
-  if (trigger_mode_ == TriggerMode::Hold && (is_trigger || is_command) && keyEvent.isRelease()) {
-    if (pending_start_event_ && pending_start_event_->isEnabled()) {
-      cancelPendingStart();
+      // Filter and accept the release so clients like Firefox do not toggle their menu bars
       keyEvent.filterAndAccept();
       return;
     }
-    if (session_ && isReleaseOfActiveTrigger(keyEvent.key())) {
-      const bool recording = session_->phase == Session::Phase::Recording;
+
+    // 4.2 Ongoing recording release tracking for hold-to-talk
+    if (session_ && session_->stop_on_release && !session_->trigger_released &&
+        isReleaseOfActiveTrigger(keyEvent.key())) {
       session_->trigger_released = true;
-      if (recording) {
+      if (session_->phase == Session::Phase::Recording) {
         scheduleStopRecording();
       }
+      keyEvent.filterAndAccept();
+      return;
     }
-    keyEvent.filterAndAccept();
-    return;
-  }
 
-  // Tap mode: release events are irrelevant (toggle on press only);
-  // just mark trigger_released so the next press can toggle off.
-  if (trigger_mode_ == TriggerMode::Tap && (is_trigger || is_command) && keyEvent.isRelease()) {
-    if (session_) {
-      session_->trigger_released = true;
-    }
-    keyEvent.filterAndAccept();
-    return;
-  }
+    // 4.3 Non-modifier trigger release handling
+    const int trigger_index = keyEvent.key().keyListIndex(trigger_keys_);
+    const bool is_trigger = !isModifier && trigger_index >= 0;
+    const int command_index = keyEvent.key().keyListIndex(command_keys_);
+    const bool is_command = !isModifier && command_index >= 0;
 
-  // Both mode: push-to-talk stop on release if held long enough
-  if (session_ && session_->phase == Session::Phase::Recording && keyEvent.isRelease() &&
-      isReleaseOfActiveTrigger(keyEvent.key())) {
-    session_->trigger_released = true;
-    auto held = std::chrono::steady_clock::now() - session_->press_time;
-    if (held >= kToggleThreshold) {
-      scheduleStopRecording();
+    if (is_trigger || is_command) {
+      if (trigger_mode_ == TriggerMode::Hold && pending_start_event_ &&
+          pending_start_event_->isEnabled()) {
+        cancelPendingStart();
+        keyEvent.filterAndAccept();
+        return;
+      }
+      if (session_) {
+        session_->trigger_released = true;
+      }
+      keyEvent.filterAndAccept();
+      return;
     }
-    keyEvent.filterAndAccept();
-    return;
-  }
-
-  // Both mode: mark trigger released for toggle
-  if ((is_trigger || is_command) && keyEvent.isRelease()) {
-    if (session_) {
-      session_->trigger_released = true;
-    }
-    keyEvent.filterAndAccept();
-    return;
   }
 }
 
 bool VinputEngine::handleCommandPaletteHotkey(fcitx::KeyEvent& keyEvent) {
   const auto event_key = keyEvent.key();
-  const bool was_armed = menu_hotkey_armed_;
-  const fcitx::Key last_pressed = menu_hotkey_pressed_;
-  menu_hotkey_armed_ = false;
+  if (event_key.isModifier() || !event_key.checkKeyList(menu_keys_)) {
+    return false;
+  }
 
-  if (keyEvent.isRelease()) {
-    if (was_armed && event_key.normalize().isReleaseOfModifier(last_pressed.normalize())) {
-      const auto held = std::chrono::steady_clock::now() - menu_hotkey_pressed_time_;
-      if (held <= kModifierOnlyKeyTimeout) {
-        toggleCommandPalette(keyEvent.inputContext());
-      }
-      keyEvent.filter();
-      return true;
+  if (!keyEvent.isRelease()) {
+    if (session_) {
+      return false;
     }
-    if (event_key.checkKeyList(menu_keys_) && !event_key.isModifier()) {
-      keyEvent.filterAndAccept();
-      return true;
-    }
-    return false;
+    toggleCommandPalette(keyEvent.inputContext());
   }
-
-  const int menu_index = event_key.keyListIndex(menu_keys_);
-  if (menu_index < 0) {
-    return false;
-  }
-
-  if (session_) {
-    return false;
-  }
-
-  if (event_key.isModifier()) {
-    menu_hotkey_armed_ = true;
-    menu_hotkey_pressed_ = menu_keys_[menu_index];
-    menu_hotkey_pressed_time_ = std::chrono::steady_clock::now();
-    keyEvent.filter();
-    return true;
-  }
-
-  toggleCommandPalette(keyEvent.inputContext());
   keyEvent.filterAndAccept();
   return true;
 }

@@ -130,6 +130,7 @@ private:
     bool command_mode = false;
     bool trigger_released = false;
     bool raw_prev = true;
+    bool stop_on_release = false;
     std::string transcript_text;
   };
   std::optional<Session> session_;
@@ -140,9 +141,22 @@ private:
   fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Alt_R)};
   fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_Control_R)};
   fcitx::KeyList menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
-  bool menu_hotkey_armed_ = false;
-  fcitx::Key menu_hotkey_pressed_;
-  std::chrono::steady_clock::time_point menu_hotkey_pressed_time_;
+  enum class ModifierAction : std::uint8_t { None, Dictation, Command, Menu };
+  struct PendingModifier {
+    ModifierAction action = ModifierAction::None;
+    fcitx::Key key;
+    std::chrono::steady_clock::time_point press_time;
+    fcitx::TrackableObjectReference<fcitx::InputContext> ic;
+  };
+  PendingModifier pending_modifier_;
+  std::unique_ptr<fcitx::EventSourceTime> modifier_hold_event_;
+  bool modifier_hold_active_ = false;
+  std::chrono::milliseconds hold_activation_delay_{300};
+
+  void cancelModifierHoldTimer();
+  void cancelInterruptedRecording();
+  void startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command);
+
   fcitx::KeyList page_prev_keys_{
       fcitx::Key(FcitxKey_Page_Up),
       fcitx::Key(FcitxKey_KP_Page_Up),
