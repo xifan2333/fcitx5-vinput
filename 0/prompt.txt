@@ -1,0 +1,1 @@
+应该用 .agent/skills 还是 .pi 保证通用性
