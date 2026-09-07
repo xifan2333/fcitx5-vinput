@@ -52,3 +52,35 @@ if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.9")
 endif()
 
 add_test(NAME modifier-key-tests COMMAND modifier-key-tests)
+
+add_executable(raw-prev-tests
+    raw_prev_tests.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/addon/core/vinput.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/addon/dbus/vinput_dbus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/addon/input/vinput_keyevent.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/addon/menu/palette_command.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/addon/menu/vinput_menu.cpp
+)
+
+target_include_directories(raw-prev-tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/addon
+)
+
+target_link_libraries(raw-prev-tests PRIVATE
+    common
+    Fcitx5::Core
+    Fcitx5::Module::DBus
+    Fcitx5::Module::Clipboard
+    Fcitx5::Module::Notifications
+    ${SDBUS_LIBRARIES}
+)
+
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.12")
+    target_compile_definitions(raw-prev-tests PRIVATE VINPUT_FCITX5_CORE_HAVE_ADDON_FACTORY_V2)
+endif()
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.9")
+    target_compile_definitions(raw-prev-tests PRIVATE VINPUT_FCITX5_CORE_HAVE_SET_COMMENT)
+endif()
+
+add_test(NAME raw-prev-tests COMMAND raw-prev-tests)
