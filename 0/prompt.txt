@@ -1,0 +1,1 @@
+那关于这个menu 键 release 触发的实现呢？需要看下 fcitx5 上游 api 吧
