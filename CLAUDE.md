@@ -14,7 +14,7 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
   - Finish: `git push origin <branch>` -> `gh pr edit --body` (update tasks to `- [x]`) -> `gh pr ready`
 - **Review-Fix Loop (POST-READY)**:
   - Check CI & Bots: `gh pr checks`, `gh pr view --comments`, and check line-level review threads via GitHub API (`gh api repos/:owner/:repo/pulls/<pr_id>/comments`) or Web UI
-  - Ingest feedback: Extract `> Prompt for AI Agents` from CodeRabbit, `Proposed fix` from Cursor Bugbot, and Greptile alerts (Confidence >= 4)
+  - Ingest feedback: Extract `> Prompt for AI Agents` from CodeRabbit, and address Greptile alerts (Confidence >= 4)
   - Defensive fix & local verify: `mise run check:changed` -> `git commit -m "fix(review): ..."` -> `git push`
   - Finalize: Once all CI and bot checks are green, `gh pr merge --squash --delete-branch`
 - **Quality Gate Tasks (`mise`)**:
