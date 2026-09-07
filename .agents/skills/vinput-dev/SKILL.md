@@ -69,7 +69,7 @@ Read **[references/issue-pr-workflow.md](references/issue-pr-workflow.md)**
 - Dual-planning model: Task Planning (Issue breakdown) vs Quality Gate Pre-check (`hk --plan`).
 - The 5-stage Issue + Draft PR lifecycle (`gh pr create --draft`).
 - Single-item local atomic commits, unified push on completion, and updating PR checklist checkboxes (`- [x]`).
-- Post-Ready Review-Fix loop: Ingest CodeRabbit `Prompt for AI Agents`, Cursor Bugbot `Proposed fix` diffs, and Greptile alerts (Confidence >= 4); defensively verify and commit atomic fixes.
+- Post-Ready Review-Fix loop: Ingest CodeRabbit `Prompt for AI Agents` and Greptile alerts (Confidence >= 4); defensively verify and commit atomic fixes.
 - Hard limits: Zero tolerance on suppressing diagnostics (`// NOLINT`, `// NOLINTNEXTLINE`, `-Wno-*`), keep PR micro-slices under 300 lines of functional code.
 - Upstream-first policy: Ground implementation in upstream canonical docs via Context7 (`fcitx/fcitx5`, `k2-fsa/sherpa-onnx`, `pipewire/pipewire`, `cliutils/cli11`, `websites/doc_qt_io_qt-6`).
 - If the change incompatibly renames/removes/splits `config.json` or `vinput.conf` keys, the PR checklist **must** include a ConfigMigration `RegisteredSteps` task. No runtime aliases.

@@ -114,7 +114,7 @@ git push origin <branch>
 # 2. Update Draft PR body to check off all completed tasks (- [x])
 gh pr edit --body "..."
 
-# 3. Mark PR ready for review (activates CodeRabbit, Greptile, Cursor Bugbot)
+# 3. Mark PR ready for review (activates review bots: CodeRabbit, Greptile)
 gh pr ready
 ```
 
@@ -130,7 +130,6 @@ gh api repos/:owner/:repo/pulls/<pr_id>/comments
 ```
 
 - **CodeRabbit**: Look for `> Prompt for AI Agents` blocks and treat them as candidate repair instructions.
-- **Cursor Bugbot**: Inspect line-level bugs and apply valid `Proposed fix` suggestions.
 - **Greptile**: Address cross-file architectural warnings when Confidence $\ge$ 4.
 - **Fix & Push**:
   Verify findings against actual code, make minimal edits, run `mise run check:changed`, and commit:
