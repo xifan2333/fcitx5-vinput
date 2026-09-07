@@ -586,7 +586,7 @@ void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
     session_->raw_prev = effective_raw_prev;
   }
   status_ic_ = ic;
-  if (postprocessing && !session_->raw_prev) {
+  if (!session_->raw_prev) {
     updateVoicePresentation(ic, preedit_text);
   } else if (postprocessing && !session_->transcript_text.empty()) {
     const auto transcript =
@@ -933,6 +933,10 @@ void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
     enterBusyState(ic, session_->command_mode,
                    PostprocessingPreeditText(session_->command_mode, session_->raw_prev), true,
                    session_->raw_prev);
+    return;
+  }
+
+  if (session_->phase == Session::Phase::Inferring && !session_->raw_prev) {
     return;
   }
 
