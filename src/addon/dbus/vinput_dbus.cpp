@@ -4,6 +4,7 @@
 #include <fcitx-utils/dbus/message.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
+#include <optional>
 #include <string>
 #include <tuple>
 
@@ -13,6 +14,7 @@
 #include "common/dbus/error_info.h"
 #include "common/i18n.h"
 #include "common/runtime/runtime_defaults.h"
+#include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/string_utils.h"
