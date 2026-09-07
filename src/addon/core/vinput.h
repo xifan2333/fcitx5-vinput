@@ -32,11 +32,8 @@
 
 class VinputNotifierDBusObject;
 
-class VinputTestAccessor;
-
 class VinputEngine : public fcitx::AddonInstance {
 public:
-  friend class VinputTestAccessor;
   VinputEngine(fcitx::Instance* instance);
   ~VinputEngine() override;
   void selectPaletteItem(std::size_t index, fcitx::InputContext* ic);
