@@ -6,9 +6,7 @@
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/instance.h>
-#include <filesystem>
 #include <iostream>
-#include <string>
 
 #include "core/vinput.h"
 
@@ -39,27 +37,6 @@ protected:
   void deleteSurroundingTextImpl(int, unsigned int) override {}
   void forwardKeyImpl(const fcitx::ForwardKeyEvent&) override {}
   void updatePreeditImpl() override {}
-};
-
-struct TestEnvironment {
-  std::filesystem::path directory;
-  TestEnvironment() {
-    char pattern[] = "/tmp/vinput-test-env-XXXXXX";
-    char* path = mkdtemp(pattern);
-    expect(path != nullptr, "failed to create temporary environment directory");
-    directory = path;
-    for (const auto* var :
-         {"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"}) {
-      const auto p = directory / var;
-      std::filesystem::create_directory(p);
-      setenv(var, p.c_str(), 1);
-    }
-  }
-  TestEnvironment(const TestEnvironment&) = delete;
-  TestEnvironment& operator=(const TestEnvironment&) = delete;
-  TestEnvironment(TestEnvironment&&) = delete;
-  TestEnvironment& operator=(TestEnvironment&&) = delete;
-  ~TestEnvironment() { std::filesystem::remove_all(directory); }
 };
 
 void testTapActivation(VinputEngine& engine, TestInputContext& ic) {
@@ -135,7 +112,6 @@ void testShiftAInterruption(VinputEngine& engine, TestInputContext& ic) {
 } // namespace
 
 int main() {
-  const TestEnvironment env;
   char arg0[] = "vinput-modifier-test";
   char arg1[] = "--disable=all";
   char* argv[] = {arg0, arg1, nullptr};
