@@ -68,6 +68,12 @@ public:
       engine.session_->transcript_text = text;
     }
   }
+  static std::string getSessionTranscript(const VinputEngine& engine) {
+    return engine.session_ ? engine.session_->transcript_text : std::string{};
+  }
+  static void handleRecognitionPartial(VinputEngine& engine, const std::string& text) {
+    engine.handleRecognitionPartial(text);
+  }
   static void finishFrontendSession(VinputEngine& engine, fcitx::InputContext* ic) {
     engine.finishFrontendSession(ic);
   }
@@ -90,7 +96,18 @@ void testRawPrevDisabledPresentation(VinputEngine& engine, TestInputContext& ic)
   expect(ic.inputPanel().preedit().toString() == "... Recognizing ...",
          "preedit must show recognizing status instead of transcript when raw_prev is false");
 
-  // 3. Transition to Postprocessing state
+  // 3. Receive partial transcript during Inferring when raw_prev is false
+  VinputTestAccessor::handleRecognitionPartial(engine,
+                                               "Late partial transcript after recording stopped");
+  expect(VinputTestAccessor::getSessionTranscript(engine) ==
+             "Late partial transcript after recording stopped",
+         "session transcript must be updated in memory");
+  expect(ic.inputPanel().auxDown().toString().empty(),
+         "aux_down must remain empty when partial arrives during Inferring with raw_prev=false");
+  expect(ic.inputPanel().preedit().toString() == "... Recognizing ...",
+         "preedit must remain in recognizing status instead of displaying late transcript");
+
+  // 4. Transition to Postprocessing state
   VinputTestAccessor::enterBusyState(engine, &ic, "... Postprocessing ...", true);
   expect(!VinputTestAccessor::getSessionRawPrev(engine),
          "session raw_prev=false must not be clobbered during Postprocessing transition");

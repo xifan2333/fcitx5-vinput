@@ -80,6 +80,7 @@ private:
   bool callStopAdapter(const std::string& adapter_id, std::string* error = nullptr);
   void onRecognitionResult(fcitx::dbus::Message& msg);
   void onRecognitionPartial(fcitx::dbus::Message& msg);
+  void handleRecognitionPartial(const std::string& transcript_text);
   void onStatusChanged(fcitx::dbus::Message& msg);
   void onDaemonNotification(fcitx::dbus::Message& msg);
   void showDaemonNotification(const vinput::dbus::ErrorInfo& notification);

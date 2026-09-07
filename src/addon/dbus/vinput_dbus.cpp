@@ -917,7 +917,10 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
 void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
   std::string transcript_text;
   msg >> transcript_text;
+  handleRecognitionPartial(transcript_text);
+}
 
+void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) {
   if (!session_ || transcript_text.empty()) {
     return;
   }
