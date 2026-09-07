@@ -106,7 +106,7 @@ For each unchecked `- [ ]` task in order:
    git commit -m "<type>(<scope>): complete task N (#<issue_id>)"
    ```
 
-### Phase 3: Finalize, Unified Push & Merge
+### Phase 3: Finalize & Unified Push
 ```bash
 # 1. Push all completed atomic commits in one unified push
 git push origin <branch>
@@ -114,13 +114,39 @@ git push origin <branch>
 # 2. Update Draft PR body to check off all completed tasks (- [x])
 gh pr edit --body "..."
 
-# 3. Verify PR CI status
+# 3. Mark PR ready for review (activates CodeRabbit, Greptile, Cursor Bugbot)
+gh pr ready
+```
+
+### Phase 4: Automated Review Triage & Fix Loop
+Once marked ready, monitor CI and review bot outputs:
+```bash
+# 1. Check CI status
 gh pr checks
 
-# 4. (Optional for core changes) Trigger remote matrix dry build
+# 2. Inspect review bot comments
+gh pr view --comments
+```
+
+- **CodeRabbit**: Look for `> Prompt for AI Agents` blocks and treat them as targeted repair instructions.
+- **Cursor Bugbot**: Inspect line-level bugs and apply valid `Proposed fix` suggestions.
+- **Greptile**: Address cross-file architectural warnings when Confidence $\ge$ 4.
+- **Fix & Push**:
+  Verify findings against actual code, make minimal edits, run `mise run check:changed`, and commit:
+  ```bash
+  git add <modified_files>
+  git commit -m "fix(review): address review feedback (#<issue_id>)"
+  git push origin <branch>
+  ```
+
+### Phase 5: Final Squash-Merge
+```bash
+# 1. Verify all checks pass
+gh pr checks
+
+# 2. (Optional for core changes) Trigger remote matrix dry build
 gh workflow run release.yml && gh run watch
 
-# 5. Mark PR ready and squash-merge
-gh pr ready
+# 3. Perform squash-merge and delete branch
 gh pr merge --squash --delete-branch
 ```
