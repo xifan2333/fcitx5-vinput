@@ -439,12 +439,12 @@ bool VinputEngine::callStopRecording(const std::string& scene_id) {
   return true;
 }
 
-void VinputEngine::callCancelPostprocessing(bool commit_raw_text) {
+void VinputEngine::callCancelOperation(bool commit_raw_text) {
   if (bus_ == nullptr) {
     return;
   }
 
-  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodCancelPostprocessing);
+  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodCancelOperation);
   msg << commit_raw_text;
   msg.send();
 }

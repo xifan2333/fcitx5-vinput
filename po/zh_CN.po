@@ -1165,6 +1165,9 @@ msgid ""
 msgstr ""
 "长按录音激活前的延迟毫秒数 (100-2000 毫秒，默认：300 毫秒)。"
 
+msgid "No cancellable operation in current phase."
+msgstr "当前阶段没有可取消的操作。"
+
 msgid "Open Vinput Settings"
 msgstr "打开 Vinput 设置"
 

@@ -36,7 +36,7 @@ public:
   DbusService::MethodResult StartRecording();
   DbusService::MethodResult StartCommandRecording(const std::string& selected_text);
   DbusService::MethodResult StopRecording(const std::string& scene_id);
-  DbusService::MethodResult CancelPostprocessing(bool commit_raw_text);
+  DbusService::MethodResult CancelOperation(bool commit_raw_text);
   DbusService::MethodResult ReloadAsrBackend();
   std::string GetStatus() const;
   vinput::dbus::AsrBackendState GetAsrBackendState() const;

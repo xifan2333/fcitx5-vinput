@@ -61,7 +61,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     if (discard || commit_raw) {
       if (!keyEvent.isRelease()) {
         pending_postprocessing_release_ = keyEvent.key();
-        callCancelPostprocessing(commit_raw);
+        callCancelOperation(commit_raw);
       }
       keyEvent.filterAndAccept();
       return;

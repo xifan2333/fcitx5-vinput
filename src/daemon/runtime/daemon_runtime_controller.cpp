@@ -212,25 +212,59 @@ DaemonRuntimeController::StartCommandRecording(const std::string& selected_text)
   return StartRecordingInternal(true, selected_text);
 }
 
-DbusService::MethodResult DaemonRuntimeController::CancelPostprocessing(bool commit_raw_text) {
-  bool accepted = false;
+DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_raw_text) {
+  bool apply_pending_reload = false;
+  bool stop_capture = false;
+  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
+
   {
-    const std::scoped_lock lock(state_mutex_);
-    accepted = postprocessing_state_ == PostprocessingState::Dictation ||
-               (!commit_raw_text && postprocessing_state_ == PostprocessingState::Command);
-    if (accepted) {
-      postprocessing_state_ =
-          commit_raw_text ? PostprocessingState::CommitRaw : PostprocessingState::Discard;
-      postprocessing_cancel_requested_.store(true, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    if (phase_ == vinput::dbus::Status::Recording) {
+      accepting_chunks_.store(false, std::memory_order_relaxed);
+      stop_capture = true;
+      session_to_cancel = ReleaseActiveSessionLocked();
+      phase_ = vinput::dbus::Status::Idle;
+      current_order_.reset();
+      current_recording_pcm_.clear();
+      pending_chunk_pcm_.clear();
+      current_sample_count_ = 0;
+      dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
+      vinput::debug::Log("recording cancelled and discarded\n");
+      apply_pending_reload = pending_asr_backend_reload_;
+    } else if (phase_ == vinput::dbus::Status::Postprocessing) {
+      const bool accepted =
+          postprocessing_state_ == PostprocessingState::Dictation ||
+          (!commit_raw_text && postprocessing_state_ == PostprocessingState::Command);
+      if (accepted) {
+        postprocessing_state_ =
+            commit_raw_text ? PostprocessingState::CommitRaw : PostprocessingState::Discard;
+        postprocessing_cancel_requested_.store(true, std::memory_order_relaxed);
+        vinput::debug::Log("post-processing cancellation requested action=%s\n",
+                           commit_raw_text ? "commit-raw" : "discard");
+      } else {
+        return DbusService::MethodResult::Failure(
+            _("Requested post-processing action is not available."));
+      }
+    } else if (phase_ == vinput::dbus::Status::Idle) {
+      return DbusService::MethodResult::Success();
+    } else {
+      return DbusService::MethodResult::Failure(_("No cancellable operation in current phase."));
     }
   }
-  if (!accepted) {
-    return DbusService::MethodResult::Failure(
-        _("Requested post-processing action is not available."));
+
+  if (stop_capture) {
+    capture_->StopAndGetBuffer();
+    RestoreOutputIfDucked();
   }
 
-  vinput::debug::Log("post-processing cancellation requested action=%s\n",
-                     commit_raw_text ? "commit-raw" : "discard");
+  if (session_to_cancel) {
+    session_to_cancel->Cancel();
+  }
+
+  if (apply_pending_reload) {
+    ApplyPendingAsrBackendReload();
+  }
+
   return DbusService::MethodResult::Success();
 }
 

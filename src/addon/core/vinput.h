@@ -68,7 +68,7 @@ private:
   bool callStartRecording();
   bool callStartCommandRecording(const std::string& selected_text);
   bool callStopRecording(const std::string& scene_id);
-  void callCancelPostprocessing(bool commit_raw_text);
+  void callCancelOperation(bool commit_raw_text);
   bool callReloadAsrBackend(std::string* error = nullptr);
   bool callStartAdapter(const std::string& adapter_id, std::string* error = nullptr);
   bool callStopAdapter(const std::string& adapter_id, std::string* error = nullptr);

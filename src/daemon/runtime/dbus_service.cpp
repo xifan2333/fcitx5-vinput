@@ -48,7 +48,7 @@ static const sd_bus_vtable vtable[] = {
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodStopRecording, "s", "s", &DbusService::handleStopRecording,
                   SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_METHOD(kMethodCancelPostprocessing, "b", "", &DbusService::handleCancelPostprocessing,
+    SD_BUS_METHOD(kMethodCancelOperation, "b", "", &DbusService::handleCancelOperation,
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodGetStatus, "", "s", &DbusService::handleGetStatus,
                   SD_BUS_VTABLE_UNPRIVILEGED),
@@ -200,9 +200,9 @@ void DbusService::SetStopHandler(std::function<MethodResult(const std::string& s
   stop_handler_ = std::move(handler);
 }
 
-void DbusService::SetCancelPostprocessingHandler(
+void DbusService::SetCancelOperationHandler(
     std::function<MethodResult(bool commit_raw_text)> handler) {
-  cancel_postprocessing_handler_ = std::move(handler);
+  cancel_operation_handler_ = std::move(handler);
 }
 
 void DbusService::SetStatusHandler(std::function<std::string()> handler) {
@@ -268,19 +268,18 @@ int DbusService::handleStopRecording(sd_bus_message* m, void* userdata, sd_bus_e
   return ReplyWithMethodResult(m, error, result, "s");
 }
 
-int DbusService::handleCancelPostprocessing(sd_bus_message* m, void* userdata,
-                                            sd_bus_error* error) {
+int DbusService::handleCancelOperation(sd_bus_message* m, void* userdata, sd_bus_error* error) {
   auto* self = static_cast<DbusService*>(userdata);
   int commit_raw_text = 0;
   const int ret = sd_bus_message_read(m, "b", &commit_raw_text);
   if (ret < 0) {
-    fprintf(stderr, "vinput: failed to read CancelPostprocessing action: %s\n", strerror(-ret));
+    fprintf(stderr, "vinput: failed to read CancelOperation action: %s\n", strerror(-ret));
     return ret;
   }
 
   MethodResult result;
-  if (self->cancel_postprocessing_handler_) {
-    result = self->cancel_postprocessing_handler_(commit_raw_text != 0);
+  if (self->cancel_operation_handler_) {
+    result = self->cancel_operation_handler_(commit_raw_text != 0);
   }
   return ReplyWithMethodResult(m, error, result, "");
 }
