@@ -1,0 +1,1 @@
+不是 你的 i18n 不对，po 是到 addon 和 cli 的 ts 才是对 gui 的
