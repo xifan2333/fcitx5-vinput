@@ -1,0 +1,1 @@
+帮我看下 github 好像有人 patch 了个 lite 版本你看看他的 patch 逻辑是什么？
