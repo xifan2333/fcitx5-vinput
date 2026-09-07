@@ -1,0 +1,1 @@
+不对呀，这块应该是看。addon 的配置文件吧 默认是 alt_r 录音 control_r 命令 shift_r scence f8 asr 引擎 如果我们代码里于默认配置不一致的话，同样先记录 issue
