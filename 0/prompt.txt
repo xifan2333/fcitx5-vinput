@@ -1,0 +1,8 @@
+嗯， 我觉得需要剥离出来。 fcitx5-vinput feat/issue-147-adapter-management ✗ vinput
+_describe:21: bad option: -d
+_describe:21: bad option: -e
+_describe:21: bad option: -f
+_describe:21: bad option: -a
+_describe:21: bad option: -u
+_describe:21: bad option: -l
+_tags:comptags:36: not enough arguments 然后 ZSH 的补全可能被你改坏了。
