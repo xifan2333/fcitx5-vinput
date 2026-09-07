@@ -520,9 +520,9 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
   if (status_ic_ && status_ic_ != ic) {
     clearVoicePresentation(status_ic_);
   }
-  const bool stop_after_start = trigger_mode_ == TriggerMode::Hold && session_ &&
-                                session_->phase == Session::Phase::PendingStart &&
-                                session_->trigger_released;
+  const bool stop_after_start =
+      (trigger_mode_ == TriggerMode::Hold || (session_ && session_->stop_on_release)) && session_ &&
+      session_->phase == Session::Phase::PendingStart && session_->trigger_released;
   if (!session_) {
     session_.emplace(Session{Session::Phase::Recording,
                              ic,

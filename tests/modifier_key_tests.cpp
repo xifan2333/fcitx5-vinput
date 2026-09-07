@@ -1,11 +1,6 @@
 #include <cstdlib>
+#include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/key.h>
-#include <fcitx-utils/keysym.h>
-#include <fcitx-utils/keysymgen.h>
-#include <fcitx/event.h>
-#include <fcitx/inputcontext.h>
-#include <fcitx/inputcontextmanager.h>
-#include <fcitx/instance.h>
 #include <iostream>
 #include <string>
 
@@ -120,6 +115,13 @@ int main() {
   fcitx::Instance instance(2, argv);
   TestInputContext ic(instance);
   VinputEngine engine(&instance);
+
+  fcitx::RawConfig test_config;
+  test_config.setValueByPath("TriggerKey/0", "Alt_R");
+  test_config.setValueByPath("CommandKeys/0", "Control_R");
+  test_config.setValueByPath("MenuKey/0", "Shift_R");
+  test_config.setValueByPath("TriggerMode", "Both");
+  engine.setConfig(test_config);
 
   testTapActivation(engine, ic);
   testComboInterruption(engine, ic);
