@@ -1,0 +1,1 @@
+skill 和 agent.md 和 claude.md 除描述外不能有中文，描述应该更准确
