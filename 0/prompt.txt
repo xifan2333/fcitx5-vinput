@@ -1,0 +1,1 @@
+不用 mcp 吧，先用他的初始化命令创建 agent.md claude.md
