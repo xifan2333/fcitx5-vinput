@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.10.5",
+  "checkpoint_id": "397b6c35f947",
+  "session_id": "01a073b5-7cf4-7446-878d-519e1d7a2361",
+  "strategy": "import",
+  "created_at": "2026-09-06T05:03:56.753Z",
+  "commit_sha": "ac1352cc5c1ffe41252fdc7dfedd5891a7a36c74",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "agent": "Pi",
+  "model": "grok-4.6",
+  "checkpoint_transcript_start": 1305,
+  "transcript_lines_at_start": 1305,
+  "compact_transcript_start": 680,
+  "token_usage": {
+    "input_tokens": 13541,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 423424,
+    "output_tokens": 3370,
+    "api_call_count": 6
+  },
+  "kind": "imported"
+}
