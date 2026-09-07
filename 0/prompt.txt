@@ -1,0 +1,15 @@
+#### 优化点 3：在 mise.toml 中增加 Agent 友好的快捷任
+ 务
+
+ 例如：
+ - mise run check:safe: hk run check --safe
+ - mise run check:plan: hk run check --plan
+ - mise run check:changed: 执行 { git diff... } | hk
+   run check --files0-from - --safe
+
+ #### 优化点 4：结构化 JSONL 流式输出适配
+
+ 在 Agent 指令中明确：当遇到 linter 报错需要自我修复时
+ ，推荐使用 --format jsonl，其最后一个事件（final
+ event）是权威的统计结果（authoritative summary），中间
+ 事件携带精准的行号与列号，便于 Agent 循环修复。 这两点写了吗
