@@ -1,0 +1,36 @@
+你刚刚跟我说的 C L 的预览结果是这样的。  #### 1. 查看 Adapter 列表（包含运行状态与自启状态）
+
+ ```bash
+   $ vinput config adapter list
+   ID       TITLE              STATUS    AUTOSTART
+ README
+   ollama   Ollama Adapter     running   enabled
+ Open README
+   proxy    Local LLM Proxy    stopped   disabled
+ Open README
+ ```
+
+ (若带 --json 参数，返回结构中包含 "running":
+ true/false 与 "auto_start": true/false)
+
+ #### 2. 查看或修改自启动配置
+
+ - 查看当前状态：
+   ```bash
+     $ vinput config adapter autostart ollama
+     适配器 'ollama' 随 daemon 自启动状态为：已启用。
+   ```
+ - 开启伴随 daemon 启动（支持 flag 或参数）：
+   ```bash
+     $ vinput config adapter autostart ollama --enable
+     # 或：vinput config adapter autostart ollama on
+     已将适配器 'ollama' 随 daemon 自启动设置为：已启用
+   。
+   ```
+ - 关闭伴随 daemon 启动：
+   ```bash
+     $ vinput config adapter autostart ollama --disable
+     # 或：vinput config adapter autostart ollama off
+     已将适配器 'ollama' 随 daemon 自启动设置为：已禁用
+   。
+   ``` 所以他不应该走 config 这个子命令 如果之前代码里有这部分内容应该移除掉， 按照新的规范。
