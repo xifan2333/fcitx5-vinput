@@ -416,6 +416,24 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       return;
     }
 
+    // Both mode starts non-modifier recordings immediately. Classify the first
+    // release even if startup is pending, so its duration decides whether the
+    // recording should stop once the daemon is ready.
+    if (trigger_mode_ == TriggerMode::Both && session_ && !session_->trigger.isModifier() &&
+        !session_->trigger_released &&
+        (session_->phase == Session::Phase::PendingStart ||
+         session_->phase == Session::Phase::Recording) &&
+        isReleaseOfActiveTrigger(keyEvent.key())) {
+      const auto held = std::chrono::steady_clock::now() - session_->press_time;
+      session_->trigger_released = true;
+      session_->stop_on_release = held >= hold_activation_delay_;
+      if (session_->stop_on_release && session_->phase == Session::Phase::Recording) {
+        scheduleStopRecording();
+      }
+      keyEvent.filterAndAccept();
+      return;
+    }
+
     // 4.2 Ongoing recording release tracking for hold-to-talk
     if (session_ && session_->stop_on_release && !session_->trigger_released &&
         isReleaseOfActiveTrigger(keyEvent.key())) {
