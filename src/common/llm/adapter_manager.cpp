@@ -2,17 +2,16 @@
 
 #include <cerrno>
 #include <charconv>
-#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <ios>
-#include <poll.h>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <sys/poll.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <system_error>
@@ -31,6 +30,15 @@ namespace {
 constexpr int kGracefulStopAttempts = 20;
 constexpr int kForceKillAttempts = 10;
 constexpr unsigned int kStopPollIntervalUsec = 100000;
+
+// Adapter teardown escalates SIGTERM to SIGKILL. Both are spelled numerically
+// because clang-tidy's misc-include-cleaner has no header mapping for the SIGKILL
+// macro: <csignal> is the correct C++ header but is not recognised as a provider,
+// while <signal.h> is the provider include-cleaner expects but is rejected by
+// modernize-deprecated-headers. The values are fixed by the Linux ABI on every
+// architecture.
+constexpr int kTerminateSignal = 15;
+constexpr int kForceKillSignal = 9;
 
 // pidfd_open/pidfd_send_signal are Linux 5.3/5.1. Referencing a process through
 // a pidfd keeps the kernel object alive, so a signal can never be delivered to a
@@ -315,9 +323,9 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     return false;
   }
 
-  SendSignalViaPidFd(pidfd, SIGTERM);
+  SendSignalViaPidFd(pidfd, kTerminateSignal);
   if (!WaitForPidFdExit(pidfd, kGracefulStopAttempts)) {
-    SendSignalViaPidFd(pidfd, SIGKILL);
+    SendSignalViaPidFd(pidfd, kForceKillSignal);
     (void)WaitForPidFdExit(pidfd, kForceKillAttempts);
   }
   close(pidfd);
