@@ -113,27 +113,50 @@ bool RecordMatchesLiveProcess(const AdapterPidRecord& record) {
   return ReadProcessStartTime(record.pid) == record.start_time;
 }
 
-// True while the process referenced by |pidfd| has not exited. poll() reports
-// readable as soon as the process exits, even before it is reaped.
-bool PidFdProcessAlive(int pidfd) {
+// How the pinned process was observed when the descriptor was probed.
+enum class ProcessState { Running, Exited, Unknown };
+
+// poll() reports readable as soon as the process exits, even before it is reaped.
+// Any other outcome is reported as Unknown so that a failed probe is never
+// mistaken for a confirmed exit.
+ProcessState ProbePinnedProcess(int pidfd) {
   pollfd descriptor{};
   descriptor.fd = pidfd;
   descriptor.events = POLLIN;
   const int rc = ::poll(&descriptor, 1, 0);
-  if (rc < 0) {
-    return false;
+  if (rc > 0) {
+    return (descriptor.revents & POLLIN) != 0 ? ProcessState::Exited : ProcessState::Unknown;
   }
-  return rc == 0;
+  if (rc == 0) {
+    return ProcessState::Running;
+  }
+  // EINTR means the probe was interrupted, so the process is still there.
+  return errno == EINTR ? ProcessState::Running : ProcessState::Unknown;
 }
 
+// True only once the pinned process is confirmed to have exited. An inconclusive
+// probe keeps waiting, so a failure can never be reported as a successful stop.
 bool WaitForPidFdExit(int pidfd, int attempts) {
   for (int i = 0; i < attempts; ++i) {
-    if (!PidFdProcessAlive(pidfd)) {
+    if (ProbePinnedProcess(pidfd) == ProcessState::Exited) {
       return true;
     }
     usleep(kStopPollIntervalUsec);
   }
-  return !PidFdProcessAlive(pidfd);
+  return ProbePinnedProcess(pidfd) == ProcessState::Exited;
+}
+
+// Delivers |signal_number| to the pinned process, retrying when interrupted.
+// Returns false when the signal could not be delivered; errno then explains why.
+bool SignalPinnedProcess(int pidfd, int signal_number) {
+  while (true) {
+    if (SendSignalViaPidFd(pidfd, signal_number)) {
+      return true;
+    }
+    if (errno != EINTR) {
+      return false;
+    }
+  }
 }
 
 fs::path ExpandConfigPath(const std::string& candidate) {
@@ -324,10 +347,38 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     return false;
   }
 
-  SendSignalViaPidFd(pidfd, kTerminateSignal);
+  if (!SignalPinnedProcess(pidfd, kTerminateSignal)) {
+    const int signal_errno = errno;
+    close(pidfd);
+    if (signal_errno == ESRCH) {
+      // The adapter exited before the signal could be delivered.
+      RemovePidFile(adapter_id);
+      if (error != nullptr) {
+        *error = "adapter is not running: " + std::string(adapter_id);
+      }
+      return false;
+    }
+    // Keep the record so the surviving adapter can still be located and retried.
+    if (error != nullptr) {
+      *error = "failed to signal adapter " + std::string(adapter_id) + ": " +
+               std::strerror(signal_errno);
+    }
+    return false;
+  }
+
   bool exited = WaitForPidFdExit(pidfd, kGracefulStopAttempts);
   if (!exited) {
-    SendSignalViaPidFd(pidfd, kForceKillSignal);
+    if (!SignalPinnedProcess(pidfd, kForceKillSignal)) {
+      const int signal_errno = errno;
+      if (signal_errno != ESRCH) {
+        close(pidfd);
+        if (error != nullptr) {
+          *error = "failed to force-kill adapter " + std::string(adapter_id) + ": " +
+                   std::strerror(signal_errno);
+        }
+        return false;
+      }
+    }
     exited = WaitForPidFdExit(pidfd, kForceKillAttempts);
   }
   close(pidfd);
