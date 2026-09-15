@@ -291,25 +291,14 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     return false;
   }
 
-  if (!RecordMatchesLiveProcess(record)) {
-    // No live process carries this identity: either the adapter already exited
-    // or the pid was recycled by an unrelated process. Never signal it, only
-    // drop the stale state.
-    RemovePidFile(adapter_id);
-    if (error != nullptr) {
-      *error = "adapter is not running, stale pid file removed: " + std::string(adapter_id);
-    }
-    return false;
-  }
-
-  // A pidfd pins this exact process instance, so the signals below cannot be
-  // delivered to a recycled pid. Without one there is no safe way to signal by
-  // pid, so the adapter is left untouched rather than risk killing an unrelated
-  // process.
+  // Pin the process before validating its identity. Holding the descriptor keeps
+  // this exact instance referenced, so a pid recycled between the check and the
+  // signals below can never be reached: verification and delivery act on the same
+  // kernel object. Without a descriptor there is no safe way to signal by pid, so
+  // the process is left untouched rather than risk killing an unrelated one.
   const int pidfd = OpenPidFd(record.pid);
   if (pidfd < 0) {
     if (errno == ESRCH) {
-      // The adapter exited between the identity check and opening the pidfd.
       RemovePidFile(adapter_id);
       if (error != nullptr) {
         *error = "adapter is not running: " + std::string(adapter_id);
@@ -323,12 +312,33 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     return false;
   }
 
+  if (!RecordMatchesLiveProcess(record)) {
+    // The pinned process is not the adapter: either the adapter already exited or
+    // the pid was recycled. Signals sent through the descriptor could only reach
+    // the pinned instance, so drop the stale state and signal nothing.
+    close(pidfd);
+    RemovePidFile(adapter_id);
+    if (error != nullptr) {
+      *error = "adapter is not running, stale pid file removed: " + std::string(adapter_id);
+    }
+    return false;
+  }
+
   SendSignalViaPidFd(pidfd, kTerminateSignal);
-  if (!WaitForPidFdExit(pidfd, kGracefulStopAttempts)) {
+  bool exited = WaitForPidFdExit(pidfd, kGracefulStopAttempts);
+  if (!exited) {
     SendSignalViaPidFd(pidfd, kForceKillSignal);
-    (void)WaitForPidFdExit(pidfd, kForceKillAttempts);
+    exited = WaitForPidFdExit(pidfd, kForceKillAttempts);
   }
   close(pidfd);
+
+  if (!exited) {
+    // Keep the record so the surviving adapter can still be located and retried.
+    if (error != nullptr) {
+      *error = "adapter did not exit after SIGKILL: " + std::string(adapter_id);
+    }
+    return false;
+  }
 
   RemovePidFile(adapter_id);
   if (error != nullptr) {
