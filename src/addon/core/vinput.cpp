@@ -240,6 +240,13 @@ void VinputEngine::reloadSceneConfig() {
     }
   }
   max_context_lines_ = max_cl;
+  if (max_context_lines_ <= 0) {
+    context_buffer_text_.clear();
+    context_buffer_ic_ = nullptr;
+    if (context_flush_timer_) {
+      context_flush_timer_->setEnabled(false);
+    }
+  }
 }
 
 void VinputEngine::rememberInputContext(fcitx::InputContext* ic) {
@@ -264,7 +271,7 @@ VinputEngine::resolveFrontendInputContext(fcitx::InputContext* fallback_ic) cons
 }
 
 void VinputEngine::appendContextEntry(const std::string& text, const char* source) {
-  if (text.empty()) {
+  if (max_context_lines_ <= 0 || text.empty()) {
     return;
   }
   // Flush user buffer before writing non-user entries to preserve ordering.
@@ -381,7 +388,8 @@ void VinputEngine::accumulateContextBuffer(const std::string& text, fcitx::Input
 }
 
 void VinputEngine::onCommitString(const std::string& text, fcitx::InputContext* ic) {
-  if (text.empty()) {
+  if (max_context_lines_ <= 0 || text.empty()) {
+    pending_suppressed_commit_text_.reset();
     return;
   }
   if (pending_suppressed_commit_text_) {

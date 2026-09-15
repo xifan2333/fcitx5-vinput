@@ -104,7 +104,14 @@ Format: `<type>(<scope>): <concise imperative description> (#<issue_id>)`
 
 ```bash
 git push -u origin <branch_name>
+```
 
+> **Note on pre-push guard**: The `hk` pre-push hook allows normal (fast-forward) pushes to your fork by default. If you rebased your branch and need to force-push to your own fork, use:
+> ```bash
+> VINPUT_ALLOW_FORK_PUSH=1 git push --force-with-lease origin <branch_name>
+> ```
+
+```bash
 gh pr create \
   --repo xifan2333/fcitx5-vinput \
   --base main \

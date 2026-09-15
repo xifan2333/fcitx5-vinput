@@ -72,14 +72,9 @@ local pre_push_guard = new Step {
           exit 1
         fi
 
-        if [ "${is_upstream}" = false ]; then
-          if is_force_push "${local_oid}" "${remote_oid}"; then
-            echo "ERROR [hk pre-push]: Force-pushing to contributor fork (${remote_url}) is prohibited." >&2
-            exit 1
-          fi
-
+        if [ "${is_upstream}" = false ] && is_force_push "${local_oid}" "${remote_oid}"; then
           if [ "${VINPUT_ALLOW_FORK_PUSH:-0}" != "1" ]; then
-            echo "ERROR [hk pre-push]: Pushing to contributor fork (${remote_url}) is blocked. Set VINPUT_ALLOW_FORK_PUSH=1 to override." >&2
+            echo "ERROR [hk pre-push]: Force-pushing to contributor fork (${remote_url}) is prohibited. Set VINPUT_ALLOW_FORK_PUSH=1 to override." >&2
             exit 1
           fi
         fi
