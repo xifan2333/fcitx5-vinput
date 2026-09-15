@@ -264,7 +264,7 @@ VinputEngine::resolveFrontendInputContext(fcitx::InputContext* fallback_ic) cons
 }
 
 void VinputEngine::appendContextEntry(const std::string& text, const char* source) {
-  if (text.empty()) {
+  if (max_context_lines_ <= 0 || text.empty()) {
     return;
   }
   // Flush user buffer before writing non-user entries to preserve ordering.
@@ -381,7 +381,8 @@ void VinputEngine::accumulateContextBuffer(const std::string& text, fcitx::Input
 }
 
 void VinputEngine::onCommitString(const std::string& text, fcitx::InputContext* ic) {
-  if (text.empty()) {
+  if (max_context_lines_ <= 0 || text.empty()) {
+    pending_suppressed_commit_text_.reset();
     return;
   }
   if (pending_suppressed_commit_text_) {
