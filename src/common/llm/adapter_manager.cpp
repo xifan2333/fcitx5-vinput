@@ -17,6 +17,10 @@
 #include <system_error>
 #include <unistd.h>
 
+extern "C" {
+#include <signal.h>
+}
+
 #include "common/config/core_config_types.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/process_utils.h"
@@ -31,15 +35,6 @@ constexpr int kGracefulStopAttempts = 20;
 constexpr int kForceKillAttempts = 10;
 constexpr int kProbeAttempts = 3;
 constexpr unsigned int kStopPollIntervalUsec = 100000;
-
-// Adapter teardown escalates SIGTERM to SIGKILL. Both are spelled numerically
-// because clang-tidy's misc-include-cleaner has no header mapping for the SIGKILL
-// macro: <csignal> is the correct C++ header but is not recognised as a provider,
-// while <signal.h> is the provider include-cleaner expects but is rejected by
-// modernize-deprecated-headers. The values are fixed by the Linux ABI on every
-// architecture.
-constexpr int kTerminateSignal = 15;
-constexpr int kForceKillSignal = 9;
 
 // pidfd_open/pidfd_send_signal are Linux 5.3/5.1. Referencing a process through
 // a pidfd keeps the kernel object alive, so a signal can never be delivered to a
@@ -369,7 +364,7 @@ namespace {
 // handle, the recorded identity is re-checked before every signal, which leaves
 // only the gap between that check and the signal as a reuse window.
 bool StopByPid(const AdapterPidRecord& record, std::string_view adapter_id, std::string* error) {
-  const SignalOutcome terminate = SignalVerifiedProcess(record, kTerminateSignal);
+  const SignalOutcome terminate = SignalVerifiedProcess(record, SIGTERM);
   if (terminate == SignalOutcome::Failed) {
     if (error != nullptr) {
       *error = "failed to signal adapter " + std::string(adapter_id) + ": " + std::strerror(errno);
@@ -391,7 +386,7 @@ bool StopByPid(const AdapterPidRecord& record, std::string_view adapter_id, std:
     return true;
   }
 
-  const SignalOutcome forced = SignalVerifiedProcess(record, kForceKillSignal);
+  const SignalOutcome forced = SignalVerifiedProcess(record, SIGKILL);
   if (forced == SignalOutcome::Failed) {
     // Keep the record so the surviving adapter can still be located and retried.
     if (error != nullptr) {
@@ -458,7 +453,7 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     return false;
   }
 
-  if (!SignalPinnedProcess(pidfd, kTerminateSignal)) {
+  if (!SignalPinnedProcess(pidfd, SIGTERM)) {
     const int signal_errno = errno;
     close(pidfd);
     if (signal_errno == ESRCH) {
@@ -479,7 +474,7 @@ bool Stop(std::string_view adapter_id, std::string* error) {
 
   ExitWait wait = WaitForPidFdExit(pidfd, kGracefulStopAttempts);
   if (wait != ExitWait::Exited) {
-    if (!SignalPinnedProcess(pidfd, kForceKillSignal)) {
+    if (!SignalPinnedProcess(pidfd, SIGKILL)) {
       const int signal_errno = errno;
       if (signal_errno != ESRCH) {
         close(pidfd);
