@@ -29,6 +29,7 @@ namespace {
 
 constexpr int kGracefulStopAttempts = 20;
 constexpr int kForceKillAttempts = 10;
+constexpr int kProbeAttempts = 3;
 constexpr unsigned int kStopPollIntervalUsec = 100000;
 
 // Adapter teardown escalates SIGTERM to SIGKILL. Both are spelled numerically
@@ -117,21 +118,25 @@ bool RecordMatchesLiveProcess(const AdapterPidRecord& record) {
 enum class ProcessState : std::uint8_t { Running, Exited, Unknown };
 
 // poll() reports readable as soon as the process exits, even before it is reaped.
-// Any other outcome is reported as Unknown so that a failed probe is never
-// mistaken for a confirmed exit.
+// An interrupted or failed probe says nothing about the process, so it is reported
+// as Unknown rather than being taken for either outcome.
 ProcessState ProbePinnedProcess(int pidfd) {
   pollfd descriptor{};
   descriptor.fd = pidfd;
   descriptor.events = POLLIN;
-  const int rc = ::poll(&descriptor, 1, 0);
-  if (rc > 0) {
-    return (descriptor.revents & POLLIN) != 0 ? ProcessState::Exited : ProcessState::Unknown;
+  for (int attempt = 0; attempt < kProbeAttempts; ++attempt) {
+    const int rc = ::poll(&descriptor, 1, 0);
+    if (rc > 0) {
+      return (descriptor.revents & POLLIN) != 0 ? ProcessState::Exited : ProcessState::Unknown;
+    }
+    if (rc == 0) {
+      return ProcessState::Running;
+    }
+    if (errno != EINTR) {
+      return ProcessState::Unknown;
+    }
   }
-  if (rc == 0) {
-    return ProcessState::Running;
-  }
-  // EINTR means the probe was interrupted, so the process is still there.
-  return errno == EINTR ? ProcessState::Running : ProcessState::Unknown;
+  return ProcessState::Unknown;
 }
 
 // True only once the pinned process is confirmed to have exited. An inconclusive
@@ -162,13 +167,15 @@ bool SignalPinnedProcess(int pidfd, int signal_number) {
 // Result of delivering a signal to a process identified only by its pid.
 enum class SignalOutcome : std::uint8_t { Delivered, ProcessGone, Failed };
 
-// Sends |signal_number| to |pid| without a descriptor. Used only when pidfd_open
-// is unavailable; tgkill targets the thread group because the legacy kill
-// syscall number does not exist on every architecture. Returns false when the
-// signal could not be delivered and errno explains why.
+// Sends |signal_number| to |pid| without a descriptor, for the cases where
+// pidfd_open is unavailable. The kill syscall is preferred over tgkill because it
+// keeps the signal process-directed: tgkill(pid, pid, ...) would only reach the
+// thread-group leader, so an adapter that handles termination on another thread
+// could swallow the request. Returns false and sets errno when the signal could
+// not be delivered.
 bool SendSignalByPid(pid_t pid, int signal_number) {
-#if defined(SYS_tgkill)
-  return ::syscall(SYS_tgkill, pid, pid, signal_number) == 0;
+#if defined(SYS_kill)
+  return ::syscall(SYS_kill, pid, signal_number) == 0;
 #else
   (void)pid;
   (void)signal_number;
