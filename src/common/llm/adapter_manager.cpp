@@ -139,16 +139,25 @@ ProcessState ProbePinnedProcess(int pidfd) {
   return ProcessState::Unknown;
 }
 
-// True only once the pinned process is confirmed to have exited. An inconclusive
-// probe keeps waiting, so a failure can never be reported as a successful stop.
-bool WaitForPidFdExit(int pidfd, int attempts) {
+// Outcome of waiting for the pinned process to exit.
+enum class ExitWait : std::uint8_t { Exited, StillRunning, Inconclusive };
+
+// Waits for the pinned process to exit. Only a readable descriptor confirms exit,
+// and an interrupted or failed probe is never folded into one of the other
+// outcomes, so it can also never be mistaken for a confirmed exit.
+ExitWait WaitForPidFdExit(int pidfd, int attempts) {
+  bool observed_running = false;
   for (int i = 0; i < attempts; ++i) {
-    if (ProbePinnedProcess(pidfd) == ProcessState::Exited) {
-      return true;
+    const ProcessState state = ProbePinnedProcess(pidfd);
+    if (state == ProcessState::Exited) {
+      return ExitWait::Exited;
+    }
+    if (state == ProcessState::Running) {
+      observed_running = true;
     }
     usleep(kStopPollIntervalUsec);
   }
-  return ProbePinnedProcess(pidfd) == ProcessState::Exited;
+  return observed_running ? ExitWait::StillRunning : ExitWait::Inconclusive;
 }
 
 // Delivers |signal_number| to the pinned process, retrying when interrupted.
@@ -468,8 +477,8 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     return false;
   }
 
-  bool exited = WaitForPidFdExit(pidfd, kGracefulStopAttempts);
-  if (!exited) {
+  ExitWait wait = WaitForPidFdExit(pidfd, kGracefulStopAttempts);
+  if (wait != ExitWait::Exited) {
     if (!SignalPinnedProcess(pidfd, kForceKillSignal)) {
       const int signal_errno = errno;
       if (signal_errno != ESRCH) {
@@ -481,14 +490,17 @@ bool Stop(std::string_view adapter_id, std::string* error) {
         return false;
       }
     }
-    exited = WaitForPidFdExit(pidfd, kForceKillAttempts);
+    wait = WaitForPidFdExit(pidfd, kForceKillAttempts);
   }
   close(pidfd);
 
-  if (!exited) {
-    // Keep the record so the surviving adapter can still be located and retried.
+  if (wait != ExitWait::Exited) {
+    // Keep the record so the adapter can still be located and retried, and report
+    // honestly whether it was observed alive or merely could not be confirmed.
     if (error != nullptr) {
-      *error = "adapter did not exit after SIGKILL: " + std::string(adapter_id);
+      *error = wait == ExitWait::StillRunning
+                   ? "adapter did not exit after SIGKILL: " + std::string(adapter_id)
+                   : "could not confirm that adapter stopped: " + std::string(adapter_id);
     }
     return false;
   }
