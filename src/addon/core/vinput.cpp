@@ -240,6 +240,13 @@ void VinputEngine::reloadSceneConfig() {
     }
   }
   max_context_lines_ = max_cl;
+  if (max_context_lines_ <= 0) {
+    context_buffer_text_.clear();
+    context_buffer_ic_ = nullptr;
+    if (context_flush_timer_) {
+      context_flush_timer_->setEnabled(false);
+    }
+  }
 }
 
 void VinputEngine::rememberInputContext(fcitx::InputContext* ic) {
