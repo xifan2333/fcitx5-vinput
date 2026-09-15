@@ -2,13 +2,14 @@
 
 #include <cerrno>
 #include <charconv>
+#include <csignal>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <ios>
 #include <poll.h>
-#include <signal.h>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -272,59 +273,6 @@ bool IsRunning(std::string_view adapter_id) {
   return GetPid(adapter_id) > 0;
 }
 
-namespace {
-
-// Stops through a pidfd when the kernel supports it. The descriptor pins the
-// original process instance, so SIGKILL cannot land on a recycled pid.
-bool StopViaPidFd(const AdapterPidRecord& record, std::string_view adapter_id, std::string* error) {
-  const int pidfd = OpenPidFd(record.pid);
-  if (pidfd < 0) {
-    return false;
-  }
-
-  SendSignalViaPidFd(pidfd, SIGTERM);
-  if (!WaitForPidFdExit(pidfd, kGracefulStopAttempts)) {
-    SendSignalViaPidFd(pidfd, SIGKILL);
-    (void)WaitForPidFdExit(pidfd, kForceKillAttempts);
-  }
-  close(pidfd);
-
-  RemovePidFile(adapter_id);
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
-}
-
-// Fallback for kernels without pidfd. Identity is re-checked immediately before
-// each signal, which shrinks the reuse window to the gap between the check and
-// the kill rather than the whole shutdown wait.
-bool StopByPidWithRevalidation(const AdapterPidRecord& record, std::string_view adapter_id,
-                               std::string* error) {
-  kill(record.pid, SIGTERM);
-  for (int i = 0; i < kGracefulStopAttempts; ++i) {
-    if (!RecordMatchesLiveProcess(record)) {
-      RemovePidFile(adapter_id);
-      if (error != nullptr) {
-        error->clear();
-      }
-      return true;
-    }
-    usleep(kStopPollIntervalUsec);
-  }
-
-  if (RecordMatchesLiveProcess(record)) {
-    kill(record.pid, SIGKILL);
-  }
-  RemovePidFile(adapter_id);
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
-}
-
-} // namespace
-
 bool Stop(std::string_view adapter_id, std::string* error) {
   const AdapterPidRecord record = ReadPidRecord(adapter_id);
   if (record.pid <= 0) {
@@ -346,10 +294,39 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     return false;
   }
 
-  if (StopViaPidFd(record, adapter_id, error)) {
-    return true;
+  // A pidfd pins this exact process instance, so the signals below cannot be
+  // delivered to a recycled pid. Without one there is no safe way to signal by
+  // pid, so the adapter is left untouched rather than risk killing an unrelated
+  // process.
+  const int pidfd = OpenPidFd(record.pid);
+  if (pidfd < 0) {
+    if (errno == ESRCH) {
+      // The adapter exited between the identity check and opening the pidfd.
+      RemovePidFile(adapter_id);
+      if (error != nullptr) {
+        *error = "adapter is not running: " + std::string(adapter_id);
+      }
+      return false;
+    }
+    if (error != nullptr) {
+      *error = "failed to open pidfd for adapter " + std::string(adapter_id) + ": " +
+               std::strerror(errno);
+    }
+    return false;
   }
-  return StopByPidWithRevalidation(record, adapter_id, error);
+
+  SendSignalViaPidFd(pidfd, SIGTERM);
+  if (!WaitForPidFdExit(pidfd, kGracefulStopAttempts)) {
+    SendSignalViaPidFd(pidfd, SIGKILL);
+    (void)WaitForPidFdExit(pidfd, kForceKillAttempts);
+  }
+  close(pidfd);
+
+  RemovePidFile(adapter_id);
+  if (error != nullptr) {
+    error->clear();
+  }
+  return true;
 }
 
 } // namespace vinput::adapter
