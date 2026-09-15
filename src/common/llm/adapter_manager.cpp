@@ -2,14 +2,19 @@
 
 #include <cerrno>
 #include <charconv>
-#include <csignal>
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
+#include <ios>
 #include <poll.h>
+#include <signal.h>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <sys/syscall.h>
+#include <sys/types.h>
+#include <system_error>
 #include <unistd.h>
 
 #include "common/config/core_config_types.h"
@@ -153,7 +158,7 @@ fs::path ResolveScriptPath(const LlmAdapter& adapter) {
     }
   }
 
-  const fs::path command_path = ExpandConfigPath(adapter.command);
+  fs::path command_path = ExpandConfigPath(adapter.command);
   if (!command_path.empty()) {
     std::error_code ec;
     if (fs::exists(command_path, ec) && !ec && fs::is_regular_file(command_path, ec) && !ec) {
@@ -209,7 +214,7 @@ AdapterPidRecord ReadPidRecord(std::string_view adapter_id) {
 
 bool WritePidFile(std::string_view adapter_id, pid_t pid, std::string* error) {
   if (pid <= 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = "refusing to persist a non-positive adapter pid";
     }
     return false;
@@ -217,7 +222,7 @@ bool WritePidFile(std::string_view adapter_id, pid_t pid, std::string* error) {
 
   const std::uint64_t start_time = ReadProcessStartTime(pid);
   if (start_time == 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to read process start time for adapter pid " + std::to_string(pid);
     }
     return false;
@@ -227,7 +232,7 @@ bool WritePidFile(std::string_view adapter_id, pid_t pid, std::string* error) {
   const fs::path runtime_dir = vinput::path::AdapterRuntimeDir();
   fs::create_directories(runtime_dir, ec);
   if (ec) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to create runtime directory: " + ec.message();
     }
     return false;
@@ -235,19 +240,19 @@ bool WritePidFile(std::string_view adapter_id, pid_t pid, std::string* error) {
 
   std::ofstream pid_file(PidPath(adapter_id), std::ios::out | std::ios::trunc);
   if (!pid_file.is_open()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to write pid file: " + std::string(adapter_id);
     }
     return false;
   }
   pid_file << pid << ' ' << start_time;
   if (!pid_file.good()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to persist pid file: " + std::string(adapter_id);
     }
     return false;
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -285,7 +290,7 @@ bool StopViaPidFd(const AdapterPidRecord& record, std::string_view adapter_id, s
   close(pidfd);
 
   RemovePidFile(adapter_id);
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -300,7 +305,7 @@ bool StopByPidWithRevalidation(const AdapterPidRecord& record, std::string_view 
   for (int i = 0; i < kGracefulStopAttempts; ++i) {
     if (!RecordMatchesLiveProcess(record)) {
       RemovePidFile(adapter_id);
-      if (error) {
+      if (error != nullptr) {
         error->clear();
       }
       return true;
@@ -312,7 +317,7 @@ bool StopByPidWithRevalidation(const AdapterPidRecord& record, std::string_view 
     kill(record.pid, SIGKILL);
   }
   RemovePidFile(adapter_id);
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -324,7 +329,7 @@ bool Stop(std::string_view adapter_id, std::string* error) {
   const AdapterPidRecord record = ReadPidRecord(adapter_id);
   if (record.pid <= 0) {
     RemovePidFile(adapter_id);
-    if (error) {
+    if (error != nullptr) {
       *error = "adapter is not running: " + std::string(adapter_id);
     }
     return false;
@@ -335,7 +340,7 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     // or the pid was recycled by an unrelated process. Never signal it, only
     // drop the stale state.
     RemovePidFile(adapter_id);
-    if (error) {
+    if (error != nullptr) {
       *error = "adapter is not running, stale pid file removed: " + std::string(adapter_id);
     }
     return false;
