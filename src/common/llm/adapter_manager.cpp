@@ -114,7 +114,7 @@ bool RecordMatchesLiveProcess(const AdapterPidRecord& record) {
 }
 
 // How the pinned process was observed when the descriptor was probed.
-enum class ProcessState { Running, Exited, Unknown };
+enum class ProcessState : std::uint8_t { Running, Exited, Unknown };
 
 // poll() reports readable as soon as the process exits, even before it is reaped.
 // Any other outcome is reported as Unknown so that a failed probe is never
@@ -157,6 +157,48 @@ bool SignalPinnedProcess(int pidfd, int signal_number) {
       return false;
     }
   }
+}
+
+// Result of delivering a signal to a process identified only by its pid.
+enum class SignalOutcome : std::uint8_t { Delivered, ProcessGone, Failed };
+
+// Sends |signal_number| to |pid| without a descriptor. Used only when pidfd_open
+// is unavailable; tgkill targets the thread group because the legacy kill
+// syscall number does not exist on every architecture. Returns false when the
+// signal could not be delivered and errno explains why.
+bool SendSignalByPid(pid_t pid, int signal_number) {
+#if defined(SYS_tgkill)
+  return ::syscall(SYS_tgkill, pid, pid, signal_number) == 0;
+#else
+  (void)pid;
+  (void)signal_number;
+  errno = ENOSYS;
+  return false;
+#endif
+}
+
+// Re-confirms the recorded identity and then signals the process. The check runs
+// immediately before the signal, so a pid recycled earlier cannot be reached.
+SignalOutcome SignalVerifiedProcess(const AdapterPidRecord& record, int signal_number) {
+  if (!RecordMatchesLiveProcess(record)) {
+    return SignalOutcome::ProcessGone;
+  }
+  if (SendSignalByPid(record.pid, signal_number)) {
+    return SignalOutcome::Delivered;
+  }
+  return errno == ESRCH ? SignalOutcome::ProcessGone : SignalOutcome::Failed;
+}
+
+// True once the recorded process is no longer identifiable, which covers both a
+// clean exit and a pid recycled by an unrelated process.
+bool WaitForProcessExit(const AdapterPidRecord& record, int attempts) {
+  for (int i = 0; i < attempts; ++i) {
+    if (!RecordMatchesLiveProcess(record)) {
+      return true;
+    }
+    usleep(kStopPollIntervalUsec);
+  }
+  return !RecordMatchesLiveProcess(record);
 }
 
 fs::path ExpandConfigPath(const std::string& candidate) {
@@ -304,6 +346,61 @@ bool IsRunning(std::string_view adapter_id) {
   return GetPid(adapter_id) > 0;
 }
 
+namespace {
+
+// Fallback used when a pidfd cannot be obtained, for example on a kernel without
+// pidfd_open or when file descriptors are exhausted. Because there is no stable
+// handle, the recorded identity is re-checked before every signal, which leaves
+// only the gap between that check and the signal as a reuse window.
+bool StopByPid(const AdapterPidRecord& record, std::string_view adapter_id, std::string* error) {
+  const SignalOutcome terminate = SignalVerifiedProcess(record, kTerminateSignal);
+  if (terminate == SignalOutcome::Failed) {
+    if (error != nullptr) {
+      *error = "failed to signal adapter " + std::string(adapter_id) + ": " + std::strerror(errno);
+    }
+    return false;
+  }
+  if (terminate == SignalOutcome::ProcessGone) {
+    RemovePidFile(adapter_id);
+    if (error != nullptr) {
+      *error = "adapter is not running: " + std::string(adapter_id);
+    }
+    return false;
+  }
+  if (WaitForProcessExit(record, kGracefulStopAttempts)) {
+    RemovePidFile(adapter_id);
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
+  const SignalOutcome forced = SignalVerifiedProcess(record, kForceKillSignal);
+  if (forced == SignalOutcome::Failed) {
+    // Keep the record so the surviving adapter can still be located and retried.
+    if (error != nullptr) {
+      *error =
+          "failed to force-kill adapter " + std::string(adapter_id) + ": " + std::strerror(errno);
+    }
+    return false;
+  }
+  if (forced == SignalOutcome::ProcessGone || WaitForProcessExit(record, kForceKillAttempts)) {
+    RemovePidFile(adapter_id);
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
+  // Keep the record so the surviving adapter can still be located and retried.
+  if (error != nullptr) {
+    *error = "adapter did not exit after SIGKILL: " + std::string(adapter_id);
+  }
+  return false;
+}
+
+} // namespace
+
 bool Stop(std::string_view adapter_id, std::string* error) {
   const AdapterPidRecord record = ReadPidRecord(adapter_id);
   if (record.pid <= 0) {
@@ -317,8 +414,7 @@ bool Stop(std::string_view adapter_id, std::string* error) {
   // Pin the process before validating its identity. Holding the descriptor keeps
   // this exact instance referenced, so a pid recycled between the check and the
   // signals below can never be reached: verification and delivery act on the same
-  // kernel object. Without a descriptor there is no safe way to signal by pid, so
-  // the process is left untouched rather than risk killing an unrelated one.
+  // kernel object.
   const int pidfd = OpenPidFd(record.pid);
   if (pidfd < 0) {
     if (errno == ESRCH) {
@@ -328,11 +424,10 @@ bool Stop(std::string_view adapter_id, std::string* error) {
       }
       return false;
     }
-    if (error != nullptr) {
-      *error = "failed to open pidfd for adapter " + std::string(adapter_id) + ": " +
-               std::strerror(errno);
-    }
-    return false;
+    // No descriptor is available, so fall back to signalling by pid. Every signal
+    // is preceded by a fresh identity check, which still narrows the pid-reuse
+    // window to the gap between that check and the signal itself.
+    return StopByPid(record, adapter_id, error);
   }
 
   if (!RecordMatchesLiveProcess(record)) {
