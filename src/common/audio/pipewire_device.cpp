@@ -1,11 +1,13 @@
 #include "common/audio/pipewire_device.h"
 
 #include <algorithm>
+#include <pipewire/keys.h>
 #include <pipewire/pipewire.h>
 #include <spa/pod/builder.h>
 #include <spa/utils/dict.h>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace vinput::pw {
@@ -24,7 +26,7 @@ struct PwData {
 };
 
 void on_core_done(void* data, uint32_t id, int seq) {
-  PwData* d = static_cast<PwData*>(data);
+  auto* d = static_cast<PwData*>(data);
   if (id == PW_ID_CORE && d->pending_sync == seq) {
     pw_main_loop_quit(d->loop);
   }
@@ -44,21 +46,21 @@ void registry_event_global(void* data, uint32_t id, uint32_t permissions, const 
   (void)version;
   if (std::string(type) == PW_TYPE_INTERFACE_Node && props) {
     const char* media_class = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
-    if (!media_class) {
+    if (media_class == nullptr) {
       return;
     }
     const std::string_view cls(media_class);
     const char* name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
     const char* desc = spa_dict_lookup(props, PW_KEY_NODE_DESCRIPTION);
 
-    PwData* d = static_cast<PwData*>(data);
+    auto* d = static_cast<PwData*>(data);
     if (cls == "Audio/Source") {
       DeviceInfo info;
       info.id = id;
-      if (name) {
+      if (name != nullptr) {
         info.name = name;
       }
-      if (desc) {
+      if (desc != nullptr) {
         info.description = desc;
       }
       info.is_sink_monitor = false;
@@ -66,12 +68,12 @@ void registry_event_global(void* data, uint32_t id, uint32_t permissions, const 
     } else if (cls == "Audio/Sink") {
       DeviceInfo info;
       info.id = id;
-      if (name) {
+      if (name != nullptr) {
         info.name = std::string(name) + ".monitor";
       }
-      if (desc) {
+      if (desc != nullptr) {
         info.description = std::string(desc) + " (Monitor)";
-      } else if (name) {
+      } else if (name != nullptr) {
         info.description = std::string(name) + " (Monitor)";
       }
       info.is_sink_monitor = true;

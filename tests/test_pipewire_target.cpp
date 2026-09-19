@@ -49,6 +49,6 @@ int main() {
     assert(!res.is_sink_capture);
   }
 
-  std::cout << "All pipewire capture target tests passed!" << std::endl;
+  std::cout << "All pipewire capture target tests passed!\n";
   return 0;
 }

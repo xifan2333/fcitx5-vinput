@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <pipewire/keys.h>
+#include <pipewire/properties.h>
 #include <pipewire/stream.h>
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/audio/raw.h>
