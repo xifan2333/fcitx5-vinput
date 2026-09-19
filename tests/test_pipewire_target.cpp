@@ -1,105 +1,69 @@
 #include <iostream>
 #include <string_view>
-#include <vector>
 
 #include "common/audio/pipewire_device.h"
 
 namespace {
 
-bool CheckCondition(bool condition, std::string_view expr, const char* file, int line) {
-  if (!condition) {
-    std::cerr << "Test failed: " << expr << " at " << file << ":" << line << '\n';
+bool Check(bool cond, std::string_view expr, const char* file, int line) {
+  if (!cond) {
+    std::cerr << "Test failure: " << expr << " at " << file << ":" << line << '\n';
     return false;
   }
   return true;
 }
 
-} // namespace
-
-#define TEST_CHECK(cond)                                                                           \
-  if (!CheckCondition((cond), #cond, __FILE__, __LINE__)) {                                        \
+#define CHECK(expr)                                                                                \
+  if (!Check((expr), #expr, __FILE__, __LINE__)) {                                                 \
     return 1;                                                                                      \
   }
+
+} // namespace
 
 int main() {
   using vinput::pw::ResolveCaptureTarget;
 
   {
     const auto res = ResolveCaptureTarget("");
-    TEST_CHECK(res.node_name.empty());
-    TEST_CHECK(!res.is_sink_capture);
+    CHECK(res.node_name.empty());
+    CHECK(!res.is_sink_capture);
   }
 
   {
     const auto res = ResolveCaptureTarget("default");
-    TEST_CHECK(res.node_name.empty());
-    TEST_CHECK(!res.is_sink_capture);
+    CHECK(res.node_name.empty());
+    CHECK(!res.is_sink_capture);
   }
 
   {
     const auto res = ResolveCaptureTarget("alsa_input.pci-0000_00_1b.0.analog-stereo");
-    TEST_CHECK(res.node_name == "alsa_input.pci-0000_00_1b.0.analog-stereo");
-    TEST_CHECK(!res.is_sink_capture);
+    CHECK(res.node_name == "alsa_input.pci-0000_00_1b.0.analog-stereo");
+    CHECK(!res.is_sink_capture);
   }
 
   {
     const auto res = ResolveCaptureTarget("probe.monitor");
-    TEST_CHECK(res.node_name == "probe");
-    TEST_CHECK(res.is_sink_capture);
+    CHECK(res.node_name == "probe");
+    CHECK(res.is_sink_capture);
   }
 
   {
     const auto res = ResolveCaptureTarget(
         "alsa_output.usb-Generic_HP_DHE-8008U_20210726905926-00.analog-stereo.monitor");
-    TEST_CHECK(res.node_name ==
-               "alsa_output.usb-Generic_HP_DHE-8008U_20210726905926-00.analog-stereo");
-    TEST_CHECK(res.is_sink_capture);
+    CHECK(res.node_name == "alsa_output.usb-Generic_HP_DHE-8008U_20210726905926-00.analog-stereo");
+    CHECK(res.is_sink_capture);
   }
 
   {
     const auto res = ResolveCaptureTarget(".monitor");
-    TEST_CHECK(res.node_name == ".monitor");
-    TEST_CHECK(!res.is_sink_capture);
+    CHECK(res.node_name == ".monitor");
+    CHECK(!res.is_sink_capture);
   }
 
   {
     const auto res = ResolveCaptureTarget("monitor");
-    TEST_CHECK(res.node_name == "monitor");
-    TEST_CHECK(!res.is_sink_capture);
-  }
-
-  // Regression test: explicit source with .monitor suffix must NOT be rewritten as sink
-  {
-    const auto res = ResolveCaptureTarget("source:virtual-mic.monitor");
-    TEST_CHECK(res.node_name == "virtual-mic.monitor");
-    TEST_CHECK(!res.is_sink_capture);
-  }
-
-  // Regression test: explicit sink with or without .monitor suffix
-  {
-    const auto res1 = ResolveCaptureTarget("sink:probe");
-    TEST_CHECK(res1.node_name == "probe");
-    TEST_CHECK(res1.is_sink_capture);
-
-    const auto res2 = ResolveCaptureTarget("sink:probe.monitor");
-    TEST_CHECK(res2.node_name == "probe");
-    TEST_CHECK(res2.is_sink_capture);
-  }
-
-  // Regression test: known_devices correctly identifies monitor-suffixed source
-  {
-    const std::vector<vinput::pw::DeviceInfo> known_devices = {
-        {1, "source:studio-mic.monitor", "Studio Microphone", false},
-        {2, "null-sink.monitor", "Null Sink (Monitor)", true},
-    };
-
-    const auto res1 = ResolveCaptureTarget("source:studio-mic.monitor", known_devices);
-    TEST_CHECK(res1.node_name == "studio-mic.monitor");
-    TEST_CHECK(!res1.is_sink_capture);
-
-    const auto res2 = ResolveCaptureTarget("null-sink.monitor", known_devices);
-    TEST_CHECK(res2.node_name == "null-sink");
-    TEST_CHECK(res2.is_sink_capture);
+    CHECK(res.node_name == "monitor");
+    CHECK(!res.is_sink_capture);
   }
 
   std::cout << "All pipewire capture target tests passed!\n";

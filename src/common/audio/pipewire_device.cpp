@@ -58,14 +58,7 @@ void registry_event_global(void* data, uint32_t id, uint32_t permissions, const 
       DeviceInfo info;
       info.id = id;
       if (name != nullptr) {
-        const std::string_view raw_name(name);
-        static constexpr std::string_view kMonitorSuffix = ".monitor";
-        if (raw_name.size() > kMonitorSuffix.size() &&
-            raw_name.substr(raw_name.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
-          info.name = "source:" + std::string(raw_name);
-        } else {
-          info.name = std::string(raw_name);
-        }
+        info.name = name;
       }
       if (desc != nullptr) {
         info.description = desc;
@@ -152,63 +145,13 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   return data.devices;
 }
 
-ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
-                                           const std::vector<DeviceInfo>& known_devices) {
+ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target) {
   ResolvedCaptureTarget resolved;
   if (target.empty() || target == "default") {
     return resolved;
   }
 
-  static constexpr std::string_view kSourcePrefix = "source:";
-  static constexpr std::string_view kSinkPrefix = "sink:";
   static constexpr std::string_view kMonitorSuffix = ".monitor";
-
-  // 1. Check known devices if provided
-  for (const auto& dev : known_devices) {
-    if (dev.name == target) {
-      if (!dev.is_sink_monitor) {
-        if (target.size() > kSourcePrefix.size() &&
-            target.substr(0, kSourcePrefix.size()) == kSourcePrefix) {
-          resolved.node_name = std::string(target.substr(kSourcePrefix.size()));
-        } else {
-          resolved.node_name = std::string(target);
-        }
-        resolved.is_sink_capture = false;
-        return resolved;
-      }
-
-      if (target.size() > kMonitorSuffix.size() &&
-          target.substr(target.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
-        resolved.node_name = std::string(target.substr(0, target.size() - kMonitorSuffix.size()));
-      } else {
-        resolved.node_name = std::string(target);
-      }
-      resolved.is_sink_capture = true;
-      return resolved;
-    }
-  }
-
-  // 2. Explicit source prefix (e.g. "source:mic.monitor" -> node "mic.monitor", source capture)
-  if (target.size() > kSourcePrefix.size() &&
-      target.substr(0, kSourcePrefix.size()) == kSourcePrefix) {
-    resolved.node_name = std::string(target.substr(kSourcePrefix.size()));
-    resolved.is_sink_capture = false;
-    return resolved;
-  }
-
-  // 3. Explicit sink prefix (e.g. "sink:probe" or "sink:probe.monitor")
-  if (target.size() > kSinkPrefix.size() && target.substr(0, kSinkPrefix.size()) == kSinkPrefix) {
-    std::string node = std::string(target.substr(kSinkPrefix.size()));
-    if (node.size() > kMonitorSuffix.size() &&
-        node.substr(node.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
-      node = node.substr(0, node.size() - kMonitorSuffix.size());
-    }
-    resolved.node_name = std::move(node);
-    resolved.is_sink_capture = true;
-    return resolved;
-  }
-
-  // 4. Legacy backward compatibility: targets ending in ".monitor" without prefix are sinks
   if (target.size() > kMonitorSuffix.size() &&
       target.substr(target.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
     resolved.node_name = std::string(target.substr(0, target.size() - kMonitorSuffix.size()));
@@ -216,7 +159,6 @@ ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
     return resolved;
   }
 
-  // 5. Default: regular source
   resolved.node_name = std::string(target);
   resolved.is_sink_capture = false;
   return resolved;

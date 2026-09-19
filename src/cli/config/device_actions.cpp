@@ -64,11 +64,6 @@ int RunDeviceConfigUse(const std::string& name, Formatter& fmt, const CliContext
         found = true;
         break;
       }
-      if (!d.is_sink_monitor && d.name == "source:" + target_to_save) {
-        target_to_save = d.name;
-        found = true;
-        break;
-      }
     }
     if (!found) {
       fmt.PrintWarning(

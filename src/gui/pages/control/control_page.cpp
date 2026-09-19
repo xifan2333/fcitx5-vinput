@@ -301,7 +301,7 @@ void ControlPage::reload() {
     QString desc = QString::fromStdString(dev.description);
     QString label = desc.isEmpty() ? name : desc;
     comboDevice_->addItem(label, name);
-    if (name == activeDevice || (!dev.is_sink_monitor && ("source:" + activeDevice) == name)) {
+    if (name == activeDevice) {
       comboDevice_->setCurrentIndex(comboDevice_->count() - 1);
     }
   }
