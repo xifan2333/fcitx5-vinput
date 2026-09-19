@@ -78,7 +78,6 @@ bool ShouldDisableAsr(const CoreConfig& config, bool disable_asr_by_flag, std::s
 
 std::string BuildRuntimeSignature(const CoreConfig& config) {
   nlohmann::ordered_json j;
-  j["default_language"] = config.global.defaultLanguage;
   j["active_provider"] = config.asr.activeProvider;
 
   const AsrProvider* provider = ResolveActiveAsrProvider(config);
@@ -113,9 +112,8 @@ void LogActiveBackend(const CoreConfig& config) {
     return;
   }
 
-  vinput::debug::Log("ASR provider=%s type=%s backend=%s lang=%s\n", descriptor.provider_id.c_str(),
-                     descriptor.provider_type.c_str(), descriptor.backend_id.c_str(),
-                     config.global.defaultLanguage.c_str());
+  vinput::debug::Log("ASR provider=%s type=%s backend=%s\n", descriptor.provider_id.c_str(),
+                     descriptor.provider_type.c_str(), descriptor.backend_id.c_str());
 }
 
 } // namespace

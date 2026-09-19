@@ -12,7 +12,6 @@ Corresponding config:
 ```json
 {
   "global": {
-    "default_language": "en",
     "capture_device": "rnnoise_source",
     "duck_output_while_recording": false,
     "duck_output_volume": 0.25
@@ -122,14 +121,6 @@ vinput config set /global/duck_output_volume 0.25
 
 Both options are also available on the **Control** page in Vinput GUI, under the
 **Audio** section.
-
-## Language
-
-`default_language` sets the default language, affecting UI display and some model behavior.
-
-```bash
-vinput config set /global/default_language zh
-```
 
 ## Streaming Display Width
 

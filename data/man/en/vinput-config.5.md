@@ -23,15 +23,11 @@ Controls runtime audio environment and capture settings.
 
 ```json
 "global": {
-  "default_language": "en",
   "capture_device": "default",
   "duck_output_while_recording": false,
   "duck_output_volume": 0.25
 }
 ```
-
-**default_language** (*string*)
-:   Default UI/model language code (e.g. `"en"`, `"zh"`).
 
 **capture_device** (*string*)
 :   PipeWire capture node name, or `"default"`.

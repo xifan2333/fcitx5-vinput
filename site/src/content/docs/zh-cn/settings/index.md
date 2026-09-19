@@ -12,7 +12,6 @@ description: 录音设备、增益、VAD 等基础配置。
 ```json
 {
   "global": {
-    "default_language": "en",
     "capture_device": "rnnoise_source",
     "duck_output_while_recording": false,
     "duck_output_volume": 0.25
@@ -113,14 +112,6 @@ vinput config set /global/duck_output_volume 0.25
 ```
 
 以上两项也可在 Vinput GUI 的 **控制** 页面 **音频** 分组中设置。
-
-## 语言
-
-`default_language` 设置默认语言，影响界面显示和部分模型行为。
-
-```bash
-vinput config set /global/default_language zh
-```
 
 ## 流式识别最大显示列宽
 

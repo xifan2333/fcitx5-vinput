@@ -23,15 +23,11 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
 
 ```json
 "global": {
-  "default_language": "zh",
   "capture_device": "default",
   "duck_output_while_recording": false,
   "duck_output_volume": 0.25
 }
 ```
-
-**default_language** (*字符串*)
-:   默认语言代码（例如 `"zh"`, `"en"`）。
 
 **capture_device** (*字符串*)
 :   PipeWire 音频采集节点名称，或 `"default"` 使用系统默认输入设备。
