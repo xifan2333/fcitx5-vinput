@@ -55,7 +55,7 @@ int RunDeviceConfigUse(const std::string& name, Formatter& fmt, const CliContext
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
 
-  std::string target_to_save = vinput::str::TrimAsciiWhitespace(name);
+  const std::string target_to_save = vinput::str::TrimAsciiWhitespace(name);
   if (target_to_save != "default") {
     auto devices = vinput::pw::EnumerateAudioSources();
     bool found = false;
