@@ -69,7 +69,6 @@ struct CoreConfig {
     std::vector<std::string> baseUrls;
   } registry;
   struct Global {
-    std::string defaultLanguage;
     std::string captureDevice;
     bool duckOutputWhileRecording{false};
     double duckOutputVolume{0.25};

@@ -1,14 +1,25 @@
 #include <iostream>
+#include <string_view>
+#include <vector>
 
 #include "common/audio/pipewire_device.h"
 
+namespace {
+
+bool CheckCondition(bool condition, std::string_view expr, const char* file, int line) {
+  if (!condition) {
+    std::cerr << "Test failed: " << expr << " at " << file << ":" << line << '\n';
+    return false;
+  }
+  return true;
+}
+
+} // namespace
+
 #define TEST_CHECK(cond)                                                                           \
-  do {                                                                                             \
-    if (!(cond)) {                                                                                 \
-      std::cerr << "Test failed: " #cond " at " << __FILE__ << ":" << __LINE__ << '\n';            \
-      return 1;                                                                                    \
-    }                                                                                              \
-  } while (0)
+  if (!CheckCondition((cond), #cond, __FILE__, __LINE__)) {                                        \
+    return 1;                                                                                      \
+  }
 
 int main() {
   using vinput::pw::ResolveCaptureTarget;
@@ -77,7 +88,7 @@ int main() {
 
   // Regression test: known_devices correctly identifies monitor-suffixed source
   {
-    std::vector<vinput::pw::DeviceInfo> known_devices = {
+    const std::vector<vinput::pw::DeviceInfo> known_devices = {
         {1, "source:studio-mic.monitor", "Studio Microphone", false},
         {2, "null-sink.monitor", "Null Sink (Monitor)", true},
     };

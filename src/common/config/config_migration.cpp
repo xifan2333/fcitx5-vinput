@@ -40,6 +40,19 @@ void RenameField(json& obj, std::string_view old_name, std::string_view new_name
   }
 }
 
+void RemoveField(json& obj, std::string_view field_name, std::string_view context_desc,
+                 std::vector<MigrationChange>& changes) {
+  if (!obj.is_object()) {
+    return;
+  }
+  auto it = obj.find(field_name);
+  if (it != obj.end()) {
+    obj.erase(it);
+    changes.push_back({"config.json", std::string(context_desc) + ": removed obsolete field '" +
+                                          std::string(field_name) + "'"});
+  }
+}
+
 void RenameFieldInArray(json& arr, std::string_view old_name, std::string_view new_name,
                         std::string_view array_desc, std::vector<MigrationChange>& changes) {
   if (!arr.is_array()) {
@@ -184,6 +197,15 @@ const std::vector<MigrationStep>& RegisteredSteps() {
               EnsureFieldInArray(j["scenes"]["definitions"], "raw_prev", true, "scenes.definitions",
                                  ch);
               EnsureFieldInArray(j["scenes"]["items"], "raw_prev", true, "scenes.items", ch);
+            }
+          },
+      },
+      {
+          "v2.3.27",
+          "Remove obsolete global.default_language",
+          [](json& j, std::string& /*ini*/, std::vector<MigrationChange>& ch) {
+            if (j.contains("global") && j["global"].is_object()) {
+              RemoveField(j["global"], "default_language", "global", ch);
             }
           },
       },
