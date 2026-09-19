@@ -55,11 +55,17 @@ int RunDeviceConfigUse(const std::string& name, Formatter& fmt, const CliContext
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
 
-  if (name != "default") {
+  std::string target_to_save = vinput::str::TrimAsciiWhitespace(name);
+  if (target_to_save != "default") {
     auto devices = vinput::pw::EnumerateAudioSources();
     bool found = false;
     for (const auto& d : devices) {
-      if (d.name == name) {
+      if (d.name == target_to_save) {
+        found = true;
+        break;
+      }
+      if (!d.is_sink_monitor && d.name == "source:" + target_to_save) {
+        target_to_save = d.name;
         found = true;
         break;
       }
@@ -70,12 +76,12 @@ int RunDeviceConfigUse(const std::string& name, Formatter& fmt, const CliContext
     }
   }
 
-  config.global.captureDevice = vinput::str::TrimAsciiWhitespace(name);
+  config.global.captureDevice = target_to_save;
 
   if (!SaveConfigOrFail(config, fmt))
     return 1;
 
-  fmt.PrintSuccess(
-      vinput::str::FmtStr(_("Capture device set to '%s'. Restart daemon to apply changes."), name));
+  fmt.PrintSuccess(vinput::str::FmtStr(
+      _("Capture device set to '%s'. Restart daemon to apply changes."), target_to_save));
   return 0;
 }

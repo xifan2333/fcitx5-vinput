@@ -57,6 +57,40 @@ int main() {
     TEST_CHECK(!res.is_sink_capture);
   }
 
+  // Regression test: explicit source with .monitor suffix must NOT be rewritten as sink
+  {
+    const auto res = ResolveCaptureTarget("source:virtual-mic.monitor");
+    TEST_CHECK(res.node_name == "virtual-mic.monitor");
+    TEST_CHECK(!res.is_sink_capture);
+  }
+
+  // Regression test: explicit sink with or without .monitor suffix
+  {
+    const auto res1 = ResolveCaptureTarget("sink:probe");
+    TEST_CHECK(res1.node_name == "probe");
+    TEST_CHECK(res1.is_sink_capture);
+
+    const auto res2 = ResolveCaptureTarget("sink:probe.monitor");
+    TEST_CHECK(res2.node_name == "probe");
+    TEST_CHECK(res2.is_sink_capture);
+  }
+
+  // Regression test: known_devices correctly identifies monitor-suffixed source
+  {
+    std::vector<vinput::pw::DeviceInfo> known_devices = {
+        {1, "source:studio-mic.monitor", "Studio Microphone", false},
+        {2, "null-sink.monitor", "Null Sink (Monitor)", true},
+    };
+
+    const auto res1 = ResolveCaptureTarget("source:studio-mic.monitor", known_devices);
+    TEST_CHECK(res1.node_name == "studio-mic.monitor");
+    TEST_CHECK(!res1.is_sink_capture);
+
+    const auto res2 = ResolveCaptureTarget("null-sink.monitor", known_devices);
+    TEST_CHECK(res2.node_name == "null-sink");
+    TEST_CHECK(res2.is_sink_capture);
+  }
+
   std::cout << "All pipewire capture target tests passed!\n";
   return 0;
 }

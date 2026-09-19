@@ -19,8 +19,10 @@ struct ResolvedCaptureTarget {
   bool is_sink_capture{false};
 };
 
-// Resolves a target string (e.g. "probe.monitor" -> node "probe", sink capture = true).
-ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target);
+// Resolves a target string (e.g. "probe.monitor" -> node "probe", sink capture = true;
+// "source:mic.monitor" -> node "mic.monitor", sink capture = false).
+ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
+                                           const std::vector<DeviceInfo>& known_devices = {});
 
 std::vector<DeviceInfo> EnumerateAudioSources();
 
