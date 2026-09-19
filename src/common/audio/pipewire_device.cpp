@@ -1,9 +1,11 @@
 #include "common/audio/pipewire_device.h"
 
+#include <algorithm>
 #include <pipewire/pipewire.h>
 #include <spa/pod/builder.h>
 #include <spa/utils/dict.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vinput::pw {
@@ -42,18 +44,38 @@ void registry_event_global(void* data, uint32_t id, uint32_t permissions, const 
   (void)version;
   if (std::string(type) == PW_TYPE_INTERFACE_Node && props) {
     const char* media_class = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
-    if (media_class && std::string(media_class) == "Audio/Source") {
-      const char* name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
-      const char* desc = spa_dict_lookup(props, PW_KEY_NODE_DESCRIPTION);
+    if (!media_class) {
+      return;
+    }
+    const std::string_view cls(media_class);
+    const char* name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
+    const char* desc = spa_dict_lookup(props, PW_KEY_NODE_DESCRIPTION);
 
-      PwData* d = static_cast<PwData*>(data);
+    PwData* d = static_cast<PwData*>(data);
+    if (cls == "Audio/Source") {
       DeviceInfo info;
       info.id = id;
-      if (name)
+      if (name) {
         info.name = name;
-      if (desc)
+      }
+      if (desc) {
         info.description = desc;
-      d->devices.push_back(info);
+      }
+      info.is_sink_monitor = false;
+      d->devices.push_back(std::move(info));
+    } else if (cls == "Audio/Sink") {
+      DeviceInfo info;
+      info.id = id;
+      if (name) {
+        info.name = std::string(name) + ".monitor";
+      }
+      if (desc) {
+        info.description = std::string(desc) + " (Monitor)";
+      } else if (name) {
+        info.description = std::string(name) + " (Monitor)";
+      }
+      info.is_sink_monitor = true;
+      d->devices.push_back(std::move(info));
     }
   }
 }
@@ -110,7 +132,34 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   pw_main_loop_destroy(data.loop);
   pw_deinit();
 
+  std::stable_sort(data.devices.begin(), data.devices.end(),
+                   [](const DeviceInfo& a, const DeviceInfo& b) {
+                     if (a.is_sink_monitor != b.is_sink_monitor) {
+                       return !a.is_sink_monitor && b.is_sink_monitor;
+                     }
+                     return a.id < b.id;
+                   });
+
   return data.devices;
+}
+
+ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target) {
+  ResolvedCaptureTarget resolved;
+  if (target.empty() || target == "default") {
+    return resolved;
+  }
+
+  static constexpr std::string_view kMonitorSuffix = ".monitor";
+  if (target.size() > kMonitorSuffix.size() &&
+      target.substr(target.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
+    resolved.node_name = std::string(target.substr(0, target.size() - kMonitorSuffix.size()));
+    resolved.is_sink_capture = true;
+    return resolved;
+  }
+
+  resolved.node_name = std::string(target);
+  resolved.is_sink_capture = false;
+  return resolved;
 }
 
 } // namespace vinput::pw
