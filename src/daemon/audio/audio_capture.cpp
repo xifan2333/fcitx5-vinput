@@ -9,6 +9,7 @@
 #include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
 
+#include "common/audio/pipewire_device.h"
 #include "common/utils/debug_log.h"
 
 namespace {
@@ -228,12 +229,14 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
   stream_events_.state_changed = onStateChanged;
 
   std::string target_object = CurrentTargetObject();
+  const auto resolved_target = vinput::pw::ResolveCaptureTarget(target_object);
 
   pw_thread_loop_lock(loop_);
 
+  const char* capture_sink_str = resolved_target.is_sink_capture ? "true" : "false";
   auto* properties = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture",
                                        PW_KEY_MEDIA_ROLE, "Communication",
-                                       PW_KEY_STREAM_CAPTURE_SINK, "false", nullptr);
+                                       PW_KEY_STREAM_CAPTURE_SINK, capture_sink_str, nullptr);
   if (!properties) {
     if (error) {
       *error = "failed to allocate PipeWire properties";
@@ -242,9 +245,10 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
     return false;
   }
 
-  if (!target_object.empty() && target_object != "default") {
-    pw_properties_set(properties, PW_KEY_TARGET_OBJECT, target_object.c_str());
-    fprintf(stderr, "vinput: using PipeWire target.object=%s\n", target_object.c_str());
+  if (!resolved_target.node_name.empty()) {
+    pw_properties_set(properties, PW_KEY_TARGET_OBJECT, resolved_target.node_name.c_str());
+    fprintf(stderr, "vinput: using PipeWire target.object=%s (stream.capture.sink=%s)\n",
+            resolved_target.node_name.c_str(), capture_sink_str);
   }
 
   stream_ = pw_stream_new_simple(pw_thread_loop_get_loop(loop_), "vinput-capture", properties,
