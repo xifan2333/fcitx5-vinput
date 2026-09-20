@@ -231,7 +231,8 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
   stream_events_.state_changed = onStateChanged;
 
   std::string target_object = CurrentTargetObject();
-  const auto resolved_target = vinput::pw::ResolveCaptureTarget(target_object);
+  const auto known_devices = vinput::pw::EnumerateAudioSources();
+  const auto resolved_target = vinput::pw::ResolveCaptureTarget(target_object, known_devices);
 
   pw_thread_loop_lock(loop_);
 
