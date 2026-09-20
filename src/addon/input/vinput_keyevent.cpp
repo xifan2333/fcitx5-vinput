@@ -282,7 +282,18 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       return;
     }
 
-    // 3.2 Any non-matching key pressed while a modifier is pending or active
+    // 3.2 Auto-repeat of a held non-modifier trigger is not a new keystroke.
+    // Holding such a key makes the server repeat it while hold-to-talk waits
+    // out its activation delay and while the recording runs, so the repeats
+    // must not be mistaken for an interrupting combination below.
+    if (!isModifier && keyEvent.rawKey().states().test(fcitx::KeyState::Repeat) &&
+        (keyEvent.key().keyListIndex(trigger_keys_) >= 0 ||
+         keyEvent.key().keyListIndex(command_keys_) >= 0)) {
+      keyEvent.filterAndAccept();
+      return;
+    }
+
+    // 3.3 Any non-matching key pressed while a modifier is pending or active
     // This indicates a combination (e.g. Ctrl+C, Alt+Tab, Shift+A). Interrupt and pass through!
     if (pending_modifier_.action != ModifierAction::None || modifier_hold_active_ ||
         (session_ && session_->stop_on_release && !session_->trigger_released)) {
@@ -299,7 +310,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       return;
     }
 
-    // 3.3 Non-modifier trigger keys (e.g. F8, Pause, etc.)
+    // 3.4 Non-modifier trigger keys (e.g. F8, Pause, etc.)
     const int trigger_index = !isModifier ? keyEvent.key().keyListIndex(trigger_keys_) : -1;
     const bool is_trigger = trigger_index >= 0;
     const int command_index = !isModifier ? keyEvent.key().keyListIndex(command_keys_) : -1;
