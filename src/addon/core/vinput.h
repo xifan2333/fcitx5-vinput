@@ -63,6 +63,8 @@ private:
   void resetResultMenuState();
   bool handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent);
   bool isReleaseOfActiveTrigger(const fcitx::Key& key) const;
+  bool isPressOfActiveTrigger(const fcitx::Key& key) const;
+  bool isPendingStartTrigger(const fcitx::Key& trigger) const;
   void cancelPendingStop();
   void cancelPendingStart();
   void scheduleStopRecording();
@@ -202,6 +204,8 @@ private:
   std::shared_ptr<bool> lifetime_token_ = std::make_shared<bool>(true);
   std::unique_ptr<fcitx::EventSourceTime> pending_stop_event_;
   std::unique_ptr<fcitx::EventSourceTime> pending_start_event_;
+  fcitx::Key pending_start_trigger_;
+  fcitx::TrackableObjectReference<fcitx::InputContext> pending_start_ic_;
   std::unique_ptr<fcitx::EventSourceTime> status_sync_event_;
   VinputConfig config_;
   int commit_write_count_ = 0;
