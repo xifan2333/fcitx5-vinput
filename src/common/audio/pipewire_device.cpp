@@ -32,11 +32,27 @@ void on_core_done(void* data, uint32_t id, int seq) {
   }
 }
 
+void on_core_error(void* data, uint32_t id, int seq, int res, const char* message) {
+  (void)id;
+  (void)seq;
+  (void)res;
+  (void)message;
+  auto* d = static_cast<PwData*>(data);
+  pw_main_loop_quit(d->loop);
+}
+
+void on_timeout(void* data, uint64_t expirations) {
+  (void)expirations;
+  auto* d = static_cast<PwData*>(data);
+  pw_main_loop_quit(d->loop);
+}
+
 const struct pw_core_events core_events = []() {
   struct pw_core_events ev;
   spa_zero(ev);
   ev.version = PW_VERSION_CORE_EVENTS;
   ev.done = on_core_done;
+  ev.error = on_core_error;
   return ev;
 }();
 
@@ -101,14 +117,12 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   PwData data{};
   data.loop = pw_main_loop_new(nullptr);
   if (!data.loop) {
-    pw_deinit();
     return {};
   }
 
   data.context = pw_context_new(pw_main_loop_get_loop(data.loop), nullptr, 0);
   if (!data.context) {
     pw_main_loop_destroy(data.loop);
-    pw_deinit();
     return {};
   }
 
@@ -116,7 +130,6 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   if (!data.core) {
     pw_context_destroy(data.context);
     pw_main_loop_destroy(data.loop);
-    pw_deinit();
     return {};
   }
 
@@ -125,14 +138,28 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   spa_zero(data.registry_listener);
   pw_registry_add_listener(data.registry, &data.registry_listener, &registry_events, &data);
 
+  // Arm a 250ms bounded timeout so enumeration never hangs if PipeWire is unresponsive.
+  spa_source* timer = pw_loop_add_timer(pw_main_loop_get_loop(data.loop), on_timeout, &data);
+  if (timer != nullptr) {
+    timespec value{};
+    value.tv_sec = 0;
+    value.tv_nsec = 250 * 1000 * 1000;
+    pw_loop_update_timer(pw_main_loop_get_loop(data.loop), timer, &value, nullptr, false);
+  }
+
   data.pending_sync = pw_core_sync(data.core, PW_ID_CORE, 0);
-  pw_main_loop_run(data.loop);
+  if (data.pending_sync >= 0) {
+    pw_main_loop_run(data.loop);
+  }
+
+  if (timer != nullptr) {
+    pw_loop_destroy_source(pw_main_loop_get_loop(data.loop), timer);
+  }
 
   pw_proxy_destroy(reinterpret_cast<pw_proxy*>(data.registry));
   pw_core_disconnect(data.core);
   pw_context_destroy(data.context);
   pw_main_loop_destroy(data.loop);
-  pw_deinit();
 
   std::stable_sort(data.devices.begin(), data.devices.end(),
                    [](const DeviceInfo& a, const DeviceInfo& b) {
