@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <pipewire/keys.h>
+#include <pipewire/main-loop.h>
 #include <pipewire/pipewire.h>
 #include <spa/pod/builder.h>
 #include <spa/utils/dict.h>
