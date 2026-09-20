@@ -10,6 +10,7 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
+#include <vector>
 
 #include "common/audio/pipewire_device.h"
 #include "common/utils/debug_log.h"
