@@ -145,13 +145,38 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   return data.devices;
 }
 
-ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target) {
+ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
+                                           const std::vector<DeviceInfo>& known_devices) {
   ResolvedCaptureTarget resolved;
   if (target.empty() || target == "default") {
     return resolved;
   }
 
   static constexpr std::string_view kMonitorSuffix = ".monitor";
+
+  // 1. If known devices are provided, prioritize matching against real device metadata.
+  for (const auto& dev : known_devices) {
+    if (dev.name == target) {
+      if (!dev.is_sink_monitor) {
+        // Real Audio/Source node, even if named with a ".monitor" suffix (e.g. clean.monitor).
+        resolved.node_name = dev.name;
+        resolved.is_sink_capture = false;
+        return resolved;
+      }
+
+      // Real Audio/Sink monitor: strip the ".monitor" suffix to target the underlying sink node.
+      if (target.size() > kMonitorSuffix.size() &&
+          target.substr(target.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
+        resolved.node_name = std::string(target.substr(0, target.size() - kMonitorSuffix.size()));
+      } else {
+        resolved.node_name = dev.name;
+      }
+      resolved.is_sink_capture = true;
+      return resolved;
+    }
+  }
+
+  // 2. Fallback heuristic when device is offline or unknown.
   if (target.size() > kMonitorSuffix.size() &&
       target.substr(target.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
     resolved.node_name = std::string(target.substr(0, target.size() - kMonitorSuffix.size()));

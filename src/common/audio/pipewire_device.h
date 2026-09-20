@@ -20,7 +20,9 @@ struct ResolvedCaptureTarget {
 };
 
 // Resolves a target string (e.g. "probe.monitor" -> node "probe", sink capture = true).
-ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target);
+// If known_devices is provided, matches against actual device metadata before fallback.
+ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
+                                           const std::vector<DeviceInfo>& known_devices = {});
 
 std::vector<DeviceInfo> EnumerateAudioSources();
 
