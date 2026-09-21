@@ -246,6 +246,7 @@ ref="${2:-main}"
 if [ -z "${version_value}" ]; then
   version_value="$(tr -d '\n' < VERSION)"
 fi
+bash scripts/check-release-semver.sh "${version_value}" "${ref}"
 git tag "v${version_value}" "${ref}"
 git push origin "v${version_value}"
 """
