@@ -190,7 +190,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   const int trigger_index = event_key.keyListIndex(trigger_keys_);
   const bool is_trigger = trigger_index >= 0;
   const int command_index = event_key.keyListIndex(command_keys_);
-  const bool is_command = command_index >= 0;
+  const bool is_command = !is_trigger && command_index >= 0;
   const bool is_menu = !is_trigger && !is_command && event_key.checkKeyList(menu_keys_);
 
   // 4. If a non-trigger key is pressed while waiting for trigger release or holding
@@ -284,7 +284,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
         kDefaultClock, fire_at_usec, 0, [this, trigger, is_command](auto*, uint64_t) {
           auto* target_ic = pending_start_ic_.get();
           if (target_ic == nullptr) {
-            pending_start_event_.reset();
+            cancelPendingStart();
             return false;
           }
           // Held past threshold: start hold-to-talk recording
@@ -294,7 +294,7 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
             session_->stop_on_release = true;
             session_->trigger_released = false;
           }
-          pending_start_event_.reset();
+          cancelPendingStart();
           return false;
         });
     pending_start_event_->setOneShot();
