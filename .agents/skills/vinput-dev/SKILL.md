@@ -87,7 +87,7 @@ Read **[references/compilation-ci.md](references/compilation-ci.md)**
 - The two usages of `release.yml`: Remote multi-arch matrix validation (Dry Run) vs official release publishing.
 - GitHub Actions workflow matrix (`ci.yml`, `channels.yml`, `nix-cache.yml`).
 - ConfigMigration is mandatory for breaking config schema changes; GUI notices teach `vinput config migrate` (not field recipes) and are retained for 5 patches.
-- Semantic Versioning guard (`MAJOR.MINOR.PATCH`): config schema/migration changes REQUIRE a MINOR bump (`x.Y.0`); automated pre-push guardrail via `hk` and `scripts/check-release-semver.sh`.
+- Semantic Versioning (`MAJOR.MINOR.PATCH`): config schema/migration changes REQUIRE a MINOR bump (`x.Y.0`); governed by `vinput-dev` skill guidelines and agent review loops.
 
 ### Task: Modifying Cloud ASR, LLM Scenes, AUR, or Flatpak Repos
 Read **[references/ecosystem.md](references/ecosystem.md)**
