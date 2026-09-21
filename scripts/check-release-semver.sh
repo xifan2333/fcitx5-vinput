@@ -32,6 +32,9 @@ t_major=$((10#${BASH_REMATCH[1]}))
 t_minor=$((10#${BASH_REMATCH[2]}))
 t_patch=$((10#${BASH_REMATCH[3]}))
 
+# Check if any release tags exist in repository
+all_release_tags="$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)"
+
 # Resolve baseline tag excluding target_version itself (prevent self-baselining on tag push)
 last_tag=""
 if [ "${target_ref}" != "HEAD" ]; then
@@ -60,6 +63,22 @@ if [ -z "${last_tag}" ]; then
     echo "ERROR [semver-guard]: Shallow repository detected without baseline release tags. Please run 'git fetch --unshallow --tags' before validating release." >&2
     exit 1
   fi
+
+  if [ -n "${all_release_tags}" ]; then
+    tag_commit="$(git rev-parse -q --verify "refs/tags/v${target_version}^{commit}" 2>/dev/null || true)"
+    target_commit="$(git rev-parse -q --verify "${target_ref}^{commit}" 2>/dev/null || true)"
+    if [ -n "${tag_commit}" ] && [ "${tag_commit}" != "${target_commit}" ]; then
+      echo "ERROR [semver-guard]: Tag 'v${target_version}' already exists in repository on a different commit. Cannot re-release existing version." >&2
+      exit 1
+    elif [ -n "${tag_commit}" ] && [ "${all_release_tags}" != "v${target_version}" ]; then
+      echo "ERROR [semver-guard]: Baseline release tag could not be found for 'v${target_version}' despite existing release tags." >&2
+      exit 1
+    elif [ -z "${tag_commit}" ]; then
+      echo "ERROR [semver-guard]: Existing release tags detected, but none are ancestors of ${target_ref}." >&2
+      exit 1
+    fi
+  fi
+
   echo "INFO [semver-guard]: No previous release tag found in reachable history. Initial release allowed: v${target_version}"
   exit 0
 fi
@@ -146,7 +165,7 @@ case "${required_level}" in
   MAJOR)
     expected_major=$((b_major + 1))
     recommended_version="${expected_major}.0.0"
-    if [ "${t_major}" -le "${b_major}" ] || [ "${t_minor}" -ne 0 ] || [ "${t_patch}" -ne 0 ]; then
+    if [ "${t_major}" -ne "${expected_major}" ] || [ "${t_minor}" -ne 0 ] || [ "${t_patch}" -ne 0 ]; then
       valid=false
     fi
     ;;
@@ -154,16 +173,7 @@ case "${required_level}" in
   MINOR)
     expected_minor=$((b_minor + 1))
     recommended_version="${b_major}.${expected_minor}.0"
-    if [ "${t_major}" -eq "${b_major}" ]; then
-      if [ "${t_minor}" -le "${b_minor}" ] || [ "${t_patch}" -ne 0 ]; then
-        valid=false
-      fi
-    elif [ "${t_major}" -eq "$((b_major + 1))" ]; then
-      # Proactively advancing to next major is allowed only if following strict X.0.0 shape
-      if [ "${t_minor}" -ne 0 ] || [ "${t_patch}" -ne 0 ]; then
-        valid=false
-      fi
-    else
+    if [ "${t_major}" -ne "${b_major}" ] || [ "${t_minor}" -ne "${expected_minor}" ] || [ "${t_patch}" -ne 0 ]; then
       valid=false
     fi
     ;;
@@ -171,7 +181,7 @@ case "${required_level}" in
   PATCH)
     expected_patch=$((b_patch + 1))
     recommended_version="${b_major}.${b_minor}.${expected_patch}"
-    if [ "${t_major}" -ne "${b_major}" ] || [ "${t_minor}" -ne "${b_minor}" ] || [ "${t_patch}" -le "${b_patch}" ]; then
+    if [ "${t_major}" -ne "${b_major}" ] || [ "${t_minor}" -ne "${b_minor}" ] || [ "${t_patch}" -ne "${expected_patch}" ]; then
       valid=false
     fi
     ;;
