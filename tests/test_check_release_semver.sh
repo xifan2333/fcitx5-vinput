@@ -168,6 +168,27 @@ assert_success "D-Bus removal triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0
 assert_failure "D-Bus removal rejects MINOR 2.7.0" bash "${SEMVER_SCRIPT}" "2.7.0"
 assert_failure "D-Bus removal rejects PATCH 2.6.1" bash "${SEMVER_SCRIPT}" "2.6.1"
 
+# 8c. Multiline signature modification triggers MAJOR
+git checkout -b branch-dbus-multiline "v2.5.0" --quiet
+cat << 'EOF' > src/addon/dbus/notifier_dbus_object.h
+FCITX_OBJECT_VTABLE_METHOD(
+    Notify,
+    vinput::dbus::kMethodNotify,
+    vinput::dbus::kErrorInfoSignature,
+    ""
+);
+EOF
+git add src/addon/dbus/notifier_dbus_object.h
+git commit -m "feat: use multiline notifier macro" --quiet
+git tag "v2.7.0"
+
+sed -i 's/""/"s"/' src/addon/dbus/notifier_dbus_object.h
+git commit -am "refactor: alter output signature parameter on continuation line" --quiet
+
+assert_success "Multiline D-Bus signature modification triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
+assert_failure "Multiline D-Bus signature modification rejects PATCH 2.7.1" bash "${SEMVER_SCRIPT}" "2.7.1"
+assert_failure "Multiline D-Bus signature modification rejects MINOR 2.8.0" bash "${SEMVER_SCRIPT}" "2.8.0"
+
 # 9. Test Shallow Clone Detection
 echo "--- 9. Shallow Clone Guard ---"
 SHALLOW_DIR="$(mktemp -d)"
