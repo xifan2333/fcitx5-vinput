@@ -68,3 +68,18 @@ When publishing releases, `notification.json` triggers startup notifications in 
      - During this retention window, intermediate pure feature/bugfix releases should retain the migration prompt and append a concise patch changelog at the end. This prevents users who skip patch versions from missing critical migration instructions.
 2. **Standard Releases (Non-Breaking Changes)**:
    - Record version highlights and bug fixes concisely in bilingual (`en_US` and `zh_CN`) format.
+
+## 6. Semantic Versioning & Automated Release Guard
+
+Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH` / 主.次.订):
+
+| Level | Code Scope & Changes | Requirement & Example |
+| :--- | :--- | :--- |
+| **MAJOR (X)** | Breaking D-Bus method removals/signature alterations, unmigratable config overhaul, or explicit `BREAKING CHANGE:` commits. | Bump `X.0.0` (e.g. `3.0.0`). |
+| **MINOR (Y)** | Configuration schema changes (`core_config_types.h`, `default-config.json`, or added steps in `config_migration.cpp`), new CLI commands/options, new features (`feat:` commits), or GUI module expansions. | Bump `x.Y.0` (e.g. `2.4.0`). **Breaking config changes must NEVER be released as a PATCH!** |
+| **PATCH (Z)** | Pure bugfixes (`fix:`), refactoring, doc updates, and CI improvements without schema changes. | Bump `x.y.Z` (e.g. `2.3.27`). |
+
+**Automated Guardrail**:
+- `scripts/check-release-semver.sh` arbitrates target versions against git diff and commit history.
+- Pre-push git hooks (`hk.pkl`) and `mise run release` automatically intercept non-compliant tags before publishing.
+- **Cadence Discipline**: Accumulate verified fixes on `main` and run CI dry builds (`release.yml`) before cutting tags. Avoid hasty releases for isolated micro-fixes.
