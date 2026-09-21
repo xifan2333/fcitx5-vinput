@@ -150,6 +150,8 @@ private:
   fcitx::KeyList menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
   std::optional<fcitx::Key> active_trigger_key_;
   bool trigger_interrupted_ = false;
+  std::optional<fcitx::Key> active_menu_key_;
+  bool menu_interrupted_ = false;
 
   void startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command);
 

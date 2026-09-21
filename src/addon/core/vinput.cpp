@@ -155,6 +155,8 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                                   cancelPendingStart();
                                   trigger_interrupted_ = true;
                                 }
+                                active_menu_key_.reset();
+                                menu_interrupted_ = true;
                                 if (session_ && session_->ic == ic) {
                                   if (session_->stop_on_release) {
                                     callCancelOperation(false);

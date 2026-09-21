@@ -210,6 +210,9 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
           clearVoicePresentation(target_ic);
         }
       }
+      if (active_menu_key_.has_value()) {
+        menu_interrupted_ = true;
+      }
     }
     // Pass the non-trigger key untouched to the client application
     return;
@@ -218,11 +221,23 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   // 5. Handle Command Palette Hotkey (menu_keys_, e.g. Shift_R)
   if (is_menu) {
     if (!keyEvent.isRelease()) {
-      if (!session_) {
-        toggleCommandPalette(ic);
+      active_menu_key_ = event_key;
+      menu_interrupted_ = false;
+      // Allow modifier to pass through so combinations like Shift+A work normally
+      keyEvent.filter();
+      return;
+    }
+    // Key Up (Release) phase
+    if (active_menu_key_.has_value() && *active_menu_key_ == event_key) {
+      active_menu_key_.reset();
+      if (!menu_interrupted_) {
+        if (!session_) {
+          toggleCommandPalette(ic);
+        }
+        keyEvent.filterAndAccept();
+        return;
       }
     }
-    keyEvent.filterAndAccept();
     return;
   }
 
