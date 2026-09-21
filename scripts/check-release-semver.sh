@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+#
+# Semantic Versioning Guard for fcitx5-vinput
+# Enforces strict MAJOR.MINOR.PATCH increment rules based on git diff and commit history.
+#
+
+set -euo pipefail
+
+target_version="${1:-}"
+target_ref="${2:-HEAD}"
+
+if [ -z "${target_version}" ]; then
+  if [ -f "VERSION" ]; then
+    target_version="$(tr -d '\n' < VERSION)"
+  else
+    echo "ERROR [semver-guard]: No target version provided and VERSION file not found." >&2
+    exit 1
+  fi
+fi
+
+# Strip leading 'v' if present
+target_version="${target_version#v}"
+
+# Validate semantic version syntax: X.Y.Z
+if [[ ! "${target_version}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  echo "ERROR [semver-guard]: Target version '${target_version}' does not match Semantic Versioning syntax (MAJOR.MINOR.PATCH, e.g. 2.4.0)." >&2
+  exit 1
+fi
+
+t_major="${BASH_REMATCH[1]}"
+t_minor="${BASH_REMATCH[2]}"
+t_patch="${BASH_REMATCH[3]}"
+
+# Resolve baseline tag
+last_tag="$(git describe --tags --abbrev=0 "${target_ref}" 2>/dev/null || true)"
+if [ -z "${last_tag}" ]; then
+  echo "INFO [semver-guard]: No previous git tag found. Initial release allowed: v${target_version}"
+  exit 0
+fi
+
+base_version="${last_tag#v}"
+if [[ ! "${base_version}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  echo "WARN [semver-guard]: Base tag '${last_tag}' does not strictly match SemVer syntax. Bypassing comparison."
+  exit 0
+fi
+
+b_major="${BASH_REMATCH[1]}"
+b_minor="${BASH_REMATCH[2]}"
+b_patch="${BASH_REMATCH[3]}"
+
+# Gather changes between last_tag and target_ref
+changed_files="$(git diff "${last_tag}..${target_ref}" --name-only || true)"
+commits="$(git log "${last_tag}..${target_ref}" --oneline || true)"
+
+reasons=()
+required_level="PATCH"
+
+# 1. Check for MAJOR requirements (breaking protocol / breaking changes)
+if echo "${commits}" | grep -Ei "BREAKING[ -]CHANGE:|^[a-f0-9]+ [a-z]+(\(.*\))?!:" >/dev/null 2>&1; then
+  reasons+=("Explicit breaking change syntax detected in commit history (BREAKING CHANGE / feat!:).")
+  required_level="MAJOR"
+elif echo "${changed_files}" | grep -E "^src/common/dbus/dbus_interface\.h$" >/dev/null 2>&1; then
+  # Check if methods or signals were deleted from dbus interface
+  if git diff "${last_tag}..${target_ref}" -S"constexpr const char* kMethod" -- "src/common/dbus/dbus_interface.h" | grep -E "^\-.*kMethod" >/dev/null 2>&1; then
+    reasons+=("D-Bus method signature removed or modified in src/common/dbus/dbus_interface.h.")
+    required_level="MAJOR"
+  fi
+fi
+
+# 2. Check for MINOR requirements (if not already MAJOR)
+if [ "${required_level}" != "MAJOR" ]; then
+  # Rule Y-1: config_migration.cpp modified
+  if echo "${changed_files}" | grep -E "^src/common/config/config_migration\.cpp$" >/dev/null 2>&1; then
+    reasons+=("Configuration migration steps modified in src/common/config/config_migration.cpp.")
+    required_level="MINOR"
+  fi
+
+  # Rule Y-2: core_config_types.h or default-config.json modified
+  if echo "${changed_files}" | grep -E "^(src/common/config/core_config_types\.h|data/default-config\.json)$" >/dev/null 2>&1; then
+    reasons+=("Configuration schema modified in core_config_types.h or default-config.json.")
+    required_level="MINOR"
+  fi
+
+  # Rule Y-3: new commands or options added in src/cli/
+  if echo "${changed_files}" | grep -E "^src/cli/.*register_.*\.cpp$" >/dev/null 2>&1; then
+    if git diff "${last_tag}..${target_ref}" -- "src/cli" | grep -E "^\+.*add_subcommand|^\+.*add_option|^\+.*add_flag" >/dev/null 2>&1; then
+      reasons+=("New CLI subcommands or option flags added in src/cli/.")
+      required_level="MINOR"
+    fi
+  fi
+
+  # Rule Y-4: conventional commit feat
+  if echo "${commits}" | grep -E "^[a-f0-9]+ feat(\(.*\))?:" >/dev/null 2>&1; then
+    reasons+=("New feature commit (feat:) detected in commit history.")
+    required_level="MINOR"
+  fi
+fi
+
+# 3. Validate target version against required_level
+valid=true
+recommended_version=""
+
+case "${required_level}" in
+  MAJOR)
+    expected_major=$((b_major + 1))
+    recommended_version="${expected_major}.0.0"
+    if [ "${t_major}" -le "${b_major}" ] || [ "${t_minor}" -ne 0 ] || [ "${t_patch}" -ne 0 ]; then
+      valid=false
+    fi
+    ;;
+
+  MINOR)
+    expected_minor=$((b_minor + 1))
+    recommended_version="${b_major}.${expected_minor}.0"
+    # Target must increment minor and reset patch to 0, or increment major
+    if [ "${t_major}" -eq "${b_major}" ]; then
+      if [ "${t_minor}" -le "${b_minor}" ] || [ "${t_patch}" -ne 0 ]; then
+        valid=false
+      fi
+    elif [ "${t_major}" -lt "${b_major}" ]; then
+      valid=false
+    fi
+    ;;
+
+  PATCH)
+    expected_patch=$((b_patch + 1))
+    recommended_version="${b_major}.${b_minor}.${expected_patch}"
+    # Target must increment patch
+    if [ "${t_major}" -ne "${b_major}" ] || [ "${t_minor}" -ne "${b_minor}" ] || [ "${t_patch}" -le "${b_patch}" ]; then
+      valid=false
+    fi
+    ;;
+esac
+
+if [ "${valid}" = false ]; then
+  cat >&2 <<EOF
+================================================================================
+❌ ERROR [hk semver-guard]: Release version 'v${target_version}' violates Semantic Versioning!
+================================================================================
+Base Tag:         v${base_version}
+Target Version:   v${target_version}
+Calculated Level: ${required_level}
+Recommended Next: v${recommended_version}
+
+Triggered Rules:
+EOF
+  for r in "${reasons[@]}"; do
+    echo "  - ${r}" >&2
+  done
+  cat >&2 <<EOF
+
+Enforcement Policy (Hard Constraint):
+  - Configuration schema / migration changes or new features (feat:) REQUIRE a MINOR increment (e.g. v${b_major}.$((b_minor + 1)).0).
+  - Only pure bugfixes (fix:), refactorings, or doc updates without schema changes qualify as a PATCH (e.g. v${b_major}.${b_minor}.$((b_patch + 1))).
+  - Breaking protocol / D-Bus API removals REQUIRE a MAJOR increment (e.g. v$((b_major + 1)).0.0).
+
+Please adjust the target version or VERSION file and retry.
+================================================================================
+EOF
+  exit 1
+fi
+
+echo "✔ [semver-guard]: Target version 'v${target_version}' complies with Semantic Versioning (${required_level} level, baseline: v${base_version})."
+exit 0
