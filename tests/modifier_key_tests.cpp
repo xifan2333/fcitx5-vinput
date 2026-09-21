@@ -154,6 +154,7 @@ void runAllTests() {
   fcitx::KeyEvent multi_f8_r(&ic, fcitx::Key(FcitxKey_F8), true);
   engine.handleKeyEvent(multi_f8_r);
   expect(multi_f8_r.filtered() && multi_f8_r.accepted(), "F8 release is consumed");
+  expect(!engine.isPendingStart(), "Pending start timer is cleared after F8 interaction");
 
   std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }
