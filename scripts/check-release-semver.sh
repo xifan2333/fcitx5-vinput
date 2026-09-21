@@ -43,12 +43,24 @@ if [ -z "${last_tag}" ]; then
 fi
 
 if [ -z "${last_tag}" ]; then
-  # Fallback to sorted release tags list
-  last_tag="$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v -E "^v?${target_version}$" | head -n 1 || true)"
+  # Fallback: scan reachable release tags in version-sorted order
+  for candidate in $(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname); do
+    if [ "${candidate}" = "v${target_version}" ] || [ "${candidate}" = "${target_version}" ]; then
+      continue
+    fi
+    if git merge-base --is-ancestor "${candidate}" "${target_ref}" 2>/dev/null; then
+      last_tag="${candidate}"
+      break
+    fi
+  done
 fi
 
 if [ -z "${last_tag}" ]; then
-  echo "INFO [semver-guard]: No previous release tag found. Initial release allowed: v${target_version}"
+  if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || true)" = "true" ]; then
+    echo "ERROR [semver-guard]: Shallow repository detected without baseline release tags. Please run 'git fetch --unshallow --tags' before validating release." >&2
+    exit 1
+  fi
+  echo "INFO [semver-guard]: No previous release tag found in reachable history. Initial release allowed: v${target_version}"
   exit 0
 fi
 
