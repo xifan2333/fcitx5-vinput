@@ -46,20 +46,14 @@ protected:
 };
 
 struct ScopedConfigDir {
-  std::filesystem::path dir;
+  std::filesystem::path dir{"/tmp/vinput_test_cfg"};
   ScopedConfigDir() {
-    char tpl[] = "/tmp/vinput_test_cfg_XXXXXX";
-    char* const res = mkdtemp(tpl);
-    if (res != nullptr) {
-      dir = res;
-      setenv("XDG_CONFIG_HOME", dir.c_str(), 1);
-    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
   }
   ~ScopedConfigDir() {
-    if (!dir.empty()) {
-      std::error_code ec;
-      std::filesystem::remove_all(dir, ec);
-    }
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
   }
   ScopedConfigDir(const ScopedConfigDir&) = delete;
   ScopedConfigDir& operator=(const ScopedConfigDir&) = delete;

@@ -53,3 +53,6 @@ target_link_libraries(modifier_key_tests PRIVATE
 )
 
 add_test(NAME modifier_key_tests COMMAND modifier_key_tests)
+set_tests_properties(modifier_key_tests PROPERTIES
+    ENVIRONMENT "XDG_CONFIG_HOME=/tmp/vinput_test_cfg"
+)
