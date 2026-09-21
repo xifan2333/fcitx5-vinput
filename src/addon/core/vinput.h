@@ -149,11 +149,11 @@ private:
   fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_Control_R)};
   fcitx::KeyList menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
 
-  enum class HotkeyRole { None, Menu, Trigger, Command };
+  enum class HotkeyRole : std::uint8_t { None, Menu, Trigger, Command };
   std::optional<fcitx::KeySym> held_key_sym_;
   HotkeyRole held_role_ = HotkeyRole::None;
   bool chord_interrupted_ = false;
-  std::chrono::steady_clock::time_point held_press_time_{};
+  std::chrono::steady_clock::time_point held_press_time_;
 
   void startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command);
 

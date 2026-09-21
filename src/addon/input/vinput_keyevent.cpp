@@ -32,7 +32,7 @@ constexpr auto kTriggerDebounce = std::chrono::milliseconds(80);
 constexpr auto kTapMaxHoldDuration = std::chrono::milliseconds(200);
 
 int MatchKeyListIndex(const fcitx::Key& event_key, const fcitx::KeyList& list) {
-  int idx = event_key.keyListIndex(list);
+  const int idx = event_key.keyListIndex(list);
   if (idx >= 0) {
     return idx;
   }
