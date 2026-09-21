@@ -128,8 +128,8 @@ elif echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/
      "src/daemon/runtime/dbus_service.cpp" \
      "src/addon/dbus/notifier_dbus_object.h" \
      "src/common/dbus/error_info.h" | \
-     grep -E "^\-.*(kMethod|kSignal|SD_BUS_METHOD|SD_BUS_SIGNAL|FCITX_OBJECT_VTABLE_METHOD|kErrorInfoSignature)" >/dev/null 2>&1; then
-    reasons+=("Exported D-Bus method/signal definition removed or modified.")
+     grep -E "^\-.*(kMethod|kSignal|SD_BUS_METHOD|SD_BUS_SIGNAL|SD_BUS_VTABLE|FCITX_OBJECT_VTABLE_METHOD|kErrorInfoSignature|\"[^\"]*\")" >/dev/null 2>&1; then
+    reasons+=("Exported D-Bus method, signal, or signature definition removed or modified.")
     required_level="MAJOR"
   fi
 fi
