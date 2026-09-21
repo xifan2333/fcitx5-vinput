@@ -75,11 +75,25 @@ if echo "${full_commits}" | grep -Ei "BREAKING[ -]CHANGE:" >/dev/null 2>&1 || \
    echo "${commit_onelines}" | grep -E "^[a-f0-9]+ [a-z]+(\(.*\))?!:" >/dev/null 2>&1; then
   reasons+=("Explicit breaking change syntax detected in commit history (BREAKING CHANGE or feat!:).")
   required_level="MAJOR"
-elif echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/daemon/runtime/dbus_service\.cpp)$" >/dev/null 2>&1; then
-  if git diff "${last_tag}..${target_ref}" -- "src/common/dbus/dbus_interface.h" "src/daemon/runtime/dbus_service.cpp" | \
-     grep -E "^\-.*(kMethod|kSignal|SD_BUS_METHOD|SD_BUS_SIGNAL)" >/dev/null 2>&1; then
+elif echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/daemon/runtime/dbus_service\.cpp|src/addon/dbus/notifier_dbus_object\.h|src/common/dbus/error_info\.h)$" >/dev/null 2>&1; then
+  if git diff "${last_tag}..${target_ref}" -- \
+     "src/common/dbus/dbus_interface.h" \
+     "src/daemon/runtime/dbus_service.cpp" \
+     "src/addon/dbus/notifier_dbus_object.h" \
+     "src/common/dbus/error_info.h" | \
+     grep -E "^\-.*(kMethod|kSignal|SD_BUS_METHOD|SD_BUS_SIGNAL|FCITX_OBJECT_VTABLE_METHOD|kErrorInfoSignature)" >/dev/null 2>&1; then
     reasons+=("Exported D-Bus method/signal definition removed or modified.")
     required_level="MAJOR"
+  fi
+fi
+
+if [ "${required_level}" != "MAJOR" ]; then
+  # Check if existing CLI options or subcommands were removed or renamed (breaking change)
+  if echo "${changed_files}" | grep -E "^src/cli/" >/dev/null 2>&1; then
+    if git diff "${last_tag}..${target_ref}" -- "src/cli" | grep -E "^\-.*(add_subcommand|add_option|add_flag)" >/dev/null 2>&1; then
+      reasons+=("Public CLI subcommand or option removed or renamed.")
+      required_level="MAJOR"
+    fi
   fi
 fi
 
@@ -92,14 +106,14 @@ if [ "${required_level}" != "MAJOR" ]; then
   fi
 
   # Rule Y-2: configuration schema or serialization modified
-  if echo "${changed_files}" | grep -E "^(src/common/config/core_config_types\.h|src/common/config/core_config_json\.cpp|data/default-config\.json)$" >/dev/null 2>&1; then
-    reasons+=("Configuration schema modified in core_config_types.h, core_config_json.cpp, or default-config.json.")
+  if echo "${changed_files}" | grep -E "^(src/common/config/core_config_types\.h|src/common/config/core_config_json\.cpp|src/common/config/vinput_config\.h|src/common/config/vinput_config\.cpp|data/default-config\.json)$" >/dev/null 2>&1; then
+    reasons+=("Configuration schema modified in core_config_types.h, core_config_json.cpp, vinput_config.h, vinput_config.cpp, or default-config.json.")
     required_level="MINOR"
   fi
 
   # Rule Y-3: new subcommands or options added in src/cli/
   if echo "${changed_files}" | grep -E "^src/cli/" >/dev/null 2>&1; then
-    if git diff "${last_tag}..${target_ref}" -- "src/cli" | grep -E "^\+.*add_subcommand|^\+.*add_option|^\+.*add_flag" >/dev/null 2>&1; then
+    if git diff "${last_tag}..${target_ref}" -- "src/cli" | grep -E "^\+.*(add_subcommand|add_option|add_flag)" >/dev/null 2>&1; then
       reasons+=("New CLI subcommands or option flags added in src/cli/.")
       required_level="MINOR"
     fi
