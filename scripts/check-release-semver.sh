@@ -71,7 +71,8 @@ reasons=()
 required_level="PATCH"
 
 # 1. Check for MAJOR requirements (breaking protocol / breaking changes)
-if echo "${full_commits}" | grep -Ei "BREAKING[ -]CHANGE:|^[a-f0-9]+ [a-z]+(\(.*\))?!:" >/dev/null 2>&1; then
+if echo "${full_commits}" | grep -Ei "BREAKING[ -]CHANGE:" >/dev/null 2>&1 || \
+   echo "${commit_onelines}" | grep -E "^[a-f0-9]+ [a-z]+(\(.*\))?!:" >/dev/null 2>&1; then
   reasons+=("Explicit breaking change syntax detected in commit history (BREAKING CHANGE or feat!:).")
   required_level="MAJOR"
 elif echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/daemon/runtime/dbus_service\.cpp)$" >/dev/null 2>&1; then
@@ -131,7 +132,12 @@ case "${required_level}" in
       if [ "${t_minor}" -le "${b_minor}" ] || [ "${t_patch}" -ne 0 ]; then
         valid=false
       fi
-    elif [ "${t_major}" -lt "${b_major}" ]; then
+    elif [ "${t_major}" -eq "$((b_major + 1))" ]; then
+      # Proactively advancing to next major is allowed only if following strict X.0.0 shape
+      if [ "${t_minor}" -ne 0 ] || [ "${t_patch}" -ne 0 ]; then
+        valid=false
+      fi
+    else
       valid=false
     fi
     ;;
