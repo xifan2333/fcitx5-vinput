@@ -153,16 +153,17 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                                 auto* ic = icEvent->inputContext();
                                 if (pending_start_ic_.get() == ic) {
                                   cancelPendingStart();
-                                  trigger_interrupted_ = true;
+                                  chord_interrupted_ = true;
                                 }
-                                active_menu_key_.reset();
-                                menu_interrupted_ = true;
+                                held_key_sym_.reset();
+                                held_role_ = HotkeyRole::None;
+                                chord_interrupted_ = true;
                                 if (session_ && session_->ic == ic) {
                                   if (session_->stop_on_release) {
                                     callCancelOperation(false);
                                     finishFrontendSession(ic);
                                     clearVoicePresentation(ic);
-                                    trigger_interrupted_ = true;
+                                    chord_interrupted_ = true;
                                   }
                                 }
                               }
@@ -428,7 +429,7 @@ bool VinputEngine::isHoldRecording() const {
 }
 
 bool VinputEngine::isPendingStart() const {
-  return pending_start_event_ && pending_start_event_->isEnabled();
+  return held_role_ == HotkeyRole::Trigger || held_role_ == HotkeyRole::Command;
 }
 
 fcitx::AddonInstance* VinputEngineFactory::create(fcitx::AddonManager* manager) {

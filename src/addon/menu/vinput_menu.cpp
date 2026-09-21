@@ -795,6 +795,13 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return false;
   }
 
+  // Pass menu toggle keys through to the dedicated hotkey handler so toggle-close works
+  for (const auto& mk : menu_keys_) {
+    if (mk.sym() == keyEvent.key().sym()) {
+      return false;
+    }
+  }
+
   auto candidate_list = palette_menu_ic_->inputPanel().candidateList();
   auto* cursor_list = candidate_list ? candidate_list->toCursorMovable() : nullptr;
   const auto normalized_key = keyEvent.key().normalize();
