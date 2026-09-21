@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Semantic Versioning Guard for fcitx5-vinput
-# Enforces strict MAJOR.MINOR.PATCH increment rules based on git diff and commit history.
+# Enforces strict MAJOR.MINOR.PATCH syntax, step-increment, and conventional commit level rules.
+# Domain-specific semantics (D-Bus contract, CLI options, config migration) are governed via AGENTS.md and vinput-dev skill.
 #
 
 set -euo pipefail
@@ -94,168 +95,35 @@ b_major=$((10#${BASH_REMATCH[1]}))
 b_minor=$((10#${BASH_REMATCH[2]}))
 b_patch=$((10#${BASH_REMATCH[3]}))
 
-# Gather changes between last_tag and target_ref
+# Gather commit history between last_tag and target_ref
 changed_files="$(git diff "${last_tag}..${target_ref}" --name-only || true)"
 full_commits="$(git log "${last_tag}..${target_ref}" || true)"
 commit_onelines="$(git log "${last_tag}..${target_ref}" --oneline || true)"
 
-# Extract CLI public command, option, flag, and alias tokens from a git ref
-extract_cli_tokens() {
-  local ref="$1"
-  git grep -E -h '(add_subcommand|add_option|add_flag|alias)\s*\(\s*"' "${ref}" -- "src/cli" 2>/dev/null | \
-    sed -E -n 's/.*(add_subcommand|add_option|add_flag|alias)[[:space:]]*\([[:space:]]*"([^",]+)".*/\2/p' | \
-    sort -u
-}
-
-# Extract normalized D-Bus public interface declarations from a git ref
-extract_dbus_vtable_items() {
-  local ref="$1"
-  git show "${ref}:src/daemon/runtime/dbus_service.cpp" 2>/dev/null | \
-    sed -n '/sd_bus_vtable vtable/,/SD_BUS_VTABLE_END/p' | \
-    grep -v '^[[:space:]]*//' | \
-    tr -d '\n' | \
-    sed 's/SD_BUS_/\nSD_BUS_/g' | \
-    grep -E '^SD_BUS_(METHOD|SIGNAL)' | \
-    tr -d ' \t' | \
-    sed -E 's/^SD_BUS_METHOD\(([^,]+),([^,]+),([^,]+).*/SD_BUS_METHOD(\1,\2,\3)/; s/^SD_BUS_SIGNAL\(([^,]+),([^,]+).*/SD_BUS_SIGNAL(\1,\2)/' | \
-    sort -u || true
-}
-
-extract_notifier_methods() {
-  local ref="$1"
-  git show "${ref}:src/addon/dbus/notifier_dbus_object.h" 2>/dev/null | \
-    tr -d '\n' | \
-    sed 's/FCITX_OBJECT_VTABLE_METHOD/\nFCITX_OBJECT_VTABLE_METHOD/g' | \
-    grep '^FCITX_OBJECT_VTABLE_METHOD' | \
-    sed 's/);.*/);/' | \
-    tr -d ' \t' | \
-    sort -u || true
-}
-
-extract_dbus_constants() {
-  local ref="$1"
-  git show "${ref}:src/common/dbus/dbus_interface.h" 2>/dev/null | \
-    grep -E 'k(Method|Signal)[A-Za-z0-9_]+[[:space:]]*=' | \
-    sed -E 's/[[:space:]]+//g' | \
-    sort -u || true
-}
-
-extract_error_info_sig() {
-  local ref="$1"
-  git show "${ref}:src/common/dbus/error_info.h" 2>/dev/null | \
-    sed -n '/kErrorInfoSignature/,/;/p' | \
-    tr -d ' \t\n' || true
-}
-
-base_cli_tokens=""
-target_cli_tokens=""
-if echo "${changed_files}" | grep -E "^src/cli/" >/dev/null 2>&1; then
-  base_cli_tokens="$(extract_cli_tokens "${last_tag}")"
-  target_cli_tokens="$(extract_cli_tokens "${target_ref}")"
-fi
-
-dbus_files_changed=false
-base_vtable=""
-target_vtable=""
-base_notifier=""
-target_notifier=""
-base_dbus_consts=""
-target_dbus_consts=""
-base_err_sig=""
-target_err_sig=""
-
-if echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/daemon/runtime/dbus_service\.cpp|src/addon/dbus/notifier_dbus_object\.h|src/common/dbus/error_info\.h)$" >/dev/null 2>&1; then
-  dbus_files_changed=true
-  base_vtable="$(extract_dbus_vtable_items "${last_tag}")"
-  target_vtable="$(extract_dbus_vtable_items "${target_ref}")"
-  base_notifier="$(extract_notifier_methods "${last_tag}")"
-  target_notifier="$(extract_notifier_methods "${target_ref}")"
-  base_dbus_consts="$(extract_dbus_constants "${last_tag}")"
-  target_dbus_consts="$(extract_dbus_constants "${target_ref}")"
-  base_err_sig="$(extract_error_info_sig "${last_tag}")"
-  target_err_sig="$(extract_error_info_sig "${target_ref}")"
-fi
-
 reasons=()
 required_level="PATCH"
 
-# 1. Check for MAJOR requirements (breaking protocol / breaking changes)
+# 1. MAJOR level: conventional breaking change syntax in commit message
 if echo "${full_commits}" | grep -Ei "BREAKING[ -]CHANGE:" >/dev/null 2>&1 || \
    echo "${commit_onelines}" | grep -E "^[a-f0-9]+ [a-z]+(\(.*\))?!:" >/dev/null 2>&1; then
   reasons+=("Explicit breaking change syntax detected in commit history (BREAKING CHANGE or feat!:).")
   required_level="MAJOR"
-elif [ "${dbus_files_changed}" = true ]; then
-  # Check if existing exported D-Bus definitions or signatures were removed or altered
-  removed_vtable="$(comm -23 <(echo "${base_vtable}") <(echo "${target_vtable}") | grep -v '^[[:space:]]*$' || true)"
-  removed_consts="$(comm -23 <(echo "${base_dbus_consts}") <(echo "${target_dbus_consts}") | grep -v '^[[:space:]]*$' || true)"
-  removed_notifier="$(comm -23 <(echo "${base_notifier}") <(echo "${target_notifier}") | grep -v '^[[:space:]]*$' || true)"
-
-  if [ -n "${removed_vtable}" ]; then
-    reasons+=("Exported D-Bus method or signal removed or signature altered in dbus_service.cpp.")
-    required_level="MAJOR"
-  elif [ -n "${removed_consts}" ]; then
-    reasons+=("Exported D-Bus method or signal constant removed or renamed in dbus_interface.h.")
-    required_level="MAJOR"
-  elif [ -n "${removed_notifier}" ]; then
-    reasons+=("Exported notifier D-Bus method definition removed or modified in notifier_dbus_object.h.")
-    required_level="MAJOR"
-  elif [ -n "${base_err_sig}" ] && [ "${base_err_sig}" != "${target_err_sig}" ]; then
-    reasons+=("D-Bus kErrorInfoSignature definition altered in error_info.h.")
-    required_level="MAJOR"
-  fi
 fi
 
-if [ "${required_level}" != "MAJOR" ] && [ -n "${base_cli_tokens}" ]; then
-  # Check if existing CLI options, subcommands, or aliases were removed or renamed
-  removed_cli_tokens="$(comm -23 <(echo "${base_cli_tokens}") <(echo "${target_cli_tokens}") | grep -v '^[[:space:]]*$' || true)"
-  if [ -n "${removed_cli_tokens}" ]; then
-    reasons+=("Public CLI subcommand, option, or alias removed or renamed: $(echo ${removed_cli_tokens} | tr '\n' ' ').")
-    required_level="MAJOR"
-  fi
-fi
-
-# 2. Check for MINOR requirements (if not already MAJOR)
+# 2. MINOR level: configuration migration changes or feat: commits
 if [ "${required_level}" != "MAJOR" ]; then
-  # Rule Y-1: config_migration.cpp modified
   if echo "${changed_files}" | grep -E "^src/common/config/config_migration\.cpp$" >/dev/null 2>&1; then
     reasons+=("Configuration migration steps modified in src/common/config/config_migration.cpp.")
     required_level="MINOR"
   fi
 
-  # Rule Y-2: configuration schema or serialization modified
-  if echo "${changed_files}" | grep -E "^(src/common/config/core_config_types\.h|src/common/config/core_config_json\.cpp|src/common/config/vinput_config\.h|src/common/config/vinput_config\.cpp|data/default-config\.json)$" >/dev/null 2>&1; then
-    reasons+=("Configuration schema modified in core_config_types.h, core_config_json.cpp, vinput_config.h, vinput_config.cpp, or default-config.json.")
-    required_level="MINOR"
-  fi
-
-  # Rule Y-3: new subcommands, options, or aliases added in src/cli/
-  if [ -n "${target_cli_tokens}" ]; then
-    added_cli_tokens="$(comm -13 <(echo "${base_cli_tokens}") <(echo "${target_cli_tokens}") | grep -v '^[[:space:]]*$' || true)"
-    if [ -n "${added_cli_tokens}" ]; then
-      reasons+=("New CLI subcommands, options, or aliases added in src/cli/: $(echo ${added_cli_tokens} | tr '\n' ' ').")
-      required_level="MINOR"
-    fi
-  fi
-
-  # Rule Y-4: new exported D-Bus methods or signals added
-  if [ "${dbus_files_changed}" = true ]; then
-    added_vtable="$(comm -13 <(echo "${base_vtable}") <(echo "${target_vtable}") | grep -v '^[[:space:]]*$' || true)"
-    added_consts="$(comm -13 <(echo "${base_dbus_consts}") <(echo "${target_dbus_consts}") | grep -v '^[[:space:]]*$' || true)"
-    added_notifier="$(comm -13 <(echo "${base_notifier}") <(echo "${target_notifier}") | grep -v '^[[:space:]]*$' || true)"
-    if [ -n "${added_vtable}" ] || [ -n "${added_consts}" ] || [ -n "${added_notifier}" ]; then
-      reasons+=("New exported D-Bus method, signal, or constant added.")
-      required_level="MINOR"
-    fi
-  fi
-
-  # Rule Y-5: conventional commit feat
   if echo "${commit_onelines}" | grep -E "^[a-f0-9]+ feat(\(.*\))?:" >/dev/null 2>&1; then
     reasons+=("New feature commit (feat:) detected in commit history.")
     required_level="MINOR"
   fi
 fi
 
-# 3. Validate target version against required_level
+# 3. Validate target version against required_level (enforcing strict single-step progression)
 valid=true
 recommended_version=""
 

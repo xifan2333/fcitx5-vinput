@@ -53,7 +53,6 @@ assert_failure "reject leading zeroes 1.2.03" bash "${SEMVER_SCRIPT}" "1.2.03"
 assert_failure "reject non-numeric v2.4.0-alpha" bash "${SEMVER_SCRIPT}" "2.4.0-alpha"
 
 # Setup initial commit and base tag v2.3.27
-mkdir -p src/common/config src/common/dbus src/daemon/runtime src/addon/dbus src/cli
 echo "initial" > README.md
 git add README.md
 git commit -m "chore: initial commit" --quiet
@@ -80,15 +79,16 @@ assert_failure "reject patch version 2.3.28 on feat" bash "${SEMVER_SCRIPT}" "2.
 assert_failure "reject skipped minor 2.5.0" bash "${SEMVER_SCRIPT}" "2.5.0"
 assert_failure "reject mixed major transition 3.4.5" bash "${SEMVER_SCRIPT}" "3.4.5"
 
-# 4. Test Config Schema Change (src/common/config/vinput_config.h)
-echo "--- 4. Config Schema Change Detection ---"
+# 4. Test Config Migration Step Change
+echo "--- 4. Config Migration Step Change Detection ---"
 git checkout -b branch-config "v2.3.27" --quiet
-echo "// config change" >> src/common/config/vinput_config.h
-git add src/common/config/vinput_config.h
-git commit -m "refactor(config): update addon config field" --quiet
+mkdir -p src/common/config
+echo "// migration step" >> src/common/config/config_migration.cpp
+git add src/common/config/config_migration.cpp
+git commit -m "chore(config): add migration step v2.4.0" --quiet
 
-assert_success "config change triggers MINOR 2.4.0" bash "${SEMVER_SCRIPT}" "2.4.0"
-assert_failure "config change rejects PATCH 2.3.28" bash "${SEMVER_SCRIPT}" "2.3.28"
+assert_success "config migration triggers MINOR 2.4.0" bash "${SEMVER_SCRIPT}" "2.4.0"
+assert_failure "config migration rejects PATCH 2.3.28" bash "${SEMVER_SCRIPT}" "2.3.28"
 
 # 5. Test Breaking Bang Commit (fix!:)
 echo "--- 5. Breaking Commit Bang Pattern (fix!:) ---"
@@ -109,137 +109,8 @@ git commit -am $'chore: adjust internal pipeline\n\nBREAKING CHANGE: overhaul pi
 assert_success "BREAKING CHANGE: triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
 assert_failure "BREAKING CHANGE: rejects MINOR 2.4.0" bash "${SEMVER_SCRIPT}" "2.4.0"
 
-# 7. Test CLI Subcommand / Option Removal (MAJOR) and Help Edit (PATCH)
-echo "--- 7. CLI Option Removal & Modification ---"
-git checkout -b branch-cli "v2.3.27" --quiet
-cat << 'EOF' > src/cli/test_cli.cpp
-app.add_option("--old-flag", "old option");
-auto* sub = app.add_subcommand("test", "test command");
-sub->alias("t");
-EOF
-git add src/cli/test_cli.cpp
-git commit -m "feat: add cli options" --quiet
-git tag "v2.4.0"
-
-# 7a. Modify description only (should remain PATCH)
-sed -i 's/old option/improved description/' src/cli/test_cli.cpp
-git commit -am "docs: update option description" --quiet
-assert_success "CLI help text edit only remains PATCH 2.4.1" bash "${SEMVER_SCRIPT}" "2.4.1"
-assert_failure "CLI help text edit rejects unexpected MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-
-# 7b. Alias removal triggers MAJOR
-sed -i '/alias("t")/d' src/cli/test_cli.cpp
-git commit -am "chore: remove alias t" --quiet
-assert_success "CLI alias removal triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-assert_failure "CLI alias removal rejects PATCH 2.4.2" bash "${SEMVER_SCRIPT}" "2.4.2"
-
-# 7c. Option removal triggers MAJOR
-sed -i '/--old-flag/d' src/cli/test_cli.cpp
-git commit -am "chore: remove old flag" --quiet
-
-assert_success "CLI removal triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-assert_failure "CLI removal rejects MINOR 2.5.0" bash "${SEMVER_SCRIPT}" "2.5.0"
-assert_failure "CLI removal rejects PATCH 2.4.3" bash "${SEMVER_SCRIPT}" "2.4.3"
-
-# 8. Test D-Bus Interface Modifications
-echo "--- 8. D-Bus Interface Removal and Additions ---"
-git checkout -b branch-dbus "v2.4.0" --quiet
-cat << 'EOF' > src/addon/dbus/notifier_dbus_object.h
-FCITX_OBJECT_VTABLE_METHOD(Notify, vinput::dbus::kMethodNotify, vinput::dbus::kErrorInfoSignature, "");
-EOF
-git add src/addon/dbus/notifier_dbus_object.h
-git commit -m "feat: add notifier dbus object" --quiet
-git tag "v2.5.0"
-
-# 8a. Adding a new D-Bus method under a non-feat commit triggers MINOR
-cat << 'EOF' >> src/addon/dbus/notifier_dbus_object.h
-FCITX_OBJECT_VTABLE_METHOD(NotifyExtra, vinput::dbus::kMethodNotifyExtra, "", "");
-EOF
-git commit -am "chore: expose extra notifier dbus method" --quiet
-assert_success "New D-Bus method triggers MINOR 2.6.0" bash "${SEMVER_SCRIPT}" "2.6.0"
-assert_failure "New D-Bus method rejects PATCH 2.5.1" bash "${SEMVER_SCRIPT}" "2.5.1"
-git tag "v2.6.0"
-
-# 8b. Removing D-Bus method triggers MAJOR
-sed -i '/FCITX_OBJECT_VTABLE_METHOD(Notify,/d' src/addon/dbus/notifier_dbus_object.h
-git commit -am "refactor: drop notifier dbus method" --quiet
-
-assert_success "D-Bus removal triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-assert_failure "D-Bus removal rejects MINOR 2.7.0" bash "${SEMVER_SCRIPT}" "2.7.0"
-assert_failure "D-Bus removal rejects PATCH 2.6.1" bash "${SEMVER_SCRIPT}" "2.6.1"
-
-# 8c. Multiline signature modification triggers MAJOR
-git checkout -b branch-dbus-multiline "v2.5.0" --quiet
-cat << 'EOF' > src/addon/dbus/notifier_dbus_object.h
-FCITX_OBJECT_VTABLE_METHOD(
-    Notify,
-    vinput::dbus::kMethodNotify,
-    vinput::dbus::kErrorInfoSignature,
-    ""
-);
-EOF
-git add src/addon/dbus/notifier_dbus_object.h
-git commit -m "feat: use multiline notifier macro" --quiet
-git tag "v2.7.0"
-
-sed -i 's/""/"s"/' src/addon/dbus/notifier_dbus_object.h
-git commit -am "refactor: alter output signature parameter on continuation line" --quiet
-
-assert_success "Multiline D-Bus signature modification triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-assert_failure "Multiline D-Bus signature modification rejects PATCH 2.7.1" bash "${SEMVER_SCRIPT}" "2.7.1"
-assert_failure "Multiline D-Bus signature modification rejects MINOR 2.8.0" bash "${SEMVER_SCRIPT}" "2.8.0"
-
-# 8d. Internal diagnostic string modification in dbus_service.cpp remains PATCH
-git checkout -b branch-dbus-log "v2.5.0" --quiet
-mkdir -p src/daemon/runtime
-cat << 'EOF' > src/daemon/runtime/dbus_service.cpp
-static const sd_bus_vtable vtable[] = {
-    SD_BUS_VTABLE_START(0),
-    SD_BUS_METHOD(kMethodStartRecording, "", "", &DbusService::handleStartRecording, SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_VTABLE_END,
-};
-bool DbusService::Start() {
-    fprintf(stderr, "original diagnostic message\n");
-    return true;
-}
-EOF
-git add src/daemon/runtime/dbus_service.cpp
-git commit -m "feat: initial dbus service" --quiet
-git tag "v2.8.0"
-
-sed -i 's/original diagnostic message/updated diagnostic message/' src/daemon/runtime/dbus_service.cpp
-git commit -am "fix: update internal diagnostic string" --quiet
-
-assert_success "Internal diagnostic edit remains PATCH 2.8.1" bash "${SEMVER_SCRIPT}" "2.8.1"
-assert_failure "Internal diagnostic edit rejects MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-git tag "v2.8.1"
-
-# 8e. Internal callback handler rename in dbus_service.cpp remains PATCH
-sed -i 's/&DbusService::handleStartRecording/&DbusService::onStartRecording/' src/daemon/runtime/dbus_service.cpp
-git commit -am "refactor: rename internal C++ handler function" --quiet
-
-assert_success "Internal callback rename remains PATCH 2.8.2" bash "${SEMVER_SCRIPT}" "2.8.2"
-assert_failure "Internal callback rename rejects MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-
-# 8f. Multiline kErrorInfoSignature alteration triggers MAJOR
-git checkout -b branch-dbus-sig "v2.5.0" --quiet
-cat << 'EOF' > src/common/dbus/error_info.h
-constexpr char kErrorInfoSignature[] =
-    "ssss";
-EOF
-git add src/common/dbus/error_info.h
-git commit -m "feat: declare multiline signature" --quiet
-git tag "v2.9.0"
-
-sed -i 's/"ssss"/"sssss"/' src/common/dbus/error_info.h
-git commit -am "refactor: alter multiline signature value" --quiet
-
-assert_success "Multiline kErrorInfoSignature change triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-assert_failure "Multiline kErrorInfoSignature change rejects PATCH 2.9.1" bash "${SEMVER_SCRIPT}" "2.9.1"
-assert_failure "Multiline kErrorInfoSignature change rejects MINOR 2.10.0" bash "${SEMVER_SCRIPT}" "2.10.0"
-
-# 9. Test Shallow Clone Detection
-echo "--- 9. Shallow Clone Guard ---"
+# 7. Test Shallow Clone Detection
+echo "--- 7. Shallow Clone Guard ---"
 SHALLOW_DIR="$(mktemp -d)"
 git clone --depth 1 "file://${TEMP_DIR}" "${SHALLOW_DIR}" --quiet
 assert_failure "reject release validation on shallow clone" bash -c "cd '${SHALLOW_DIR}' && bash '${SEMVER_SCRIPT}' 3.0.0"
