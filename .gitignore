@@ -1,5 +1,4 @@
-build/
-builddir/
+build*/
 dist/
 packaging/arch/PKGBUILD
 packaging/arch/pkg/
