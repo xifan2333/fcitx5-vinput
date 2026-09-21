@@ -48,8 +48,8 @@ public:
   [[nodiscard]] bool isRecordingActive() const;
   [[nodiscard]] bool isHoldRecording() const;
   [[nodiscard]] bool isPendingStart() const;
-  [[nodiscard]] int matchKeyListIndex(const fcitx::Key& event_key, const fcitx::KeyList& list,
-                                      bool is_release) const;
+  [[nodiscard]] static int matchKeyListIndex(const fcitx::Key& event_key,
+                                             const fcitx::KeyList& list, bool is_release);
 
 private:
   void applySettings();

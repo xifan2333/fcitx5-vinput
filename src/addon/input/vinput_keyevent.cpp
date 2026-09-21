@@ -51,7 +51,7 @@ std::string DaemonNotRespondingPreeditText() {
 } // namespace
 
 int VinputEngine::matchKeyListIndex(const fcitx::Key& event_key, const fcitx::KeyList& list,
-                                    bool is_release) const {
+                                    bool is_release) {
   const int idx = event_key.keyListIndex(list);
   if (idx >= 0) {
     return idx;
