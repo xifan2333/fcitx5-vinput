@@ -149,12 +149,13 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
   eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextFocusOut,
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
-                              auto& icEvent = static_cast<fcitx::InputContextEvent&>(event);
-                              auto* ic = icEvent.inputContext();
-                              if (pending_start_ic_.get() == ic) {
-                                cancelPendingStart();
+                              if (auto* icEvent = dynamic_cast<fcitx::InputContextEvent*>(&event)) {
+                                auto* ic = icEvent->inputContext();
+                                if (pending_start_ic_.get() == ic) {
+                                  cancelPendingStart();
+                                }
+                                trigger_interrupted_ = true;
                               }
-                              trigger_interrupted_ = true;
                             }));
 
   eventHandlers_.emplace_back(
