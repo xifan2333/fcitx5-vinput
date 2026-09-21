@@ -116,8 +116,8 @@ extract_dbus_vtable_items() {
     tr -d '\n' | \
     sed 's/SD_BUS_/\nSD_BUS_/g' | \
     grep -E '^SD_BUS_(METHOD|SIGNAL)' | \
-    sed 's/,SD_BUS_VTABLE_.*//; s/,0.*//' | \
     tr -d ' \t' | \
+    sed -E 's/^SD_BUS_METHOD\(([^,]+),([^,]+),([^,]+).*/SD_BUS_METHOD(\1,\2,\3)/; s/^SD_BUS_SIGNAL\(([^,]+),([^,]+).*/SD_BUS_SIGNAL(\1,\2)/' | \
     sort -u || true
 }
 
@@ -143,7 +143,7 @@ extract_dbus_constants() {
 extract_error_info_sig() {
   local ref="$1"
   git show "${ref}:src/common/dbus/error_info.h" 2>/dev/null | \
-    grep 'kErrorInfoSignature' | \
+    sed -n '/kErrorInfoSignature/,/;/p' | \
     tr -d ' \t\n' || true
 }
 

@@ -212,6 +212,31 @@ git commit -am "fix: update internal diagnostic string" --quiet
 
 assert_success "Internal diagnostic edit remains PATCH 2.8.1" bash "${SEMVER_SCRIPT}" "2.8.1"
 assert_failure "Internal diagnostic edit rejects MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
+git tag "v2.8.1"
+
+# 8e. Internal callback handler rename in dbus_service.cpp remains PATCH
+sed -i 's/&DbusService::handleStartRecording/&DbusService::onStartRecording/' src/daemon/runtime/dbus_service.cpp
+git commit -am "refactor: rename internal C++ handler function" --quiet
+
+assert_success "Internal callback rename remains PATCH 2.8.2" bash "${SEMVER_SCRIPT}" "2.8.2"
+assert_failure "Internal callback rename rejects MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
+
+# 8f. Multiline kErrorInfoSignature alteration triggers MAJOR
+git checkout -b branch-dbus-sig "v2.5.0" --quiet
+cat << 'EOF' > src/common/dbus/error_info.h
+constexpr char kErrorInfoSignature[] =
+    "ssss";
+EOF
+git add src/common/dbus/error_info.h
+git commit -m "feat: declare multiline signature" --quiet
+git tag "v2.9.0"
+
+sed -i 's/"ssss"/"sssss"/' src/common/dbus/error_info.h
+git commit -am "refactor: alter multiline signature value" --quiet
+
+assert_success "Multiline kErrorInfoSignature change triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
+assert_failure "Multiline kErrorInfoSignature change rejects PATCH 2.9.1" bash "${SEMVER_SCRIPT}" "2.9.1"
+assert_failure "Multiline kErrorInfoSignature change rejects MINOR 2.10.0" bash "${SEMVER_SCRIPT}" "2.10.0"
 
 # 9. Test Shallow Clone Detection
 echo "--- 9. Shallow Clone Guard ---"
