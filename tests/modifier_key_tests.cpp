@@ -23,6 +23,10 @@ public:
       : fcitx::InputContext(instance.inputContextManager()) {
     created();
   }
+  TestInputContext(const TestInputContext&) = delete;
+  TestInputContext& operator=(const TestInputContext&) = delete;
+  TestInputContext(TestInputContext&&) = delete;
+  TestInputContext& operator=(TestInputContext&&) = delete;
   ~TestInputContext() override { destroy(); }
   [[nodiscard]] const char* frontend() const override { return "test"; }
 
