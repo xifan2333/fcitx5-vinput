@@ -16,3 +16,40 @@ target_link_libraries(test_pipewire_target PRIVATE
 )
 
 add_test(NAME test_pipewire_target COMMAND test_pipewire_target)
+
+find_package(Fcitx5ModuleDBus REQUIRED)
+find_package(Fcitx5ModuleClipboard REQUIRED)
+find_package(Fcitx5ModuleNotifications REQUIRED)
+
+add_executable(modifier_key_tests
+    modifier_key_tests.cpp
+    ${CMAKE_SOURCE_DIR}/src/addon/core/vinput.cpp
+    ${CMAKE_SOURCE_DIR}/src/addon/dbus/vinput_dbus.cpp
+    ${CMAKE_SOURCE_DIR}/src/addon/input/vinput_keyevent.cpp
+    ${CMAKE_SOURCE_DIR}/src/addon/menu/palette_command.cpp
+    ${CMAKE_SOURCE_DIR}/src/addon/menu/vinput_menu.cpp
+)
+
+target_include_directories(modifier_key_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/addon
+)
+
+find_package(Fcitx5Core REQUIRED)
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.12")
+    target_compile_definitions(modifier_key_tests PRIVATE VINPUT_FCITX5_CORE_HAVE_ADDON_FACTORY_V2)
+endif()
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.9")
+    target_compile_definitions(modifier_key_tests PRIVATE VINPUT_FCITX5_CORE_HAVE_SET_COMMENT)
+endif()
+
+target_link_libraries(modifier_key_tests PRIVATE
+    common
+    Fcitx5::Core
+    Fcitx5::Module::DBus
+    Fcitx5::Module::Clipboard
+    Fcitx5::Module::Notifications
+    ${SDBUS_LIBRARIES}
+)
+
+add_test(NAME modifier_key_tests COMMAND modifier_key_tests)

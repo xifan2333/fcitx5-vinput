@@ -125,12 +125,8 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                                 session_.reset();
                                 polled_idle_since_.reset();
                               }
-                              if (pending_modifier_.ic == ic) {
-                                if (modifier_hold_event_ && modifier_hold_event_->isEnabled()) {
-                                  modifier_hold_event_->setEnabled(false);
-                                }
-                                pending_modifier_.reset();
-                                modifier_hold_active_ = false;
+                              if (pending_start_ic_.get() == ic) {
+                                cancelPendingStart();
                               }
                               if (status_ic_ == ic) {
                                 status_ic_ = nullptr;
@@ -179,7 +175,6 @@ VinputEngine::~VinputEngine() {
   status_sync_event_.reset();
   pending_stop_event_.reset();
   pending_start_event_.reset();
-  modifier_hold_event_.reset();
 
   pending_stop_call_slot_.reset();
   pending_start_call_slot_.reset();
