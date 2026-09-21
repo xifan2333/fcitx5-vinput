@@ -153,8 +153,15 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                                 auto* ic = icEvent->inputContext();
                                 if (pending_start_ic_.get() == ic) {
                                   cancelPendingStart();
+                                  trigger_interrupted_ = true;
                                 }
-                                trigger_interrupted_ = true;
+                                if (session_ && session_->ic == ic) {
+                                  if (session_->stop_on_release) {
+                                    callCancelOperation(false);
+                                    finishFrontendSession(ic);
+                                    clearVoicePresentation(ic);
+                                  }
+                                }
                               }
                             }));
 

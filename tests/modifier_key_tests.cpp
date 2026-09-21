@@ -10,9 +10,11 @@
 #include <fcitx/instance.h>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <thread>
+#include <unistd.h>
 
 #include "core/vinput.h"
 
@@ -20,8 +22,7 @@ namespace {
 
 void expect(bool condition, const char* message) {
   if (!condition) {
-    std::cerr << "TEST FAILED: " << message << '\n';
-    std::exit(1);
+    throw std::runtime_error(message);
   }
 }
 
@@ -46,10 +47,13 @@ protected:
 };
 
 struct ScopedConfigDir {
-  std::filesystem::path dir{"/tmp/vinput_test_cfg"};
+  std::filesystem::path dir;
   ScopedConfigDir() {
     std::error_code ec;
+    dir = std::filesystem::temp_directory_path() /
+          ("vinput_cfg_test_" + std::to_string(static_cast<long>(getpid())));
     std::filesystem::create_directories(dir, ec);
+    setenv("XDG_CONFIG_HOME", dir.c_str(), 1);
   }
   ~ScopedConfigDir() {
     std::error_code ec;
@@ -138,6 +142,9 @@ void runAllTests() {
   // Press Trigger 1 (Alt_R)
   fcitx::KeyEvent multi_alt_p(&ic, fcitx::Key(FcitxKey_Alt_R), false);
   engine.handleKeyEvent(multi_alt_p);
+  expect(engine.isPendingStart(), "Alt_R arms pending start timer");
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Pressing Trigger 2 (F8) cancels Trigger 1 without ambiguity
   fcitx::KeyEvent multi_f8_p(&ic, fcitx::Key(FcitxKey_F8), false);
@@ -155,6 +162,11 @@ void runAllTests() {
 } // namespace
 
 int main() {
-  runAllTests();
+  try {
+    runAllTests();
+  } catch (const std::exception& e) {
+    std::cerr << "TEST FAILED: " << e.what() << '\n';
+    return 1;
+  }
   return 0;
 }
