@@ -7,7 +7,7 @@
 #include <pipewire/loop.h>
 #include <pipewire/main-loop.h>
 #include <pipewire/pipewire.h>
-#include <spa/pod/builder.h>
+#include <spa/support/loop.h>
 #include <spa/utils/dict.h>
 #include <string>
 #include <string_view>
@@ -145,19 +145,29 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   data.pending_sync = pw_core_sync(data.core, PW_ID_CORE, 0);
   if (data.pending_sync >= 0) {
     // Arm a 250ms bounded timer so enumeration never hangs if PipeWire is unresponsive.
-    pw_loop* loop = pw_main_loop_get_loop(data.loop);
-    spa_source* timer = pw_loop_add_timer(loop, on_enumeration_timeout, &data);
-    if (timer != nullptr) {
-      timespec value{};
-      value.tv_sec = 0;
-      value.tv_nsec = 250 * 1000 * 1000;
-      pw_loop_update_timer(loop, timer, &value, nullptr, false);
+    pw_loop* const loop = pw_main_loop_get_loop(data.loop);
+    spa_source* timer = nullptr;
+    const spa_loop_utils_methods* utils = nullptr;
+    void* u_data = nullptr;
+
+    if (loop != nullptr && loop->utils != nullptr && loop->utils->iface.cb.funcs != nullptr) {
+      utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
+      u_data = loop->utils->iface.cb.data;
+      if (utils->add_timer != nullptr && utils->update_timer != nullptr) {
+        timer = utils->add_timer(u_data, on_enumeration_timeout, &data);
+        if (timer != nullptr) {
+          timespec value{};
+          value.tv_sec = 0;
+          value.tv_nsec = 250'000'000L;
+          utils->update_timer(u_data, timer, &value, nullptr, false);
+        }
+      }
     }
 
     pw_main_loop_run(data.loop);
 
-    if (timer != nullptr) {
-      pw_loop_destroy_source(loop, timer);
+    if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
+      utils->destroy_source(u_data, timer);
     }
   }
 
