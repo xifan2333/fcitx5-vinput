@@ -1,5 +1,5 @@
 #include <chrono>
-#include <cstdlib>
+#include <exception>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
@@ -53,7 +53,6 @@ struct ScopedConfigDir {
     dir = std::filesystem::temp_directory_path() /
           ("vinput_cfg_test_" + std::to_string(static_cast<long>(getpid())));
     std::filesystem::create_directories(dir, ec);
-    setenv("XDG_CONFIG_HOME", dir.c_str(), 1);
   }
   ~ScopedConfigDir() {
     std::error_code ec;
