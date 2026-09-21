@@ -149,6 +149,7 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
     spa_source* timer = nullptr;
     const spa_loop_utils_methods* utils = nullptr;
     void* u_data = nullptr;
+    bool timer_armed = false;
 
     if (loop != nullptr && loop->utils != nullptr && loop->utils->iface.cb.funcs != nullptr) {
       utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
@@ -159,12 +160,17 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
           timespec value{};
           value.tv_sec = 0;
           value.tv_nsec = 250'000'000L;
-          utils->update_timer(u_data, timer, &value, nullptr, false);
+          if (utils->update_timer(u_data, timer, &value, nullptr, false) >= 0) {
+            timer_armed = true;
+          }
         }
       }
     }
 
-    pw_main_loop_run(data.loop);
+    // Only enter event loop if timeout protection is armed to prevent unbounded hang.
+    if (timer_armed) {
+      pw_main_loop_run(data.loop);
+    }
 
     if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
       utils->destroy_source(u_data, timer);

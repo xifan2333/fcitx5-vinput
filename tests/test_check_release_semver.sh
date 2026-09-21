@@ -189,6 +189,30 @@ assert_success "Multiline D-Bus signature modification triggers MAJOR 3.0.0" bas
 assert_failure "Multiline D-Bus signature modification rejects PATCH 2.7.1" bash "${SEMVER_SCRIPT}" "2.7.1"
 assert_failure "Multiline D-Bus signature modification rejects MINOR 2.8.0" bash "${SEMVER_SCRIPT}" "2.8.0"
 
+# 8d. Internal diagnostic string modification in dbus_service.cpp remains PATCH
+git checkout -b branch-dbus-log "v2.5.0" --quiet
+mkdir -p src/daemon/runtime
+cat << 'EOF' > src/daemon/runtime/dbus_service.cpp
+static const sd_bus_vtable vtable[] = {
+    SD_BUS_VTABLE_START(0),
+    SD_BUS_METHOD(kMethodStartRecording, "", "", &DbusService::handleStartRecording, SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_VTABLE_END,
+};
+bool DbusService::Start() {
+    fprintf(stderr, "original diagnostic message\n");
+    return true;
+}
+EOF
+git add src/daemon/runtime/dbus_service.cpp
+git commit -m "feat: initial dbus service" --quiet
+git tag "v2.8.0"
+
+sed -i 's/original diagnostic message/updated diagnostic message/' src/daemon/runtime/dbus_service.cpp
+git commit -am "fix: update internal diagnostic string" --quiet
+
+assert_success "Internal diagnostic edit remains PATCH 2.8.1" bash "${SEMVER_SCRIPT}" "2.8.1"
+assert_failure "Internal diagnostic edit rejects MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
+
 # 9. Test Shallow Clone Detection
 echo "--- 9. Shallow Clone Guard ---"
 SHALLOW_DIR="$(mktemp -d)"

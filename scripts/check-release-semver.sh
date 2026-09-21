@@ -107,11 +107,73 @@ extract_cli_tokens() {
     sort -u
 }
 
+# Extract normalized D-Bus public interface declarations from a git ref
+extract_dbus_vtable_items() {
+  local ref="$1"
+  git show "${ref}:src/daemon/runtime/dbus_service.cpp" 2>/dev/null | \
+    sed -n '/sd_bus_vtable vtable/,/SD_BUS_VTABLE_END/p' | \
+    grep -v '^[[:space:]]*//' | \
+    tr -d '\n' | \
+    sed 's/SD_BUS_/\nSD_BUS_/g' | \
+    grep -E '^SD_BUS_(METHOD|SIGNAL)' | \
+    sed 's/,SD_BUS_VTABLE_.*//; s/,0.*//' | \
+    tr -d ' \t' | \
+    sort -u || true
+}
+
+extract_notifier_methods() {
+  local ref="$1"
+  git show "${ref}:src/addon/dbus/notifier_dbus_object.h" 2>/dev/null | \
+    tr -d '\n' | \
+    sed 's/FCITX_OBJECT_VTABLE_METHOD/\nFCITX_OBJECT_VTABLE_METHOD/g' | \
+    grep '^FCITX_OBJECT_VTABLE_METHOD' | \
+    sed 's/);.*/);/' | \
+    tr -d ' \t' | \
+    sort -u || true
+}
+
+extract_dbus_constants() {
+  local ref="$1"
+  git show "${ref}:src/common/dbus/dbus_interface.h" 2>/dev/null | \
+    grep -E 'k(Method|Signal)[A-Za-z0-9_]+[[:space:]]*=' | \
+    sed -E 's/[[:space:]]+//g' | \
+    sort -u || true
+}
+
+extract_error_info_sig() {
+  local ref="$1"
+  git show "${ref}:src/common/dbus/error_info.h" 2>/dev/null | \
+    grep 'kErrorInfoSignature' | \
+    tr -d ' \t\n' || true
+}
+
 base_cli_tokens=""
 target_cli_tokens=""
 if echo "${changed_files}" | grep -E "^src/cli/" >/dev/null 2>&1; then
   base_cli_tokens="$(extract_cli_tokens "${last_tag}")"
   target_cli_tokens="$(extract_cli_tokens "${target_ref}")"
+fi
+
+dbus_files_changed=false
+base_vtable=""
+target_vtable=""
+base_notifier=""
+target_notifier=""
+base_dbus_consts=""
+target_dbus_consts=""
+base_err_sig=""
+target_err_sig=""
+
+if echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/daemon/runtime/dbus_service\.cpp|src/addon/dbus/notifier_dbus_object\.h|src/common/dbus/error_info\.h)$" >/dev/null 2>&1; then
+  dbus_files_changed=true
+  base_vtable="$(extract_dbus_vtable_items "${last_tag}")"
+  target_vtable="$(extract_dbus_vtable_items "${target_ref}")"
+  base_notifier="$(extract_notifier_methods "${last_tag}")"
+  target_notifier="$(extract_notifier_methods "${target_ref}")"
+  base_dbus_consts="$(extract_dbus_constants "${last_tag}")"
+  target_dbus_consts="$(extract_dbus_constants "${target_ref}")"
+  base_err_sig="$(extract_error_info_sig "${last_tag}")"
+  target_err_sig="$(extract_error_info_sig "${target_ref}")"
 fi
 
 reasons=()
@@ -122,14 +184,23 @@ if echo "${full_commits}" | grep -Ei "BREAKING[ -]CHANGE:" >/dev/null 2>&1 || \
    echo "${commit_onelines}" | grep -E "^[a-f0-9]+ [a-z]+(\(.*\))?!:" >/dev/null 2>&1; then
   reasons+=("Explicit breaking change syntax detected in commit history (BREAKING CHANGE or feat!:).")
   required_level="MAJOR"
-elif echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/daemon/runtime/dbus_service\.cpp|src/addon/dbus/notifier_dbus_object\.h|src/common/dbus/error_info\.h)$" >/dev/null 2>&1; then
-  if git diff "${last_tag}..${target_ref}" -- \
-     "src/common/dbus/dbus_interface.h" \
-     "src/daemon/runtime/dbus_service.cpp" \
-     "src/addon/dbus/notifier_dbus_object.h" \
-     "src/common/dbus/error_info.h" | \
-     grep -E "^\-.*(kMethod|kSignal|SD_BUS_METHOD|SD_BUS_SIGNAL|SD_BUS_VTABLE|FCITX_OBJECT_VTABLE_METHOD|kErrorInfoSignature|\"[^\"]*\")" >/dev/null 2>&1; then
-    reasons+=("Exported D-Bus method, signal, or signature definition removed or modified.")
+elif [ "${dbus_files_changed}" = true ]; then
+  # Check if existing exported D-Bus definitions or signatures were removed or altered
+  removed_vtable="$(comm -23 <(echo "${base_vtable}") <(echo "${target_vtable}") | grep -v '^[[:space:]]*$' || true)"
+  removed_consts="$(comm -23 <(echo "${base_dbus_consts}") <(echo "${target_dbus_consts}") | grep -v '^[[:space:]]*$' || true)"
+  removed_notifier="$(comm -23 <(echo "${base_notifier}") <(echo "${target_notifier}") | grep -v '^[[:space:]]*$' || true)"
+
+  if [ -n "${removed_vtable}" ]; then
+    reasons+=("Exported D-Bus method or signal removed or signature altered in dbus_service.cpp.")
+    required_level="MAJOR"
+  elif [ -n "${removed_consts}" ]; then
+    reasons+=("Exported D-Bus method or signal constant removed or renamed in dbus_interface.h.")
+    required_level="MAJOR"
+  elif [ -n "${removed_notifier}" ]; then
+    reasons+=("Exported notifier D-Bus method definition removed or modified in notifier_dbus_object.h.")
+    required_level="MAJOR"
+  elif [ -n "${base_err_sig}" ] && [ "${base_err_sig}" != "${target_err_sig}" ]; then
+    reasons+=("D-Bus kErrorInfoSignature definition altered in error_info.h.")
     required_level="MAJOR"
   fi
 fi
@@ -167,14 +238,12 @@ if [ "${required_level}" != "MAJOR" ]; then
   fi
 
   # Rule Y-4: new exported D-Bus methods or signals added
-  if echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/daemon/runtime/dbus_service\.cpp|src/addon/dbus/notifier_dbus_object\.h|src/common/dbus/error_info\.h)$" >/dev/null 2>&1; then
-    if git diff "${last_tag}..${target_ref}" -- \
-       "src/common/dbus/dbus_interface.h" \
-       "src/daemon/runtime/dbus_service.cpp" \
-       "src/addon/dbus/notifier_dbus_object.h" \
-       "src/common/dbus/error_info.h" | \
-       grep -E "^\+.*(kMethod|kSignal|SD_BUS_METHOD|SD_BUS_SIGNAL|FCITX_OBJECT_VTABLE_METHOD)" >/dev/null 2>&1; then
-      reasons+=("New exported D-Bus method or signal definition added.")
+  if [ "${dbus_files_changed}" = true ]; then
+    added_vtable="$(comm -13 <(echo "${base_vtable}") <(echo "${target_vtable}") | grep -v '^[[:space:]]*$' || true)"
+    added_consts="$(comm -13 <(echo "${base_dbus_consts}") <(echo "${target_dbus_consts}") | grep -v '^[[:space:]]*$' || true)"
+    added_notifier="$(comm -13 <(echo "${base_notifier}") <(echo "${target_notifier}") | grep -v '^[[:space:]]*$' || true)"
+    if [ -n "${added_vtable}" ] || [ -n "${added_consts}" ] || [ -n "${added_notifier}" ]; then
+      reasons+=("New exported D-Bus method, signal, or constant added.")
       required_level="MINOR"
     fi
   fi
