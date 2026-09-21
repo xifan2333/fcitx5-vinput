@@ -10,11 +10,9 @@
 #include <fcitx/instance.h>
 #include <filesystem>
 #include <iostream>
-#include <stdlib.h>
 #include <string>
 #include <system_error>
 #include <thread>
-#include <unistd.h>
 
 #include "core/vinput.h"
 
