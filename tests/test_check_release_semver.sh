@@ -109,26 +109,40 @@ git commit -am $'chore: adjust internal pipeline\n\nBREAKING CHANGE: overhaul pi
 assert_success "BREAKING CHANGE: triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
 assert_failure "BREAKING CHANGE: rejects MINOR 2.4.0" bash "${SEMVER_SCRIPT}" "2.4.0"
 
-# 7. Test CLI Subcommand / Option Removal (MAJOR)
-echo "--- 7. CLI Option Removal Triggers MAJOR ---"
+# 7. Test CLI Subcommand / Option Removal (MAJOR) and Help Edit (PATCH)
+echo "--- 7. CLI Option Removal & Modification ---"
 git checkout -b branch-cli "v2.3.27" --quiet
 cat << 'EOF' > src/cli/test_cli.cpp
 app.add_option("--old-flag", "old option");
-app.add_subcommand("test", "test command");
+auto* sub = app.add_subcommand("test", "test command");
+sub->alias("t");
 EOF
 git add src/cli/test_cli.cpp
 git commit -m "feat: add cli options" --quiet
 git tag "v2.4.0"
 
+# 7a. Modify description only (should remain PATCH)
+sed -i 's/old option/improved description/' src/cli/test_cli.cpp
+git commit -am "docs: update option description" --quiet
+assert_success "CLI help text edit only remains PATCH 2.4.1" bash "${SEMVER_SCRIPT}" "2.4.1"
+assert_failure "CLI help text edit rejects unexpected MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
+
+# 7b. Alias removal triggers MAJOR
+sed -i '/alias("t")/d' src/cli/test_cli.cpp
+git commit -am "chore: remove alias t" --quiet
+assert_success "CLI alias removal triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
+assert_failure "CLI alias removal rejects PATCH 2.4.2" bash "${SEMVER_SCRIPT}" "2.4.2"
+
+# 7c. Option removal triggers MAJOR
 sed -i '/--old-flag/d' src/cli/test_cli.cpp
 git commit -am "chore: remove old flag" --quiet
 
 assert_success "CLI removal triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
 assert_failure "CLI removal rejects MINOR 2.5.0" bash "${SEMVER_SCRIPT}" "2.5.0"
-assert_failure "CLI removal rejects PATCH 2.4.1" bash "${SEMVER_SCRIPT}" "2.4.1"
+assert_failure "CLI removal rejects PATCH 2.4.3" bash "${SEMVER_SCRIPT}" "2.4.3"
 
-# 8. Test D-Bus Notifier Method Removal (MAJOR)
-echo "--- 8. D-Bus Interface Removal Triggers MAJOR ---"
+# 8. Test D-Bus Interface Modifications
+echo "--- 8. D-Bus Interface Removal and Additions ---"
 git checkout -b branch-dbus "v2.4.0" --quiet
 cat << 'EOF' > src/addon/dbus/notifier_dbus_object.h
 FCITX_OBJECT_VTABLE_METHOD(Notify, vinput::dbus::kMethodNotify, vinput::dbus::kErrorInfoSignature, "");
@@ -137,11 +151,28 @@ git add src/addon/dbus/notifier_dbus_object.h
 git commit -m "feat: add notifier dbus object" --quiet
 git tag "v2.5.0"
 
-sed -i '/FCITX_OBJECT_VTABLE_METHOD/d' src/addon/dbus/notifier_dbus_object.h
+# 8a. Adding a new D-Bus method under a non-feat commit triggers MINOR
+cat << 'EOF' >> src/addon/dbus/notifier_dbus_object.h
+FCITX_OBJECT_VTABLE_METHOD(NotifyExtra, vinput::dbus::kMethodNotifyExtra, "", "");
+EOF
+git commit -am "chore: expose extra notifier dbus method" --quiet
+assert_success "New D-Bus method triggers MINOR 2.6.0" bash "${SEMVER_SCRIPT}" "2.6.0"
+assert_failure "New D-Bus method rejects PATCH 2.5.1" bash "${SEMVER_SCRIPT}" "2.5.1"
+git tag "v2.6.0"
+
+# 8b. Removing D-Bus method triggers MAJOR
+sed -i '/FCITX_OBJECT_VTABLE_METHOD(Notify,/d' src/addon/dbus/notifier_dbus_object.h
 git commit -am "refactor: drop notifier dbus method" --quiet
 
 assert_success "D-Bus removal triggers MAJOR 3.0.0" bash "${SEMVER_SCRIPT}" "3.0.0"
-assert_failure "D-Bus removal rejects MINOR 2.6.0" bash "${SEMVER_SCRIPT}" "2.6.0"
-assert_failure "D-Bus removal rejects PATCH 2.5.1" bash "${SEMVER_SCRIPT}" "2.5.1"
+assert_failure "D-Bus removal rejects MINOR 2.7.0" bash "${SEMVER_SCRIPT}" "2.7.0"
+assert_failure "D-Bus removal rejects PATCH 2.6.1" bash "${SEMVER_SCRIPT}" "2.6.1"
+
+# 9. Test Shallow Clone Detection
+echo "--- 9. Shallow Clone Guard ---"
+SHALLOW_DIR="$(mktemp -d)"
+git clone --depth 1 "file://${TEMP_DIR}" "${SHALLOW_DIR}" --quiet
+assert_failure "reject release validation on shallow clone" bash -c "cd '${SHALLOW_DIR}' && bash '${SEMVER_SCRIPT}' 3.0.0"
+rm -rf "${SHALLOW_DIR}"
 
 echo "=== All Semantic Versioning Guard Tests Passed Successfully! ==="

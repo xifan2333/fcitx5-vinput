@@ -32,6 +32,12 @@ t_major=$((10#${BASH_REMATCH[1]}))
 t_minor=$((10#${BASH_REMATCH[2]}))
 t_patch=$((10#${BASH_REMATCH[3]}))
 
+# Detect shallow repositories early to prevent validating against truncated/stale history
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || true)" = "true" ]; then
+  echo "ERROR [semver-guard]: Shallow repository detected. Please run 'git fetch --unshallow --tags' before validating release." >&2
+  exit 1
+fi
+
 # Check if any release tags exist in repository
 all_release_tags="$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)"
 
@@ -59,11 +65,6 @@ if [ -z "${last_tag}" ]; then
 fi
 
 if [ -z "${last_tag}" ]; then
-  if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || true)" = "true" ]; then
-    echo "ERROR [semver-guard]: Shallow repository detected without baseline release tags. Please run 'git fetch --unshallow --tags' before validating release." >&2
-    exit 1
-  fi
-
   if [ -n "${all_release_tags}" ]; then
     tag_commit="$(git rev-parse -q --verify "refs/tags/v${target_version}^{commit}" 2>/dev/null || true)"
     target_commit="$(git rev-parse -q --verify "${target_ref}^{commit}" 2>/dev/null || true)"
@@ -98,6 +99,21 @@ changed_files="$(git diff "${last_tag}..${target_ref}" --name-only || true)"
 full_commits="$(git log "${last_tag}..${target_ref}" || true)"
 commit_onelines="$(git log "${last_tag}..${target_ref}" --oneline || true)"
 
+# Extract CLI public command, option, flag, and alias tokens from a git ref
+extract_cli_tokens() {
+  local ref="$1"
+  git grep -E -h '(add_subcommand|add_option|add_flag|alias)\s*\(\s*"' "${ref}" -- "src/cli" 2>/dev/null | \
+    sed -E -n 's/.*(add_subcommand|add_option|add_flag|alias)[[:space:]]*\([[:space:]]*"([^",]+)".*/\2/p' | \
+    sort -u
+}
+
+base_cli_tokens=""
+target_cli_tokens=""
+if echo "${changed_files}" | grep -E "^src/cli/" >/dev/null 2>&1; then
+  base_cli_tokens="$(extract_cli_tokens "${last_tag}")"
+  target_cli_tokens="$(extract_cli_tokens "${target_ref}")"
+fi
+
 reasons=()
 required_level="PATCH"
 
@@ -118,13 +134,12 @@ elif echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/
   fi
 fi
 
-if [ "${required_level}" != "MAJOR" ]; then
-  # Check if existing CLI options or subcommands were removed or renamed (breaking change)
-  if echo "${changed_files}" | grep -E "^src/cli/" >/dev/null 2>&1; then
-    if git diff "${last_tag}..${target_ref}" -- "src/cli" | grep -E "^\-.*(add_subcommand|add_option|add_flag)" >/dev/null 2>&1; then
-      reasons+=("Public CLI subcommand or option removed or renamed.")
-      required_level="MAJOR"
-    fi
+if [ "${required_level}" != "MAJOR" ] && [ -n "${base_cli_tokens}" ]; then
+  # Check if existing CLI options, subcommands, or aliases were removed or renamed
+  removed_cli_tokens="$(comm -23 <(echo "${base_cli_tokens}") <(echo "${target_cli_tokens}") | grep -v '^[[:space:]]*$' || true)"
+  if [ -n "${removed_cli_tokens}" ]; then
+    reasons+=("Public CLI subcommand, option, or alias removed or renamed: $(echo ${removed_cli_tokens} | tr '\n' ' ').")
+    required_level="MAJOR"
   fi
 fi
 
@@ -142,15 +157,29 @@ if [ "${required_level}" != "MAJOR" ]; then
     required_level="MINOR"
   fi
 
-  # Rule Y-3: new subcommands or options added in src/cli/
-  if echo "${changed_files}" | grep -E "^src/cli/" >/dev/null 2>&1; then
-    if git diff "${last_tag}..${target_ref}" -- "src/cli" | grep -E "^\+.*(add_subcommand|add_option|add_flag)" >/dev/null 2>&1; then
-      reasons+=("New CLI subcommands or option flags added in src/cli/.")
+  # Rule Y-3: new subcommands, options, or aliases added in src/cli/
+  if [ -n "${target_cli_tokens}" ]; then
+    added_cli_tokens="$(comm -13 <(echo "${base_cli_tokens}") <(echo "${target_cli_tokens}") | grep -v '^[[:space:]]*$' || true)"
+    if [ -n "${added_cli_tokens}" ]; then
+      reasons+=("New CLI subcommands, options, or aliases added in src/cli/: $(echo ${added_cli_tokens} | tr '\n' ' ').")
       required_level="MINOR"
     fi
   fi
 
-  # Rule Y-4: conventional commit feat
+  # Rule Y-4: new exported D-Bus methods or signals added
+  if echo "${changed_files}" | grep -E "^(src/common/dbus/dbus_interface\.h|src/daemon/runtime/dbus_service\.cpp|src/addon/dbus/notifier_dbus_object\.h|src/common/dbus/error_info\.h)$" >/dev/null 2>&1; then
+    if git diff "${last_tag}..${target_ref}" -- \
+       "src/common/dbus/dbus_interface.h" \
+       "src/daemon/runtime/dbus_service.cpp" \
+       "src/addon/dbus/notifier_dbus_object.h" \
+       "src/common/dbus/error_info.h" | \
+       grep -E "^\+.*(kMethod|kSignal|SD_BUS_METHOD|SD_BUS_SIGNAL|FCITX_OBJECT_VTABLE_METHOD)" >/dev/null 2>&1; then
+      reasons+=("New exported D-Bus method or signal definition added.")
+      required_level="MINOR"
+    fi
+  fi
+
+  # Rule Y-5: conventional commit feat
   if echo "${commit_onelines}" | grep -E "^[a-f0-9]+ feat(\(.*\))?:" >/dev/null 2>&1; then
     reasons+=("New feature commit (feat:) detected in commit history.")
     required_level="MINOR"
