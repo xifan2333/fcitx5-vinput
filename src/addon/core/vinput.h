@@ -45,6 +45,10 @@ public:
   void setConfig(const fcitx::RawConfig& config) override;
   void handleKeyEvent(fcitx::Event& event);
 
+  [[nodiscard]] bool isRecordingActive() const;
+  [[nodiscard]] bool isHoldRecording() const;
+  [[nodiscard]] bool isPendingStart() const;
+
 private:
   void applySettings();
   void reloadSceneConfig();
@@ -144,7 +148,8 @@ private:
   fcitx::KeyList trigger_keys_{fcitx::Key(FcitxKey_Alt_R)};
   fcitx::KeyList command_keys_{fcitx::Key(FcitxKey_Control_R)};
   fcitx::KeyList menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
-  std::chrono::milliseconds hold_activation_delay_{300};
+  std::optional<fcitx::Key> active_trigger_key_;
+  bool trigger_interrupted_ = false;
 
   void startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command);
 

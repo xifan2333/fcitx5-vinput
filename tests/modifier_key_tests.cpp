@@ -1,4 +1,3 @@
-#include <cassert>
 #include <cstdlib>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/key.h>
@@ -8,14 +7,22 @@
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/instance.h>
+#include <filesystem>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <vector>
 
-#define private public
 #include "core/vinput.h"
-#undef private
 
 namespace {
+
+void expect(bool condition, const char* message) {
+  if (!condition) {
+    std::cerr << "TEST FAILED: " << message << std::endl;
+    std::exit(1);
+  }
+}
 
 class TestInputContext : public fcitx::InputContext {
 public:
@@ -37,7 +44,31 @@ protected:
   void updatePreeditImpl() override {}
 };
 
-void testExclusiveTriggerConsumption() {
+struct ScopedConfigDir {
+  std::filesystem::path dir;
+  ScopedConfigDir() {
+    char tpl[] = "/tmp/vinput_test_cfg_XXXXXX";
+    char* res = mkdtemp(tpl);
+    if (res != nullptr) {
+      dir = res;
+      setenv("XDG_CONFIG_HOME", dir.c_str(), 1);
+    }
+  }
+  ~ScopedConfigDir() {
+    if (!dir.empty()) {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+    }
+  }
+  ScopedConfigDir(const ScopedConfigDir&) = delete;
+  ScopedConfigDir& operator=(const ScopedConfigDir&) = delete;
+  ScopedConfigDir(ScopedConfigDir&&) = delete;
+  ScopedConfigDir& operator=(ScopedConfigDir&&) = delete;
+};
+
+void runAllTests() {
+  ScopedConfigDir sandbox;
+
   char arg0[] = "vinput-modifier-test";
   char arg1[] = "--disable=all";
   char* argv[] = {arg0, arg1, nullptr};
@@ -48,62 +79,88 @@ void testExclusiveTriggerConsumption() {
 
   fcitx::RawConfig test_config;
   test_config.setValueByPath("TriggerKey/0", "Alt_R");
-  test_config.setValueByPath("TriggerMode", "Both");
+  test_config.setValueByPath("TriggerKey/1", "F8");
+  test_config.setValueByPath("CommandKeys/0", "Control_R");
+  test_config.setValueByPath("MenuKey/0", "Shift_R");
   engine.setConfig(test_config);
 
-  // 1. Trigger key (Alt_R) must be exclusively consumed on press and release
+  std::cout << "--- 1. Testing Single-Modifier Tap (Start & Stop) ---" << std::endl;
+  // Press Alt_R -> arms pending timer, exclusively consumed
   fcitx::KeyEvent press_alt(&ic, fcitx::Key(FcitxKey_Alt_R), false);
   engine.handleKeyEvent(press_alt);
-  assert(press_alt.filtered() && press_alt.accepted());
+  expect(press_alt.filtered() && press_alt.accepted(),
+         "Trigger press must be exclusively consumed");
+  expect(engine.isPendingStart(), "Pressing trigger should arm pending start timer");
 
+  // Release Alt_R quickly (< 300ms) -> Clean Tap triggers voice recording!
   fcitx::KeyEvent release_alt(&ic, fcitx::Key(FcitxKey_Alt_R), true);
   engine.handleKeyEvent(release_alt);
-  assert(release_alt.filtered() && release_alt.accepted());
+  expect(release_alt.filtered() && release_alt.accepted(),
+         "Trigger release must be exclusively consumed");
+  expect(!engine.isPendingStart(), "Pending start timer should be cleared on tap release");
 
-  // 2. Regular keys and non-trigger modifiers (Alt_L + T) must pass untouched to application
-  fcitx::KeyEvent press_alt_l(&ic, fcitx::Key(FcitxKey_Alt_L), false);
-  engine.handleKeyEvent(press_alt_l);
-  assert(!press_alt_l.filtered() && !press_alt_l.accepted());
+  std::cout << "--- 2. Testing Alt_R + T Shortcut Combination (Chord Interruption) ---"
+            << std::endl;
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  // Press Alt_R
+  fcitx::KeyEvent chord_alt_p(&ic, fcitx::Key(FcitxKey_Alt_R), false);
+  engine.handleKeyEvent(chord_alt_p);
+  expect(chord_alt_p.filtered() && chord_alt_p.accepted(), "Alt_R press is consumed");
+  expect(engine.isPendingStart(), "Pending start timer armed");
 
-  fcitx::KeyEvent press_t(&ic, fcitx::Key(FcitxKey_t, fcitx::KeyState::Alt), false);
-  engine.handleKeyEvent(press_t);
-  assert(!press_t.filtered() && !press_t.accepted());
+  // While Alt_R is held, user presses 'T' (e.g. Firefox Tools menu shortcut)
+  fcitx::KeyEvent chord_t_p(&ic, fcitx::Key(FcitxKey_t, fcitx::KeyState::Alt), false);
+  engine.handleKeyEvent(chord_t_p);
+  expect(!chord_t_p.filtered() && !chord_t_p.accepted(),
+         "T key must pass untouched to application");
+  expect(!engine.isPendingStart(), "Intervening non-trigger key must cancel pending start timer");
 
-  fcitx::KeyEvent release_t(&ic, fcitx::Key(FcitxKey_t, fcitx::KeyState::Alt), true);
-  engine.handleKeyEvent(release_t);
-  assert(!release_t.filtered() && !release_t.accepted());
+  // User releases 'T'
+  fcitx::KeyEvent chord_t_r(&ic, fcitx::Key(FcitxKey_t, fcitx::KeyState::Alt), true);
+  engine.handleKeyEvent(chord_t_r);
+  expect(!chord_t_r.filtered() && !chord_t_r.accepted(), "T release passes untouched");
 
-  fcitx::KeyEvent release_alt_l(&ic, fcitx::Key(FcitxKey_Alt_L), true);
-  engine.handleKeyEvent(release_alt_l);
-  assert(!release_alt_l.filtered() && !release_alt_l.accepted());
+  // User releases Alt_R -> Because it was interrupted, it must NEVER trigger voice recording!
+  fcitx::KeyEvent chord_alt_r(&ic, fcitx::Key(FcitxKey_Alt_R), true);
+  engine.handleKeyEvent(chord_alt_r);
+  expect(chord_alt_r.filtered() && chord_alt_r.accepted(),
+         "Interrupted Alt_R release is consumed without trigger");
+  expect(!engine.isRecordingActive(), "Chord release must not start recording");
 
-  // 3. Tap mode stop recording must cleanly consume both press and release
-  test_config.setValueByPath("TriggerMode", "Tap");
-  engine.setConfig(test_config);
+  std::cout << "--- 3. Testing Non-Trigger Regular Keys (Alt_L + T) Pass-through ---" << std::endl;
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  // Left Alt (not in TriggerKey list) must pass through untouched
+  fcitx::KeyEvent left_alt_p(&ic, fcitx::Key(FcitxKey_Alt_L), false);
+  engine.handleKeyEvent(left_alt_p);
+  expect(!left_alt_p.filtered() && !left_alt_p.accepted(), "Left Alt must pass through to app");
 
-  fcitx::KeyEvent tap_start_p(&ic, fcitx::Key(FcitxKey_Alt_R), false);
-  engine.handleKeyEvent(tap_start_p);
-  assert(tap_start_p.filtered() && tap_start_p.accepted());
+  fcitx::KeyEvent left_alt_r(&ic, fcitx::Key(FcitxKey_Alt_L), true);
+  engine.handleKeyEvent(left_alt_r);
+  expect(!left_alt_r.filtered() && !left_alt_r.accepted(),
+         "Left Alt release must pass through to app");
 
-  fcitx::KeyEvent tap_start_r(&ic, fcitx::Key(FcitxKey_Alt_R), true);
-  engine.handleKeyEvent(tap_start_r);
-  assert(tap_start_r.filtered() && tap_start_r.accepted());
+  std::cout << "--- 4. Testing Multi-Trigger Isolation ---" << std::endl;
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  // Press Trigger 1 (Alt_R)
+  fcitx::KeyEvent multi_alt_p(&ic, fcitx::Key(FcitxKey_Alt_R), false);
+  engine.handleKeyEvent(multi_alt_p);
 
-  // Second tap to stop recording
-  fcitx::KeyEvent tap_stop_p(&ic, fcitx::Key(FcitxKey_Alt_R), false);
-  engine.handleKeyEvent(tap_stop_p);
-  assert(tap_stop_p.filtered() && tap_stop_p.accepted());
+  // Pressing Trigger 2 (F8) cancels Trigger 1 without ambiguity
+  fcitx::KeyEvent multi_f8_p(&ic, fcitx::Key(FcitxKey_F8), false);
+  engine.handleKeyEvent(multi_f8_p);
+  expect(multi_f8_p.filtered() && multi_f8_p.accepted(), "F8 press is consumed");
 
-  fcitx::KeyEvent tap_stop_r(&ic, fcitx::Key(FcitxKey_Alt_R), true);
-  engine.handleKeyEvent(tap_stop_r);
-  assert(tap_stop_r.filtered() && tap_stop_r.accepted());
+  // Releasing F8
+  fcitx::KeyEvent multi_f8_r(&ic, fcitx::Key(FcitxKey_F8), true);
+  engine.handleKeyEvent(multi_f8_r);
+  expect(multi_f8_r.filtered() && multi_f8_r.accepted(), "F8 release is consumed");
 
-  std::cout << "All exclusive trigger key tests passed successfully!\n";
+  std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }
 
 } // namespace
 
 int main() {
-  testExclusiveTriggerConsumption();
+  runAllTests();
   return 0;
 }

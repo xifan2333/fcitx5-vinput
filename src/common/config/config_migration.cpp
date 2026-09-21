@@ -209,6 +209,13 @@ const std::vector<MigrationStep>& RegisteredSteps() {
             }
           },
       },
+      {
+          "v2.4.0",
+          "Remove obsolete HoldActivationDelay from addon conf",
+          [](json& /*j*/, std::string& ini, std::vector<MigrationChange>& ch) {
+            RemoveIniKey(ini, "HoldActivationDelay", ch);
+          },
+      },
   };
   return kSteps;
 }

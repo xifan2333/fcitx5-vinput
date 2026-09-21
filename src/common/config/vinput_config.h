@@ -46,8 +46,5 @@ public:
   fcitx::Option<int, fcitx::IntConstrain, fcitx::DefaultMarshaller<int>, fcitx::ToolTipAnnotation>
       maxStreamingDisplayWidth;
 
-  fcitx::Option<int, fcitx::IntConstrain, fcitx::DefaultMarshaller<int>, fcitx::ToolTipAnnotation>
-      holdActivationDelay;
-
   fcitx::ExternalOption modelManager;
 };

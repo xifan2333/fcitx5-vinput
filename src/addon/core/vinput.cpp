@@ -147,6 +147,17 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                             }));
 
   eventHandlers_.emplace_back(
+      instance_->watchEvent(fcitx::EventType::InputContextFocusOut,
+                            fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
+                              auto& icEvent = static_cast<fcitx::InputContextEvent&>(event);
+                              auto* ic = icEvent.inputContext();
+                              if (pending_start_ic_.get() == ic) {
+                                cancelPendingStart();
+                              }
+                              trigger_interrupted_ = true;
+                            }));
+
+  eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextCommitString,
                             fcitx::EventWatcherPhase::PostInputMethod, [this](fcitx::Event& event) {
                               auto& commitEvent = static_cast<fcitx::CommitStringEvent&>(event);
@@ -217,7 +228,6 @@ void VinputEngine::applySettings() {
   page_next_keys_ = config_.pageNextKeys.value();
   trigger_mode_ = config_.triggerMode.value();
   max_streaming_display_width_ = config_.maxStreamingDisplayWidth.value();
-  hold_activation_delay_ = std::chrono::milliseconds(config_.holdActivationDelay.value());
   reloadSceneConfig();
   reloadPaletteItems();
 }
@@ -395,6 +405,19 @@ void VinputEngine::onCommitString(const std::string& text, fcitx::InputContext* 
     }
   }
   accumulateContextBuffer(text, ic);
+}
+
+bool VinputEngine::isRecordingActive() const {
+  return session_.has_value() && (session_->phase == Session::Phase::Recording ||
+                                  session_->phase == Session::Phase::PendingStart);
+}
+
+bool VinputEngine::isHoldRecording() const {
+  return session_.has_value() && session_->stop_on_release;
+}
+
+bool VinputEngine::isPendingStart() const {
+  return pending_start_event_ && pending_start_event_->isEnabled();
 }
 
 fcitx::AddonInstance* VinputEngineFactory::create(fcitx::AddonManager* manager) {
