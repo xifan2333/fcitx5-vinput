@@ -31,21 +31,6 @@ constexpr auto kReleaseDebounce = std::chrono::milliseconds(500);
 constexpr auto kTriggerDebounce = std::chrono::milliseconds(80);
 constexpr auto kTapMaxHoldDuration = std::chrono::milliseconds(200);
 
-int MatchKeyListIndex(const fcitx::Key& event_key, const fcitx::KeyList& list) {
-  const int idx = event_key.keyListIndex(list);
-  if (idx >= 0) {
-    return idx;
-  }
-  if (event_key.isModifier()) {
-    for (std::size_t i = 0; i < list.size(); ++i) {
-      if (list[i].isModifier() && list[i].sym() == event_key.sym()) {
-        return static_cast<int>(i);
-      }
-    }
-  }
-  return -1;
-}
-
 std::string NoSelectionPreeditText() {
   return _("Please select text first.");
 }
@@ -64,6 +49,22 @@ std::string DaemonNotRespondingPreeditText() {
 }
 
 } // namespace
+
+int VinputEngine::matchKeyListIndex(const fcitx::Key& event_key, const fcitx::KeyList& list,
+                                    bool is_release) const {
+  const int idx = event_key.keyListIndex(list);
+  if (idx >= 0) {
+    return idx;
+  }
+  if (is_release && event_key.isModifier()) {
+    for (std::size_t i = 0; i < list.size(); ++i) {
+      if (event_key.isReleaseOfModifier(list[i])) {
+        return static_cast<int>(i);
+      }
+    }
+  }
+  return -1;
+}
 
 void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key& trigger,
                                        bool is_command) {
@@ -202,11 +203,11 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   const auto event_key = keyEvent.origKey().normalize();
 
   // 3. Classify hotkeys using physical sym match (immune to XKB modifier release state bits)
-  const int trigger_index = MatchKeyListIndex(event_key, trigger_keys_);
+  const int trigger_index = matchKeyListIndex(event_key, trigger_keys_, keyEvent.isRelease());
   const bool is_trigger = trigger_index >= 0;
-  const int command_index = MatchKeyListIndex(event_key, command_keys_);
+  const int command_index = matchKeyListIndex(event_key, command_keys_, keyEvent.isRelease());
   const bool is_command = !is_trigger && command_index >= 0;
-  const int menu_index = MatchKeyListIndex(event_key, menu_keys_);
+  const int menu_index = matchKeyListIndex(event_key, menu_keys_, keyEvent.isRelease());
   const bool is_menu = !is_trigger && !is_command && menu_index >= 0;
 
   // 4. Non-hotkey (regular keys)
@@ -281,8 +282,11 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     if (session_ && (session_->phase == Session::Phase::Recording ||
                      session_->phase == Session::Phase::PendingStart)) {
       if (session_->trigger == trigger) {
-        // Tap toggle: second press stops recording
-        finishStopRecording();
+        if (session_->trigger_released) {
+          // Tap toggle: second press stops recording
+          finishStopRecording();
+        }
+        // If trigger_released is false, this is an auto-repeat while holding: swallow it!
       } else {
         // Interrupted by a different trigger key: cancel active recording
         auto* target_ic = session_->ic;

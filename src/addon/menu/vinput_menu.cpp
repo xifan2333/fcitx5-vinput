@@ -796,10 +796,8 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   // Pass menu toggle keys through to the dedicated hotkey handler so toggle-close works
-  for (const auto& mk : menu_keys_) {
-    if (mk.sym() == keyEvent.key().sym()) {
-      return false;
-    }
+  if (matchKeyListIndex(keyEvent.key(), menu_keys_, keyEvent.isRelease()) >= 0) {
+    return false;
   }
 
   auto candidate_list = palette_menu_ic_->inputPanel().candidateList();
