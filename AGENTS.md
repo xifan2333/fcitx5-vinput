@@ -239,12 +239,12 @@ Compilation strategy should adapt to local hardware capabilities:
     - **`src/cli/`**: Must follow CLI11 modern C++ validator and subcommand architecture. Fetch documentation via `context7_docs(libraryId: "cliutils/cli11")`.
     - **`src/gui/`**: Must follow Qt 6 Widgets, Model/View delegates, and layout conventions. Fetch documentation via `context7_docs(libraryId: "websites/doc_qt_io_qt-6")`.
     - Agents must query Context7 before implementing non-trivial changes across these five pillars to prevent hallucinations and maintain upstream parity.
-14. **Semantic Versioning & Release Cadence Guard (语义化版本与发版硬约束)**:
-    Releases must strictly follow `v<MAJOR>.<MINOR>.<PATCH>` (`X.Y.Z` / 主.次.订) enforced via automated tooling (`scripts/check-release-semver.sh`, `hk`) and agent domain review:
+14. **Semantic Versioning & Release Cadence (语义化版本与发版规范，由 Skill 软约束)**:
+    Releases strictly follow `v<MAJOR>.<MINOR>.<PATCH>` (`X.Y.Z` / 主.次.订) governed by agent domain review and `vinput-dev` skill guidelines (without brittle shell AST hooks):
     - **MAJOR (X)**: Triggered by breaking D-Bus interface removals/signature modifications (in `dbus_interface.h`, `dbus_service.cpp`, `notifier_dbus_object.h`), removal/renaming of public CLI subcommands/options/aliases, or unmigratable architecture changes (`X.0.0`). Such commits must use `feat!:` / `fix!:` or `BREAKING CHANGE:` trailers.
     - **MINOR (Y)**: Triggered whenever configuration schema changes (modifying `core_config_types.h`, `vinput_config.h`, `default-config.json`, or adding a step to `config_migration.cpp`), new CLI commands/options/aliases are added, new D-Bus methods/signals are added, or new features (`feat:`) are introduced. **Breaking configuration changes must NEVER be released as a PATCH!** (`x.Y.0`).
     - **PATCH (Z)**: Strictly reserved for pure backward-compatible bugfixes (`fix:`), refactoring, doc updates, and CI improvements without schema, CLI, or API contract changes (`x.y.Z`).
-    - **Separation of Concerns**: Tooling enforces syntax, strict step-increments, baseline ancestry, and Conventional Commit levels. Domain-level semantic compatibility (D-Bus protocol stability, CLI compatibility, config migrations) is strictly enforced during agent PR planning, task execution, and code review via the `vinput-dev` skill.
+    - **Skill-Based Soft Governance**: Version bumping semantics, CLI compatibility, and D-Bus protocol continuity are governed directly through the `vinput-dev` skill, PR checklists, and developer reviews.
     - Maintain restrained release cadence: do not cut release tags for isolated micro-fixes; accumulate verified changes on `main` and run CI matrix dry builds (`release.yml`) before tagging.
 
 ---

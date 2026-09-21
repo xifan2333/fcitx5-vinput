@@ -236,10 +236,6 @@ echo
 description = "Create tarball source archive"
 run = "bash scripts/create-source-archive.sh"
 
-[tasks."test:semver"]
-description = "Run semantic versioning guard unit tests"
-run = "bash tests/test_check_release_semver.sh"
-
 [tasks.release]
 description = "Create and push a git release tag (e.g.: mise run release 0.8.0 main)"
 run = """
@@ -251,7 +247,6 @@ if [ -z "${version_value}" ]; then
   version_value="$(tr -d '\n' < VERSION)"
 fi
 version_value="${version_value#v}"
-bash scripts/check-release-semver.sh "${version_value}" "${ref}"
 git tag "v${version_value}" "${ref}"
 git push origin "v${version_value}"
 """

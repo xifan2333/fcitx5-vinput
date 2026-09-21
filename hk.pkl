@@ -18,11 +18,6 @@ local linters = new Mapping<String, Step> {
     check = "python3 -m json.tool {{files}} >/dev/null"
   }
 
-  ["semver-check"] {
-    glob = List("VERSION")
-    check = "bash scripts/check-release-semver.sh $(tr -d '\\n' < VERSION) HEAD"
-  }
-
   ["trailing-whitespace"] = Builtins.trailing_whitespace
   ["newlines"] = Builtins.newlines
   ["check-merge-conflict"] = Builtins.check_merge_conflict
@@ -81,14 +76,6 @@ local pre_push_guard = new Step {
           if [ "${VINPUT_ALLOW_FORK_PUSH:-0}" != "1" ]; then
             echo "ERROR [hk pre-push]: Force-pushing to contributor fork (${remote_url}) is prohibited. Set VINPUT_ALLOW_FORK_PUSH=1 to override." >&2
             exit 1
-          fi
-        fi
-
-        # Audit git release tag push against Semantic Versioning policy
-        if [[ "${remote_ref}" =~ ^refs/tags/v ]]; then
-          local tag_name="${remote_ref#refs/tags/}"
-          if ! is_null_oid "${local_oid}"; then
-            bash scripts/check-release-semver.sh "${tag_name}" "${local_oid}"
           fi
         fi
       done

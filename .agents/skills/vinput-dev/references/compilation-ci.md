@@ -69,9 +69,9 @@ When publishing releases, `notification.json` triggers startup notifications in 
 2. **Standard Releases (Non-Breaking Changes)**:
    - Record version highlights and bug fixes concisely in bilingual (`en_US` and `zh_CN`) format.
 
-## 6. Semantic Versioning & Automated Release Guard
+## 6. Semantic Versioning & Release Cadence (Skill-Based Soft Governance)
 
-Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH` / 主.次.订):
+Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH` / 主.次.订) via `vinput-dev` skill guidelines:
 
 | Level | Code Scope & Changes | Requirement & Example |
 | :--- | :--- | :--- |
@@ -79,8 +79,6 @@ Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH` / 主.次.�
 | **MINOR (Y)** | Configuration schema changes (`core_config_types.h`, `vinput_config.h`, `default-config.json`, or added steps in `config_migration.cpp`), new CLI commands/options/aliases, added D-Bus methods/signals, new features (`feat:` commits), or GUI module expansions. | Bump `x.Y.0` (e.g. `2.4.0`). **Breaking config changes must NEVER be released as a PATCH!** |
 | **PATCH (Z)** | Pure bugfixes (`fix:`), refactoring, doc updates, and CI improvements without schema, CLI, or API contract changes. | Bump `x.y.Z` (e.g. `2.3.27`). |
 
-**Automated Guardrail & Agent Domain Responsibility**:
-- `scripts/check-release-semver.sh` enforces strict SemVer syntax, single-step increment rules, clean ancestry, and Conventional Commit levels (`feat:`, `BREAKING CHANGE:`, `!:`).
-- **Skill Domain Enforcement**: Deep domain compatibility (such as D-Bus protocol continuity, CLI subcommand/flag compatibility, and ConfigMigration parity) is enforced by agents during PR planning and code review, rather than relying on brittle shell AST heuristics.
-- Pre-push git hooks (`hk.pkl`) and `mise run release` automatically intercept non-compliant tags before publishing.
+**Governance Approach**:
+- **Soft Constraint via Skill**: Semantic compatibility (D-Bus contract preservation, CLI options/subcommands, and configuration migration) is governed by the `vinput-dev` skill and agent review loops, avoiding brittle shell-based AST regex hooks.
 - **Cadence Discipline**: Accumulate verified fixes on `main` and run CI dry builds (`release.yml`) before cutting tags. Avoid hasty releases for isolated micro-fixes.

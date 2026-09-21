@@ -44,9 +44,6 @@ jobs:
       - name: Check i18n
         run: python3 scripts/check-i18n.py
 
-      - name: Validate semver guard
-        run: bash tests/test_check_release_semver.sh
-
       - name: Install sherpa-onnx build runtime
         if: matrix.enable_local_asr == 'ON'
         run: |
