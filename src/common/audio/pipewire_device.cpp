@@ -1,17 +1,16 @@
 #include "common/audio/pipewire_device.h"
 
 #include <algorithm>
-#include <atomic>
-#include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <pipewire/keys.h>
+#include <pipewire/loop.h>
 #include <pipewire/main-loop.h>
 #include <pipewire/pipewire.h>
 #include <spa/pod/builder.h>
 #include <spa/utils/dict.h>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -42,6 +41,12 @@ void on_core_error(void* data, uint32_t id, int seq, int res, const char* messag
   (void)seq;
   (void)res;
   (void)message;
+  auto* d = static_cast<PwData*>(data);
+  pw_main_loop_quit(d->loop);
+}
+
+void on_enumeration_timeout(void* data, uint64_t expirations) {
+  (void)expirations;
   auto* d = static_cast<PwData*>(data);
   pw_main_loop_quit(d->loop);
 }
@@ -139,22 +144,21 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
 
   data.pending_sync = pw_core_sync(data.core, PW_ID_CORE, 0);
   if (data.pending_sync >= 0) {
-    // Arm a 250ms watchdog thread so enumeration never hangs indefinitely.
-    std::atomic<bool> done{false};
-    std::thread watchdog([&done, loop = data.loop]() {
-      const auto start = std::chrono::steady_clock::now();
-      while (!done.load(std::memory_order_relaxed)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        if (std::chrono::steady_clock::now() - start >= std::chrono::milliseconds(250)) {
-          pw_main_loop_quit(loop);
-          break;
-        }
-      }
-    });
+    // Arm a 250ms bounded timer so enumeration never hangs if PipeWire is unresponsive.
+    pw_loop* loop = pw_main_loop_get_loop(data.loop);
+    spa_source* timer = pw_loop_add_timer(loop, on_enumeration_timeout, &data);
+    if (timer != nullptr) {
+      timespec value{};
+      value.tv_sec = 0;
+      value.tv_nsec = 250 * 1000 * 1000;
+      pw_loop_update_timer(loop, timer, &value, nullptr, false);
+    }
 
     pw_main_loop_run(data.loop);
-    done.store(true, std::memory_order_relaxed);
-    watchdog.join();
+
+    if (timer != nullptr) {
+      pw_loop_destroy_source(loop, timer);
+    }
   }
 
   pw_proxy_destroy(reinterpret_cast<pw_proxy*>(data.registry));
