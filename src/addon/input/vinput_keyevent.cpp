@@ -284,7 +284,14 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       if (session_->trigger == trigger) {
         if (session_->trigger_released) {
           // Tap toggle: second press stops recording
-          finishStopRecording();
+          if (session_->phase == Session::Phase::PendingStart) {
+            auto* target_ic = session_->ic;
+            callCancelOperation(false);
+            finishFrontendSession(target_ic);
+            clearVoicePresentation(target_ic);
+          } else {
+            finishStopRecording();
+          }
         }
         // If trigger_released is false, this is an auto-repeat while holding: swallow it!
       } else {
