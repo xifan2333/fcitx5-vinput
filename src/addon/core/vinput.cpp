@@ -160,6 +160,7 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                                     callCancelOperation(false);
                                     finishFrontendSession(ic);
                                     clearVoicePresentation(ic);
+                                    trigger_interrupted_ = true;
                                   }
                                 }
                               }
