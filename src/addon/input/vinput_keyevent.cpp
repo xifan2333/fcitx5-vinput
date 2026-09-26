@@ -210,8 +210,17 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   const int menu_index = matchKeyListIndex(event_key, menu_keys_, keyEvent.isRelease());
   const bool is_menu = !is_trigger && !is_command && menu_index >= 0;
 
+  HotkeyRole role = HotkeyRole::None;
+  if (is_trigger) {
+    role = HotkeyRole::Trigger;
+  } else if (is_command) {
+    role = HotkeyRole::Command;
+  } else if (is_menu) {
+    role = HotkeyRole::Menu;
+  }
+
   // 4. Non-hotkey (regular keys)
-  if (!is_trigger && !is_command && !is_menu) {
+  if (role == HotkeyRole::None) {
     if (!keyEvent.isRelease()) {
       // Intervening key breaks any active hotkey into a chord
       if (held_role_ != HotkeyRole::None) {
@@ -231,93 +240,74 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  // 5. Handle Command Palette Hotkey (menu_keys_, e.g. Shift_R)
-  if (is_menu) {
-    if (!keyEvent.isRelease()) {
-      held_key_sym_ = event_key.sym();
-      held_role_ = HotkeyRole::Menu;
-      chord_interrupted_ = false;
-      held_press_time_ = std::chrono::steady_clock::now();
-      // If palette is currently open, swallow press to prevent leaking to app
-      if (palette_menu_visible_) {
-        keyEvent.filterAndAccept();
-        return;
-      }
-      // If palette is closed, let press pass through so chords like Shift+A work normally
-      return;
-    }
-    // Key Up (Release) phase
-    if (held_role_ == HotkeyRole::Menu && held_key_sym_.has_value() &&
-        *held_key_sym_ == event_key.sym()) {
-      held_role_ = HotkeyRole::None;
-      held_key_sym_.reset();
-      if (!chord_interrupted_) {
-        if (!session_) {
-          toggleCommandPalette(ic);
-        }
-        keyEvent.filterAndAccept();
-        return;
-      }
-    }
-    return;
+  fcitx::Key matched_key;
+  if (is_trigger) {
+    matched_key = trigger_keys_[trigger_index];
+  } else if (is_command) {
+    matched_key = command_keys_[command_index];
+  } else {
+    matched_key = menu_keys_[menu_index];
   }
 
-  const auto trigger = is_trigger ? trigger_keys_[trigger_index] : command_keys_[command_index];
-  const auto trigger_mode = *config_.triggerMode;
-
-  // 6. Press Phase
+  // 5. Press Phase
   if (!keyEvent.isRelease()) {
     auto now = std::chrono::steady_clock::now();
-    const auto since_last = now - last_trigger_time_;
-    last_trigger_time_ = now;
-    if (since_last < kTriggerDebounce) {
-      keyEvent.filterAndAccept();
-      return;
-    }
 
-    dismissMenusForVoiceActivity();
-    cancelPendingStop();
-
-    // If recording is active and initiated by this trigger:
-    if (session_ && (session_->phase == Session::Phase::Recording ||
-                     session_->phase == Session::Phase::PendingStart)) {
-      if (session_->trigger == trigger) {
-        if (session_->trigger_released) {
-          // Tap toggle: second press stops recording
-          if (session_->phase == Session::Phase::PendingStart) {
-            auto* target_ic = session_->ic;
-            callCancelOperation(false);
-            finishFrontendSession(target_ic);
-            clearVoicePresentation(target_ic);
-          } else {
-            finishStopRecording();
-          }
-        }
-        // If trigger_released is false, this is an auto-repeat while holding: swallow it!
-      } else {
-        // Interrupted by a different trigger key: cancel active recording
-        auto* target_ic = session_->ic;
-        callCancelOperation(false);
-        finishFrontendSession(target_ic);
-        clearVoicePresentation(target_ic);
+    if (role == HotkeyRole::Trigger || role == HotkeyRole::Command) {
+      const auto since_last = now - last_trigger_time_;
+      last_trigger_time_ = now;
+      if (since_last < kTriggerDebounce) {
+        keyEvent.filterAndAccept();
+        return;
       }
-      keyEvent.filterAndAccept();
-      return;
+
+      dismissMenusForVoiceActivity();
+      cancelPendingStop();
+
+      // If recording is active and initiated by this trigger:
+      if (session_ && (session_->phase == Session::Phase::Recording ||
+                       session_->phase == Session::Phase::PendingStart)) {
+        if (session_->trigger == matched_key) {
+          if (session_->trigger_released) {
+            // Tap toggle: second press stops recording
+            if (session_->phase == Session::Phase::PendingStart) {
+              auto* target_ic = session_->ic;
+              callCancelOperation(false);
+              finishFrontendSession(target_ic);
+              clearVoicePresentation(target_ic);
+            } else {
+              finishStopRecording();
+            }
+          }
+          // If trigger_released is false, this is an auto-repeat while holding: swallow it!
+        } else {
+          // Interrupted by a different trigger key: cancel active recording
+          auto* target_ic = session_->ic;
+          callCancelOperation(false);
+          finishFrontendSession(target_ic);
+          clearVoicePresentation(target_ic);
+        }
+        keyEvent.filterAndAccept();
+        return;
+      }
     }
 
     // New press
     held_key_sym_ = event_key.sym();
-    held_role_ = is_trigger ? HotkeyRole::Trigger : HotkeyRole::Command;
+    held_role_ = role;
     chord_interrupted_ = false;
     held_press_time_ = now;
 
-    if (trigger_mode == TriggerMode::Hold || trigger_mode == TriggerMode::Both) {
-      // 0-latency immediate recording start (never swallow first syllable!)
-      startVoiceRecording(ic, trigger, is_command);
-      if (session_) {
-        session_->press_time = now;
-        session_->stop_on_release = true;
-        session_->trigger_released = false;
+    if (role == HotkeyRole::Trigger || role == HotkeyRole::Command) {
+      const auto trigger_mode = *config_.triggerMode;
+      if (trigger_mode == TriggerMode::Hold || trigger_mode == TriggerMode::Both) {
+        // 0-latency immediate recording start (never swallow first syllable!)
+        startVoiceRecording(ic, matched_key, is_command);
+        if (session_) {
+          session_->press_time = now;
+          session_->stop_on_release = true;
+          session_->trigger_released = false;
+        }
       }
     }
 
@@ -325,17 +315,18 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  // 7. Release Phase
+  // 6. Release Phase
   if (keyEvent.isRelease()) {
     const bool matches_active =
-        (held_role_ == HotkeyRole::Trigger || held_role_ == HotkeyRole::Command) &&
-        held_key_sym_.has_value() && *held_key_sym_ == event_key.sym();
+        (held_role_ == role) && held_key_sym_.has_value() && *held_key_sym_ == event_key.sym();
 
     if (matches_active) {
+      const auto active_role = held_role_;
       held_role_ = HotkeyRole::None;
       held_key_sym_.reset();
 
-      // If interrupted by another key (e.g. Alt+Tab, Alt+T), release does NOT trigger voice
+      // If interrupted by another key (e.g. Alt+Tab, Alt+T, Shift+A), release does NOT trigger
+      // action
       if (chord_interrupted_) {
         chord_interrupted_ = false;
         cancelPendingStart();
@@ -346,41 +337,48 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
       auto now = std::chrono::steady_clock::now();
       const auto duration = now - held_press_time_;
 
-      if (trigger_mode == TriggerMode::Hold) {
-        // Pure Hold: stop on release
-        if (session_ && session_->phase == Session::Phase::Recording) {
-          scheduleStopRecording();
-        }
-      } else if (trigger_mode == TriggerMode::Tap) {
-        // Pure Tap: toggle on release
+      if (active_role == HotkeyRole::Menu) {
         if (!session_) {
-          startVoiceRecording(ic, trigger, is_command);
-          if (session_) {
-            session_->press_time = now;
-            session_->trigger_released = true;
-            session_->stop_on_release = false;
-          }
-        } else if (session_->phase == Session::Phase::Recording) {
-          scheduleStopRecording();
+          toggleCommandPalette(ic);
         }
-      } else { // TriggerMode::Both
-        if (duration < kTapMaxHoldDuration) {
-          // Short tap (< 200ms): keep recording going continuously!
-          if (session_) {
-            session_->trigger_released = true;
-            session_->stop_on_release = false;
-          }
-        } else {
-          // Long hold (>= 200ms): user finished speaking, stop on release!
+      } else {
+        const auto trigger_mode = *config_.triggerMode;
+        if (trigger_mode == TriggerMode::Hold) {
+          // Pure Hold: stop on release
           if (session_ && session_->phase == Session::Phase::Recording) {
             scheduleStopRecording();
+          }
+        } else if (trigger_mode == TriggerMode::Tap) {
+          // Pure Tap: toggle on release
+          if (!session_) {
+            startVoiceRecording(ic, matched_key, is_command);
+            if (session_) {
+              session_->press_time = now;
+              session_->trigger_released = true;
+              session_->stop_on_release = false;
+            }
+          } else if (session_->phase == Session::Phase::Recording) {
+            scheduleStopRecording();
+          }
+        } else { // TriggerMode::Both
+          if (duration < kTapMaxHoldDuration) {
+            // Short tap (< 200ms): keep recording going continuously!
+            if (session_) {
+              session_->trigger_released = true;
+              session_->stop_on_release = false;
+            }
+          } else {
+            // Long hold (>= 200ms): user finished speaking, stop on release!
+            if (session_ && session_->phase == Session::Phase::Recording) {
+              scheduleStopRecording();
+            }
           }
         }
       }
     }
 
     // Release during active recording
-    if (session_ && session_->trigger == trigger) {
+    if (session_ && session_->trigger == matched_key) {
       session_->trigger_released = true;
       if (session_->stop_on_release) {
         if (session_->phase == Session::Phase::Recording) {
