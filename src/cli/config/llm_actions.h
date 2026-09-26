@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "cli/utils/cli_context.h"
 #include "cli/utils/formatter.h"
@@ -11,7 +12,9 @@ int RunLlmConfigPsAdapters(Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std::string& apiKey,
                     const std::string& extraBody, Formatter& fmt, const CliContext& ctx);
-int RunLlmConfigInstallAdapter(const std::string& selector, Formatter& fmt, const CliContext& ctx);
+int RunLlmConfigInstallAdapter(const std::string& selector,
+                               const std::vector<std::string>& envOverrides, Formatter& fmt,
+                               const CliContext& ctx);
 int RunLlmConfigStartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigStopAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigRestartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);

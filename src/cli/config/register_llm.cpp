@@ -1,5 +1,6 @@
 #include <CLI/CLI.hpp>
 #include <memory>
+#include <vector>
 
 #include "common/i18n.h"
 
@@ -115,11 +116,17 @@ void RegisterAdapterCommands(CLI::App& app, CliAction* action) {
   });
 
   auto selector = std::make_shared<std::string>();
+  auto envOverrides = std::make_shared<std::vector<std::string>>();
   auto* add = adapter->add_subcommand("add", _("Add an adapter"));
   add->add_option("id", *selector, _("Adapter short ID"))->required();
-  add->callback([action, selector]() {
-    *action = [selector](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigInstallAdapter(*selector, fmt, ctx);
+  // A vector option is greedy: one `-e` absorbs every following bare token, so
+  // interleaved forms such as `-e A=1 cjk-trim -e B=2` lose the adapter ID. Pin
+  // it to a single value per occurrence; repeating `-e` still accumulates.
+  add->add_option("-e,--env", *envOverrides, _("Adapter env var as KEY=VALUE (repeatable)"))
+      ->allow_extra_args(false);
+  add->callback([action, selector, envOverrides]() {
+    *action = [selector, envOverrides](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigInstallAdapter(*selector, *envOverrides, fmt, ctx);
     };
   });
 

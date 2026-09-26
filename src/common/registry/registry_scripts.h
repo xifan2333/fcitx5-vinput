@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
 bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
                             const std::filesystem::path& script_path, std::string* error);
 bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
-                           const std::filesystem::path& script_path, std::string* error);
+                           const std::filesystem::path& script_path, std::string* error,
+                           const std::map<std::string, std::string>& env_overrides = {});
 
 } // namespace vinput::script

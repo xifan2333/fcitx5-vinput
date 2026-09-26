@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <curl/curl.h>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <sys/types.h>
@@ -243,8 +244,21 @@ int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std
   return 0;
 }
 
-int RunLlmConfigInstallAdapter(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
+int RunLlmConfigInstallAdapter(const std::string& selector,
+                               const std::vector<std::string>& envOverrides, Formatter& fmt,
+                               const CliContext& ctx) {
   (void)ctx;
+  std::map<std::string, std::string> overrides;
+  for (const auto& item : envOverrides) {
+    const auto sep = item.find('=');
+    if (sep == std::string::npos || sep == 0) {
+      // A malformed value may be a token pasted without its key, so never echo it back.
+      fmt.PrintError(_("Invalid --env: expected KEY=VALUE."));
+      return 1;
+    }
+    overrides[item.substr(0, sep)] = item.substr(sep + 1);
+  }
+
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
 
@@ -284,13 +298,34 @@ int RunLlmConfigInstallAdapter(const std::string& selector, Formatter& fmt, cons
     fmt.PrintError(error);
     return 1;
   }
-  if (!vinput::script::MaterializeLlmAdapter(&config, *it, scriptPath, &error)) {
+  if (!vinput::script::MaterializeLlmAdapter(&config, *it, scriptPath, &error, overrides)) {
     fmt.PrintError(error);
     return 1;
   }
   NormalizeCoreConfig(&config);
   if (!SaveConfigOrFail(config, fmt)) {
     return 1;
+  }
+
+  // The registry can only declare required envs, never default them, so report
+  // the ones still blank instead of saving an adapter that cannot start. A
+  // whitespace-only value counts as blank: the adapter scripts strip whitespace
+  // before testing the value and then reject it at startup.
+  const LlmAdapter* installed = ResolveLlmAdapter(config, it->id);
+  if (installed != nullptr) {
+    for (const auto& spec : it->envs) {
+      if (!spec.required) {
+        continue;
+      }
+      const auto value = installed->env.find(spec.name);
+      if (value == installed->env.end() ||
+          vinput::str::TrimAsciiWhitespace(value->second).empty()) {
+        fmt.PrintWarning(vinput::str::FmtStr(
+            _("Required env '%s' is empty; '%s' cannot start until it is set (re-run with -e "
+              "%s=<value>)."),
+            spec.name, selector, spec.name));
+      }
+    }
   }
 
   fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' added."), selector));

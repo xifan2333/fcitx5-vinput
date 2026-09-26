@@ -629,6 +629,17 @@ msgstr "--extra-body 必须是 JSON 对象（例如 '{\"enable_thinking\": false
 msgid "Invalid --extra-body JSON: %s"
 msgstr "--extra-body JSON 无效：%s"
 
+msgid "Invalid --env: expected KEY=VALUE."
+msgstr "--env 无效：应为 KEY=VALUE 格式。"
+
+#, c-format
+msgid ""
+"Required env '%s' is empty; '%s' cannot start until it is set (re-run with "
+"-e %s=<value>)."
+msgstr ""
+"必需的环境变量 '%s' 为空；在设置该值之前 '%s' 无法启动（可用 -e "
+"%s=<value> 重新运行）。"
+
 msgid "API_KEY"
 msgstr "API 密钥"
 
@@ -897,6 +908,9 @@ msgstr "显示适配器状态"
 
 msgid "Adapter short ID"
 msgstr "适配器短 ID"
+
+msgid "Adapter env var as KEY=VALUE (repeatable)"
+msgstr "适配器环境变量，格式为 KEY=VALUE（可重复指定）"
 
 msgid "Add an adapter"
 msgstr "添加适配器"

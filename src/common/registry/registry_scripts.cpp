@@ -382,7 +382,8 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
 }
 
 bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
-                           const fs::path& script_path, std::string* error) {
+                           const fs::path& script_path, std::string* error,
+                           const std::map<std::string, std::string>& env_overrides) {
   if (!config) {
     if (error) {
       *error = "config is null";
@@ -417,6 +418,20 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
     it->command = entry.command;
     it->args = {script_path.string()};
     FillDefaultEnvMap(entry.envs, &it->env);
+  }
+
+  // FillDefaultEnvMap only seeds empty defaults, so registry-declared required
+  // envs stay empty unless the caller supplies a value.
+  for (auto& adapter : config->llm.adapters) {
+    if (adapter.id != entry.id) {
+      continue;
+    }
+    for (const auto& override : env_overrides) {
+      if (!override.first.empty()) {
+        adapter.env[override.first] = override.second;
+      }
+    }
+    break;
   }
 
   if (error) {
