@@ -240,9 +240,14 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  const auto matched_key = is_trigger   ? trigger_keys_[trigger_index]
-                           : is_command ? command_keys_[command_index]
-                                        : menu_keys_[menu_index];
+  fcitx::Key matched_key;
+  if (is_trigger) {
+    matched_key = trigger_keys_[trigger_index];
+  } else if (is_command) {
+    matched_key = command_keys_[command_index];
+  } else {
+    matched_key = menu_keys_[menu_index];
+  }
 
   // 5. Press Phase
   if (!keyEvent.isRelease()) {
