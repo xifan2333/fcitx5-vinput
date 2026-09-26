@@ -157,11 +157,11 @@ void runAllTests() {
   expect(!engine.isPendingStart(), "Pending start timer is cleared after F8 interaction");
 
   std::cout << "--- 5. Testing Menu Key (Shift_R) Release-Based Trigger & Combination ---\n";
-  // 5a. Shift_R + A combination: Shift_R press does not open palette, A interrupts, release does
-  // not open palette
+  // 5a. Shift_R + A combination: Shift_R press is consumed, A interrupts and passes through,
+  // Shift_R release is consumed without triggering palette
   fcitx::KeyEvent shift_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
   engine.handleKeyEvent(shift_p);
-  expect(!shift_p.accepted(), "Shift_R press does not consume/accept");
+  expect(shift_p.filtered() && shift_p.accepted(), "Shift_R press is consumed");
 
   fcitx::KeyEvent key_a_p(&ic, fcitx::Key(FcitxKey_a), false);
   engine.handleKeyEvent(key_a_p);
@@ -169,12 +169,13 @@ void runAllTests() {
 
   fcitx::KeyEvent shift_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
   engine.handleKeyEvent(shift_r);
-  expect(!shift_r.accepted(), "Interrupted Shift_R release does not accept or trigger palette");
+  expect(shift_r.filtered() && shift_r.accepted(),
+         "Interrupted Shift_R release is consumed without triggering palette");
 
-  // 5b. Solo Shift_R tap: press then release without intervening keys toggles palette
+  // 5b. Solo Shift_R tap: press and release are both consumed, release toggles palette
   fcitx::KeyEvent solo_shift_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
   engine.handleKeyEvent(solo_shift_p);
-  expect(!solo_shift_p.accepted(), "Solo Shift_R press does not immediately trigger palette");
+  expect(solo_shift_p.filtered() && solo_shift_p.accepted(), "Solo Shift_R press is consumed");
 
   fcitx::KeyEvent solo_shift_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
   engine.handleKeyEvent(solo_shift_r);
