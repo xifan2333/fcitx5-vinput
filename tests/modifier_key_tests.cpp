@@ -182,6 +182,16 @@ void runAllTests() {
   expect(solo_shift_r.filtered() && solo_shift_r.accepted(),
          "Solo Shift_R release is consumed and triggers palette");
 
+  // 5c. Second solo Shift_R tap: press and release are consumed, toggles palette closed
+  fcitx::KeyEvent close_shift_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
+  engine.handleKeyEvent(close_shift_p);
+  expect(close_shift_p.filtered() && close_shift_p.accepted(), "Close Shift_R press is consumed");
+
+  fcitx::KeyEvent close_shift_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
+  engine.handleKeyEvent(close_shift_r);
+  expect(close_shift_r.filtered() && close_shift_r.accepted(),
+         "Close Shift_R release is consumed and closes palette");
+
   std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }
 

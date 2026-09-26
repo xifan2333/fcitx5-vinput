@@ -252,41 +252,44 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   // 5. Press Phase
   if (!keyEvent.isRelease()) {
     auto now = std::chrono::steady_clock::now();
-    const auto since_last = now - last_trigger_time_;
-    last_trigger_time_ = now;
-    if (since_last < kTriggerDebounce) {
-      keyEvent.filterAndAccept();
-      return;
-    }
 
-    dismissMenusForVoiceActivity();
-    cancelPendingStop();
-
-    // If recording is active and initiated by this trigger:
-    if (session_ && (session_->phase == Session::Phase::Recording ||
-                     session_->phase == Session::Phase::PendingStart)) {
-      if (session_->trigger == matched_key) {
-        if (session_->trigger_released) {
-          // Tap toggle: second press stops recording
-          if (session_->phase == Session::Phase::PendingStart) {
-            auto* target_ic = session_->ic;
-            callCancelOperation(false);
-            finishFrontendSession(target_ic);
-            clearVoicePresentation(target_ic);
-          } else {
-            finishStopRecording();
-          }
-        }
-        // If trigger_released is false, this is an auto-repeat while holding: swallow it!
-      } else {
-        // Interrupted by a different trigger key: cancel active recording
-        auto* target_ic = session_->ic;
-        callCancelOperation(false);
-        finishFrontendSession(target_ic);
-        clearVoicePresentation(target_ic);
+    if (role == HotkeyRole::Trigger || role == HotkeyRole::Command) {
+      const auto since_last = now - last_trigger_time_;
+      last_trigger_time_ = now;
+      if (since_last < kTriggerDebounce) {
+        keyEvent.filterAndAccept();
+        return;
       }
-      keyEvent.filterAndAccept();
-      return;
+
+      dismissMenusForVoiceActivity();
+      cancelPendingStop();
+
+      // If recording is active and initiated by this trigger:
+      if (session_ && (session_->phase == Session::Phase::Recording ||
+                       session_->phase == Session::Phase::PendingStart)) {
+        if (session_->trigger == matched_key) {
+          if (session_->trigger_released) {
+            // Tap toggle: second press stops recording
+            if (session_->phase == Session::Phase::PendingStart) {
+              auto* target_ic = session_->ic;
+              callCancelOperation(false);
+              finishFrontendSession(target_ic);
+              clearVoicePresentation(target_ic);
+            } else {
+              finishStopRecording();
+            }
+          }
+          // If trigger_released is false, this is an auto-repeat while holding: swallow it!
+        } else {
+          // Interrupted by a different trigger key: cancel active recording
+          auto* target_ic = session_->ic;
+          callCancelOperation(false);
+          finishFrontendSession(target_ic);
+          clearVoicePresentation(target_ic);
+        }
+        keyEvent.filterAndAccept();
+        return;
+      }
     }
 
     // New press
