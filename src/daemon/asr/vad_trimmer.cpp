@@ -49,11 +49,20 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
   if (!vad_ || samples.empty())
     return samples;
 
+  const int n = static_cast<int>(samples.size());
+  // Short push-to-talk utterances (<= 3 seconds) bypass VAD trimming entirely.
+  // Modern end-to-end ASR models (e.g. SenseVoice, Paraformer, Whisper) handle
+  // natural leading/trailing margins robustly without risk of clipping initial
+  // consonants or terminal release decays.
+  constexpr int kShortAudioBypassSec = 3;
+  if (n <= kShortAudioBypassSec * sample_rate_) {
+    return samples;
+  }
+
   SherpaOnnxVoiceActivityDetectorReset(vad_);
 
   // Feed audio in window_size chunks
   const int window_size = 512;
-  const int n = static_cast<int>(samples.size());
   int offset = 0;
   for (; offset + window_size <= n; offset += window_size) {
     SherpaOnnxVoiceActivityDetectorAcceptWaveform(vad_, samples.data() + offset, window_size);
@@ -70,20 +79,24 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
 
   const int padding_samples = std::max(
       0, static_cast<int>(static_cast<long long>(params_.speech_pad_ms) * sample_rate_ / 1000));
-  std::vector<float> result;
-  int first_start = -1;
-  int last_end = -1;
+
+  // Determine global speech bounds across all detected segments.
+  // Never stitch disparate segments together by excising natural pauses, as
+  // artificial pause compression degrades acoustic context for end-to-end models.
+  int earliest_speech_start = -1;
+  int latest_speech_end = -1;
+
   while (!SherpaOnnxVoiceActivityDetectorEmpty(vad_)) {
     const SherpaOnnxSpeechSegment* seg = SherpaOnnxVoiceActivityDetectorFront(vad_);
     if (seg && seg->n > 0) {
-      int start = std::max(0, static_cast<int>(seg->start) - padding_samples);
-      int end =
-          std::min(n, static_cast<int>(seg->start) + static_cast<int>(seg->n) + padding_samples);
-      if (first_start < 0) {
-        first_start = start;
+      const int seg_start = static_cast<int>(seg->start);
+      const int seg_end = seg_start + static_cast<int>(seg->n);
+      if (earliest_speech_start < 0 || seg_start < earliest_speech_start) {
+        earliest_speech_start = seg_start;
       }
-      last_end = end;
-      result.insert(result.end(), samples.begin() + start, samples.begin() + end);
+      if (seg_end > latest_speech_end) {
+        latest_speech_end = seg_end;
+      }
     }
     if (seg) {
       SherpaOnnxDestroySpeechSegment(seg);
@@ -91,13 +104,36 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
     SherpaOnnxVoiceActivityDetectorPop(vad_);
   }
 
-  if (result.empty()) {
+  if (earliest_speech_start < 0 || latest_speech_end <= earliest_speech_start) {
     fprintf(stderr, "vinput: VAD found no speech, returning original audio\n");
     return samples;
   }
 
-  const int leading_removed = first_start > 0 ? first_start : 0;
-  const int trailing_removed = last_end >= 0 ? (n - last_end) : 0;
+  // Preserve leading audio if detected onset is within the margin buffer
+  // to avoid clipping low-energy unvoiced consonants (VOT delay).
+  int cut_start = 0;
+  if (earliest_speech_start > padding_samples * 2) {
+    cut_start = std::max(0, earliest_speech_start - padding_samples);
+  }
+
+  // Preserve trailing audio if detected offset is near recording termination.
+  int cut_end = n;
+  if (latest_speech_end + padding_samples * 2 < n) {
+    cut_end = std::min(n, latest_speech_end + padding_samples);
+  }
+
+  if (cut_start <= 0 && cut_end >= n) {
+    return samples;
+  }
+
+  if (cut_end <= cut_start) {
+    return samples;
+  }
+
+  std::vector<float> result(samples.begin() + cut_start, samples.begin() + cut_end);
+
+  const int leading_removed = cut_start;
+  const int trailing_removed = n - cut_end;
   fprintf(stderr,
           "vinput: VAD trimmed %d -> %zu samples leading_removed_ms=%d "
           "trailing_removed_ms=%d pad_ms=%d\n",
