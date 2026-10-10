@@ -22,13 +22,13 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   config.silero_vad.min_silence_duration = params_.min_silence_duration;
   config.silero_vad.min_speech_duration = params_.min_speech_duration;
   config.silero_vad.window_size = 512;
-  config.silero_vad.max_speech_duration = 0.0f;
+  config.silero_vad.max_speech_duration = 0.0F;
   config.sample_rate = sample_rate;
   config.num_threads = 1;
   config.provider = provider.c_str();
   config.debug = 0;
 
-  vad_ = SherpaOnnxCreateVoiceActivityDetector(&config, 30.0f);
+  vad_ = SherpaOnnxCreateVoiceActivityDetector(&config, 30.0F);
   if (!vad_) {
     if (error) {
       *error = "failed to create VAD from '" + model_path + "'";
@@ -46,20 +46,21 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
 }
 
 std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sample_rate*/) {
-  if (!vad_ || samples.empty())
+  if (vad_ == nullptr || samples.empty()) {
     return samples;
+  }
 
+  const int n = static_cast<int>(samples.size());
   SherpaOnnxVoiceActivityDetectorReset(vad_);
 
   // Feed audio in window_size chunks
   const int window_size = 512;
-  const int n = static_cast<int>(samples.size());
   int offset = 0;
   for (; offset + window_size <= n; offset += window_size) {
     SherpaOnnxVoiceActivityDetectorAcceptWaveform(vad_, samples.data() + offset, window_size);
   }
   if (offset < n) {
-    std::vector<float> padded_tail(window_size, 0.0f);
+    std::vector<float> padded_tail(window_size, 0.0F);
     const int remaining = n - offset;
     for (int i = 0; i < remaining; ++i) {
       padded_tail[i] = samples[offset + i];
@@ -68,36 +69,51 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
   }
   SherpaOnnxVoiceActivityDetectorFlush(vad_);
 
-  const int padding_samples = std::max(
-      0, static_cast<int>(static_cast<long long>(params_.speech_pad_ms) * sample_rate_ / 1000));
-  std::vector<float> result;
-  int first_start = -1;
-  int last_end = -1;
+  // Determine global speech bounds across all detected segments.
+  // We trim only leading and trailing silence outside the outer speech bounds;
+  // internal pauses are fully preserved to retain natural acoustic context.
+  int earliest_speech_start = -1;
+  int latest_speech_end = -1;
+
   while (!SherpaOnnxVoiceActivityDetectorEmpty(vad_)) {
     const SherpaOnnxSpeechSegment* seg = SherpaOnnxVoiceActivityDetectorFront(vad_);
-    if (seg && seg->n > 0) {
-      int start = std::max(0, static_cast<int>(seg->start) - padding_samples);
-      int end =
-          std::min(n, static_cast<int>(seg->start) + static_cast<int>(seg->n) + padding_samples);
-      if (first_start < 0) {
-        first_start = start;
+    if (seg != nullptr && seg->n > 0) {
+      const int seg_start = static_cast<int>(seg->start);
+      const int seg_end = seg_start + static_cast<int>(seg->n);
+      if (earliest_speech_start < 0 || seg_start < earliest_speech_start) {
+        earliest_speech_start = seg_start;
       }
-      last_end = end;
-      result.insert(result.end(), samples.begin() + start, samples.begin() + end);
+      if (seg_end > latest_speech_end) {
+        latest_speech_end = seg_end;
+      }
     }
-    if (seg) {
+    if (seg != nullptr) {
       SherpaOnnxDestroySpeechSegment(seg);
     }
     SherpaOnnxVoiceActivityDetectorPop(vad_);
   }
 
-  if (result.empty()) {
+  if (earliest_speech_start < 0 || latest_speech_end <= earliest_speech_start) {
     fprintf(stderr, "vinput: VAD found no speech, returning original audio\n");
     return samples;
   }
 
-  const int leading_removed = first_start > 0 ? first_start : 0;
-  const int trailing_removed = last_end >= 0 ? (n - last_end) : 0;
+  const int padding_samples = std::max(
+      0, static_cast<int>(static_cast<long long>(params_.speech_pad_ms) * sample_rate_ / 1000));
+  const int cut_start = std::max(0, earliest_speech_start - padding_samples);
+  const int cut_end = std::min(n, latest_speech_end + padding_samples);
+
+  if (cut_start <= 0 && cut_end >= n) {
+    return samples;
+  }
+  if (cut_end <= cut_start) {
+    return samples;
+  }
+
+  std::vector<float> result(samples.begin() + cut_start, samples.begin() + cut_end);
+
+  const int leading_removed = cut_start;
+  const int trailing_removed = n - cut_end;
   fprintf(stderr,
           "vinput: VAD trimmed %d -> %zu samples leading_removed_ms=%d "
           "trailing_removed_ms=%d pad_ms=%d\n",
