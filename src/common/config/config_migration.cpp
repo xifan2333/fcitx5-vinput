@@ -1,6 +1,7 @@
 #include "common/config/config_migration.h"
 
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <exception>
 #include <filesystem>
@@ -214,6 +215,40 @@ const std::vector<MigrationStep>& RegisteredSteps() {
           "Remove obsolete HoldActivationDelay from addon conf",
           [](json& /*j*/, std::string& ini, std::vector<MigrationChange>& ch) {
             RemoveIniKey(ini, "HoldActivationDelay", ch);
+          },
+      },
+      {
+          "v2.4.1",
+          "Upgrade legacy VAD defaults to high-recall acoustic settings",
+          [](json& j, std::string& /*ini*/, std::vector<MigrationChange>& ch) {
+            if (j.contains("asr") && j["asr"].is_object() && j["asr"].contains("vad") &&
+                j["asr"]["vad"].is_object()) {
+              auto& vad = j["asr"]["vad"];
+              if (vad.contains("threshold") && vad["threshold"].is_number() &&
+                  std::abs(vad["threshold"].get<double>() - 0.45) < 1e-4) {
+                vad["threshold"] = 0.35;
+                ch.push_back(
+                    {"config.json", "asr.vad.threshold: upgraded legacy default 0.45 to 0.35"});
+              }
+              if (vad.contains("min_speech_duration") && vad["min_speech_duration"].is_number() &&
+                  std::abs(vad["min_speech_duration"].get<double>() - 0.15) < 1e-4) {
+                vad["min_speech_duration"] = 0.10;
+                ch.push_back({"config.json",
+                              "asr.vad.min_speech_duration: upgraded legacy default 0.15 to 0.10"});
+              }
+              if (vad.contains("min_silence_duration") && vad["min_silence_duration"].is_number() &&
+                  std::abs(vad["min_silence_duration"].get<double>() - 0.5) < 1e-4) {
+                vad["min_silence_duration"] = 1.2;
+                ch.push_back({"config.json",
+                              "asr.vad.min_silence_duration: upgraded legacy default 0.5 to 1.2"});
+              }
+              if (vad.contains("speech_pad_ms") && vad["speech_pad_ms"].is_number_integer() &&
+                  vad["speech_pad_ms"].get<int>() == 300) {
+                vad["speech_pad_ms"] = 500;
+                ch.push_back(
+                    {"config.json", "asr.vad.speech_pad_ms: upgraded legacy default 300 to 500"});
+              }
+            }
           },
       },
   };
