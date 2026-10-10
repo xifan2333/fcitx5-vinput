@@ -10,6 +10,7 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
+#include <thread>
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
@@ -544,21 +545,48 @@ void AudioCapture::EndRecording() {
 }
 
 std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
+  // Allow any final in-flight PipeWire quantum (~20-50ms) to flush from the hardware graph.
+  if (loop_ && stream_ && recording_.load(std::memory_order_relaxed)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+  }
+
+  if (loop_) {
+    pw_thread_loop_lock(loop_);
+  }
   recording_.store(false, std::memory_order_relaxed);
   if (StreamReuseEnabled() && stream_) {
-    std::string error;
-    if (!SetStreamActive(false, &error)) {
+    const int ret = pw_stream_set_active(stream_, false);
+    if (ret < 0) {
       vinput::debug::Log("capture StopAndGetBuffer set_active(false) failed: %s; destroying\n",
-                         error.c_str());
-      DestroyStream();
-    } else if (IdleDestroyMs() <= 0) {
+                         strerror(-ret));
+      pw_stream_destroy(stream_);
+      stream_ = nullptr;
+      stream_active_ = false;
+      connected_target_object_.clear();
+    } else {
+      stream_active_ = false;
+    }
+  } else if (stream_) {
+    pw_stream_destroy(stream_);
+    stream_ = nullptr;
+    stream_active_ = false;
+    connected_target_object_.clear();
+  }
+  if (loop_) {
+    pw_thread_loop_unlock(loop_);
+  }
+
+  if (stream_) {
+    MarkStreamDeactivated();
+    if (IdleDestroyMs() <= 0) {
       DestroyStream();
     } else {
       ScheduleIdleDestroy();
     }
   } else {
-    DestroyStream();
+    MarkStreamDestroyed();
   }
+
   std::lock_guard<std::mutex> lock(buffer_mutex_);
   auto result = pcm_buffer_;
   pcm_buffer_.clear();

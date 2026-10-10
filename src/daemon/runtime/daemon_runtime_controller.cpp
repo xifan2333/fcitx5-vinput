@@ -603,7 +603,6 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
       vinput::debug::Log("stop rejected (phase: %s)\n", vinput::dbus::StatusToString(phase_));
       return DbusService::MethodResult::Failure(_("Recording is not active."));
     }
-    accepting_chunks_.store(false, std::memory_order_relaxed);
     stop_capture = true;
   }
 
@@ -617,6 +616,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
     }
     captured_pcm = capture_->StopAndGetBuffer();
     RestoreOutputIfDucked();
+    accepting_chunks_.store(false, std::memory_order_relaxed);
   }
 
   {
