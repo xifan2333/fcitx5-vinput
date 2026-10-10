@@ -6,9 +6,9 @@
 struct SherpaOnnxVoiceActivityDetector;
 
 struct VadTrimParams {
-  float threshold = 0.35f;
-  float min_speech_duration = 0.10f;
-  float min_silence_duration = 1.2f;
+  float threshold = 0.35F;
+  float min_speech_duration = 0.10F;
+  float min_silence_duration = 1.2F;
   int speech_pad_ms = 500;
 };
 

@@ -546,15 +546,15 @@ void AudioCapture::EndRecording() {
 
 std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
   // Allow any final in-flight PipeWire quantum (~20-50ms) to flush from the hardware graph.
-  if (loop_ && stream_ && recording_.load(std::memory_order_relaxed)) {
+  if (loop_ != nullptr && stream_ != nullptr && recording_.load(std::memory_order_relaxed)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(60));
   }
 
-  if (loop_) {
+  if (loop_ != nullptr) {
     pw_thread_loop_lock(loop_);
   }
   recording_.store(false, std::memory_order_relaxed);
-  if (StreamReuseEnabled() && stream_) {
+  if (StreamReuseEnabled() && stream_ != nullptr) {
     const int ret = pw_stream_set_active(stream_, false);
     if (ret < 0) {
       vinput::debug::Log("capture StopAndGetBuffer set_active(false) failed: %s; destroying\n",
@@ -566,17 +566,17 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
     } else {
       stream_active_ = false;
     }
-  } else if (stream_) {
+  } else if (stream_ != nullptr) {
     pw_stream_destroy(stream_);
     stream_ = nullptr;
     stream_active_ = false;
     connected_target_object_.clear();
   }
-  if (loop_) {
+  if (loop_ != nullptr) {
     pw_thread_loop_unlock(loop_);
   }
 
-  if (stream_) {
+  if (stream_ != nullptr) {
     MarkStreamDeactivated();
     if (IdleDestroyMs() <= 0) {
       DestroyStream();

@@ -22,13 +22,13 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   config.silero_vad.min_silence_duration = params_.min_silence_duration;
   config.silero_vad.min_speech_duration = params_.min_speech_duration;
   config.silero_vad.window_size = 512;
-  config.silero_vad.max_speech_duration = 0.0f;
+  config.silero_vad.max_speech_duration = 0.0F;
   config.sample_rate = sample_rate;
   config.num_threads = 1;
   config.provider = provider.c_str();
   config.debug = 0;
 
-  vad_ = SherpaOnnxCreateVoiceActivityDetector(&config, 30.0f);
+  vad_ = SherpaOnnxCreateVoiceActivityDetector(&config, 30.0F);
   if (!vad_) {
     if (error) {
       *error = "failed to create VAD from '" + model_path + "'";
@@ -68,7 +68,7 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
     SherpaOnnxVoiceActivityDetectorAcceptWaveform(vad_, samples.data() + offset, window_size);
   }
   if (offset < n) {
-    std::vector<float> padded_tail(window_size, 0.0f);
+    std::vector<float> padded_tail(window_size, 0.0F);
     const int remaining = n - offset;
     for (int i = 0; i < remaining; ++i) {
       padded_tail[i] = samples[offset + i];
