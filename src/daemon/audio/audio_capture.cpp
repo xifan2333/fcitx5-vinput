@@ -10,7 +10,6 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
-#include <thread>
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
@@ -545,11 +544,6 @@ void AudioCapture::EndRecording() {
 }
 
 std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
-  // Allow any final in-flight PipeWire quantum (~20-50ms) to flush from the hardware graph.
-  if (loop_ != nullptr && stream_ != nullptr && recording_.load(std::memory_order_relaxed)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
-  }
-
   if (loop_ != nullptr) {
     pw_thread_loop_lock(loop_);
   }
