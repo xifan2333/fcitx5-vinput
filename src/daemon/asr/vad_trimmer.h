@@ -25,7 +25,8 @@ public:
             const std::string& provider = "cpu", const VadTrimParams& params = {},
             std::string* error = nullptr);
 
-  // Extract speech segments, concatenated. Returns empty if no speech found.
+  // Extract continuous speech audio between outer bounds, preserving internal pauses.
+  // Returns empty if no speech found.
   std::vector<float> Trim(const std::vector<float>& samples, int sample_rate);
 
   bool Available() const;

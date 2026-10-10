@@ -93,8 +93,12 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
     SherpaOnnxVoiceActivityDetectorPop(vad_);
   }
 
-  if (earliest_speech_start < 0 || latest_speech_end <= earliest_speech_start) {
-    fprintf(stderr, "vinput: VAD found no speech, returning original audio\n");
+  if (earliest_speech_start < 0) {
+    fprintf(stderr, "vinput: VAD found no speech, returning empty audio\n");
+    return {};
+  }
+  if (latest_speech_end <= earliest_speech_start) {
+    fprintf(stderr, "vinput: VAD produced invalid speech bounds, returning original audio\n");
     return samples;
   }
 
