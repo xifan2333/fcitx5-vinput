@@ -68,9 +68,10 @@ vinput config set /asr/vad/enabled true
 可选参数（仅本地 offline ASR）：
 
 ```bash
-vinput config set /asr/vad/threshold 0.45
-vinput config set /asr/vad/min_speech_duration 0.15
-vinput config set /asr/vad/speech_pad_ms 300
+vinput config set /asr/vad/threshold 0.35
+vinput config set /asr/vad/min_speech_duration 0.10
+vinput config set /asr/vad/min_silence_duration 1.2
+vinput config set /asr/vad/speech_pad_ms 500
 ```
 
 ## 录音预热与隐私

@@ -6,10 +6,10 @@
 struct SherpaOnnxVoiceActivityDetector;
 
 struct VadTrimParams {
-  float threshold = 0.45f;
-  float min_speech_duration = 0.15f;
-  float min_silence_duration = 0.5f;
-  int speech_pad_ms = 300;
+  float threshold = 0.35F;
+  float min_speech_duration = 0.10F;
+  float min_silence_duration = 1.2F;
+  int speech_pad_ms = 500;
 };
 
 class VadTrimmer {
@@ -25,7 +25,8 @@ public:
             const std::string& provider = "cpu", const VadTrimParams& params = {},
             std::string* error = nullptr);
 
-  // Extract speech segments, concatenated. Returns empty if no speech found.
+  // Extract continuous speech audio between outer bounds, preserving internal pauses.
+  // Returns empty if no speech found.
   std::vector<float> Trim(const std::vector<float>& samples, int sample_rate);
 
   bool Available() const;
