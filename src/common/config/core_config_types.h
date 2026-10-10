@@ -86,12 +86,15 @@ struct CoreConfig {
     struct Vad {
       bool enabled{true};
       // Silero knobs for offline trim (ignored when disabled / non-offline).
-      // Defaults slightly softer than historical hard-codes to reduce leading
-      // syllable dropout after cold PTT.
-      double threshold{0.45};
-      double minSpeechDuration{0.15};
-      double minSilenceDuration{0.5};
-      int speechPadMs{300};
+      // Tuned for high-recall voice onset detection and natural pause tolerance:
+      // - threshold 0.35 captures unvoiced consonants (f/s/p/t/k) with low acoustic energy.
+      // - speechPadMs 500 covers Voice Onset Time (VOT) and consonant burst envelopes.
+      // - minSilenceDuration 1.2s avoids splitting across typical clause/comma pauses (350-700ms).
+      // - minSpeechDuration 0.10s avoids dropping short monosyllables.
+      double threshold{0.35};
+      double minSpeechDuration{0.10};
+      double minSilenceDuration{1.2};
+      int speechPadMs{500};
     } vad;
     std::vector<AsrProvider> providers;
   } asr;
