@@ -4,6 +4,8 @@
 #include <string>
 
 #include "common/utils/interpolation.h"
+#include "common/utils/process_utils.h"
+#include "common/utils/string_utils.h"
 
 #include "daemon/postprocess/prompt_template.h"
 
@@ -134,6 +136,41 @@ void TestPerformanceUnmatchedTokens() {
   ExpectEq(InterpolateEnv(malformed_dollar), malformed_dollar);
 }
 
+std::string MaskApiKey(const std::string& key) {
+  if (vinput::interpolate::HasInterpolation(key)) {
+    return key;
+  }
+  if (key.size() <= 8) {
+    std::string masked(key.size(), '*');
+    return masked;
+  }
+  return key.substr(0, 4) + std::string(key.size() - 8, '*') + key.substr(key.size() - 4);
+}
+
+void TestMaskApiKey() {
+  ExpectEq(MaskApiKey("sk-1234567890"), "sk-1*****7890");
+  ExpectEq(MaskApiKey("short"), "*****");
+  ExpectEq(MaskApiKey("${OPENAI_API_KEY}"), "${OPENAI_API_KEY}");
+  ExpectEq(MaskApiKey("{{env.OPENAI_API_KEY}}"), "{{env.OPENAI_API_KEY}}");
+}
+
+void TestProcessEnvInterpolation() {
+  const char* path_val = std::getenv("PATH");
+  if (path_val == nullptr) {
+    return;
+  }
+
+  vinput::process::CommandSpec spec;
+  spec.command = "sh";
+  spec.args = {"-c", "echo $TEST_VAR"};
+  spec.env["TEST_VAR"] = "${PATH}";
+  spec.timeout_ms = 5000;
+
+  const vinput::process::CommandResult res = vinput::process::RunCommandWithInput(spec, {});
+  ExpectTrue(res.exit_code == 0);
+  ExpectEq(vinput::str::TrimAsciiWhitespace(res.stdout_text), std::string(path_val));
+}
+
 } // namespace
 
 int main() {
@@ -142,6 +179,8 @@ int main() {
   TestInterpolateEnv();
   TestPromptTemplateIntegration();
   TestPerformanceUnmatchedTokens();
+  TestMaskApiKey();
+  TestProcessEnvInterpolation();
 
   std::cout << "All interpolation tests passed successfully!\n";
   return 0;
