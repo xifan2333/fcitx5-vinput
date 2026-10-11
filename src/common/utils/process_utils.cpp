@@ -84,19 +84,6 @@ void CloseIfOpen(int* fd) {
   }
 }
 
-bool ApplyEnvironment(const CommandSpec& spec) {
-  for (const auto& [key, value] : spec.env) {
-    if (key.empty()) {
-      continue;
-    }
-    const std::string resolved_value = vinput::interpolate::InterpolateEnv(value);
-    if (setenv(key.c_str(), resolved_value.c_str(), 1) != 0) {
-      return false;
-    }
-  }
-  return true;
-}
-
 } // namespace
 
 CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input) {
@@ -398,9 +385,9 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
       chdir(working_dir.c_str());
     }
 
-    if (!ApplyEnvironment(spec)) {
-      _exit(127);
-    }
+    std::vector<std::string> env_storage;
+    std::vector<char*> envp = BuildEnvp(spec, &env_storage);
+    environ = envp.data();
 
     execvp(spec.command.c_str(), argv.data());
     _exit(127);
