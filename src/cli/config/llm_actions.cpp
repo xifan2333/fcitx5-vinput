@@ -64,9 +64,6 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
 }
 
 std::string MaskApiKey(const std::string& key) {
-  if (vinput::interpolate::HasInterpolation(key)) {
-    return key;
-  }
   if (key.size() <= 8) {
     return std::string(key.size(), '*');
   }

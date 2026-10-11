@@ -136,24 +136,6 @@ void TestPerformanceUnmatchedTokens() {
   ExpectEq(InterpolateEnv(malformed_dollar), malformed_dollar);
 }
 
-std::string MaskApiKey(const std::string& key) {
-  if (vinput::interpolate::HasInterpolation(key)) {
-    return key;
-  }
-  if (key.size() <= 8) {
-    std::string masked(key.size(), '*');
-    return masked;
-  }
-  return key.substr(0, 4) + std::string(key.size() - 8, '*') + key.substr(key.size() - 4);
-}
-
-void TestMaskApiKey() {
-  ExpectEq(MaskApiKey("sk-1234567890"), "sk-1*****7890");
-  ExpectEq(MaskApiKey("short"), "*****");
-  ExpectEq(MaskApiKey("${OPENAI_API_KEY}"), "${OPENAI_API_KEY}");
-  ExpectEq(MaskApiKey("{{env.OPENAI_API_KEY}}"), "{{env.OPENAI_API_KEY}}");
-}
-
 void TestProcessEnvInterpolation() {
   const char* path_val = std::getenv("PATH");
   if (path_val == nullptr) {
@@ -179,7 +161,6 @@ int main() {
   TestInterpolateEnv();
   TestPromptTemplateIntegration();
   TestPerformanceUnmatchedTokens();
-  TestMaskApiKey();
   TestProcessEnvInterpolation();
 
   std::cout << "All interpolation tests passed successfully!\n";
