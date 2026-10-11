@@ -15,6 +15,7 @@
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
+#include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -604,9 +605,15 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
   }
 
   struct curl_slist* headers = nullptr;
-  if (!provider->api_key.empty()) {
+  const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider->api_key);
+  if (vinput::interpolate::HasInterpolation(provider->api_key) && resolved_api_key.empty()) {
+    fmt.PrintWarning(vinput::str::FmtStr(
+        _("Environment variable referenced in API key for provider '%s' is unset or empty."),
+        provider->id));
+  }
+  if (!resolved_api_key.empty()) {
     std::string auth = std::string(vinput::llm::kAuthorizationHeader) + ": " +
-                       vinput::llm::kBearerPrefix + provider->api_key;
+                       vinput::llm::kBearerPrefix + resolved_api_key;
     headers = curl_slist_append(headers, auth.c_str());
   }
 

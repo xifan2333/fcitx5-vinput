@@ -16,6 +16,7 @@
 
 #include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
+#include "common/utils/interpolation.h"
 #include "common/utils/url_utils.h"
 
 #include "gui/utils/config_manager.h"
@@ -175,9 +176,11 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
   auto* nam = new QNetworkAccessManager(comboModel);
   QNetworkRequest req{QUrl(url)};
   req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-  if (!provider.api_key.trimmed().isEmpty()) {
+  const std::string resolved_key =
+      vinput::interpolate::InterpolateEnv(provider.api_key.trimmed().toStdString());
+  if (!resolved_key.empty()) {
     const QByteArray bearer =
-        QByteArray(vinput::llm::kBearerPrefix) + provider.api_key.trimmed().toUtf8();
+        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(resolved_key);
     req.setRawHeader(vinput::llm::kAuthorizationHeader, bearer);
   }
 

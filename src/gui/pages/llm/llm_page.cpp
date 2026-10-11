@@ -40,6 +40,7 @@
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
 #include "common/scene/postprocess_scene.h"
+#include "common/utils/interpolation.h"
 
 #include "cli/runtime/dbus_client.h"
 
@@ -510,9 +511,10 @@ void LlmPage::onLlmTest() {
   auto* nam = new QNetworkAccessManager(this);
   QNetworkRequest req{QUrl(url)};
   req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-  if (!provider->api_key.empty()) {
+  const std::string resolved_key = vinput::interpolate::InterpolateEnv(provider->api_key);
+  if (!resolved_key.empty()) {
     QByteArray bearer =
-        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(provider->api_key);
+        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(resolved_key);
     req.setRawHeader(vinput::llm::kAuthorizationHeader, bearer);
   }
 
