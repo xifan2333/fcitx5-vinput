@@ -109,6 +109,29 @@ void TestPromptTemplateIntegration() {
            "Write bash: echo \"${USER}\"");
   ExpectEq(vinput::prompt_template::Interpolate("Tag: {{unknown_tag}}", vars),
            "Tag: {{unknown_tag}}");
+
+  // Malformed scheme tags with empty scheme prefix must not be expanded
+  ExpectEq(vinput::prompt_template::Interpolate("Tag: {{.asr}}", vars), "Tag: {{.asr}}");
+  ExpectEq(vinput::prompt_template::Interpolate("Tag: {{:selected}}", vars), "Tag: {{:selected}}");
+}
+
+void TestPerformanceUnmatchedTokens() {
+  using vinput::interpolate::InterpolateEnv;
+
+  // Unmatched opening markers should complete linearly without quadratic stall
+  std::string malformed_braces;
+  malformed_braces.reserve(10000);
+  for (int i = 0; i < 5000; ++i) {
+    malformed_braces.append("{{");
+  }
+  ExpectEq(InterpolateEnv(malformed_braces), malformed_braces);
+
+  std::string malformed_dollar;
+  malformed_dollar.reserve(10000);
+  for (int i = 0; i < 5000; ++i) {
+    malformed_dollar.append("${");
+  }
+  ExpectEq(InterpolateEnv(malformed_dollar), malformed_dollar);
 }
 
 } // namespace
@@ -118,6 +141,7 @@ int main() {
   TestInterpolateCustomResolver();
   TestInterpolateEnv();
   TestPromptTemplateIntegration();
+  TestPerformanceUnmatchedTokens();
 
   std::cout << "All interpolation tests passed successfully!\n";
   return 0;
