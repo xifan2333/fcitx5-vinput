@@ -1,17 +1,21 @@
 #include "common/utils/interpolation.h"
 
 #include <cctype>
+#include <cstddef>
 #include <cstdlib>
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace vinput::interpolate {
 
 namespace {
 
 std::string_view Trim(std::string_view s) {
-  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) {
+  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())) != 0) {
     s.remove_prefix(1);
   }
-  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
+  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())) != 0) {
     s.remove_suffix(1);
   }
   return s;
@@ -40,7 +44,7 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
         const std::string_view raw = text.substr(i, end - i + 1);
         const std::string_view inner = Trim(text.substr(i + 2, end - (i + 2)));
         if (!inner.empty()) {
-          Placeholder p{
+          const Placeholder p{
               .raw = raw,
               .scheme = "env",
               .key = inner,
@@ -73,7 +77,7 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
           }
 
           if (!key.empty()) {
-            Placeholder p{
+            const Placeholder p{
                 .raw = raw,
                 .scheme = scheme,
                 .key = key,

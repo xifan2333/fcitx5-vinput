@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 
 #include "common/utils/interpolation.h"
