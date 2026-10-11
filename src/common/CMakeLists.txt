@@ -14,6 +14,7 @@ set(VINPUT_CONFIG_SOURCES
     utils/path_utils.cpp
     utils/sandbox.cpp
     utils/file_utils.cpp
+    utils/interpolation.cpp
 )
 
 add_library(config STATIC
