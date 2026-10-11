@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "common/config/core_config.h"
+#include "common/utils/interpolation.h"
 
 namespace vinput::daemon::remote {
 
@@ -756,7 +757,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
     out.debounce_ms = *debounce;
   }
 
-  out.api_key = EnvValue(command->env, "VINPUT_ASR_API_KEY");
+  out.api_key = vinput::interpolate::InterpolateEnv(EnvValue(command->env, "VINPUT_ASR_API_KEY"));
   if (out.api_key.empty()) {
     if (error) {
       *error = "Remote ASR provider requires VINPUT_ASR_API_KEY.";

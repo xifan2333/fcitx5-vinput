@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
 
 extern char** environ;
@@ -81,16 +82,17 @@ std::vector<char*> BuildEnvp(const std::map<std::string, std::string>& env,
       continue;
     }
     bool replaced = false;
+    const std::string resolved_value = vinput::interpolate::InterpolateEnv(value);
     const std::string prefix = key + "=";
     for (auto& item : *storage) {
       if (item.rfind(prefix, 0) == 0) {
-        item = prefix + value;
+        item = prefix + resolved_value;
         replaced = true;
         break;
       }
     }
     if (!replaced) {
-      storage->push_back(prefix + value);
+      storage->push_back(prefix + resolved_value);
     }
   }
 

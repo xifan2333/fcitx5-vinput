@@ -12,6 +12,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "common/utils/interpolation.h"
+
 extern char** environ;
 
 namespace vinput::process {
@@ -52,16 +54,17 @@ std::vector<char*> BuildEnvp(const CommandSpec& spec, std::vector<std::string>* 
 
   for (const auto& [key, value] : spec.env) {
     bool replaced = false;
+    const std::string resolved_value = vinput::interpolate::InterpolateEnv(value);
     const std::string prefix = key + "=";
     for (auto& entry : *storage) {
       if (entry.rfind(prefix, 0) == 0) {
-        entry = prefix + value;
+        entry = prefix + resolved_value;
         replaced = true;
         break;
       }
     }
     if (!replaced) {
-      storage->push_back(prefix + value);
+      storage->push_back(prefix + resolved_value);
     }
   }
 
@@ -86,7 +89,8 @@ bool ApplyEnvironment(const CommandSpec& spec) {
     if (key.empty()) {
       continue;
     }
-    if (setenv(key.c_str(), value.c_str(), 1) != 0) {
+    const std::string resolved_value = vinput::interpolate::InterpolateEnv(value);
+    if (setenv(key.c_str(), resolved_value.c_str(), 1) != 0) {
       return false;
     }
   }
