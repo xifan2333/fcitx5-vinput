@@ -3,10 +3,10 @@
 #include <cerrno>
 #include <cstring>
 #include <fstream>
-#include <regex>
 #include <sys/stat.h>
 
 #include "common/utils/debug_log.h"
+#include "common/utils/interpolation.h"
 
 namespace vinput::prompt_template {
 
@@ -78,39 +78,21 @@ std::optional<std::string> LoadFromFileUri(std::string_view uri, std::string* er
 }
 
 std::string Interpolate(std::string_view tpl, const Vars& vars) {
-  // Match `{{name}}` with optional inner whitespace; `\w+` keeps the name
-  // restricted to a sane identifier set so stray braces in prose don't
-  // accidentally swallow content.
-  static const std::regex kVarRe(R"(\{\{\s*(\w+)\s*\}\})");
-
-  const std::string input(tpl);
-  std::string out;
-  out.reserve(input.size());
-
-  auto it = std::sregex_iterator(input.begin(), input.end(), kVarRe);
-  const auto end = std::sregex_iterator();
-  size_t last = 0;
-  for (; it != end; ++it) {
-    const auto& match = *it;
-    const size_t pos = static_cast<size_t>(match.position());
-    out.append(input, last, pos - last);
-
-    const std::string name = match[1].str();
-    if (name == "asr") {
-      out.append(vars.asr);
-    } else if (name == "selected") {
-      out.append(vars.selected);
-    } else if (name == "context") {
-      out.append(vars.context);
-    } else {
-      // Unknown placeholder — preserve verbatim so authors can write literal
-      // `{{foo}}` without escaping.
-      out.append(match.str());
-    }
-    last = pos + match.length();
-  }
-  out.append(input, last, std::string::npos);
-  return out;
+  return vinput::interpolate::Interpolate(
+      tpl, [&vars](const vinput::interpolate::Placeholder& p) -> std::optional<std::string> {
+        if (p.raw.starts_with("{{") && p.scheme.empty()) {
+          if (p.key == "asr") {
+            return std::string(vars.asr);
+          }
+          if (p.key == "selected") {
+            return std::string(vars.selected);
+          }
+          if (p.key == "context") {
+            return std::string(vars.context);
+          }
+        }
+        return std::nullopt;
+      });
 }
 
 } // namespace vinput::prompt_template
