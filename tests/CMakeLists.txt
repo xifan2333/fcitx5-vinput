@@ -56,3 +56,18 @@ add_test(NAME modifier_key_tests COMMAND modifier_key_tests)
 set_tests_properties(modifier_key_tests PROPERTIES
     ENVIRONMENT "XDG_CONFIG_HOME=/tmp/vinput_test_cfg"
 )
+
+add_executable(test_interpolation
+    test_interpolation.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/prompt_template.cpp
+)
+
+target_include_directories(test_interpolation PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_interpolation PRIVATE
+    common
+)
+
+add_test(NAME test_interpolation COMMAND test_interpolation)
