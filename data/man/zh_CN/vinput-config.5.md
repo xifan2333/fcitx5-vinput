@@ -92,6 +92,9 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
 }
 ```
 
+**providers[].api_key** (*字符串*)
+:   访问该服务商的 API 密钥。支持使用环境变量脱敏语法（如 `"${OPENAI_API_KEY}"` 或 `"{{env.OPENAI_API_KEY}}"`），运行时自动从环境变量解析，避免在配置文件中保存明文密钥。环境变量可通过 `~/.config/environment.d/` 或桌面环境会话注入。
+
 **adapters[].auto_start** (*布尔值*)
 :   是否在 **vinput-daemon** 启动时自动启动该适配器进程。
 

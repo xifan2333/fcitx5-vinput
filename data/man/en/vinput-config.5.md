@@ -92,6 +92,9 @@ Defines OpenAI-compatible API endpoints.
 }
 ```
 
+**providers[].api_key** (*string*)
+:   API key for accessing the provider. Supports environment variable interpolation (e.g. `"${OPENAI_API_KEY}"` or `"{{env.OPENAI_API_KEY}}"`), resolving dynamically at runtime to avoid storing plaintext secrets in `config.json`. Variables can be injected via `~/.config/environment.d/` or desktop session environments.
+
 **adapters[].auto_start** (*boolean*)
 :   Whether to automatically launch the adapter process when **vinput-daemon** starts.
 
