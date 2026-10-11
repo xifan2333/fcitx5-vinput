@@ -37,8 +37,10 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
 
   size_t i = 0;
   while (i < text.size()) {
+    const std::string_view remaining = text.substr(i);
+
     // 1. Dollar syntax: `${...}`
-    if (text[i] == '$' && i + 1 < text.size() && text[i + 1] == '{') {
+    if (remaining.starts_with("${")) {
       const size_t end = text.find('}', i + 2);
       if (end != std::string_view::npos) {
         const std::string_view raw = text.substr(i, end - i + 1);
@@ -60,7 +62,7 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
     }
 
     // 2. Double-brace syntax: `{{...}}`
-    if (text[i] == '{' && i + 1 < text.size() && text[i + 1] == '{') {
+    if (remaining.starts_with("{{")) {
       const size_t end = text.find("}}", i + 2);
       if (end != std::string_view::npos) {
         const std::string_view raw = text.substr(i, end - i + 2);
@@ -93,7 +95,7 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
       }
     }
 
-    result.push_back(text[i]);
+    result.push_back(text.at(i));
     ++i;
   }
 

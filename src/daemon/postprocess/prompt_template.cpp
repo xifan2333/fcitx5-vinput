@@ -3,6 +3,10 @@
 #include <cerrno>
 #include <cstring>
 #include <fstream>
+#include <ios>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <sys/stat.h>
 
 #include "common/utils/debug_log.h"
@@ -27,7 +31,7 @@ bool HasInterpolation(std::string_view s) {
 
 std::optional<std::string> LoadFromFileUri(std::string_view uri, std::string* error) {
   auto fail = [&](const char* msg) -> std::optional<std::string> {
-    if (error) {
+    if (error != nullptr) {
       *error = msg;
     }
     return std::nullopt;
@@ -46,7 +50,7 @@ std::optional<std::string> LoadFromFileUri(std::string_view uri, std::string* er
 
   struct stat st{};
   if (::stat(path.c_str(), &st) != 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = std::string("stat failed: ") + std::strerror(errno);
     }
     return std::nullopt;

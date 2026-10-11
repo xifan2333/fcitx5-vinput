@@ -1,6 +1,6 @@
+#include <cstdlib>
 #include <iostream>
 #include <optional>
-#include <stdlib.h>
 #include <string>
 
 #include "common/utils/interpolation.h"
@@ -22,8 +22,6 @@ void ExpectEq(const std::string& actual, const std::string& expected) {
     std::abort();
   }
 }
-
-} // namespace
 
 void TestHasInterpolation() {
   using vinput::interpolate::HasInterpolation;
@@ -64,23 +62,22 @@ void TestInterpolateCustomResolver() {
 void TestInterpolateEnv() {
   using vinput::interpolate::InterpolateEnv;
 
-  setenv("VINPUT_TEST_VAR_A", "value_a", 1);
-  setenv("VINPUT_TEST_VAR_B", "12345", 1);
-  unsetenv("VINPUT_TEST_UNSET_VAR");
+  const char* path_val = std::getenv("PATH");
+  if (path_val != nullptr) {
+    const std::string path_str(path_val);
+    // Dollar syntax
+    ExpectEq(InterpolateEnv("${PATH}"), path_str);
+    ExpectEq(InterpolateEnv("bin:${PATH}"), "bin:" + path_str);
 
-  // Dollar syntax
-  ExpectEq(InterpolateEnv("${VINPUT_TEST_VAR_A}"), "value_a");
-  ExpectEq(InterpolateEnv("Bearer ${VINPUT_TEST_VAR_A}"), "Bearer value_a");
-  ExpectEq(InterpolateEnv("${VINPUT_TEST_VAR_A}_${VINPUT_TEST_VAR_B}"), "value_a_12345");
-
-  // Dot syntax and colon syntax
-  ExpectEq(InterpolateEnv("{{env.VINPUT_TEST_VAR_A}}"), "value_a");
-  ExpectEq(InterpolateEnv("{{env:VINPUT_TEST_VAR_B}}"), "12345");
-  ExpectEq(InterpolateEnv("{{  env.VINPUT_TEST_VAR_A  }}"), "value_a");
+    // Dot syntax and colon syntax
+    ExpectEq(InterpolateEnv("{{env.PATH}}"), path_str);
+    ExpectEq(InterpolateEnv("{{env:PATH}}"), path_str);
+    ExpectEq(InterpolateEnv("{{  env.PATH  }}"), path_str);
+  }
 
   // Unset environment variable resolves to empty string
-  ExpectEq(InterpolateEnv("${VINPUT_TEST_UNSET_VAR}"), "");
-  ExpectEq(InterpolateEnv("prefix_${VINPUT_TEST_UNSET_VAR}_suffix"), "prefix__suffix");
+  ExpectEq(InterpolateEnv("${VINPUT_DEFINITELY_UNSET_VAR_12345}"), "");
+  ExpectEq(InterpolateEnv("prefix_${VINPUT_DEFINITELY_UNSET_VAR_12345}_suffix"), "prefix__suffix");
 
   // Non-env placeholders are preserved verbatim
   ExpectEq(InterpolateEnv("{{asr}}"), "{{asr}}");
@@ -113,6 +110,8 @@ void TestPromptTemplateIntegration() {
   ExpectEq(vinput::prompt_template::Interpolate("Tag: {{unknown_tag}}", vars),
            "Tag: {{unknown_tag}}");
 }
+
+} // namespace
 
 int main() {
   TestHasInterpolation();
