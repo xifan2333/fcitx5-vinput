@@ -1230,5 +1230,5 @@ msgstr "待应用的迁移变更："
 msgid "Preview migration changes without modifying files"
 msgstr "预览迁移变更而不修改文件"
 
-msgid "Environment variable referenced in API key for provider '%s' is unset or empty."
-msgstr "服务商 '%s' 的 API 密钥中引用的环境变量未设置或为空。"
+msgid "Environment variable '%s' referenced in API key for provider '%s' is unset or empty."
+msgstr "服务商 '%2$s' 的 API 密钥中引用的环境变量 '%1$s' 未设置或为空。"

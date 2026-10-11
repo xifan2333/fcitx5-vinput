@@ -392,8 +392,9 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider.api_key);
   if (vinput::interpolate::HasInterpolation(provider.api_key) && resolved_api_key.empty()) {
     fprintf(stderr,
-            "vinput-daemon: environment variable in api_key for provider '%s' is unset or empty\n",
-            provider.id.c_str());
+            "vinput-daemon: environment variable in api_key ('%s') for provider '%s' is unset or "
+            "empty\n",
+            provider.api_key.c_str(), provider.id.c_str());
   }
   if (!resolved_api_key.empty()) {
     const std::string auth = std::string(vinput::llm::kAuthorizationHeader) + ": " +

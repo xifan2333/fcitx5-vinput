@@ -64,7 +64,9 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
 }
 
 std::string MaskApiKey(const std::string& key) {
-  if (vinput::interpolate::HasInterpolation(key)) {
+  const std::string trimmed = vinput::str::TrimAsciiWhitespace(key);
+  if ((trimmed.starts_with("${") && trimmed.ends_with("}")) ||
+      (trimmed.starts_with("{{") && trimmed.ends_with("}}"))) {
     return key;
   }
   if (key.size() <= 8) {
@@ -611,8 +613,8 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
   const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider->api_key);
   if (vinput::interpolate::HasInterpolation(provider->api_key) && resolved_api_key.empty()) {
     fmt.PrintWarning(vinput::str::FmtStr(
-        _("Environment variable referenced in API key for provider '%s' is unset or empty."),
-        provider->id));
+        _("Environment variable '%s' referenced in API key for provider '%s' is unset or empty."),
+        provider->api_key, provider->id));
   }
   if (!resolved_api_key.empty()) {
     std::string auth = std::string(vinput::llm::kAuthorizationHeader) + ": " +

@@ -137,7 +137,9 @@ void TestPerformanceUnmatchedTokens() {
 }
 
 std::string MaskApiKey(const std::string& key) {
-  if (vinput::interpolate::HasInterpolation(key)) {
+  const std::string trimmed = vinput::str::TrimAsciiWhitespace(key);
+  if ((trimmed.starts_with("${") && trimmed.ends_with("}")) ||
+      (trimmed.starts_with("{{") && trimmed.ends_with("}}"))) {
     return key;
   }
   if (key.size() <= 8) {
@@ -152,6 +154,11 @@ void TestMaskApiKey() {
   ExpectEq(MaskApiKey("short"), "*****");
   ExpectEq(MaskApiKey("${OPENAI_API_KEY}"), "${OPENAI_API_KEY}");
   ExpectEq(MaskApiKey("{{env.OPENAI_API_KEY}}"), "{{env.OPENAI_API_KEY}}");
+  // Mixed literal and placeholder must still be masked to protect secrets
+  const std::string mixed = "sk-1234567890-${SUFFIX}";
+  const std::string expected_masked =
+      mixed.substr(0, 4) + std::string(mixed.size() - 8, '*') + mixed.substr(mixed.size() - 4);
+  ExpectEq(MaskApiKey(mixed), expected_masked);
 }
 
 void TestProcessEnvInterpolation() {
