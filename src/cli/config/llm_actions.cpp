@@ -64,9 +64,7 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
 }
 
 std::string MaskApiKey(const std::string& key) {
-  const std::string trimmed = vinput::str::TrimAsciiWhitespace(key);
-  if ((trimmed.starts_with("${") && trimmed.ends_with("}")) ||
-      (trimmed.starts_with("{{") && trimmed.ends_with("}}"))) {
+  if (vinput::interpolate::HasInterpolation(key)) {
     return key;
   }
   if (key.size() <= 8) {
