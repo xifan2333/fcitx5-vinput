@@ -1,17 +1,22 @@
+#include <cerrno>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
+
+#include "common/config/core_config.h"
 
 #include "daemon/asr/backends/command_streaming_backend.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 
 namespace {
 
+/** Abort test execution if condition is not satisfied. */
 void ExpectTrue(bool condition, const std::string& message) {
   if (!condition) {
     std::cerr << "ExpectTrue failed: " << message << "\n";
@@ -19,11 +24,13 @@ void ExpectTrue(bool condition, const std::string& message) {
   }
 }
 
+/** Generate a unique temporary path for storing the spawned child pid. */
 std::string GetUniquePidFilePath(int id) {
   return "/tmp/vinput_test_streaming_pid_" + std::to_string(getpid()) + "_" + std::to_string(id) +
          ".tmp";
 }
 
+/** Poll for the written child pid file until available or timeout. */
 pid_t ReadPidFileWithRetry(const std::string& path) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (std::chrono::steady_clock::now() < deadline) {
@@ -41,9 +48,10 @@ pid_t ReadPidFileWithRetry(const std::string& path) {
   return -1;
 }
 
+/** Verify that the child process was reaped and is not a zombie. */
 void AssertChildAlreadyReaped(pid_t pid) {
   int status = 0;
-  const pid_t rc = waitpid(pid, &status, WNOHANG);
+  const pid_t rc = waitpid(pid, &status, 0);
   // If the child was already properly reaped by CommandStreamingSession,
   // waitpid returns -1 with ECHILD.
   ExpectTrue(rc == -1 && errno == ECHILD,
@@ -51,9 +59,11 @@ void AssertChildAlreadyReaped(pid_t pid) {
                  std::to_string(rc) + ", errno=" + std::to_string(errno) + ")");
 }
 
-// Regression test for Issue #264:
-// When a session finishes without any final text (e.g. silent recording),
-// the provider exits, and the child process MUST be reaped without becoming a zombie.
+/**
+ * Regression test for Issue #264:
+ * When a session finishes without any final text (e.g. silent recording),
+ * the provider exits, and the child process MUST be reaped without becoming a zombie.
+ */
 void TestSilentSessionReapsChild() {
   const std::string pid_file = GetUniquePidFilePath(1);
   unlink(pid_file.c_str());
@@ -61,10 +71,12 @@ void TestSilentSessionReapsChild() {
   CommandAsrProvider provider;
   provider.id = "test-silent-provider";
   provider.command = "/bin/sh";
-  provider.args = {"-c", "echo $$ > " + pid_file +
-                             " && echo '{\"type\": \"session_started\"}'"
-                             " && echo '{\"type\": \"closed\"}'"
-                             " && exit 0"};
+  provider.args = {"-c",
+                   "echo $$ > " + pid_file +
+                       " && echo '{\"type\": \"session_started\"}'"
+                       " && while read -r line; do case \"$line\" in *finish*) break ;; esac; done"
+                       " && echo '{\"type\": \"closed\"}'"
+                       " && exit 0"};
   provider.timeoutMs = 5000;
 
   std::string error;
@@ -80,16 +92,31 @@ void TestSilentSessionReapsChild() {
   const pid_t child_pid = ReadPidFileWithRetry(pid_file);
   ExpectTrue(child_pid > 0, "Failed to read child pid file for silent session");
 
-  // Finish session with no text
-  session->Finish(&error);
+  // Finish session with no text; returns false because no text was produced
+  const bool finish_ok = session->Finish(&error);
+  ExpectTrue(!finish_ok, "Finish should return false for silent session with no text");
+  ExpectTrue(!error.empty(), "Error message should not be empty");
+
   auto events = session->PollEvents();
   ExpectTrue(!events.empty(), "Events should not be empty");
+  bool saw_error_event = false;
+  bool saw_completed_event = false;
+  for (const auto& ev : events) {
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
+      saw_error_event = true;
+    }
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::Completed) {
+      saw_completed_event = true;
+    }
+  }
+  ExpectTrue(saw_error_event, "Expected Error event in silent session");
+  ExpectTrue(saw_completed_event, "Expected Completed event in silent session");
 
   // Verify child was reaped and is not a zombie
   AssertChildAlreadyReaped(child_pid);
 }
 
-// Test that destroying a session without calling Finish terminates and reaps the child process.
+/** Test that destroying a session without calling Finish terminates and reaps the child process. */
 void TestDestructionReapsChild() {
   const std::string pid_file = GetUniquePidFilePath(2);
   unlink(pid_file.c_str());
@@ -123,7 +150,7 @@ void TestDestructionReapsChild() {
   }
 }
 
-// Test normal session with final text
+/** Test normal session with final text reaps child. */
 void TestFinalTextSessionReapsChild() {
   const std::string pid_file = GetUniquePidFilePath(3);
   unlink(pid_file.c_str());
@@ -131,11 +158,13 @@ void TestFinalTextSessionReapsChild() {
   CommandAsrProvider provider;
   provider.id = "test-final-text-provider";
   provider.command = "/bin/sh";
-  provider.args = {"-c", "echo $$ > " + pid_file +
-                             " && echo '{\"type\": \"session_started\"}'"
-                             " && echo '{\"type\": \"final\", \"text\": \"hello world\"}'"
-                             " && echo '{\"type\": \"closed\"}'"
-                             " && exit 0"};
+  provider.args = {"-c",
+                   "echo $$ > " + pid_file +
+                       " && echo '{\"type\": \"session_started\"}'"
+                       " && while read -r line; do case \"$line\" in *finish*) break ;; esac; done"
+                       " && echo '{\"type\": \"final\", \"text\": \"hello world\"}'"
+                       " && echo '{\"type\": \"closed\"}'"
+                       " && exit 0"};
   provider.timeoutMs = 5000;
 
   std::string error;
@@ -165,7 +194,7 @@ void TestFinalTextSessionReapsChild() {
   AssertChildAlreadyReaped(child_pid);
 }
 
-// Test Cancel reaps child
+/** Test Cancel terminates and reaps child. */
 void TestCancelReapsChild() {
   const std::string pid_file = GetUniquePidFilePath(4);
   unlink(pid_file.c_str());

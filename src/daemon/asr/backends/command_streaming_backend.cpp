@@ -300,9 +300,15 @@ public:
 
     finished_ = true;
     if (!FlushPendingChunk(true, error)) {
+      QueueError(error && !error->empty() ? *error : "failed to flush audio chunk.");
+      QueueCompleted();
+      Terminate();
       return false;
     }
     if (!SendControlEvent("finish", error)) {
+      QueueError(error && !error->empty() ? *error : "failed to send finish event.");
+      QueueCompleted();
+      Terminate();
       return false;
     }
     CloseIfOpen(&child_.stdin_fd);
@@ -311,6 +317,9 @@ public:
 
     while (!saw_final_text_ && !completed_ && !child_.child_exited) {
       if (!PumpIo(kPollSliceMs, error)) {
+        QueueError(error && !error->empty() ? *error : "failed to poll provider.");
+        QueueCompleted();
+        Terminate();
         return false;
       }
       if (HasTimedOut(deadline_)) {
