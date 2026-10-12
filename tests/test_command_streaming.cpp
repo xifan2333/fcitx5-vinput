@@ -4,12 +4,11 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 
-#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 
 #include "daemon/asr/backends/command_streaming_backend.h"
 #include "daemon/asr/runtime/recognition_contract.h"
@@ -31,12 +30,12 @@ std::string GetUniquePidFilePath(int id) {
 }
 
 /** Poll for the written child pid file until available or timeout. */
-pid_t ReadPidFileWithRetry(const std::string& path) {
+int ReadPidFileWithRetry(const std::string& path) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (std::chrono::steady_clock::now() < deadline) {
     std::ifstream file(path);
     if (file.is_open()) {
-      pid_t pid = -1;
+      int pid = -1;
       if (file >> pid && pid > 0) {
         file.close();
         unlink(path.c_str());
@@ -49,9 +48,9 @@ pid_t ReadPidFileWithRetry(const std::string& path) {
 }
 
 /** Verify that the child process was reaped and is not a zombie. */
-void AssertChildAlreadyReaped(pid_t pid) {
+void AssertChildAlreadyReaped(int pid) {
   int status = 0;
-  const pid_t rc = waitpid(pid, &status, 0);
+  const auto rc = waitpid(pid, &status, 0);
   // If the child was already properly reaped by CommandStreamingSession,
   // waitpid returns -1 with ECHILD.
   ExpectTrue(rc == -1 && errno == ECHILD,
@@ -89,7 +88,7 @@ void TestSilentSessionReapsChild() {
   // Push empty audio to start child process
   ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
 
-  const pid_t child_pid = ReadPidFileWithRetry(pid_file);
+  const int child_pid = ReadPidFileWithRetry(pid_file);
   ExpectTrue(child_pid > 0, "Failed to read child pid file for silent session");
 
   // Finish session with no text; returns false because no text was produced
@@ -139,7 +138,7 @@ void TestDestructionReapsChild() {
 
     ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
 
-    const pid_t child_pid = ReadPidFileWithRetry(pid_file);
+    const int child_pid = ReadPidFileWithRetry(pid_file);
     ExpectTrue(child_pid > 0, "Failed to read child pid file for destruct session");
 
     // Session destroyed at end of scope without Finish()
@@ -176,7 +175,7 @@ void TestFinalTextSessionReapsChild() {
 
   ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
 
-  const pid_t child_pid = ReadPidFileWithRetry(pid_file);
+  const int child_pid = ReadPidFileWithRetry(pid_file);
   ExpectTrue(child_pid > 0, "Failed to read child pid file for final text session");
 
   ExpectTrue(session->Finish(&error), "Finish failed: " + error);
@@ -216,7 +215,7 @@ void TestCancelReapsChild() {
 
   ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
 
-  const pid_t child_pid = ReadPidFileWithRetry(pid_file);
+  const int child_pid = ReadPidFileWithRetry(pid_file);
   ExpectTrue(child_pid > 0, "Failed to read child pid file for cancel session");
 
   session->Cancel();
