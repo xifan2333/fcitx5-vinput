@@ -743,10 +743,10 @@ private:
     ReapChild();
     if (child_.pid > 0 && !child_.child_exited) {
       kill(child_.pid, SIGKILL);
-      pid_t wait_rc = -1;
-      do {
+      pid_t wait_rc = waitpid(child_.pid, nullptr, 0);
+      while (wait_rc < 0 && errno == EINTR) {
         wait_rc = waitpid(child_.pid, nullptr, 0);
-      } while (wait_rc < 0 && errno == EINTR);
+      }
       if (wait_rc == child_.pid || (wait_rc < 0 && errno == ECHILD)) {
         child_.child_exited = true;
         child_.exit_code = -1;
