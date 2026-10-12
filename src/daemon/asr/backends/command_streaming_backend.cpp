@@ -253,7 +253,7 @@ public:
       : provider_(provider), provider_id_(std::move(provider_id)),
         deadline_(Clock::time_point::max()) {}
 
-  ~CommandStreamingSession() override { Terminate(false); }
+  ~CommandStreamingSession() override { Terminate(); }
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (finished_) {
@@ -316,7 +316,7 @@ public:
       if (HasTimedOut(deadline_)) {
         QueueError(FormatProviderError(std::move(stderr_tail_), "timed out."));
         QueueCompleted();
-        Terminate(true);
+        Terminate();
         if (error) {
           *error = events_.back().error;
         }
@@ -329,16 +329,9 @@ public:
           Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
       while (!HasTimedOut(grace_deadline) && !completed_ && !child_.child_exited) {
         if (!PumpIo(RemainingMs(grace_deadline, kPollSliceMs), error)) {
-          return false;
+          break;
         }
       }
-      PumpIo(0, nullptr);
-      QueueCompleted();
-      Terminate(true);
-      if (error) {
-        error->clear();
-      }
-      return true;
     }
 
     PumpIo(0, nullptr);
@@ -347,6 +340,7 @@ public:
       QueueError(FormatProviderError(std::move(stderr_tail_), "returned no text."));
     }
     QueueCompleted();
+    Terminate();
 
     if (error) {
       if (saw_error_ && !events_.empty()) {
@@ -370,7 +364,7 @@ public:
       }
     }
     QueueCompleted();
-    Terminate(true);
+    Terminate();
   }
 
   std::vector<RecognitionEvent> PollEvents() override {
@@ -722,22 +716,23 @@ private:
     ConsumeStderrLines(true);
   }
 
-  void Terminate(bool force_kill) {
+  void Terminate() {
     if (terminated_) {
       return;
     }
     terminated_ = true;
 
-    if (force_kill && child_.pid > 0 && !child_.child_exited) {
+    CloseIfOpen(&child_.stdin_fd);
+    CloseIfOpen(&child_.stdout_fd);
+    CloseIfOpen(&child_.stderr_fd);
+
+    ReapChild();
+    if (child_.pid > 0 && !child_.child_exited) {
       kill(child_.pid, SIGKILL);
       waitpid(child_.pid, nullptr, 0);
       child_.child_exited = true;
       child_.exit_code = -1;
     }
-
-    CloseIfOpen(&child_.stdin_fd);
-    CloseIfOpen(&child_.stdout_fd);
-    CloseIfOpen(&child_.stderr_fd);
   }
 
   CommandAsrProvider provider_;
