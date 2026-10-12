@@ -333,11 +333,13 @@ public:
       }
     }
 
+    bool grace_pump_failed = false;
     if (saw_final_text_) {
       const Clock::time_point grace_deadline =
           Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
       while (!HasTimedOut(grace_deadline) && !completed_ && !child_.child_exited) {
         if (!PumpIo(RemainingMs(grace_deadline, kPollSliceMs), error)) {
+          grace_pump_failed = true;
           break;
         }
       }
@@ -360,9 +362,12 @@ public:
           }
         }
       }
+      if (grace_pump_failed) {
+        return false;
+      }
       error->clear();
     }
-    return !saw_error_;
+    return !saw_error_ && !grace_pump_failed;
   }
 
   void Cancel() override {
@@ -738,9 +743,14 @@ private:
     ReapChild();
     if (child_.pid > 0 && !child_.child_exited) {
       kill(child_.pid, SIGKILL);
-      waitpid(child_.pid, nullptr, 0);
-      child_.child_exited = true;
-      child_.exit_code = -1;
+      pid_t wait_rc = -1;
+      do {
+        wait_rc = waitpid(child_.pid, nullptr, 0);
+      } while (wait_rc < 0 && errno == EINTR);
+      if (wait_rc == child_.pid || (wait_rc < 0 && errno == ECHILD)) {
+        child_.child_exited = true;
+        child_.exit_code = -1;
+      }
     }
   }
 
