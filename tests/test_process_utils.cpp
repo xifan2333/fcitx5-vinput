@@ -121,8 +121,9 @@ void TestPipeCloexecBehavior() {
   const auto result = vinput::process::RunCommandWithInput(spec, {});
   ExpectTrue(!result.launch_failed, "Launch should succeed");
   // The child process does not have these fds, so test returns 1 (false).
-  ExpectTrue(result.exit_code != 0,
-             "Cloexec pipe descriptors must not be inherited by child process");
+  ExpectTrue(
+      result.exit_code == 1,
+      "Cloexec pipe descriptors must not be inherited by child process (expected exit code 1)");
 
   close(pipefd[0]);
   close(pipefd[1]);
