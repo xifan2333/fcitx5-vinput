@@ -28,7 +28,9 @@
 #include <QtWidgets/qstyleditemdelegate.h>
 #include <QtWidgets/qstyleoption.h>
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
+#include <memory>
 #include <system_error>
 #include <variant>
 
@@ -986,12 +988,14 @@ void ResourcePage::onUpdateProviderClicked() {
 
   downloadWorker_ = new DownloadWorker(this);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this, [this]() {
+  auto updateSucceeded = std::make_shared<std::atomic_bool>(false);
+  connect(downloadWorker_, &QThread::finished, this, [this, id, updateSucceeded]() {
     onDownloadFinished();
+    if (!updateSucceeded->load()) {
+      return;
+    }
     const CoreConfig config = ConfigManager::Get().Load();
-    auto* item = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 0);
-    if (item != nullptr &&
-        config.asr.activeProvider == item->data(Qt::UserRole).toString().toStdString()) {
+    if (config.asr.activeProvider == id.toStdString()) {
       RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
         if (!ok) {
           textLog_->append(tr("Warning: config saved, but failed to reload ASR backend: %1")
@@ -1003,7 +1007,7 @@ void ResourcePage::onUpdateProviderClicked() {
 
   const CoreConfig config = ConfigManager::Get().Load();
 
-  downloadWorker_->SetTask([config, id](std::string* err) -> bool {
+  downloadWorker_->SetTask([config, id, updateSucceeded](std::string* err) -> bool {
     auto urls = ResolveAsrProviderRegistryUrls(config);
     auto entries =
         vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider, urls, err);
@@ -1028,7 +1032,9 @@ void ResourcePage::onUpdateProviderClicked() {
     if (!vinput::script::MaterializeAsrProvider(&mutConfig, *it, scriptPath, err)) {
       return false;
     }
-    return ConfigManager::Get().Save(mutConfig);
+    const bool saved = ConfigManager::Get().Save(mutConfig);
+    updateSucceeded->store(saved);
+    return saved;
   });
   textLog_->append(tr("Updating provider %1...").arg(title));
   downloadWorker_->start();
@@ -1124,33 +1130,51 @@ void ResourcePage::onUpdateAdapterClicked() {
     }
 
     const bool was_running = vinput::adapter::IsRunning(id.toStdString());
+    bool stopped = false;
     if (was_running) {
       vinput::cli::DbusClient dbus;
       std::string stop_err;
-      dbus.StopAdapter(id.toStdString(), &stop_err);
+      if (!dbus.StopAdapter(id.toStdString(), &stop_err)) {
+        *err = stop_err.empty() ? "Failed to stop adapter." : stop_err;
+        return false;
+      }
+      stopped = true;
     }
+
+    auto restart = [&]() -> bool {
+      if (!stopped) {
+        return true;
+      }
+      vinput::cli::DbusClient dbus;
+      std::string start_err;
+      if (!dbus.StartAdapter(id.toStdString(), &start_err)) {
+        if (!err->empty()) {
+          *err += "; ";
+        }
+        *err += start_err.empty() ? "Failed to restart adapter." : start_err;
+        return false;
+      }
+      return true;
+    };
 
     std::filesystem::path scriptPath;
     if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kLlmAdapter, &scriptPath, err)) {
+      restart();
       return false;
     }
 
     CoreConfig mutConfig = config;
     if (!vinput::script::MaterializeLlmAdapter(&mutConfig, *it, scriptPath, err)) {
+      restart();
       return false;
     }
     if (!ConfigManager::Get().Save(mutConfig)) {
       *err = "Failed to save configuration.";
+      restart();
       return false;
     }
 
-    if (was_running) {
-      vinput::cli::DbusClient dbus;
-      std::string start_err;
-      dbus.StartAdapter(id.toStdString(), &start_err);
-    }
-
-    return true;
+    return restart();
   });
   textLog_->append(tr("Updating adapter %1...").arg(title));
   downloadWorker_->start();
@@ -1240,6 +1264,11 @@ void ResourcePage::onRemoveProviderClicked() {
     config.asr.activeProvider.clear();
   }
 
+  if (!ConfigManager::Get().Save(config)) {
+    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
+    return;
+  }
+
   const auto managed_path =
       vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kAsrProvider, id.toStdString());
   if (!managed_path.empty()) {
@@ -1247,11 +1276,6 @@ void ResourcePage::onRemoveProviderClicked() {
     std::filesystem::remove(managed_path, ec);
   }
   vinput::script::UnregisterInstalledScript(id.toStdString());
-
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
   textLog_->append(tr("Removed ASR provider %1.").arg(title));
   refreshAll();
   emit configChanged();
@@ -1301,6 +1325,11 @@ void ResourcePage::onRemoveAdapterClicked() {
   }
   config.llm.adapters.erase(it, config.llm.adapters.end());
 
+  if (!ConfigManager::Get().Save(config)) {
+    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
+    return;
+  }
+
   const auto managed_path =
       vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kLlmAdapter, id.toStdString());
   if (!managed_path.empty()) {
@@ -1308,11 +1337,6 @@ void ResourcePage::onRemoveAdapterClicked() {
     std::filesystem::remove(managed_path, ec);
   }
   vinput::script::UnregisterInstalledScript(id.toStdString());
-
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
   textLog_->append(tr("Removed LLM adapter %1.").arg(title));
   refreshAll();
   emit configChanged();
