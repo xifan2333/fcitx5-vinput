@@ -3,16 +3,20 @@
 #include <algorithm>
 #include <cstddef>
 #include <curl/curl.h>
+#include <filesystem>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <sys/types.h>
+#include <system_error>
+#include <vector>
 
 #include "common/config/core_config.h"
 #include "common/i18n.h"
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
+#include "common/registry/installed_manifest.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/interpolation.h"
@@ -510,7 +514,7 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
       return 1;
     }
     const auto* existing = ResolveLlmAdapter(config, it->id);
-    if (!existing) {
+    if (existing == nullptr) {
       fmt.PrintError(
           vinput::str::FmtStr(_("Adapter '%s' is not installed. Use 'add' instead."), selector));
       return 1;

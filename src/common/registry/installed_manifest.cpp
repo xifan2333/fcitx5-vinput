@@ -2,9 +2,13 @@
 
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
+#include <ios>
 #include <nlohmann/json.hpp>
 #include <openssl/evp.h>
+#include <string>
+#include <utility>
 
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -27,15 +31,15 @@ std::filesystem::path ResolveManifestPath(const std::filesystem::path& path) {
 std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error) {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to open file for SHA-256 calculation: " + path.string();
     }
     return {};
   }
 
   EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-  if (!ctx) {
-    if (error) {
+  if (ctx == nullptr) {
+    if (error != nullptr) {
       *error = "failed to allocate EVP_MD_CTX";
     }
     return {};
@@ -43,7 +47,7 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
 
   if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
     EVP_MD_CTX_free(ctx);
-    if (error) {
+    if (error != nullptr) {
       *error = "EVP_DigestInit_ex failed";
     }
     return {};
@@ -53,7 +57,7 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
   while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
     if (EVP_DigestUpdate(ctx, buffer, static_cast<size_t>(file.gcount())) != 1) {
       EVP_MD_CTX_free(ctx);
-      if (error) {
+      if (error != nullptr) {
         *error = "EVP_DigestUpdate failed";
       }
       return {};
@@ -64,7 +68,7 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
   unsigned int hash_len = 0;
   if (EVP_DigestFinal_ex(ctx, hash, &hash_len) != 1) {
     EVP_MD_CTX_free(ctx);
-    if (error) {
+    if (error != nullptr) {
       *error = "EVP_DigestFinal_ex failed";
     }
     return {};
@@ -72,14 +76,14 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
   EVP_MD_CTX_free(ctx);
 
   std::string hex;
-  hex.reserve(hash_len * 2);
-  for (unsigned int i = 0; i < hash_len; ++i) {
+  hex.reserve(static_cast<size_t>(hash_len) * 2);
+  for (size_t i = 0; i < static_cast<size_t>(hash_len); ++i) {
     char pair[3];
-    std::snprintf(pair, sizeof(pair), "%02x", hash[i]);
+    std::snprintf(pair, sizeof(pair), "%02x", *(hash + i));
     hex += pair;
   }
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return hex;

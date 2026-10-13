@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -17,7 +18,7 @@ enum class Kind {
   kLlmAdapter,
 };
 
-enum class UpdateStatus {
+enum class UpdateStatus : std::uint8_t {
   kNotInstalled,
   kUpToDate,
   kUpdateAvailable,

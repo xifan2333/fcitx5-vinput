@@ -6,6 +6,7 @@
 #include <system_error>
 
 #include "common/config/core_config_types.h"
+#include "common/registry/installed_manifest.h"
 #include "common/registry/registry_cache.h"
 #include "common/registry/registry_fetch.h"
 #include "common/utils/downloader.h"
@@ -315,10 +316,10 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
   options.timeout_seconds = 120;
   vinput::download::Result result;
   if (!vinput::download::DownloadFile(entry.script_urls, tmp_path, options, &result)) {
-    if (resolved_script_url) {
+    if (resolved_script_url != nullptr) {
       resolved_script_url->clear();
     }
-    if (error) {
+    if (error != nullptr) {
       *error = result.error.empty() ? "failed to download script" : result.error;
     }
     std::error_code rm_ec;
@@ -333,7 +334,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
     if (!sha_error.empty() || actual_sha != entry.sha256) {
       std::error_code rm_ec;
       fs::remove(tmp_path, rm_ec);
-      if (error) {
+      if (error != nullptr) {
         *error = !sha_error.empty() ? sha_error
                                     : "SHA-256 mismatch for " + entry.id + ": expected " +
                                           entry.sha256 + ", got " + actual_sha;
@@ -352,7 +353,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
   if (ec) {
     std::error_code rm_ec;
     fs::remove(tmp_path, rm_ec);
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to atomically replace script: " + ec.message();
     }
     return false;
@@ -366,10 +367,10 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
   std::string manifest_err;
   manifest.Save({}, &manifest_err);
 
-  if (resolved_script_url) {
+  if (resolved_script_url != nullptr) {
     *resolved_script_url = result.resolved_url;
   }
-  if (local_path) {
+  if (local_path != nullptr) {
     *local_path = path;
   }
   return true;

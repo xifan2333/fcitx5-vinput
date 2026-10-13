@@ -5,11 +5,13 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <system_error>
 #include <vector>
 
 #include "common/config/core_config.h"
 #include "common/dbus/asr_backend_state_utils.h"
 #include "common/i18n.h"
+#include "common/registry/installed_manifest.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/path_utils.h"
@@ -567,7 +569,7 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
       return 1;
     }
     const auto* existing = ResolveAsrProvider(config, it->id);
-    if (!existing) {
+    if (existing == nullptr) {
       fmt.PrintError(vinput::str::FmtStr(
           _("ASR provider '%s' is not installed. Use 'add' instead."), selector));
       return 1;

@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace vinput::registry {
@@ -22,11 +23,11 @@ public:
   static InstalledManifest Load(const std::filesystem::path& path = {});
   bool Save(const std::filesystem::path& path = {}, std::string* error = nullptr) const;
 
-  const InstalledRecord* Get(std::string_view id) const;
+  [[nodiscard]] const InstalledRecord* Get(std::string_view id) const;
   void RecordInstalled(const std::string& id, std::string_view kind, const std::string& version,
                        const std::string& sha256);
   bool Remove(std::string_view id);
-  std::vector<InstalledRecord> List() const;
+  [[nodiscard]] std::vector<InstalledRecord> List() const;
 
 private:
   std::map<std::string, InstalledRecord> records_;
