@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 02:45+0800\n"
+"POT-Creation-Date: 2026-10-14 02:48+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -335,10 +335,10 @@ msgstr "API 密钥"
 
 #: src/cli/config/register_llm.cpp:31
 msgid ""
-"Extra JSON object merged into each request body (e.g. '{"enable_thinking": "
+"Extra JSON object merged into each request body (e.g. '{\"enable_thinking\": "
 "false}')"
 msgstr ""
-"合并进每次请求体的附加 JSON 对象（例如 '{"enable_thinking": false}'）"
+"合并进每次请求体的附加 JSON 对象（例如 '{\"enable_thinking\": false}'）"
 
 #: src/cli/config/register_llm.cpp:40
 msgid "Remove an LLM provider"
@@ -855,8 +855,8 @@ msgstr "已禁用适配器 '%s' 随 daemon 自启动。"
 
 #: src/cli/config/llm_actions.cpp:81
 msgid ""
-"--extra-body must be a JSON object (e.g. '{"enable_thinking": false}')."
-msgstr "--extra-body 必须是 JSON 对象（例如 '{"enable_thinking": false}'）。"
+"--extra-body must be a JSON object (e.g. '{\"enable_thinking\": false}')."
+msgstr "--extra-body 必须是 JSON 对象（例如 '{\"enable_thinking\": false}'）。"
 
 #: src/cli/config/llm_actions.cpp:88
 #, c-format
