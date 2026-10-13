@@ -100,3 +100,17 @@ target_link_libraries(test_installed_manifest PRIVATE
 )
 
 add_test(NAME test_installed_manifest COMMAND test_installed_manifest)
+
+add_executable(test_process_utils
+    test_process_utils.cpp
+)
+
+target_include_directories(test_process_utils PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_process_utils PRIVATE
+    common
+)
+
+add_test(NAME test_process_utils COMMAND test_process_utils)
