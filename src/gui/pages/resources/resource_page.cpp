@@ -32,6 +32,7 @@
 #include <system_error>
 #include <variant>
 
+#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/llm/adapter_manager.h"
 #include "common/registry/installed_manifest.h"
@@ -967,11 +968,13 @@ void ResourcePage::onAddProviderClicked() {
 
 void ResourcePage::onUpdateProviderClicked() {
   auto items = tableAvailableProviders_->selectedItems();
-  if (items.isEmpty())
+  if (items.isEmpty()) {
     return;
+  }
   auto* name_item = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 0);
-  if (name_item == nullptr)
+  if (name_item == nullptr) {
     return;
+  }
   QString id = name_item->data(Qt::UserRole).toString();
   QString title = name_item->text();
   if (title.isEmpty()) {
@@ -985,7 +988,7 @@ void ResourcePage::onUpdateProviderClicked() {
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
   connect(downloadWorker_, &QThread::finished, this, [this]() {
     onDownloadFinished();
-    CoreConfig config = ConfigManager::Get().Load();
+    const CoreConfig config = ConfigManager::Get().Load();
     auto* item = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 0);
     if (item != nullptr &&
         config.asr.activeProvider == item->data(Qt::UserRole).toString().toStdString()) {
@@ -998,7 +1001,7 @@ void ResourcePage::onUpdateProviderClicked() {
     }
   });
 
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
 
   downloadWorker_->SetTask([config, id](std::string* err) -> bool {
     auto urls = ResolveAsrProviderRegistryUrls(config);
@@ -1032,8 +1035,9 @@ void ResourcePage::onUpdateProviderClicked() {
 
 void ResourcePage::onAddAdapterClicked() {
   auto items = tableAvailableAdapters_->selectedItems();
-  if (items.isEmpty())
+  if (items.isEmpty()) {
     return;
+  }
   auto* name_item = tableAvailableAdapters_->item(tableAvailableAdapters_->currentRow(), 0);
   QString id = name_item->data(Qt::UserRole).toString();
   QString title = name_item->text();
@@ -1081,11 +1085,13 @@ void ResourcePage::onAddAdapterClicked() {
 
 void ResourcePage::onUpdateAdapterClicked() {
   auto items = tableAvailableAdapters_->selectedItems();
-  if (items.isEmpty())
+  if (items.isEmpty()) {
     return;
+  }
   auto* name_item = tableAvailableAdapters_->item(tableAvailableAdapters_->currentRow(), 0);
-  if (name_item == nullptr)
+  if (name_item == nullptr) {
     return;
+  }
   QString id = name_item->data(Qt::UserRole).toString();
   QString title = name_item->text();
   if (title.isEmpty()) {
@@ -1099,7 +1105,7 @@ void ResourcePage::onUpdateAdapterClicked() {
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
   connect(downloadWorker_, &QThread::finished, this, &ResourcePage::onDownloadFinished);
 
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
 
   downloadWorker_->SetTask([config, id](std::string* err) -> bool {
     auto urls = ResolveLlmAdapterRegistryUrls(config);
