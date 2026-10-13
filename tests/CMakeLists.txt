@@ -86,3 +86,17 @@ target_link_libraries(test_command_streaming PRIVATE
 )
 
 add_test(NAME test_command_streaming COMMAND test_command_streaming)
+
+add_executable(test_installed_manifest
+    test_installed_manifest.cpp
+)
+
+target_include_directories(test_installed_manifest PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_installed_manifest PRIVATE
+    common
+)
+
+add_test(NAME test_installed_manifest COMMAND test_installed_manifest)
