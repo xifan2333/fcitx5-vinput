@@ -1,9 +1,13 @@
 #include "common/utils/version_utils.h"
 
+#include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include "config.h"
@@ -13,10 +17,10 @@ namespace vinput::version {
 namespace {
 
 std::string_view Trim(std::string_view s) {
-  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) {
+  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())) != 0) {
     s.remove_prefix(1);
   }
-  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
+  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())) != 0) {
     s.remove_suffix(1);
   }
   return s;
@@ -43,7 +47,7 @@ bool CheckSingleConstraint(const SemanticVersion& current, std::string_view toke
     return true;
   }
 
-  enum class Op { Equal, Greater, GreaterEqual, Less, LessEqual };
+  enum class Op : std::uint8_t { Equal, Greater, GreaterEqual, Less, LessEqual };
   Op op = Op::Equal;
 
   if (token.starts_with(">=")) {
@@ -144,12 +148,8 @@ bool Satisfies(std::string_view current_ver, std::string_view constraint) {
   const auto& cur = *cur_opt;
 
   const auto tokens = SplitByChar(constraint, ',');
-  for (const auto& token : tokens) {
-    if (!CheckSingleConstraint(cur, token)) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::all_of(
+      tokens, [&](std::string_view token) { return CheckSingleConstraint(cur, token); });
 }
 
 std::string_view CurrentHostVersion() {

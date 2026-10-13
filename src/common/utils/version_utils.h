@@ -1,6 +1,5 @@
 #pragma once
 
-#include <compare>
 #include <optional>
 #include <string_view>
 
