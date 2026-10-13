@@ -533,7 +533,10 @@ void ResourcePage::populateRemoteProviders(
         manifest, vinput::script::Kind::kAsrProvider, entry, installed);
 
     QString status = tr("available");
-    if (installed) {
+    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
+      status = tr("incompatible (requires vinput %1)")
+                   .arg(QString::fromStdString(ver_info.vinput_version));
+    } else if (installed) {
       if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
         if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
           status = tr("update available (%1 -> %2)")
@@ -595,7 +598,10 @@ void ResourcePage::populateRemoteAdapters(
         manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
 
     QString status = tr("available");
-    if (installed) {
+    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
+      status = tr("incompatible (requires vinput %1)")
+                   .arg(QString::fromStdString(ver_info.vinput_version));
+    } else if (installed) {
       if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
         if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
           status = tr("update available (%1 -> %2)")
@@ -1198,8 +1204,12 @@ void ResourcePage::updateProviderButtons() {
   const QString id = item->data(Qt::UserRole).toString();
   const CoreConfig config = ConfigManager::Get().Load();
   const bool installed = ResolveAsrProvider(config, id.toStdString()) != nullptr;
-  btnAddProvider_->setEnabled(!installed);
-  btnUpdateProvider_->setEnabled(installed);
+  auto* stCell = tableAvailableProviders_->item(row, 3);
+  const bool incompatible =
+      stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
+                               static_cast<int>(vinput::script::UpdateStatus::kIncompatible);
+  btnAddProvider_->setEnabled(!installed && !incompatible);
+  btnUpdateProvider_->setEnabled(installed && !incompatible);
   btnRemoveProvider_->setEnabled(installed);
 }
 
@@ -1221,8 +1231,12 @@ void ResourcePage::updateAdapterButtons() {
   const QString id = item->data(Qt::UserRole).toString();
   const CoreConfig config = ConfigManager::Get().Load();
   const bool installed = ResolveLlmAdapter(config, id.toStdString()) != nullptr;
-  btnAddAdapter_->setEnabled(!installed);
-  btnUpdateAdapter_->setEnabled(installed);
+  auto* stCell = tableAvailableAdapters_->item(row, 2);
+  const bool incompatible =
+      stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
+                               static_cast<int>(vinput::script::UpdateStatus::kIncompatible);
+  btnAddAdapter_->setEnabled(!installed && !incompatible);
+  btnUpdateAdapter_->setEnabled(installed && !incompatible);
   btnRemoveAdapter_->setEnabled(installed);
 }
 

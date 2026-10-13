@@ -373,7 +373,9 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
       const auto ver_info = vinput::script::CheckResourceVersion(
           manifest, vinput::script::Kind::kAsrProvider, entry, installed);
       std::string status_str = "available";
-      if (installed) {
+      if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
+        status_str = "incompatible";
+      } else if (installed) {
         status_str = ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable
                          ? "update_available"
                          : "installed";
@@ -390,6 +392,7 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
           {"status", status_str},
           {"installed_version", ver_info.installed_version},
           {"remote_version", ver_info.remote_version},
+          {"vinput_version", ver_info.vinput_version},
       });
     }
     fmt.PrintJson(arr);
@@ -403,7 +406,10 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kAsrProvider, entry, installed);
     std::string status_text = _("available");
-    if (installed) {
+    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
+      status_text =
+          vinput::str::FmtStr(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
+    } else if (installed) {
       if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
         if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
           status_text = vinput::str::FmtStr(_("update available (%s -> %s)"),

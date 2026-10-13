@@ -1307,5 +1307,10 @@ Found %2 model(s).</source>
         <source>Warning: config saved, but failed to reload ASR backend: %1</source>
         <translation>警告：配置已保存，但重新加载 ASR 后端失败：%1</translation>
     </message>
+    <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="535"/>
+        <source>incompatible (requires vinput %1)</source>
+        <translation>不兼容（需要 vinput %1）</translation>
+    </message>
 </context>
 </TS>
