@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-05 22:52+0800\n"
+"POT-Creation-Date: 2026-10-14 02:45+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,431 +16,644 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "... Starting ..."
-msgstr "... 正在启动 ..."
+#: src/cli/main.cpp:29
+msgid "vinput - Voice input manager"
+msgstr "vinput - 语音输入管理器"
 
-msgid "... Recording ..."
-msgstr "... 正在录音 ..."
+#: src/cli/main.cpp:31
+msgid "Print this help message and exit"
+msgstr "显示此帮助信息并退出"
 
-msgid "... Commanding ..."
-msgstr "... 正在命令 ..."
+#: src/cli/main.cpp:33
+msgid "Display program version information and exit"
+msgstr "显示程序版本信息并退出"
 
-msgid "... Recognizing ..."
-msgstr "... 正在识别 ..."
+#: src/cli/main.cpp:36
+msgid "Output in JSON format"
+msgstr "以 JSON 格式输出"
 
-msgid "... Postprocessing ... (Esc: Cancel)"
-msgstr "... 正在后处理 ...（Esc：取消）"
+#: src/cli/config/config_actions.cpp:47
+msgid "Config value set."
+msgstr "配置值已设置。"
 
-msgid "... Postprocessing ... (Enter: Use raw ASR text, Esc: Cancel)"
-msgstr "... 正在后处理 ...（Enter：使用原始 ASR 文本，Esc：取消）"
+#: src/cli/config/config_actions.cpp:54
+msgid "Unsupported config target. Use 'core' or 'fcitx'."
+msgstr "不支持的配置目标。请使用 'core' 或 'fcitx'。"
 
-msgid "Voice input daemon is unavailable."
-msgstr "语音输入守护进程不可用。"
+#: src/cli/config/config_actions.cpp:89
+msgid "Configuration is already up to date. No migration needed."
+msgstr "配置已经是最新版本，无需迁移。"
 
-msgid "Voice input daemon is not responding."
-msgstr "语音输入守护进程无响应。"
+#: src/cli/config/config_actions.cpp:94
+msgid "Pending migration changes:"
+msgstr "待应用的迁移变更："
 
-msgid "... Applying command ... (Esc: Cancel)"
-msgstr "... 正在应用命令 ...（Esc：取消）"
+#: src/cli/config/config_actions.cpp:96
+msgid "Configuration migration completed successfully:"
+msgstr "配置迁移已顺利完成："
 
+#: src/cli/config/config_actions.cpp:101
 #, c-format
-msgid "Command: %s"
-msgstr "命令：%s"
+msgid "Backed up core config to: %s"
+msgstr "核心配置已备份至：%s"
 
+#: src/cli/config/config_actions.cpp:105
+#, c-format
+msgid "Backed up addon config to: %s"
+msgstr "插件配置已备份至：%s"
+
+#: src/cli/config/config_actions.cpp:108
+msgid "FILE"
+msgstr "文件"
+
+#: src/cli/config/config_actions.cpp:108
+msgid "CHANGE"
+msgstr "变更内容"
+
+#: src/cli/config/device_actions.cpp:19
+msgid "No audio capture devices found or PipeWire is not running."
+msgstr "未找到音频输入设备或 PipeWire 未运行。"
+
+#: src/cli/config/device_actions.cpp:35
+msgid "NAME"
+msgstr "名称"
+
+#: src/cli/config/device_actions.cpp:35
+msgid "DESCRIPTION"
+msgstr "描述"
+
+#: src/cli/config/device_actions.cpp:35 src/cli/config/scene_actions.cpp:40
+#: src/cli/config/asr_actions.cpp:397 src/cli/config/asr_actions.cpp:683
+#: src/cli/config/asr_actions.cpp:726 src/cli/config/llm_actions.cpp:221
+#: src/cli/config/llm_actions.cpp:631
+msgid "STATUS"
+msgstr "状态"
+
+#: src/cli/config/device_actions.cpp:40 src/cli/config/device_actions.cpp:46
+#: src/cli/config/asr_actions.cpp:731
+msgid "Active"
+msgstr "活跃"
+
+#: src/cli/config/device_actions.cpp:42
+msgid "System Default"
+msgstr "系统默认"
+
+#: src/cli/config/device_actions.cpp:70
+#, c-format
+msgid "Device '%s' not found in PipeWire. Setting it anyway."
+msgstr "在 PipeWire 中未找到设备 '%s'，仍将继续设置。"
+
+#: src/cli/config/device_actions.cpp:80
+#, c-format
+msgid "Capture device set to '%s'. Restart daemon to apply changes."
+msgstr "录音设备已设为 '%s'，请重启守护进程生效。"
+
+#: src/cli/config/init_actions.cpp:19
+#, c-format
+msgid "Config already exists: %s"
+msgstr "配置文件已存在：%s"
+
+#: src/cli/config/init_actions.cpp:23
+#, c-format
+msgid "Created config: %s"
+msgstr "已创建配置文件：%s"
+
+#: src/cli/config/init_actions.cpp:26
+msgid "Failed to create config"
+msgstr "创建配置文件失败"
+
+#: src/cli/config/init_actions.cpp:33
+#, c-format
+msgid "Model dir already exists: %s"
+msgstr "模型目录已存在：%s"
+
+#: src/cli/config/init_actions.cpp:37
+#, c-format
+msgid "Failed to create model dir: %s"
+msgstr "创建模型目录失败：%s"
+
+#: src/cli/config/init_actions.cpp:40
+#, c-format
+msgid "Created model dir: %s"
+msgstr "已创建模型目录：%s"
+
+#: src/cli/config/init_actions.cpp:45
+msgid "Everything already initialized"
+msgstr "所有文件已就绪，无需初始化"
+
+#: src/cli/config/register_asr.cpp:16
+msgid "Manage hotword file"
+msgstr "管理热词文件"
+
+#: src/cli/config/register_asr.cpp:19
+msgid "Show configured hotword file path"
+msgstr "显示已配置的热词文件路径"
+
+#: src/cli/config/register_asr.cpp:27
+msgid "Set hotword file path"
+msgstr "设置热词文件路径"
+
+#: src/cli/config/register_asr.cpp:28
+msgid "Path to hotword file"
+msgstr "热词文件路径"
+
+#: src/cli/config/register_asr.cpp:35
+msgid "Clear hotword file path"
+msgstr "清除热词文件路径"
+
+#: src/cli/config/register_asr.cpp:42
+msgid "Edit hotword file"
+msgstr "编辑热词文件"
+
+#: src/cli/config/register_asr.cpp:54
+msgid "Manage local ASR models"
+msgstr "管理本地 ASR 模型"
+
+#: src/cli/config/register_asr.cpp:58
+msgid "List models"
+msgstr "列出模型"
+
+#: src/cli/config/register_asr.cpp:60
+msgid "List remote models"
+msgstr "列出远程模型"
+
+#: src/cli/config/register_asr.cpp:68
+msgid "Add a model"
+msgstr "添加模型"
+
+#: src/cli/config/register_asr.cpp:69 src/cli/config/register_asr.cpp:79
+#: src/cli/config/register_asr.cpp:88 src/cli/config/register_asr.cpp:97
+msgid "Model short ID"
+msgstr "模型短 ID"
+
+#: src/cli/config/register_asr.cpp:77
+msgid "Remove a model"
+msgstr "移除模型"
+
+#: src/cli/config/register_asr.cpp:87
+msgid "Set active model"
+msgstr "设置当前使用的模型"
+
+#: src/cli/config/register_asr.cpp:96
+msgid "Show model details"
+msgstr "显示模型详情"
+
+#: src/cli/config/register_asr.cpp:107
+msgid "Manage ASR providers"
+msgstr "管理 ASR 提供商"
+
+#: src/cli/config/register_asr.cpp:111
+msgid "List providers"
+msgstr "列出提供商"
+
+#: src/cli/config/register_asr.cpp:113
+msgid "List remote providers"
+msgstr "列出远程提供商"
+
+#: src/cli/config/register_asr.cpp:121
+msgid "Add a provider"
+msgstr "添加提供商"
+
+#: src/cli/config/register_asr.cpp:122 src/cli/config/register_asr.cpp:134
+#: src/cli/config/register_asr.cpp:145 src/cli/config/register_asr.cpp:155
+#: src/cli/config/register_asr.cpp:165
+msgid "Provider short ID"
+msgstr "提供商短 ID"
+
+#: src/cli/config/register_asr.cpp:132
+msgid "Update an ASR provider script"
+msgstr "更新 ASR 提供商脚本"
+
+#: src/cli/config/register_asr.cpp:135
+msgid "Update all installed providers"
+msgstr "更新所有已安装的提供商"
+
+#: src/cli/config/register_asr.cpp:136 src/cli/config/register_llm.cpp:150
+msgid "Force update even if up to date"
+msgstr "即使已是最新也强制更新"
+
+#: src/cli/config/register_asr.cpp:144
+msgid "Set active provider"
+msgstr "设置当前提供商"
+
+#: src/cli/config/register_asr.cpp:153
+msgid "Edit provider script"
+msgstr "编辑提供商脚本"
+
+#: src/cli/config/register_asr.cpp:163
+msgid "Remove a provider"
+msgstr "移除提供商"
+
+#: src/cli/config/register_config.cpp:12
+msgid "Read or write configuration values"
+msgstr "读取或写入配置项"
+
+#: src/cli/config/register_config.cpp:16
+msgid "Get a config value by JSON Pointer"
+msgstr "通过 JSON Pointer 获取配置值"
+
+#: src/cli/config/register_config.cpp:17 src/cli/config/register_config.cpp:28
+msgid "JSON Pointer (e.g. /global/capture_device)"
+msgstr "JSON Pointer（例如 /global/capture_device）"
+
+#: src/cli/config/register_config.cpp:27
+msgid "Set a config value by JSON Pointer"
+msgstr "通过 JSON Pointer 设置配置值"
+
+#: src/cli/config/register_config.cpp:29
+msgid "New value"
+msgstr "新值"
+
+#: src/cli/config/register_config.cpp:30
+msgid "Read value from stdin"
+msgstr "从标准输入读取值"
+
+#: src/cli/config/register_config.cpp:38
+msgid "Open config file in editor"
+msgstr "用编辑器打开配置文件"
+
+#: src/cli/config/register_config.cpp:40
+msgid "Config target: fcitx or core"
+msgstr "配置目标：fcitx 或 core"
+
+#: src/cli/config/register_config.cpp:49
+msgid "Migrate legacy configuration files to current format"
+msgstr "将旧版配置文件迁移至当前格式"
+
+#: src/cli/config/register_config.cpp:51
+msgid "Preview migration changes without modifying files"
+msgstr "预览迁移变更而不修改文件"
+
+#: src/cli/config/register_device.cpp:12
+msgid "Manage capture devices"
+msgstr "管理录音设备"
+
+#: src/cli/config/register_device.cpp:15
+msgid "List available audio input devices"
+msgstr "列出可用的音频输入设备"
+
+#: src/cli/config/register_device.cpp:22
+msgid "Set active capture device"
+msgstr "设置当前录音设备"
+
+#: src/cli/config/register_device.cpp:23
+msgid "Device id or 'default'"
+msgstr "设备 ID 或 'default'"
+
+#: src/cli/config/register_init.cpp:13
+msgid "Initialize default config and directories"
+msgstr "初始化默认配置和目录"
+
+#: src/cli/config/register_init.cpp:14
+msgid "Overwrite existing config"
+msgstr "覆盖现有配置"
+
+#: src/cli/config/register_llm.cpp:13
+msgid "Manage LLM providers"
+msgstr "管理 LLM 提供商"
+
+#: src/cli/config/register_llm.cpp:16
+msgid "List configured LLM providers"
+msgstr "列出已配置的 LLM 提供商"
+
+#: src/cli/config/register_llm.cpp:26
+msgid "Add an LLM provider"
+msgstr "添加 LLM 提供商"
+
+#: src/cli/config/register_llm.cpp:27 src/cli/config/register_llm.cpp:42
+#: src/cli/config/register_llm.cpp:61 src/cli/config/register_llm.cpp:80
+msgid "Provider ID"
+msgstr "提供商 ID"
+
+#: src/cli/config/register_llm.cpp:28 src/cli/config/register_llm.cpp:62
+msgid "Base URL"
+msgstr "服务地址"
+
+#: src/cli/config/register_llm.cpp:29 src/cli/config/register_llm.cpp:63
+msgid "API key"
+msgstr "API 密钥"
+
+#: src/cli/config/register_llm.cpp:31
 msgid ""
-"Local ASR model configuration is missing. Please configure a model first."
-msgstr "本地 ASR 模型配置缺失。请先配置模型。"
+"Extra JSON object merged into each request body (e.g. '{"enable_thinking": "
+"false}')"
+msgstr ""
+"合并进每次请求体的附加 JSON 对象（例如 '{"enable_thinking": false}'）"
 
-#, c-format
+#: src/cli/config/register_llm.cpp:40
+msgid "Remove an LLM provider"
+msgstr "移除 LLM 提供商"
+
+#: src/cli/config/register_llm.cpp:59
+msgid "Edit an LLM provider"
+msgstr "编辑 LLM 提供商"
+
+#: src/cli/config/register_llm.cpp:66
+#, c++-format
+msgid "Extra JSON object merged into each request body; pass '{}' to clear"
+msgstr "合并进每次请求体的附加 JSON 对象；传 '{}' 清空"
+
+#: src/cli/config/register_llm.cpp:79
+msgid "Test LLM provider connectivity"
+msgstr "测试 LLM 提供商连通性"
+
+#: src/cli/config/register_llm.cpp:89
+msgid "Manage LLM adapters"
+msgstr "管理 LLM 适配器"
+
+#: src/cli/config/register_llm.cpp:93
+msgid "List adapters"
+msgstr "列出适配器"
+
+#: src/cli/config/register_llm.cpp:95
+msgid "List remote adapters"
+msgstr "列出远程适配器"
+
+#: src/cli/config/register_llm.cpp:102
+msgid "List adapter processes and runtime status"
+msgstr "列出适配器进程与运行状态"
+
+#: src/cli/config/register_llm.cpp:110
+msgid "Show adapter status"
+msgstr "显示适配器状态"
+
+#: src/cli/config/register_llm.cpp:111 src/cli/config/register_llm.cpp:121
+#: src/cli/config/register_llm.cpp:136 src/cli/config/register_llm.cpp:148
+#: src/cli/config/register_llm.cpp:159 src/cli/config/register_llm.cpp:168
+#: src/cli/config/register_llm.cpp:177 src/cli/config/register_llm.cpp:186
+#: src/cli/config/register_llm.cpp:195
+msgid "Adapter short ID"
+msgstr "适配器短 ID"
+
+#: src/cli/config/register_llm.cpp:120
+msgid "Add an adapter"
+msgstr "添加适配器"
+
+#: src/cli/config/register_llm.cpp:125
+msgid "Adapter env var as KEY=VALUE (repeatable)"
+msgstr "适配器环境变量，格式为 KEY=VALUE（可重复指定）"
+
+#: src/cli/config/register_llm.cpp:134
+msgid "Remove an adapter"
+msgstr "移除适配器"
+
+#: src/cli/config/register_llm.cpp:146
+msgid "Update an LLM adapter script"
+msgstr "更新 LLM 适配器脚本"
+
+#: src/cli/config/register_llm.cpp:149
+msgid "Update all installed adapters"
+msgstr "更新所有已安装的适配器"
+
+#: src/cli/config/register_llm.cpp:158
+msgid "Start an adapter"
+msgstr "启动适配器"
+
+#: src/cli/config/register_llm.cpp:167
+msgid "Stop an adapter"
+msgstr "停止适配器"
+
+#: src/cli/config/register_llm.cpp:176
+msgid "Restart an adapter"
+msgstr "重启适配器"
+
+#: src/cli/config/register_llm.cpp:185
+msgid "Enable adapter autostart with daemon"
+msgstr "启用适配器随 daemon 自启动"
+
+#: src/cli/config/register_llm.cpp:194
+msgid "Disable adapter autostart with daemon"
+msgstr "禁用适配器随 daemon 自启动"
+
+#: src/cli/config/register_scene.cpp:13
+msgid "Manage recognition scenes"
+msgstr "管理识别场景"
+
+#: src/cli/config/register_scene.cpp:16
+msgid "List all scenes"
+msgstr "列出所有场景"
+
+#: src/cli/config/register_scene.cpp:35
+msgid "Add a new scene"
+msgstr "添加新场景"
+
+#: src/cli/config/register_scene.cpp:36 src/cli/config/register_scene.cpp:69
+#: src/cli/config/register_scene.cpp:79 src/cli/config/register_scene.cpp:110
+msgid "Scene id"
+msgstr "场景 ID"
+
+#: src/cli/config/register_scene.cpp:37 src/cli/config/register_scene.cpp:111
+msgid "Display label"
+msgstr "显示标签"
+
+#: src/cli/config/register_scene.cpp:38 src/cli/config/register_scene.cpp:112
+msgid "LLM prompt"
+msgstr "LLM 提示词"
+
+#: src/cli/config/register_scene.cpp:39 src/cli/config/register_scene.cpp:113
+msgid "LLM provider id"
+msgstr "LLM 提供商 ID"
+
+#: src/cli/config/register_scene.cpp:40 src/cli/config/register_scene.cpp:114
+msgid "LLM model id"
+msgstr "LLM 模型 ID"
+
+#: src/cli/config/register_scene.cpp:42 src/cli/config/register_scene.cpp:116
+msgid "Maximum number of LLM candidates (0 to disable LLM)"
+msgstr "LLM 候选的最大返回数量（0 表示不使用 LLM）"
+
+#: src/cli/config/register_scene.cpp:44 src/cli/config/register_scene.cpp:118
+msgid "Request timeout in milliseconds"
+msgstr "请求超时时间（毫秒）"
+
+#: src/cli/config/register_scene.cpp:47 src/cli/config/register_scene.cpp:120
+msgid "Number of previous lines sent as LLM context"
+msgstr "发送给 LLM 作为上下文的前文行数"
+
+#: src/cli/config/register_scene.cpp:50 src/cli/config/register_scene.cpp:123
+msgid "Include raw ASR transcript in candidate options (true/false)"
+msgstr "在候选词选项中包含原始语音文本 (true/false)"
+
+#: src/cli/config/register_scene.cpp:55 src/cli/config/register_scene.cpp:128
 msgid ""
-"Local ASR model configuration is missing for provider '%s'. Please configure "
-"a model first."
-msgstr "提供商 '%s' 的本地 ASR 模型配置缺失。请先配置模型。"
+"Preview raw ASR transcript in floating panel during postprocessing (true/"
+"false)"
+msgstr "在后处理期间于浮动面板中预览原始 ASR 文本 (true/false)"
 
-msgid "Local ASR model metadata is missing family."
-msgstr "本地 ASR 模型元数据缺少 family。"
+#: src/cli/config/register_scene.cpp:68
+msgid "Set active scene"
+msgstr "设置当前场景"
 
+#: src/cli/config/register_scene.cpp:77
+msgid "Remove a scene"
+msgstr "移除场景"
+
+#: src/cli/config/register_scene.cpp:108
+msgid "Edit a scene"
+msgstr "编辑场景"
+
+#: src/cli/config/scene_actions.cpp:39 src/cli/config/asr_actions.cpp:225
+#: src/cli/config/asr_actions.cpp:397 src/cli/config/asr_actions.cpp:682
+#: src/cli/config/asr_actions.cpp:725 src/cli/config/llm_actions.cpp:113
+#: src/cli/config/llm_actions.cpp:147 src/cli/config/llm_actions.cpp:221
+#: src/cli/config/llm_actions.cpp:631 src/cli/config/llm_actions.cpp:691
+msgid "ID"
+msgstr "ID"
+
+#: src/cli/config/scene_actions.cpp:39
+msgid "LABEL"
+msgstr "标签"
+
+#: src/cli/config/scene_actions.cpp:39
+msgid "PROVIDER"
+msgstr "提供者"
+
+#: src/cli/config/scene_actions.cpp:39 src/cli/config/asr_actions.cpp:226
+#: src/cli/config/llm_actions.cpp:878
+msgid "MODEL"
+msgstr "模型"
+
+#: src/cli/config/scene_actions.cpp:40
+msgid "COUNT"
+msgstr "数量"
+
+#: src/cli/config/scene_actions.cpp:40
+msgid "RAW_CAND"
+msgstr "候选原句"
+
+#: src/cli/config/scene_actions.cpp:40
+msgid "RAW_PREV"
+msgstr "预览原句"
+
+#: src/cli/config/scene_actions.cpp:48 src/cli/config/asr_actions.cpp:237
+#: src/cli/config/asr_actions.cpp:689 src/cli/config/asr_actions.cpp:739
+msgid "yes"
+msgstr "是"
+
+#: src/cli/config/scene_actions.cpp:48 src/cli/config/asr_actions.cpp:237
+#: src/cli/config/asr_actions.cpp:689 src/cli/config/asr_actions.cpp:739
+msgid "no"
+msgstr "否"
+
+#: src/cli/config/scene_actions.cpp:85
 #, c-format
-msgid "Local ASR model metadata is missing family for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型元数据缺少 family。"
+msgid "Scene '%s' added."
+msgstr "场景 '%s' 已添加。"
 
-msgid "Local ASR model metadata contains an invalid path."
-msgstr "本地 ASR 模型元数据包含无效路径。"
-
+#: src/cli/config/scene_actions.cpp:104
 #, c-format
-msgid "Local ASR model metadata contains an invalid path for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型元数据包含无效路径。"
+msgid "Default scene set to '%s'."
+msgstr "默认场景已设为 '%s'。"
 
-msgid "Local ASR model tokens file is missing."
-msgstr "本地 ASR 模型缺少 tokens 文件。"
-
+#: src/cli/config/scene_actions.cpp:123
 #, c-format
-msgid "Local ASR model tokens file is missing for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型缺少 tokens 文件。"
+msgid "Scene '%s' removed."
+msgstr "场景 '%s' 已移除。"
 
-msgid "Local ASR model files are missing."
-msgstr "本地 ASR 模型文件缺失。"
-
+#: src/cli/config/scene_actions.cpp:145
 #, c-format
-msgid "Local ASR model files are missing for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型文件缺失。"
+msgid "Scene '%s' not found."
+msgstr "未找到场景 '%s'。"
 
-msgid "Failed to resolve the local ASR model directory."
-msgstr "解析本地 ASR 模型目录失败。"
-
+#: src/cli/config/scene_actions.cpp:190
 #, c-format
-msgid "Failed to resolve the local ASR model directory for provider '%s'."
-msgstr "解析提供商 '%s' 的本地 ASR 模型目录失败。"
+msgid "Scene '%s' updated."
+msgstr "场景 '%s' 已更新。"
 
-msgid "Failed to parse local ASR model metadata."
-msgstr "解析本地 ASR 模型元数据失败。"
-
+#: src/cli/config/asr_actions.cpp:43
 #, c-format
-msgid "Failed to parse local ASR model metadata for provider '%s'."
-msgstr "解析提供商 '%s' 的本地 ASR 模型元数据失败。"
+msgid "Config saved, but failed to confirm ASR runtime state: %s"
+msgstr "配置已保存，但确认 ASR 运行时状态失败：%s"
 
-msgid "The local ASR model type is not supported."
-msgstr "不支持该本地 ASR 模型类型。"
+#: src/cli/config/asr_actions.cpp:51
+msgid "Config saved and ASR backend reload is in progress."
+msgstr "配置已保存，ASR 后端正在重新加载。"
 
+#: src/cli/config/asr_actions.cpp:54
+msgid "Config saved and ASR runtime applied the requested backend."
+msgstr "配置已保存，ASR 运行时已应用请求的后端。"
+
+#: src/cli/config/asr_actions.cpp:57
+msgid "Config saved, but ASR runtime is still using the previous backend."
+msgstr "配置已保存，但 ASR 运行时仍在使用之前的后端。"
+
+#: src/cli/config/asr_actions.cpp:60
+msgid "Config saved, but no usable ASR backend is active."
+msgstr "配置已保存，但当前没有可用的 ASR 后端处于活动状态。"
+
+#: src/cli/config/asr_actions.cpp:64
+msgid "Config saved. ASR runtime state is updating."
+msgstr "配置已保存。ASR 运行时状态正在更新。"
+
+#: src/cli/config/asr_actions.cpp:79
 #, c-format
-msgid "The local ASR model type is not supported for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型类型不受支持。"
+msgid "Config saved, but ASR backend reload was skipped: %s"
+msgstr "配置已保存，但 ASR 后端重载已跳过：%s"
 
-msgid "Failed to initialize the local ASR recognizer."
-msgstr "初始化本地 ASR 识别器失败。"
-
+#: src/cli/config/asr_actions.cpp:85
 #, c-format
-msgid "Failed to initialize the local ASR recognizer for provider '%s'."
-msgstr "初始化提供商 '%s' 的本地 ASR 识别器失败。"
+msgid "Config saved, but failed to reload ASR backend: %s"
+msgstr "配置已保存，但重新加载 ASR 后端失败：%s"
 
-msgid "Failed to initialize VAD."
-msgstr "初始化 VAD 失败。"
+#: src/cli/config/asr_actions.cpp:225 src/cli/config/asr_actions.cpp:397
+#: src/cli/config/asr_actions.cpp:682 src/cli/config/asr_actions.cpp:725
+#: src/cli/config/llm_actions.cpp:147 src/cli/config/llm_actions.cpp:221
+msgid "TITLE"
+msgstr "标题"
 
+#: src/cli/config/asr_actions.cpp:225 src/cli/config/asr_actions.cpp:682
+#: src/cli/config/asr_actions.cpp:725
+msgid "TYPE"
+msgstr "类型"
+
+#: src/cli/config/asr_actions.cpp:226
+msgid "ACTIVE"
+msgstr "当前"
+
+#: src/cli/config/asr_actions.cpp:226 src/cli/config/asr_actions.cpp:397
+#: src/cli/config/llm_actions.cpp:147 src/cli/config/llm_actions.cpp:221
+msgid "README"
+msgstr "文档"
+
+#: src/cli/config/asr_actions.cpp:242
+msgid "(not set)"
+msgstr "（未设置）"
+
+#: src/cli/config/asr_actions.cpp:251 src/cli/config/asr_actions.cpp:422
+#: src/cli/config/llm_actions.cpp:157 src/cli/config/llm_actions.cpp:245
+msgid "Open README"
+msgstr "查看文档"
+
+#: src/cli/config/asr_actions.cpp:274 src/cli/config/asr_actions.cpp:603
 #, c-format
-msgid "Failed to initialize VAD for provider '%s'."
-msgstr "初始化提供商 '%s' 的 VAD 失败。"
+msgid "ASR provider '%s' not found."
+msgstr "未找到 ASR 提供商 '%s'。"
 
-msgid "Local ASR model check failed."
-msgstr "本地 ASR 模型检查失败。"
-
-#, c-format
-msgid "Local ASR model check failed for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型检查失败。"
-
-msgid "Failed to initialize the local ASR provider."
-msgstr "初始化本地 ASR 提供商失败。"
-
-#, c-format
-msgid "Failed to initialize the local ASR provider '%s'."
-msgstr "初始化本地 ASR 提供商 '%s' 失败。"
-
-msgid "Audio capture is not initialized."
-msgstr "音频采集尚未初始化。"
-
-msgid "Failed to create the PipeWire thread loop."
-msgstr "创建 PipeWire 线程循环失败。"
-
-msgid "Failed to start the PipeWire thread loop."
-msgstr "启动 PipeWire 线程循环失败。"
-
-msgid "Failed to allocate PipeWire properties."
-msgstr "分配 PipeWire 属性失败。"
-
-msgid "Failed to create the PipeWire stream."
-msgstr "创建 PipeWire 流失败。"
-
-msgid "Failed to connect the PipeWire stream."
-msgstr "连接 PipeWire 流失败。"
-
-msgid "Failed to initialize daemon notifications."
-msgstr "初始化守护进程通知失败。"
-
-msgid "Failed to connect to the user D-Bus."
-msgstr "连接用户 D-Bus 失败。"
-
-msgid "Failed to register the daemon D-Bus interface."
-msgstr "注册守护进程 D-Bus 接口失败。"
-
-msgid "Failed to acquire the daemon D-Bus name."
-msgstr "获取守护进程 D-Bus 名称失败。"
-
-msgid "Failed to start recording."
-msgstr "开始录音失败。"
-
-msgid "Failed to start command recording."
-msgstr "开始命令录音失败。"
-
-msgid "ASR provider failed to start."
-msgstr "ASR 提供商启动失败。"
-
-#, c-format
-msgid "ASR provider '%s' failed to start."
-msgstr "ASR 提供商 '%s' 启动失败。"
-
-msgid "ASR provider timed out."
-msgstr "ASR 提供商超时。"
-
-#, c-format
-msgid "ASR provider '%s' timed out."
-msgstr "ASR 提供商 '%s' 超时。"
-
-msgid "ASR provider failed."
-msgstr "ASR 提供商失败。"
-
-#, c-format
-msgid "ASR provider '%s' failed."
-msgstr "ASR 提供商 '%s' 失败。"
-
-msgid "ASR provider returned no text."
-msgstr "ASR 提供商未返回文本。"
-
-#, c-format
-msgid "ASR provider '%s' returned no text."
-msgstr "ASR 提供商 '%s' 未返回文本。"
-
-msgid "LLM request failed."
-msgstr "LLM 请求失败。"
-
-msgid "LLM request returned an HTTP error."
-msgstr "LLM 请求返回了 HTTP 错误。"
-
-msgid "Failed to load prompt file."
-msgstr "加载 prompt 文件失败。"
-
-#, c-format
-msgid "Failed to load prompt file '%s'."
-msgstr "加载 prompt 文件 '%s' 失败。"
-
-#, c-format
-msgid "Failed to load prompt file '%s': %s"
-msgstr "加载 prompt 文件 '%s' 失败：%s"
-
-msgid "Unknown error during processing."
-msgstr "处理过程中发生未知错误。"
-
-msgid "Failed to start the daemon."
-msgstr "启动守护进程失败。"
-
-msgid "Failed to restart the daemon."
-msgstr "重启守护进程失败。"
-
+#: src/cli/config/asr_actions.cpp:280
 msgid ""
-"Voice input daemon is busy. Please wait for the current request to finish."
-msgstr "语音输入守护进程正忙。请等待当前请求完成。"
+"The local ASR provider cannot be removed. It is required for model "
+"management."
+msgstr "内置的本地语音识别不可移除。它是模型管理所必需的。"
 
-msgid "ASR backend is still loading. Please try again in a moment."
-msgstr "ASR 后端仍在加载中。请稍后再试。"
-
-msgid "ASR backend reload failed. The previous backend may still be active."
-msgstr "ASR 后端重新加载失败。此前的后端可能仍在使用中。"
-
-msgid "Unknown error."
-msgstr "未知错误。"
-
-msgid "Daemon access is temporarily throttled."
-msgstr "守护进程访问暂时被限流。"
-
-msgid "Failed to contact vinput-daemon."
-msgstr "无法连接到 vinput-daemon。"
-
-msgid "Failed to reload ASR backend."
-msgstr "重新加载 ASR 后端失败。"
-
-msgid "Failed to start adapter."
-msgstr "启动适配器失败。"
-
-msgid "Failed to stop adapter."
-msgstr "停止适配器失败。"
-
-msgid "Voice Input"
-msgstr "语音输入"
-
-msgid "Please select text first."
-msgstr "请先选中文本。"
-
-msgid "Command mode is disabled (candidate count is 0)."
-msgstr "命令模式已禁用（候选数为 0）。"
-
-msgid "No LLM provider configured for command mode."
-msgstr "未配置命令模式的 LLM 提供者。"
-
-msgid "Voice input daemon is temporarily unavailable."
-msgstr "语音输入守护进程暂时不可用。"
-
-msgid "Command Palette"
-msgstr "命令面板"
-
-msgid "Requested post-processing action is not available."
-msgstr "请求的后处理操作当前不可用。"
-
+#: src/cli/config/asr_actions.cpp:300
 #, c-format
-msgid "Search: %s"
-msgstr "搜索: %s"
+msgid "ASR provider '%s' removed."
+msgstr "ASR 提供商 '%s' 已移除。"
 
-#, c-format
-msgid "Choose Result (%zu)"
-msgstr "选择结果（%zu项）"
-
-msgid "Original"
-msgstr "原文"
-
-msgid "Voice Command"
-msgstr "语音命令"
-
-msgid "Cmd-Model"
-msgstr "Cmd-Model"
-
-msgid "Switch command model"
-msgstr "切换划词指令模型"
-
-msgid "Cmd-Model *"
-msgstr "Cmd-Model *"
-
-msgid "Failed to set command model."
-msgstr "设置划词指令模型失败。"
-
-#, c-format
-msgid "Command model set to '%s / %s'."
-msgstr "划词指令模型已设置为 '%s / %s'。"
-
-msgid "ASR"
-msgstr "ASR"
-
-msgid "Switch ASR provider or model"
-msgstr "切换 ASR 提供商或模型"
-
-msgid "ASR *"
-msgstr "ASR *"
-
+#: src/cli/config/asr_actions.cpp:319 src/addon/menu/vinput_menu.cpp:520
 #, c-format
 msgid ""
 "ASR provider '%s' is a local provider, which is not supported in this Lite "
 "build."
 msgstr "ASR 提供商 '%s' 为本地提供商，当前轻量版不支持。"
 
-msgid "Failed to save ASR config."
-msgstr "保存语音识别配置失败。"
-
-#, c-format
-msgid "ASR switch requested for '%s'."
-msgstr "已请求切换 ASR 到 '%s'。"
-
-msgid "Scene"
-msgstr "Scene"
-
-msgid "Switch dictation scene"
-msgstr "切换听写场景"
-
-msgid "Scene *"
-msgstr "Scene *"
-
-msgid "Failed to save scene config."
-msgstr "保存场景配置失败。"
-
-#, c-format
-msgid "Scene switched to '%s'."
-msgstr "场景已切换为 '%s'。"
-
-msgid "Proc"
-msgstr "Proc"
-
-msgid "Manage adapter processes"
-msgstr "管理适配器进程"
-
-msgid "Proc (running · autostart)"
-msgstr "Proc (运行中 · 自启)"
-
-msgid "Proc (running)"
-msgstr "Proc (运行中)"
-
-msgid "Proc (stopped · autostart)"
-msgstr "Proc (已停止 · 自启)"
-
-msgid "Proc (stopped)"
-msgstr "Proc (已停止)"
-
-#, c-format
-msgid "Adapter '%s' stopped."
-msgstr "Adapter '%s' 已停止。"
-
-#, c-format
-msgid "Adapter '%s' started."
-msgstr "Adapter '%s' 已启动。"
-
-#, c-format
-msgid "Config saved, but failed to confirm ASR runtime state: %s"
-msgstr "配置已保存，但确认 ASR 运行时状态失败：%s"
-
-msgid "Config saved and ASR backend reload is in progress."
-msgstr "配置已保存，ASR 后端正在重新加载。"
-
-msgid "Config saved and ASR runtime applied the requested backend."
-msgstr "配置已保存，ASR 运行时已应用请求的后端。"
-
-msgid "Config saved, but ASR runtime is still using the previous backend."
-msgstr "配置已保存，但 ASR 运行时仍在使用之前的后端。"
-
-msgid "Config saved, but no usable ASR backend is active."
-msgstr "配置已保存，但当前没有可用的 ASR 后端处于活动状态。"
-
-msgid "Config saved. ASR runtime state is updating."
-msgstr "配置已保存。ASR 运行时状态正在更新。"
-
-#, c-format
-msgid "Config saved, but ASR backend reload was skipped: %s"
-msgstr "配置已保存，但 ASR 后端重载已跳过：%s"
-
-#, c-format
-msgid "Config saved, but failed to reload ASR backend: %s"
-msgstr "配置已保存，但重新加载 ASR 后端失败：%s"
-
-msgid "ID"
-msgstr "ID"
-
-msgid "TITLE"
-msgstr "标题"
-
-msgid "TYPE"
-msgstr "类型"
-
-msgid "ACTIVE"
-msgstr "当前"
-
-msgid "MODEL"
-msgstr "模型"
-
-msgid "README"
-msgstr "文档"
-
-msgid "no"
-msgstr "否"
-
-msgid "yes"
-msgstr "是"
-
-msgid "(not set)"
-msgstr "（未设置）"
-
-msgid "Open README"
-msgstr "查看文档"
-
-#, c-format
-msgid "ASR provider '%s' not found."
-msgstr "未找到 ASR 提供商 '%s'。"
-
-msgid ""
-"The local ASR provider cannot be removed. It is required for model "
-"management."
-msgstr "内置的本地语音识别不可移除。它是模型管理所必需的。"
-
-#, c-format
-msgid "ASR provider '%s' removed."
-msgstr "ASR 提供商 '%s' 已移除。"
-
+#: src/cli/config/asr_actions.cpp:329
 #, c-format
 msgid "Configured ASR provider set to '%s'."
 msgstr "配置中的 ASR 提供商已设为 '%s'。"
 
+#: src/cli/config/asr_actions.cpp:341 src/cli/config/asr_actions.cpp:436
+#: src/cli/config/asr_actions.cpp:497
 msgid ""
 "No ASR provider registry base URLs configured. Edit config.json and set "
 "registry.base_urls."
@@ -448,213 +661,232 @@ msgstr ""
 "未配置 ASR 提供商 registry 源地址。请编辑 config.json 设置 "
 "registry.base_urls。"
 
+#: src/cli/config/asr_actions.cpp:397
 msgid "MODE"
 msgstr "模式"
 
-msgid "STATUS"
-msgstr "状态"
-
-msgid "batch"
-msgstr "非流"
-
-msgid "stream"
-msgstr "流式"
-
+#: src/cli/config/asr_actions.cpp:403 src/cli/config/asr_actions.cpp:690
+#: src/cli/config/llm_actions.cpp:227
 msgid "available"
 msgstr "可用"
 
+#: src/cli/config/asr_actions.cpp:407 src/cli/config/llm_actions.cpp:231
+#, c-format
+msgid "update available (%s -> %s)"
+msgstr "有可用更新 (%s -> %s)"
+
+#: src/cli/config/asr_actions.cpp:410 src/cli/config/llm_actions.cpp:234
+msgid "update available"
+msgstr "有可用更新"
+
+#: src/cli/config/asr_actions.cpp:413 src/cli/config/llm_actions.cpp:237
+#, c-format
+msgid "installed (%s)"
+msgstr "已安装 (%s)"
+
+#: src/cli/config/asr_actions.cpp:415 src/cli/config/asr_actions.cpp:690
+#: src/cli/config/llm_actions.cpp:239
 msgid "installed"
 msgstr "已安装"
 
+#: src/cli/config/asr_actions.cpp:420
+msgid "stream"
+msgstr "流式"
+
+#: src/cli/config/asr_actions.cpp:420
+msgid "batch"
+msgstr "非流"
+
+#: src/cli/config/asr_actions.cpp:460 src/cli/config/asr_actions.cpp:566
 #, c-format
 msgid "ASR provider '%s' not found in registry."
 msgstr "在 registry 中未找到 ASR 提供商 '%s'。"
 
+#: src/cli/config/asr_actions.cpp:479
 #, c-format
 msgid "ASR provider '%s' added."
 msgstr "ASR 提供商 '%s' 已添加。"
 
+#: src/cli/config/asr_actions.cpp:488
+msgid ""
+"Specify a provider short ID to update, or use --all to update all installed "
+"providers."
+msgstr "请指定要更新的提供商短 ID，或使用 --all 更新所有已安装的提供商。"
+
+#: src/cli/config/asr_actions.cpp:516
 #, c-format
-msgid "ASR provider '%s' is not a command provider and cannot be edited."
-msgstr "ASR 提供商 '%s' 不是命令型提供商，不能编辑。"
+msgid "Provider '%s' is already up to date."
+msgstr "提供商 '%s' 已是最新版本。"
 
+#: src/cli/config/asr_actions.cpp:523 src/cli/config/asr_actions.cpp:527
+#: src/cli/config/llm_actions.cpp:460 src/cli/config/llm_actions.cpp:464
 #, c-format
-msgid "ASR provider '%s' does not reference an editable script file."
-msgstr "ASR 提供商 '%s' 没有引用可编辑的脚本文件。"
+msgid "Failed to update '%s': %s"
+msgstr "更新 '%s' 失败：%s"
 
-msgid "Editor exited with error."
-msgstr "编辑器异常退出。"
+#: src/cli/config/asr_actions.cpp:532
+#, c-format
+msgid "ASR provider '%s' updated: %s -> %s"
+msgstr "ASR 提供商 '%s' 已更新：%s -> %s"
 
+#: src/cli/config/asr_actions.cpp:536 src/cli/config/asr_actions.cpp:625
 #, c-format
 msgid "ASR provider '%s' updated."
 msgstr "ASR 提供商 '%s' 已更新。"
 
+#: src/cli/config/asr_actions.cpp:572
+#, c-format
+msgid "ASR provider '%s' is not installed. Use 'add' instead."
+msgstr "ASR 提供商 '%s' 尚未安装。请改用 'add'。"
+
+#: src/cli/config/asr_actions.cpp:608
+#, c-format
+msgid "ASR provider '%s' is not a command provider and cannot be edited."
+msgstr "ASR 提供商 '%s' 不是命令型提供商，不能编辑。"
+
+#: src/cli/config/asr_actions.cpp:615
+#, c-format
+msgid "ASR provider '%s' does not reference an editable script file."
+msgstr "ASR 提供商 '%s' 没有引用可编辑的脚本文件。"
+
+#: src/cli/config/asr_actions.cpp:621 src/cli/config/asr_actions.cpp:985
+msgid "Editor exited with error."
+msgstr "编辑器异常退出。"
+
+#: src/cli/config/asr_actions.cpp:640 src/cli/config/asr_actions.cpp:752
 msgid ""
 "No model registry base URLs configured. Edit config.json and set "
 "registry.base_urls."
 msgstr ""
 "未配置模型 registry 源地址。请编辑 config.json 设置 registry.base_urls。"
 
+#: src/cli/config/asr_actions.cpp:682 src/cli/config/asr_actions.cpp:725
 msgid "LANGUAGE"
 msgstr "语言"
 
-msgid "HOTWORDS"
-msgstr "热词"
-
+#: src/cli/config/asr_actions.cpp:683 src/cli/config/asr_actions.cpp:726
 msgid "SIZE"
 msgstr "大小"
 
+#: src/cli/config/asr_actions.cpp:683 src/cli/config/asr_actions.cpp:726
+msgid "HOTWORDS"
+msgstr "热词"
+
+#: src/cli/config/asr_actions.cpp:729
 msgid "Installed"
 msgstr "已安装"
 
-msgid "Active"
-msgstr "活跃"
-
+#: src/cli/config/asr_actions.cpp:733
 msgid "Broken"
 msgstr "损坏"
 
+#: src/cli/config/asr_actions.cpp:779
 #, c-format
 msgid "Downloading %s..."
 msgstr "正在下载 %s..."
 
+#: src/cli/config/asr_actions.cpp:795
 #, c-format
 msgid "Model '%s' added."
 msgstr "模型 '%s' 已添加。"
 
+#: src/cli/config/asr_actions.cpp:825
 #, c-format
 msgid "Model '%s' removed."
 msgstr "模型 '%s' 已移除。"
 
+#: src/cli/config/asr_actions.cpp:845 src/cli/config/asr_actions.cpp:875
 #, c-format
 msgid "Model '%s' is not valid: %s"
 msgstr "模型 '%s' 无效：%s"
 
+#: src/cli/config/asr_actions.cpp:856
 #, c-format
 msgid "Preferred local model set to '%s'."
 msgstr "首选本地模型已设为 '%s'。"
 
+#: src/cli/config/asr_actions.cpp:904
 msgid "FIELD"
 msgstr "字段"
 
+#: src/cli/config/asr_actions.cpp:904 src/cli/config/llm_actions.cpp:689
 msgid "VALUE"
 msgstr "值"
 
+#: src/cli/config/asr_actions.cpp:934
 msgid "No hotwords file configured."
 msgstr "未配置热词文件。"
 
+#: src/cli/config/asr_actions.cpp:946 src/cli/config/asr_actions.cpp:962
 msgid "No local ASR provider configured."
 msgstr "未配置本地 ASR 提供商。"
 
+#: src/cli/config/asr_actions.cpp:953
 msgid "Hotwords file path saved."
 msgstr "热词文件路径已保存。"
 
+#: src/cli/config/asr_actions.cpp:969
 msgid "Hotwords file path cleared."
 msgstr "热词文件路径已清除。"
 
+#: src/cli/config/asr_actions.cpp:979
 msgid "No hotwords file configured. Use 'hotword set <path>' first."
 msgstr "未配置热词文件。请先使用 'hotword set <路径>'。"
 
+#: src/cli/config/asr_actions.cpp:988
 msgid "Hotwords file updated."
 msgstr "热词文件已更新。"
 
-msgid "Config value set."
-msgstr "配置值已设置。"
-
-msgid "Unsupported config target. Use 'core' or 'fcitx'."
-msgstr "不支持的配置目标。请使用 'core' 或 'fcitx'。"
-
-msgid "No audio capture devices found or PipeWire is not running."
-msgstr "未找到音频输入设备或 PipeWire 未运行。"
-
-msgid "DESCRIPTION"
-msgstr "描述"
-
-msgid "NAME"
-msgstr "名称"
-
-msgid "System Default"
-msgstr "系统默认"
-
-#, c-format
-msgid "Device '%s' not found in PipeWire. Setting it anyway."
-msgstr "在 PipeWire 中未找到设备 '%s'，仍将继续设置。"
-
-#, c-format
-msgid "Capture device set to '%s'. Restart daemon to apply changes."
-msgstr "录音设备已设为 '%s'，请重启守护进程生效。"
-
-#, c-format
-msgid "Config already exists: %s"
-msgstr "配置文件已存在：%s"
-
-#, c-format
-msgid "Created config: %s"
-msgstr "已创建配置文件：%s"
-
-msgid "Failed to create config"
-msgstr "创建配置文件失败"
-
-#, c-format
-msgid "Model dir already exists: %s"
-msgstr "模型目录已存在：%s"
-
-#, c-format
-msgid "Failed to create model dir: %s"
-msgstr "创建模型目录失败：%s"
-
-#, c-format
-msgid "Created model dir: %s"
-msgstr "已创建模型目录：%s"
-
-msgid "Everything already initialized"
-msgstr "所有文件已就绪，无需初始化"
-
+#: src/cli/config/llm_actions.cpp:42 src/cli/config/llm_actions.cpp:390
+#: src/cli/config/llm_actions.cpp:662
 #, c-format
 msgid "Adapter '%s' not found."
 msgstr "未找到适配器 '%s'。"
 
+#: src/cli/config/llm_actions.cpp:58
 #, c-format
 msgid "Adapter '%s' enabled to autostart with daemon."
 msgstr "已启用适配器 '%s' 随 daemon 自启动。"
 
+#: src/cli/config/llm_actions.cpp:61
 #, c-format
 msgid "Adapter '%s' disabled from autostart with daemon."
 msgstr "已禁用适配器 '%s' 随 daemon 自启动。"
 
+#: src/cli/config/llm_actions.cpp:81
 msgid ""
-"--extra-body must be a JSON object (e.g. '{\"enable_thinking\": false}')."
-msgstr "--extra-body 必须是 JSON 对象（例如 '{\"enable_thinking\": false}'）。"
+"--extra-body must be a JSON object (e.g. '{"enable_thinking": false}')."
+msgstr "--extra-body 必须是 JSON 对象（例如 '{"enable_thinking": false}'）。"
 
+#: src/cli/config/llm_actions.cpp:88
 #, c-format
 msgid "Invalid --extra-body JSON: %s"
 msgstr "--extra-body JSON 无效：%s"
 
-msgid "Invalid --env: expected KEY=VALUE."
-msgstr "--env 无效：应为 KEY=VALUE 格式。"
-
-#, c-format
-msgid ""
-"Required env '%s' is empty; '%s' cannot start until it is set (re-run with "
-"-e %s=<value>)."
-msgstr ""
-"必需的环境变量 '%s' 为空；在设置该值之前 '%s' 无法启动（可用 -e "
-"%s=<value> 重新运行）。"
-
-msgid "API_KEY"
-msgstr "API 密钥"
-
+#: src/cli/config/llm_actions.cpp:113
 msgid "BASE_URL"
 msgstr "服务地址"
 
+#: src/cli/config/llm_actions.cpp:113
+msgid "API_KEY"
+msgstr "API 密钥"
+
+#: src/cli/config/llm_actions.cpp:147 src/cli/config/llm_actions.cpp:631
 msgid "AUTOSTART"
 msgstr "自启动"
 
-msgid "disabled"
-msgstr "已禁用"
-
+#: src/cli/config/llm_actions.cpp:155 src/cli/config/llm_actions.cpp:642
+#: src/cli/config/llm_actions.cpp:695
 msgid "enabled"
 msgstr "已启用"
 
+#: src/cli/config/llm_actions.cpp:155 src/cli/config/llm_actions.cpp:642
+#: src/cli/config/llm_actions.cpp:695
+msgid "disabled"
+msgstr "已禁用"
+
+#: src/cli/config/llm_actions.cpp:166 src/cli/config/llm_actions.cpp:299
+#: src/cli/config/llm_actions.cpp:424
 msgid ""
 "No LLM adapter registry base URLs configured. Edit config.json and set "
 "registry.base_urls."
@@ -662,451 +894,306 @@ msgstr ""
 "未配置 LLM 适配器 registry 源地址。请编辑 config.json 设置 "
 "registry.base_urls。"
 
+#: src/cli/config/llm_actions.cpp:256
 #, c-format
 msgid "LLM provider '%s' already exists."
 msgstr "LLM 提供商 '%s' 已存在。"
 
+#: src/cli/config/llm_actions.cpp:275
 #, c-format
 msgid "LLM provider '%s' added."
 msgstr "LLM 提供商 '%s' 已添加。"
 
+#: src/cli/config/llm_actions.cpp:288
+msgid "Invalid --env: expected KEY=VALUE."
+msgstr "--env 无效：应为 KEY=VALUE 格式。"
+
+#: src/cli/config/llm_actions.cpp:323 src/cli/config/llm_actions.cpp:509
 #, c-format
 msgid "Adapter '%s' not found in registry."
 msgstr "在 registry 中未找到适配器 '%s'。"
 
+#: src/cli/config/llm_actions.cpp:356
+#, c-format
+msgid ""
+"Required env '%s' is empty; '%s' cannot start until it is set (re-run with "
+"-e %s=<value>)."
+msgstr ""
+"必需的环境变量 '%s' 为空；在设置该值之前 '%s' 无法启动（可用 -e %s=<value> 重"
+"新运行）。"
+
+#: src/cli/config/llm_actions.cpp:363
 #, c-format
 msgid "Adapter '%s' added."
 msgstr "适配器 '%s' 已添加。"
 
+#: src/cli/config/llm_actions.cpp:383
+#, c-format
+msgid "Failed to stop running adapter '%s': %s"
+msgstr "停止运行中的适配器 '%s' 失败：%s"
+
+#: src/cli/config/llm_actions.cpp:406
+#, c-format
+msgid "Adapter '%s' removed."
+msgstr "适配器 '%s' 已移除。"
+
+#: src/cli/config/llm_actions.cpp:415
+msgid ""
+"Specify an adapter short ID to update, or use --all to update all installed "
+"adapters."
+msgstr "请指定要更新的适配器短 ID，或使用 --all 更新所有已安装的适配器。"
+
+#: src/cli/config/llm_actions.cpp:444
+#, c-format
+msgid "Adapter '%s' is already up to date."
+msgstr "适配器 '%s' 已是最新版本。"
+
+#: src/cli/config/llm_actions.cpp:452
+#, c-format
+msgid "Could not stop adapter '%s' before update: %s"
+msgstr "更新前未能停止适配器 '%s'：%s"
+
+#: src/cli/config/llm_actions.cpp:471 src/cli/config/llm_actions.cpp:593
 #, c-format
 msgid "Adapter '%s' restarted."
 msgstr "Adapter '%s' 已重启。"
 
+#: src/cli/config/llm_actions.cpp:473
+#, c-format
+msgid "Failed to restart adapter '%s': %s"
+msgstr "重启适配器 '%s' 失败：%s"
+
+#: src/cli/config/llm_actions.cpp:479
+#, c-format
+msgid "Adapter '%s' updated: %s -> %s"
+msgstr "适配器 '%s' 已更新：%s -> %s"
+
+#: src/cli/config/llm_actions.cpp:483
+#, c-format
+msgid "Adapter '%s' updated."
+msgstr "适配器 '%s' 已更新。"
+
+#: src/cli/config/llm_actions.cpp:515
+#, c-format
+msgid "Adapter '%s' is not installed. Use 'add' instead."
+msgstr "适配器 '%s' 尚未安装。请改用 'add'。"
+
+#: src/cli/config/llm_actions.cpp:549 src/addon/menu/vinput_menu.cpp:661
+#, c-format
+msgid "Adapter '%s' started."
+msgstr "Adapter '%s' 已启动。"
+
+#: src/cli/config/llm_actions.cpp:568 src/addon/menu/vinput_menu.cpp:654
+#, c-format
+msgid "Adapter '%s' stopped."
+msgstr "Adapter '%s' 已停止。"
+
+#: src/cli/config/llm_actions.cpp:631 src/cli/config/llm_actions.cpp:694
 msgid "PID"
 msgstr "PID"
 
+#: src/cli/config/llm_actions.cpp:632
 msgid "COMMAND"
 msgstr "命令"
 
+#: src/cli/config/llm_actions.cpp:640 src/cli/config/llm_actions.cpp:693
 msgid "running"
 msgstr "运行中"
 
+#: src/cli/config/llm_actions.cpp:640 src/cli/config/llm_actions.cpp:693
 msgid "stopped"
 msgstr "已停止"
 
+#: src/cli/config/llm_actions.cpp:689
 msgid "PROPERTY"
 msgstr "属性"
 
+#: src/cli/config/llm_actions.cpp:692
 msgid "Title"
 msgstr "名称"
 
+#: src/cli/config/llm_actions.cpp:693
 msgid "Status"
 msgstr "状态"
 
+#: src/cli/config/llm_actions.cpp:695
 msgid "Autostart"
 msgstr "自启动"
 
+#: src/cli/config/llm_actions.cpp:696 src/common/scene/postprocess_scene.cpp:32
+#: src/common/scene/postprocess_scene.cpp:42
 msgid "Command"
 msgstr "命令"
 
+#: src/cli/config/llm_actions.cpp:706
 msgid "Args"
 msgstr "参数"
 
+#: src/cli/config/llm_actions.cpp:719 src/cli/config/llm_actions.cpp:741
+#: src/cli/config/llm_actions.cpp:785
 #, c-format
 msgid "LLM provider '%s' not found."
 msgstr "LLM 提供商 '%s' 未找到。"
 
+#: src/cli/config/llm_actions.cpp:728
 #, c-format
 msgid "LLM provider '%s' removed."
 msgstr "LLM 提供商 '%s' 已移除。"
 
+#: src/cli/config/llm_actions.cpp:762
 #, c-format
 msgid "LLM provider '%s' updated."
 msgstr "LLM 提供商 '%s' 已更新。"
 
+#: src/cli/config/llm_actions.cpp:790
 msgid "Provider base_url is empty."
 msgstr "提供商 base_url 为空。"
 
+#: src/cli/config/llm_actions.cpp:801
 msgid "Failed to initialize libcurl."
 msgstr "初始化 libcurl 失败。"
 
+#: src/cli/config/llm_actions.cpp:809
+#, c-format
+msgid ""
+"Environment variable '%s' referenced in API key for provider '%s' is unset "
+"or empty."
+msgstr "服务商 '%2$s' 的 API 密钥中引用的环境变量 '%1$s' 未设置或为空。"
+
+#: src/cli/config/llm_actions.cpp:836
 #, c-format
 msgid "Connection failed: %s"
 msgstr "连接失败：%s"
 
+#: src/cli/config/llm_actions.cpp:841
 #, c-format
 msgid "HTTP %ld: %s"
 msgstr "HTTP %ld：%s"
 
+#: src/cli/config/llm_actions.cpp:849
 #, c-format
 msgid "Invalid JSON response: %s"
 msgstr "无效的 JSON 响应：%s"
 
+#: src/cli/config/llm_actions.cpp:875
 #, c-format
 msgid "Connected to '%s'. Found %d model(s)."
 msgstr "已连接'%s'。找到 %d 个模型。"
 
-msgid "Manage hotword file"
-msgstr "管理热词文件"
-
-msgid "Show configured hotword file path"
-msgstr "显示已配置的热词文件路径"
-
-msgid "Set hotword file path"
-msgstr "设置热词文件路径"
-
-msgid "Path to hotword file"
-msgstr "热词文件路径"
-
-msgid "Clear hotword file path"
-msgstr "清除热词文件路径"
-
-msgid "Edit hotword file"
-msgstr "编辑热词文件"
-
-msgid "Manage local ASR models"
-msgstr "管理本地 ASR 模型"
-
-msgid "List models"
-msgstr "列出模型"
-
-msgid "List remote models"
-msgstr "列出远程模型"
-
-msgid "Add a model"
-msgstr "添加模型"
-
-msgid "Model short ID"
-msgstr "模型短 ID"
-
-msgid "Remove a model"
-msgstr "移除模型"
-
-msgid "Set active model"
-msgstr "设置当前使用的模型"
-
-msgid "Show model details"
-msgstr "显示模型详情"
-
-msgid "Manage ASR providers"
-msgstr "管理 ASR 提供商"
-
-msgid "List providers"
-msgstr "列出提供商"
-
-msgid "List remote providers"
-msgstr "列出远程提供商"
-
-msgid "Add a provider"
-msgstr "添加提供商"
-
-msgid "Provider short ID"
-msgstr "提供商短 ID"
-
-msgid "Set active provider"
-msgstr "设置当前提供商"
-
-msgid "Edit provider script"
-msgstr "编辑提供商脚本"
-
-msgid "Remove a provider"
-msgstr "移除提供商"
-
-msgid "Read or write configuration values"
-msgstr "读取或写入配置项"
-
-msgid "Get a config value by JSON Pointer"
-msgstr "通过 JSON Pointer 获取配置值"
-
-msgid "JSON Pointer (e.g. /global/capture_device)"
-msgstr "JSON Pointer（例如 /global/capture_device）"
-
-msgid "Set a config value by JSON Pointer"
-msgstr "通过 JSON Pointer 设置配置值"
-
-msgid "New value"
-msgstr "新值"
-
-msgid "Read value from stdin"
-msgstr "从标准输入读取值"
-
-msgid "Open config file in editor"
-msgstr "用编辑器打开配置文件"
-
-msgid "Config target: fcitx or core"
-msgstr "配置目标：fcitx 或 core"
-
-msgid "Manage capture devices"
-msgstr "管理录音设备"
-
-msgid "List available audio input devices"
-msgstr "列出可用的音频输入设备"
-
-msgid "Set active capture device"
-msgstr "设置当前录音设备"
-
-msgid "Device id or 'default'"
-msgstr "设备 ID 或 'default'"
-
-msgid "Initialize default config and directories"
-msgstr "初始化默认配置和目录"
-
-msgid "Overwrite existing config"
-msgstr "覆盖现有配置"
-
-msgid "Manage LLM providers"
-msgstr "管理 LLM 提供商"
-
-msgid "List configured LLM providers"
-msgstr "列出已配置的 LLM 提供商"
-
-msgid "Add an LLM provider"
-msgstr "添加 LLM 提供商"
-
-msgid "Provider ID"
-msgstr "提供商 ID"
-
-msgid "Base URL"
-msgstr "服务地址"
-
-msgid "API key"
-msgstr "API 密钥"
-
-msgid ""
-"Extra JSON object merged into each request body (e.g. '{\"enable_thinking\": "
-"false}')"
-msgstr ""
-"合并进每次请求体的附加 JSON 对象（例如 '{\"enable_thinking\": false}'）"
-
-msgid "Remove an LLM provider"
-msgstr "移除 LLM 提供商"
-
-msgid "Edit an LLM provider"
-msgstr "编辑 LLM 提供商"
-
-#, c++-format
-msgid "Extra JSON object merged into each request body; pass '{}' to clear"
-msgstr "合并进每次请求体的附加 JSON 对象；传 '{}' 清空"
-
-msgid "Test LLM provider connectivity"
-msgstr "测试 LLM 提供商连通性"
-
-msgid "Manage LLM adapters"
-msgstr "管理 LLM 适配器"
-
-msgid "List adapters"
-msgstr "列出适配器"
-
-msgid "List remote adapters"
-msgstr "列出远程适配器"
-
-msgid "List adapter processes and runtime status"
-msgstr "列出适配器进程与运行状态"
-
-msgid "Show adapter status"
-msgstr "显示适配器状态"
-
-msgid "Adapter short ID"
-msgstr "适配器短 ID"
-
-msgid "Adapter env var as KEY=VALUE (repeatable)"
-msgstr "适配器环境变量，格式为 KEY=VALUE（可重复指定）"
-
-msgid "Add an adapter"
-msgstr "添加适配器"
-
-msgid "Start an adapter"
-msgstr "启动适配器"
-
-msgid "Stop an adapter"
-msgstr "停止适配器"
-
-msgid "Restart an adapter"
-msgstr "重启适配器"
-
-msgid "Enable adapter autostart with daemon"
-msgstr "启用适配器随 daemon 自启动"
-
-msgid "Disable adapter autostart with daemon"
-msgstr "禁用适配器随 daemon 自启动"
-
-msgid "Manage recognition scenes"
-msgstr "管理识别场景"
-
-msgid "List all scenes"
-msgstr "列出所有场景"
-
-msgid "Add a new scene"
-msgstr "添加新场景"
-
-msgid "Scene id"
-msgstr "场景 ID"
-
-msgid "Display label"
-msgstr "显示标签"
-
-msgid "LLM prompt"
-msgstr "LLM 提示词"
-
-msgid "LLM provider id"
-msgstr "LLM 提供商 ID"
-
-msgid "LLM model id"
-msgstr "LLM 模型 ID"
-
-msgid "Maximum number of LLM candidates (0 to disable LLM)"
-msgstr "LLM 候选的最大返回数量（0 表示不使用 LLM）"
-
-msgid "Request timeout in milliseconds"
-msgstr "请求超时时间（毫秒）"
-
-msgid "Number of previous lines sent as LLM context"
-msgstr "发送给 LLM 作为上下文的前文行数"
-
-msgid "Include raw ASR transcript in candidate options (true/false)"
-msgstr "在候选词选项中包含原始语音文本 (true/false)"
-
-msgid "Preview raw ASR transcript in floating panel during postprocessing (true/false)"
-msgstr "在后处理期间于浮动面板中预览原始 ASR 文本 (true/false)"
-
-msgid "Set active scene"
-msgstr "设置当前场景"
-
-msgid "Remove a scene"
-msgstr "移除场景"
-
-msgid "Edit a scene"
-msgstr "编辑场景"
-
-msgid "LABEL"
-msgstr "标签"
-
-msgid "PROVIDER"
-msgstr "提供者"
-
-msgid "COUNT"
-msgstr "数量"
-
-msgid "RAW_CAND"
-msgstr "候选原句"
-
-msgid "RAW_PREV"
-msgstr "预览原句"
-
-#, c-format
-msgid "Scene '%s' added."
-msgstr "场景 '%s' 已添加。"
-
-#, c-format
-msgid "Default scene set to '%s'."
-msgstr "默认场景已设为 '%s'。"
-
-#, c-format
-msgid "Scene '%s' removed."
-msgstr "场景 '%s' 已移除。"
-
-#, c-format
-msgid "Scene '%s' not found."
-msgstr "未找到场景 '%s'。"
-
-#, c-format
-msgid "Scene '%s' updated."
-msgstr "场景 '%s' 已更新。"
-
+#: src/cli/control/daemon_actions.cpp:20
+#: src/cli/control/recording_actions.cpp:18
 msgid "Daemon is not running."
 msgstr "守护进程未运行。"
 
+#: src/cli/control/daemon_actions.cpp:40
 #, c-format
 msgid "Daemon status: %s"
 msgstr "守护进程状态：%s"
 
+#: src/cli/control/daemon_actions.cpp:51
 msgid "Daemon started."
 msgstr "守护进程已启动。"
 
+#: src/cli/control/daemon_actions.cpp:63
 msgid "Daemon stopped."
 msgstr "守护进程已停止。"
 
+#: src/cli/control/daemon_actions.cpp:66
 #, c-format
 msgid "systemctl stop failed (exit code: %d)"
 msgstr "systemctl stop 失败（退出码：%d）"
 
+#: src/cli/control/daemon_actions.cpp:74
 msgid "Daemon restarted."
 msgstr "守护进程已重启。"
 
+#: src/cli/control/recording_actions.cpp:49
+#: src/cli/control/recording_actions.cpp:159
 msgid "Recording started."
 msgstr "录音已开始。"
 
+#: src/cli/control/recording_actions.cpp:77
+#: src/cli/control/recording_actions.cpp:119
 msgid "Recording stopped."
 msgstr "录音已停止。"
 
+#: src/cli/control/recording_actions.cpp:79
+#: src/cli/control/recording_actions.cpp:121
 #, c-format
 msgid "Recording stopped (scene: %s)."
 msgstr "录音已停止（场景：%s）。"
 
+#: src/cli/control/recording_actions.cpp:127
 #, c-format
 msgid "Daemon is busy (status: %s)."
 msgstr "守护进程忙碌（状态：%s）。"
 
+#: src/cli/control/recording_actions.cpp:137
 msgid "Daemon is in error state."
 msgstr "守护进程处于错误状态。"
 
+#: src/cli/control/register_daemon.cpp:12
 msgid "Control daemon lifecycle"
 msgstr "控制守护进程生命周期"
 
+#: src/cli/control/register_daemon.cpp:15
 msgid "Show daemon status"
 msgstr "显示守护进程状态"
 
+#: src/cli/control/register_daemon.cpp:22
 msgid "Start daemon"
 msgstr "启动守护进程"
 
+#: src/cli/control/register_daemon.cpp:27
 msgid "Stop daemon"
 msgstr "停止守护进程"
 
+#: src/cli/control/register_daemon.cpp:32
 msgid "Restart daemon"
 msgstr "重启守护进程"
 
+#: src/cli/control/register_daemon.cpp:41
 msgid "Show daemon logs"
 msgstr "显示守护进程日志"
 
+#: src/cli/control/register_daemon.cpp:42
 msgid "Follow log output"
 msgstr "持续追踪日志输出"
 
+#: src/cli/control/register_daemon.cpp:43
 msgid "Number of log lines"
 msgstr "日志行数"
 
+#: src/cli/control/register_recording.cpp:12
 msgid "Control voice recording"
 msgstr "控制语音录音"
 
+#: src/cli/control/register_recording.cpp:16
 msgid "Start recording"
 msgstr "开始录音"
 
+#: src/cli/control/register_recording.cpp:24
 msgid "Stop recording and recognize"
 msgstr "停止录音并识别"
 
+#: src/cli/control/register_recording.cpp:25
+#: src/cli/control/register_recording.cpp:34
 msgid "Scene id (default: active scene)"
 msgstr "场景 ID（默认：当前场景）"
 
+#: src/cli/control/register_recording.cpp:33
 msgid "Toggle recording start/stop"
 msgstr "切换录音开始/停止"
 
-msgid "vinput - Voice input manager"
-msgstr "vinput - 语音输入管理器"
-
-msgid "Print this help message and exit"
-msgstr "显示此帮助信息并退出"
-
-msgid "Display program version information and exit"
-msgstr "显示程序版本信息并退出"
-
-msgid "Output in JSON format"
-msgstr "以 JSON 格式输出"
-
+#: src/cli/utils/cli_helpers.h:10
 msgid "Failed to save config."
 msgstr "保存配置失败。"
 
+#: src/common/config/vinput_config.cpp:34
 msgid "Trigger Key"
 msgstr "触发键"
 
+#: src/common/config/vinput_config.cpp:41
 #, c-format
 msgid ""
 "Press and hold this key to record. Release it to start recognition. Supports "
@@ -1116,9 +1203,11 @@ msgstr ""
 "按住该键开始录音，松开后开始识别。支持普通按键、修饰键以及带修饰键的组合键。"
 "可配置多个触发键。配置保存在 %s。"
 
+#: src/common/config/vinput_config.cpp:49
 msgid "Command Keys"
 msgstr "命令键"
 
+#: src/common/config/vinput_config.cpp:53
 msgid ""
 "Press and hold this key to record a voice command to operate on the selected "
 "text. If there is no active selection, vinput falls back to the current "
@@ -1127,9 +1216,11 @@ msgstr ""
 "按住该键录制语音指令，将对当前选中的文本进行处理。如果没有选中文本，vinput 将"
 "使用当前主选区剪贴板内容。默认是右 Ctrl。"
 
+#: src/common/config/vinput_config.cpp:60
 msgid "Command Palette Keys"
 msgstr "命令面板快捷键"
 
+#: src/common/config/vinput_config.cpp:64
 msgid ""
 "Configure one or more keys to open the unified command palette (/model, /"
 "asr, /scene, /proc). The default is Right Shift."
@@ -1137,18 +1228,22 @@ msgstr ""
 "配置打开统一命令面板（/model、/asr、/scene、/proc）的一个或多个快捷键。默认是"
 "右 Shift。"
 
+#: src/common/config/vinput_config.cpp:69
 msgid "Previous Page Keys"
 msgstr "上一页键"
 
+#: src/common/config/vinput_config.cpp:73
 msgid ""
 "Keys for paging to the previous page in the postprocess menu and the "
 "postprocess candidate menu. Defaults to Page Up and keypad Page Up."
 msgstr ""
 "用于后处理选单和后处理候选菜单翻到上一页。默认是 Page Up 和小键盘 Page Up。"
 
+#: src/common/config/vinput_config.cpp:79
 msgid "Next Page Keys"
 msgstr "下一页键"
 
+#: src/common/config/vinput_config.cpp:83
 msgid ""
 "Keys for paging to the next page in the postprocess menu and the postprocess "
 "candidate menu. Defaults to Page Down and keypad Page Down."
@@ -1156,12 +1251,15 @@ msgstr ""
 "用于后处理选单和后处理候选菜单翻到下一页。默认是 Page Down 和小键盘 Page "
 "Down。"
 
+#: src/common/config/vinput_config.cpp:89
 msgid "Trigger Mode"
 msgstr "触发模式"
 
+#: src/common/config/vinput_config.cpp:93
 msgid "Max Streaming Display Width"
 msgstr "流式识别最大显示列宽"
 
+#: src/common/config/vinput_config.cpp:97
 msgid ""
 "Maximum visual column width for live streaming recognition preview. Older "
 "text is folded into 'head...tail'. Set to 0 to disable folding. Default is "
@@ -1170,65 +1268,491 @@ msgstr ""
 "实时流式识别预览的最大视觉显示列宽。较早的内容会被折叠为“句首...句尾”。设为 "
 "0 则禁用折叠。默认值为 60。"
 
-msgid "No cancellable operation in current phase."
-msgstr "当前阶段没有可取消的操作。"
-
+#: src/common/config/vinput_config.cpp:121
 msgid "Open Vinput Settings"
 msgstr "打开 Vinput 设置"
 
-msgid "Both"
-msgstr "均可"
-
-msgid "Hold"
-msgstr "长按"
-
-msgid "Tap"
-msgstr "短按"
-
+#: src/common/scene/postprocess_scene.cpp:29
+#: src/common/scene/postprocess_scene.cpp:39
 msgid "Raw"
 msgstr "原始"
 
+#: src/common/config/vinput_config.h:12
+msgid "Tap"
+msgstr "短按"
+
+#: src/common/config/vinput_config.h:12
+msgid "Hold"
+msgstr "长按"
+
+#: src/common/config/vinput_config.h:12
+msgid "Both"
+msgstr "均可"
+
+#: src/addon/dbus/vinput_dbus.cpp:33
+msgid "... Starting ..."
+msgstr "... 正在启动 ..."
+
+#: src/addon/dbus/vinput_dbus.cpp:36
+msgid "... Recording ..."
+msgstr "... 正在录音 ..."
+
+#: src/addon/dbus/vinput_dbus.cpp:40
+msgid "... Commanding ..."
+msgstr "... 正在命令 ..."
+
+#: src/addon/dbus/vinput_dbus.cpp:44 src/addon/input/vinput_keyevent.cpp:463
+msgid "... Recognizing ..."
+msgstr "... 正在识别 ..."
+
+#: src/addon/dbus/vinput_dbus.cpp:49 src/addon/dbus/vinput_dbus.cpp:56
+msgid "... Applying command ... (Esc: Cancel)"
+msgstr "... 正在应用命令 ...（Esc：取消）"
+
+#: src/addon/dbus/vinput_dbus.cpp:51
+msgid "... Postprocessing ... (Enter: Use raw ASR text, Esc: Cancel)"
+msgstr "... 正在后处理 ...（Enter：使用原始 ASR 文本，Esc：取消）"
+
+#: src/addon/dbus/vinput_dbus.cpp:52
+msgid "... Postprocessing ... (Esc: Cancel)"
+msgstr "... 正在后处理 ...（Esc：取消）"
+
+#: src/addon/dbus/vinput_dbus.cpp:60
+#, c-format
+msgid "Command: %s"
+msgstr "命令：%s"
+
+#: src/addon/dbus/vinput_dbus.cpp:64
+msgid "Voice input daemon is unavailable."
+msgstr "语音输入守护进程不可用。"
+
+#: src/addon/dbus/vinput_dbus.cpp:68 src/addon/input/vinput_keyevent.cpp:48
+msgid "Voice input daemon is not responding."
+msgstr "语音输入守护进程无响应。"
+
+#: src/addon/dbus/vinput_dbus.cpp:101
+msgid ""
+"Local ASR model configuration is missing. Please configure a model first."
+msgstr "本地 ASR 模型配置缺失。请先配置模型。"
+
+#: src/addon/dbus/vinput_dbus.cpp:103
+#, c-format
+msgid ""
+"Local ASR model configuration is missing for provider '%s'. Please configure "
+"a model first."
+msgstr "提供商 '%s' 的本地 ASR 模型配置缺失。请先配置模型。"
+
+#: src/addon/dbus/vinput_dbus.cpp:108
+msgid "Local ASR model metadata is missing family."
+msgstr "本地 ASR 模型元数据缺少 family。"
+
+#: src/addon/dbus/vinput_dbus.cpp:109
+#, c-format
+msgid "Local ASR model metadata is missing family for provider '%s'."
+msgstr "提供商 '%s' 的本地 ASR 模型元数据缺少 family。"
+
+#: src/addon/dbus/vinput_dbus.cpp:114
+msgid "Local ASR model metadata contains an invalid path."
+msgstr "本地 ASR 模型元数据包含无效路径。"
+
+#: src/addon/dbus/vinput_dbus.cpp:115
+#, c-format
+msgid "Local ASR model metadata contains an invalid path for provider '%s'."
+msgstr "提供商 '%s' 的本地 ASR 模型元数据包含无效路径。"
+
+#: src/addon/dbus/vinput_dbus.cpp:120
+msgid "Local ASR model tokens file is missing."
+msgstr "本地 ASR 模型缺少 tokens 文件。"
+
+#: src/addon/dbus/vinput_dbus.cpp:121
+#, c-format
+msgid "Local ASR model tokens file is missing for provider '%s'."
+msgstr "提供商 '%s' 的本地 ASR 模型缺少 tokens 文件。"
+
+#: src/addon/dbus/vinput_dbus.cpp:127
+msgid "Local ASR model files are missing."
+msgstr "本地 ASR 模型文件缺失。"
+
+#: src/addon/dbus/vinput_dbus.cpp:128
+#, c-format
+msgid "Local ASR model files are missing for provider '%s'."
+msgstr "提供商 '%s' 的本地 ASR 模型文件缺失。"
+
+#: src/addon/dbus/vinput_dbus.cpp:132
+msgid "Failed to resolve the local ASR model directory."
+msgstr "解析本地 ASR 模型目录失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:133
+#, c-format
+msgid "Failed to resolve the local ASR model directory for provider '%s'."
+msgstr "解析提供商 '%s' 的本地 ASR 模型目录失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:138
+msgid "Failed to parse local ASR model metadata."
+msgstr "解析本地 ASR 模型元数据失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:139
+#, c-format
+msgid "Failed to parse local ASR model metadata for provider '%s'."
+msgstr "解析提供商 '%s' 的本地 ASR 模型元数据失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:144
+msgid "The local ASR model type is not supported."
+msgstr "不支持该本地 ASR 模型类型。"
+
+#: src/addon/dbus/vinput_dbus.cpp:145
+#, c-format
+msgid "The local ASR model type is not supported for provider '%s'."
+msgstr "提供商 '%s' 的本地 ASR 模型类型不受支持。"
+
+#: src/addon/dbus/vinput_dbus.cpp:150
+msgid "Failed to initialize the local ASR recognizer."
+msgstr "初始化本地 ASR 识别器失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:151
+#, c-format
+msgid "Failed to initialize the local ASR recognizer for provider '%s'."
+msgstr "初始化提供商 '%s' 的本地 ASR 识别器失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:157
+msgid "Failed to initialize VAD."
+msgstr "初始化 VAD 失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:158
+#, c-format
+msgid "Failed to initialize VAD for provider '%s'."
+msgstr "初始化提供商 '%s' 的 VAD 失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:163
+msgid "Local ASR model check failed."
+msgstr "本地 ASR 模型检查失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:164
+#, c-format
+msgid "Local ASR model check failed for provider '%s'."
+msgstr "提供商 '%s' 的本地 ASR 模型检查失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:169
+msgid "Failed to initialize the local ASR provider."
+msgstr "初始化本地 ASR 提供商失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:170
+#, c-format
+msgid "Failed to initialize the local ASR provider '%s'."
+msgstr "初始化本地 ASR 提供商 '%s' 失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:174
+msgid "Audio capture is not initialized."
+msgstr "音频采集尚未初始化。"
+
+#: src/addon/dbus/vinput_dbus.cpp:177
+msgid "Failed to create the PipeWire thread loop."
+msgstr "创建 PipeWire 线程循环失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:180
+msgid "Failed to start the PipeWire thread loop."
+msgstr "启动 PipeWire 线程循环失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:183
+msgid "Failed to allocate PipeWire properties."
+msgstr "分配 PipeWire 属性失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:186
+msgid "Failed to create the PipeWire stream."
+msgstr "创建 PipeWire 流失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:189
+msgid "Failed to connect the PipeWire stream."
+msgstr "连接 PipeWire 流失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:192
+msgid "Failed to initialize daemon notifications."
+msgstr "初始化守护进程通知失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:195
+msgid "Failed to connect to the user D-Bus."
+msgstr "连接用户 D-Bus 失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:198
+msgid "Failed to register the daemon D-Bus interface."
+msgstr "注册守护进程 D-Bus 接口失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:201
+msgid "Failed to acquire the daemon D-Bus name."
+msgstr "获取守护进程 D-Bus 名称失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:204
+msgid "Failed to start recording."
+msgstr "开始录音失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:207
+msgid "Failed to start command recording."
+msgstr "开始命令录音失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:211
+msgid "ASR provider failed to start."
+msgstr "ASR 提供商启动失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:212
+#, c-format
+msgid "ASR provider '%s' failed to start."
+msgstr "ASR 提供商 '%s' 启动失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:216
+msgid "ASR provider timed out."
+msgstr "ASR 提供商超时。"
+
+#: src/addon/dbus/vinput_dbus.cpp:217
+#, c-format
+msgid "ASR provider '%s' timed out."
+msgstr "ASR 提供商 '%s' 超时。"
+
+#: src/addon/dbus/vinput_dbus.cpp:221
+msgid "ASR provider failed."
+msgstr "ASR 提供商失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:222
+#, c-format
+msgid "ASR provider '%s' failed."
+msgstr "ASR 提供商 '%s' 失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:226
+msgid "ASR provider returned no text."
+msgstr "ASR 提供商未返回文本。"
+
+#: src/addon/dbus/vinput_dbus.cpp:227
+#, c-format
+msgid "ASR provider '%s' returned no text."
+msgstr "ASR 提供商 '%s' 未返回文本。"
+
+#: src/addon/dbus/vinput_dbus.cpp:230
+msgid "LLM request failed."
+msgstr "LLM 请求失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:233
+msgid "LLM request returned an HTTP error."
+msgstr "LLM 请求返回了 HTTP 错误。"
+
+#: src/addon/dbus/vinput_dbus.cpp:237
+msgid "Failed to load prompt file."
+msgstr "加载 prompt 文件失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:240
+#, c-format
+msgid "Failed to load prompt file '%s'."
+msgstr "加载 prompt 文件 '%s' 失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:242
+#, c-format
+msgid "Failed to load prompt file '%s': %s"
+msgstr "加载 prompt 文件 '%s' 失败：%s"
+
+#: src/addon/dbus/vinput_dbus.cpp:246
+msgid "Unknown error during processing."
+msgstr "处理过程中发生未知错误。"
+
+#: src/addon/dbus/vinput_dbus.cpp:249
+msgid "Failed to start the daemon."
+msgstr "启动守护进程失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:252
+msgid "Failed to restart the daemon."
+msgstr "重启守护进程失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:255
+msgid ""
+"Voice input daemon is busy. Please wait for the current request to finish."
+msgstr "语音输入守护进程正忙。请等待当前请求完成。"
+
+#: src/addon/dbus/vinput_dbus.cpp:259
+msgid "ASR backend is still loading. Please try again in a moment."
+msgstr "ASR 后端仍在加载中。请稍后再试。"
+
+#: src/addon/dbus/vinput_dbus.cpp:262
+msgid "ASR backend reload failed. The previous backend may still be active."
+msgstr "ASR 后端重新加载失败。此前的后端可能仍在使用中。"
+
+#: src/addon/dbus/vinput_dbus.cpp:273
+msgid "Unknown error."
+msgstr "未知错误。"
+
+#: src/addon/dbus/vinput_dbus.cpp:646 src/addon/dbus/vinput_dbus.cpp:686
+#: src/addon/dbus/vinput_dbus.cpp:722
+msgid "Daemon access is temporarily throttled."
+msgstr "守护进程访问暂时被限流。"
+
+#: src/addon/dbus/vinput_dbus.cpp:658 src/addon/dbus/vinput_dbus.cpp:700
+#: src/addon/dbus/vinput_dbus.cpp:736
+msgid "Failed to contact vinput-daemon."
+msgstr "无法连接到 vinput-daemon。"
+
+#: src/addon/dbus/vinput_dbus.cpp:670 src/addon/menu/vinput_menu.cpp:541
+msgid "Failed to reload ASR backend."
+msgstr "重新加载 ASR 后端失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:710 src/addon/menu/vinput_menu.cpp:657
+msgid "Failed to start adapter."
+msgstr "启动适配器失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:746 src/addon/menu/vinput_menu.cpp:650
+msgid "Failed to stop adapter."
+msgstr "停止适配器失败。"
+
+#: src/addon/dbus/vinput_dbus.cpp:991 src/addon/dbus/vinput_dbus.cpp:1013
+#: src/addon/dbus/vinput_dbus.cpp:1036
+msgid "Voice Input"
+msgstr "语音输入"
+
+#: src/addon/input/vinput_keyevent.cpp:35
+msgid "Please select text first."
+msgstr "请先选中文本。"
+
+#: src/addon/input/vinput_keyevent.cpp:39
+msgid "Command mode is disabled (candidate count is 0)."
+msgstr "命令模式已禁用（候选数为 0）。"
+
+#: src/addon/input/vinput_keyevent.cpp:42
+msgid "No LLM provider configured for command mode."
+msgstr "未配置命令模式的 LLM 提供者。"
+
+#: src/addon/input/vinput_keyevent.cpp:45
+msgid "Voice input daemon is temporarily unavailable."
+msgstr "语音输入守护进程暂时不可用。"
+
+#: src/addon/menu/vinput_menu.cpp:137 src/addon/menu/vinput_menu.cpp:144
+msgid "Command Palette"
+msgstr "命令面板"
+
+#: src/addon/menu/vinput_menu.cpp:141
+#, c-format
+msgid "Search: %s"
+msgstr "搜索: %s"
+
+#: src/addon/menu/vinput_menu.cpp:149
+#, c-format
+msgid "Choose Result (%zu)"
+msgstr "选择结果（%zu项）"
+
+#: src/addon/menu/vinput_menu.cpp:155
+msgid "Original"
+msgstr "原文"
+
+#: src/addon/menu/vinput_menu.cpp:158
+msgid "Voice Command"
+msgstr "语音命令"
+
+#: src/addon/menu/vinput_menu.cpp:385 src/addon/menu/vinput_menu.cpp:386
+#: src/addon/menu/vinput_menu.cpp:395
+msgid "Cmd-Model"
+msgstr "Cmd-Model"
+
+#: src/addon/menu/vinput_menu.cpp:387
+msgid "Switch command model"
+msgstr "切换划词指令模型"
+
+#: src/addon/menu/vinput_menu.cpp:395
+msgid "Cmd-Model *"
+msgstr "Cmd-Model *"
+
+#: src/addon/menu/vinput_menu.cpp:420
+msgid "Failed to set command model."
+msgstr "设置划词指令模型失败。"
+
+#: src/addon/menu/vinput_menu.cpp:423
+#, c-format
+msgid "Command model set to '%s / %s'."
+msgstr "划词指令模型已设置为 '%s / %s'。"
+
+#: src/addon/menu/vinput_menu.cpp:434 src/addon/menu/vinput_menu.cpp:435
+#: src/addon/menu/vinput_menu.cpp:461 src/addon/menu/vinput_menu.cpp:490
+msgid "ASR"
+msgstr "ASR"
+
+#: src/addon/menu/vinput_menu.cpp:436
+msgid "Switch ASR provider or model"
+msgstr "切换 ASR 提供商或模型"
+
+#: src/addon/menu/vinput_menu.cpp:461 src/addon/menu/vinput_menu.cpp:490
+msgid "ASR *"
+msgstr "ASR *"
+
+#: src/addon/menu/vinput_menu.cpp:535
+msgid "Failed to save ASR config."
+msgstr "保存语音识别配置失败。"
+
+#: src/addon/menu/vinput_menu.cpp:547
+#, c-format
+msgid "ASR switch requested for '%s'."
+msgstr "已请求切换 ASR 到 '%s'。"
+
+#: src/addon/menu/vinput_menu.cpp:556 src/addon/menu/vinput_menu.cpp:557
+#: src/addon/menu/vinput_menu.cpp:567
+msgid "Scene"
+msgstr "Scene"
+
+#: src/addon/menu/vinput_menu.cpp:558
+msgid "Switch dictation scene"
+msgstr "切换听写场景"
+
+#: src/addon/menu/vinput_menu.cpp:567
+msgid "Scene *"
+msgstr "Scene *"
+
+#: src/addon/menu/vinput_menu.cpp:591
+msgid "Failed to save scene config."
+msgstr "保存场景配置失败。"
+
+#: src/addon/menu/vinput_menu.cpp:596
+#, c-format
+msgid "Scene switched to '%s'."
+msgstr "场景已切换为 '%s'。"
+
+#: src/addon/menu/vinput_menu.cpp:605 src/addon/menu/vinput_menu.cpp:606
+msgid "Proc"
+msgstr "Proc"
+
+#: src/addon/menu/vinput_menu.cpp:607
+msgid "Manage adapter processes"
+msgstr "管理适配器进程"
+
+#: src/addon/menu/vinput_menu.cpp:622
+msgid "Proc (running · autostart)"
+msgstr "Proc (运行中 · 自启)"
+
+#: src/addon/menu/vinput_menu.cpp:622
+msgid "Proc (running)"
+msgstr "Proc (运行中)"
+
+#: src/addon/menu/vinput_menu.cpp:624
+msgid "Proc (stopped · autostart)"
+msgstr "Proc (已停止 · 自启)"
+
+#: src/addon/menu/vinput_menu.cpp:624
+msgid "Proc (stopped)"
+msgstr "Proc (已停止)"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:609
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:515
 #, c-format
 msgid "Local ASR model configuration is missing for provider '%s'."
 msgstr "提供商 '%s' 的本地 ASR 模型配置缺失。请先配置模型。"
 
+#: src/daemon/asr/runtime/recognition_session_manager.cpp:63
 msgid "ASR disabled by command line."
 msgstr "ASR 已被命令行禁用。"
 
+#: src/daemon/asr/runtime/recognition_session_manager.cpp:71
 msgid "No active ASR provider configured."
 msgstr "未配置活跃的 ASR 提供商。"
 
+#: src/daemon/runtime/daemon_runtime_controller.cpp:246
+msgid "Requested post-processing action is not available."
+msgstr "请求的后处理操作当前不可用。"
+
+#: src/daemon/runtime/daemon_runtime_controller.cpp:251
+msgid "No cancellable operation in current phase."
+msgstr "当前阶段没有可取消的操作。"
+
+#: src/daemon/runtime/daemon_runtime_controller.cpp:604
 msgid "Recording is not active."
 msgstr "当前未在录音。"
-
-#, c-format
-msgid "Backed up addon config to: %s"
-msgstr "插件配置已备份至：%s"
-
-#, c-format
-msgid "Backed up core config to: %s"
-msgstr "核心配置已备份至：%s"
-
-msgid "CHANGE"
-msgstr "变更内容"
-
-msgid "Configuration is already up to date. No migration needed."
-msgstr "配置已经是最新版本，无需迁移。"
-
-msgid "Configuration migration completed successfully:"
-msgstr "配置迁移已顺利完成："
-
-msgid "FILE"
-msgstr "文件"
-
-msgid "Migrate legacy configuration files to current format"
-msgstr "将旧版配置文件迁移至当前格式"
-
-msgid "Pending migration changes:"
-msgstr "待应用的迁移变更："
-
-msgid "Preview migration changes without modifying files"
-msgstr "预览迁移变更而不修改文件"
-
-msgid "Environment variable '%s' referenced in API key for provider '%s' is unset or empty."
-msgstr "服务商 '%2$s' 的 API 密钥中引用的环境变量 '%1$s' 未设置或为空。"

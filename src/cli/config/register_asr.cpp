@@ -126,6 +126,20 @@ void RegisterProviderCommands(CLI::App& app, CliAction* action) {
     };
   });
 
+  auto updateSelector = std::make_shared<std::string>();
+  auto updateAll = std::make_shared<bool>(false);
+  auto updateForce = std::make_shared<bool>(false);
+  auto* update = provider->add_subcommand("update", _("Update an ASR provider script"));
+  update->alias("up");
+  update->add_option("id", *updateSelector, _("Provider short ID"));
+  update->add_flag("-a,--all", *updateAll, _("Update all installed providers"));
+  update->add_flag("-f,--force", *updateForce, _("Force update even if up to date"));
+  update->callback([action, updateSelector, updateAll, updateForce]() {
+    *action = [updateSelector, updateAll, updateForce](Formatter& fmt, const CliContext& ctx) {
+      return RunAsrConfigUpdateProvider(*updateSelector, *updateAll, *updateForce, fmt, ctx);
+    };
+  });
+
   auto useId = std::make_shared<std::string>();
   auto* use = provider->add_subcommand("use", _("Set active provider"));
   use->add_option("id", *useId, _("Provider short ID"))->required();

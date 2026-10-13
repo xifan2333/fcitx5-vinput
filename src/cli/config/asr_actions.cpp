@@ -286,6 +286,14 @@ int RunAsrConfigRemove(const std::string& id, Formatter& fmt, const CliContext& 
     config.asr.activeProvider.clear();
   }
 
+  const auto managed_path =
+      vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kAsrProvider, resolved_id);
+  if (!managed_path.empty()) {
+    std::error_code ec;
+    std::filesystem::remove(managed_path, ec);
+  }
+  vinput::script::UnregisterInstalledScript(resolved_id);
+
   if (!SaveAsrConfigAndReload(config, fmt)) {
     return 1;
   }
@@ -346,6 +354,7 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
   const auto locale = vinput::registry::DetectPreferredLocale();
   const auto i18nMap = vinput::registry::FetchMergedI18nMap(config, locale);
   const auto display_map = vinput::cli::BuildScriptDisplayMap(entries, i18nMap);
+  const auto manifest = vinput::registry::InstalledManifest::Load();
 
   auto isInstalled = [&config](const std::string& id) {
     return ResolveAsrProvider(config, id) != nullptr;
@@ -358,6 +367,16 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
       for (const auto& env : entry.envs) {
         envs.push_back({{"name", env.name}, {"required", env.required}});
       }
+      const bool installed = isInstalled(entry.id);
+      const auto ver_info = vinput::script::CheckResourceVersion(
+          manifest, vinput::script::Kind::kAsrProvider, entry, installed);
+      std::string status_str = "available";
+      if (installed) {
+        status_str = ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable
+                         ? "update_available"
+                         : "installed";
+      }
+
       arr.push_back({
           {"id", vinput::cli::HumanizeResourceId(entry.id, entry.short_id)},
           {"machine_id", entry.id},
@@ -366,7 +385,9 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
           {"readme_url", entry.readme_url},
           {"stream", entry.stream},
           {"envs", envs},
-          {"status", isInstalled(entry.id) ? "installed" : "available"},
+          {"status", status_str},
+          {"installed_version", ver_info.installed_version},
+          {"remote_version", ver_info.remote_version},
       });
     }
     fmt.PrintJson(arr);
@@ -376,9 +397,28 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
   std::vector<std::string> headers = {_("ID"), _("TITLE"), _("MODE"), _("STATUS"), _("README")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& entry : entries) {
+    const bool installed = isInstalled(entry.id);
+    const auto ver_info = vinput::script::CheckResourceVersion(
+        manifest, vinput::script::Kind::kAsrProvider, entry, installed);
+    std::string status_text = _("available");
+    if (installed) {
+      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
+        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
+          status_text = vinput::str::FmtStr(_("update available (%s -> %s)"),
+                                            ver_info.installed_version, ver_info.remote_version);
+        } else {
+          status_text = _("update available");
+        }
+      } else if (!ver_info.installed_version.empty()) {
+        status_text = vinput::str::FmtStr(_("installed (%s)"), ver_info.installed_version);
+      } else {
+        status_text = _("installed");
+      }
+    }
+
     rows.push_back({vinput::cli::HumanizeResourceId(entry.id, entry.short_id),
                     display_map.at(entry.id).title, entry.stream ? _("stream") : _("batch"),
-                    isInstalled(entry.id) ? _("installed") : _("available"),
+                    status_text,
                     vinput::cli::FormatTerminalLink(ctx, _("Open README"), entry.readme_url)});
   }
   fmt.PrintTable(headers, rows);
@@ -437,6 +477,114 @@ int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt,
   }
 
   fmt.PrintSuccess(vinput::str::FmtStr(_("ASR provider '%s' added."), selector));
+  return 0;
+}
+
+int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force, Formatter& fmt,
+                               const CliContext& ctx) {
+  (void)ctx;
+  if (!all && selector.empty()) {
+    fmt.PrintError(_(
+        "Specify a provider short ID to update, or use --all to update all installed providers."));
+    return 1;
+  }
+
+  CoreConfig config = LoadCoreConfig();
+  NormalizeCoreConfig(&config);
+
+  const auto registryUrls = ResolveAsrProviderRegistryUrls(config);
+  if (registryUrls.empty()) {
+    fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
+                     "registry.base_urls."));
+    return 1;
+  }
+
+  std::string error;
+  const auto entries = vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider,
+                                                     registryUrls, &error);
+  if (!error.empty()) {
+    fmt.PrintError(error);
+    return 1;
+  }
+
+  const auto manifest = vinput::registry::InstalledManifest::Load();
+
+  auto updateSingle = [&](const vinput::script::RegistryEntry& entry) -> bool {
+    const auto version_info = vinput::script::CheckResourceVersion(
+        manifest, vinput::script::Kind::kAsrProvider, entry, true);
+    if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
+      fmt.PrintInfo(vinput::str::FmtStr(_("Provider '%s' is already up to date."), entry.short_id));
+      return true;
+    }
+
+    std::filesystem::path scriptPath;
+    if (!vinput::script::DownloadScript(entry, vinput::script::Kind::kAsrProvider, &scriptPath,
+                                        &error)) {
+      fmt.PrintError(vinput::str::FmtStr(_("Failed to update '%s': %s"), entry.short_id, error));
+      return false;
+    }
+    if (!vinput::script::MaterializeAsrProvider(&config, entry, scriptPath, &error)) {
+      fmt.PrintError(vinput::str::FmtStr(_("Failed to update '%s': %s"), entry.short_id, error));
+      return false;
+    }
+
+    if (!version_info.installed_version.empty() && !version_info.remote_version.empty()) {
+      fmt.PrintSuccess(vinput::str::FmtStr(_("ASR provider '%s' updated: %s -> %s"), entry.short_id,
+                                           version_info.installed_version,
+                                           version_info.remote_version));
+    } else {
+      fmt.PrintSuccess(vinput::str::FmtStr(_("ASR provider '%s' updated."), entry.short_id));
+    }
+    return true;
+  };
+
+  bool any_updated = false;
+  if (all) {
+    for (const auto& provider : config.asr.providers) {
+      if (std::holds_alternative<LocalAsrProvider>(provider)) {
+        continue;
+      }
+      const std::string id = AsrProviderId(provider);
+      auto it =
+          std::find_if(entries.begin(), entries.end(), [&id](const auto& e) { return e.id == id; });
+      if (it != entries.end()) {
+        if (updateSingle(*it)) {
+          any_updated = true;
+        }
+      }
+    }
+  } else {
+    const std::string id =
+        vinput::cli::ResolveScriptSelectorByShortId(selector, entries, "ASR provider", &error);
+    if (id.empty()) {
+      fmt.PrintError(error);
+      return 1;
+    }
+    auto it =
+        std::find_if(entries.begin(), entries.end(), [&id](const auto& e) { return e.id == id; });
+    if (it == entries.end()) {
+      fmt.PrintError(vinput::str::FmtStr(_("ASR provider '%s' not found in registry."), selector));
+      return 1;
+    }
+    const auto* existing = ResolveAsrProvider(config, it->id);
+    if (!existing) {
+      fmt.PrintError(vinput::str::FmtStr(
+          _("ASR provider '%s' is not installed. Use 'add' instead."), selector));
+      return 1;
+    }
+    if (!updateSingle(*it)) {
+      return 1;
+    }
+    any_updated = true;
+  }
+
+  if (any_updated) {
+    NormalizeCoreConfig(&config);
+    if (!SaveAsrConfigAndReload(config, fmt)) {
+      return 1;
+    }
+  }
+
   return 0;
 }
 

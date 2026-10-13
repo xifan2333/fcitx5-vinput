@@ -179,6 +179,7 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
   const auto locale = vinput::registry::DetectPreferredLocale();
   const auto i18nMap = vinput::registry::FetchMergedI18nMap(config, locale);
   const auto display_map = vinput::cli::BuildScriptDisplayMap(entries, i18nMap);
+  const auto manifest = vinput::registry::InstalledManifest::Load();
 
   auto isInstalled = [&config](const std::string& id) {
     return ResolveLlmAdapter(config, id) != nullptr;
@@ -191,6 +192,16 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
       for (const auto& env : entry.envs) {
         envs.push_back({{"name", env.name}, {"required", env.required}});
       }
+      const bool installed = isInstalled(entry.id);
+      const auto ver_info = vinput::script::CheckResourceVersion(
+          manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
+      std::string status_str = "available";
+      if (installed) {
+        status_str = ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable
+                         ? "update_available"
+                         : "installed";
+      }
+
       arr.push_back({
           {"id", vinput::cli::HumanizeResourceId(entry.id, entry.short_id)},
           {"machine_id", entry.id},
@@ -198,7 +209,9 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
           {"description", display_map.at(entry.id).description},
           {"readme_url", entry.readme_url},
           {"envs", envs},
-          {"status", isInstalled(entry.id) ? "installed" : "available"},
+          {"status", status_str},
+          {"installed_version", ver_info.installed_version},
+          {"remote_version", ver_info.remote_version},
       });
     }
     fmt.PrintJson(arr);
@@ -208,9 +221,27 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
   std::vector<std::string> headers = {_("ID"), _("TITLE"), _("STATUS"), _("README")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& entry : entries) {
+    const bool installed = isInstalled(entry.id);
+    const auto ver_info = vinput::script::CheckResourceVersion(
+        manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
+    std::string status_text = _("available");
+    if (installed) {
+      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
+        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
+          status_text = vinput::str::FmtStr(_("update available (%s -> %s)"),
+                                            ver_info.installed_version, ver_info.remote_version);
+        } else {
+          status_text = _("update available");
+        }
+      } else if (!ver_info.installed_version.empty()) {
+        status_text = vinput::str::FmtStr(_("installed (%s)"), ver_info.installed_version);
+      } else {
+        status_text = _("installed");
+      }
+    }
+
     rows.push_back({vinput::cli::HumanizeResourceId(entry.id, entry.short_id),
-                    display_map.at(entry.id).title,
-                    isInstalled(entry.id) ? _("installed") : _("available"),
+                    display_map.at(entry.id).title, status_text,
                     vinput::cli::FormatTerminalLink(ctx, _("Open README"), entry.readme_url)});
   }
   fmt.PrintTable(headers, rows);
@@ -330,6 +361,173 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
   }
 
   fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' added."), selector));
+  return 0;
+}
+
+int RunLlmConfigRemoveAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
+  (void)ctx;
+  CoreConfig config = LoadCoreConfig();
+  std::string error;
+  const std::string resolved_id =
+      vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
+  if (resolved_id.empty()) {
+    fmt.PrintError(error);
+    return 1;
+  }
+
+  if (vinput::adapter::IsRunning(resolved_id)) {
+    vinput::cli::DbusClient dbus;
+    std::string stop_err;
+    if (!dbus.StopAdapter(resolved_id, &stop_err)) {
+      fmt.PrintWarning(
+          vinput::str::FmtStr(_("Failed to stop running adapter '%s': %s"), id, stop_err));
+    }
+  }
+
+  auto it = std::remove_if(config.llm.adapters.begin(), config.llm.adapters.end(),
+                           [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
+  if (it == config.llm.adapters.end()) {
+    fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found."), id));
+    return 1;
+  }
+  config.llm.adapters.erase(it, config.llm.adapters.end());
+
+  const auto managed_path =
+      vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kLlmAdapter, resolved_id);
+  if (!managed_path.empty()) {
+    std::error_code ec;
+    std::filesystem::remove(managed_path, ec);
+  }
+  vinput::script::UnregisterInstalledScript(resolved_id);
+
+  if (!SaveConfigOrFail(config, fmt)) {
+    return 1;
+  }
+  fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' removed."), id));
+  return 0;
+}
+
+int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force, Formatter& fmt,
+                              const CliContext& ctx) {
+  (void)ctx;
+  if (!all && selector.empty()) {
+    fmt.PrintError(
+        _("Specify an adapter short ID to update, or use --all to update all installed adapters."));
+    return 1;
+  }
+
+  CoreConfig config = LoadCoreConfig();
+  NormalizeCoreConfig(&config);
+
+  const auto registryUrls = ResolveLlmAdapterRegistryUrls(config);
+  if (registryUrls.empty()) {
+    fmt.PrintError(_("No LLM adapter registry base URLs configured. Edit config.json and set "
+                     "registry.base_urls."));
+    return 1;
+  }
+
+  std::string error;
+  const auto entries = vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter,
+                                                     registryUrls, &error);
+  if (!error.empty()) {
+    fmt.PrintError(error);
+    return 1;
+  }
+
+  const auto manifest = vinput::registry::InstalledManifest::Load();
+  vinput::cli::DbusClient dbus;
+
+  auto updateSingle = [&](const vinput::script::RegistryEntry& entry) -> bool {
+    const auto version_info = vinput::script::CheckResourceVersion(
+        manifest, vinput::script::Kind::kLlmAdapter, entry, true);
+    if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
+      fmt.PrintInfo(vinput::str::FmtStr(_("Adapter '%s' is already up to date."), entry.short_id));
+      return true;
+    }
+
+    const bool was_running = vinput::adapter::IsRunning(entry.id);
+    if (was_running) {
+      std::string stop_err;
+      if (!dbus.StopAdapter(entry.id, &stop_err)) {
+        fmt.PrintWarning(vinput::str::FmtStr(_("Could not stop adapter '%s' before update: %s"),
+                                             entry.short_id, stop_err));
+      }
+    }
+
+    std::filesystem::path scriptPath;
+    if (!vinput::script::DownloadScript(entry, vinput::script::Kind::kLlmAdapter, &scriptPath,
+                                        &error)) {
+      fmt.PrintError(vinput::str::FmtStr(_("Failed to update '%s': %s"), entry.short_id, error));
+      return false;
+    }
+    if (!vinput::script::MaterializeLlmAdapter(&config, entry, scriptPath, &error)) {
+      fmt.PrintError(vinput::str::FmtStr(_("Failed to update '%s': %s"), entry.short_id, error));
+      return false;
+    }
+
+    if (was_running) {
+      std::string start_err;
+      if (dbus.StartAdapter(entry.id, &start_err)) {
+        fmt.PrintInfo(vinput::str::FmtStr(_("Adapter '%s' restarted."), entry.short_id));
+      } else {
+        fmt.PrintWarning(vinput::str::FmtStr(_("Failed to restart adapter '%s': %s"),
+                                             entry.short_id, start_err));
+      }
+    }
+
+    if (!version_info.installed_version.empty() && !version_info.remote_version.empty()) {
+      fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' updated: %s -> %s"), entry.short_id,
+                                           version_info.installed_version,
+                                           version_info.remote_version));
+    } else {
+      fmt.PrintSuccess(vinput::str::FmtStr(_("Adapter '%s' updated."), entry.short_id));
+    }
+    return true;
+  };
+
+  bool any_updated = false;
+  if (all) {
+    for (const auto& adapter : config.llm.adapters) {
+      auto it = std::find_if(entries.begin(), entries.end(),
+                             [&](const auto& e) { return e.id == adapter.id; });
+      if (it != entries.end()) {
+        if (updateSingle(*it)) {
+          any_updated = true;
+        }
+      }
+    }
+  } else {
+    const std::string id =
+        vinput::cli::ResolveScriptSelectorByShortId(selector, entries, "LLM adapter", &error);
+    if (id.empty()) {
+      fmt.PrintError(error);
+      return 1;
+    }
+    auto it =
+        std::find_if(entries.begin(), entries.end(), [&id](const auto& e) { return e.id == id; });
+    if (it == entries.end()) {
+      fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found in registry."), selector));
+      return 1;
+    }
+    const auto* existing = ResolveLlmAdapter(config, it->id);
+    if (!existing) {
+      fmt.PrintError(
+          vinput::str::FmtStr(_("Adapter '%s' is not installed. Use 'add' instead."), selector));
+      return 1;
+    }
+    if (!updateSingle(*it)) {
+      return 1;
+    }
+    any_updated = true;
+  }
+
+  if (any_updated) {
+    NormalizeCoreConfig(&config);
+    if (!SaveConfigOrFail(config, fmt)) {
+      return 1;
+    }
+  }
+
   return 0;
 }
 

@@ -130,6 +130,30 @@ void RegisterAdapterCommands(CLI::App& app, CliAction* action) {
     };
   });
 
+  auto removeId = std::make_shared<std::string>();
+  auto* remove = adapter->add_subcommand("remove", _("Remove an adapter"));
+  remove->alias("rm");
+  remove->add_option("id", *removeId, _("Adapter short ID"))->required();
+  remove->callback([action, removeId]() {
+    *action = [removeId](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigRemoveAdapter(*removeId, fmt, ctx);
+    };
+  });
+
+  auto updateSelector = std::make_shared<std::string>();
+  auto updateAll = std::make_shared<bool>(false);
+  auto updateForce = std::make_shared<bool>(false);
+  auto* update = adapter->add_subcommand("update", _("Update an LLM adapter script"));
+  update->alias("up");
+  update->add_option("id", *updateSelector, _("Adapter short ID"));
+  update->add_flag("-a,--all", *updateAll, _("Update all installed adapters"));
+  update->add_flag("-f,--force", *updateForce, _("Force update even if up to date"));
+  update->callback([action, updateSelector, updateAll, updateForce]() {
+    *action = [updateSelector, updateAll, updateForce](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigUpdateAdapter(*updateSelector, *updateAll, *updateForce, fmt, ctx);
+    };
+  });
+
   auto startId = std::make_shared<std::string>();
   auto* start = adapter->add_subcommand("start", _("Start an adapter"));
   start->add_option("id", *startId, _("Adapter short ID"))->required();

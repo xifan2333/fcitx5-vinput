@@ -15,6 +15,9 @@ int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std
 int RunLlmConfigInstallAdapter(const std::string& selector,
                                const std::vector<std::string>& envOverrides, Formatter& fmt,
                                const CliContext& ctx);
+int RunLlmConfigRemoveAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
+int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force, Formatter& fmt,
+                              const CliContext& ctx);
 int RunLlmConfigStartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigStopAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigRestartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);

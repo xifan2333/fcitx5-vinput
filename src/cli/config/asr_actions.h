@@ -12,6 +12,8 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
 int RunAsrConfigRemove(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunAsrConfigUse(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt, const CliContext& ctx);
+int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force, Formatter& fmt,
+                               const CliContext& ctx);
 int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ctx);
 #if VINPUT_ENABLE_LOCAL_ASR
 int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx);
