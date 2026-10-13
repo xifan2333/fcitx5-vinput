@@ -44,6 +44,19 @@ bool SetNonBlocking(int fd) {
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
+bool CreateCloexecPipe(int pipefd[2]) {
+#if defined(__linux__)
+  return pipe2(pipefd, O_CLOEXEC) == 0;
+#else
+  if (pipe(pipefd) != 0) {
+    return false;
+  }
+  (void)fcntl(pipefd[0], F_SETFD, FD_CLOEXEC);
+  (void)fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
+  return true;
+#endif
+}
+
 void CloseIfOpen(int* fd) {
   if (*fd >= 0) {
     close(*fd);
@@ -165,7 +178,8 @@ bool SpawnChild(const CommandAsrProvider& provider, ChildProcess* child, std::st
   int stdin_pipe[2] = {-1, -1};
   int stdout_pipe[2] = {-1, -1};
   int stderr_pipe[2] = {-1, -1};
-  if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
+  if (!CreateCloexecPipe(stdin_pipe) || !CreateCloexecPipe(stdout_pipe) ||
+      !CreateCloexecPipe(stderr_pipe)) {
     if (error) {
       *error = std::string("pipe failed: ") + std::strerror(errno);
     }
