@@ -1,14 +1,17 @@
 #include "common/registry/installed_manifest.h"
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <ios>
 #include <nlohmann/json.hpp>
 #include <openssl/evp.h>
+#include <openssl/types.h>
 #include <string>
-#include <utility>
+#include <string_view>
+#include <vector>
 
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"

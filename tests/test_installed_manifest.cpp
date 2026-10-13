@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <system_error>
 
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_scripts.h"
