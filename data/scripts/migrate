@@ -315,7 +315,7 @@ def main() -> int:
 
     error_msg = config_err or conf_err
     all_changes = config_changes + conf_changes
-    needed = bool(all_changes)
+    needed = bool(all_changes) or config_changed or conf_changed
 
     config_backup = ""
     conf_backup = ""
@@ -323,26 +323,37 @@ def main() -> int:
     if needed and not args.dry_run and not error_msg:
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        if config_changed and config_data is not None and args.config.is_file():
-            backup_dir = args.config.parent / "backups"
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            backup_path = backup_dir / f"config.json.bak.{ts}"
-            backup_path.write_text(raw_config, encoding="utf-8")
-            config_backup = str(backup_path)
-            args.config.write_text(
-                json.dumps(config_data, indent=4, ensure_ascii=False) + "\n",
-                encoding="utf-8",
-            )
+        try:
+            if config_changed and config_data is not None and args.config.is_file():
+                backup_dir = args.config.parent / "backups"
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                backup_path = backup_dir / f"config.json.bak.{ts}"
+                backup_path.write_text(raw_config, encoding="utf-8")
+                config_backup = str(backup_path)
 
-        if conf_changed and args.conf.is_file():
-            backup_dir = args.conf.parent / "backups"
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            backup_path = backup_dir / f"vinput.conf.bak.{ts}"
-            backup_path.write_text(raw_conf, encoding="utf-8")
-            conf_backup = str(backup_path)
-            args.conf.write_text(
-                "\n".join(conf_lines) + "\n", encoding="utf-8"
-            )
+                # Atomic write via temporary file
+                tmp_config = args.config.with_name(args.config.name + f".tmp.{ts}")
+                tmp_config.write_text(
+                    json.dumps(config_data, indent=4, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+                os.replace(tmp_config, args.config)
+
+            if conf_changed and args.conf.is_file():
+                backup_dir = args.conf.parent / "backups"
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                backup_path = backup_dir / f"vinput.conf.bak.{ts}"
+                backup_path.write_text(raw_conf, encoding="utf-8")
+                conf_backup = str(backup_path)
+
+                # Atomic write via temporary file
+                tmp_conf = args.conf.with_name(args.conf.name + f".tmp.{ts}")
+                tmp_conf.write_text(
+                    "\n".join(conf_lines) + "\n", encoding="utf-8"
+                )
+                os.replace(tmp_conf, args.conf)
+        except OSError as exc:
+            error_msg = f"Failed to apply configuration migration: {exc}"
 
     applied = needed and not args.dry_run and not bool(error_msg)
 
