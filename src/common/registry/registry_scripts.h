@@ -22,6 +22,8 @@ struct EnvSpec {
 struct RegistryEntry {
   std::string id;
   std::string short_id;
+  std::string version;
+  std::string sha256;
   bool stream = false;
   std::string command;
   std::vector<std::string> script_urls;

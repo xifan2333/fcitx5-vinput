@@ -104,6 +104,8 @@ std::vector<RegistryEntry> ParseRegistryJson(const std::string& content, std::st
       RegistryEntry entry;
       entry.id = item.value("id", "");
       entry.short_id = item.value("short_id", "");
+      entry.version = item.value("version", "");
+      entry.sha256 = item.value("sha256", "");
       entry.stream = item.value("stream", false);
       entry.command = item.value("command", "");
       entry.readme_url = item.value("readme_url", "");

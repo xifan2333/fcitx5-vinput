@@ -22,4 +22,5 @@ std::filesystem::path AdapterRuntimeDir();
 std::filesystem::path ContextCachePath();
 std::filesystem::path ReadNotificationsPath();
 std::filesystem::path ProviderModelCachePath();
+std::filesystem::path InstalledManifestCachePath();
 } // namespace vinput::path

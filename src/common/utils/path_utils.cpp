@@ -176,4 +176,8 @@ std::filesystem::path ProviderModelCachePath() {
   return VinputCacheDir() / "provider_models.json";
 }
 
+std::filesystem::path InstalledManifestCachePath() {
+  return VinputCacheDir() / "installed.json";
+}
+
 } // namespace vinput::path

@@ -32,6 +32,7 @@ add_library(common STATIC
     registry/registry_cache.cpp
     registry/registry_i18n.cpp
     registry/registry_scripts.cpp
+    registry/installed_manifest.cpp
     llm/adapter_manager.cpp
     utils/download_progress.cpp
     utils/downloader.cpp
