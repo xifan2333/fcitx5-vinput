@@ -22,6 +22,7 @@ enum class UpdateStatus : std::uint8_t {
   kNotInstalled,
   kUpToDate,
   kUpdateAvailable,
+  kIncompatible,
 };
 
 struct ResourceVersionInfo {
@@ -29,6 +30,7 @@ struct ResourceVersionInfo {
   std::string remote_version;
   std::string installed_sha256;
   std::string remote_sha256;
+  std::string vinput_version;
   UpdateStatus status = UpdateStatus::kNotInstalled;
 };
 
@@ -42,6 +44,7 @@ struct RegistryEntry {
   std::string short_id;
   std::string version;
   std::string sha256;
+  std::string vinput_version;
   bool stream = false;
   std::string command;
   std::vector<std::string> script_urls;

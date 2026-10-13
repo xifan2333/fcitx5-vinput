@@ -11,6 +11,7 @@
 #include "common/registry/registry_fetch.h"
 #include "common/utils/downloader.h"
 #include "common/utils/path_utils.h"
+#include "common/utils/version_utils.h"
 
 namespace vinput::script {
 
@@ -107,6 +108,7 @@ std::vector<RegistryEntry> ParseRegistryJson(const std::string& content, std::st
       entry.short_id = item.value("short_id", "");
       entry.version = item.value("version", "");
       entry.sha256 = item.value("sha256", "");
+      entry.vinput_version = item.value("vinput_version", "");
       entry.stream = item.value("stream", false);
       entry.command = item.value("command", "");
       entry.readme_url = item.value("readme_url", "");
@@ -293,6 +295,15 @@ std::filesystem::path DefaultLocalScriptPath(Kind kind, std::string_view id) {
 
 bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path* local_path,
                     std::string* error, std::string* resolved_script_url) {
+  if (!vinput::version::Satisfies(vinput::version::CurrentHostVersion(), entry.vinput_version)) {
+    if (error != nullptr) {
+      *error = "Resource '" + entry.id + "' is incompatible with current vinput host (requires " +
+               entry.vinput_version + ", current is " +
+               std::string(vinput::version::CurrentHostVersion()) + ")";
+    }
+    return false;
+  }
+
   const fs::path path = DefaultLocalScriptPath(kind, entry.id);
   if (path.empty()) {
     if (error) {
@@ -491,6 +502,12 @@ ResourceVersionInfo CheckResourceVersion(const vinput::registry::InstalledManife
   ResourceVersionInfo info;
   info.remote_version = entry.version;
   info.remote_sha256 = entry.sha256;
+  info.vinput_version = entry.vinput_version;
+
+  if (!vinput::version::Satisfies(vinput::version::CurrentHostVersion(), entry.vinput_version)) {
+    info.status = UpdateStatus::kIncompatible;
+    return info;
+  }
 
   if (!is_installed_in_config) {
     info.status = UpdateStatus::kNotInstalled;
