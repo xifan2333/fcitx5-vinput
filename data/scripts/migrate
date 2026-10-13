@@ -1,0 +1,391 @@
+#!/usr/bin/env python3
+"""fcitx5-vinput standalone configuration migration utility.
+
+Automatically updates legacy config.json and vinput.conf in-place.
+Zero external dependencies: uses only Python 3 standard library.
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+def default_config_path() -> Path:
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "vinput" / "config.json"
+
+
+def default_conf_path() -> Path:
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "fcitx5" / "conf" / "vinput.conf"
+
+
+def parse_version(v: Any) -> tuple[int, int, int]:
+    if not v:
+        return (0, 0, 0)
+    cleaned = re.sub(r"^[vV]", "", str(v).strip())
+    # Strip pre-release suffix (e.g. 2.4.1-alpha)
+    cleaned = cleaned.split("-")[0]
+    parts = cleaned.split(".")
+    nums = []
+    for p in parts[:3]:
+        try:
+            nums.append(int(p))
+        except ValueError:
+            nums.append(0)
+    while len(nums) < 3:
+        nums.append(0)
+    return (nums[0], nums[1], nums[2])
+
+
+def migrate_config_json(
+    config_path: Path,
+) -> tuple[dict[str, Any] | None, str, list[dict[str, str]], bool, str]:
+    changes: list[dict[str, str]] = []
+    if not config_path.is_file():
+        return None, "", changes, False, ""
+
+    try:
+        raw_text = config_path.read_text(encoding="utf-8")
+        data = json.loads(raw_text)
+    except Exception as exc:
+        return None, "", changes, False, f"Failed to parse {config_path}: {exc}"
+
+    if not isinstance(data, dict):
+        return None, raw_text, changes, False, ""
+
+    changed = False
+    cur_ver_str = data.get("vinput_version", "")
+    cur_ver = parse_version(cur_ver_str)
+
+    # Step: Normalize candidate_count -> count and adaptors -> adapters (< 2.3.15)
+    if cur_ver < (2, 3, 15) or not cur_ver_str:
+        scenes = data.get("scenes")
+        if isinstance(scenes, dict):
+            for block in ("definitions", "items"):
+                arr = scenes.get(block)
+                if isinstance(arr, list):
+                    for idx, item in enumerate(arr):
+                        if isinstance(item, dict) and "candidate_count" in item:
+                            if "count" not in item:
+                                item["count"] = item.pop("candidate_count")
+                                name = item.get("id", idx)
+                                changes.append(
+                                    {
+                                        "file": "config.json",
+                                        "description": (
+                                            f"scenes.{block}[{name}]: renamed 'candidate_count' to 'count'"
+                                        ),
+                                    }
+                                )
+                                changed = True
+                            else:
+                                item.pop("candidate_count", None)
+                                changed = True
+        llm = data.get("llm")
+        if isinstance(llm, dict) and "adaptors" in llm:
+            if "adapters" not in llm:
+                llm["adapters"] = llm.pop("adaptors")
+                changes.append(
+                    {
+                        "file": "config.json",
+                        "description": "llm: renamed 'adaptors' to 'adapters'",
+                    }
+                )
+                changed = True
+            else:
+                llm.pop("adaptors", None)
+                changed = True
+
+    # Step: Decouple show_raw into raw_cand and raw_prev (< 2.3.25)
+    if cur_ver < (2, 3, 25) or not cur_ver_str:
+        scenes = data.get("scenes")
+        if isinstance(scenes, dict):
+            for block in ("definitions", "items"):
+                arr = scenes.get(block)
+                if isinstance(arr, list):
+                    for idx, item in enumerate(arr):
+                        if isinstance(item, dict):
+                            name = item.get("id", idx)
+                            if "show_raw" in item:
+                                if "raw_cand" not in item:
+                                    item["raw_cand"] = item.pop("show_raw")
+                                    changes.append(
+                                        {
+                                            "file": "config.json",
+                                            "description": (
+                                                f"scenes.{block}[{name}]: renamed 'show_raw' to 'raw_cand'"
+                                            ),
+                                        }
+                                    )
+                                    changed = True
+                                else:
+                                    item.pop("show_raw", None)
+                                    changed = True
+                            if "raw_prev" not in item:
+                                item["raw_prev"] = True
+                                changes.append(
+                                    {
+                                        "file": "config.json",
+                                        "description": f"scenes.{block}[{name}]: added 'raw_prev'",
+                                    }
+                                )
+                                changed = True
+
+    # Step: Remove obsolete global.default_language (< 2.3.27)
+    if cur_ver < (2, 3, 27) or not cur_ver_str:
+        glob = data.get("global")
+        if isinstance(glob, dict) and "default_language" in glob:
+            del glob["default_language"]
+            changes.append(
+                {
+                    "file": "config.json",
+                    "description": "global: removed obsolete field 'default_language'",
+                }
+            )
+            changed = True
+
+    # Step: Upgrade legacy VAD defaults (< 2.4.1)
+    if cur_ver < (2, 4, 1) or not cur_ver_str:
+        asr = data.get("asr")
+        if isinstance(asr, dict):
+            vad = asr.get("vad")
+            if isinstance(vad, dict):
+                threshold = vad.get("threshold")
+                if (
+                    isinstance(threshold, (int, float))
+                    and abs(threshold - 0.45) < 1e-4
+                ):
+                    vad["threshold"] = 0.35
+                    changes.append(
+                        {
+                            "file": "config.json",
+                            "description": "asr.vad.threshold: upgraded legacy default 0.45 to 0.35",
+                        }
+                    )
+                    changed = True
+
+                speech_dur = vad.get("min_speech_duration")
+                if (
+                    isinstance(speech_dur, (int, float))
+                    and abs(speech_dur - 0.15) < 1e-4
+                ):
+                    vad["min_speech_duration"] = 0.10
+                    changes.append(
+                        {
+                            "file": "config.json",
+                            "description": "asr.vad.min_speech_duration: upgraded legacy default 0.15 to 0.10",
+                        }
+                    )
+                    changed = True
+
+                silence_dur = vad.get("min_silence_duration")
+                if (
+                    isinstance(silence_dur, (int, float))
+                    and abs(silence_dur - 0.5) < 1e-4
+                ):
+                    vad["min_silence_duration"] = 1.2
+                    changes.append(
+                        {
+                            "file": "config.json",
+                            "description": "asr.vad.min_silence_duration: upgraded legacy default 0.5 to 1.2",
+                        }
+                    )
+                    changed = True
+
+                if vad.get("speech_pad_ms") == 30:
+                    vad["speech_pad_ms"] = 500
+                    changes.append(
+                        {
+                            "file": "config.json",
+                            "description": "asr.vad.speech_pad_ms: upgraded legacy default 30 to 500",
+                        }
+                    )
+                    changed = True
+
+    # Update or add vinput_version if modified
+    if changed or not data.get("vinput_version"):
+        if data.get("vinput_version") != "2.4.1":
+            data["vinput_version"] = "2.4.1"
+            changed = True
+
+    return data, raw_text, changes, changed, ""
+
+
+def migrate_vinput_conf(
+    conf_path: Path,
+) -> tuple[list[str], str, list[dict[str, str]], bool, str]:
+    changes: list[dict[str, str]] = []
+    if not conf_path.is_file():
+        return [], "", changes, False, ""
+
+    try:
+        raw_text = conf_path.read_text(encoding="utf-8")
+        lines = raw_text.splitlines()
+    except Exception as exc:
+        return [], "", changes, False, f"Failed to read {conf_path}: {exc}"
+
+    new_lines: list[str] = []
+    changed = False
+
+    for line in lines:
+        if line.startswith("SceneMenuKey=") or line.startswith("SceneMenuKey "):
+            eq_idx = line.find("=")
+            val = line[eq_idx:] if eq_idx != -1 else ""
+            new_lines.append(f"MenuKey{val}")
+            changes.append(
+                {
+                    "file": "vinput.conf",
+                    "description": "replaced key 'SceneMenuKey' with 'MenuKey'",
+                }
+            )
+            changed = True
+            continue
+
+        if line.startswith("AsrMenuKey=") or line.startswith("AsrMenuKey "):
+            changes.append(
+                {
+                    "file": "vinput.conf",
+                    "description": "removed obsolete key 'AsrMenuKey'",
+                }
+            )
+            changed = True
+            continue
+
+        if line.startswith("HoldActivationDelay=") or line.startswith(
+            "HoldActivationDelay "
+        ):
+            changes.append(
+                {
+                    "file": "vinput.conf",
+                    "description": "removed obsolete key 'HoldActivationDelay'",
+                }
+            )
+            changed = True
+            continue
+
+        new_lines.append(line)
+
+    return new_lines, raw_text, changes, changed, ""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Migrate legacy fcitx5-vinput configuration files in-place."
+    )
+    parser.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="Preview migration changes without modifying files",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output report in JSON format",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=default_config_path(),
+        help="Path to config.json",
+    )
+    parser.add_argument(
+        "--conf",
+        type=Path,
+        default=default_conf_path(),
+        help="Path to vinput.conf",
+    )
+
+    args = parser.parse_args()
+
+    config_data, raw_config, config_changes, config_changed, config_err = (
+        migrate_config_json(args.config)
+    )
+    conf_lines, raw_conf, conf_changes, conf_changed, conf_err = (
+        migrate_vinput_conf(args.conf)
+    )
+
+    error_msg = config_err or conf_err
+    all_changes = config_changes + conf_changes
+    needed = bool(all_changes)
+
+    config_backup = ""
+    conf_backup = ""
+
+    if needed and not args.dry_run and not error_msg:
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+        if config_changed and config_data is not None and args.config.is_file():
+            backup_dir = args.config.parent / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            backup_path = backup_dir / f"config.json.bak.{ts}"
+            backup_path.write_text(raw_config, encoding="utf-8")
+            config_backup = str(backup_path)
+            args.config.write_text(
+                json.dumps(config_data, indent=4, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+        if conf_changed and args.conf.is_file():
+            backup_dir = args.conf.parent / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            backup_path = backup_dir / f"vinput.conf.bak.{ts}"
+            backup_path.write_text(raw_conf, encoding="utf-8")
+            conf_backup = str(backup_path)
+            args.conf.write_text(
+                "\n".join(conf_lines) + "\n", encoding="utf-8"
+            )
+
+    applied = needed and not args.dry_run and not bool(error_msg)
+
+    if args.json:
+        report = {
+            "needed": needed,
+            "applied": applied,
+            "dry_run": args.dry_run,
+            "config_file": str(args.config),
+            "conf_file": str(args.conf),
+            "config_backup": config_backup,
+            "conf_backup": conf_backup,
+            "changes": all_changes,
+            "error": error_msg,
+        }
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 1 if error_msg else 0
+
+    if error_msg:
+        print(f"Error: {error_msg}", file=sys.stderr)
+        return 1
+
+    if not needed:
+        print("Configuration is already up to date. No migration needed.")
+        return 0
+
+    if args.dry_run:
+        print("Pending migration changes:")
+    else:
+        print("Configuration migration completed successfully:")
+
+    if config_backup:
+        print(f"Backed up core config to: {config_backup}")
+    if conf_backup:
+        print(f"Backed up addon config to: {conf_backup}")
+
+    print(f"\n{'FILE':<15} {'CHANGE'}")
+    print("-" * 60)
+    for ch in all_changes:
+        print(f"{ch['file']:<15} {ch['description']}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
