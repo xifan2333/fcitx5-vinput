@@ -35,8 +35,10 @@ private slots:
   void onRemoveModelClicked();
   void onDownloadModelClicked();
   void onAddProviderClicked();
+  void onUpdateProviderClicked();
   void onRemoveProviderClicked();
   void onAddAdapterClicked();
+  void onUpdateAdapterClicked();
   void onRemoveAdapterClicked();
   void updateProviderButtons();
   void updateAdapterButtons();
@@ -71,8 +73,10 @@ private:
   QPushButton* btnRemoveModel_;
   QPushButton* btnDownloadModel_;
   QPushButton* btnAddProvider_;
+  QPushButton* btnUpdateProvider_;
   QPushButton* btnRemoveProvider_;
   QPushButton* btnAddAdapter_;
+  QPushButton* btnUpdateAdapter_;
   QPushButton* btnRemoveAdapter_;
   QPushButton* btnRefreshResources_;
   DownloadWorker* downloadWorker_ = nullptr;

@@ -1272,5 +1272,40 @@ Found %2 model(s).</source>
         <source>Removed LLM adapter %1.</source>
         <translation>已移除 LLM 适配器 %1。</translation>
     </message>
+    <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="209"/>
+        <source>Update</source>
+        <translation>更新</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="523"/>
+        <source>update available (%1 -&gt; %2)</source>
+        <translation>有可用更新 (%1 -&gt; %2)</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="526"/>
+        <source>update available</source>
+        <translation>有可用更新</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="529"/>
+        <source>installed (%1)</source>
+        <translation>已安装 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="965"/>
+        <source>Updating provider %1...</source>
+        <translation>正在更新提供商 %1...</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1035"/>
+        <source>Updating adapter %1...</source>
+        <translation>正在更新适配器 %1...</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="954"/>
+        <source>Warning: config saved, but failed to reload ASR backend: %1</source>
+        <translation>警告：配置已保存，但重新加载 ASR 后端失败：%1</translation>
+    </message>
 </context>
 </TS>
