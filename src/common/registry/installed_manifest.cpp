@@ -7,6 +7,7 @@
 #include <fstream>
 #include <ios>
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <openssl/evp.h>
 #include <openssl/types.h>
 #include <string>
