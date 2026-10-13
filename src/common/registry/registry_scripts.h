@@ -3,7 +3,10 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
+
+#include "common/registry/installed_manifest.h"
 
 struct CoreConfig;
 
@@ -12,6 +15,20 @@ namespace vinput::script {
 enum class Kind {
   kAsrProvider,
   kLlmAdapter,
+};
+
+enum class UpdateStatus {
+  kNotInstalled,
+  kUpToDate,
+  kUpdateAvailable,
+};
+
+struct ResourceVersionInfo {
+  std::string installed_version;
+  std::string remote_version;
+  std::string installed_sha256;
+  std::string remote_sha256;
+  UpdateStatus status = UpdateStatus::kNotInstalled;
 };
 
 struct EnvSpec {
@@ -48,5 +65,10 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
 bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
                            const std::filesystem::path& script_path, std::string* error,
                            const std::map<std::string, std::string>& env_overrides = {});
+
+ResourceVersionInfo CheckResourceVersion(const vinput::registry::InstalledManifest& manifest,
+                                         Kind kind, const RegistryEntry& entry,
+                                         bool is_installed_in_config);
+bool UnregisterInstalledScript(std::string_view id);
 
 } // namespace vinput::script

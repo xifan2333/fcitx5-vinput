@@ -309,21 +309,63 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
     return false;
   }
 
+  const fs::path tmp_path = path.string() + ".download.tmp";
+
   vinput::download::Options options;
   options.timeout_seconds = 120;
   vinput::download::Result result;
-  if (!vinput::download::DownloadFile(entry.script_urls, path, options, &result)) {
+  if (!vinput::download::DownloadFile(entry.script_urls, tmp_path, options, &result)) {
     if (resolved_script_url) {
       resolved_script_url->clear();
     }
     if (error) {
       *error = result.error.empty() ? "failed to download script" : result.error;
     }
+    std::error_code rm_ec;
+    fs::remove(tmp_path, rm_ec);
     return false;
   }
-  if (!EnsureExecutable(path, error)) {
+
+  std::string actual_sha;
+  if (!entry.sha256.empty()) {
+    std::string sha_error;
+    actual_sha = vinput::registry::ComputeFileSha256(tmp_path, &sha_error);
+    if (!sha_error.empty() || actual_sha != entry.sha256) {
+      std::error_code rm_ec;
+      fs::remove(tmp_path, rm_ec);
+      if (error) {
+        *error = !sha_error.empty() ? sha_error
+                                    : "SHA-256 mismatch for " + entry.id + ": expected " +
+                                          entry.sha256 + ", got " + actual_sha;
+      }
+      return false;
+    }
+  }
+
+  if (!EnsureExecutable(tmp_path, error)) {
+    std::error_code rm_ec;
+    fs::remove(tmp_path, rm_ec);
     return false;
   }
+
+  fs::rename(tmp_path, path, ec);
+  if (ec) {
+    std::error_code rm_ec;
+    fs::remove(tmp_path, rm_ec);
+    if (error) {
+      *error = "failed to atomically replace script: " + ec.message();
+    }
+    return false;
+  }
+
+  const std::string final_sha =
+      actual_sha.empty() ? vinput::registry::ComputeFileSha256(path) : actual_sha;
+  auto manifest = vinput::registry::InstalledManifest::Load();
+  manifest.RecordInstalled(entry.id, kind == Kind::kAsrProvider ? "provider" : "adapter",
+                           entry.version, final_sha);
+  std::string manifest_err;
+  manifest.Save({}, &manifest_err);
+
   if (resolved_script_url) {
     *resolved_script_url = result.resolved_url;
   }
@@ -438,6 +480,72 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
 
   if (error) {
     error->clear();
+  }
+  return true;
+}
+
+ResourceVersionInfo CheckResourceVersion(const vinput::registry::InstalledManifest& manifest,
+                                         Kind kind, const RegistryEntry& entry,
+                                         bool is_installed_in_config) {
+  ResourceVersionInfo info;
+  info.remote_version = entry.version;
+  info.remote_sha256 = entry.sha256;
+
+  if (!is_installed_in_config) {
+    info.status = UpdateStatus::kNotInstalled;
+    return info;
+  }
+
+  const auto* record = manifest.Get(entry.id);
+  const auto script_path = DefaultLocalScriptPath(kind, entry.id);
+  const bool script_exists = !script_path.empty() && fs::exists(script_path);
+
+  if (record != nullptr) {
+    info.installed_version = record->version;
+    info.installed_sha256 = record->sha256;
+  } else if (script_exists) {
+    info.installed_sha256 = vinput::registry::ComputeFileSha256(script_path);
+  }
+
+  if (!script_exists) {
+    info.status = UpdateStatus::kUpdateAvailable;
+    return info;
+  }
+
+  if (!entry.version.empty() && !info.installed_version.empty()) {
+    if (entry.version != info.installed_version) {
+      info.status = UpdateStatus::kUpdateAvailable;
+      return info;
+    }
+  }
+
+  if (!entry.sha256.empty() && !info.installed_sha256.empty()) {
+    if (entry.sha256 != info.installed_sha256) {
+      info.status = UpdateStatus::kUpdateAvailable;
+      return info;
+    }
+    info.status = UpdateStatus::kUpToDate;
+    return info;
+  }
+
+  if (!entry.version.empty() && entry.version == info.installed_version) {
+    info.status = UpdateStatus::kUpToDate;
+    return info;
+  }
+
+  if (!entry.version.empty() && info.installed_version.empty()) {
+    info.status = UpdateStatus::kUpdateAvailable;
+    return info;
+  }
+
+  info.status = UpdateStatus::kUpToDate;
+  return info;
+}
+
+bool UnregisterInstalledScript(std::string_view id) {
+  auto manifest = vinput::registry::InstalledManifest::Load();
+  if (manifest.Remove(id)) {
+    return manifest.Save();
   }
   return true;
 }
