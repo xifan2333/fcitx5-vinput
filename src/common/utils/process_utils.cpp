@@ -6,10 +6,12 @@
 #include <cstdint>
 #include <cstring>
 #include <fcntl.h>
+#include <optional>
 #include <poll.h>
 #include <spawn.h>
 #include <string>
 #include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 
 #include "common/utils/interpolation.h"
@@ -175,6 +177,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
   bool stdin_open = true;
   int status = 0;
   bool child_exited = false;
+  std::optional<std::chrono::steady_clock::time_point> child_exited_at;
 
   if (input.empty()) {
     CloseIfOpen(&stdin_pipe[1]);
@@ -183,19 +186,37 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
 
   while (stdin_open || stdout_open || stderr_open || !child_exited) {
     if (!child_exited) {
-      const pid_t wait_rc = waitpid(pid, &status, WNOHANG);
-      if (wait_rc == pid) {
+      pid_t wait_rc = waitpid(pid, &status, WNOHANG);
+      while (wait_rc < 0 && errno == EINTR) {
+        wait_rc = waitpid(pid, &status, WNOHANG);
+      }
+      if (wait_rc == pid || (wait_rc < 0 && errno == ECHILD)) {
         child_exited = true;
+        child_exited_at = std::chrono::steady_clock::now();
+        CloseIfOpen(&stdin_pipe[1]);
+        stdin_open = false;
       }
     }
 
-    if (std::chrono::steady_clock::now() >= deadline && !child_exited) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
       result.timed_out = true;
-      kill(pid, SIGKILL);
-      waitpid(pid, &status, 0);
-      child_exited = true;
+      if (!child_exited) {
+        kill(pid, SIGKILL);
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+        }
+        child_exited = true;
+      }
       CloseIfOpen(&stdin_pipe[1]);
       stdin_open = false;
+      break;
+    }
+
+    if (child_exited && child_exited_at.has_value()) {
+      constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
+      if (now - *child_exited_at >= kPostExitGrace) {
+        break;
+      }
     }
 
     pollfd fds[3];
@@ -221,15 +242,27 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
     }
 
     if (nfds == 0) {
-      continue;
+      if (!child_exited) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+      break;
     }
 
     int timeout_ms = 100;
-    if (!result.timed_out) {
-      const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 deadline - std::chrono::steady_clock::now())
-                                 .count();
-      timeout_ms = remaining > 0 ? static_cast<int>(remaining) : 0;
+    const auto remaining =
+        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+    timeout_ms = remaining > 0 ? std::min<int>(100, static_cast<int>(remaining)) : 0;
+    if (child_exited && child_exited_at.has_value()) {
+      constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
+      const auto grace_remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                       (*child_exited_at + kPostExitGrace) - now)
+                                       .count();
+      if (grace_remaining > 0) {
+        timeout_ms = std::min<int>(timeout_ms, static_cast<int>(grace_remaining));
+      } else {
+        timeout_ms = 0;
+      }
     }
 
     const int poll_rc = poll(fds, nfds, timeout_ms);
@@ -240,7 +273,11 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       result.launch_failed = true;
       result.stderr_text = std::string("poll failed: ") + std::strerror(errno);
       kill(pid, SIGKILL);
-      waitpid(pid, nullptr, 0);
+      while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
+      }
+      break;
+    }
+    if (poll_rc == 0 && child_exited) {
       break;
     }
 
