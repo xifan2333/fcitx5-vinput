@@ -7,6 +7,7 @@
 
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_scripts.h"
+#include "common/utils/version_utils.h"
 
 namespace {
 
@@ -106,6 +107,33 @@ void TestCheckResourceVersion() {
   ExpectTrue(info_update.status == vinput::script::UpdateStatus::kUpdateAvailable);
   ExpectEq(info_update.installed_version, "1.0.0");
   ExpectEq(info_update.remote_version, "1.1.0");
+
+  // Case 3: incompatible host requirement
+  remote_entry.vinput_version = ">= 99.0.0";
+  auto info_incompatible = vinput::script::CheckResourceVersion(
+      manifest, vinput::script::Kind::kAsrProvider, remote_entry, false);
+  ExpectTrue(info_incompatible.status == vinput::script::UpdateStatus::kIncompatible);
+}
+
+void TestSemanticVersionComparison() {
+  using vinput::version::Satisfies;
+
+  ExpectTrue(Satisfies("2.4.1", ""));
+  ExpectTrue(Satisfies("2.4.1", "*"));
+  ExpectTrue(Satisfies("2.4.1", ">= 2.0.0"));
+  ExpectTrue(Satisfies("2.4.1", ">= 2.4.1"));
+  ExpectTrue(Satisfies("2.4.1", "<= 2.4.1"));
+  ExpectTrue(Satisfies("2.4.1", "< 3.0.0"));
+  ExpectTrue(Satisfies("2.4.1", "> 2.4.0"));
+  ExpectTrue(Satisfies("2.4.1", "= 2.4.1"));
+  ExpectTrue(Satisfies("2.4.1", "2.4.1"));
+
+  // Range
+  ExpectTrue(Satisfies("2.4.1", ">= 2.0.0, < 3.0.0"));
+  ExpectTrue(Satisfies("2.4.1", ">= 2.4.0, <= 2.5.0"));
+  ExpectTrue(!Satisfies("2.4.1", ">= 2.5.0"));
+  ExpectTrue(!Satisfies("2.4.1", "< 2.4.0"));
+  ExpectTrue(!Satisfies("2.4.1", ">= 2.0.0, < 2.4.0"));
 }
 
 } // namespace
@@ -114,6 +142,7 @@ int main() {
   TestManifestSaveLoad();
   TestComputeFileSha256();
   TestCheckResourceVersion();
+  TestSemanticVersionComparison();
   std::cout << "All installed_manifest tests passed!\n";
   return 0;
 }
