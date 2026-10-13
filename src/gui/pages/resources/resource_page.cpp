@@ -34,6 +34,7 @@
 
 #include "common/config/core_config_types.h"
 #include "common/llm/adapter_manager.h"
+#include "common/registry/installed_manifest.h"
 #include "common/registry/registry_models.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/string_utils.h"
@@ -498,6 +499,7 @@ void ResourcePage::populateRemoteProviders(
   tableAvailableProviders_->setRowCount(0);
   CoreConfig config = ConfigManager::Get().Load();
   auto i18n_map = I18nCache::Get().GetMap();
+  const auto manifest = vinput::registry::InstalledManifest::Load();
 
   for (const auto& entry : providers) {
     QString id = QString::fromStdString(entry.id);
@@ -515,10 +517,29 @@ void ResourcePage::populateRemoteProviders(
     tableAvailableProviders_->setItem(row, 2,
                                       MakeCell(entry.stream ? tr("stream") : tr("non-stream")));
 
-    bool installed = ResolveAsrProvider(config, entry.id) != nullptr;
-    QString status = installed ? tr("installed") : tr("available");
+    const bool installed = ResolveAsrProvider(config, entry.id) != nullptr;
+    const auto ver_info = vinput::script::CheckResourceVersion(
+        manifest, vinput::script::Kind::kAsrProvider, entry, installed);
+
+    QString status = tr("available");
+    if (installed) {
+      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
+        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
+          status = tr("update available (%1 -> %2)")
+                       .arg(QString::fromStdString(ver_info.installed_version),
+                            QString::fromStdString(ver_info.remote_version));
+        } else {
+          status = tr("update available");
+        }
+      } else if (!ver_info.installed_version.empty()) {
+        status = tr("installed (%1)").arg(QString::fromStdString(ver_info.installed_version));
+      } else {
+        status = tr("installed");
+      }
+    }
 
     auto* stCell = MakeCell(status);
+    stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
     tableAvailableProviders_->setItem(row, 3, stCell);
 
     const QString readme_url = QString::fromStdString(entry.readme_url);
@@ -542,6 +563,7 @@ void ResourcePage::populateRemoteAdapters(
   tableAvailableAdapters_->setRowCount(0);
   CoreConfig config = ConfigManager::Get().Load();
   auto i18n_map = I18nCache::Get().GetMap();
+  const auto manifest = vinput::registry::InstalledManifest::Load();
 
   for (const auto& entry : adapters) {
     QString id = QString::fromStdString(entry.id);
@@ -557,10 +579,29 @@ void ResourcePage::populateRemoteAdapters(
     tableAvailableAdapters_->setItem(row, 0, MakeCell(title, id));
     tableAvailableAdapters_->setItem(row, 1, MakeCell(desc));
 
-    bool installed = ResolveLlmAdapter(config, entry.id) != nullptr;
-    QString status = installed ? tr("installed") : tr("available");
+    const bool installed = ResolveLlmAdapter(config, entry.id) != nullptr;
+    const auto ver_info = vinput::script::CheckResourceVersion(
+        manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
+
+    QString status = tr("available");
+    if (installed) {
+      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
+        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
+          status = tr("update available (%1 -> %2)")
+                       .arg(QString::fromStdString(ver_info.installed_version),
+                            QString::fromStdString(ver_info.remote_version));
+        } else {
+          status = tr("update available");
+        }
+      } else if (!ver_info.installed_version.empty()) {
+        status = tr("installed (%1)").arg(QString::fromStdString(ver_info.installed_version));
+      } else {
+        status = tr("installed");
+      }
+    }
 
     auto* stCell = MakeCell(status);
+    stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
     tableAvailableAdapters_->setItem(row, 2, stCell);
 
     const QString readme_url = QString::fromStdString(entry.readme_url);
