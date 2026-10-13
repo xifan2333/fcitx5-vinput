@@ -11,6 +11,7 @@
 #include <openssl/types.h>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "common/utils/file_utils.h"
@@ -20,7 +21,7 @@ namespace vinput::registry {
 
 namespace {
 
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;
 
 std::filesystem::path ResolveManifestPath(const std::filesystem::path& path) {
   if (!path.empty()) {
