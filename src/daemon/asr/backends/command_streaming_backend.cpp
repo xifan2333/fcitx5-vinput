@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "common/utils/interpolation.h"
+#include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
 
 extern char** environ;
@@ -42,19 +43,6 @@ bool SetNonBlocking(int fd) {
     return false;
   }
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
-}
-
-bool CreateCloexecPipe(int pipefd[2]) {
-#if defined(__linux__)
-  return pipe2(pipefd, O_CLOEXEC) == 0;
-#else
-  if (pipe(pipefd) != 0) {
-    return false;
-  }
-  (void)fcntl(pipefd[0], F_SETFD, FD_CLOEXEC);
-  (void)fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
-  return true;
-#endif
 }
 
 void CloseIfOpen(int* fd) {
@@ -178,8 +166,9 @@ bool SpawnChild(const CommandAsrProvider& provider, ChildProcess* child, std::st
   int stdin_pipe[2] = {-1, -1};
   int stdout_pipe[2] = {-1, -1};
   int stderr_pipe[2] = {-1, -1};
-  if (!CreateCloexecPipe(stdin_pipe) || !CreateCloexecPipe(stdout_pipe) ||
-      !CreateCloexecPipe(stderr_pipe)) {
+  if (!vinput::process::CreateCloexecPipe(stdin_pipe) ||
+      !vinput::process::CreateCloexecPipe(stdout_pipe) ||
+      !vinput::process::CreateCloexecPipe(stderr_pipe)) {
     if (error) {
       *error = std::string("pipe failed: ") + std::strerror(errno);
     }

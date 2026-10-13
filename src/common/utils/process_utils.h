@@ -33,5 +33,6 @@ struct SpawnedProcess {
 CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input);
 bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& working_dir,
                         SpawnedProcess* process_out, std::string* error);
+bool CreateCloexecPipe(int pipefd[2]);
 
 } // namespace vinput::process

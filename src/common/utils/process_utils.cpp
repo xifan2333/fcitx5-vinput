@@ -33,19 +33,6 @@ bool SetNonBlocking(int fd) {
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
-bool CreateCloexecPipe(int pipefd[2]) {
-#if defined(__linux__)
-  return pipe2(pipefd, O_CLOEXEC) == 0;
-#else
-  if (pipe(pipefd) != 0) {
-    return false;
-  }
-  (void)fcntl(pipefd[0], F_SETFD, FD_CLOEXEC);
-  (void)fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
-  return true;
-#endif
-}
-
 std::vector<char*> BuildArgv(const CommandSpec& spec, std::vector<std::string>* storage) {
   storage->clear();
   storage->reserve(spec.args.size() + 1);
@@ -103,6 +90,19 @@ void CloseIfOpen(int* fd) {
 }
 
 } // namespace
+
+bool CreateCloexecPipe(int pipefd[2]) {
+#if defined(__linux__)
+  return pipe2(pipefd, O_CLOEXEC) == 0;
+#else
+  if (pipe(pipefd) != 0) {
+    return false;
+  }
+  (void)fcntl(pipefd[0], F_SETFD, FD_CLOEXEC);
+  (void)fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
+  return true;
+#endif
+}
 
 CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input) {
   CommandResult result;

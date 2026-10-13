@@ -1,7 +1,9 @@
 #include <chrono>
 #include <cstdlib>
+#include <fcntl.h>
 #include <iostream>
 #include <string>
+#include <unistd.h>
 
 #include "common/utils/process_utils.h"
 
@@ -95,10 +97,42 @@ void TestClosedFdsDoesNotBusySpin() {
                  std::to_string(elapsed) + "ms)");
 }
 
+/**
+ * Regression test for Issue #270:
+ * CreateCloexecPipe must set FD_CLOEXEC on both pipe ends, preventing descriptors
+ * from being inherited by child processes across exec.
+ */
+void TestPipeCloexecBehavior() {
+  int pipefd[2] = {-1, -1};
+  ExpectTrue(vinput::process::CreateCloexecPipe(pipefd), "CreateCloexecPipe should succeed");
+  ExpectTrue(pipefd[0] >= 0 && pipefd[1] >= 0, "Pipes should have valid descriptors");
+
+  const int flags0 = fcntl(pipefd[0], F_GETFD);
+  const int flags1 = fcntl(pipefd[1], F_GETFD);
+  ExpectTrue(flags0 >= 0 && (flags0 & FD_CLOEXEC) != 0, "Pipe read end must have FD_CLOEXEC set");
+  ExpectTrue(flags1 >= 0 && (flags1 & FD_CLOEXEC) != 0, "Pipe write end must have FD_CLOEXEC set");
+
+  // Verify that spawning a child command does not inherit these descriptors.
+  vinput::process::CommandSpec spec;
+  spec.command = "sh";
+  spec.args = {"-c", "test -e /proc/self/fd/" + std::to_string(pipefd[0]) +
+                         " || test -e /proc/self/fd/" + std::to_string(pipefd[1])};
+  spec.timeout_ms = 1000;
+  const auto result = vinput::process::RunCommandWithInput(spec, {});
+  ExpectTrue(!result.launch_failed, "Launch should succeed");
+  // The child process does not have these fds, so test returns 1 (false).
+  ExpectTrue(result.exit_code != 0,
+             "Cloexec pipe descriptors must not be inherited by child process");
+
+  close(pipefd[0]);
+  close(pipefd[1]);
+}
+
 } // namespace
 
 int main() {
   std::cout << "Running test_process_utils...\n";
+  TestPipeCloexecBehavior();
   TestNormalExecution();
   TestCommandTimeout();
   TestChildExitWithLeakedPipeDoesNotHang();
