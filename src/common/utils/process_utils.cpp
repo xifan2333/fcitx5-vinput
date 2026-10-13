@@ -14,7 +14,6 @@
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
-#include <wait.h>
 
 #include "common/utils/interpolation.h"
 
@@ -23,6 +22,8 @@ extern char** environ;
 namespace vinput::process {
 
 namespace {
+
+constexpr int kWaitNoHang = 1;
 
 bool SetNonBlocking(int fd) {
   int flags = fcntl(fd, F_GETFL, 0);
@@ -188,9 +189,9 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
 
   while (stdin_open || stdout_open || stderr_open || !child_exited) {
     if (!child_exited) {
-      pid_t wait_rc = waitpid(pid, &status, WNOHANG);
+      pid_t wait_rc = waitpid(pid, &status, kWaitNoHang);
       while (wait_rc < 0 && errno == EINTR) {
-        wait_rc = waitpid(pid, &status, WNOHANG);
+        wait_rc = waitpid(pid, &status, kWaitNoHang);
       }
       if (wait_rc == pid || (wait_rc < 0 && errno == ECHILD)) {
         child_exited = true;
