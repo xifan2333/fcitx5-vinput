@@ -1007,8 +1007,9 @@ void ResourcePage::onUpdateProviderClicked() {
     auto urls = ResolveAsrProviderRegistryUrls(config);
     auto entries =
         vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider, urls, err);
-    if (!err->empty())
+    if (!err->empty()) {
       return false;
+    }
 
     auto it = std::find_if(entries.begin(), entries.end(),
                            [&](const auto& e) { return e.id == id.toStdString(); });
@@ -1111,8 +1112,9 @@ void ResourcePage::onUpdateAdapterClicked() {
     auto urls = ResolveLlmAdapterRegistryUrls(config);
     auto entries =
         vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter, urls, err);
-    if (!err->empty())
+    if (!err->empty()) {
       return false;
+    }
 
     auto it = std::find_if(entries.begin(), entries.end(),
                            [&](const auto& e) { return e.id == id.toStdString(); });
