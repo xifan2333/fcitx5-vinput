@@ -1,5 +1,6 @@
 #include "common/utils/process_utils.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -13,6 +14,7 @@
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
+#include <wait.h>
 
 #include "common/utils/interpolation.h"
 
@@ -205,7 +207,6 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
         kill(pid, SIGKILL);
         while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
         }
-        child_exited = true;
       }
       CloseIfOpen(&stdin_pipe[1]);
       stdin_open = false;
