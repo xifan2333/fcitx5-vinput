@@ -60,8 +60,8 @@ const std::vector<MigrationRule>& GetRules() {
       // v2.4.0: Remove obsolete HoldActivationDelay from addon conf
       {"2.4.0", "vinput.conf", ActionType::IniRemoveKey, "HoldActivationDelay"},
 
-      // v2.4.1: Upgrade legacy VAD acoustic defaults
-      {"2.4.1",
+      // v2.4.0: Upgrade legacy VAD acoustic defaults
+      {"2.4.0",
        "config.json",
        ActionType::ReplaceIfDefault,
        "asr.vad.threshold",
@@ -69,7 +69,7 @@ const std::vector<MigrationRule>& GetRules() {
        {},
        0.45,
        0.35},
-      {"2.4.1",
+      {"2.4.0",
        "config.json",
        ActionType::ReplaceIfDefault,
        "asr.vad.min_speech_duration",
@@ -77,7 +77,7 @@ const std::vector<MigrationRule>& GetRules() {
        {},
        0.15,
        0.10},
-      {"2.4.1",
+      {"2.4.0",
        "config.json",
        ActionType::ReplaceIfDefault,
        "asr.vad.min_silence_duration",
@@ -85,7 +85,7 @@ const std::vector<MigrationRule>& GetRules() {
        {},
        0.5,
        1.2},
-      {"2.4.1",
+      {"2.4.0",
        "config.json",
        ActionType::ReplaceIfDefault,
        "asr.vad.speech_pad_ms",
@@ -93,7 +93,7 @@ const std::vector<MigrationRule>& GetRules() {
        {},
        30,
        500},
-      {"2.4.1",
+      {"2.4.0",
        "config.json",
        ActionType::ReplaceIfDefault,
        "asr.vad.speech_pad_ms",
@@ -103,6 +103,40 @@ const std::vector<MigrationRule>& GetRules() {
        500},
   };
   return kRules;
+}
+
+vinput::version::SemanticVersion GetMaxRuleVersion() {
+  vinput::version::SemanticVersion max_ver{};
+  for (const auto& rule : GetRules()) {
+    const auto parsed = vinput::version::Parse(rule.version);
+    if (parsed.has_value() && max_ver < *parsed) {
+      max_ver = *parsed;
+    }
+  }
+  return max_ver;
+}
+
+std::string GetTargetVersionConstraint() {
+  const auto max_ver = GetMaxRuleVersion();
+  return ">=" + std::to_string(max_ver.major) + "." + std::to_string(max_ver.minor) + "." +
+         std::to_string(max_ver.patch);
+}
+
+std::optional<vinput::version::SemanticVersion>
+ParseConfigLowerBoundVersion(std::string_view ver_str) {
+  ver_str = vinput::version::Trim(ver_str);
+  if (ver_str.empty()) {
+    return std::nullopt;
+  }
+  const auto comma_pos = ver_str.find(',');
+  if (comma_pos != std::string_view::npos) {
+    ver_str = ver_str.substr(0, comma_pos);
+  }
+  while (!ver_str.empty() &&
+         (ver_str.front() == '>' || ver_str.front() == '=' || ver_str.front() == ' ')) {
+    ver_str.remove_prefix(1);
+  }
+  return vinput::version::Parse(ver_str);
 }
 
 std::string GenerateTimestamp() {
@@ -352,13 +386,18 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     }
   }
 
-  // Fast-Path: if config version constraint satisfies host version and INI has no outdated keys
+  const auto max_rule_ver = GetMaxRuleVersion();
+
+  // Fast-Path: if config version constraint satisfies host version, meets max rule version, and INI
+  // has no outdated keys
   bool config_satisfies = true;
   if (config_exists) {
     if (config_data.is_object() && config_data.contains("version") &&
         config_data["version"].is_string() && !config_data.contains("vinput_version")) {
       const auto ver_str = config_data["version"].get<std::string>();
-      config_satisfies = vinput::version::Satisfies(vinput::version::CurrentHostVersion(), ver_str);
+      const auto lower_bound = ParseConfigLowerBoundVersion(ver_str);
+      config_satisfies = lower_bound.has_value() && *lower_bound >= max_rule_ver &&
+                         vinput::version::Satisfies(vinput::version::CurrentHostVersion(), ver_str);
     } else {
       config_satisfies = false;
     }
@@ -377,7 +416,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
   bool is_unversioned = true;
   if (config_exists && config_data.is_object()) {
     if (config_data.contains("version") && config_data["version"].is_string()) {
-      const auto parsed = vinput::version::Parse(config_data["version"].get<std::string>());
+      const auto parsed = ParseConfigLowerBoundVersion(config_data["version"].get<std::string>());
       if (parsed.has_value()) {
         config_ver = *parsed;
         is_unversioned = false;
@@ -415,13 +454,14 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
       });
     }
 
+    const std::string target_ver = GetTargetVersionConstraint();
     if (!config_data.contains("version") || !config_data["version"].is_string() ||
-        config_data["version"].get<std::string>() != ">=2.4.0") {
-      config_data["version"] = ">=2.4.0";
+        config_data["version"].get<std::string>() != target_ver) {
+      config_data["version"] = target_ver;
       config_changed = true;
       report.changes.push_back({
           .file = "config.json",
-          .description = "version: standardized constraint to '>=2.4.0'",
+          .description = "version: standardized constraint to '" + target_ver + "'",
       });
     }
   }
@@ -446,45 +486,39 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
       if (rule.target_file != "vinput.conf") {
         continue;
       }
-      const auto rule_ver_opt = vinput::version::Parse(rule.version);
-      if (!rule_ver_opt.has_value()) {
-        continue;
-      }
-      if (is_unversioned || config_ver < *rule_ver_opt) {
-        std::vector<std::string> new_lines;
-        new_lines.reserve(conf_lines.size());
-        bool rule_triggered = false;
-        for (const auto& line : conf_lines) {
-          if (rule.action == ActionType::IniReplaceKey) {
-            if (LineMatchesKey(line, rule.path)) {
-              const auto eq_idx = line.find('=');
-              const std::string val = (eq_idx != std::string::npos) ? line.substr(eq_idx) : "";
-              new_lines.push_back(std::string(rule.new_key) + val);
-              report.changes.push_back({
-                  .file = "vinput.conf",
-                  .description = "replaced key '" + std::string(rule.path) + "' with '" +
-                                 std::string(rule.new_key) + "'",
-              });
-              rule_triggered = true;
-              conf_changed = true;
-              continue;
-            }
-          } else if (rule.action == ActionType::IniRemoveKey) {
-            if (LineMatchesKey(line, rule.path)) {
-              report.changes.push_back({
-                  .file = "vinput.conf",
-                  .description = "removed obsolete key '" + std::string(rule.path) + "'",
-              });
-              rule_triggered = true;
-              conf_changed = true;
-              continue;
-            }
+      std::vector<std::string> new_lines;
+      new_lines.reserve(conf_lines.size());
+      bool rule_triggered = false;
+      for (const auto& line : conf_lines) {
+        if (rule.action == ActionType::IniReplaceKey) {
+          if (LineMatchesKey(line, rule.path)) {
+            const auto eq_idx = line.find('=');
+            const std::string val = (eq_idx != std::string::npos) ? line.substr(eq_idx) : "";
+            new_lines.push_back(std::string(rule.new_key) + val);
+            report.changes.push_back({
+                .file = "vinput.conf",
+                .description = "replaced key '" + std::string(rule.path) + "' with '" +
+                               std::string(rule.new_key) + "'",
+            });
+            rule_triggered = true;
+            conf_changed = true;
+            continue;
           }
-          new_lines.push_back(line);
+        } else if (rule.action == ActionType::IniRemoveKey) {
+          if (LineMatchesKey(line, rule.path)) {
+            report.changes.push_back({
+                .file = "vinput.conf",
+                .description = "removed obsolete key '" + std::string(rule.path) + "'",
+            });
+            rule_triggered = true;
+            conf_changed = true;
+            continue;
+          }
         }
-        if (rule_triggered) {
-          conf_lines = std::move(new_lines);
-        }
+        new_lines.push_back(line);
+      }
+      if (rule_triggered) {
+        conf_lines = std::move(new_lines);
       }
     }
   }

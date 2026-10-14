@@ -221,6 +221,53 @@ void TestDefaultTemplateFastPath() {
   ExpectTrue(!report.needed, "default-config.json dry-run should report needed == false");
 }
 
+void TestVersionConstraintAndCustomizationPreserved() {
+  const auto tmp_dir = std::filesystem::temp_directory_path() / "vinput_test_mig_custom_preserved";
+  std::filesystem::remove_all(tmp_dir);
+  std::filesystem::create_directories(tmp_dir);
+
+  const auto config_path = tmp_dir / "config.json";
+  const auto conf_path = tmp_dir / "vinput.conf";
+
+  // config.json already has version >=2.4.0 and intentionally custom threshold 0.45
+  const nlohmann::json cfg = {
+      {"version", ">=2.4.0"},
+      {"asr",
+       {{"vad",
+         {{"threshold", 0.45},
+          {"min_speech_duration", 0.10},
+          {"min_silence_duration", 1.2},
+          {"speech_pad_ms", 500}}}}},
+  };
+  std::string err;
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, cfg.dump(4) + "\n", &err), err);
+
+  // vinput.conf has obsolete HoldActivationDelay
+  const std::string initial_conf = "TriggerKey=Alt_R\nHoldActivationDelay=200\n";
+  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, initial_conf, &err), err);
+
+  const auto report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(report.error.empty(), report.error);
+  ExpectTrue(report.needed, "Migration should be needed due to obsolete INI key");
+  ExpectTrue(report.applied, "Migration should be applied");
+
+  // config.json threshold 0.45 must NOT be overwritten by migration rules
+  std::string read_cfg_str;
+  ExpectTrue(vinput::file::ReadTextFile(config_path, &read_cfg_str, &err), err);
+  const auto migrated_cfg = nlohmann::json::parse(read_cfg_str);
+  ExpectTrue(std::abs(migrated_cfg["asr"]["vad"]["threshold"].get<double>() - 0.45) < 1e-4,
+             "Custom threshold 0.45 must be preserved");
+
+  // vinput.conf must have HoldActivationDelay removed
+  std::string read_conf_str;
+  ExpectTrue(vinput::file::ReadTextFile(conf_path, &read_conf_str, &err), err);
+  ExpectTrue(read_conf_str.find("HoldActivationDelay") == std::string::npos,
+             "HoldActivationDelay must be removed from vinput.conf");
+
+  std::error_code ec;
+  std::filesystem::remove_all(tmp_dir, ec);
+}
+
 } // namespace
 
 int main() {
@@ -228,6 +275,7 @@ int main() {
   TestDryRunAndApply();
   TestSymlinkPreservation();
   TestDefaultTemplateFastPath();
+  TestVersionConstraintAndCustomizationPreserved();
   std::cout << "All test_config_migration tests passed!\n";
   return 0;
 }
