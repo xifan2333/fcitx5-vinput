@@ -1,42 +1,299 @@
 #include "common/config/config_migration.h"
 
-#include <cstdlib>
-#include <exception>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <ctime>
 #include <filesystem>
 #include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
+#include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
+#include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
-#include "common/utils/process_utils.h"
-
-#include "config.h"
+#include "common/utils/version_utils.h"
 
 namespace vinput::migration {
 
 namespace {
 
-std::filesystem::path ResolveMigrationScriptPath() {
-  const char* env_path = std::getenv("VINPUT_MIGRATE_SCRIPT");
-  if (env_path != nullptr && env_path[0] != '\0') {
-    std::filesystem::path p(env_path);
-    if (std::filesystem::exists(p)) {
-      return p;
+enum class ActionType : std::uint8_t {
+  Rename,
+  Remove,
+  Ensure,
+  ReplaceIfDefault,
+  IniReplaceKey,
+  IniRemoveKey,
+};
+
+struct MigrationRule {
+  std::string_view version;
+  std::string_view target_file;
+  ActionType action;
+  std::string_view path;
+  std::string_view new_key = {};
+  nlohmann::json default_value = {};
+  nlohmann::json expected_value = {};
+  nlohmann::json to_value = {};
+};
+
+const std::vector<MigrationRule>& GetRules() {
+  static const std::vector<MigrationRule> kRules = {
+      // v2.3.15: Normalize candidate_count to count and adaptors to adapters
+      {"2.3.15", "config.json", ActionType::Rename, "scenes.*.*.candidate_count", "count"},
+      {"2.3.15", "config.json", ActionType::Rename, "llm.adaptors", "adapters"},
+      {"2.3.15", "vinput.conf", ActionType::IniReplaceKey, "SceneMenuKey", "MenuKey"},
+      {"2.3.15", "vinput.conf", ActionType::IniRemoveKey, "AsrMenuKey"},
+
+      // v2.3.25: Decouple show_raw into raw_cand and raw_prev
+      {"2.3.25", "config.json", ActionType::Rename, "scenes.*.*.show_raw", "raw_cand"},
+      {"2.3.25", "config.json", ActionType::Ensure, "scenes.*.*.raw_prev", {}, true},
+
+      // v2.3.27: Remove obsolete global.default_language
+      {"2.3.27", "config.json", ActionType::Remove, "global.default_language"},
+
+      // v2.4.0: Remove obsolete HoldActivationDelay from addon conf
+      {"2.4.0", "vinput.conf", ActionType::IniRemoveKey, "HoldActivationDelay"},
+
+      // v2.4.1: Upgrade legacy VAD acoustic defaults
+      {"2.4.1",
+       "config.json",
+       ActionType::ReplaceIfDefault,
+       "asr.vad.threshold",
+       {},
+       {},
+       0.45,
+       0.35},
+      {"2.4.1",
+       "config.json",
+       ActionType::ReplaceIfDefault,
+       "asr.vad.min_speech_duration",
+       {},
+       {},
+       0.15,
+       0.10},
+      {"2.4.1",
+       "config.json",
+       ActionType::ReplaceIfDefault,
+       "asr.vad.min_silence_duration",
+       {},
+       {},
+       0.5,
+       1.2},
+      {"2.4.1",
+       "config.json",
+       ActionType::ReplaceIfDefault,
+       "asr.vad.speech_pad_ms",
+       {},
+       {},
+       30,
+       500},
+      {"2.4.1",
+       "config.json",
+       ActionType::ReplaceIfDefault,
+       "asr.vad.speech_pad_ms",
+       {},
+       {},
+       300,
+       500},
+  };
+  return kRules;
+}
+
+std::string GenerateTimestamp() {
+  const auto now = std::chrono::system_clock::now();
+  const auto time_t_now = std::chrono::system_clock::to_time_t(now);
+  std::tm tm_buf{};
+  localtime_r(&time_t_now, &tm_buf);
+  char buf[32];
+  std::strftime(buf, sizeof(buf), "%Y%m%d-%H%M%S", &tm_buf);
+  return std::string(buf);
+}
+
+std::vector<std::string_view> SplitPath(std::string_view path) {
+  std::vector<std::string_view> result;
+  size_t start = 0;
+  while (start <= path.size()) {
+    const size_t end = path.find('.', start);
+    if (end == std::string_view::npos) {
+      result.push_back(path.substr(start));
+      break;
+    }
+    result.push_back(path.substr(start, end - start));
+    start = end + 1;
+  }
+  return result;
+}
+
+bool ValueMatches(const nlohmann::json& actual, const nlohmann::json& expected) {
+  if (expected.is_number() && actual.is_number()) {
+    if (expected.is_number_float() || actual.is_number_float()) {
+      return std::abs(actual.get<double>() - expected.get<double>()) < 1e-4;
+    }
+    return actual.get<std::int64_t>() == expected.get<std::int64_t>();
+  }
+  return actual == expected;
+}
+
+bool ApplyActionToTarget(nlohmann::json& parent, const std::string& key, std::string_view desc,
+                         const MigrationRule& rule, std::vector<MigrationChange>& changes) {
+  const std::string desc_prefix = desc.empty() ? key : std::string(desc) + "." + key;
+
+  switch (rule.action) {
+  case ActionType::Rename: {
+    if (parent.is_object() && parent.contains(key)) {
+      const std::string new_key(rule.new_key);
+      if (!parent.contains(new_key)) {
+        parent[new_key] = std::move(parent[key]);
+        parent.erase(key);
+        changes.push_back({
+            .file = "config.json",
+            .description = desc_prefix + ": renamed '" + key + "' to '" + new_key + "'",
+        });
+      } else {
+        parent.erase(key);
+        changes.push_back({
+            .file = "config.json",
+            .description = desc_prefix + ": removed obsolete duplicate key '" + key + "'",
+        });
+      }
+      return true;
+    }
+    return false;
+  }
+  case ActionType::Remove: {
+    if (parent.is_object() && parent.contains(key)) {
+      parent.erase(key);
+      changes.push_back({
+          .file = "config.json",
+          .description =
+              (desc.empty() ? key : std::string(desc)) + ": removed obsolete field '" + key + "'",
+      });
+      return true;
+    }
+    return false;
+  }
+  case ActionType::Ensure: {
+    if (parent.is_object() && !parent.contains(key)) {
+      parent[key] = rule.default_value;
+      changes.push_back({
+          .file = "config.json",
+          .description = (desc.empty() ? key : std::string(desc)) + ": added '" + key + "'",
+      });
+      return true;
+    }
+    return false;
+  }
+  case ActionType::ReplaceIfDefault: {
+    if (parent.is_object() && parent.contains(key)) {
+      const auto& val = parent[key];
+      if (ValueMatches(val, rule.expected_value)) {
+        parent[key] = rule.to_value;
+        changes.push_back({
+            .file = "config.json",
+            .description = desc_prefix + ": upgraded legacy default " + rule.expected_value.dump() +
+                           " to " + rule.to_value.dump(),
+        });
+        return true;
+      }
+    }
+    return false;
+  }
+  default:
+    return false;
+  }
+}
+
+bool WalkAndApply(nlohmann::json& node, std::span<const std::string_view> segments,
+                  std::string_view desc, const MigrationRule& rule,
+                  std::vector<MigrationChange>& changes) {
+  if (segments.empty()) {
+    return false;
+  }
+
+  const auto seg = segments[0];
+  const bool is_leaf = (segments.size() == 1);
+
+  if (is_leaf) {
+    if (node.is_object()) {
+      return ApplyActionToTarget(node, std::string(seg), desc, rule, changes);
+    }
+    return false;
+  }
+
+  const auto sub_segments = segments.subspan(1);
+  bool any_changed = false;
+
+  if (seg == "*") {
+    if (node.is_object()) {
+      for (auto& [k, child] : node.items()) {
+        const std::string child_desc = desc.empty() ? k : std::string(desc) + "." + k;
+        if (WalkAndApply(child, sub_segments, child_desc, rule, changes)) {
+          any_changed = true;
+        }
+      }
+    } else if (node.is_array()) {
+      for (size_t idx = 0; idx < node.size(); ++idx) {
+        auto& child = node[idx];
+        std::string child_id;
+        if (child.is_object() && child.contains("id") && child["id"].is_string()) {
+          child_id = child["id"].get<std::string>();
+        } else {
+          child_id = std::to_string(idx);
+        }
+        const std::string child_desc =
+            desc.empty() ? "[" + child_id + "]" : std::string(desc) + "[" + child_id + "]";
+        if (WalkAndApply(child, sub_segments, child_desc, rule, changes)) {
+          any_changed = true;
+        }
+      }
+    }
+  } else if (node.is_object() && node.contains(std::string(seg))) {
+    const std::string child_desc =
+        desc.empty() ? std::string(seg) : std::string(desc) + "." + std::string(seg);
+    if (WalkAndApply(node[std::string(seg)], sub_segments, child_desc, rule, changes)) {
+      any_changed = true;
     }
   }
 
-  std::filesystem::path dev_path = VINPUT_MIGRATE_SCRIPT_SOURCE_PATH;
-  if (std::filesystem::exists(dev_path)) {
-    return dev_path;
-  }
+  return any_changed;
+}
 
-  std::filesystem::path install_path = VINPUT_MIGRATE_SCRIPT_INSTALL_PATH;
-  if (std::filesystem::exists(install_path)) {
-    return install_path;
+bool LineMatchesKey(std::string_view line, std::string_view key) {
+  while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) {
+    line.remove_prefix(1);
   }
+  if (!line.starts_with(key)) {
+    return false;
+  }
+  const auto rest = line.substr(key.size());
+  return rest.empty() || rest.front() == '=' || rest.front() == ' ' || rest.front() == '\t';
+}
 
-  return {};
+bool HasOutdatedIniKeys(std::string_view conf_content) {
+  static constexpr std::string_view kOutdatedKeys[] = {
+      "SceneMenuKey",
+      "AsrMenuKey",
+      "HoldActivationDelay",
+  };
+  size_t start = 0;
+  while (start < conf_content.size()) {
+    size_t end = conf_content.find('\n', start);
+    if (end == std::string_view::npos) {
+      end = conf_content.size();
+    }
+    const auto line = conf_content.substr(start, end - start);
+    for (const auto key : kOutdatedKeys) {
+      if (LineMatchesKey(line, key)) {
+        return true;
+      }
+    }
+    start = end + 1;
+  }
+  return false;
 }
 
 } // namespace
@@ -53,57 +310,230 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
   report.config_file = config_path.empty() ? vinput::path::CoreConfigPath() : config_path;
   report.conf_file = conf_path.empty() ? vinput::path::FcitxAddonConfigPath() : conf_path;
 
-  const auto script_path = ResolveMigrationScriptPath();
-  if (script_path.empty()) {
-    report.error = "Migration script not found";
+  std::filesystem::path real_config_path;
+  if (!vinput::file::ResolveSymlinkPath(report.config_file, &real_config_path, &report.error)) {
+    return report;
+  }
+  std::filesystem::path real_conf_path;
+  if (!vinput::file::ResolveSymlinkPath(report.conf_file, &real_conf_path, &report.error)) {
     return report;
   }
 
-  vinput::process::CommandSpec spec;
-  spec.command = script_path.string();
-  spec.args = {"--json"};
-  if (dry_run) {
-    spec.args.emplace_back("--dry-run");
-  }
-  spec.args.emplace_back("--config");
-  spec.args.push_back(report.config_file.string());
-  spec.args.emplace_back("--conf");
-  spec.args.push_back(report.conf_file.string());
-  spec.timeout_ms = 15000;
+  std::error_code ec;
+  const bool config_exists = std::filesystem::is_regular_file(real_config_path, ec);
+  const bool conf_exists = std::filesystem::is_regular_file(real_conf_path, ec);
 
-  const auto res = vinput::process::RunCommandWithInput(spec, {});
-  if (res.launch_failed) {
-    report.error = "Failed to launch migration script: " + res.stderr_text;
-    return report;
-  }
-  if (res.timed_out) {
-    report.error = "Migration script timed out";
+  if (!config_exists && !conf_exists) {
+    report.needed = false;
+    report.applied = false;
     return report;
   }
 
-  try {
-    const auto j = nlohmann::json::parse(res.stdout_text);
-    report.needed = j.value("needed", false);
-    report.applied = j.value("applied", false);
-    report.config_backup = j.value("config_backup", "");
-    report.conf_backup = j.value("conf_backup", "");
-    report.error = j.value("error", "");
-    if (j.contains("changes") && j["changes"].is_array()) {
-      for (const auto& ch : j["changes"]) {
-        if (ch.is_object()) {
-          report.changes.push_back(MigrationChange{
-              .file = ch.value("file", ""),
-              .description = ch.value("description", ""),
-          });
+  std::string raw_config;
+  nlohmann::json config_data;
+  if (config_exists) {
+    if (!vinput::file::ReadTextFile(real_config_path, &raw_config, &report.error)) {
+      return report;
+    }
+    config_data = nlohmann::json::parse(raw_config, nullptr, false);
+    if (config_data.is_discarded()) {
+      report.error = "Failed to parse " + real_config_path.string() + ": invalid JSON";
+      return report;
+    }
+  }
+
+  std::string raw_conf;
+  if (conf_exists) {
+    if (!vinput::file::ReadTextFile(real_conf_path, &raw_conf, &report.error)) {
+      return report;
+    }
+  }
+
+  // Fast-Path: if config version constraint satisfies host version and INI has no outdated keys
+  bool config_satisfies = true;
+  if (config_exists) {
+    if (config_data.is_object() && config_data.contains("version") &&
+        config_data["version"].is_string() && !config_data.contains("vinput_version")) {
+      const auto ver_str = config_data["version"].get<std::string>();
+      config_satisfies = vinput::version::Satisfies(vinput::version::CurrentHostVersion(), ver_str);
+    } else {
+      config_satisfies = false;
+    }
+  }
+
+  const bool conf_has_outdated = conf_exists && HasOutdatedIniKeys(raw_conf);
+
+  if (config_satisfies && !conf_has_outdated) {
+    report.needed = false;
+    report.applied = false;
+    return report;
+  }
+
+  // Slow-Path: execute table-driven rules
+  vinput::version::SemanticVersion config_ver{};
+  bool is_unversioned = true;
+  if (config_exists && config_data.is_object()) {
+    if (config_data.contains("version") && config_data["version"].is_string()) {
+      const auto parsed = vinput::version::Parse(config_data["version"].get<std::string>());
+      if (parsed.has_value()) {
+        config_ver = *parsed;
+        is_unversioned = false;
+      }
+    }
+  }
+
+  const auto& rules = GetRules();
+  bool config_changed = false;
+  bool conf_changed = false;
+
+  if (config_exists && config_data.is_object()) {
+    for (const auto& rule : rules) {
+      if (rule.target_file != "config.json") {
+        continue;
+      }
+      const auto rule_ver_opt = vinput::version::Parse(rule.version);
+      if (!rule_ver_opt.has_value()) {
+        continue;
+      }
+      if (is_unversioned || config_ver < *rule_ver_opt) {
+        const auto segments = SplitPath(rule.path);
+        if (WalkAndApply(config_data, segments, "", rule, report.changes)) {
+          config_changed = true;
         }
       }
     }
-  } catch (const std::exception& ex) {
-    report.error = "Failed to parse migration script JSON output: " + std::string(ex.what()) +
-                   "\nOutput: " + res.stdout_text + "\nStderr: " + res.stderr_text;
+
+    if (config_data.contains("vinput_version")) {
+      config_data.erase("vinput_version");
+      config_changed = true;
+      report.changes.push_back({
+          .file = "config.json",
+          .description = "removed legacy 'vinput_version' field",
+      });
+    }
+
+    if (!config_data.contains("version") || !config_data["version"].is_string() ||
+        config_data["version"].get<std::string>() != ">=2.4.0") {
+      config_data["version"] = ">=2.4.0";
+      config_changed = true;
+      report.changes.push_back({
+          .file = "config.json",
+          .description = "version: standardized constraint to '>=2.4.0'",
+      });
+    }
+  }
+
+  std::vector<std::string> conf_lines;
+  if (conf_exists) {
+    std::string_view sv(raw_conf);
+    size_t start = 0;
+    while (start <= sv.size()) {
+      const size_t end = sv.find('\n', start);
+      if (end == std::string_view::npos) {
+        if (start < sv.size()) {
+          conf_lines.emplace_back(sv.substr(start));
+        }
+        break;
+      }
+      conf_lines.emplace_back(sv.substr(start, end - start));
+      start = end + 1;
+    }
+
+    for (const auto& rule : rules) {
+      if (rule.target_file != "vinput.conf") {
+        continue;
+      }
+      const auto rule_ver_opt = vinput::version::Parse(rule.version);
+      if (!rule_ver_opt.has_value()) {
+        continue;
+      }
+      if (is_unversioned || config_ver < *rule_ver_opt) {
+        std::vector<std::string> new_lines;
+        new_lines.reserve(conf_lines.size());
+        bool rule_triggered = false;
+        for (const auto& line : conf_lines) {
+          if (rule.action == ActionType::IniReplaceKey) {
+            if (LineMatchesKey(line, rule.path)) {
+              const auto eq_idx = line.find('=');
+              const std::string val = (eq_idx != std::string::npos) ? line.substr(eq_idx) : "";
+              new_lines.push_back(std::string(rule.new_key) + val);
+              report.changes.push_back({
+                  .file = "vinput.conf",
+                  .description = "replaced key '" + std::string(rule.path) + "' with '" +
+                                 std::string(rule.new_key) + "'",
+              });
+              rule_triggered = true;
+              conf_changed = true;
+              continue;
+            }
+          } else if (rule.action == ActionType::IniRemoveKey) {
+            if (LineMatchesKey(line, rule.path)) {
+              report.changes.push_back({
+                  .file = "vinput.conf",
+                  .description = "removed obsolete key '" + std::string(rule.path) + "'",
+              });
+              rule_triggered = true;
+              conf_changed = true;
+              continue;
+            }
+          }
+          new_lines.push_back(line);
+        }
+        if (rule_triggered) {
+          conf_lines = std::move(new_lines);
+        }
+      }
+    }
+  }
+
+  report.needed = !report.changes.empty() || config_changed || conf_changed;
+  if (!report.needed || dry_run) {
+    report.applied = false;
     return report;
   }
 
+  const std::string ts = GenerateTimestamp();
+  if (config_changed && config_exists) {
+    const auto backup_dir = real_config_path.parent_path() / "backups";
+    std::filesystem::create_directories(backup_dir, ec);
+    const auto backup_file = backup_dir / (real_config_path.filename().string() + ".bak." + ts);
+    std::string err;
+    if (!vinput::file::AtomicWriteTextFile(backup_file, raw_config, &err)) {
+      report.error = "Failed to create backup for " + real_config_path.string() + ": " + err;
+      return report;
+    }
+    report.config_backup = backup_file;
+
+    const std::string new_json_str = config_data.dump(2) + "\n";
+    if (!vinput::file::AtomicWriteTextFile(real_config_path, new_json_str, &err)) {
+      report.error = "Failed to write migrated " + real_config_path.string() + ": " + err;
+      return report;
+    }
+  }
+
+  if (conf_changed && conf_exists) {
+    const auto backup_dir = real_conf_path.parent_path() / "backups";
+    std::filesystem::create_directories(backup_dir, ec);
+    const auto backup_file = backup_dir / (real_conf_path.filename().string() + ".bak." + ts);
+    std::string err;
+    if (!vinput::file::AtomicWriteTextFile(backup_file, raw_conf, &err)) {
+      report.error = "Failed to create backup for " + real_conf_path.string() + ": " + err;
+      return report;
+    }
+    report.conf_backup = backup_file;
+
+    std::string new_conf_str;
+    for (const auto& line : conf_lines) {
+      new_conf_str += line;
+      new_conf_str += '\n';
+    }
+    if (!vinput::file::AtomicWriteTextFile(real_conf_path, new_conf_str, &err)) {
+      report.error = "Failed to write migrated " + real_conf_path.string() + ": " + err;
+      return report;
+    }
+  }
+
+  report.applied = true;
   return report;
 }
 
