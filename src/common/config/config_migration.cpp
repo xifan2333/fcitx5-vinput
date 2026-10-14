@@ -40,6 +40,12 @@ struct MigrationRule {
   nlohmann::json default_value;
   nlohmann::json expected_value;
   nlohmann::json to_value;
+
+  MigrationRule(std::string_view v, std::string_view tf, ActionType act, std::string_view p,
+                std::string_view nk = {}, nlohmann::json def = {}, nlohmann::json exp = {},
+                nlohmann::json to = {})
+      : version(v), target_file(tf), action(act), path(p), new_key(nk),
+        default_value(std::move(def)), expected_value(std::move(exp)), to_value(std::move(to)) {}
 };
 
 const std::vector<MigrationRule>& GetRules() {
@@ -122,9 +128,21 @@ std::string GetTargetVersionConstraint() {
          std::to_string(max_ver.patch);
 }
 
+std::string_view Trim(std::string_view s) {
+  while (!s.empty() &&
+         (s.front() == ' ' || s.front() == '\t' || s.front() == '\r' || s.front() == '\n')) {
+    s.remove_prefix(1);
+  }
+  while (!s.empty() &&
+         (s.back() == ' ' || s.back() == '\t' || s.back() == '\r' || s.back() == '\n')) {
+    s.remove_suffix(1);
+  }
+  return s;
+}
+
 std::optional<vinput::version::SemanticVersion>
 ParseConfigLowerBoundVersion(std::string_view ver_str) {
-  ver_str = vinput::version::Trim(ver_str);
+  ver_str = Trim(ver_str);
   if (ver_str.empty()) {
     return std::nullopt;
   }
