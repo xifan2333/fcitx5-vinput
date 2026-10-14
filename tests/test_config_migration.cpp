@@ -1,0 +1,233 @@
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <system_error>
+
+#include "common/config/config_migration.h"
+#include "common/utils/file_utils.h"
+
+namespace {
+
+void ExpectTrue(bool condition, const std::string& msg = "") {
+  if (!condition) {
+    std::cerr << "ExpectTrue failed! " << msg << "\n";
+    std::abort();
+  }
+}
+
+void ExpectEq(const std::string& actual, const std::string& expected, const std::string& msg = "") {
+  if (actual != expected) {
+    std::cerr << "ExpectEq failed: expected '" << expected << "', got '" << actual << "' (" << msg
+              << ")\n";
+    std::abort();
+  }
+}
+
+void TestFastPath() {
+  const auto tmp_dir = std::filesystem::temp_directory_path() / "vinput_test_mig_fast";
+  std::filesystem::remove_all(tmp_dir);
+  std::filesystem::create_directories(tmp_dir);
+
+  const auto config_path = tmp_dir / "config.json";
+  const auto conf_path = tmp_dir / "vinput.conf";
+
+  nlohmann::json valid_cfg;
+  valid_cfg["version"] = ">=2.4.0";
+  valid_cfg["asr"]["vad"]["threshold"] = 0.35;
+  std::string err;
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, valid_cfg.dump(2), &err), err);
+
+  const std::string valid_conf = "[Trigger]\nMenuKey=Alt_R\n";
+  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, valid_conf, &err), err);
+
+  const auto report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(report.error.empty(), report.error);
+  ExpectTrue(!report.needed, "Fast-path should detect needed == false");
+  ExpectTrue(!report.applied, "Fast-path should not apply changes");
+  ExpectTrue(report.changes.empty(), "Fast-path changes should be empty");
+
+  std::error_code ec;
+  std::filesystem::remove_all(tmp_dir, ec);
+}
+
+void TestDryRunAndApply() {
+  const auto tmp_dir = std::filesystem::temp_directory_path() / "vinput_test_mig_dry_apply";
+  std::filesystem::remove_all(tmp_dir);
+  std::filesystem::create_directories(tmp_dir);
+
+  const auto config_path = tmp_dir / "config.json";
+  const auto conf_path = tmp_dir / "vinput.conf";
+
+  const std::string legacy_config_str = R"({
+  "version": 1,
+  "global": {
+    "capture_device": "default",
+    "default_language": "zh_CN"
+  },
+  "asr": {
+    "active_provider": "sherpa-onnx",
+    "vad": {
+      "threshold": 0.45,
+      "min_speech_duration": 0.15,
+      "min_silence_duration": 0.5,
+      "speech_pad_ms": 30
+    }
+  },
+  "scenes": {
+    "definitions": [
+      {
+        "id": "code",
+        "candidate_count": 3,
+        "show_raw": true
+      }
+    ]
+  },
+  "llm": {
+    "adaptors": [
+      {
+        "id": "cjk-trim",
+        "command": "python3"
+      }
+    ]
+  }
+})";
+
+  const std::string legacy_conf_str =
+      "[Trigger]\nSceneMenuKey=Alt+Shift+V\nAsrMenuKey=Control+Shift+V\nHoldActivationDelay=200\n";
+
+  std::string err;
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, legacy_config_str, &err), err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, legacy_conf_str, &err), err);
+
+  // 1. Dry run
+  const auto dry_report = vinput::migration::RunConfigMigration(true, config_path, conf_path);
+  ExpectTrue(dry_report.error.empty(), dry_report.error);
+  ExpectTrue(dry_report.needed, "Dry-run should report needed == true");
+  ExpectTrue(!dry_report.applied, "Dry-run should report applied == false");
+  ExpectTrue(dry_report.changes.size() >= 6, "Dry-run should contain at least 6 changes");
+
+  // Verify files were NOT modified on disk during dry-run
+  std::string read_back;
+  ExpectTrue(vinput::file::ReadTextFile(config_path, &read_back, &err), err);
+  const auto unchanged_cfg = nlohmann::json::parse(read_back);
+  ExpectTrue(unchanged_cfg["scenes"]["definitions"][0].contains("candidate_count"));
+
+  // 2. Apply migration
+  const auto apply_report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(apply_report.error.empty(), apply_report.error);
+  ExpectTrue(apply_report.needed, "Apply should report needed == true");
+  ExpectTrue(apply_report.applied, "Apply should report applied == true");
+  ExpectTrue(std::filesystem::exists(apply_report.config_backup), "Config backup should exist");
+  ExpectTrue(std::filesystem::exists(apply_report.conf_backup), "Conf backup should exist");
+
+  // 3. Verify in-place modified content
+  std::string migrated_config_str;
+  ExpectTrue(vinput::file::ReadTextFile(config_path, &migrated_config_str, &err), err);
+  const auto migrated_cfg = nlohmann::json::parse(migrated_config_str);
+
+  const auto& sc_def = migrated_cfg["scenes"]["definitions"][0];
+  ExpectTrue(sc_def.contains("count") && !sc_def.contains("candidate_count"),
+             "candidate_count -> count");
+  ExpectEq(std::to_string(sc_def["count"].get<int>()), "3");
+  ExpectTrue(sc_def.contains("raw_cand") && !sc_def.contains("show_raw"), "show_raw -> raw_cand");
+  ExpectTrue(sc_def.value("raw_prev", false), "raw_prev should be ensured true");
+
+  ExpectTrue(migrated_cfg["llm"].contains("adapters") && !migrated_cfg["llm"].contains("adaptors"),
+             "adaptors -> adapters");
+  ExpectTrue(!migrated_cfg["global"].contains("default_language"), "default_language removed");
+
+  const auto& vad = migrated_cfg["asr"]["vad"];
+  ExpectTrue(std::abs(vad["threshold"].get<double>() - 0.35) < 1e-4, "threshold upgraded to 0.35");
+  ExpectTrue(std::abs(vad["min_speech_duration"].get<double>() - 0.10) < 1e-4,
+             "min_speech_duration upgraded to 0.10");
+  ExpectTrue(std::abs(vad["min_silence_duration"].get<double>() - 1.2) < 1e-4,
+             "min_silence_duration upgraded to 1.2");
+  ExpectEq(std::to_string(vad["speech_pad_ms"].get<int>()), "500", "speech_pad_ms upgraded to 500");
+  ExpectEq(migrated_cfg.value("version", ""), ">=2.4.0", "version stamped with >=2.4.0");
+
+  std::string migrated_conf_str;
+  ExpectTrue(vinput::file::ReadTextFile(conf_path, &migrated_conf_str, &err), err);
+  ExpectTrue(migrated_conf_str.find("MenuKey=Alt+Shift+V") != std::string::npos, "MenuKey updated");
+  ExpectTrue(migrated_conf_str.find("SceneMenuKey") == std::string::npos, "SceneMenuKey removed");
+  ExpectTrue(migrated_conf_str.find("AsrMenuKey") == std::string::npos, "AsrMenuKey removed");
+  ExpectTrue(migrated_conf_str.find("HoldActivationDelay") == std::string::npos,
+             "HoldActivationDelay removed");
+
+  // 4. Test Idempotency (run again should detect needed == false)
+  const auto idemp_report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(idemp_report.error.empty(), idemp_report.error);
+  ExpectTrue(!idemp_report.needed, "Second migration run should report needed == false");
+  ExpectTrue(!idemp_report.applied, "Second migration run should report applied == false");
+
+  std::error_code ec;
+  std::filesystem::remove_all(tmp_dir, ec);
+}
+
+void TestSymlinkPreservation() {
+  const auto tmp_dir = std::filesystem::temp_directory_path() / "vinput_test_mig_symlink";
+  std::filesystem::remove_all(tmp_dir);
+  std::filesystem::create_directories(tmp_dir);
+
+  const auto real_dir = tmp_dir / "dotfiles";
+  const auto sym_dir = tmp_dir / "config";
+  std::filesystem::create_directories(real_dir);
+  std::filesystem::create_directories(sym_dir);
+
+  const auto real_config = real_dir / "config.json";
+  const std::string legacy_cfg = R"({"version": 1, "llm": {"adaptors": [{"id": "foo"}]}})";
+  std::string err;
+  ExpectTrue(vinput::file::AtomicWriteTextFile(real_config, legacy_cfg, &err), err);
+
+  const auto sym_config = sym_dir / "config.json";
+  std::filesystem::create_symlink(real_config, sym_config);
+  ExpectTrue(std::filesystem::is_symlink(sym_config));
+
+  const auto report =
+      vinput::migration::RunConfigMigration(false, sym_config, sym_dir / "nonexistent.conf");
+  ExpectTrue(report.error.empty(), report.error);
+  ExpectTrue(report.applied, "Migration should apply on symlink");
+
+  // Symlink must remain a symlink
+  ExpectTrue(std::filesystem::is_symlink(sym_config), "Symlink was overwritten by regular file!");
+  std::error_code ec;
+  ExpectTrue(std::filesystem::canonical(sym_config, ec) ==
+                 std::filesystem::canonical(real_config, ec),
+             "Symlink should still point to real config");
+
+  // Backup must be in real_dir/backups
+  ExpectTrue(std::filesystem::is_directory(real_dir / "backups"),
+             "Backup directory should be under real target");
+
+  std::string updated_raw;
+  ExpectTrue(vinput::file::ReadTextFile(real_config, &updated_raw, &err), err);
+  const auto updated = nlohmann::json::parse(updated_raw);
+  ExpectTrue(updated["llm"].contains("adapters") && !updated["llm"].contains("adaptors"),
+             "Real config was migrated");
+
+  std::filesystem::remove_all(tmp_dir, ec);
+}
+
+void TestDefaultTemplateFastPath() {
+  const auto default_cfg_path =
+      std::filesystem::path(CMAKE_SOURCE_DIR_STR) / "data" / "default-config.json";
+  if (!std::filesystem::exists(default_cfg_path)) {
+    return;
+  }
+  const auto report = vinput::migration::RunConfigMigration(true, default_cfg_path, "/dev/null");
+  ExpectTrue(report.error.empty(), report.error);
+  ExpectTrue(!report.needed, "default-config.json dry-run should report needed == false");
+}
+
+} // namespace
+
+int main() {
+  TestFastPath();
+  TestDryRunAndApply();
+  TestSymlinkPreservation();
+  TestDefaultTemplateFastPath();
+  std::cout << "All test_config_migration tests passed!\n";
+  return 0;
+}
