@@ -6,6 +6,10 @@ local linters = new Mapping<String, Step> {
     glob = List("src/**/*.cpp", "src/**/*.h", "tests/**/*.cpp", "tests/**/*.h")
   }
 
+  ["ruff"] = Builtins.ruff
+  ["ruff-format"] = Builtins.ruff_format
+  ["shfmt"] = Builtins.shfmt
+
   ["mise"] = Builtins.mise
 
   ["check-i18n"] {
@@ -14,7 +18,7 @@ local linters = new Mapping<String, Step> {
   }
 
   ["json-validate"] {
-    glob = List("data/default-config.json", "notification.json")
+    glob = List("data/**/*.json", "notification.json")
     check = "python3 -m json.tool {{files}} >/dev/null"
   }
 
@@ -22,6 +26,10 @@ local linters = new Mapping<String, Step> {
   ["newlines"] = Builtins.newlines
   ["check-merge-conflict"] = Builtins.check_merge_conflict
   ["detect-private-key"] = Builtins.detect_private_key
+  ["check-shebang-scripts-are-executable"] = Builtins.check_shebang_scripts_are_executable
+  ["check-executables-have-shebangs"] = Builtins.check_executables_have_shebangs
+  ["check-case-conflict"] = Builtins.check_case_conflict
+  ["check-symlinks"] = Builtins.check_symlinks
 }
 
 local pre_push_guard = new Step {
