@@ -116,11 +116,6 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput
 )
 
-install(PROGRAMS
-    ${CMAKE_SOURCE_DIR}/data/scripts/migrate
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/scripts
-)
-
 install(FILES
     ${CMAKE_SOURCE_DIR}/data/man/en/vinput.1
     ${CMAKE_SOURCE_DIR}/data/man/en/vinput-daemon.1

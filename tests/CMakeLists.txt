@@ -114,8 +114,3 @@ target_link_libraries(test_process_utils PRIVATE
 )
 
 add_test(NAME test_process_utils COMMAND test_process_utils)
-
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(NAME test_config_migrate_script
-    COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tests/test_migrate.py
-)
