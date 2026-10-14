@@ -231,7 +231,7 @@ bool WalkAndApply(nlohmann::json& node, std::span<const std::string_view> segmen
 
   if (seg == "*") {
     if (node.is_object()) {
-      for (auto& item : node.items()) {
+      for (const auto& item : node.items()) {
         const std::string child_desc =
             desc.empty() ? item.key() : std::string(desc) + "." + item.key();
         if (WalkAndApply(item.value(), sub_segments, child_desc, rule, changes)) {
