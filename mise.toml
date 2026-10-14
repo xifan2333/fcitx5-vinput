@@ -2,6 +2,8 @@
 pandoc = "latest"
 hk = "2"
 node = "latest"
+ruff = "latest"
+shfmt = "latest"
 
 [env]
 _.file = ".env"
