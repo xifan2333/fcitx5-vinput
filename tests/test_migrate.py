@@ -142,6 +142,49 @@ def test_dry_run_and_apply():
         assert idempotent_report["applied"] is False
 
 
+def test_symlink_preservation():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        real_dir = tmp_path / "dotfiles"
+        sym_dir = tmp_path / "config"
+        real_dir.mkdir()
+        sym_dir.mkdir()
+
+        real_config = real_dir / "config.json"
+        legacy_cfg = {
+            "version": 1,
+            "llm": {"adaptors": [{"id": "foo"}]},
+        }
+        real_config.write_text(json.dumps(legacy_cfg), encoding="utf-8")
+
+        sym_config = sym_dir / "config.json"
+        sym_config.symlink_to(real_config)
+
+        assert sym_config.is_symlink()
+
+        # Run migration on symlink
+        code, out, err = run_migrate(
+            "--json",
+            "--config",
+            str(sym_config),
+            "--conf",
+            str(sym_dir / "nonexistent.conf"),
+        )
+        assert code == 0, f"migration on symlink failed: {err}"
+        report = json.loads(out)
+        assert report["applied"] is True
+
+        # Critical assertions: symlink remains a symlink, real file was modified
+        assert sym_config.is_symlink(), "Symlink was overwritten by regular file!"
+        assert sym_config.resolve() == real_config.resolve()
+
+        updated_data = json.loads(real_config.read_text(encoding="utf-8"))
+        assert "adapters" in updated_data["llm"]
+        assert "adaptors" not in updated_data["llm"]
+        assert (real_dir / "backups").is_dir()
+
+
 if __name__ == "__main__":
     test_dry_run_and_apply()
+    test_symlink_preservation()
     print("All migrate script tests passed!")

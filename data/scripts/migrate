@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """fcitx5-vinput standalone configuration migration utility.
 
-Automatically updates legacy config.json and vinput.conf in-place.
+Table-driven migration engine for config.json and vinput.conf.
 Zero external dependencies: uses only Python 3 standard library.
+Preserves symlink targets when performing atomic in-place updates.
 """
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -13,6 +15,102 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# -----------------------------------------------------------------------------
+# Declarative Migration Rule Table
+# -----------------------------------------------------------------------------
+MIGRATION_RULES: list[dict[str, Any]] = [
+    # v2.3.15: Normalize candidate_count to count and adaptors to adapters
+    {
+        "version": (2, 3, 15),
+        "target": "config.json",
+        "action": "rename",
+        "path": "scenes.*.*.candidate_count",
+        "new_key": "count",
+    },
+    {
+        "version": (2, 3, 15),
+        "target": "config.json",
+        "action": "rename",
+        "path": "llm.adaptors",
+        "new_key": "adapters",
+    },
+    {
+        "version": (2, 3, 15),
+        "target": "vinput.conf",
+        "action": "ini_replace",
+        "old_key": "SceneMenuKey",
+        "new_key": "MenuKey",
+    },
+    {
+        "version": (2, 3, 15),
+        "target": "vinput.conf",
+        "action": "ini_remove",
+        "key": "AsrMenuKey",
+    },
+    # v2.3.25: Decouple show_raw into raw_cand and raw_prev
+    {
+        "version": (2, 3, 25),
+        "target": "config.json",
+        "action": "rename",
+        "path": "scenes.*.*.show_raw",
+        "new_key": "raw_cand",
+    },
+    {
+        "version": (2, 3, 25),
+        "target": "config.json",
+        "action": "ensure",
+        "path": "scenes.*.*.raw_prev",
+        "default": True,
+    },
+    # v2.3.27: Remove obsolete global.default_language
+    {
+        "version": (2, 3, 27),
+        "target": "config.json",
+        "action": "remove",
+        "path": "global.default_language",
+    },
+    # v2.4.0: Remove obsolete HoldActivationDelay from addon conf
+    {
+        "version": (2, 4, 0),
+        "target": "vinput.conf",
+        "action": "ini_remove",
+        "key": "HoldActivationDelay",
+    },
+    # v2.4.1: Upgrade legacy VAD acoustic defaults
+    {
+        "version": (2, 4, 1),
+        "target": "config.json",
+        "action": "replace_if_default",
+        "path": "asr.vad.threshold",
+        "expected": 0.45,
+        "to": 0.35,
+    },
+    {
+        "version": (2, 4, 1),
+        "target": "config.json",
+        "action": "replace_if_default",
+        "path": "asr.vad.min_speech_duration",
+        "expected": 0.15,
+        "to": 0.10,
+    },
+    {
+        "version": (2, 4, 1),
+        "target": "config.json",
+        "action": "replace_if_default",
+        "path": "asr.vad.min_silence_duration",
+        "expected": 0.5,
+        "to": 1.2,
+    },
+    {
+        "version": (2, 4, 1),
+        "target": "config.json",
+        "action": "replace_if_default",
+        "path": "asr.vad.speech_pad_ms",
+        "expected": 30,
+        "to": 500,
+    },
+]
 
 
 def default_config_path() -> Path:
@@ -31,7 +129,6 @@ def parse_version(v: Any) -> tuple[int, int, int]:
     if not v:
         return (0, 0, 0)
     cleaned = re.sub(r"^[vV]", "", str(v).strip())
-    # Strip pre-release suffix (e.g. 2.4.1-alpha)
     cleaned = cleaned.split("-")[0]
     parts = cleaned.split(".")
     nums = []
@@ -45,237 +142,208 @@ def parse_version(v: Any) -> tuple[int, int, int]:
     return (nums[0], nums[1], nums[2])
 
 
-def migrate_config_json(
-    config_path: Path,
-) -> tuple[dict[str, Any] | None, str, list[dict[str, str]], bool, str]:
-    changes: list[dict[str, str]] = []
-    if not config_path.is_file():
-        return None, "", changes, False, ""
+# -----------------------------------------------------------------------------
+# Table-Driven Path Walker & Operations
+# -----------------------------------------------------------------------------
+def _apply_action_to_target(
+    parent: dict[str, Any],
+    key: str,
+    desc: str,
+    rule: dict[str, Any],
+    changes: list[dict[str, str]],
+) -> bool:
+    action = rule["action"]
 
-    try:
-        raw_text = config_path.read_text(encoding="utf-8")
-        data = json.loads(raw_text)
-    except Exception as exc:
-        return None, "", changes, False, f"Failed to parse {config_path}: {exc}"
-
-    if not isinstance(data, dict):
-        return None, raw_text, changes, False, ""
-
-    changed = False
-    cur_ver_str = data.get("vinput_version", "")
-    cur_ver = parse_version(cur_ver_str)
-
-    # Step: Normalize candidate_count -> count and adaptors -> adapters (< 2.3.15)
-    if cur_ver < (2, 3, 15) or not cur_ver_str:
-        scenes = data.get("scenes")
-        if isinstance(scenes, dict):
-            for block in ("definitions", "items"):
-                arr = scenes.get(block)
-                if isinstance(arr, list):
-                    for idx, item in enumerate(arr):
-                        if isinstance(item, dict) and "candidate_count" in item:
-                            if "count" not in item:
-                                item["count"] = item.pop("candidate_count")
-                                name = item.get("id", idx)
-                                changes.append(
-                                    {
-                                        "file": "config.json",
-                                        "description": (
-                                            f"scenes.{block}[{name}]: renamed 'candidate_count' to 'count'"
-                                        ),
-                                    }
-                                )
-                                changed = True
-                            else:
-                                item.pop("candidate_count", None)
-                                changed = True
-        llm = data.get("llm")
-        if isinstance(llm, dict) and "adaptors" in llm:
-            if "adapters" not in llm:
-                llm["adapters"] = llm.pop("adaptors")
+    if action == "rename":
+        new_key = rule["new_key"]
+        if key in parent:
+            if new_key not in parent:
+                parent[new_key] = parent.pop(key)
                 changes.append(
                     {
                         "file": "config.json",
-                        "description": "llm: renamed 'adaptors' to 'adapters'",
+                        "description": f"{desc}.{key}: renamed '{key}' to '{new_key}'",
                     }
                 )
-                changed = True
             else:
-                llm.pop("adaptors", None)
-                changed = True
+                parent.pop(key, None)
+            return True
 
-    # Step: Decouple show_raw into raw_cand and raw_prev (< 2.3.25)
-    if cur_ver < (2, 3, 25) or not cur_ver_str:
-        scenes = data.get("scenes")
-        if isinstance(scenes, dict):
-            for block in ("definitions", "items"):
-                arr = scenes.get(block)
-                if isinstance(arr, list):
-                    for idx, item in enumerate(arr):
-                        if isinstance(item, dict):
-                            name = item.get("id", idx)
-                            if "show_raw" in item:
-                                if "raw_cand" not in item:
-                                    item["raw_cand"] = item.pop("show_raw")
-                                    changes.append(
-                                        {
-                                            "file": "config.json",
-                                            "description": (
-                                                f"scenes.{block}[{name}]: renamed 'show_raw' to 'raw_cand'"
-                                            ),
-                                        }
-                                    )
-                                    changed = True
-                                else:
-                                    item.pop("show_raw", None)
-                                    changed = True
-                            if "raw_prev" not in item:
-                                item["raw_prev"] = True
-                                changes.append(
-                                    {
-                                        "file": "config.json",
-                                        "description": f"scenes.{block}[{name}]: added 'raw_prev'",
-                                    }
-                                )
-                                changed = True
-
-    # Step: Remove obsolete global.default_language (< 2.3.27)
-    if cur_ver < (2, 3, 27) or not cur_ver_str:
-        glob = data.get("global")
-        if isinstance(glob, dict) and "default_language" in glob:
-            del glob["default_language"]
+    elif action == "remove":
+        if key in parent:
+            del parent[key]
             changes.append(
                 {
                     "file": "config.json",
-                    "description": "global: removed obsolete field 'default_language'",
+                    "description": f"{desc}: removed obsolete field '{key}'",
                 }
             )
-            changed = True
+            return True
 
-    # Step: Upgrade legacy VAD defaults (< 2.4.1)
-    if cur_ver < (2, 4, 1) or not cur_ver_str:
-        asr = data.get("asr")
-        if isinstance(asr, dict):
-            vad = asr.get("vad")
-            if isinstance(vad, dict):
-                threshold = vad.get("threshold")
-                if (
-                    isinstance(threshold, (int, float))
-                    and abs(threshold - 0.45) < 1e-4
-                ):
-                    vad["threshold"] = 0.35
-                    changes.append(
-                        {
-                            "file": "config.json",
-                            "description": "asr.vad.threshold: upgraded legacy default 0.45 to 0.35",
-                        }
-                    )
-                    changed = True
-
-                speech_dur = vad.get("min_speech_duration")
-                if (
-                    isinstance(speech_dur, (int, float))
-                    and abs(speech_dur - 0.15) < 1e-4
-                ):
-                    vad["min_speech_duration"] = 0.10
-                    changes.append(
-                        {
-                            "file": "config.json",
-                            "description": "asr.vad.min_speech_duration: upgraded legacy default 0.15 to 0.10",
-                        }
-                    )
-                    changed = True
-
-                silence_dur = vad.get("min_silence_duration")
-                if (
-                    isinstance(silence_dur, (int, float))
-                    and abs(silence_dur - 0.5) < 1e-4
-                ):
-                    vad["min_silence_duration"] = 1.2
-                    changes.append(
-                        {
-                            "file": "config.json",
-                            "description": "asr.vad.min_silence_duration: upgraded legacy default 0.5 to 1.2",
-                        }
-                    )
-                    changed = True
-
-                if vad.get("speech_pad_ms") == 30:
-                    vad["speech_pad_ms"] = 500
-                    changes.append(
-                        {
-                            "file": "config.json",
-                            "description": "asr.vad.speech_pad_ms: upgraded legacy default 30 to 500",
-                        }
-                    )
-                    changed = True
-
-    # Update or add vinput_version if modified
-    if changed or not data.get("vinput_version"):
-        if data.get("vinput_version") != "2.4.1":
-            data["vinput_version"] = "2.4.1"
-            changed = True
-
-    return data, raw_text, changes, changed, ""
-
-
-def migrate_vinput_conf(
-    conf_path: Path,
-) -> tuple[list[str], str, list[dict[str, str]], bool, str]:
-    changes: list[dict[str, str]] = []
-    if not conf_path.is_file():
-        return [], "", changes, False, ""
-
-    try:
-        raw_text = conf_path.read_text(encoding="utf-8")
-        lines = raw_text.splitlines()
-    except Exception as exc:
-        return [], "", changes, False, f"Failed to read {conf_path}: {exc}"
-
-    new_lines: list[str] = []
-    changed = False
-
-    for line in lines:
-        if line.startswith("SceneMenuKey=") or line.startswith("SceneMenuKey "):
-            eq_idx = line.find("=")
-            val = line[eq_idx:] if eq_idx != -1 else ""
-            new_lines.append(f"MenuKey{val}")
+    elif action == "ensure":
+        if key not in parent:
+            parent[key] = copy.deepcopy(rule["default"])
             changes.append(
                 {
-                    "file": "vinput.conf",
-                    "description": "replaced key 'SceneMenuKey' with 'MenuKey'",
+                    "file": "config.json",
+                    "description": f"{desc}: added '{key}'",
                 }
             )
-            changed = True
-            continue
+            return True
 
-        if line.startswith("AsrMenuKey=") or line.startswith("AsrMenuKey "):
-            changes.append(
-                {
-                    "file": "vinput.conf",
-                    "description": "removed obsolete key 'AsrMenuKey'",
-                }
-            )
-            changed = True
-            continue
+    elif action == "replace_if_default":
+        if key in parent:
+            val = parent[key]
+            expected = rule["expected"]
+            matches = False
+            if isinstance(expected, float) and isinstance(val, (int, float)):
+                matches = abs(float(val) - expected) < 1e-4
+            elif isinstance(expected, int) and isinstance(val, int):
+                matches = val == expected
 
-        if line.startswith("HoldActivationDelay=") or line.startswith(
-            "HoldActivationDelay "
+            if matches:
+                parent[key] = rule["to"]
+                changes.append(
+                    {
+                        "file": "config.json",
+                        "description": f"{desc}.{key}: upgraded legacy default {expected} to {rule['to']}",
+                    }
+                )
+                return True
+
+    return False
+
+
+def _walk_and_apply(
+    node: Any,
+    segments: list[str],
+    desc: str,
+    rule: dict[str, Any],
+    changes: list[dict[str, str]],
+) -> bool:
+    if not segments:
+        return False
+
+    seg = segments[0]
+    is_leaf = len(segments) == 1
+
+    if is_leaf:
+        if isinstance(node, dict):
+            return _apply_action_to_target(node, seg, desc, rule, changes)
+        return False
+
+    sub_segments = segments[1:]
+    any_changed = False
+
+    if seg == "*":
+        if isinstance(node, dict):
+            for k, child in node.items():
+                if _walk_and_apply(
+                    child, sub_segments, f"{desc}.{k}", rule, changes
+                ):
+                    any_changed = True
+        elif isinstance(node, list):
+            for idx, child in enumerate(node):
+                child_id = (
+                    child.get("id", idx) if isinstance(child, dict) else idx
+                )
+                if _walk_and_apply(
+                    child, sub_segments, f"{desc}[{child_id}]", rule, changes
+                ):
+                    any_changed = True
+    elif isinstance(node, dict) and seg in node:
+        if _walk_and_apply(
+            node[seg], sub_segments, f"{desc}.{seg}", rule, changes
         ):
-            changes.append(
-                {
-                    "file": "vinput.conf",
-                    "description": "removed obsolete key 'HoldActivationDelay'",
-                }
-            )
-            changed = True
+            any_changed = True
+
+    return any_changed
+
+
+def execute_table_rules_json(
+    data: dict[str, Any], cur_ver: tuple[int, int, int], is_unversioned: bool
+) -> tuple[bool, list[dict[str, str]]]:
+    changes: list[dict[str, str]] = []
+    any_changed = False
+
+    for rule in MIGRATION_RULES:
+        if rule.get("target") != "config.json":
+            continue
+        rule_ver = rule["version"]
+        if cur_ver < rule_ver or is_unversioned:
+            segments = rule["path"].split(".")
+            root_seg = segments[0]
+            if root_seg in data:
+                if _walk_and_apply(
+                    data[root_seg], segments[1:], root_seg, rule, changes
+                ):
+                    any_changed = True
+
+    return any_changed, changes
+
+
+def execute_table_rules_ini(
+    lines: list[str], cur_ver: tuple[int, int, int], is_unversioned: bool
+) -> tuple[bool, list[str], list[dict[str, str]]]:
+    changes: list[dict[str, str]] = []
+    current_lines = list(lines)
+    any_changed = False
+
+    for rule in MIGRATION_RULES:
+        if rule.get("target") != "vinput.conf":
+            continue
+        rule_ver = rule["version"]
+        if not (cur_ver < rule_ver or is_unversioned):
             continue
 
-        new_lines.append(line)
+        action = rule["action"]
+        new_lines: list[str] = []
+        rule_triggered = False
 
-    return new_lines, raw_text, changes, changed, ""
+        for line in current_lines:
+            if action == "ini_replace":
+                old_key = rule["old_key"]
+                new_key = rule["new_key"]
+                if line.startswith(f"{old_key}=") or line.startswith(
+                    f"{old_key} "
+                ):
+                    eq_idx = line.find("=")
+                    val = line[eq_idx:] if eq_idx != -1 else ""
+                    new_lines.append(f"{new_key}{val}")
+                    changes.append(
+                        {
+                            "file": "vinput.conf",
+                            "description": f"replaced key '{old_key}' with '{new_key}'",
+                        }
+                    )
+                    rule_triggered = True
+                    any_changed = True
+                    continue
+
+            elif action == "ini_remove":
+                key = rule["key"]
+                if line.startswith(f"{key}=") or line.startswith(f"{key} "):
+                    changes.append(
+                        {
+                            "file": "vinput.conf",
+                            "description": f"removed obsolete key '{key}'",
+                        }
+                    )
+                    rule_triggered = True
+                    any_changed = True
+                    continue
+
+            new_lines.append(line)
+
+        if rule_triggered:
+            current_lines = new_lines
+
+    return any_changed, current_lines, changes
 
 
+# -----------------------------------------------------------------------------
+# Main Migration Controller with Symlink Resolution
+# -----------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Migrate legacy fcitx5-vinput configuration files in-place."
@@ -306,17 +374,68 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    config_data, raw_config, config_changes, config_changed, config_err = (
-        migrate_config_json(args.config)
+    # Symlink resolution: target actual files to preserve symlink pointers
+    config_symlink = args.config
+    conf_symlink = args.conf
+    real_config_path = (
+        config_symlink.resolve()
+        if config_symlink.is_symlink()
+        else config_symlink
     )
-    conf_lines, raw_conf, conf_changes, conf_changed, conf_err = (
-        migrate_vinput_conf(args.conf)
+    real_conf_path = (
+        conf_symlink.resolve() if conf_symlink.is_symlink() else conf_symlink
     )
 
-    error_msg = config_err or conf_err
-    all_changes = config_changes + conf_changes
+    all_changes: list[dict[str, str]] = []
+    error_msg = ""
+    config_changed = False
+    conf_changed = False
+
+    raw_config = ""
+    config_data: dict[str, Any] | None = None
+    if real_config_path.is_file():
+        try:
+            raw_config = real_config_path.read_text(encoding="utf-8")
+            config_data = json.loads(raw_config)
+        except Exception as exc:
+            error_msg = f"Failed to parse {real_config_path}: {exc}"
+
+    initial_ver = (0, 0, 0)
+    initial_unversioned = True
+    if config_data is not None and isinstance(config_data, dict):
+        cur_ver_str = config_data.get("vinput_version", "")
+        initial_ver = parse_version(cur_ver_str)
+        initial_unversioned = not cur_ver_str
+
+        config_changed, cfg_changes = execute_table_rules_json(
+            config_data, initial_ver, initial_unversioned
+        )
+        all_changes.extend(cfg_changes)
+
+        # Update or add vinput_version if modified
+        if config_changed or initial_unversioned:
+            if config_data.get("vinput_version") != "2.4.1":
+                config_data["vinput_version"] = "2.4.1"
+                config_changed = True
+
+    raw_conf = ""
+    conf_lines: list[str] = []
+    if real_conf_path.is_file():
+        try:
+            raw_conf = real_conf_path.read_text(encoding="utf-8")
+            conf_lines = raw_conf.splitlines()
+        except Exception as exc:
+            if not error_msg:
+                error_msg = f"Failed to read {real_conf_path}: {exc}"
+
+    if conf_lines:
+        conf_changed, new_conf_lines, ini_changes = execute_table_rules_ini(
+            conf_lines, initial_ver, initial_unversioned
+        )
+        all_changes.extend(ini_changes)
+        conf_lines = new_conf_lines
+
     needed = bool(all_changes) or config_changed or conf_changed
-
     config_backup = ""
     conf_backup = ""
 
@@ -324,34 +443,45 @@ def main() -> int:
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         try:
-            if config_changed and config_data is not None and args.config.is_file():
-                backup_dir = args.config.parent / "backups"
+            if (
+                config_changed
+                and config_data is not None
+                and real_config_path.is_file()
+            ):
+                backup_dir = real_config_path.parent / "backups"
                 backup_dir.mkdir(parents=True, exist_ok=True)
-                backup_path = backup_dir / f"config.json.bak.{ts}"
+                backup_path = (
+                    backup_dir / f"{real_config_path.name}.bak.{ts}"
+                )
                 backup_path.write_text(raw_config, encoding="utf-8")
                 config_backup = str(backup_path)
 
-                # Atomic write via temporary file
-                tmp_config = args.config.with_name(args.config.name + f".tmp.{ts}")
+                # Atomic write on real file path to preserve existing symlinks
+                tmp_config = real_config_path.with_name(
+                    f"{real_config_path.name}.tmp.{ts}"
+                )
                 tmp_config.write_text(
-                    json.dumps(config_data, indent=4, ensure_ascii=False) + "\n",
+                    json.dumps(config_data, indent=4, ensure_ascii=False)
+                    + "\n",
                     encoding="utf-8",
                 )
-                os.replace(tmp_config, args.config)
+                os.replace(tmp_config, real_config_path)
 
-            if conf_changed and args.conf.is_file():
-                backup_dir = args.conf.parent / "backups"
+            if conf_changed and real_conf_path.is_file():
+                backup_dir = real_conf_path.parent / "backups"
                 backup_dir.mkdir(parents=True, exist_ok=True)
-                backup_path = backup_dir / f"vinput.conf.bak.{ts}"
+                backup_path = backup_dir / f"{real_conf_path.name}.bak.{ts}"
                 backup_path.write_text(raw_conf, encoding="utf-8")
                 conf_backup = str(backup_path)
 
-                # Atomic write via temporary file
-                tmp_conf = args.conf.with_name(args.conf.name + f".tmp.{ts}")
+                # Atomic write on real file path to preserve existing symlinks
+                tmp_conf = real_conf_path.with_name(
+                    f"{real_conf_path.name}.tmp.{ts}"
+                )
                 tmp_conf.write_text(
                     "\n".join(conf_lines) + "\n", encoding="utf-8"
                 )
-                os.replace(tmp_conf, args.conf)
+                os.replace(tmp_conf, real_conf_path)
         except OSError as exc:
             error_msg = f"Failed to apply configuration migration: {exc}"
 
@@ -362,8 +492,8 @@ def main() -> int:
             "needed": needed,
             "applied": applied,
             "dry_run": args.dry_run,
-            "config_file": str(args.config),
-            "conf_file": str(args.conf),
+            "config_file": str(config_symlink),
+            "conf_file": str(conf_symlink),
             "config_backup": config_backup,
             "conf_backup": conf_backup,
             "changes": all_changes,
