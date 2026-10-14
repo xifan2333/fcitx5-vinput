@@ -167,6 +167,12 @@ def _apply_action_to_target(
                 )
             else:
                 parent.pop(key, None)
+                changes.append(
+                    {
+                        "file": "config.json",
+                        "description": f"{desc}.{key}: removed obsolete duplicate key '{key}'",
+                    }
+                )
             return True
 
     elif action == "remove":
@@ -460,12 +466,16 @@ def main() -> int:
                 tmp_config = real_config_path.with_name(
                     f"{real_config_path.name}.tmp.{ts}"
                 )
-                tmp_config.write_text(
-                    json.dumps(config_data, indent=4, ensure_ascii=False)
-                    + "\n",
-                    encoding="utf-8",
-                )
-                os.replace(tmp_config, real_config_path)
+                try:
+                    tmp_config.write_text(
+                        json.dumps(config_data, indent=4, ensure_ascii=False)
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    os.replace(tmp_config, real_config_path)
+                except OSError:
+                    tmp_config.unlink(missing_ok=True)
+                    raise
 
             if conf_changed and real_conf_path.is_file():
                 backup_dir = real_conf_path.parent / "backups"
@@ -478,10 +488,14 @@ def main() -> int:
                 tmp_conf = real_conf_path.with_name(
                     f"{real_conf_path.name}.tmp.{ts}"
                 )
-                tmp_conf.write_text(
-                    "\n".join(conf_lines) + "\n", encoding="utf-8"
-                )
-                os.replace(tmp_conf, real_conf_path)
+                try:
+                    tmp_conf.write_text(
+                        "\n".join(conf_lines) + "\n", encoding="utf-8"
+                    )
+                    os.replace(tmp_conf, real_conf_path)
+                except OSError:
+                    tmp_conf.unlink(missing_ok=True)
+                    raise
         except OSError as exc:
             error_msg = f"Failed to apply configuration migration: {exc}"
 
