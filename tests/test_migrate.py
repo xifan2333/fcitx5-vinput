@@ -12,7 +12,7 @@ MIGRATE_SCRIPT = ROOT / "data" / "scripts" / "migrate"
 
 
 def run_migrate(*args: str) -> tuple[int, str, str]:
-    cmd = [sys.executable, str(MIGRATE_SCRIPT)] + list(args)
+    cmd = [sys.executable, str(MIGRATE_SCRIPT), *args]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     return proc.returncode, proc.stdout, proc.stderr
 

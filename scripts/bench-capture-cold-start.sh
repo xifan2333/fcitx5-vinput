@@ -34,38 +34,38 @@ FOLLOW=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --since)
-      SINCE="${2:?}"
-      shift 2
-      ;;
-    --follow|-f)
-      FOLLOW=1
-      shift
-      ;;
-    -h|--help)
-      sed -n '2,40p' "$0"
-      exit 0
-      ;;
-    *)
-      echo "unknown arg: $1" >&2
-      exit 2
-      ;;
+  --since)
+    SINCE="${2:?}"
+    shift 2
+    ;;
+  --follow | -f)
+    FOLLOW=1
+    shift
+    ;;
+  -h | --help)
+    sed -n '2,40p' "$0"
+    exit 0
+    ;;
+  *)
+    echo "unknown arg: $1" >&2
+    exit 2
+    ;;
   esac
 done
 
 UNIT="vinput-daemon.service"
 
 if [[ "$FOLLOW" -eq 1 ]]; then
-  exec journalctl --user -u "$UNIT" -f --no-pager | \
+  exec journalctl --user -u "$UNIT" -f --no-pager |
     rg --line-buffered 'capture begin|start timing|first buffer|first non-silent|VAD trimmed|negotiated format|recording started|recording stopped'
 fi
 
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
-journalctl --user -u "$UNIT" --since "$SINCE" --no-pager 2>/dev/null | \
+journalctl --user -u "$UNIT" --since "$SINCE" --no-pager 2>/dev/null |
   rg 'first non-silent audio after|capture first buffer after|capture begin idle_gap|start timing |capture first_buffer_ms=|VAD trimmed' \
-  >"$TMP" || true
+    >"$TMP" || true
 
 python3 - "$TMP" <<'PY'
 import re, sys

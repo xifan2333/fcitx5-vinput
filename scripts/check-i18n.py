@@ -172,13 +172,7 @@ def main() -> int:
         for d in SRC_DIRS:
             p = PROJECT_ROOT / d
             if p.is_dir():
-                src_files.extend(
-                    sorted(
-                        str(f)
-                        for f in p.rglob("*")
-                        if f.suffix in (".cpp", ".h")
-                    )
-                )
+                src_files.extend(sorted(str(f) for f in p.rglob("*") if f.suffix in (".cpp", ".h")))
 
         subprocess.run(
             [
