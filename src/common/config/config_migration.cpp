@@ -6,9 +6,11 @@
 #include <ctime>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -34,10 +36,10 @@ struct MigrationRule {
   std::string_view target_file;
   ActionType action;
   std::string_view path;
-  std::string_view new_key = {};
-  nlohmann::json default_value = {};
-  nlohmann::json expected_value = {};
-  nlohmann::json to_value = {};
+  std::string_view new_key;
+  nlohmann::json default_value;
+  nlohmann::json expected_value;
+  nlohmann::json to_value;
 };
 
 const std::vector<MigrationRule>& GetRules() {
@@ -110,7 +112,7 @@ std::string GenerateTimestamp() {
   localtime_r(&time_t_now, &tm_buf);
   char buf[32];
   std::strftime(buf, sizeof(buf), "%Y%m%d-%H%M%S", &tm_buf);
-  return std::string(buf);
+  return {buf};
 }
 
 std::vector<std::string_view> SplitPath(std::string_view path) {
@@ -229,9 +231,10 @@ bool WalkAndApply(nlohmann::json& node, std::span<const std::string_view> segmen
 
   if (seg == "*") {
     if (node.is_object()) {
-      for (auto& [k, child] : node.items()) {
-        const std::string child_desc = desc.empty() ? k : std::string(desc) + "." + k;
-        if (WalkAndApply(child, sub_segments, child_desc, rule, changes)) {
+      for (auto& item : node.items()) {
+        const std::string child_desc =
+            desc.empty() ? item.key() : std::string(desc) + "." + item.key();
+        if (WalkAndApply(item.value(), sub_segments, child_desc, rule, changes)) {
           any_changed = true;
         }
       }
@@ -425,7 +428,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
 
   std::vector<std::string> conf_lines;
   if (conf_exists) {
-    std::string_view sv(raw_conf);
+    const std::string_view sv(raw_conf);
     size_t start = 0;
     while (start <= sv.size()) {
       const size_t end = sv.find('\n', start);

@@ -1,8 +1,8 @@
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <string>
 #include <system_error>
 
