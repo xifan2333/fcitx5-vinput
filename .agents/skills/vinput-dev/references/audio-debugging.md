@@ -22,12 +22,13 @@ vinput daemon logs -f
 
 ---
 
-## 2. Benchmarking Audio Capture Cold-Start
+## 2. Inspecting Audio Capture Stream Events
 
-To measure PipeWire stream connection latency and cold-start time:
+To inspect PipeWire stream connection events and timing, enable debug logging and search journal:
 
 ```bash
-bash scripts/bench-capture-cold-start.sh
+# Search capture events in journal
+journalctl --user -u vinput-daemon.service -g "capture"
 ```
 
 ---

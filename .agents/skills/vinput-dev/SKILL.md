@@ -99,4 +99,4 @@ Read **[references/ecosystem.md](references/ecosystem.md)**
 ### Task: Debugging Audio Capture or Daemon Issues
 Read **[references/audio-debugging.md](references/audio-debugging.md)**
 - Inspecting live `vinput-daemon.service` journal logs and `VINPUT_DEBUG=1` mode.
-- Benchmarking PipeWire stream cold-start latency.
+- PipeWire stream capture debugging and common diagnostic commands.

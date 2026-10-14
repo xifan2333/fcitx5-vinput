@@ -97,7 +97,6 @@ Environment=VINPUT_CAPTURE_IDLE_DESTROY_MS=15000
 1. 录一次，停住并等待超过宽限时间。
 2. 日志应出现：`capture idle grace expired; destroying reusable stream`。
 3. 可用 `pw-top` / 桌面麦克风指示灯确认宽限后不再占用采集。
-4. 冷启动指标：`./scripts/bench-capture-cold-start.sh --since "1 hour ago"`（需 `VINPUT_DEBUG=1`）。
 
 ## 录音时降低输出音量
 

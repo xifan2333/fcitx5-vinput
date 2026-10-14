@@ -97,7 +97,6 @@ Verify on your machine:
 1. Record once, then wait past the grace period without recording.
 2. Confirm daemon logs: `capture idle grace expired; destroying reusable stream`.
 3. Optionally inspect PipeWire (`pw-top` / desktop mic indicator) — after grace, Vinput should not hold an active capture stream.
-4. Cold-start metrics: `./scripts/bench-capture-cold-start.sh --since "1 hour ago"` (requires `VINPUT_DEBUG=1`).
 
 ## Reduce output volume while recording
 
