@@ -64,7 +64,7 @@ inline std::string_view AsrProviderType(const AsrProvider& p) {
 }
 
 struct CoreConfig {
-  int version = 0;
+  std::string version = ">=2.4.0";
   struct Registry {
     std::vector<std::string> baseUrls;
   } registry;

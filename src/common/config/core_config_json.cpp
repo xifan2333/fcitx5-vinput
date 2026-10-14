@@ -336,7 +336,13 @@ void to_json(json& j, const CoreConfig& p) {
 }
 
 void from_json(const json& j, CoreConfig& p) {
-  p.version = j.value("version", p.version);
+  if (j.contains("version")) {
+    if (j["version"].is_string()) {
+      p.version = j["version"].get<std::string>();
+    } else if (j["version"].is_number()) {
+      p.version = std::to_string(j["version"].get<int>());
+    }
+  }
   if (j.contains("registry")) {
     p.registry = j.at("registry").get<CoreConfig::Registry>();
   }

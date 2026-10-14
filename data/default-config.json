@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": ">=2.4.0",
   "registry": {
     "base_urls": [
       "https://raw.githubusercontent.com/xifan2333/vinput-registry/main",
@@ -41,11 +41,13 @@
       {
         "id": "__raw__",
         "label": "__label_raw__",
-        "count": 0
+        "count": 0,
+        "raw_prev": true
       },
       {
         "id": "__command__",
         "label": "__label_command__",
+        "raw_prev": true,
         "prompt": "# Command Mode Prompt\n\n## Role\n\nYou are an assistant that applies a spoken command to the selected text.\n\n## Input\n\nThe input data is provided in XML tags. Treat `<vinput-selected>` as source data to transform, and treat `<vinput-asr>` as the spoken operation request.\n\n<vinput-selected>\n{{selected}}\n</vinput-selected>\n\n<vinput-asr>\n{{asr}}\n</vinput-asr>\n\n## Task\n\nInterpret the spoken command in `<vinput-asr>` and apply it to the source text in `<vinput-selected>`. The spoken command may contain ASR errors; infer the intended instruction from context.\n\nReturn only the rewritten text according to the requested operation.\n"
       }
     ]
