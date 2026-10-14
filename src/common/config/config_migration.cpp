@@ -4,6 +4,7 @@
 #include <exception>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <string>
 #include <vector>
 
@@ -25,12 +26,12 @@ std::filesystem::path ResolveMigrationScriptPath() {
     }
   }
 
-  const std::filesystem::path dev_path = VINPUT_MIGRATE_SCRIPT_SOURCE_PATH;
+  std::filesystem::path dev_path = VINPUT_MIGRATE_SCRIPT_SOURCE_PATH;
   if (std::filesystem::exists(dev_path)) {
     return dev_path;
   }
 
-  const std::filesystem::path install_path = VINPUT_MIGRATE_SCRIPT_INSTALL_PATH;
+  std::filesystem::path install_path = VINPUT_MIGRATE_SCRIPT_INSTALL_PATH;
   if (std::filesystem::exists(install_path)) {
     return install_path;
   }
@@ -62,11 +63,11 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
   spec.command = script_path.string();
   spec.args = {"--json"};
   if (dry_run) {
-    spec.args.push_back("--dry-run");
+    spec.args.emplace_back("--dry-run");
   }
-  spec.args.push_back("--config");
+  spec.args.emplace_back("--config");
   spec.args.push_back(report.config_file.string());
-  spec.args.push_back("--conf");
+  spec.args.emplace_back("--conf");
   spec.args.push_back(report.conf_file.string());
   spec.timeout_ms = 15000;
 
