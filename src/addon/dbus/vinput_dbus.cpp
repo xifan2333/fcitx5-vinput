@@ -309,30 +309,44 @@ void VinputEngine::setupDBusWatcher() {
   if (!bus_)
     return;
 
+  std::weak_ptr<bool> token = lifetime_token_;
+
   fcitx::dbus::MatchRule result_rule(kBusName, kObjectPath, kInterface, kSignalRecognitionResult);
 
-  result_slot_ = bus_->addMatch(result_rule, [this](fcitx::dbus::Message& msg) {
+  result_slot_ = bus_->addMatch(result_rule, [this, token](fcitx::dbus::Message& msg) {
+    if (token.expired()) {
+      return true;
+    }
     onRecognitionResult(msg);
     return true;
   });
 
   fcitx::dbus::MatchRule partial_rule(kBusName, kObjectPath, kInterface, kSignalRecognitionPartial);
 
-  partial_slot_ = bus_->addMatch(partial_rule, [this](fcitx::dbus::Message& msg) {
+  partial_slot_ = bus_->addMatch(partial_rule, [this, token](fcitx::dbus::Message& msg) {
+    if (token.expired()) {
+      return true;
+    }
     onRecognitionPartial(msg);
     return true;
   });
 
   fcitx::dbus::MatchRule status_rule(kBusName, kObjectPath, kInterface, kSignalStatusChanged);
 
-  status_slot_ = bus_->addMatch(status_rule, [this](fcitx::dbus::Message& msg) {
+  status_slot_ = bus_->addMatch(status_rule, [this, token](fcitx::dbus::Message& msg) {
+    if (token.expired()) {
+      return true;
+    }
     onStatusChanged(msg);
     return true;
   });
 
   fcitx::dbus::MatchRule error_rule(kBusName, kObjectPath, kInterface, kSignalDaemonNotification);
 
-  error_slot_ = bus_->addMatch(error_rule, [this](fcitx::dbus::Message& msg) {
+  error_slot_ = bus_->addMatch(error_rule, [this, token](fcitx::dbus::Message& msg) {
+    if (token.expired()) {
+      return true;
+    }
     onDaemonNotification(msg);
     return true;
   });
@@ -471,9 +485,13 @@ void VinputEngine::ensureStatusSync() {
   }
 
   if (!status_sync_event_) {
+    std::weak_ptr<bool> token = lifetime_token_;
     status_sync_event_ = instance_->eventLoop().addTimeEvent(
         CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + kStatusSyncIntervalUsec, 0,
-        [this](fcitx::EventSourceTime* event, uint64_t) {
+        [this, token](fcitx::EventSourceTime* event, uint64_t) {
+          if (token.expired()) {
+            return false;
+          }
           syncFrontendWithDaemonStatus();
           if (!(session_.has_value() || status_ic_ != nullptr)) {
             return false;

@@ -434,8 +434,12 @@ void VinputEngine::scheduleStopRecording() {
           std::chrono::duration_cast<std::chrono::microseconds>(kReleaseDebounce).count());
 
   if (!pending_stop_event_) {
+    std::weak_ptr<bool> token = lifetime_token_;
     pending_stop_event_ = instance_->eventLoop().addTimeEvent(kDefaultClock, fire_at_usec, 0,
-                                                              [this](auto*, uint64_t) {
+                                                              [this, token](auto*, uint64_t) {
+                                                                if (token.expired()) {
+                                                                  return false;
+                                                                }
                                                                 finishStopRecording();
                                                                 return false;
                                                               });
