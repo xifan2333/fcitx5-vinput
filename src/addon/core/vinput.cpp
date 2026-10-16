@@ -7,12 +7,14 @@
 #include <fcitx-utils/event.h>
 #include <fcitx/inputcontext.h>
 #include <fstream>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
 
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
+#include "common/dbus/error_info.h"
 #include "common/i18n.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/file_utils.h"
@@ -179,7 +181,7 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
   auto* dbus_addon = instance_->addonManager().addon("dbus");
   if (dbus_addon) {
     bus_ = dbus_addon->call<fcitx::IDBusModule::bus>();
-    std::weak_ptr<bool> token = lifetime_token_;
+    const std::weak_ptr<bool> token = lifetime_token_;
     notifier_dbus_ = std::make_unique<VinputNotifierDBusObject>(
         [this, token](const vinput::dbus::ErrorInfo& notification) {
           if (token.expired()) {
@@ -397,7 +399,7 @@ void VinputEngine::accumulateContextBuffer(const std::string& text, fcitx::Input
   // Reset 5s inactivity timer.
   const auto fire_at = fcitx::now(CLOCK_MONOTONIC) + kContextFlushDelayUsec;
   if (!context_flush_timer_) {
-    std::weak_ptr<bool> token = lifetime_token_;
+    const std::weak_ptr<bool> token = lifetime_token_;
     context_flush_timer_ = instance_->eventLoop().addTimeEvent(
         CLOCK_MONOTONIC, fire_at, 0, [this, token](fcitx::EventSourceTime*, uint64_t) {
           if (token.expired()) {

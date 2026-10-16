@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <ctime>
 #include <fcitx-utils/event.h>
+#include <fcitx-utils/eventloopinterface.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
@@ -11,6 +12,7 @@
 #include <fcitx-utils/utf8.h>
 #include <fcitx/inputcontext.h>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -434,7 +436,7 @@ void VinputEngine::scheduleStopRecording() {
           std::chrono::duration_cast<std::chrono::microseconds>(kReleaseDebounce).count());
 
   if (!pending_stop_event_) {
-    std::weak_ptr<bool> token = lifetime_token_;
+    const std::weak_ptr<bool> token = lifetime_token_;
     pending_stop_event_ = instance_->eventLoop().addTimeEvent(kDefaultClock, fire_at_usec, 0,
                                                               [this, token](auto*, uint64_t) {
                                                                 if (token.expired()) {

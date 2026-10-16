@@ -4,6 +4,7 @@
 #include <fcitx-utils/dbus/message.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -309,7 +310,7 @@ void VinputEngine::setupDBusWatcher() {
   if (!bus_)
     return;
 
-  std::weak_ptr<bool> token = lifetime_token_;
+  const std::weak_ptr<bool> token = lifetime_token_;
 
   fcitx::dbus::MatchRule result_rule(kBusName, kObjectPath, kInterface, kSignalRecognitionResult);
 
@@ -360,7 +361,7 @@ bool VinputEngine::callStartRecording() {
     return false;
   }
   auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStartRecording);
-  std::weak_ptr<bool> token = lifetime_token_;
+  const std::weak_ptr<bool> token = lifetime_token_;
   pending_start_call_slot_ = msg.callAsync(
       vinput::runtime::kDbusCallTimeoutUsec, [this, token](fcitx::dbus::Message& reply) {
         if (token.expired()) {
@@ -400,7 +401,7 @@ bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
   auto msg =
       bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStartCommandRecording);
   msg << selected_text;
-  std::weak_ptr<bool> token = lifetime_token_;
+  const std::weak_ptr<bool> token = lifetime_token_;
   pending_start_call_slot_ = msg.callAsync(
       vinput::runtime::kDbusCallTimeoutUsec, [this, token](fcitx::dbus::Message& reply) {
         if (token.expired()) {
@@ -437,7 +438,7 @@ bool VinputEngine::callStopRecording(const std::string& scene_id) {
   }
   auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStopRecording);
   msg << scene_id;
-  std::weak_ptr<bool> token = lifetime_token_;
+  const std::weak_ptr<bool> token = lifetime_token_;
   pending_stop_call_slot_ = msg.callAsync(
       vinput::runtime::kDbusCallTimeoutUsec, [this, token](fcitx::dbus::Message& reply) {
         if (token.expired()) {
@@ -485,7 +486,7 @@ void VinputEngine::ensureStatusSync() {
   }
 
   if (!status_sync_event_) {
-    std::weak_ptr<bool> token = lifetime_token_;
+    const std::weak_ptr<bool> token = lifetime_token_;
     status_sync_event_ = instance_->eventLoop().addTimeEvent(
         CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + kStatusSyncIntervalUsec, 0,
         [this, token](fcitx::EventSourceTime* event, uint64_t) {

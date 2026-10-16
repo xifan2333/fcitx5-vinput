@@ -10,6 +10,7 @@
 #include <fcitx/instance.h>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -195,7 +196,7 @@ void runAllTests() {
   std::cout << "--- 6. Testing VinputEngine lifetime_token_ UAF Guard ---\n";
   std::weak_ptr<bool> token;
   {
-    VinputEngine scoped_engine(&instance);
+    const VinputEngine scoped_engine(&instance);
     token = scoped_engine.lifetimeToken();
     expect(!token.expired(), "lifetimeToken must be valid while engine is alive");
     auto shared = token.lock();
