@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
+#include <fcitx-utils/event.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 #include <memory>
