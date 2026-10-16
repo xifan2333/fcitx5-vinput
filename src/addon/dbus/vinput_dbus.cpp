@@ -346,8 +346,12 @@ bool VinputEngine::callStartRecording() {
     return false;
   }
   auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStartRecording);
-  pending_start_call_slot_ =
-      msg.callAsync(vinput::runtime::kDbusCallTimeoutUsec, [this](fcitx::dbus::Message& reply) {
+  std::weak_ptr<bool> token = lifetime_token_;
+  pending_start_call_slot_ = msg.callAsync(
+      vinput::runtime::kDbusCallTimeoutUsec, [this, token](fcitx::dbus::Message& reply) {
+        if (token.expired()) {
+          return true;
+        }
         auto slot = std::move(pending_start_call_slot_);
         if (!reply || reply.isError()) {
           noteDaemonSyncFailure();
@@ -382,8 +386,12 @@ bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
   auto msg =
       bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStartCommandRecording);
   msg << selected_text;
-  pending_start_call_slot_ =
-      msg.callAsync(vinput::runtime::kDbusCallTimeoutUsec, [this](fcitx::dbus::Message& reply) {
+  std::weak_ptr<bool> token = lifetime_token_;
+  pending_start_call_slot_ = msg.callAsync(
+      vinput::runtime::kDbusCallTimeoutUsec, [this, token](fcitx::dbus::Message& reply) {
+        if (token.expired()) {
+          return true;
+        }
         auto slot = std::move(pending_start_call_slot_);
         if (!reply || reply.isError()) {
           noteDaemonSyncFailure();
@@ -415,8 +423,12 @@ bool VinputEngine::callStopRecording(const std::string& scene_id) {
   }
   auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStopRecording);
   msg << scene_id;
-  pending_stop_call_slot_ =
-      msg.callAsync(vinput::runtime::kDbusCallTimeoutUsec, [this](fcitx::dbus::Message& reply) {
+  std::weak_ptr<bool> token = lifetime_token_;
+  pending_stop_call_slot_ = msg.callAsync(
+      vinput::runtime::kDbusCallTimeoutUsec, [this, token](fcitx::dbus::Message& reply) {
+        if (token.expired()) {
+          return true;
+        }
         auto slot = std::move(pending_stop_call_slot_);
         if (!reply || reply.isError()) {
           noteDaemonSyncFailure();
