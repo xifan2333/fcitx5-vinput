@@ -1006,6 +1006,11 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
+  if (!candidate_list || candidate_list->empty() || result_candidates_.empty()) {
+    hideResultMenu();
+    return false;
+  }
+
   if (keyEvent.key().checkKeyList(page_prev_keys_)) {
     ChangeCandidatePage(result_menu_ic_, ResultMenuTitle(result_candidates_.size()), false);
     keyEvent.filterAndAccept();
@@ -1019,7 +1024,7 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   const int digit = keyEvent.key().digitSelection();
-  if (digit >= 0 && digit < candidate_list->size()) {
+  if (candidate_list && digit >= 0 && digit < candidate_list->size()) {
     candidate_list->candidate(digit).select(result_menu_ic_);
     keyEvent.filterAndAccept();
     return true;
@@ -1040,11 +1045,11 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter)) {
-    int index = candidate_list->cursorIndex();
+    int index = candidate_list ? candidate_list->cursorIndex() : -1;
     if (index < 0) {
       index = 0;
     }
-    if (index >= 0 && index < candidate_list->size()) {
+    if (candidate_list && index >= 0 && index < candidate_list->size()) {
       candidate_list->candidate(index).select(result_menu_ic_);
     } else {
       hideResultMenu();
