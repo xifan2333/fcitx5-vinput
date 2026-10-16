@@ -48,6 +48,7 @@ public:
   [[nodiscard]] bool isRecordingActive() const;
   [[nodiscard]] bool isHoldRecording() const;
   [[nodiscard]] bool isPendingStart() const;
+  [[nodiscard]] std::weak_ptr<bool> lifetimeToken() const { return lifetime_token_; }
   [[nodiscard]] static int matchKeyListIndex(const fcitx::Key& event_key,
                                              const fcitx::KeyList& list, bool is_release);
 
