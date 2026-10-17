@@ -1,6 +1,7 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstddef>
 #include <cstdlib>
 #include <fcntl.h>
@@ -163,8 +164,21 @@ void TestSpawnForMonitoring() {
 
   close(process.stderr_fd);
   int status = -1;
-  waitpid(process.pid, &status, 0);
-
+  bool exited = false;
+  const auto exit_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < exit_deadline) {
+    const pid_t wait_rc = waitpid(process.pid, &status, WNOHANG);
+    if (wait_rc == process.pid) {
+      exited = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!exited) {
+    kill(process.pid, SIGKILL);
+    waitpid(process.pid, nullptr, 0);
+  }
+  ExpectTrue(exited, "Child process should exit within deadline");
   ExpectTrue(stderr_output.find("test_var=safe_spawn_ok") != std::string::npos,
              "Child process should receive environment variable via BuildEnvp (got: " +
                  stderr_output + ")");
