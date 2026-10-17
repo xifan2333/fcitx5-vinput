@@ -274,12 +274,8 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
 const char kFaviconSvg[] =
     R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#1f9d87"/><path d="M32 12c-5 0-9 4-9 9v16c0 5 4 9 9 9s9-4 9-9V21c0-5-4-9-9-9z" fill="#fff"/><path d="M17 33c0 8 7 15 15 15s15-7 15-15" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M32 48v8" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>)SVG";
 
-using vinput::str::Base64Encode;
-using vinput::str::ToLowerAscii;
-using vinput::str::TrimAsciiWhitespace;
-
 std::optional<int> ParsePositiveInt(std::string_view value) {
-  const std::string trimmed = TrimAsciiWhitespace(value);
+  const std::string trimmed = vinput::str::TrimAsciiWhitespace(value);
   if (trimmed.empty()) {
     return std::nullopt;
   }
@@ -298,11 +294,11 @@ std::string EnvValue(const std::map<std::string, std::string>& env, std::string_
   if (it == env.end()) {
     return {};
   }
-  return TrimAsciiWhitespace(it->second);
+  return vinput::str::TrimAsciiWhitespace(it->second);
 }
 
 std::optional<int> ParsePortFromWsUrl(std::string_view url) {
-  const std::string text = TrimAsciiWhitespace(url);
+  const std::string text = vinput::str::TrimAsciiWhitespace(url);
   const std::size_t scheme = text.find("://");
   if (scheme == std::string::npos) {
     return std::nullopt;
@@ -345,7 +341,7 @@ std::optional<std::string> Sha1Base64(std::string_view text) {
   if (!ok) {
     return std::nullopt;
   }
-  return Base64Encode(digest, digest_size);
+  return vinput::str::Base64Encode(digest, digest_size);
 }
 
 bool WriteAll(int fd, std::string_view data) {
@@ -426,8 +422,9 @@ std::optional<HttpRequestInfo> ParseHttpRequest(const std::string& request) {
     if (colon == std::string::npos) {
       continue;
     }
-    std::string name = ToLowerAscii(TrimAsciiWhitespace(std::string_view(line).substr(0, colon)));
-    std::string value = TrimAsciiWhitespace(std::string_view(line).substr(colon + 1));
+    std::string name = vinput::str::ToLowerAscii(
+        vinput::str::TrimAsciiWhitespace(std::string_view(line).substr(0, colon)));
+    std::string value = vinput::str::TrimAsciiWhitespace(std::string_view(line).substr(colon + 1));
     if (!name.empty()) {
       info.headers[std::move(name)] = std::move(value);
     }
@@ -441,11 +438,11 @@ std::string BearerToken(const std::map<std::string, std::string>& headers) {
     return {};
   }
   constexpr std::string_view prefix = "Bearer ";
-  const std::string value = TrimAsciiWhitespace(it->second);
+  const std::string value = vinput::str::TrimAsciiWhitespace(it->second);
   if (!std::string_view(value).starts_with(prefix)) {
     return {};
   }
-  return TrimAsciiWhitespace(std::string_view(value).substr(prefix.size()));
+  return vinput::str::TrimAsciiWhitespace(std::string_view(value).substr(prefix.size()));
 }
 
 bool SendWebSocketHandshake(int fd, const HttpRequestInfo& request) {

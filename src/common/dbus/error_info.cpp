@@ -10,8 +10,6 @@ namespace vinput::dbus {
 
 namespace {
 
-using vinput::str::TrimAsciiWhitespace;
-
 bool ConsumePrefix(std::string_view* text, std::string_view prefix) {
   if (!text->starts_with(prefix)) {
     return false;
@@ -69,21 +67,21 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
     }
     if (ConsumePrefix(&tail, "failed to start. ")) {
       return MakeErrorInfo(kErrorCodeAsrProviderStartFailed, std::string(value),
-                           TrimAsciiWhitespace(tail), original);
+                           vinput::str::TrimAsciiWhitespace(tail), original);
     }
     if (tail == "timed out.") {
       return MakeErrorInfo(kErrorCodeAsrProviderTimeout, std::string(value), {}, original);
     }
     if (ConsumePrefix(&tail, "timed out. ")) {
       return MakeErrorInfo(kErrorCodeAsrProviderTimeout, std::string(value),
-                           TrimAsciiWhitespace(tail), original);
+                           vinput::str::TrimAsciiWhitespace(tail), original);
     }
     if (tail == "failed.") {
       return MakeErrorInfo(kErrorCodeAsrProviderFailed, std::string(value), {}, original);
     }
     if (ConsumePrefix(&tail, "failed. ")) {
       return MakeErrorInfo(kErrorCodeAsrProviderFailed, std::string(value),
-                           TrimAsciiWhitespace(tail), original);
+                           vinput::str::TrimAsciiWhitespace(tail), original);
     }
     if (tail == "returned no text.") {
       return MakeErrorInfo(kErrorCodeAsrProviderNoText, std::string(value), {}, original);
@@ -112,7 +110,8 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
       }
       return nested;
     }
-    return MakeErrorInfo(kErrorCodeStartRecordingFailed, {}, TrimAsciiWhitespace(text), original);
+    return MakeErrorInfo(kErrorCodeStartRecordingFailed, {}, vinput::str::TrimAsciiWhitespace(text),
+                         original);
   }
   if (text == "Failed to start recording.") {
     return MakeErrorInfo(kErrorCodeStartRecordingFailed, {}, {}, original);
@@ -126,8 +125,8 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
       }
       return nested;
     }
-    return MakeErrorInfo(kErrorCodeStartCommandRecordingFailed, {}, TrimAsciiWhitespace(text),
-                         original);
+    return MakeErrorInfo(kErrorCodeStartCommandRecordingFailed, {},
+                         vinput::str::TrimAsciiWhitespace(text), original);
   }
   if (text == "Failed to start command recording.") {
     return MakeErrorInfo(kErrorCodeStartCommandRecordingFailed, {}, {}, original);
@@ -142,21 +141,21 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
   }
 
   if (ConsumePrefix(&text, "Failed to apply ASR backend reload.")) {
-    const std::string detail = TrimAsciiWhitespace(text);
+    const std::string detail = vinput::str::TrimAsciiWhitespace(text);
     return MakeErrorInfo(kErrorCodeAsrBackendReloadFailed, {}, detail, original);
   }
 
   if (ConsumePrefix(&text, "Failed to reload ASR backend.")) {
-    const std::string detail = TrimAsciiWhitespace(text);
+    const std::string detail = vinput::str::TrimAsciiWhitespace(text);
     return MakeErrorInfo(kErrorCodeAsrBackendReloadFailed, {}, detail, original);
   }
 
   if (ConsumePrefix(&text, "missing 'vinput-model.json' in ")) {
-    return MakeErrorInfo(kErrorCodeLocalAsrModelConfigMissing, {}, TrimAsciiWhitespace(text),
-                         original);
+    return MakeErrorInfo(kErrorCodeLocalAsrModelConfigMissing, {},
+                         vinput::str::TrimAsciiWhitespace(text), original);
   }
 
-  const std::string normalized_text = TrimAsciiWhitespace(text);
+  const std::string normalized_text = vinput::str::TrimAsciiWhitespace(text);
   std::string_view normalized(normalized_text);
 
   if (normalized == "Local ASR model configuration is missing.") {
@@ -180,7 +179,7 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
   if (ParseQuotedValue(normalized, "", &value, &tail) &&
       ConsumePrefix(&tail, " contains invalid path for '")) {
     return MakeErrorInfo(kErrorCodeLocalAsrModelInvalidPath, std::string(value),
-                         TrimAsciiWhitespace(tail), original);
+                         vinput::str::TrimAsciiWhitespace(tail), original);
   }
 
   if (ParseQuotedValue(normalized, "tokens file not found for model ", &value, nullptr)) {
@@ -194,13 +193,13 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
   if (ParseQuotedValue(normalized, "failed to resolve model root ", &value, &tail) &&
       ConsumePrefix(&tail, ": ")) {
     return MakeErrorInfo(kErrorCodeLocalAsrModelRootResolveFailed, std::string(value),
-                         TrimAsciiWhitespace(tail), original);
+                         vinput::str::TrimAsciiWhitespace(tail), original);
   }
 
   if (ParseQuotedValue(normalized, "failed to parse ", &value, &tail) &&
       ConsumePrefix(&tail, ": ")) {
     return MakeErrorInfo(kErrorCodeLocalAsrModelParseFailed, std::string(value),
-                         TrimAsciiWhitespace(tail), original);
+                         vinput::str::TrimAsciiWhitespace(tail), original);
   }
 
   if (ParseQuotedValue(normalized, "unsupported model family ", &value, nullptr)) {
@@ -227,7 +226,7 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
 
   if (ConsumePrefix(&normalized, "failed to start PipeWire thread loop: ")) {
     return MakeErrorInfo(kErrorCodePipeWireThreadLoopStartFailed, {},
-                         TrimAsciiWhitespace(normalized), original);
+                         vinput::str::TrimAsciiWhitespace(normalized), original);
   }
 
   normalized = text;
@@ -240,42 +239,44 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
   }
 
   if (ConsumePrefix(&normalized, "failed to connect PipeWire stream: ")) {
-    return MakeErrorInfo(kErrorCodePipeWireStreamConnectFailed, {}, TrimAsciiWhitespace(normalized),
-                         original);
+    return MakeErrorInfo(kErrorCodePipeWireStreamConnectFailed, {},
+                         vinput::str::TrimAsciiWhitespace(normalized), original);
   }
 
   normalized = text;
   if (ConsumePrefix(&normalized, "failed to create eventfd: ")) {
-    return MakeErrorInfo(kErrorCodeDbusEventfdCreateFailed, {}, TrimAsciiWhitespace(normalized),
-                         original);
+    return MakeErrorInfo(kErrorCodeDbusEventfdCreateFailed, {},
+                         vinput::str::TrimAsciiWhitespace(normalized), original);
   }
 
   normalized = text;
   if (ConsumePrefix(&normalized, "failed to open user bus: ")) {
-    return MakeErrorInfo(kErrorCodeDbusUserBusOpenFailed, {}, TrimAsciiWhitespace(normalized),
-                         original);
+    return MakeErrorInfo(kErrorCodeDbusUserBusOpenFailed, {},
+                         vinput::str::TrimAsciiWhitespace(normalized), original);
   }
 
   normalized = text;
   if (ConsumePrefix(&normalized, "failed to add D-Bus vtable: ")) {
-    return MakeErrorInfo(kErrorCodeDbusVtableAddFailed, {}, TrimAsciiWhitespace(normalized),
-                         original);
+    return MakeErrorInfo(kErrorCodeDbusVtableAddFailed, {},
+                         vinput::str::TrimAsciiWhitespace(normalized), original);
   }
 
   normalized = text;
   if (ConsumePrefix(&normalized, "failed to request D-Bus name: ")) {
-    return MakeErrorInfo(kErrorCodeDbusNameRequestFailed, {}, TrimAsciiWhitespace(normalized),
-                         original);
+    return MakeErrorInfo(kErrorCodeDbusNameRequestFailed, {},
+                         vinput::str::TrimAsciiWhitespace(normalized), original);
   }
 
   normalized = text;
   if (ConsumePrefix(&normalized, "LLM request failed: ")) {
-    return MakeErrorInfo(kErrorCodeLlmRequestFailed, {}, TrimAsciiWhitespace(normalized), original);
+    return MakeErrorInfo(kErrorCodeLlmRequestFailed, {},
+                         vinput::str::TrimAsciiWhitespace(normalized), original);
   }
 
   normalized = text;
   if (ConsumePrefix(&normalized, "HTTP ")) {
-    return MakeErrorInfo(kErrorCodeLlmHttpFailed, {}, TrimAsciiWhitespace(text), original);
+    return MakeErrorInfo(kErrorCodeLlmHttpFailed, {}, vinput::str::TrimAsciiWhitespace(text),
+                         original);
   }
 
   normalized = text;
@@ -284,7 +285,7 @@ ErrorInfo ClassifyKnownDetail(std::string_view text) {
     // (e.g. errno strings), so a naive split is unsafe — anchor on the
     // `file:///` URI and consume up to the first whitespace.
     static const std::regex kPromptLoadRe(R"(^(file:///\S+):\s+(.+)$)");
-    const std::string body = TrimAsciiWhitespace(normalized);
+    const std::string body = vinput::str::TrimAsciiWhitespace(normalized);
     std::smatch m;
     if (std::regex_match(body, m, kPromptLoadRe)) {
       return MakeErrorInfo(kErrorCodePromptFileLoadFailed, m[1].str(), m[2].str(), original);
@@ -316,7 +317,7 @@ ErrorInfo MakeRawError(std::string raw_message) {
 }
 
 ErrorInfo ClassifyErrorText(std::string_view message) {
-  std::string normalized = TrimAsciiWhitespace(message);
+  std::string normalized = vinput::str::TrimAsciiWhitespace(message);
   if (normalized.empty()) {
     return {};
   }

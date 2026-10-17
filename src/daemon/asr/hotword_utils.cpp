@@ -24,8 +24,6 @@ bool IsAsciiWhitespace(char c) {
   return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
-using vinput::str::TrimAsciiWhitespaceView;
-
 bool ValidateHotwordUtf8(std::string_view text, std::string* error) {
   auto fail = [&](std::size_t offset, std::string_view reason) {
     if (error) {
@@ -191,7 +189,7 @@ bool LooksLikeScore(std::string_view value) {
 }
 
 bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error) {
-  line = std::string(TrimAsciiWhitespaceView(line));
+  line = vinput::str::TrimAsciiWhitespace(line);
   if (line.empty()) {
     entry->text.clear();
     entry->score.clear();
@@ -215,8 +213,8 @@ bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error
   }
 
   const std::string raw_score = line.substr(colon + 1);
-  const std::string score = std::string(TrimAsciiWhitespaceView(raw_score));
-  const std::string text = std::string(TrimAsciiWhitespaceView(line.substr(0, colon)));
+  const std::string score = vinput::str::TrimAsciiWhitespace(raw_score);
+  const std::string text = vinput::str::TrimAsciiWhitespace(line.substr(0, colon));
   if (IsValidScore(score)) {
     const bool whitespace_before = colon > 0 && IsAsciiWhitespace(line[colon - 1]);
     const bool whitespace_after = raw_score != score;
