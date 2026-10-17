@@ -212,17 +212,6 @@ inline std::vector<std::string_view> SplitLines(std::string_view text) {
   return lines;
 }
 
-/**
- * @brief 从动态输入缓冲区中消费完整的行（以 '\n' 分隔，自动剥离末尾 '\r'）。
- *
- * 每解析出一行即调用一次回调函数 `on_line(std::string_view)`。
- * 消费完毕后，已处理的字节将从 buffer 开头安全移除。
- * 回调若返回 bool 且为 false，将提前中断消费，剩余字节保留在 buffer 中。
- *
- * @param buffer 待消费的累加文本缓冲区
- * @param on_line 逐行消费回调函数，签名为 void(std::string_view) 或 bool(std::string_view)
- * @param flush_tail 是否强制刷新尾部剩余的不完整行（常用于进程退出或管道关闭）
- */
 template <typename Callback>
 inline void DrainLinesFromBuffer(std::string& buffer, Callback on_line, bool flush_tail = false) {
   size_t processed = 0;
