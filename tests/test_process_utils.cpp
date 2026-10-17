@@ -1,11 +1,11 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstddef>
 #include <cstdlib>
 #include <fcntl.h>
 #include <iostream>
+#include <signal.h>
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -15,6 +15,8 @@
 #include "common/utils/process_utils.h"
 
 namespace {
+
+constexpr int kWaitNoHang = 1;
 
 void ExpectTrue(bool condition, const std::string& message) {
   if (!condition) {
@@ -167,7 +169,7 @@ void TestSpawnForMonitoring() {
   bool exited = false;
   const auto exit_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (std::chrono::steady_clock::now() < exit_deadline) {
-    const pid_t wait_rc = waitpid(process.pid, &status, WNOHANG);
+    const auto wait_rc = waitpid(process.pid, &status, kWaitNoHang);
     if (wait_rc == process.pid) {
       exited = true;
       break;
