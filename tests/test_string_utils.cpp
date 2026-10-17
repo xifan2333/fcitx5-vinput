@@ -6,13 +6,14 @@
 
 #include "common/utils/string_utils.h"
 
-#define TEST_ASSERT(cond)                                                                          \
-  do {                                                                                             \
-    if (!(cond)) {                                                                                 \
-      std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", #cond, __FILE__, __LINE__);          \
-      std::abort();                                                                                \
-    }                                                                                              \
-  } while (false)
+inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+  if (!condition) {
+    std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
+    std::abort();
+  }
+}
+
+#define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
 void TestTrimAsciiWhitespace() {
   using vinput::str::TrimAsciiWhitespace;

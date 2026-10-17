@@ -17,6 +17,7 @@
 #include <openssl/evp.h>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <sys/socket.h>
 #include <system_error>
