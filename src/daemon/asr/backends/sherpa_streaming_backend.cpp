@@ -14,10 +14,8 @@
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
-#include "daemon/asr/diagnostic_pcm.h"
 #include "daemon/asr/hotword_utils.h"
 #include "daemon/asr/sherpa_json_helpers.h"
-#include "daemon/asr/streaming_diagnostic_policy.h"
 
 namespace vinput::daemon::asr {
 
@@ -28,50 +26,6 @@ int ChooseNumThreads(const nlohmann::json& model_cfg, int runtime_default) {
     return runtime_default;
   }
   return JsonInt(model_cfg, "num_threads", 1);
-}
-
-void WriteLe16(FILE* file, uint16_t value) {
-  const unsigned char bytes[2] = {static_cast<unsigned char>(value & 0xff),
-                                  static_cast<unsigned char>((value >> 8) & 0xff)};
-  std::fwrite(bytes, 1, sizeof(bytes), file);
-}
-
-void WriteLe32(FILE* file, uint32_t value) {
-  const unsigned char bytes[4] = {
-      static_cast<unsigned char>(value & 0xff),
-      static_cast<unsigned char>((value >> 8) & 0xff),
-      static_cast<unsigned char>((value >> 16) & 0xff),
-      static_cast<unsigned char>((value >> 24) & 0xff),
-  };
-  std::fwrite(bytes, 1, sizeof(bytes), file);
-}
-
-bool DumpDebugWav(const char* path, std::span<const int16_t> pcm, int sample_rate) {
-  FILE* file = std::fopen(path, "wb");
-  if (!file) {
-    return false;
-  }
-
-  const uint32_t data_bytes = static_cast<uint32_t>(pcm.size() * sizeof(int16_t));
-  const uint32_t riff_size = 36 + data_bytes;
-  std::fwrite("RIFF", 1, 4, file);
-  WriteLe32(file, riff_size);
-  std::fwrite("WAVE", 1, 4, file);
-  std::fwrite("fmt ", 1, 4, file);
-  WriteLe32(file, 16);
-  WriteLe16(file, 1);
-  WriteLe16(file, 1);
-  WriteLe32(file, static_cast<uint32_t>(sample_rate));
-  WriteLe32(file, static_cast<uint32_t>(sample_rate * sizeof(int16_t)));
-  WriteLe16(file, sizeof(int16_t));
-  WriteLe16(file, 16);
-  std::fwrite("data", 1, 4, file);
-  WriteLe32(file, data_bytes);
-  if (!pcm.empty()) {
-    std::fwrite(pcm.data(), sizeof(int16_t), pcm.size(), file);
-  }
-  std::fclose(file);
-  return true;
 }
 
 class SherpaStreamingSession : public RecognitionSession {
@@ -109,11 +63,6 @@ public:
       samples[i] = static_cast<float>(pcm[i]) / 32768.0f;
     }
     UpdateAudioStats(samples);
-    if (diagnostics_enabled_) {
-      // Production keeps no session-sized PCM copy: diagnostic capture is
-      // opt-in and bounded to a prefix (see streaming_diagnostic_policy.h).
-      AppendDebugPcm(DiagnosticSamplePrefix(debug_pcm_.size(), samples));
-    }
 
     SherpaOnnxOnlineStreamAcceptWaveform(stream_, 16000, samples.data(),
                                          static_cast<int32_t>(samples.size()));
@@ -155,12 +104,10 @@ public:
       fprintf(stderr, "vinput: streaming queued final result\n");
     } else {
       const double rms = total_samples_ > 0 ? std::sqrt(sum_squares_ / total_samples_) : 0.0;
-      const bool dumped = DumpDebugWav("/tmp/vinput-streaming-last-empty.wav", debug_pcm_, 16000);
       fprintf(stderr,
               "vinput: streaming finish produced empty text samples=%zu "
-              "peak=%.4f rms=%.4f dumped_wav=%s path=%s\n",
-              total_samples_, peak_abs_, rms, dumped ? "true" : "false",
-              "/tmp/vinput-streaming-last-empty.wav");
+              "peak=%.4f rms=%.4f\n",
+              total_samples_, peak_abs_, rms);
     }
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
 
@@ -184,8 +131,6 @@ public:
   }
 
 private:
-  void AppendDebugPcm(std::span<const float> samples) { AppendDiagnosticPcm(debug_pcm_, samples); }
-
   void UpdateAudioStats(std::span<const float> samples) {
     total_samples_ += samples.size();
     for (float sample : samples) {
@@ -244,12 +189,9 @@ private:
   const SherpaOnnxOnlineRecognizer* recognizer_ = nullptr;
   const SherpaOnnxOnlineStream* stream_ = nullptr;
   bool finished_ = false;
-  bool diagnostics_enabled_ =
-      StreamingAudioDiagnosticsEnabled(std::getenv("VINPUT_STREAMING_AUDIO_DIAGNOSTICS"));
   std::size_t total_samples_ = 0;
   double peak_abs_ = 0.0;
   double sum_squares_ = 0.0;
-  std::vector<int16_t> debug_pcm_;
   std::string last_partial_text_;
   std::vector<RecognitionEvent> events_;
 };

@@ -157,14 +157,6 @@ add_executable(test_async_recognition_session
 target_include_directories(test_async_recognition_session PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_async_recognition_session COMMAND test_async_recognition_session)
 
-add_executable(test_diagnostic_pcm test_diagnostic_pcm.cpp)
-target_include_directories(test_diagnostic_pcm PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_diagnostic_pcm COMMAND test_diagnostic_pcm)
-
-add_executable(test_streaming_diagnostic_policy test_streaming_diagnostic_policy.cpp)
-target_include_directories(test_streaming_diagnostic_policy PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_streaming_diagnostic_policy COMMAND test_streaming_diagnostic_policy)
-
 add_executable(test_startup_pcm_buffer
     test_startup_pcm_buffer.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/audio/audio_utils.cpp
