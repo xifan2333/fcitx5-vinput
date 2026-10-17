@@ -44,7 +44,7 @@ if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.9")
 endif()
 
 target_link_libraries(modifier_key_tests PRIVATE
-    common
+    config
     Fcitx5::Core
     Fcitx5::Module::DBus
     Fcitx5::Module::Clipboard

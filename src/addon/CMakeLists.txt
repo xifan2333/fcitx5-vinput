@@ -18,7 +18,7 @@ if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.9")
     target_compile_definitions(addon PRIVATE VINPUT_FCITX5_CORE_HAVE_SET_COMMENT)
 endif()
 target_link_libraries(addon PRIVATE
-    common
+    config
     Fcitx5::Core
     Fcitx5::Module::DBus
     Fcitx5::Module::Clipboard
