@@ -10,39 +10,16 @@
 #include <system_error>
 #include <vector>
 
+#include "common/utils/string_utils.h"
+
 #include "config.h"
 
 namespace vinput::version {
 
 namespace {
 
-std::string_view Trim(std::string_view s) {
-  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())) != 0) {
-    s.remove_prefix(1);
-  }
-  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())) != 0) {
-    s.remove_suffix(1);
-  }
-  return s;
-}
-
-std::vector<std::string_view> SplitByChar(std::string_view s, char delim) {
-  std::vector<std::string_view> result;
-  size_t start = 0;
-  while (start <= s.size()) {
-    const size_t end = s.find(delim, start);
-    if (end == std::string_view::npos) {
-      result.push_back(s.substr(start));
-      break;
-    }
-    result.push_back(s.substr(start, end - start));
-    start = end + 1;
-  }
-  return result;
-}
-
 bool CheckSingleConstraint(const SemanticVersion& current, std::string_view token) {
-  token = Trim(token);
+  token = vinput::str::TrimAsciiWhitespaceView(token);
   if (token.empty() || token == "*") {
     return true;
   }
@@ -67,7 +44,7 @@ bool CheckSingleConstraint(const SemanticVersion& current, std::string_view toke
     token.remove_prefix(1);
   }
 
-  token = Trim(token);
+  token = vinput::str::TrimAsciiWhitespaceView(token);
   const auto target_opt = Parse(token);
   if (!target_opt.has_value()) {
     return false;
@@ -93,12 +70,12 @@ bool CheckSingleConstraint(const SemanticVersion& current, std::string_view toke
 } // namespace
 
 std::optional<SemanticVersion> Parse(std::string_view str) {
-  str = Trim(str);
+  str = vinput::str::TrimAsciiWhitespaceView(str);
   if (str.starts_with('v') || str.starts_with('V')) {
     str.remove_prefix(1);
   }
 
-  const auto segments = SplitByChar(str, '.');
+  const auto segments = vinput::str::SplitByChar(str, '.');
   if (segments.size() < 2 || segments.size() > 3) {
     return std::nullopt;
   }
@@ -136,7 +113,7 @@ std::optional<SemanticVersion> Parse(std::string_view str) {
 }
 
 bool Satisfies(std::string_view current_ver, std::string_view constraint) {
-  constraint = Trim(constraint);
+  constraint = vinput::str::TrimAsciiWhitespaceView(constraint);
   if (constraint.empty() || constraint == "*") {
     return true;
   }
@@ -147,7 +124,7 @@ bool Satisfies(std::string_view current_ver, std::string_view constraint) {
   }
   const auto& cur = *cur_opt;
 
-  const auto tokens = SplitByChar(constraint, ',');
+  const auto tokens = vinput::str::SplitByChar(constraint, ',');
   return std::ranges::all_of(
       tokens, [&](std::string_view token) { return CheckSingleConstraint(cur, token); });
 }

@@ -17,6 +17,7 @@
 
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
+#include "common/utils/string_utils.h"
 #include "common/utils/version_utils.h"
 
 namespace vinput::migration {
@@ -129,21 +130,9 @@ std::string GetTargetVersionConstraint() {
          std::to_string(max_ver.patch);
 }
 
-std::string_view Trim(std::string_view s) {
-  while (!s.empty() &&
-         (s.front() == ' ' || s.front() == '\t' || s.front() == '\r' || s.front() == '\n')) {
-    s.remove_prefix(1);
-  }
-  while (!s.empty() &&
-         (s.back() == ' ' || s.back() == '\t' || s.back() == '\r' || s.back() == '\n')) {
-    s.remove_suffix(1);
-  }
-  return s;
-}
-
 std::optional<vinput::version::SemanticVersion>
 ParseConfigLowerBoundVersion(std::string_view ver_str) {
-  ver_str = Trim(ver_str);
+  ver_str = vinput::str::TrimAsciiWhitespaceView(ver_str);
   if (ver_str.empty()) {
     return std::nullopt;
   }
@@ -166,21 +155,6 @@ std::string GenerateTimestamp() {
   char buf[32];
   std::strftime(buf, sizeof(buf), "%Y%m%d-%H%M%S", &tm_buf);
   return {buf};
-}
-
-std::vector<std::string_view> SplitPath(std::string_view path) {
-  std::vector<std::string_view> result;
-  size_t start = 0;
-  while (start <= path.size()) {
-    const size_t end = path.find('.', start);
-    if (end == std::string_view::npos) {
-      result.push_back(path.substr(start));
-      break;
-    }
-    result.push_back(path.substr(start, end - start));
-    start = end + 1;
-  }
-  return result;
 }
 
 bool ValueMatches(const nlohmann::json& actual, const nlohmann::json& expected) {
@@ -457,7 +431,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
         continue;
       }
       if (is_unversioned || config_ver < *rule_ver_opt) {
-        const auto segments = SplitPath(rule.path);
+        const auto segments = vinput::str::SplitByChar(rule.path, '.');
         if (WalkAndApply(config_data, segments, "", rule, report.changes)) {
           config_changed = true;
         }

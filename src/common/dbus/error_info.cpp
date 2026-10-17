@@ -4,21 +4,13 @@
 #include <regex>
 #include <utility>
 
+#include "common/utils/string_utils.h"
+
 namespace vinput::dbus {
 
 namespace {
 
-std::string TrimAsciiWhitespace(std::string_view text) {
-  size_t begin = 0;
-  while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin]))) {
-    begin++;
-  }
-  size_t end = text.size();
-  while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
-    end--;
-  }
-  return std::string(text.substr(begin, end - begin));
-}
+using vinput::str::TrimAsciiWhitespace;
 
 bool ConsumePrefix(std::string_view* text, std::string_view prefix) {
   if (!text->starts_with(prefix)) {

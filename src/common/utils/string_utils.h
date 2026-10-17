@@ -42,7 +42,7 @@ inline std::string FormatSize(uint64_t bytes) {
   return FmtStr("%llu B", (unsigned long long)bytes);
 }
 
-inline std::string_view TrimAsciiWhitespace(std::string_view text) noexcept {
+inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept {
   size_t begin = 0;
   while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin]))) {
     begin++;
@@ -52,6 +52,10 @@ inline std::string_view TrimAsciiWhitespace(std::string_view text) noexcept {
     end--;
   }
   return text.substr(begin, end - begin);
+}
+
+inline std::string TrimAsciiWhitespace(std::string_view text) {
+  return std::string(TrimAsciiWhitespaceView(text));
 }
 
 inline std::string ToLowerAscii(std::string_view text) {

@@ -8,28 +8,33 @@
 
 void TestTrimAsciiWhitespace() {
   using vinput::str::TrimAsciiWhitespace;
+  using vinput::str::TrimAsciiWhitespaceView;
 
   // Empty string
   assert(TrimAsciiWhitespace("").empty());
+  assert(TrimAsciiWhitespaceView("").empty());
 
   // Pure whitespace
   assert(TrimAsciiWhitespace("   \t\r\n ").empty());
+  assert(TrimAsciiWhitespaceView("   \t\r\n ").empty());
 
   // Leading and trailing whitespace
   assert(TrimAsciiWhitespace("  hello world  \n") == "hello world");
+  assert(TrimAsciiWhitespaceView("  hello world  \n") == "hello world");
   assert(TrimAsciiWhitespace("\t\tvinput\r") == "vinput");
 
   // No whitespace to trim
   assert(TrimAsciiWhitespace("abc") == "abc");
+  assert(TrimAsciiWhitespaceView("abc") == "abc");
 
   // Zero-copy check: returned string_view points inside original buffer
   std::string_view original = "  inner text  ";
-  std::string_view trimmed = TrimAsciiWhitespace(original);
+  std::string_view trimmed = TrimAsciiWhitespaceView(original);
   assert(trimmed == "inner text");
   assert(trimmed.data() == original.data() + 2);
 
-  // Assign to std::string check
-  std::string string_res = std::string(TrimAsciiWhitespace("  to string test  "));
+  // Return std::string check
+  std::string string_res = TrimAsciiWhitespace("  to string test  ");
   assert(string_res == "to string test");
 }
 
