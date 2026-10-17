@@ -3,10 +3,13 @@
 #include <algorithm>
 #include <cstdint>
 #include <ctime>
+#include <pipewire/context.h>
+#include <pipewire/core.h>
 #include <pipewire/keys.h>
 #include <pipewire/loop.h>
 #include <pipewire/main-loop.h>
 #include <pipewire/pipewire.h>
+#include <pipewire/proxy.h>
 #include <spa/support/loop.h>
 #include <spa/utils/dict.h>
 #include <spa/utils/hook.h>
@@ -130,7 +133,7 @@ struct PipeWireSession {
       spa_hook_remove(&data.registry_listener);
     }
     if (data.registry != nullptr) {
-      pw_proxy_destroy(reinterpret_cast<pw_proxy*>(data.registry));
+      pw_proxy_destroy(static_cast<pw_proxy*>(static_cast<void*>(data.registry)));
     }
     if (core_listener_added) {
       spa_hook_remove(&data.core_listener);
