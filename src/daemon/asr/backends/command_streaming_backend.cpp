@@ -113,36 +113,12 @@ std::vector<char*> BuildEnvp(const std::map<std::string, std::string>& env,
   return envp;
 }
 
-std::string Trim(std::string text) {
-  return vinput::str::TrimAsciiWhitespace(std::move(text));
-}
-
 std::string FormatProviderError(std::string detail, std::string_view fallback) {
-  detail = Trim(std::move(detail));
+  detail = vinput::str::TrimAsciiWhitespace(detail);
   if (!detail.empty()) {
     return detail;
   }
   return std::string(fallback);
-}
-
-std::string EncodeBase64(std::span<const std::byte> data) {
-  static constexpr char kTable[] =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-  std::string out;
-  out.reserve(((data.size() + 2) / 3) * 4);
-  for (std::size_t i = 0; i < data.size(); i += 3) {
-    const std::uint32_t b0 = static_cast<unsigned char>(data[i]);
-    const std::uint32_t b1 = i + 1 < data.size() ? static_cast<unsigned char>(data[i + 1]) : 0;
-    const std::uint32_t b2 = i + 2 < data.size() ? static_cast<unsigned char>(data[i + 2]) : 0;
-    const std::uint32_t chunk = (b0 << 16) | (b1 << 8) | b2;
-
-    out.push_back(kTable[(chunk >> 18) & 0x3f]);
-    out.push_back(kTable[(chunk >> 12) & 0x3f]);
-    out.push_back(i + 1 < data.size() ? kTable[(chunk >> 6) & 0x3f] : '=');
-    out.push_back(i + 2 < data.size() ? kTable[chunk & 0x3f] : '=');
-  }
-  return out;
 }
 
 struct ChildProcess {
@@ -430,7 +406,7 @@ private:
 
     json payload = {
         {"type", "audio"},
-        {"audio_base64", EncodeBase64(pending_chunk_)},
+        {"audio_base64", vinput::str::Base64Encode(pending_chunk_)},
         {"commit", commit},
     };
     pending_chunk_.clear();
@@ -659,7 +635,7 @@ private:
       }
       std::string line = stdout_buffer_.substr(0, newline);
       stdout_buffer_.erase(0, newline + 1);
-      line = Trim(std::move(line));
+      line = vinput::str::TrimAsciiWhitespace(line);
       if (line.empty()) {
         continue;
       }
@@ -677,7 +653,7 @@ private:
       }
       std::string line = stderr_buffer_.substr(0, newline);
       stderr_buffer_.erase(0, newline + 1);
-      line = Trim(std::move(line));
+      line = vinput::str::TrimAsciiWhitespace(line);
       if (line.empty()) {
         continue;
       }
@@ -685,7 +661,7 @@ private:
       std::fprintf(stderr, "vinput: command streaming stderr: %s\n", line.c_str());
     }
     if (flush_tail) {
-      const std::string tail = Trim(stderr_buffer_);
+      const std::string tail = vinput::str::TrimAsciiWhitespace(stderr_buffer_);
       stderr_buffer_.clear();
       if (!tail.empty()) {
         stderr_tail_ = tail;
@@ -710,7 +686,8 @@ private:
       return true;
     }
     if (type == "partial") {
-      const std::string text = Trim(payload.value("text", std::string{}));
+      const std::string text =
+          vinput::str::TrimAsciiWhitespace(payload.value("text", std::string{}));
       if (!text.empty() && text != last_partial_text_) {
         last_partial_text_ = text;
         events_.push_back({RecognitionEventKind::PartialText, text, {}});
@@ -718,7 +695,8 @@ private:
       return true;
     }
     if (type == "final" || type == "final_timestamps") {
-      const std::string text = Trim(payload.value("text", std::string{}));
+      const std::string text =
+          vinput::str::TrimAsciiWhitespace(payload.value("text", std::string{}));
       if (!text.empty()) {
         saw_final_text_ = true;
         last_partial_text_.clear();
@@ -727,7 +705,7 @@ private:
       return true;
     }
     if (type == "error") {
-      QueueError(Trim(payload.value("message", std::string{})));
+      QueueError(vinput::str::TrimAsciiWhitespace(payload.value("message", std::string{})));
       return true;
     }
     if (type == "closed") {

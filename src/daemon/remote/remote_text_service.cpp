@@ -24,6 +24,7 @@
 
 #include "common/config/core_config.h"
 #include "common/utils/interpolation.h"
+#include "common/utils/string_utils.h"
 
 namespace vinput::daemon::remote {
 
@@ -273,31 +274,12 @@ const char kIndexHtml[] = R"HTML(<!doctype html>
 const char kFaviconSvg[] =
     R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#1f9d87"/><path d="M32 12c-5 0-9 4-9 9v16c0 5 4 9 9 9s9-4 9-9V21c0-5-4-9-9-9z" fill="#fff"/><path d="M17 33c0 8 7 15 15 15s15-7 15-15" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M32 48v8" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>)SVG";
 
-std::string Trim(std::string_view text) {
-  std::size_t begin = 0;
-  while (begin < text.size() && (text[begin] == ' ' || text[begin] == '\t' || text[begin] == '\r' ||
-                                 text[begin] == '\n')) {
-    ++begin;
-  }
-  std::size_t end = text.size();
-  while (end > begin && (text[end - 1] == ' ' || text[end - 1] == '\t' || text[end - 1] == '\r' ||
-                         text[end - 1] == '\n')) {
-    --end;
-  }
-  return std::string(text.substr(begin, end - begin));
-}
-
-std::string ToLower(std::string text) {
-  for (char& ch : text) {
-    if (ch >= 'A' && ch <= 'Z') {
-      ch = static_cast<char>(ch - 'A' + 'a');
-    }
-  }
-  return text;
-}
+using vinput::str::Base64Encode;
+using vinput::str::ToLowerAscii;
+using vinput::str::TrimAsciiWhitespace;
 
 std::optional<int> ParsePositiveInt(std::string_view value) {
-  const std::string trimmed = Trim(value);
+  const std::string trimmed = TrimAsciiWhitespace(value);
   if (trimmed.empty()) {
     return std::nullopt;
   }
@@ -316,11 +298,11 @@ std::string EnvValue(const std::map<std::string, std::string>& env, std::string_
   if (it == env.end()) {
     return {};
   }
-  return Trim(it->second);
+  return TrimAsciiWhitespace(it->second);
 }
 
 std::optional<int> ParsePortFromWsUrl(std::string_view url) {
-  const std::string text = Trim(url);
+  const std::string text = TrimAsciiWhitespace(url);
   const std::size_t scheme = text.find("://");
   if (scheme == std::string::npos) {
     return std::nullopt;
@@ -347,24 +329,6 @@ std::optional<int> ParsePortFromWsUrl(std::string_view url) {
     return std::nullopt;
   }
   return ParsePositiveInt(authority.substr(colon + 1));
-}
-
-std::string Base64Encode(const unsigned char* data, std::size_t size) {
-  static constexpr char kTable[] =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  std::string out;
-  out.reserve(((size + 2) / 3) * 4);
-  for (std::size_t i = 0; i < size; i += 3) {
-    const std::uint32_t b0 = data[i];
-    const std::uint32_t b1 = i + 1 < size ? data[i + 1] : 0;
-    const std::uint32_t b2 = i + 2 < size ? data[i + 2] : 0;
-    const std::uint32_t chunk = (b0 << 16) | (b1 << 8) | b2;
-    out.push_back(kTable[(chunk >> 18) & 0x3f]);
-    out.push_back(kTable[(chunk >> 12) & 0x3f]);
-    out.push_back(i + 1 < size ? kTable[(chunk >> 6) & 0x3f] : '=');
-    out.push_back(i + 2 < size ? kTable[chunk & 0x3f] : '=');
-  }
-  return out;
 }
 
 std::optional<std::string> Sha1Base64(std::string_view text) {
@@ -462,8 +426,8 @@ std::optional<HttpRequestInfo> ParseHttpRequest(const std::string& request) {
     if (colon == std::string::npos) {
       continue;
     }
-    std::string name = ToLower(Trim(std::string_view(line).substr(0, colon)));
-    std::string value = Trim(std::string_view(line).substr(colon + 1));
+    std::string name = ToLowerAscii(TrimAsciiWhitespace(std::string_view(line).substr(0, colon)));
+    std::string value = TrimAsciiWhitespace(std::string_view(line).substr(colon + 1));
     if (!name.empty()) {
       info.headers[std::move(name)] = std::move(value);
     }
@@ -477,11 +441,11 @@ std::string BearerToken(const std::map<std::string, std::string>& headers) {
     return {};
   }
   constexpr std::string_view prefix = "Bearer ";
-  const std::string value = Trim(it->second);
+  const std::string value = TrimAsciiWhitespace(it->second);
   if (!std::string_view(value).starts_with(prefix)) {
     return {};
   }
-  return Trim(std::string_view(value).substr(prefix.size()));
+  return TrimAsciiWhitespace(std::string_view(value).substr(prefix.size()));
 }
 
 bool SendWebSocketHandshake(int fd, const HttpRequestInfo& request) {

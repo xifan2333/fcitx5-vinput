@@ -1,23 +1,10 @@
 #include "menu/palette_command.h"
 
 #include <algorithm>
-#include <cctype>
-#include <string>
 #include <string_view>
 #include <utility>
 
-namespace {
-
-std::string ToLower(std::string_view str) {
-  std::string res;
-  res.reserve(str.size());
-  for (const char ch : str) {
-    res.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
-  }
-  return res;
-}
-
-} // namespace
+#include "common/utils/string_utils.h"
 
 void PaletteCommandRegistry::registerCommand(PaletteCommand command) {
   auto it = std::find_if(commands_.begin(), commands_.end(),
@@ -37,9 +24,9 @@ const PaletteCommand* PaletteCommandRegistry::findByNameOrAlias(std::string_view
   if (token.empty()) {
     return nullptr;
   }
-  const std::string lower = ToLower(token);
   for (const auto& cmd : commands_) {
-    if (ToLower(cmd.name) == lower || (!cmd.alias.empty() && ToLower(cmd.alias) == lower)) {
+    if (vinput::str::EqualsIgnoreCase(cmd.name, token) ||
+        (!cmd.alias.empty() && vinput::str::EqualsIgnoreCase(cmd.alias, token))) {
       return &cmd;
     }
   }
