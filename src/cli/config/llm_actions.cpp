@@ -109,6 +109,7 @@ int RunLlmConfigList(Formatter& fmt, const CliContext& ctx) {
 
   std::vector<std::string> headers = {_("ID"), _("BASE_URL"), _("API_KEY")};
   std::vector<std::vector<std::string>> rows;
+  rows.reserve(config.llm.providers.size());
   for (const auto& provider : config.llm.providers) {
     rows.push_back({provider.id, provider.base_url, vinput::str::MaskSecret(provider.api_key)});
   }
@@ -291,7 +292,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
       fmt.PrintError(_("Invalid --env: expected KEY=VALUE."));
       return 1;
     }
-    overrides.emplace(pair->first, pair->second);
+    overrides[std::string(pair->first)] = std::string(pair->second);
   }
 
   CoreConfig config = LoadCoreConfig();

@@ -282,6 +282,42 @@ void TestSplitPair() {
   }
 }
 
+void TestSplitPairRight() {
+  using vinput::str::SplitPairRight;
+
+  // Split on rightmost delimiter
+  const auto pair1 = SplitPairRight("a:b:c", ':');
+  TEST_ASSERT(pair1.has_value());
+  if (pair1.has_value()) {
+    TEST_ASSERT(pair1->first == "a:b" && pair1->second == "c");
+  }
+
+  // Hotword score pattern
+  const auto pair2 = SplitPairRight("alpha:beta:3.5", ':');
+  TEST_ASSERT(pair2.has_value());
+  if (pair2.has_value()) {
+    TEST_ASSERT(pair2->first == "alpha:beta" && pair2->second == "3.5");
+  }
+
+  // Trim whitespace
+  const auto pair3 = SplitPairRight("  foo:bar  :  10  ", ':', /*trim_whitespace=*/true);
+  TEST_ASSERT(pair3.has_value());
+  if (pair3.has_value()) {
+    TEST_ASSERT(pair3->first == "foo:bar" && pair3->second == "10");
+  }
+
+  // Without trim whitespace
+  const auto pair4 = SplitPairRight("  foo:bar  :  10  ", ':', /*trim_whitespace=*/false);
+  TEST_ASSERT(pair4.has_value());
+  if (pair4.has_value()) {
+    TEST_ASSERT(pair4->first == "  foo:bar  " && pair4->second == "  10  ");
+  }
+
+  // No delimiter present
+  TEST_ASSERT(!SplitPairRight("no_delim", ':').has_value());
+  TEST_ASSERT(!SplitPairRight("", ':').has_value());
+}
+
 void TestJoin() {
   using vinput::str::Join;
 
@@ -488,6 +524,7 @@ int main() {
   TestStripSuffix();
   TestConsumePrefix();
   TestSplitPair();
+  TestSplitPairRight();
   TestJoin();
   TestJoinKeyValue();
   TestMaskSecret();

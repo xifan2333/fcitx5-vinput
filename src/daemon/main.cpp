@@ -261,7 +261,7 @@ private:
     vinput::str::DrainLinesFromBuffer(
         adapter.stderr_buffer,
         [this, &adapter](std::string_view raw_line) {
-          std::string line = vinput::str::TrimAsciiWhitespace(raw_line);
+          const std::string line = vinput::str::TrimAsciiWhitespace(raw_line);
           if (!line.empty()) {
             vinput::debug::Log("adapter[%s] stderr: %s\n", adapter.id.c_str(), line.c_str());
             EmitNotification(line);

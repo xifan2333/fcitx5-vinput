@@ -205,7 +205,7 @@ bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error
     }
   }
 
-  const auto pair = vinput::str::SplitPair(line, ':');
+  const auto pair = vinput::str::SplitPairRight(line, ':');
   if (!pair) {
     entry->text = std::move(line);
     entry->score.clear();

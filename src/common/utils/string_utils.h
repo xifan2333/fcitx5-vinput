@@ -119,6 +119,21 @@ SplitPair(std::string_view text, std::string_view delimiter,
   return std::make_pair(first, second);
 }
 
+inline std::optional<std::pair<std::string_view, std::string_view>>
+SplitPairRight(std::string_view text, char delimiter, bool trim_whitespace = false) noexcept {
+  const size_t pos = text.rfind(delimiter);
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  std::string_view first = text.substr(0, pos);
+  std::string_view second = text.substr(pos + 1);
+  if (trim_whitespace) {
+    first = TrimAsciiWhitespaceView(first);
+    second = TrimAsciiWhitespaceView(second);
+  }
+  return std::make_pair(first, second);
+}
+
 inline char ToLowerAsciiChar(char ch) noexcept {
   if (ch >= 'A' && ch <= 'Z') {
     return static_cast<char>(ch - 'A' + 'a');
@@ -209,7 +224,7 @@ inline std::vector<std::string_view> SplitLines(std::string_view text) {
  * @param flush_tail 是否强制刷新尾部剩余的不完整行（常用于进程退出或管道关闭）
  */
 template <typename Callback>
-inline void DrainLinesFromBuffer(std::string& buffer, Callback&& on_line, bool flush_tail = false) {
+inline void DrainLinesFromBuffer(std::string& buffer, Callback on_line, bool flush_tail = false) {
   size_t processed = 0;
   size_t start = 0;
   bool should_stop = false;
