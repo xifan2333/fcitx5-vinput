@@ -68,61 +68,105 @@ bool HasNonSilentAudio(std::span<const int16_t> pcm) {
   return peak >= kNonSilentPeakThreshold || rms >= kNonSilentRmsThreshold;
 }
 
+struct RecognitionDispatchContext {
+  std::string* latest_final_text = nullptr;
+  std::string* latest_partial_text = nullptr;
+  bool* first_partial_logged = nullptr;
+  std::optional<std::chrono::steady_clock::time_point> recording_started_at;
+  std::optional<std::chrono::steady_clock::time_point> first_non_silent_at;
+  DbusService* dbus = nullptr;
+};
+
+void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
+                       const RecognitionDispatchContext& ctx) {
+  if (event.text.empty()) {
+    return;
+  }
+  if (ctx.first_partial_logged && !*ctx.first_partial_logged) {
+    *ctx.first_partial_logged = true;
+    const auto now = std::chrono::steady_clock::now();
+    const long first_non_silent_ms = ctx.first_non_silent_at.has_value()
+                                         ? static_cast<long>(vinput::time::MillisecondsSince(
+                                               ctx.recording_started_at, *ctx.first_non_silent_at))
+                                         : -1;
+    vinput::debug::Log(
+        "first partial after %ld ms (first_non_silent_after=%ld ms)\n",
+        static_cast<long>(vinput::time::MillisecondsSince(ctx.recording_started_at, now)),
+        first_non_silent_ms);
+  }
+  if (ctx.latest_partial_text) {
+    *ctx.latest_partial_text = event.text;
+  }
+  if (ctx.dbus) {
+    ctx.dbus->EmitRecognitionPartial(event.text);
+  }
+}
+
+void HandleFinalText(const vinput::daemon::asr::RecognitionEvent& event,
+                     const RecognitionDispatchContext& ctx) {
+  if (event.text.empty()) {
+    return;
+  }
+  if (ctx.latest_final_text) {
+    *ctx.latest_final_text = event.text;
+  }
+  if (ctx.latest_partial_text) {
+    *ctx.latest_partial_text = event.text;
+  }
+  if (ctx.dbus) {
+    ctx.dbus->EmitRecognitionPartial(event.text);
+  }
+}
+
+void HandleError(const vinput::daemon::asr::RecognitionEvent& event,
+                 const RecognitionDispatchContext& ctx) {
+  if (event.error.empty() || !ctx.dbus) {
+    return;
+  }
+  ctx.dbus->EmitNotification(vinput::dbus::ClassifyErrorText(event.error));
+}
+
+void DispatchSingleEvent(const vinput::daemon::asr::RecognitionEvent& event,
+                         const RecognitionDispatchContext& ctx) {
+  switch (event.kind) {
+  case vinput::daemon::asr::RecognitionEventKind::PartialText:
+    HandlePartialText(event, ctx);
+    break;
+  case vinput::daemon::asr::RecognitionEventKind::FinalText:
+    HandleFinalText(event, ctx);
+    break;
+  case vinput::daemon::asr::RecognitionEventKind::Error:
+    HandleError(event, ctx);
+    break;
+  case vinput::daemon::asr::RecognitionEventKind::Completed:
+    break;
+  }
+}
+
+void ApplyRecognitionEvents(const std::vector<vinput::daemon::asr::RecognitionEvent>& events,
+                            const RecognitionDispatchContext& ctx) {
+  if (events.empty()) {
+    return;
+  }
+  for (const auto& event : events) {
+    DispatchSingleEvent(event, ctx);
+  }
+}
+
 void ApplyRecognitionEvents(
     const std::vector<vinput::daemon::asr::RecognitionEvent>& events,
     std::string* latest_final_text, bool* first_partial_logged,
     const std::optional<std::chrono::steady_clock::time_point>& recording_started_at,
     const std::optional<std::chrono::steady_clock::time_point>& first_non_silent_at,
     DbusService* dbus, std::string* latest_partial_text = nullptr) {
-  if (events.empty()) {
-    return;
-  }
-  for (const auto& event : events) {
-    switch (event.kind) {
-    case vinput::daemon::asr::RecognitionEventKind::PartialText:
-      if (!event.text.empty()) {
-        if (first_partial_logged && !*first_partial_logged) {
-          *first_partial_logged = true;
-          const auto now = std::chrono::steady_clock::now();
-          const long first_non_silent_ms = first_non_silent_at.has_value()
-                                               ? static_cast<long>(vinput::time::MillisecondsSince(
-                                                     recording_started_at, *first_non_silent_at))
-                                               : -1;
-          vinput::debug::Log(
-              "first partial after %ld ms (first_non_silent_after=%ld ms)\n",
-              static_cast<long>(vinput::time::MillisecondsSince(recording_started_at, now)),
-              first_non_silent_ms);
-        }
-        if (latest_partial_text) {
-          *latest_partial_text = event.text;
-        }
-        if (dbus) {
-          dbus->EmitRecognitionPartial(event.text);
-        }
-      }
-      break;
-    case vinput::daemon::asr::RecognitionEventKind::FinalText:
-      if (!event.text.empty()) {
-        if (latest_final_text) {
-          *latest_final_text = event.text;
-        }
-        if (latest_partial_text) {
-          *latest_partial_text = event.text;
-        }
-        if (dbus) {
-          dbus->EmitRecognitionPartial(event.text);
-        }
-      }
-      break;
-    case vinput::daemon::asr::RecognitionEventKind::Error:
-      if (!event.error.empty() && dbus) {
-        dbus->EmitNotification(vinput::dbus::ClassifyErrorText(event.error));
-      }
-      break;
-    case vinput::daemon::asr::RecognitionEventKind::Completed:
-      break;
-    }
-  }
+  ApplyRecognitionEvents(events, RecognitionDispatchContext{
+                                     .latest_final_text = latest_final_text,
+                                     .latest_partial_text = latest_partial_text,
+                                     .first_partial_logged = first_partial_logged,
+                                     .recording_started_at = recording_started_at,
+                                     .first_non_silent_at = first_non_silent_at,
+                                     .dbus = dbus,
+                                 });
 }
 
 vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
