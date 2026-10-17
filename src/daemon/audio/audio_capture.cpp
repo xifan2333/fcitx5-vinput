@@ -15,14 +15,9 @@
 
 #include "common/audio/pipewire_device.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/time_utils.h"
 
 namespace {
-
-long MillisecondsBetween(std::chrono::steady_clock::time_point start,
-                         std::chrono::steady_clock::time_point end) {
-  return static_cast<long>(
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
-}
 
 bool EnvTruthy(const char* value) {
   if (!value || value[0] == '\0') {
@@ -121,9 +116,10 @@ void AudioCapture::processCallback() {
         const std::scoped_lock lock(timing_mutex_);
         if (recording_armed_at_.has_value() && !first_buffer_at_.has_value()) {
           first_buffer_at_ = std::chrono::steady_clock::now();
-          vinput::debug::Log("capture first buffer after %ld ms (samples=%u)\n",
-                             MillisecondsBetween(*recording_armed_at_, *first_buffer_at_),
-                             n_samples);
+          vinput::debug::Log(
+              "capture first buffer after %ld ms (samples=%u)\n",
+              vinput::time::MillisecondsBetween(*recording_armed_at_, *first_buffer_at_),
+              n_samples);
         }
       }
       {
@@ -425,7 +421,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     const auto idle_ref = last_stream_deactivated_at_.has_value() ? last_stream_deactivated_at_
                                                                   : last_stream_destroyed_at_;
     if (idle_ref.has_value()) {
-      local_timing.idle_gap_ms = MillisecondsBetween(*idle_ref, begin_at);
+      local_timing.idle_gap_ms = vinput::time::MillisecondsBetween(*idle_ref, begin_at);
     }
     first_buffer_at_.reset();
     recording_armed_at_.reset();
@@ -459,7 +455,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
       return false;
     }
     local_timing.create_stream_ms =
-        MillisecondsBetween(create_start, std::chrono::steady_clock::now());
+        vinput::time::MillisecondsBetween(create_start, std::chrono::steady_clock::now());
 
     if (start_inactive) {
       const auto active_start = std::chrono::steady_clock::now();
@@ -469,7 +465,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
         return false;
       }
       local_timing.set_active_ms =
-          MillisecondsBetween(active_start, std::chrono::steady_clock::now());
+          vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
     } else {
       local_timing.set_active_ms = 0;
     }
@@ -500,17 +496,17 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
         return false;
       }
       local_timing.create_stream_ms =
-          MillisecondsBetween(create_start, std::chrono::steady_clock::now());
+          vinput::time::MillisecondsBetween(create_start, std::chrono::steady_clock::now());
       if (!SetStreamActive(true, error)) {
         recording_.store(false, std::memory_order_relaxed);
         DestroyStream();
         return false;
       }
       local_timing.set_active_ms =
-          MillisecondsBetween(active_start, std::chrono::steady_clock::now());
+          vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
     } else {
       local_timing.set_active_ms =
-          MillisecondsBetween(active_start, std::chrono::steady_clock::now());
+          vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
     }
   }
 
@@ -583,7 +579,7 @@ std::optional<long> AudioCapture::FirstBufferLatencyMs() const {
   if (!recording_armed_at_.has_value() || !first_buffer_at_.has_value()) {
     return std::nullopt;
   }
-  return MillisecondsBetween(*recording_armed_at_, *first_buffer_at_);
+  return vinput::time::MillisecondsBetween(*recording_armed_at_, *first_buffer_at_);
 }
 
 void AudioCapture::SetTargetObject(std::string target_object) {

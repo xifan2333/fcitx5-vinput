@@ -18,6 +18,7 @@
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/time_utils.h"
 
 #include "daemon/asr/runtime/async_recognition_session.h"
 #include "daemon/audio/audio_utils.h"
@@ -62,15 +63,6 @@ bool HasNonSilentAudio(std::span<const int16_t> pcm) {
   return peak >= kNonSilentPeakThreshold || rms >= kNonSilentRmsThreshold;
 }
 
-long MillisecondsSince(const std::optional<std::chrono::steady_clock::time_point>& start,
-                       std::chrono::steady_clock::time_point end) {
-  if (!start.has_value()) {
-    return -1;
-  }
-  return static_cast<long>(
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - *start).count());
-}
-
 void ApplyRecognitionEvents(
     const std::vector<vinput::daemon::asr::RecognitionEvent>& events,
     std::string* latest_final_text, bool* first_partial_logged,
@@ -86,10 +78,11 @@ void ApplyRecognitionEvents(
           const auto now = std::chrono::steady_clock::now();
           const long first_non_silent_ms =
               first_non_silent_at.has_value()
-                  ? MillisecondsSince(recording_started_at, *first_non_silent_at)
+                  ? vinput::time::MillisecondsSince(recording_started_at, *first_non_silent_at)
                   : -1;
           vinput::debug::Log("first partial after %ld ms (first_non_silent_after=%ld ms)\n",
-                             MillisecondsSince(recording_started_at, now), first_non_silent_ms);
+                             vinput::time::MillisecondsSince(recording_started_at, now),
+                             first_non_silent_ms);
         }
         if (latest_partial_text) {
           *latest_partial_text = event.text;
@@ -390,9 +383,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
   vinput::daemon::asr::BackendDescriptor active_backend;
   const auto session_start_at = std::chrono::steady_clock::now();
   auto session = recognition_manager_->CreateSession(runtime_settings, &active_backend, &error);
-  const long session_ms = static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                std::chrono::steady_clock::now() - session_start_at)
-                                                .count());
+  const long session_ms = static_cast<long>(vinput::time::MillisecondsSince(session_start_at));
   if (!session) {
     std::string message = "Failed to start recognition session.";
     if (!error.empty()) {
@@ -470,10 +461,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     output_ducker_.Duck(runtime_settings.global.duckOutputVolume);
   }
 
-  const long start_total_ms =
-      static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::steady_clock::now() - start_enter_at)
-                            .count());
+  const long start_total_ms = static_cast<long>(vinput::time::MillisecondsSince(start_enter_at));
   vinput::debug::Log("start timing command=%d session_ms=%ld idle_gap_ms=%ld "
                      "create_stream_ms=%ld set_active_ms=%ld stream_reused=%d "
                      "reuse_policy=%d start_total_ms=%ld backend=%s\n",
@@ -528,8 +516,9 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
 
     if (!first_non_silent_at_.has_value() && HasNonSilentAudio(pcm_view)) {
       first_non_silent_at_ = std::chrono::steady_clock::now();
-      vinput::debug::Log("first non-silent audio after %ld ms\n",
-                         MillisecondsSince(recording_started_at_, *first_non_silent_at_));
+      vinput::debug::Log(
+          "first non-silent audio after %ld ms\n",
+          vinput::time::MillisecondsSince(recording_started_at_, *first_non_silent_at_));
     }
 
     if (UsesBufferedDelivery(active_backend_)) {

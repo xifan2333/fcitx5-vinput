@@ -6,6 +6,7 @@
 
 #include "common/i18n.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/time_utils.h"
 
 #include "daemon/asr/runtime/backend_factory.h"
 
@@ -352,9 +353,7 @@ bool RecognitionSessionManager::CreatePreparedBackend(const CoreConfig& settings
     return false;
   }
   warmup_session->Cancel();
-  const auto prepare_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                      std::chrono::steady_clock::now() - prepare_started_at)
-                                      .count();
+  const auto prepare_elapsed_ms = vinput::time::MillisecondsSince(prepare_started_at);
   vinput::debug::Log("ASR backend prepared and warmed up in %lld ms\n",
                      static_cast<long long>(prepare_elapsed_ms));
 
@@ -494,9 +493,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
     const auto reload_started_at = std::chrono::steady_clock::now();
     vinput::debug::Log("ASR backend reload worker started\n");
     const bool ok = CreatePreparedBackendForReload(settings, signature, &prepared, &error);
-    const auto reload_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                       std::chrono::steady_clock::now() - reload_started_at)
-                                       .count();
+    const auto reload_elapsed_ms = vinput::time::MillisecondsSince(reload_started_at);
 
     if (ok) {
       {

@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 
-#include "daemon/asr/backends/command_streaming_time_utils.h"
+#include "common/utils/time_utils.h"
 
 namespace {
 
@@ -24,7 +24,7 @@ void TestRemainingPollMs() {
   const auto huge = now + milliseconds(static_cast<std::int64_t>(INT_MAX) + 10000);
 
   const auto remaining = [now](Clock::time_point deadline, int max_timeout) {
-    return vinput::daemon::asr::RemainingPollMs(deadline, max_timeout, now);
+    return vinput::time::RemainingTimeoutMs(deadline, max_timeout, now);
   };
   Expect(remaining(now - milliseconds(1), 50) == 0, "past deadline");
   Expect(remaining(now, 50) == 0, "expired deadline");

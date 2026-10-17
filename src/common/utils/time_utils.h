@@ -43,12 +43,12 @@ inline int64_t MillisecondsSince(
   return MillisecondsBetween(start, now);
 }
 
-// Overload for std::optional start time point (returns 0 if start is nullopt).
+// Overload for std::optional start time point (returns -1 if start is nullopt).
 inline int64_t MillisecondsSince(
     const std::optional<std::chrono::steady_clock::time_point>& start,
     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now()) noexcept {
   if (!start.has_value()) {
-    return 0;
+    return -1;
   }
   return MillisecondsBetween(*start, now);
 }

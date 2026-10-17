@@ -57,7 +57,7 @@ void TestMillisecondsBetweenAndSince() {
 
   // Optional overload
   const std::optional<Clock::time_point> empty_start = std::nullopt;
-  TEST_ASSERT(MillisecondsSince(empty_start, t1) == 0);
+  TEST_ASSERT(MillisecondsSince(empty_start, t1) == -1);
 
   const std::optional<Clock::time_point> valid_start = t0;
   TEST_ASSERT(MillisecondsSince(valid_start, t1) == 1234);
