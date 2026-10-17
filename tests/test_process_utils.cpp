@@ -3,6 +3,8 @@
 #include <fcntl.h>
 #include <iostream>
 #include <string>
+#include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 
 #include "common/utils/process_utils.h"
@@ -129,6 +131,46 @@ void TestPipeCloexecBehavior() {
   close(pipefd[1]);
 }
 
+void TestSpawnForMonitoring() {
+  vinput::process::CommandSpec spec;
+  spec.command = "sh";
+  spec.args = {"-c", "echo test_var=$VINPUT_TEST_ENV >&2; exit 0"};
+  spec.env["VINPUT_TEST_ENV"] = "safe_spawn_ok";
+
+  vinput::process::SpawnedProcess process;
+  std::string error;
+  const bool spawned = vinput::process::SpawnForMonitoring(spec, "", &process, &error);
+  ExpectTrue(spawned, "SpawnForMonitoring should succeed: " + error);
+  ExpectTrue(process.pid > 0, "Spawned process PID should be > 0");
+  ExpectTrue(process.stderr_fd >= 0, "Spawned process stderr_fd should be >= 0");
+
+  std::string stderr_output;
+  char buffer[128];
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < deadline) {
+    const ssize_t bytes_read = read(process.stderr_fd, buffer, sizeof(buffer) - 1);
+    if (bytes_read > 0) {
+      buffer[bytes_read] = '\0';
+      stderr_output += buffer;
+    } else if (bytes_read == 0) {
+      break; // EOF
+    } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  close(process.stderr_fd);
+  int status = 0;
+  waitpid(process.pid, &status, 0);
+
+  ExpectTrue(stderr_output.find("test_var=safe_spawn_ok") != std::string::npos,
+             "Child process should receive environment variable via BuildEnvp (got: " +
+                 stderr_output + ")");
+  ExpectTrue(WIFEXITED(status) && WEXITSTATUS(status) == 0,
+             "Child process should exit cleanly with status 0");
+}
+
 } // namespace
 
 int main() {
@@ -138,6 +180,7 @@ int main() {
   TestCommandTimeout();
   TestChildExitWithLeakedPipeDoesNotHang();
   TestClosedFdsDoesNotBusySpin();
+  TestSpawnForMonitoring();
   std::cout << "All test_process_utils passed!\n";
   return 0;
 }
