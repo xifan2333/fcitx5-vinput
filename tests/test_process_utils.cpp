@@ -5,7 +5,6 @@
 #include <cstdlib>
 #include <fcntl.h>
 #include <iostream>
-#include <signal.h>
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -175,10 +174,6 @@ void TestSpawnForMonitoring() {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  if (!exited) {
-    kill(process.pid, SIGKILL);
-    waitpid(process.pid, nullptr, 0);
   }
   ExpectTrue(exited, "Child process should exit within deadline");
   ExpectTrue(stderr_output.find("test_var=safe_spawn_ok") != std::string::npos,
