@@ -86,6 +86,10 @@ if(VINPUT_GUI_QM)
     add_custom_target(qt-translations ALL DEPENDS ${VINPUT_GUI_QM})
 endif()
 
+target_compile_definitions(gui PRIVATE
+    QT_NO_VERSION_TAGGING
+)
+
 target_include_directories(gui PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
