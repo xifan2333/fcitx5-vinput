@@ -1,8 +1,12 @@
+#include <array>
+#include <cerrno>
 #include <chrono>
+#include <cstddef>
 #include <cstdlib>
 #include <fcntl.h>
 #include <iostream>
 #include <string>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -145,30 +149,26 @@ void TestSpawnForMonitoring() {
   ExpectTrue(process.stderr_fd >= 0, "Spawned process stderr_fd should be >= 0");
 
   std::string stderr_output;
-  char buffer[128];
+  std::array<char, 128> buffer{};
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (std::chrono::steady_clock::now() < deadline) {
-    const ssize_t bytes_read = read(process.stderr_fd, buffer, sizeof(buffer) - 1);
+    const ssize_t bytes_read = read(process.stderr_fd, buffer.data(), buffer.size());
     if (bytes_read > 0) {
-      buffer[bytes_read] = '\0';
-      stderr_output += buffer;
-    } else if (bytes_read == 0) {
-      break; // EOF
-    } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+      stderr_output.append(buffer.data(), static_cast<std::size_t>(bytes_read));
+    } else if (bytes_read == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
   close(process.stderr_fd);
-  int status = 0;
+  int status = -1;
   waitpid(process.pid, &status, 0);
 
   ExpectTrue(stderr_output.find("test_var=safe_spawn_ok") != std::string::npos,
              "Child process should receive environment variable via BuildEnvp (got: " +
                  stderr_output + ")");
-  ExpectTrue(WIFEXITED(status) && WEXITSTATUS(status) == 0,
-             "Child process should exit cleanly with status 0");
+  ExpectTrue(status == 0, "Child process should exit cleanly with status 0");
 }
 
 } // namespace
