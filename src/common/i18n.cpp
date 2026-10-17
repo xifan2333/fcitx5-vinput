@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "common/utils/locale_utils.h"
+
 #include "config.h"
 
 namespace fs = std::filesystem;
@@ -15,25 +17,6 @@ namespace vinput::i18n {
 
 namespace {
 
-std::string NormalizeLocaleName(std::string locale) {
-  const auto colon = locale.find(':');
-  if (colon != std::string::npos) {
-    locale = locale.substr(0, colon);
-  }
-  const auto dot = locale.find('.');
-  if (dot != std::string::npos) {
-    locale = locale.substr(0, dot);
-  }
-  const auto at = locale.find('@');
-  if (at != std::string::npos) {
-    locale = locale.substr(0, at);
-  }
-  if (locale.empty() || locale == "C" || locale == "POSIX") {
-    return {};
-  }
-  return locale;
-}
-
 std::vector<std::string> LocaleCandidates() {
   std::vector<std::string> candidates;
   const auto add_candidate = [&candidates](const char* value) {
@@ -41,7 +24,7 @@ std::vector<std::string> LocaleCandidates() {
       return;
     }
 
-    std::string locale = NormalizeLocaleName(value);
+    std::string locale = vinput::locale::NormalizeLocaleName(value);
     if (locale.empty()) {
       return;
     }

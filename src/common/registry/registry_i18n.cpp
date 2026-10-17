@@ -4,6 +4,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+#include "common/utils/locale_utils.h"
 #include "common/utils/path_utils.h"
 
 namespace vinput::registry {
@@ -11,42 +12,6 @@ namespace vinput::registry {
 namespace {
 
 using json = nlohmann::json;
-
-std::string NormalizeLocale(std::string locale) {
-  if (locale.empty()) {
-    return {};
-  }
-  const auto colon_pos = locale.find(':');
-  if (colon_pos != std::string::npos) {
-    locale = locale.substr(0, colon_pos);
-  }
-  const auto dot_pos = locale.find('.');
-  if (dot_pos != std::string::npos) {
-    locale = locale.substr(0, dot_pos);
-  }
-  const auto at_pos = locale.find('@');
-  if (at_pos != std::string::npos) {
-    locale = locale.substr(0, at_pos);
-  }
-  for (char& ch : locale) {
-    if (ch == '-') {
-      ch = '_';
-    }
-  }
-  if (locale == "C" || locale == "POSIX") {
-    return {};
-  }
-  const auto sep = locale.find('_');
-  if (sep == std::string::npos) {
-    if (locale == "zh") {
-      return "zh_CN";
-    }
-    if (locale == "en") {
-      return "en_US";
-    }
-  }
-  return locale;
-}
 
 } // namespace
 
@@ -110,7 +75,7 @@ std::string DetectPreferredLocale() {
   for (const char* name : vars) {
     const char* value = std::getenv(name);
     if (value && *value) {
-      const std::string locale = NormalizeLocale(value);
+      const std::string locale = vinput::locale::CanonicalizeLocale(value);
       if (!locale.empty()) {
         return locale;
       }

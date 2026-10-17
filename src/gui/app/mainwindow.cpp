@@ -17,6 +17,7 @@
 #include <nlohmann/json.hpp>
 
 #include "common/utils/downloader.h"
+#include "common/utils/locale_utils.h"
 #include "common/utils/path_utils.h"
 
 #include "cli/runtime/systemd_client.h"
@@ -153,30 +154,6 @@ void MainWindow::onOpenConfigClicked() {
 }
 
 namespace {
-std::string NormalizeNotificationLocale(std::string locale) {
-  const auto colon = locale.find(':');
-  if (colon != std::string::npos) {
-    locale = locale.substr(0, colon);
-  }
-  const auto dot = locale.find('.');
-  if (dot != std::string::npos) {
-    locale = locale.substr(0, dot);
-  }
-  const auto at = locale.find('@');
-  if (at != std::string::npos) {
-    locale = locale.substr(0, at);
-  }
-  for (char& ch : locale) {
-    if (ch == '-') {
-      ch = '_';
-    }
-  }
-  if (locale.empty() || locale == "C" || locale == "POSIX") {
-    return {};
-  }
-  return locale;
-}
-
 QString localizedString(const nlohmann::json& obj) {
   if (obj.is_string()) {
     return QString::fromStdString(obj.get<std::string>());
@@ -184,16 +161,14 @@ QString localizedString(const nlohmann::json& obj) {
   if (!obj.is_object()) {
     return {};
   }
-  const std::string locale = NormalizeNotificationLocale(QLocale::system().name().toStdString());
+  const std::string locale =
+      vinput::locale::NormalizeLocale(QLocale::system().name().toStdString());
   if (obj.contains(locale)) {
     return QString::fromStdString(obj[locale].get<std::string>());
   }
-  const auto underscore = locale.find('_');
-  if (underscore != std::string::npos) {
-    const std::string lang = locale.substr(0, underscore);
-    if (obj.contains(lang)) {
-      return QString::fromStdString(obj[lang].get<std::string>());
-    }
+  const auto lang = std::string(vinput::locale::ExtractLanguageCode(locale));
+  if (lang != locale && obj.contains(lang)) {
+    return QString::fromStdString(obj[lang].get<std::string>());
   }
   if (obj.contains("en")) {
     return QString::fromStdString(obj["en"].get<std::string>());
