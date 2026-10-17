@@ -73,6 +73,9 @@ void ApplyRecognitionEvents(
     const std::optional<std::chrono::steady_clock::time_point>& recording_started_at,
     const std::optional<std::chrono::steady_clock::time_point>& first_non_silent_at,
     DbusService* dbus, std::string* latest_partial_text = nullptr) {
+  if (events.empty()) {
+    return;
+  }
   for (const auto& event : events) {
     switch (event.kind) {
     case vinput::daemon::asr::RecognitionEventKind::PartialText:
