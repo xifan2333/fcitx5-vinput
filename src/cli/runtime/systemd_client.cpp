@@ -47,20 +47,22 @@ std::vector<std::string> BuildJournalctlCommand(bool follow, int lines) {
 
 int RunCommand(const std::vector<std::string>& args);
 
-std::string StripJournalPrefix(std::string line) {
+std::string StripJournalPrefix(std::string_view line) {
   auto pos = line.find("]: ");
-  if (pos != std::string::npos) {
-    line.erase(0, pos + 3);
+  if (pos != std::string_view::npos) {
+    line.remove_prefix(pos + 3);
   } else {
     pos = line.find(": ");
-    if (pos != std::string::npos) {
-      line.erase(0, pos + 2);
+    if (pos != std::string_view::npos) {
+      line.remove_prefix(pos + 2);
     }
   }
-  if (line.starts_with("vinput-daemon: ")) {
-    line.erase(0, std::string("vinput-daemon: ").size());
-  } else if (line.starts_with("vinput: ")) {
-    line.erase(0, std::string("vinput: ").size());
+  constexpr std::string_view kDaemonPrefix = "vinput-daemon: ";
+  constexpr std::string_view kCliPrefix = "vinput: ";
+  if (line.starts_with(kDaemonPrefix)) {
+    line.remove_prefix(kDaemonPrefix.size());
+  } else if (line.starts_with(kCliPrefix)) {
+    line.remove_prefix(kCliPrefix.size());
   }
   return vinput::str::TrimAsciiWhitespace(line);
 }
