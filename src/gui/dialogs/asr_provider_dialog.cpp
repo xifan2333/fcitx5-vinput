@@ -21,6 +21,8 @@
 #include "common/asr/model_manager.h"
 #endif
 
+#include "common/utils/string_utils.h"
+
 #include "gui/utils/config_manager.h"
 
 #include "utils/gui_helpers.h"
@@ -35,27 +37,6 @@ struct AsrProviderDialog {
 
 constexpr char kLocalType[] = "local";
 constexpr char kCommandType[] = "command";
-
-QString JoinArgLines(const std::vector<std::string>& args) {
-  std::string joined;
-  for (std::size_t i = 0; i < args.size(); ++i) {
-    if (i != 0)
-      joined += "\n";
-    joined += args[i];
-  }
-  return QString::fromStdString(joined);
-}
-
-QString JoinEnvLines(const std::map<std::string, std::string>& env) {
-  std::string joined;
-  std::size_t index = 0;
-  for (const auto& [key, value] : env) {
-    if (index++ != 0)
-      joined += "\n";
-    joined += key + "=" + value;
-  }
-  return QString::fromStdString(joined);
-}
 
 void UpdateFieldState(QComboBox* comboType, QComboBox* comboModel, QLineEdit* editCommand,
                       QTextEdit* textArgs, QTextEdit* textEnv, QSpinBox* spinTimeout) {
@@ -152,8 +133,9 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     } else {
       comboModel->setCurrentText(QString());
       editCommand->setText(QString::fromStdString(initial.command));
-      textArgs->setPlainText(JoinArgLines(initial.args));
-      textEnv->setPlainText(JoinEnvLines(initial.env));
+      textArgs->setPlainText(QString::fromStdString(vinput::str::Join(initial.args, "\n")));
+      textEnv->setPlainText(
+          QString::fromStdString(vinput::str::JoinKeyValue(initial.env, "\n", "=")));
     }
     spinTimeout->setValue(initial.timeout_ms > 0 ? initial.timeout_ms : spinTimeout->minimum());
 

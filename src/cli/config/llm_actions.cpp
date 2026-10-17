@@ -67,13 +67,6 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
   return 0;
 }
 
-std::string MaskApiKey(const std::string& key) {
-  if (key.size() <= 8) {
-    return std::string(key.size(), '*');
-  }
-  return key.substr(0, 4) + std::string(key.size() - 8, '*') + key.substr(key.size() - 4);
-}
-
 bool ParseExtraBody(const std::string& raw, nlohmann::json* out, Formatter& fmt) {
   if (raw.empty()) {
     *out = nlohmann::json::object();
@@ -117,7 +110,7 @@ int RunLlmConfigList(Formatter& fmt, const CliContext& ctx) {
   std::vector<std::string> headers = {_("ID"), _("BASE_URL"), _("API_KEY")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& provider : config.llm.providers) {
-    rows.push_back({provider.id, provider.base_url, MaskApiKey(provider.api_key)});
+    rows.push_back({provider.id, provider.base_url, vinput::str::MaskSecret(provider.api_key)});
   }
   fmt.PrintTable(headers, rows);
   return 0;
@@ -292,13 +285,13 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
   (void)ctx;
   std::map<std::string, std::string> overrides;
   for (const auto& item : envOverrides) {
-    const auto sep = item.find('=');
-    if (sep == std::string::npos || sep == 0) {
+    const auto pair = vinput::str::SplitPair(item, '=');
+    if (!pair || pair->first.empty()) {
       // A malformed value may be a token pasted without its key, so never echo it back.
       fmt.PrintError(_("Invalid --env: expected KEY=VALUE."));
       return 1;
     }
-    overrides[item.substr(0, sep)] = item.substr(sep + 1);
+    overrides.emplace(pair->first, pair->second);
   }
 
   CoreConfig config = LoadCoreConfig();
@@ -706,14 +699,7 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
       {_("Command"), adapter->command},
   };
   if (!adapter->args.empty()) {
-    std::string args_joined;
-    for (size_t i = 0; i < adapter->args.size(); ++i) {
-      if (i > 0) {
-        args_joined += " ";
-      }
-      args_joined += adapter->args[i];
-    }
-    rows.push_back({_("Args"), args_joined});
+    rows.push_back({_("Args"), vinput::str::Join(adapter->args, " ")});
   }
   fmt.PrintTable(headers, rows);
   return 0;

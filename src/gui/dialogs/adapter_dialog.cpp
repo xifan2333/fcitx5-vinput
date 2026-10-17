@@ -14,6 +14,8 @@
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qmessagebox.h>
 
+#include "common/utils/string_utils.h"
+
 #include "utils/gui_helpers.h"
 
 namespace vinput::gui {
@@ -23,27 +25,6 @@ namespace {
 struct AdapterDialog {
   Q_DECLARE_TR_FUNCTIONS(AdapterDialog)
 };
-
-QString JoinArgLines(const std::vector<std::string>& args) {
-  std::string joined;
-  for (std::size_t i = 0; i < args.size(); ++i) {
-    if (i != 0)
-      joined += "\n";
-    joined += args[i];
-  }
-  return QString::fromStdString(joined);
-}
-
-QString JoinEnvLines(const std::map<std::string, std::string>& env) {
-  std::string joined;
-  std::size_t index = 0;
-  for (const auto& [key, value] : env) {
-    if (index++ != 0)
-      joined += "\n";
-    joined += key + "=" + value;
-  }
-  return QString::fromStdString(joined);
-}
 
 } // namespace
 
@@ -71,8 +52,9 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
     editCommand->setPlaceholderText(AdapterDialog::tr("Command or interpreter"));
 
     editCommand->setText(QString::fromStdString(initial.command));
-    textArgs->setPlainText(JoinArgLines(initial.args));
-    textEnv->setPlainText(JoinEnvLines(initial.env));
+    textArgs->setPlainText(QString::fromStdString(vinput::str::Join(initial.args, "\n")));
+    textEnv->setPlainText(
+        QString::fromStdString(vinput::str::JoinKeyValue(initial.env, "\n", "=")));
 
     form->addRow(AdapterDialog::tr("Adapter ID:"), new QLabel(QString::fromStdString(initial.id)));
     form->addRow(AdapterDialog::tr("Command / Interpreter:"), editCommand);
