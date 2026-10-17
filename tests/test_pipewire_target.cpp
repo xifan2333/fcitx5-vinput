@@ -116,7 +116,7 @@ int main() {
   {
     const auto sources = vinput::pw::EnumerateAudioSources();
     for (const auto& dev : sources) {
-      CHECK(!dev.name.empty());
+      CHECK(dev.id > 0);
     }
   }
 
