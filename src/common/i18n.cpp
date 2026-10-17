@@ -24,7 +24,7 @@ std::vector<std::string> LocaleCandidates() {
       return;
     }
 
-    std::string locale = vinput::locale::NormalizeLocaleName(value);
+    const std::string locale = vinput::locale::NormalizeLocaleName(value);
     if (locale.empty()) {
       return;
     }
@@ -56,7 +56,7 @@ std::string PreferredMessageLocale() {
     if (!value || !*value) {
       continue;
     }
-    std::string locale = NormalizeLocaleName(value);
+    const std::string locale = vinput::locale::NormalizeLocaleName(value);
     if (!locale.empty()) {
       return locale;
     }
