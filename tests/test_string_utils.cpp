@@ -1,7 +1,11 @@
 #include <cstdio>
 #include <cstdlib>
+#include <map>
+#include <set>
+#include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "common/utils/string_utils.h"
@@ -142,6 +146,211 @@ void TestBase64Encode() {
   TEST_ASSERT(Base64Encode(static_cast<const char*>(nullptr), 0).empty());
 }
 
+void TestStripPrefix() {
+  using vinput::str::StripPrefix;
+
+  // Normal prefix stripping
+  TEST_ASSERT(StripPrefix("Bearer 123456", "Bearer ") == "123456");
+  TEST_ASSERT(StripPrefix("prefix_text", "prefix_") == "text");
+
+  // Non-matching prefix
+  TEST_ASSERT(StripPrefix("Basic 123456", "Bearer ") == "Basic 123456");
+  TEST_ASSERT(StripPrefix("hello", "world") == "hello");
+
+  // Boundary cases
+  TEST_ASSERT(StripPrefix("", "").empty());
+  TEST_ASSERT(StripPrefix("", "prefix").empty());
+  TEST_ASSERT(StripPrefix("text", "") == "text");
+  TEST_ASSERT(StripPrefix("exact_match", "exact_match").empty());
+  TEST_ASSERT(StripPrefix("short", "longer_prefix") == "short");
+}
+
+void TestStripSuffix() {
+  using vinput::str::StripSuffix;
+
+  // Normal suffix stripping
+  TEST_ASSERT(StripSuffix("input.monitor", ".monitor") == "input");
+  TEST_ASSERT(StripSuffix("filename.tar.gz", ".gz") == "filename.tar");
+
+  // Non-matching suffix
+  TEST_ASSERT(StripSuffix("input.sink", ".monitor") == "input.sink");
+  TEST_ASSERT(StripSuffix("hello", "world") == "hello");
+
+  // Boundary cases
+  TEST_ASSERT(StripSuffix("message.", ".") == "message");
+  TEST_ASSERT(StripSuffix("", "").empty());
+  TEST_ASSERT(StripSuffix("", "suffix").empty());
+  TEST_ASSERT(StripSuffix("text", "") == "text");
+  TEST_ASSERT(StripSuffix("exact_match", "exact_match").empty());
+  TEST_ASSERT(StripSuffix("short", "longer_suffix") == "short");
+}
+
+void TestConsumePrefix() {
+  using vinput::str::ConsumePrefix;
+
+  // Matching prefix consumes and advances pointer
+  std::string_view sv1 = "ASR provider: err";
+  TEST_ASSERT(ConsumePrefix(&sv1, "ASR provider: "));
+  TEST_ASSERT(sv1 == "err");
+
+  // Non-matching prefix returns false and keeps text untouched
+  std::string_view sv2 = "worker err";
+  TEST_ASSERT(!ConsumePrefix(&sv2, "ASR: "));
+  TEST_ASSERT(sv2 == "worker err");
+
+  // Null pointer safety
+  TEST_ASSERT(!ConsumePrefix(nullptr, "ASR: "));
+
+  // Empty prefix
+  std::string_view sv3 = "unchanged";
+  TEST_ASSERT(ConsumePrefix(&sv3, ""));
+  TEST_ASSERT(sv3 == "unchanged");
+
+  // Exact match consumes all
+  std::string_view sv4 = "exact";
+  TEST_ASSERT(ConsumePrefix(&sv4, "exact"));
+  TEST_ASSERT(sv4.empty());
+}
+
+void TestSplitPair() {
+  using vinput::str::SplitPair;
+
+  // Normal char delimiter
+  const auto pair1 = SplitPair("KEY=VALUE", '=');
+  TEST_ASSERT(pair1.has_value());
+  TEST_ASSERT(pair1->first == "KEY" && pair1->second == "VALUE");
+
+  // Delimiter with whitespace and trim_whitespace = true
+  const auto pair2 = SplitPair("  host : 127.0.0.1\t", ':', /*trim_whitespace=*/true);
+  TEST_ASSERT(pair2.has_value());
+  TEST_ASSERT(pair2->first == "host" && pair2->second == "127.0.0.1");
+
+  // Delimiter with whitespace and trim_whitespace = false
+  const auto pair3 = SplitPair("  host : 127.0.0.1\t", ':', /*trim_whitespace=*/false);
+  TEST_ASSERT(pair3.has_value());
+  TEST_ASSERT(pair3->first == "  host " && pair3->second == " 127.0.0.1\t");
+
+  // No delimiter
+  TEST_ASSERT(!SplitPair("NO_DELIM", '=').has_value());
+  TEST_ASSERT(!SplitPair("", '=').has_value());
+
+  // Leading and trailing delimiter
+  const auto pair4 = SplitPair("=VALUE", '=');
+  TEST_ASSERT(pair4.has_value());
+  TEST_ASSERT(pair4->first.empty() && pair4->second == "VALUE");
+
+  const auto pair5 = SplitPair("KEY=", '=');
+  TEST_ASSERT(pair5.has_value());
+  TEST_ASSERT(pair5->first == "KEY" && pair5->second.empty());
+
+  // Multiple consecutive delimiters: split on first delimiter only
+  const auto pair6 = SplitPair("a=b=c", '=');
+  TEST_ASSERT(pair6.has_value());
+  TEST_ASSERT(pair6->first == "a" && pair6->second == "b=c");
+
+  // String_view delimiter
+  const auto pair7 = SplitPair("key::value", "::");
+  TEST_ASSERT(pair7.has_value());
+  TEST_ASSERT(pair7->first == "key" && pair7->second == "value");
+
+  // Empty string_view delimiter -> nullopt
+  TEST_ASSERT(!SplitPair("key::value", "").has_value());
+
+  // Non-matching string_view delimiter
+  TEST_ASSERT(!SplitPair("key:value", "::").has_value());
+
+  // String_view delimiter with trim
+  const auto pair8 = SplitPair(" key --> value ", "-->", /*trim_whitespace=*/true);
+  TEST_ASSERT(pair8.has_value());
+  TEST_ASSERT(pair8->first == "key" && pair8->second == "value");
+}
+
+void TestJoin() {
+  using vinput::str::Join;
+
+  // std::vector<std::string>
+  const std::vector<std::string> vec_str = {"apple", "banana", "cherry"};
+  TEST_ASSERT(Join(vec_str, ", ") == "apple, banana, cherry");
+  TEST_ASSERT(Join(vec_str, "") == "applebananacherry");
+
+  // std::vector<std::string_view>
+  const std::vector<std::string_view> vec_sv = {"line1", "line2", "line3"};
+  TEST_ASSERT(Join(vec_sv, "\n") == "line1\nline2\nline3");
+
+  // Empty container
+  const std::vector<std::string> empty_vec;
+  TEST_ASSERT(Join(empty_vec, ", ").empty());
+
+  // Single element
+  const std::vector<std::string> single_vec = {"hello"};
+  TEST_ASSERT(Join(single_vec, ", ") == "hello");
+
+  // std::set<std::string> (ordered)
+  const std::set<std::string> set_str = {"a", "b", "c"};
+  TEST_ASSERT(Join(set_str, "-") == "a-b-c");
+
+  // std::span
+  const std::string words[] = {"one", "two"};
+  TEST_ASSERT(Join(std::span(words), " ") == "one two");
+
+  // std::initializer_list
+  TEST_ASSERT(Join({"alpha", "beta", "gamma"}, " | ") == "alpha | beta | gamma");
+}
+
+void TestJoinKeyValue() {
+  using vinput::str::JoinKeyValue;
+
+  // std::map<std::string, std::string>
+  const std::map<std::string, std::string> env_map = {
+      {"FOO", "1"},
+      {"BAR", "2"},
+  };
+  TEST_ASSERT(JoinKeyValue(env_map, "\n", "=") == "BAR=2\nFOO=1");
+
+  // Empty map
+  const std::map<std::string, std::string> empty_map;
+  TEST_ASSERT(JoinKeyValue(empty_map, "\n", "=").empty());
+
+  // Single entry
+  const std::map<std::string, std::string> single_map = {{"PORT", "8080"}};
+  TEST_ASSERT(JoinKeyValue(single_map, "\n", "=") == "PORT=8080");
+
+  // Empty key or empty value
+  const std::vector<std::pair<std::string, std::string>> pair_list = {
+      {"", "val"},
+      {"key", ""},
+  };
+  TEST_ASSERT(JoinKeyValue(pair_list, "&", "=") == "=val&key=");
+}
+
+void TestMaskSecret() {
+  using vinput::str::MaskSecret;
+
+  // Normal key (length 24)
+  TEST_ASSERT(MaskSecret("sk-proj-1234567890abcdef") == "sk-p****************cdef");
+
+  // Critical length: exactly head_keep + tail_keep (8) -> completely masked
+  TEST_ASSERT(MaskSecret("12345678") == "********");
+
+  // Length 9: head 4, mask 1, tail 4
+  TEST_ASSERT(MaskSecret("123456789") == "1234*6789");
+
+  // Extremely short keys (< 8) -> completely masked
+  TEST_ASSERT(MaskSecret("abc") == "***");
+  TEST_ASSERT(MaskSecret("a") == "*");
+
+  // Empty string -> empty
+  TEST_ASSERT(MaskSecret("").empty());
+
+  // Custom parameters: head_keep = 2, tail_keep = 2, mask_char = '#'
+  // Length 8 > 4 -> head 2, mask 4, tail 2
+  TEST_ASSERT(MaskSecret("12345678", 2, 2, '#') == "12####78");
+
+  // Custom parameters: length <= head_keep + tail_keep
+  TEST_ASSERT(MaskSecret("1234", 2, 2, '#') == "####");
+  TEST_ASSERT(MaskSecret("123", 2, 2, '#') == "###");
+}
+
 int main() {
   TestTrimAsciiWhitespace();
   TestToLowerAndToUpperAscii();
@@ -149,5 +358,12 @@ int main() {
   TestSplitByChar();
   TestSplitLines();
   TestBase64Encode();
+  TestStripPrefix();
+  TestStripSuffix();
+  TestConsumePrefix();
+  TestSplitPair();
+  TestJoin();
+  TestJoinKeyValue();
+  TestMaskSecret();
   return 0;
 }
