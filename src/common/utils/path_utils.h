@@ -23,4 +23,5 @@ std::filesystem::path ContextCachePath();
 std::filesystem::path ReadNotificationsPath();
 std::filesystem::path ProviderModelCachePath();
 std::filesystem::path InstalledManifestCachePath();
+std::filesystem::path I18nCachePath(std::string_view locale);
 } // namespace vinput::path

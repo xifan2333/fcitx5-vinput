@@ -4,9 +4,6 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
-#include "common/config/core_config.h"
-#include "common/registry/registry_cache.h"
-#include "common/utils/downloader.h"
 #include "common/utils/path_utils.h"
 
 namespace vinput::registry {
@@ -51,6 +48,8 @@ std::string NormalizeLocale(std::string locale) {
   return locale;
 }
 
+} // namespace
+
 I18nMap ParseI18nJson(const std::string& content, std::string* error) {
   I18nMap map;
 
@@ -77,6 +76,8 @@ I18nMap ParseI18nJson(const std::string& content, std::string* error) {
   return map;
 }
 
+namespace {
+
 I18nMap LoadI18nFile(const std::filesystem::path& path, std::string* error) {
   std::ifstream ifs(path);
   if (!ifs) {
@@ -95,14 +96,14 @@ I18nMap LoadLocalI18nOverrides() {
   return LoadI18nFile(vinput::path::VinputConfigDir() / "i18n.local.json", &ignored_error);
 }
 
+} // namespace
+
 void ApplyLocalI18nOverrides(I18nMap* map) {
   auto local = LoadLocalI18nOverrides();
   for (auto& [key, value] : local) {
     (*map)[key] = std::move(value);
   }
 }
-
-} // namespace
 
 std::string DetectPreferredLocale() {
   const char* vars[] = {"LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"};
@@ -118,63 +119,13 @@ std::string DetectPreferredLocale() {
   return "en_US";
 }
 
-I18nMap FetchI18nMap(const std::string& locale, const std::vector<std::string>& urls,
-                     std::string* error) {
-  if (urls.empty()) {
-    if (error) {
-      *error = "no i18n URLs configured";
-    }
-    return {};
-  }
-  std::string content;
-  vinput::download::Result result;
-  vinput::download::Options options;
-  options.timeout_seconds = 20;
-  options.max_bytes = 1024 * 1024;
-  if (!vinput::registry::cache::FetchText(urls, vinput::registry::cache::I18nPath(locale), options,
-                                          &content, &result, error)) {
-    return {};
-  }
-  return ParseI18nJson(content, error);
-}
-
-I18nMap FetchMergedI18nMap(const CoreConfig& config, const std::string& preferred_locale,
-                           std::string* error) {
-  I18nMap merged;
-  std::string fetch_error;
-
-  const auto primary_urls = ResolveRegistryI18nUrls(config, preferred_locale);
-  if (!primary_urls.empty()) {
-    merged = FetchI18nMap(preferred_locale, primary_urls, &fetch_error);
-  }
-
-  if (merged.empty() && preferred_locale != "en_US") {
-    const auto fallback_urls = ResolveRegistryI18nUrls(config, "en_US");
-    auto fallback = FetchI18nMap("en_US", fallback_urls, &fetch_error);
-    merged.insert(fallback.begin(), fallback.end());
-  } else if (preferred_locale != "en_US") {
-    const auto fallback_urls = ResolveRegistryI18nUrls(config, "en_US");
-    auto fallback = FetchI18nMap("en_US", fallback_urls, nullptr);
-    for (auto& [key, value] : fallback) {
-      merged.emplace(key, std::move(value));
-    }
-  }
-
-  if (error) {
-    *error = fetch_error;
-  }
-
-  ApplyLocalI18nOverrides(&merged);
-  return merged;
-}
-
 I18nMap LoadMergedCachedI18nMap(const std::string& preferred_locale, std::string* error) {
   std::string primary_error;
-  I18nMap merged = LoadI18nFile(cache::I18nPath(preferred_locale), &primary_error);
+  I18nMap merged = LoadI18nFile(vinput::path::I18nCachePath(preferred_locale), &primary_error);
 
   std::string fallback_error;
   if (preferred_locale != "en_US") {
-    auto fallback = LoadI18nFile(cache::I18nPath("en_US"), &fallback_error);
+    auto fallback = LoadI18nFile(vinput::path::I18nCachePath("en_US"), &fallback_error);
     if (merged.empty()) {
       merged = std::move(fallback);
     } else {

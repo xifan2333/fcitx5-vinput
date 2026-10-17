@@ -180,4 +180,8 @@ std::filesystem::path InstalledManifestCachePath() {
   return VinputCacheDir() / "installed.json";
 }
 
+std::filesystem::path I18nCachePath(std::string_view locale) {
+  return RegistryCacheDir() / "i18n" / (std::string(locale) + ".json");
+}
+
 } // namespace vinput::path

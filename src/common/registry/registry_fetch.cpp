@@ -84,4 +84,54 @@ bool FetchRegistryText(const CoreConfig* config, const std::vector<std::string>&
   return true;
 }
 
+I18nMap FetchI18nMap(const std::string& locale, const std::vector<std::string>& urls,
+                     std::string* error) {
+  if (urls.empty()) {
+    if (error) {
+      *error = "no i18n URLs configured";
+    }
+    return {};
+  }
+  std::string content;
+  vinput::download::Result result;
+  vinput::download::Options options;
+  options.timeout_seconds = 20;
+  options.max_bytes = 1024 * 1024;
+  if (!vinput::registry::cache::FetchText(urls, vinput::registry::cache::I18nPath(locale), options,
+                                          &content, &result, error)) {
+    return {};
+  }
+  return ParseI18nJson(content, error);
+}
+
+I18nMap FetchMergedI18nMap(const CoreConfig& config, const std::string& preferred_locale,
+                           std::string* error) {
+  I18nMap merged;
+  std::string fetch_error;
+
+  const auto primary_urls = ResolveRegistryI18nUrls(config, preferred_locale);
+  if (!primary_urls.empty()) {
+    merged = FetchI18nMap(preferred_locale, primary_urls, &fetch_error);
+  }
+
+  if (merged.empty() && preferred_locale != "en_US") {
+    const auto fallback_urls = ResolveRegistryI18nUrls(config, "en_US");
+    auto fallback = FetchI18nMap("en_US", fallback_urls, &fetch_error);
+    merged.insert(fallback.begin(), fallback.end());
+  } else if (preferred_locale != "en_US") {
+    const auto fallback_urls = ResolveRegistryI18nUrls(config, "en_US");
+    auto fallback = FetchI18nMap("en_US", fallback_urls, nullptr);
+    for (auto& [key, value] : fallback) {
+      merged.emplace(key, std::move(value));
+    }
+  }
+
+  if (error) {
+    *error = fetch_error;
+  }
+
+  ApplyLocalI18nOverrides(&merged);
+  return merged;
+}
+
 } // namespace vinput::registry

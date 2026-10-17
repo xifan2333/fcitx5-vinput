@@ -10,6 +10,8 @@ namespace vinput::registry {
 
 using I18nMap = std::unordered_map<std::string, std::string>;
 
+I18nMap ParseI18nJson(const std::string& content, std::string* error = nullptr);
+void ApplyLocalI18nOverrides(I18nMap* map);
 std::string DetectPreferredLocale();
 I18nMap FetchI18nMap(const std::string& locale, const std::vector<std::string>& urls,
                      std::string* error);

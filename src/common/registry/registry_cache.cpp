@@ -110,7 +110,7 @@ std::filesystem::path LlmAdapterRegistryPath() {
 }
 
 std::filesystem::path I18nPath(const std::string& locale) {
-  return CachePath(std::string("i18n/") + locale + ".json");
+  return vinput::path::I18nCachePath(locale);
 }
 
 } // namespace vinput::registry::cache
