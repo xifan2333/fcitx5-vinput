@@ -409,6 +409,8 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
 
   std::vector<std::string> argv_storage;
   std::vector<char*> argv = BuildArgv(spec, &argv_storage);
+  std::vector<std::string> env_storage;
+  std::vector<char*> envp = BuildEnvp(spec, &env_storage);
 
   pid_t pid = fork();
   if (pid < 0) {
@@ -438,8 +440,6 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
       chdir(working_dir.c_str());
     }
 
-    std::vector<std::string> env_storage;
-    std::vector<char*> envp = BuildEnvp(spec, &env_storage);
     environ = envp.data();
 
     execvp(spec.command.c_str(), argv.data());
