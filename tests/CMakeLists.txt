@@ -197,3 +197,7 @@ add_executable(test_curl_connection_cache test_curl_connection_cache.cpp)
 target_include_directories(test_curl_connection_cache PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_curl_connection_cache PRIVATE CURL::libcurl pthread)
 add_test(NAME test_curl_connection_cache COMMAND test_curl_connection_cache)
+
+add_executable(test_string_utils test_string_utils.cpp)
+target_include_directories(test_string_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME test_string_utils COMMAND test_string_utils)

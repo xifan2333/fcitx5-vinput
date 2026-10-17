@@ -1,11 +1,14 @@
 #pragma once
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 namespace vinput::str {
 
@@ -39,7 +42,7 @@ inline std::string FormatSize(uint64_t bytes) {
   return FmtStr("%llu B", (unsigned long long)bytes);
 }
 
-inline std::string TrimAsciiWhitespace(std::string_view text) {
+inline std::string_view TrimAsciiWhitespace(std::string_view text) noexcept {
   size_t begin = 0;
   while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin]))) {
     begin++;
@@ -48,7 +51,103 @@ inline std::string TrimAsciiWhitespace(std::string_view text) {
   while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
     end--;
   }
-  return std::string(text.substr(begin, end - begin));
+  return text.substr(begin, end - begin);
+}
+
+inline std::string ToLowerAscii(std::string_view text) {
+  std::string result;
+  result.reserve(text.size());
+  for (char ch : text) {
+    result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+  }
+  return result;
+}
+
+inline std::string ToUpperAscii(std::string_view text) {
+  std::string result;
+  result.reserve(text.size());
+  for (char ch : text) {
+    result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+  }
+  return result;
+}
+
+inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (std::tolower(static_cast<unsigned char>(a[i])) !=
+        std::tolower(static_cast<unsigned char>(b[i]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline std::vector<std::string_view> SplitByChar(std::string_view text, char delim) {
+  std::vector<std::string_view> tokens;
+  size_t start = 0;
+  while (start <= text.size()) {
+    const size_t end = text.find(delim, start);
+    if (end == std::string_view::npos) {
+      tokens.push_back(text.substr(start));
+      break;
+    }
+    tokens.push_back(text.substr(start, end - start));
+    start = end + 1;
+  }
+  return tokens;
+}
+
+inline std::vector<std::string_view> SplitLines(std::string_view text) {
+  std::vector<std::string_view> lines;
+  size_t start = 0;
+  while (start < text.size()) {
+    const size_t end = text.find('\n', start);
+    if (end == std::string_view::npos) {
+      lines.push_back(text.substr(start));
+      break;
+    }
+    size_t len = end - start;
+    if (len > 0 && text[start + len - 1] == '\r') {
+      --len;
+    }
+    lines.push_back(text.substr(start, len));
+    start = end + 1;
+  }
+  return lines;
+}
+
+inline std::string Base64Encode(std::span<const std::byte> data) {
+  static constexpr char kTable[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string result;
+  result.reserve(((data.size() + 2) / 3) * 4);
+  for (size_t i = 0; i < data.size(); i += 3) {
+    const auto b0 = static_cast<unsigned int>(data[i]);
+    const auto b1 = (i + 1 < data.size()) ? static_cast<unsigned int>(data[i + 1]) : 0;
+    const auto b2 = (i + 2 < data.size()) ? static_cast<unsigned int>(data[i + 2]) : 0;
+    const unsigned int triple = (b0 << 16) | (b1 << 8) | b2;
+    result.push_back(kTable[(triple >> 18) & 0x3F]);
+    result.push_back(kTable[(triple >> 12) & 0x3F]);
+    result.push_back((i + 1 < data.size()) ? kTable[(triple >> 6) & 0x3F] : '=');
+    result.push_back((i + 2 < data.size()) ? kTable[triple & 0x3F] : '=');
+  }
+  return result;
+}
+
+inline std::string Base64Encode(std::string_view text) {
+  const auto bytes = std::as_bytes(std::span(text.data(), text.size()));
+  return Base64Encode(bytes);
+}
+
+inline std::string Base64Encode(const unsigned char* data, size_t size) {
+  if (data == nullptr || size == 0) {
+    return {};
+  }
+  const auto bytes = std::as_bytes(std::span(reinterpret_cast<const char*>(data), size));
+  return Base64Encode(bytes);
 }
 
 inline bool IsCjkCodepoint(uint32_t cp) {
