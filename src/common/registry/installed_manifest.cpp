@@ -159,7 +159,7 @@ const InstalledRecord* InstalledManifest::Get(std::string_view id) const {
 
 void InstalledManifest::RecordInstalled(const std::string& id, std::string_view kind,
                                         const std::string& version, const std::string& sha256) {
-  const uint64_t now = static_cast<uint64_t>(vinput::time::CurrentUnixTimestampSeconds());
+  const auto now = static_cast<uint64_t>(vinput::time::CurrentUnixTimestampSeconds());
 
   InstalledRecord record;
   record.id = id;
