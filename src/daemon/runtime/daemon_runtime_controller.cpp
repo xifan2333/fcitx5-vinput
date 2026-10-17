@@ -153,22 +153,6 @@ void ApplyRecognitionEvents(const std::vector<vinput::daemon::asr::RecognitionEv
   }
 }
 
-void ApplyRecognitionEvents(
-    const std::vector<vinput::daemon::asr::RecognitionEvent>& events,
-    std::string* latest_final_text, bool* first_partial_logged,
-    const std::optional<std::chrono::steady_clock::time_point>& recording_started_at,
-    const std::optional<std::chrono::steady_clock::time_point>& first_non_silent_at,
-    DbusService* dbus, std::string* latest_partial_text = nullptr) {
-  ApplyRecognitionEvents(events, RecognitionDispatchContext{
-                                     .latest_final_text = latest_final_text,
-                                     .latest_partial_text = latest_partial_text,
-                                     .first_partial_logged = first_partial_logged,
-                                     .recording_started_at = recording_started_at,
-                                     .first_non_silent_at = first_non_silent_at,
-                                     .dbus = dbus,
-                                 });
-}
-
 vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
     const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
     std::mutex* session_io_mutex, std::string* error) {
@@ -664,8 +648,13 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
                                  pending_chunk_pcm_.begin() +
                                      static_cast<std::ptrdiff_t>(chunk_to_push.size()));
         if (!events.empty()) {
-          ApplyRecognitionEvents(events, &latest_final_text_, &first_partial_logged_,
-                                 recording_started_at_, first_non_silent_at_, dbus_);
+          ApplyRecognitionEvents(events, RecognitionDispatchContext{
+                                             .latest_final_text = &latest_final_text_,
+                                             .first_partial_logged = &first_partial_logged_,
+                                             .recording_started_at = recording_started_at_,
+                                             .first_non_silent_at = first_non_silent_at_,
+                                             .dbus = dbus_,
+                                         });
         }
         keep_processing = pending_chunk_pcm_.size() >= kStreamingChunkSamples;
         if (keep_processing) {
@@ -802,8 +791,13 @@ void DaemonRuntimeController::PollActiveSessionEvents() {
       });
     }
     if (!events.empty()) {
-      ApplyRecognitionEvents(events, &latest_final_text_, &first_partial_logged_,
-                             recording_started_at, first_non_silent_at, dbus_);
+      ApplyRecognitionEvents(events, RecognitionDispatchContext{
+                                         .latest_final_text = &latest_final_text_,
+                                         .first_partial_logged = &first_partial_logged_,
+                                         .recording_started_at = recording_started_at,
+                                         .first_non_silent_at = first_non_silent_at,
+                                         .dbus = dbus_,
+                                     });
     }
   }
 
