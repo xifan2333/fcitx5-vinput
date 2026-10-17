@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "common/utils/interpolation.h"
+#include "common/utils/time_utils.h"
 
 extern char** environ;
 
@@ -251,20 +252,11 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       break;
     }
 
-    int timeout_ms = 100;
-    const auto remaining =
-        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-    timeout_ms = remaining > 0 ? std::min<int>(100, static_cast<int>(remaining)) : 0;
+    int timeout_ms = vinput::time::RemainingTimeoutMs(deadline, 100, now);
     if (child_exited && child_exited_at.has_value()) {
       constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
-      const auto grace_remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                       (*child_exited_at + kPostExitGrace) - now)
-                                       .count();
-      if (grace_remaining > 0) {
-        timeout_ms = std::min<int>(timeout_ms, static_cast<int>(grace_remaining));
-      } else {
-        timeout_ms = 0;
-      }
+      timeout_ms =
+          vinput::time::RemainingTimeoutMs(*child_exited_at + kPostExitGrace, timeout_ms, now);
     }
 
     const int poll_rc = poll(fds, nfds, timeout_ms);

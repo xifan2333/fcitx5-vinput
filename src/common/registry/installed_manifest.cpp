@@ -17,6 +17,7 @@
 
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
+#include "common/utils/time_utils.h"
 
 namespace vinput::registry {
 
@@ -158,10 +159,7 @@ const InstalledRecord* InstalledManifest::Get(std::string_view id) const {
 
 void InstalledManifest::RecordInstalled(const std::string& id, std::string_view kind,
                                         const std::string& version, const std::string& sha256) {
-  const uint64_t now =
-      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(
-                                std::chrono::system_clock::now().time_since_epoch())
-                                .count());
+  const uint64_t now = static_cast<uint64_t>(vinput::time::CurrentUnixTimestampSeconds());
 
   InstalledRecord record;
   record.id = id;

@@ -21,6 +21,7 @@
 #include "common/utils/path_utils.h"
 #include "common/utils/sandbox.h"
 #include "common/utils/string_utils.h"
+#include "common/utils/time_utils.h"
 
 #include "core/context_writer.h"
 #include "dbus/notifier_dbus_object.h"
@@ -31,12 +32,6 @@ namespace {
 
 constexpr const char* kContextSourceUser = "user";
 constexpr uint64_t kContextFlushDelayUsec = 5 * 1000 * 1000; // 5 seconds
-
-int64_t CurrentUnixTimestamp() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 
 // Auto-install systemd service when running inside a sandbox.
 void ensureDaemonServiceInstalled() {
@@ -309,7 +304,7 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
   nlohmann::json entry;
   entry["text"] = text;
   entry["source"] = source ? source : kContextSourceUser;
-  entry["timestamp"] = CurrentUnixTimestamp();
+  entry["timestamp"] = vinput::time::CurrentUnixTimestampSeconds();
 
   if (!context_writer_) {
     context_writer_ =
