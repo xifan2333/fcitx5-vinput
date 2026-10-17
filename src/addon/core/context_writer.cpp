@@ -10,11 +10,8 @@
 
 namespace vinput::addon {
 
-AsyncContextWriter::AsyncContextWriter(std::filesystem::path path) : path_(std::move(path)) {
-  std::error_code ec;
-  std::filesystem::create_directories(path_.parent_path(), ec);
-  worker_ = std::thread([this] { Run(); });
-}
+AsyncContextWriter::AsyncContextWriter(std::filesystem::path path)
+    : path_(std::move(path)), worker_([this] { Run(); }) {}
 
 AsyncContextWriter::~AsyncContextWriter() {
   {
