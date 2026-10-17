@@ -627,46 +627,27 @@ private:
   }
 
   void ConsumeStdoutLines(std::string* error) {
-    while (true) {
-      const std::size_t newline = stdout_buffer_.find('\n');
-      if (newline == std::string::npos) {
-        break;
-      }
-      std::string line = stdout_buffer_.substr(0, newline);
-      stdout_buffer_.erase(0, newline + 1);
-      line = vinput::str::TrimAsciiWhitespace(line);
+    vinput::str::DrainLinesFromBuffer(stdout_buffer_, [&](std::string_view raw_line) {
+      std::string line = vinput::str::TrimAsciiWhitespace(raw_line);
       if (line.empty()) {
-        continue;
+        return true;
       }
-      if (!HandleOutputLine(line, error)) {
-        return;
-      }
-    }
+      return HandleOutputLine(line, error);
+    });
   }
 
   void ConsumeStderrLines(bool flush_tail = false) {
-    while (true) {
-      const std::size_t newline = stderr_buffer_.find('\n');
-      if (newline == std::string::npos) {
-        break;
-      }
-      std::string line = stderr_buffer_.substr(0, newline);
-      stderr_buffer_.erase(0, newline + 1);
-      line = vinput::str::TrimAsciiWhitespace(line);
-      if (line.empty()) {
-        continue;
-      }
-      stderr_tail_ = line;
-      std::fprintf(stderr, "vinput: command streaming stderr: %s\n", line.c_str());
-    }
-    if (flush_tail) {
-      const std::string tail = vinput::str::TrimAsciiWhitespace(stderr_buffer_);
-      stderr_buffer_.clear();
-      if (!tail.empty()) {
-        stderr_tail_ = tail;
-        std::fprintf(stderr, "vinput: command streaming stderr: %s\n", tail.c_str());
-      }
-    }
+    vinput::str::DrainLinesFromBuffer(
+        stderr_buffer_,
+        [&](std::string_view raw_line) {
+          std::string line = vinput::str::TrimAsciiWhitespace(raw_line);
+          if (line.empty()) {
+            return;
+          }
+          stderr_tail_ = line;
+          std::fprintf(stderr, "vinput: command streaming stderr: %s\n", line.c_str());
+        },
+        flush_tail);
   }
 
   bool HandleOutputLine(const std::string& line, std::string* error) {

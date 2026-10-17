@@ -10,13 +10,7 @@ namespace vinput::dbus {
 
 namespace {
 
-bool ConsumePrefix(std::string_view* text, std::string_view prefix) {
-  if (!text->starts_with(prefix)) {
-    return false;
-  }
-  text->remove_prefix(prefix.size());
-  return true;
-}
+using vinput::str::ConsumePrefix;
 
 bool ParseQuotedValue(std::string_view text, std::string_view prefix, std::string_view* value,
                       std::string_view* tail) {

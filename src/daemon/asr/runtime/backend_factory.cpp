@@ -17,8 +17,7 @@ namespace {
 
 bool IsStreamingCommandProvider(const CommandAsrProvider& provider) {
   static constexpr std::string_view kSuffix = ".streaming";
-  const std::string_view id = provider.id;
-  return id.size() >= kSuffix.size() && id.substr(id.size() - kSuffix.size()) == kSuffix;
+  return provider.id.ends_with(kSuffix);
 }
 
 std::unique_ptr<AsrBackend>

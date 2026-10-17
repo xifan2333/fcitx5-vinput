@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "common/utils/string_utils.h"
+
 namespace vinput::pw {
 
 namespace {
@@ -242,21 +244,16 @@ ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
       }
 
       // Real Audio/Sink monitor: strip the ".monitor" suffix to target the underlying sink node.
-      if (target.size() > kMonitorSuffix.size() &&
-          target.substr(target.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
-        resolved.node_name = std::string(target.substr(0, target.size() - kMonitorSuffix.size()));
-      } else {
-        resolved.node_name = dev.name;
-      }
+      const auto stripped = vinput::str::StripSuffix(target, kMonitorSuffix);
+      resolved.node_name = stripped.empty() ? dev.name : std::string(stripped);
       resolved.is_sink_capture = true;
       return resolved;
     }
   }
 
   // 2. Fallback heuristic when device is offline or unknown.
-  if (target.size() > kMonitorSuffix.size() &&
-      target.substr(target.size() - kMonitorSuffix.size()) == kMonitorSuffix) {
-    resolved.node_name = std::string(target.substr(0, target.size() - kMonitorSuffix.size()));
+  if (target.size() > kMonitorSuffix.size() && target.ends_with(kMonitorSuffix)) {
+    resolved.node_name = std::string(vinput::str::StripSuffix(target, kMonitorSuffix));
     resolved.is_sink_capture = true;
     return resolved;
   }

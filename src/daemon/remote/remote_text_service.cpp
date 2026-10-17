@@ -419,15 +419,13 @@ std::optional<HttpRequestInfo> ParseHttpRequest(const std::string& request) {
     if (!line.empty() && line.back() == '\r') {
       line.pop_back();
     }
-    const std::size_t colon = line.find(':');
-    if (colon == std::string::npos) {
+    const auto header = vinput::str::SplitPair(line, ':', /*trim_whitespace=*/true);
+    if (!header) {
       continue;
     }
-    std::string name = vinput::str::ToLowerAscii(
-        vinput::str::TrimAsciiWhitespace(std::string_view(line).substr(0, colon)));
-    std::string value = vinput::str::TrimAsciiWhitespace(std::string_view(line).substr(colon + 1));
+    std::string name = vinput::str::ToLowerAscii(header->first);
     if (!name.empty()) {
-      info.headers[std::move(name)] = std::move(value);
+      info.headers[std::move(name)] = std::string(header->second);
     }
   }
   return info;
@@ -438,12 +436,11 @@ std::string BearerToken(const std::map<std::string, std::string>& headers) {
   if (it == headers.end()) {
     return {};
   }
-  constexpr std::string_view prefix = "Bearer ";
-  const std::string value = vinput::str::TrimAsciiWhitespace(it->second);
-  if (!std::string_view(value).starts_with(prefix)) {
+  std::string_view value = vinput::str::TrimAsciiWhitespaceView(it->second);
+  if (!vinput::str::ConsumePrefix(&value, "Bearer ")) {
     return {};
   }
-  return vinput::str::TrimAsciiWhitespace(std::string_view(value).substr(prefix.size()));
+  return vinput::str::TrimAsciiWhitespace(value);
 }
 
 bool SendWebSocketHandshake(int fd, const HttpRequestInfo& request) {

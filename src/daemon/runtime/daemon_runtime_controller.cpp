@@ -21,6 +21,7 @@
 #include "common/dbus/error_info.h"
 #include "common/i18n.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/string_utils.h"
 #include "common/utils/time_utils.h"
 
 #include "daemon/asr/runtime/async_recognition_session.h"
@@ -383,7 +384,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     std::string message =
         is_command ? "Failed to start command recording." : "Failed to start recording.";
     if (!error.empty()) {
-      message = message.substr(0, message.size() - 1) + ": " + error;
+      message = std::string(vinput::str::StripSuffix(message, ".")) + ": " + error;
     }
     capture_->SetChunkCallback({});
     {

@@ -258,32 +258,16 @@ private:
   }
 
   void FlushAdapterBuffer(ManagedAdapter& adapter, bool flush_partial) {
-    size_t start = 0;
-    while (true) {
-      const size_t end = adapter.stderr_buffer.find('\n', start);
-      if (end == std::string::npos) {
-        break;
-      }
-      std::string line = adapter.stderr_buffer.substr(start, end - start);
-      if (!line.empty() && line.back() == '\r') {
-        line.pop_back();
-      }
-      if (!line.empty()) {
-        vinput::debug::Log("adapter[%s] stderr: %s\n", adapter.id.c_str(), line.c_str());
-        EmitNotification(line);
-      }
-      start = end + 1;
-    }
-
-    adapter.stderr_buffer.erase(0, start);
-    if (flush_partial) {
-      std::string line = vinput::str::TrimAsciiWhitespace(adapter.stderr_buffer);
-      if (!line.empty()) {
-        vinput::debug::Log("adapter[%s] stderr: %s\n", adapter.id.c_str(), line.c_str());
-        EmitNotification(line);
-      }
-      adapter.stderr_buffer.clear();
-    }
+    vinput::str::DrainLinesFromBuffer(
+        adapter.stderr_buffer,
+        [this, &adapter](std::string_view raw_line) {
+          std::string line = vinput::str::TrimAsciiWhitespace(raw_line);
+          if (!line.empty()) {
+            vinput::debug::Log("adapter[%s] stderr: %s\n", adapter.id.c_str(), line.c_str());
+            EmitNotification(line);
+          }
+        },
+        flush_partial);
   }
 
   DbusService::MethodResult HandleStartRequest(const std::string& adapter_id) {

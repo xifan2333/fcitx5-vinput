@@ -205,18 +205,19 @@ bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error
     }
   }
 
-  const auto colon = line.rfind(':');
-  if (colon == std::string::npos) {
+  const auto pair = vinput::str::SplitPair(line, ':');
+  if (!pair) {
     entry->text = std::move(line);
     entry->score.clear();
     return true;
   }
 
-  const std::string raw_score = line.substr(colon + 1);
+  const std::string_view raw_text = pair->first;
+  const std::string_view raw_score = pair->second;
   const std::string score = vinput::str::TrimAsciiWhitespace(raw_score);
-  const std::string text = vinput::str::TrimAsciiWhitespace(line.substr(0, colon));
+  const std::string text = vinput::str::TrimAsciiWhitespace(raw_text);
   if (IsValidScore(score)) {
-    const bool whitespace_before = colon > 0 && IsAsciiWhitespace(line[colon - 1]);
+    const bool whitespace_before = !raw_text.empty() && IsAsciiWhitespace(raw_text.back());
     const bool whitespace_after = raw_score != score;
     if (whitespace_before || whitespace_after) {
       if (error) {
@@ -238,7 +239,7 @@ bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error
   // A separated ':...' token or an attached numeric-looking suffix is an
   // invalid score. Other colon-containing terms (for example URLs) remain
   // literal text.
-  const bool whitespace_before = colon > 0 && IsAsciiWhitespace(line[colon - 1]);
+  const bool whitespace_before = !raw_text.empty() && IsAsciiWhitespace(raw_text.back());
   const bool whitespace_after = raw_score != score;
   if (whitespace_before || whitespace_after || LooksLikeScore(score)) {
     if (error) {
