@@ -29,15 +29,14 @@ bool AsyncContextWriter::Enqueue(std::string json_line, int max_lines) {
   if (max_lines <= 0 || json_line.empty()) {
     return true;
   }
-  if (json_line.size() > kMaxPendingBytes) {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    ++dropped_;
-    return false;
-  }
   bool lost_entries = false;
   {
     const std::lock_guard<std::mutex> lock(mutex_);
     if (stopping_) {
+      return false;
+    }
+    if (json_line.size() > kMaxPendingBytes) {
+      ++dropped_;
       return false;
     }
     while (!pending_.empty() && (pending_.size() >= kMaxPendingEntries ||
