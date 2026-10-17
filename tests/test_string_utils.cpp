@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <map>
 #include <set>
 #include <span>
@@ -218,17 +219,23 @@ void TestSplitPair() {
   // Normal char delimiter
   const auto pair1 = SplitPair("KEY=VALUE", '=');
   TEST_ASSERT(pair1.has_value());
-  TEST_ASSERT(pair1->first == "KEY" && pair1->second == "VALUE");
+  if (pair1.has_value()) {
+    TEST_ASSERT(pair1->first == "KEY" && pair1->second == "VALUE");
+  }
 
   // Delimiter with whitespace and trim_whitespace = true
   const auto pair2 = SplitPair("  host : 127.0.0.1\t", ':', /*trim_whitespace=*/true);
   TEST_ASSERT(pair2.has_value());
-  TEST_ASSERT(pair2->first == "host" && pair2->second == "127.0.0.1");
+  if (pair2.has_value()) {
+    TEST_ASSERT(pair2->first == "host" && pair2->second == "127.0.0.1");
+  }
 
   // Delimiter with whitespace and trim_whitespace = false
   const auto pair3 = SplitPair("  host : 127.0.0.1\t", ':', /*trim_whitespace=*/false);
   TEST_ASSERT(pair3.has_value());
-  TEST_ASSERT(pair3->first == "  host " && pair3->second == " 127.0.0.1\t");
+  if (pair3.has_value()) {
+    TEST_ASSERT(pair3->first == "  host " && pair3->second == " 127.0.0.1\t");
+  }
 
   // No delimiter
   TEST_ASSERT(!SplitPair("NO_DELIM", '=').has_value());
@@ -237,21 +244,29 @@ void TestSplitPair() {
   // Leading and trailing delimiter
   const auto pair4 = SplitPair("=VALUE", '=');
   TEST_ASSERT(pair4.has_value());
-  TEST_ASSERT(pair4->first.empty() && pair4->second == "VALUE");
+  if (pair4.has_value()) {
+    TEST_ASSERT(pair4->first.empty() && pair4->second == "VALUE");
+  }
 
   const auto pair5 = SplitPair("KEY=", '=');
   TEST_ASSERT(pair5.has_value());
-  TEST_ASSERT(pair5->first == "KEY" && pair5->second.empty());
+  if (pair5.has_value()) {
+    TEST_ASSERT(pair5->first == "KEY" && pair5->second.empty());
+  }
 
   // Multiple consecutive delimiters: split on first delimiter only
   const auto pair6 = SplitPair("a=b=c", '=');
   TEST_ASSERT(pair6.has_value());
-  TEST_ASSERT(pair6->first == "a" && pair6->second == "b=c");
+  if (pair6.has_value()) {
+    TEST_ASSERT(pair6->first == "a" && pair6->second == "b=c");
+  }
 
   // String_view delimiter
   const auto pair7 = SplitPair("key::value", "::");
   TEST_ASSERT(pair7.has_value());
-  TEST_ASSERT(pair7->first == "key" && pair7->second == "value");
+  if (pair7.has_value()) {
+    TEST_ASSERT(pair7->first == "key" && pair7->second == "value");
+  }
 
   // Empty string_view delimiter -> nullopt
   TEST_ASSERT(!SplitPair("key::value", "").has_value());
@@ -262,7 +277,9 @@ void TestSplitPair() {
   // String_view delimiter with trim
   const auto pair8 = SplitPair(" key --> value ", "-->", /*trim_whitespace=*/true);
   TEST_ASSERT(pair8.has_value());
-  TEST_ASSERT(pair8->first == "key" && pair8->second == "value");
+  if (pair8.has_value()) {
+    TEST_ASSERT(pair8->first == "key" && pair8->second == "value");
+  }
 }
 
 void TestJoin() {
@@ -349,6 +366,13 @@ void TestMaskSecret() {
   // Custom parameters: length <= head_keep + tail_keep
   TEST_ASSERT(MaskSecret("1234", 2, 2, '#') == "####");
   TEST_ASSERT(MaskSecret("123", 2, 2, '#') == "###");
+
+  // Overflow protection with extreme size_t keep lengths
+  const size_t kMax = std::numeric_limits<size_t>::max();
+  TEST_ASSERT(MaskSecret("secret", kMax, 1) == "******");
+  TEST_ASSERT(MaskSecret("secret", 1, kMax) == "******");
+  TEST_ASSERT(MaskSecret("secret", kMax, kMax) == "******");
+  TEST_ASSERT(MaskSecret("secret", kMax, 0) == "******");
 }
 
 int main() {

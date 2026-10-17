@@ -275,8 +275,9 @@ inline std::string MaskSecret(std::string_view secret, size_t head_keep = 4, siz
   if (secret.empty()) {
     return {};
   }
-  if (secret.size() <= head_keep + tail_keep) {
-    return std::string(secret.size(), mask_char);
+  if (tail_keep >= secret.size() || head_keep >= secret.size() - tail_keep) {
+    std::string masked(secret.size(), mask_char);
+    return masked;
   }
   std::string result;
   result.reserve(secret.size());
