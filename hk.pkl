@@ -35,7 +35,7 @@ local linters = new Mapping<String, Step> {
 local pre_push_guard = new Step {
   stdin = "{{hook_stdin}}"
   shell = "bash -o errexit -c"
-  check = #"
+  check = #"""
     set -euo pipefail
 
     is_null_oid() {
@@ -90,7 +90,7 @@ local pre_push_guard = new Step {
     }
 
     audit_push {{hook_args}}
-  "#
+  """#
 }
 
 hooks {
