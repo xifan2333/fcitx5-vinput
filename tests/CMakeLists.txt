@@ -193,3 +193,7 @@ add_test(NAME test_string_utils COMMAND test_string_utils)
 add_executable(test_time_utils test_time_utils.cpp)
 target_include_directories(test_time_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_time_utils COMMAND test_time_utils)
+
+add_executable(test_locale_utils test_locale_utils.cpp)
+target_include_directories(test_locale_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME test_locale_utils COMMAND test_locale_utils)
