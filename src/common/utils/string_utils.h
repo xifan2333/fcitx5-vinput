@@ -197,6 +197,64 @@ inline std::vector<std::string_view> SplitLines(std::string_view text) {
   return lines;
 }
 
+/**
+ * @brief 从动态输入缓冲区中消费完整的行（以 '\n' 分隔，自动剥离末尾 '\r'）。
+ *
+ * 每解析出一行即调用一次回调函数 `on_line(std::string_view)`。
+ * 消费完毕后，已处理的字节将从 buffer 开头安全移除。
+ * 回调若返回 bool 且为 false，将提前中断消费，剩余字节保留在 buffer 中。
+ *
+ * @param buffer 待消费的累加文本缓冲区
+ * @param on_line 逐行消费回调函数，签名为 void(std::string_view) 或 bool(std::string_view)
+ * @param flush_tail 是否强制刷新尾部剩余的不完整行（常用于进程退出或管道关闭）
+ */
+template <typename Callback>
+inline void DrainLinesFromBuffer(std::string& buffer, Callback&& on_line, bool flush_tail = false) {
+  size_t processed = 0;
+  size_t start = 0;
+  bool should_stop = false;
+
+  while (start < buffer.size()) {
+    const size_t end = buffer.find('\n', start);
+    if (end == std::string::npos) {
+      break;
+    }
+    size_t len = end - start;
+    if (len > 0 && buffer[start + len - 1] == '\r') {
+      --len;
+    }
+    const std::string_view line(buffer.data() + start, len);
+    start = end + 1;
+    processed = start;
+
+    if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
+      on_line(line);
+    } else {
+      if (!static_cast<bool>(on_line(line))) {
+        should_stop = true;
+        break;
+      }
+    }
+  }
+
+  if (processed > 0) {
+    buffer.erase(0, processed);
+  }
+
+  if (flush_tail && !should_stop && !buffer.empty()) {
+    std::string_view tail(buffer);
+    if (!tail.empty() && tail.back() == '\r') {
+      tail.remove_suffix(1);
+    }
+    if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
+      on_line(tail);
+    } else {
+      (void)on_line(tail);
+    }
+    buffer.clear();
+  }
+}
+
 template <typename Container>
 inline std::string Join(const Container& elements, std::string_view delimiter) {
   auto it = std::begin(elements);
