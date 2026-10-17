@@ -58,11 +58,25 @@ inline std::string TrimAsciiWhitespace(std::string_view text) {
   return std::string(TrimAsciiWhitespaceView(text));
 }
 
+inline char ToLowerAsciiChar(char ch) noexcept {
+  if (ch >= 'A' && ch <= 'Z') {
+    return static_cast<char>(ch - 'A' + 'a');
+  }
+  return ch;
+}
+
+inline char ToUpperAsciiChar(char ch) noexcept {
+  if (ch >= 'a' && ch <= 'z') {
+    return static_cast<char>(ch - 'a' + 'A');
+  }
+  return ch;
+}
+
 inline std::string ToLowerAscii(std::string_view text) {
   std::string result;
   result.reserve(text.size());
   for (const char ch : text) {
-    result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    result.push_back(ToLowerAsciiChar(ch));
   }
   return result;
 }
@@ -71,7 +85,7 @@ inline std::string ToUpperAscii(std::string_view text) {
   std::string result;
   result.reserve(text.size());
   for (const char ch : text) {
-    result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+    result.push_back(ToUpperAsciiChar(ch));
   }
   return result;
 }
@@ -81,8 +95,7 @@ inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
     return false;
   }
   for (size_t i = 0; i < a.size(); ++i) {
-    if (std::tolower(static_cast<unsigned char>(a[i])) !=
-        std::tolower(static_cast<unsigned char>(b[i]))) {
+    if (ToLowerAsciiChar(a[i]) != ToLowerAsciiChar(b[i])) {
       return false;
     }
   }
@@ -144,6 +157,13 @@ inline std::string Base64Encode(std::span<const std::byte> data) {
 inline std::string Base64Encode(std::string_view text) {
   const auto bytes = std::as_bytes(std::span(text.data(), text.size()));
   return Base64Encode(bytes);
+}
+
+inline std::string Base64Encode(const char* data, size_t size) {
+  if (data == nullptr || size == 0) {
+    return {};
+  }
+  return Base64Encode(std::string_view(data, size));
 }
 
 inline std::string Base64Encode(const unsigned char* data, size_t size) {

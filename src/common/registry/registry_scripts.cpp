@@ -11,6 +11,7 @@
 #include "common/registry/registry_fetch.h"
 #include "common/utils/downloader.h"
 #include "common/utils/path_utils.h"
+#include "common/utils/string_utils.h"
 #include "common/utils/version_utils.h"
 
 namespace vinput::script {
@@ -26,27 +27,18 @@ std::vector<std::string> SplitResourceId(std::string_view id) {
     return {};
   }
 
-  std::vector<std::string> raw_segments;
-  std::size_t start = 0;
-  while (start <= id.size()) {
-    const std::size_t dot = id.find('.', start);
-    const std::size_t end = dot == std::string_view::npos ? id.size() : dot;
-    if (end == start) {
-      return {};
-    }
-    std::string segment(id.substr(start, end - start));
-    if (segment.empty() || segment == "." || segment == "..") {
-      return {};
-    }
-    raw_segments.push_back(std::move(segment));
-    if (dot == std::string_view::npos) {
-      break;
-    }
-    start = dot + 1;
+  const auto tokens = vinput::str::SplitByChar(id, '.');
+  if (tokens.size() < 3) {
+    return {};
   }
 
-  if (raw_segments.size() < 3) {
-    return {};
+  std::vector<std::string> raw_segments;
+  raw_segments.reserve(tokens.size());
+  for (const auto& token : tokens) {
+    if (token.empty() || token == "." || token == "..") {
+      return {};
+    }
+    raw_segments.emplace_back(token);
   }
 
   const std::string& type = raw_segments[0];

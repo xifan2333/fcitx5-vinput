@@ -54,10 +54,13 @@ void TestToLowerAndToUpperAscii() {
   TEST_ASSERT(ToLowerAscii("").empty());
   TEST_ASSERT(ToLowerAscii("Hello, World! 123") == "hello, world! 123");
   TEST_ASSERT(ToLowerAscii("FCITX5-VINPUT") == "fcitx5-vinput");
+  // Strict ASCII-only case folding: I <-> i regardless of system locale
+  TEST_ASSERT(ToLowerAscii("AUTHORIZATION") == "authorization");
 
   TEST_ASSERT(ToUpperAscii("").empty());
   TEST_ASSERT(ToUpperAscii("Hello, World! 123") == "HELLO, WORLD! 123");
   TEST_ASSERT(ToUpperAscii("fcitx5-vinput") == "FCITX5-VINPUT");
+  TEST_ASSERT(ToUpperAscii("authorization") == "AUTHORIZATION");
 }
 
 void TestEqualsIgnoreCase() {
@@ -131,7 +134,12 @@ void TestBase64Encode() {
   // Raw unsigned char pointer test
   const unsigned char data[] = {'H', 'e', 'l', 'l', 'o'};
   TEST_ASSERT(Base64Encode(data, sizeof(data)) == "SGVsbG8=");
-  TEST_ASSERT(Base64Encode(nullptr, 0).empty());
+  TEST_ASSERT(Base64Encode(static_cast<const unsigned char*>(nullptr), 0).empty());
+
+  // Raw const char pointer test
+  const char char_data[] = "Hello";
+  TEST_ASSERT(Base64Encode(char_data, sizeof(char_data) - 1) == "SGVsbG8=");
+  TEST_ASSERT(Base64Encode(static_cast<const char*>(nullptr), 0).empty());
 }
 
 int main() {

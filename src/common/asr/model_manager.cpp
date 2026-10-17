@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include "common/utils/path_utils.h"
+#include "common/utils/string_utils.h"
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -24,27 +25,18 @@ std::vector<std::string> SplitModelId(std::string_view model_id) {
     return {};
   }
 
-  std::vector<std::string> raw_segments;
-  std::size_t start = 0;
-  while (start <= model_id.size()) {
-    const std::size_t dot = model_id.find('.', start);
-    const std::size_t end = dot == std::string_view::npos ? model_id.size() : dot;
-    if (end == start) {
-      return {};
-    }
-    std::string segment(model_id.substr(start, end - start));
-    if (segment.empty() || segment == "." || segment == "..") {
-      return {};
-    }
-    raw_segments.push_back(std::move(segment));
-    if (dot == std::string_view::npos) {
-      break;
-    }
-    start = dot + 1;
+  const auto tokens = vinput::str::SplitByChar(model_id, '.');
+  if (tokens.size() < 3 || tokens.front() != "model") {
+    return {};
   }
 
-  if (raw_segments.size() < 3 || raw_segments.front() != "model") {
-    return {};
+  std::vector<std::string> raw_segments;
+  raw_segments.reserve(tokens.size());
+  for (const auto& token : tokens) {
+    if (token.empty() || token == "." || token == "..") {
+      return {};
+    }
+    raw_segments.emplace_back(token);
   }
 
   const std::string& source = raw_segments[1];
