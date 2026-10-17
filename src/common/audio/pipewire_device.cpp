@@ -1,6 +1,7 @@
 #include "common/audio/pipewire_device.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstdint>
 #include <ctime>
 #include <pipewire/context.h>
@@ -117,81 +118,57 @@ const struct pw_registry_events registry_events = {
     registry_event_global_remove,
 };
 
-struct PipeWireSession {
-  PwData data{};
-  bool core_listener_added = false;
-  bool registry_listener_added = false;
-
-  PipeWireSession() {
-    pw_init(nullptr, nullptr);
-    spa_zero(data.core_listener);
-    spa_zero(data.registry_listener);
-  }
-
-  ~PipeWireSession() {
-    if (registry_listener_added) {
-      spa_hook_remove(&data.registry_listener);
-    }
-    if (data.registry != nullptr) {
-      pw_proxy_destroy(static_cast<pw_proxy*>(static_cast<void*>(data.registry)));
-    }
-    if (core_listener_added) {
-      spa_hook_remove(&data.core_listener);
-    }
-    if (data.core != nullptr) {
-      pw_core_disconnect(data.core);
-    }
-    if (data.context != nullptr) {
-      pw_context_destroy(data.context);
-    }
-    if (data.loop != nullptr) {
-      pw_main_loop_destroy(data.loop);
-    }
-    pw_deinit();
-  }
-
-  PipeWireSession(const PipeWireSession&) = delete;
-  PipeWireSession& operator=(const PipeWireSession&) = delete;
-  PipeWireSession(PipeWireSession&&) = delete;
-  PipeWireSession& operator=(PipeWireSession&&) = delete;
-};
-
 } // namespace
 
 std::vector<DeviceInfo> EnumerateAudioSources() {
-  PipeWireSession session;
+  pw_init(nullptr, nullptr);
 
-  session.data.loop = pw_main_loop_new(nullptr);
-  if (session.data.loop == nullptr) {
+  PwData data{};
+  struct PwResourceGuard {
+    PwData& d;
+    ~PwResourceGuard() {
+      if (d.registry != nullptr) {
+        spa_hook_remove(&d.registry_listener);
+        pw_proxy_destroy(std::bit_cast<pw_proxy*>(d.registry));
+      }
+      if (d.core != nullptr) {
+        spa_hook_remove(&d.core_listener);
+        pw_core_disconnect(d.core);
+      }
+      if (d.context != nullptr) {
+        pw_context_destroy(d.context);
+      }
+      if (d.loop != nullptr) {
+        pw_main_loop_destroy(d.loop);
+      }
+      pw_deinit();
+    }
+  } guard{data};
+
+  data.loop = pw_main_loop_new(nullptr);
+  if (!data.loop) {
     return {};
   }
 
-  session.data.context = pw_context_new(pw_main_loop_get_loop(session.data.loop), nullptr, 0);
-  if (session.data.context == nullptr) {
+  data.context = pw_context_new(pw_main_loop_get_loop(data.loop), nullptr, 0);
+  if (!data.context) {
     return {};
   }
 
-  session.data.core = pw_context_connect(session.data.context, nullptr, 0);
-  if (session.data.core == nullptr) {
+  data.core = pw_context_connect(data.context, nullptr, 0);
+  if (!data.core) {
     return {};
   }
 
-  pw_core_add_listener(session.data.core, &session.data.core_listener, &core_events, &session.data);
-  session.core_listener_added = true;
+  pw_core_add_listener(data.core, &data.core_listener, &core_events, &data);
+  data.registry = pw_core_get_registry(data.core, PW_VERSION_REGISTRY, 0);
+  spa_zero(data.registry_listener);
+  pw_registry_add_listener(data.registry, &data.registry_listener, &registry_events, &data);
 
-  session.data.registry = pw_core_get_registry(session.data.core, PW_VERSION_REGISTRY, 0);
-  if (session.data.registry == nullptr) {
-    return {};
-  }
-
-  pw_registry_add_listener(session.data.registry, &session.data.registry_listener, &registry_events,
-                           &session.data);
-  session.registry_listener_added = true;
-
-  session.data.pending_sync = pw_core_sync(session.data.core, PW_ID_CORE, 0);
-  if (session.data.pending_sync >= 0) {
+  data.pending_sync = pw_core_sync(data.core, PW_ID_CORE, 0);
+  if (data.pending_sync >= 0) {
     // Arm a 250ms bounded timer so enumeration never hangs if PipeWire is unresponsive.
-    pw_loop* const loop = pw_main_loop_get_loop(session.data.loop);
+    pw_loop* const loop = pw_main_loop_get_loop(data.loop);
     spa_source* timer = nullptr;
     const spa_loop_utils_methods* utils = nullptr;
     void* u_data = nullptr;
@@ -201,7 +178,7 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
       utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
       u_data = loop->utils->iface.cb.data;
       if (utils->add_timer != nullptr && utils->update_timer != nullptr) {
-        timer = utils->add_timer(u_data, on_enumeration_timeout, &session.data);
+        timer = utils->add_timer(u_data, on_enumeration_timeout, &data);
         if (timer != nullptr) {
           timespec value{};
           value.tv_sec = 0;
@@ -215,7 +192,7 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
 
     // Only enter event loop if timeout protection is armed to prevent unbounded hang.
     if (timer_armed) {
-      pw_main_loop_run(session.data.loop);
+      pw_main_loop_run(data.loop);
     }
 
     if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
@@ -223,7 +200,7 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
     }
   }
 
-  std::stable_sort(session.data.devices.begin(), session.data.devices.end(),
+  std::stable_sort(data.devices.begin(), data.devices.end(),
                    [](const DeviceInfo& a, const DeviceInfo& b) {
                      if (a.is_sink_monitor != b.is_sink_monitor) {
                        return !a.is_sink_monitor && b.is_sink_monitor;
@@ -231,7 +208,7 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
                      return a.id < b.id;
                    });
 
-  return session.data.devices;
+  return data.devices;
 }
 
 ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
