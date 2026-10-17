@@ -148,6 +148,7 @@ void AsyncContextWriter::Persist(const ContextWriteTask& task) {
   if (!out) {
     return;
   }
+  std::error_code ec;
   std::filesystem::rename(temp_path, path_, ec);
   if (ec) {
     std::fprintf(stderr, "vinput: failed to rotate context cache: %s\n", ec.message().c_str());
