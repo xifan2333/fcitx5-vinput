@@ -125,25 +125,36 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
 
   PwData data{};
   struct PwResourceGuard {
-    PwData& d;
+    PwData* d = nullptr;
+
+    explicit PwResourceGuard(PwData* data_ptr) : d(data_ptr) {}
     ~PwResourceGuard() {
-      if (d.registry != nullptr) {
-        spa_hook_remove(&d.registry_listener);
-        pw_proxy_destroy(std::bit_cast<pw_proxy*>(d.registry));
+      if (d == nullptr) {
+        return;
       }
-      if (d.core != nullptr) {
-        spa_hook_remove(&d.core_listener);
-        pw_core_disconnect(d.core);
+      if (d->registry != nullptr) {
+        spa_hook_remove(&d->registry_listener);
+        pw_proxy_destroy(std::bit_cast<pw_proxy*>(d->registry));
       }
-      if (d.context != nullptr) {
-        pw_context_destroy(d.context);
+      if (d->core != nullptr) {
+        spa_hook_remove(&d->core_listener);
+        pw_core_disconnect(d->core);
       }
-      if (d.loop != nullptr) {
-        pw_main_loop_destroy(d.loop);
+      if (d->context != nullptr) {
+        pw_context_destroy(d->context);
+      }
+      if (d->loop != nullptr) {
+        pw_main_loop_destroy(d->loop);
       }
       pw_deinit();
     }
-  } guard{data};
+
+    PwResourceGuard(const PwResourceGuard&) = delete;
+    PwResourceGuard& operator=(const PwResourceGuard&) = delete;
+    PwResourceGuard(PwResourceGuard&&) = delete;
+    PwResourceGuard& operator=(PwResourceGuard&&) = delete;
+  };
+  const PwResourceGuard guard{&data};
 
   data.loop = pw_main_loop_new(nullptr);
   if (!data.loop) {
