@@ -2,14 +2,17 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <utility>
@@ -25,8 +28,10 @@
 #include "common/utils/time_utils.h"
 
 #include "daemon/asr/runtime/async_recognition_session.h"
+#include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/audio/audio_utils.h"
 #include "daemon/remote/remote_text_service.h"
+#include "daemon/runtime/dbus_service.h"
 
 namespace vinput::daemon::runtime {
 
@@ -82,7 +87,7 @@ void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
   if (event.text.empty()) {
     return;
   }
-  if (ctx.first_partial_logged && !*ctx.first_partial_logged) {
+  if (ctx.first_partial_logged != nullptr && !*ctx.first_partial_logged) {
     *ctx.first_partial_logged = true;
     const auto now = std::chrono::steady_clock::now();
     const long first_non_silent_ms = ctx.first_non_silent_at.has_value()
@@ -94,10 +99,10 @@ void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
         static_cast<long>(vinput::time::MillisecondsSince(ctx.recording_started_at, now)),
         first_non_silent_ms);
   }
-  if (ctx.latest_partial_text) {
+  if (ctx.latest_partial_text != nullptr) {
     *ctx.latest_partial_text = event.text;
   }
-  if (ctx.dbus) {
+  if (ctx.dbus != nullptr) {
     ctx.dbus->EmitRecognitionPartial(event.text);
   }
 }
@@ -107,20 +112,20 @@ void HandleFinalText(const vinput::daemon::asr::RecognitionEvent& event,
   if (event.text.empty()) {
     return;
   }
-  if (ctx.latest_final_text) {
+  if (ctx.latest_final_text != nullptr) {
     *ctx.latest_final_text = event.text;
   }
-  if (ctx.latest_partial_text) {
+  if (ctx.latest_partial_text != nullptr) {
     *ctx.latest_partial_text = event.text;
   }
-  if (ctx.dbus) {
+  if (ctx.dbus != nullptr) {
     ctx.dbus->EmitRecognitionPartial(event.text);
   }
 }
 
 void HandleError(const vinput::daemon::asr::RecognitionEvent& event,
                  const RecognitionDispatchContext& ctx) {
-  if (event.error.empty() || !ctx.dbus) {
+  if (event.error.empty() || ctx.dbus == nullptr) {
     return;
   }
   ctx.dbus->EmitNotification(vinput::dbus::ClassifyErrorText(event.error));
