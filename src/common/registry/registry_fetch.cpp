@@ -87,7 +87,7 @@ bool FetchRegistryText(const CoreConfig* config, const std::vector<std::string>&
 I18nMap FetchI18nMap(const std::string& locale, const std::vector<std::string>& urls,
                      std::string* error) {
   if (urls.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "no i18n URLs configured";
     }
     return {};
@@ -96,7 +96,7 @@ I18nMap FetchI18nMap(const std::string& locale, const std::vector<std::string>& 
   vinput::download::Result result;
   vinput::download::Options options;
   options.timeout_seconds = 20;
-  options.max_bytes = 1024 * 1024;
+  options.max_bytes = 1024ULL * 1024ULL;
   if (!vinput::registry::cache::FetchText(urls, vinput::registry::cache::I18nPath(locale), options,
                                           &content, &result, error)) {
     return {};
@@ -126,7 +126,7 @@ I18nMap FetchMergedI18nMap(const CoreConfig& config, const std::string& preferre
     }
   }
 
-  if (error) {
+  if (error != nullptr) {
     *error = fetch_error;
   }
 

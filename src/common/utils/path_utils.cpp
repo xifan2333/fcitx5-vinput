@@ -1,6 +1,7 @@
 #include "common/utils/path_utils.h"
 
 #include <cstdlib>
+#include <string>
 #include <sys/stat.h>
 
 namespace vinput::path {
