@@ -116,10 +116,10 @@ void AudioCapture::processCallback() {
         const std::scoped_lock lock(timing_mutex_);
         if (recording_armed_at_.has_value() && !first_buffer_at_.has_value()) {
           first_buffer_at_ = std::chrono::steady_clock::now();
-          vinput::debug::Log(
-              "capture first buffer after %ld ms (samples=%u)\n",
-              vinput::time::MillisecondsBetween(*recording_armed_at_, *first_buffer_at_),
-              n_samples);
+          vinput::debug::Log("capture first buffer after %ld ms (samples=%u)\n",
+                             static_cast<long>(vinput::time::MillisecondsBetween(
+                                 *recording_armed_at_, *first_buffer_at_)),
+                             n_samples);
         }
       }
       {

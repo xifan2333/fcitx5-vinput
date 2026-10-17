@@ -76,13 +76,14 @@ void ApplyRecognitionEvents(
         if (first_partial_logged && !*first_partial_logged) {
           *first_partial_logged = true;
           const auto now = std::chrono::steady_clock::now();
-          const long first_non_silent_ms =
-              first_non_silent_at.has_value()
-                  ? vinput::time::MillisecondsSince(recording_started_at, *first_non_silent_at)
-                  : -1;
-          vinput::debug::Log("first partial after %ld ms (first_non_silent_after=%ld ms)\n",
-                             vinput::time::MillisecondsSince(recording_started_at, now),
-                             first_non_silent_ms);
+          const long first_non_silent_ms = first_non_silent_at.has_value()
+                                               ? static_cast<long>(vinput::time::MillisecondsSince(
+                                                     recording_started_at, *first_non_silent_at))
+                                               : -1;
+          vinput::debug::Log(
+              "first partial after %ld ms (first_non_silent_after=%ld ms)\n",
+              static_cast<long>(vinput::time::MillisecondsSince(recording_started_at, now)),
+              first_non_silent_ms);
         }
         if (latest_partial_text) {
           *latest_partial_text = event.text;
@@ -516,9 +517,9 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
 
     if (!first_non_silent_at_.has_value() && HasNonSilentAudio(pcm_view)) {
       first_non_silent_at_ = std::chrono::steady_clock::now();
-      vinput::debug::Log(
-          "first non-silent audio after %ld ms\n",
-          vinput::time::MillisecondsSince(recording_started_at_, *first_non_silent_at_));
+      vinput::debug::Log("first non-silent audio after %ld ms\n",
+                         static_cast<long>(vinput::time::MillisecondsSince(recording_started_at_,
+                                                                           *first_non_silent_at_)));
     }
 
     if (UsesBufferedDelivery(active_backend_)) {
