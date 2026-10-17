@@ -4,10 +4,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace vinput::str {
@@ -56,6 +58,64 @@ inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept 
 
 inline std::string TrimAsciiWhitespace(std::string_view text) {
   return std::string(TrimAsciiWhitespaceView(text));
+}
+
+[[nodiscard]] constexpr std::string_view StripPrefix(std::string_view text,
+                                                     std::string_view prefix) noexcept {
+  if (text.starts_with(prefix)) {
+    return text.substr(prefix.size());
+  }
+  return text;
+}
+
+[[nodiscard]] constexpr std::string_view StripSuffix(std::string_view text,
+                                                     std::string_view suffix) noexcept {
+  if (text.ends_with(suffix)) {
+    return text.substr(0, text.size() - suffix.size());
+  }
+  return text;
+}
+
+constexpr bool ConsumePrefix(std::string_view* text, std::string_view prefix) noexcept {
+  if (text != nullptr && text->starts_with(prefix)) {
+    text->remove_prefix(prefix.size());
+    return true;
+  }
+  return false;
+}
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+SplitPair(std::string_view text, char delimiter, bool trim_whitespace = false) noexcept {
+  const size_t pos = text.find(delimiter);
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  std::string_view first = text.substr(0, pos);
+  std::string_view second = text.substr(pos + 1);
+  if (trim_whitespace) {
+    first = TrimAsciiWhitespaceView(first);
+    second = TrimAsciiWhitespaceView(second);
+  }
+  return std::make_pair(first, second);
+}
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+SplitPair(std::string_view text, std::string_view delimiter,
+          bool trim_whitespace = false) noexcept {
+  if (delimiter.empty()) {
+    return std::nullopt;
+  }
+  const size_t pos = text.find(delimiter);
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  std::string_view first = text.substr(0, pos);
+  std::string_view second = text.substr(pos + delimiter.size());
+  if (trim_whitespace) {
+    first = TrimAsciiWhitespaceView(first);
+    second = TrimAsciiWhitespaceView(second);
+  }
+  return std::make_pair(first, second);
 }
 
 inline char ToLowerAsciiChar(char ch) noexcept {
