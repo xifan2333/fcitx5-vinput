@@ -1,128 +1,136 @@
-#include <cassert>
-#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "common/utils/string_utils.h"
 
+#define TEST_ASSERT(cond)                                                                          \
+  do {                                                                                             \
+    if (!(cond)) {                                                                                 \
+      std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", #cond, __FILE__, __LINE__);          \
+      std::abort();                                                                                \
+    }                                                                                              \
+  } while (false)
+
 void TestTrimAsciiWhitespace() {
   using vinput::str::TrimAsciiWhitespace;
   using vinput::str::TrimAsciiWhitespaceView;
 
   // Empty string
-  assert(TrimAsciiWhitespace("").empty());
-  assert(TrimAsciiWhitespaceView("").empty());
+  TEST_ASSERT(TrimAsciiWhitespace("").empty());
+  TEST_ASSERT(TrimAsciiWhitespaceView("").empty());
 
   // Pure whitespace
-  assert(TrimAsciiWhitespace("   \t\r\n ").empty());
-  assert(TrimAsciiWhitespaceView("   \t\r\n ").empty());
+  TEST_ASSERT(TrimAsciiWhitespace("   \t\r\n ").empty());
+  TEST_ASSERT(TrimAsciiWhitespaceView("   \t\r\n ").empty());
 
   // Leading and trailing whitespace
-  assert(TrimAsciiWhitespace("  hello world  \n") == "hello world");
-  assert(TrimAsciiWhitespaceView("  hello world  \n") == "hello world");
-  assert(TrimAsciiWhitespace("\t\tvinput\r") == "vinput");
+  TEST_ASSERT(TrimAsciiWhitespace("  hello world  \n") == "hello world");
+  TEST_ASSERT(TrimAsciiWhitespaceView("  hello world  \n") == "hello world");
+  TEST_ASSERT(TrimAsciiWhitespace("\t\tvinput\r") == "vinput");
 
   // No whitespace to trim
-  assert(TrimAsciiWhitespace("abc") == "abc");
-  assert(TrimAsciiWhitespaceView("abc") == "abc");
+  TEST_ASSERT(TrimAsciiWhitespace("abc") == "abc");
+  TEST_ASSERT(TrimAsciiWhitespaceView("abc") == "abc");
 
   // Zero-copy check: returned string_view points inside original buffer
-  std::string_view original = "  inner text  ";
-  std::string_view trimmed = TrimAsciiWhitespaceView(original);
-  assert(trimmed == "inner text");
-  assert(trimmed.data() == original.data() + 2);
+  const std::string_view original = "  inner text  ";
+  const std::string_view trimmed = TrimAsciiWhitespaceView(original);
+  TEST_ASSERT(trimmed == "inner text");
+  TEST_ASSERT(trimmed.data() == original.data() + 2);
 
   // Return std::string check
-  std::string string_res = TrimAsciiWhitespace("  to string test  ");
-  assert(string_res == "to string test");
+  const std::string string_res = TrimAsciiWhitespace("  to string test  ");
+  TEST_ASSERT(string_res == "to string test");
 }
 
 void TestToLowerAndToUpperAscii() {
   using vinput::str::ToLowerAscii;
   using vinput::str::ToUpperAscii;
 
-  assert(ToLowerAscii("") == "");
-  assert(ToLowerAscii("Hello, World! 123") == "hello, world! 123");
-  assert(ToLowerAscii("FCITX5-VINPUT") == "fcitx5-vinput");
+  TEST_ASSERT(ToLowerAscii("").empty());
+  TEST_ASSERT(ToLowerAscii("Hello, World! 123") == "hello, world! 123");
+  TEST_ASSERT(ToLowerAscii("FCITX5-VINPUT") == "fcitx5-vinput");
 
-  assert(ToUpperAscii("") == "");
-  assert(ToUpperAscii("Hello, World! 123") == "HELLO, WORLD! 123");
-  assert(ToUpperAscii("fcitx5-vinput") == "FCITX5-VINPUT");
+  TEST_ASSERT(ToUpperAscii("").empty());
+  TEST_ASSERT(ToUpperAscii("Hello, World! 123") == "HELLO, WORLD! 123");
+  TEST_ASSERT(ToUpperAscii("fcitx5-vinput") == "FCITX5-VINPUT");
 }
 
 void TestEqualsIgnoreCase() {
   using vinput::str::EqualsIgnoreCase;
 
-  assert(EqualsIgnoreCase("", ""));
-  assert(EqualsIgnoreCase("abc", "ABC"));
-  assert(EqualsIgnoreCase("VInput-Daemon", "vinput-daemon"));
-  assert(!EqualsIgnoreCase("abc", "abcd"));
-  assert(!EqualsIgnoreCase("abcd", "abc"));
-  assert(!EqualsIgnoreCase("hello", "world"));
+  TEST_ASSERT(EqualsIgnoreCase("", ""));
+  TEST_ASSERT(EqualsIgnoreCase("abc", "ABC"));
+  TEST_ASSERT(EqualsIgnoreCase("VInput-Daemon", "vinput-daemon"));
+  TEST_ASSERT(!EqualsIgnoreCase("abc", "abcd"));
+  TEST_ASSERT(!EqualsIgnoreCase("abcd", "abc"));
+  TEST_ASSERT(!EqualsIgnoreCase("hello", "world"));
 }
 
 void TestSplitByChar() {
   using vinput::str::SplitByChar;
 
   // Single segment
-  auto res1 = SplitByChar("hello", '.');
-  assert(res1.size() == 1 && res1[0] == "hello");
+  const auto res1 = SplitByChar("hello", '.');
+  TEST_ASSERT(res1.size() == 1 && res1[0] == "hello");
 
   // Multiple segments
-  auto res2 = SplitByChar("a.b.c", '.');
-  assert(res2.size() == 3 && res2[0] == "a" && res2[1] == "b" && res2[2] == "c");
+  const auto res2 = SplitByChar("a.b.c", '.');
+  TEST_ASSERT(res2.size() == 3 && res2[0] == "a" && res2[1] == "b" && res2[2] == "c");
 
   // Leading, trailing, consecutive delimiters
-  auto res3 = SplitByChar("/usr/local/bin/", '/');
-  assert(res3.size() == 5);
-  assert(res3[0] == "");
-  assert(res3[1] == "usr");
-  assert(res3[2] == "local");
-  assert(res3[3] == "bin");
-  assert(res3[4] == "");
+  const auto res3 = SplitByChar("/usr/local/bin/", '/');
+  TEST_ASSERT(res3.size() == 5);
+  TEST_ASSERT(res3[0].empty());
+  TEST_ASSERT(res3[1] == "usr");
+  TEST_ASSERT(res3[2] == "local");
+  TEST_ASSERT(res3[3] == "bin");
+  TEST_ASSERT(res3[4].empty());
 
   // Empty string
-  auto res4 = SplitByChar("", ',');
-  assert(res4.size() == 1 && res4[0] == "");
+  const auto res4 = SplitByChar("", ',');
+  TEST_ASSERT(res4.size() == 1 && res4[0].empty());
 }
 
 void TestSplitLines() {
   using vinput::str::SplitLines;
 
   // Empty string
-  auto res1 = SplitLines("");
-  assert(res1.empty());
+  const auto res1 = SplitLines("");
+  TEST_ASSERT(res1.empty());
 
   // LF
-  auto res2 = SplitLines("line1\nline2\nline3");
-  assert(res2.size() == 3 && res2[0] == "line1" && res2[1] == "line2" && res2[2] == "line3");
+  const auto res2 = SplitLines("line1\nline2\nline3");
+  TEST_ASSERT(res2.size() == 3 && res2[0] == "line1" && res2[1] == "line2" && res2[2] == "line3");
 
   // CRLF
-  auto res3 = SplitLines("line1\r\nline2\r\n");
-  assert(res3.size() == 2 && res3[0] == "line1" && res3[1] == "line2");
+  const auto res3 = SplitLines("line1\r\nline2\r\n");
+  TEST_ASSERT(res3.size() == 2 && res3[0] == "line1" && res3[1] == "line2");
 
   // Single line without newline
-  auto res4 = SplitLines("single");
-  assert(res4.size() == 1 && res4[0] == "single");
+  const auto res4 = SplitLines("single");
+  TEST_ASSERT(res4.size() == 1 && res4[0] == "single");
 }
 
 void TestBase64Encode() {
   using vinput::str::Base64Encode;
 
   // RFC 4648 test vectors
-  assert(Base64Encode("") == "");
-  assert(Base64Encode("f") == "Zg==");
-  assert(Base64Encode("fo") == "Zm8=");
-  assert(Base64Encode("foo") == "Zm9v");
-  assert(Base64Encode("foob") == "Zm9vYg==");
-  assert(Base64Encode("fooba") == "Zm9vYmE=");
-  assert(Base64Encode("foobar") == "Zm9vYmFy");
+  TEST_ASSERT(Base64Encode("").empty());
+  TEST_ASSERT(Base64Encode("f") == "Zg==");
+  TEST_ASSERT(Base64Encode("fo") == "Zm8=");
+  TEST_ASSERT(Base64Encode("foo") == "Zm9v");
+  TEST_ASSERT(Base64Encode("foob") == "Zm9vYg==");
+  TEST_ASSERT(Base64Encode("fooba") == "Zm9vYmE=");
+  TEST_ASSERT(Base64Encode("foobar") == "Zm9vYmFy");
 
   // Raw unsigned char pointer test
   const unsigned char data[] = {'H', 'e', 'l', 'l', 'o'};
-  assert(Base64Encode(data, sizeof(data)) == "SGVsbG8=");
-  assert(Base64Encode(nullptr, 0) == "");
+  TEST_ASSERT(Base64Encode(data, sizeof(data)) == "SGVsbG8=");
+  TEST_ASSERT(Base64Encode(nullptr, 0).empty());
 }
 
 int main() {

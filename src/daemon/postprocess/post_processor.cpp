@@ -596,7 +596,7 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
                                                const vinput::scene::Definition& scene,
                                                const CoreConfig& settings, std::string* error_out,
                                                const std::atomic<bool>* cancel_flag) const {
-  std::string normalized = vinput::str::TrimAsciiWhitespace(raw_text);
+  const std::string normalized = vinput::str::TrimAsciiWhitespace(raw_text);
   if (normalized.empty()) {
     return {};
   }
@@ -659,7 +659,7 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
                               const vinput::scene::Definition& command_scene,
                               const CoreConfig& settings, std::string* error_out,
                               const std::atomic<bool>* cancel_flag) const {
-  std::string normalized_asr = vinput::str::TrimAsciiWhitespace(asr_text);
+  const std::string normalized_asr = vinput::str::TrimAsciiWhitespace(asr_text);
 
   vinput::result::Payload fallback;
   const std::string& fallback_text = normalized_asr.empty() ? selected_text : normalized_asr;

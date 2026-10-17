@@ -61,7 +61,7 @@ inline std::string TrimAsciiWhitespace(std::string_view text) {
 inline std::string ToLowerAscii(std::string_view text) {
   std::string result;
   result.reserve(text.size());
-  for (char ch : text) {
+  for (const char ch : text) {
     result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
   }
   return result;
@@ -70,7 +70,7 @@ inline std::string ToLowerAscii(std::string_view text) {
 inline std::string ToUpperAscii(std::string_view text) {
   std::string result;
   result.reserve(text.size());
-  for (char ch : text) {
+  for (const char ch : text) {
     result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
   }
   return result;
@@ -124,7 +124,7 @@ inline std::vector<std::string_view> SplitLines(std::string_view text) {
 }
 
 inline std::string Base64Encode(std::span<const std::byte> data) {
-  static constexpr char kTable[] =
+  static constexpr std::string_view kTable =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   std::string result;
   result.reserve(((data.size() + 2) / 3) * 4);
@@ -150,7 +150,7 @@ inline std::string Base64Encode(const unsigned char* data, size_t size) {
   if (data == nullptr || size == 0) {
     return {};
   }
-  const auto bytes = std::as_bytes(std::span(reinterpret_cast<const char*>(data), size));
+  const auto bytes = std::as_bytes(std::span<const unsigned char>(data, size));
   return Base64Encode(bytes);
 }
 

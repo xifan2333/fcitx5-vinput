@@ -317,7 +317,7 @@ ErrorInfo MakeRawError(std::string raw_message) {
 }
 
 ErrorInfo ClassifyErrorText(std::string_view message) {
-  std::string normalized = vinput::str::TrimAsciiWhitespace(message);
+  const std::string normalized = vinput::str::TrimAsciiWhitespace(message);
   if (normalized.empty()) {
     return {};
   }
