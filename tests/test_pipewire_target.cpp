@@ -111,6 +111,15 @@ int main() {
     CHECK(res_fallback.is_sink_capture);
   }
 
+  // Regression test for Issue #301: EnumerateAudioSources RAII initialization and teardown
+  // lifecycle.
+  {
+    const auto sources = vinput::pw::EnumerateAudioSources();
+    for (const auto& dev : sources) {
+      CHECK(!dev.name.empty());
+    }
+  }
+
   std::cout << "All pipewire capture target tests passed!\n";
   return 0;
 }
