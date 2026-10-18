@@ -521,18 +521,23 @@ private:
       return;
     }
 
-    if (send_close_frame && fd_ >= 0) {
+    int fd_to_close = -1;
+    if (send_close_frame) {
       const std::string close_frame = EncodeWebSocketClose(status_code, reason);
-      {
-        const std::lock_guard<std::mutex> lock(send_mutex_);
-        if (fd_ >= 0) {
-          (void)WriteAll(fd_, close_frame);
-        }
+      const std::lock_guard<std::mutex> lock(send_mutex_);
+      if (fd_ >= 0) {
+        (void)WriteAll(fd_, close_frame);
       }
+      fd_to_close = fd_;
+      fd_ = -1;
+    } else {
+      const std::lock_guard<std::mutex> lock(send_mutex_);
+      fd_to_close = fd_;
+      fd_ = -1;
     }
 
-    if (fd_ >= 0) {
-      shutdown(fd_, SHUT_RDWR);
+    if (fd_to_close >= 0) {
+      shutdown(fd_to_close, SHUT_RDWR);
     }
 
     DispatchClose(status_code, reason);
@@ -750,8 +755,12 @@ void HttpServer::Stop() {
   }
 
   for (auto& worker : to_join) {
-    if (worker->thread.joinable() && worker->thread.get_id() != current_id) {
-      worker->thread.join();
+    if (worker->thread.joinable()) {
+      if (worker->thread.get_id() == current_id) {
+        worker->thread.detach();
+      } else {
+        worker->thread.join();
+      }
     }
   }
 }
@@ -850,6 +859,7 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
     return;
   }
 
+  bool upgraded = false;
   try {
     const int timeout_ms = config_.read_timeout_seconds * 1000;
     std::string buffer;
@@ -938,6 +948,7 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
         return;
       }
 
+      upgraded = true;
       auto session = std::make_shared<WebSocketSessionImpl>(fd);
       if (endpoint.handler) {
         endpoint.handler(session, req);
@@ -983,9 +994,13 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
     const HttpResponse resp = matched_handler(req);
     SendHttpResponse(fd, resp, req.method);
   } catch (const std::exception& e) {
-    SendErrorResponse(fd, 500, "Internal Server Error\n");
+    if (!upgraded) {
+      SendErrorResponse(fd, 500, "Internal Server Error\n");
+    }
   } catch (...) {
-    SendErrorResponse(fd, 500, "Internal Server Error\n");
+    if (!upgraded) {
+      SendErrorResponse(fd, 500, "Internal Server Error\n");
+    }
   }
 }
 
