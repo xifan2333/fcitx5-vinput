@@ -43,7 +43,7 @@ vinput::net::HttpRequest MakeRequest(const std::string& url, const Options& opti
 }
 
 bool RequiresHttpStatusCheck(const std::string& url) {
-  return url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0;
+  return url.starts_with("http://") || url.starts_with("https://");
 }
 
 void PopulateResult(const std::string& url, const vinput::net::HttpResponse& res, Result* result) {

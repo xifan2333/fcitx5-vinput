@@ -437,7 +437,7 @@ public:
     curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &total_sec);
     response.total_time_ms = total_sec * 1000.0;
 
-    if (code == CURLE_OK && response.status_code == 0 && request.url.rfind("file://", 0) == 0) {
+    if (code == CURLE_OK && response.status_code == 0 && request.url.starts_with("file://")) {
       response.status_code = 200;
     }
 
