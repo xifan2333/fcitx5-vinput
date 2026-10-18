@@ -271,8 +271,9 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
   auto entries =
       FetchRegistryImpl(nullptr, registry_urls, &fetch_err, resolved_registry_url, nullptr);
   if (!fetch_err.empty()) {
-    if (error)
+    if (error != nullptr) {
       *error = fetch_err;
+    }
     return false;
   }
 
@@ -285,8 +286,9 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
     }
   }
   if (!found) {
-    if (error)
+    if (error != nullptr) {
       *error = "model not found in registry: " + model_id;
+    }
     return false;
   }
 
@@ -309,8 +311,9 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   std::string fetch_err;
   auto entries = FetchRegistry(config, registry_urls, &fetch_err, resolved_registry_url);
   if (!fetch_err.empty()) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = fetch_err;
+    }
     return false;
   }
 
@@ -323,8 +326,9 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
     }
   }
   if (!found) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "model not found in registry: " + model_id;
+    }
     return false;
   }
 
@@ -356,8 +360,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
       archive_name = found.urls[0].substr(pos + 1);
       // Strip query string if present
       auto q = archive_name.find('?');
-      if (q != std::string::npos)
+      if (q != std::string::npos) {
         archive_name = archive_name.substr(0, q);
+      }
     }
   }
 
@@ -396,8 +401,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
   // Verify SHA256 (stub)
   std::string verify_err;
   if (!VerifySha256(archive_path, found.sha256, &verify_err)) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = verify_err;
+    }
     return false;
   }
 
@@ -406,8 +412,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
   fs::create_directories(extracted_dir, ec);
   std::string extract_err;
   if (!ExtractArchive(archive_path, extracted_dir, &extract_err)) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = extract_err;
+    }
     return false;
   }
 
@@ -436,15 +443,17 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
   if (!found.vinput_model.is_null() && !found.vinput_model.empty()) {
     const fs::path json_path = extracted_dir / "vinput-model.json";
     if (!found.vinput_model.is_object()) {
-      if (error != nullptr)
+      if (error != nullptr) {
         *error = "registry field 'vinput_model' must be a JSON object";
+      }
       return false;
     }
     const std::string json_content = found.vinput_model.dump(2) + "\n";
     std::string write_err;
     if (!vinput::file::AtomicWriteTextFile(json_path, json_content, &write_err)) {
-      if (error != nullptr)
+      if (error != nullptr) {
         *error = "failed to write vinput-model.json: " + write_err;
+      }
       return false;
     }
   }
@@ -453,8 +462,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
   std::string provision_error;
   if (!LoadEffectiveModelManifest(extracted_dir, &effective_manifest, &provision_error) ||
       !ProvisionBpeVocabulary(extracted_dir, effective_manifest, &provision_error)) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "failed to prepare hotword assets: " + provision_error;
+    }
     return false;
   }
 
@@ -462,8 +472,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
   // the new one is fully extracted and ready.
   const fs::path relative_path = ModelManager::RelativePathForId(found.id);
   if (relative_path.empty()) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "invalid model id: " + found.id;
+    }
     return false;
   }
   const fs::path dest_dir = base_dir_ / relative_path;
@@ -471,8 +482,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
   std::error_code exists_ec;
   const bool had_existing = fs::exists(dest_dir, exists_ec);
   if (exists_ec) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "failed to inspect existing model installation: " + exists_ec.message();
+    }
     return false;
   }
 
@@ -486,8 +498,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
   if (had_existing) {
     fs::rename(dest_dir, backup_dir, ec);
     if (ec) {
-      if (error != nullptr)
+      if (error != nullptr) {
         *error = "failed to stage existing model for replacement: " + ec.message();
+      }
       return false;
     }
   }
@@ -519,8 +532,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
         return false;
       }
     }
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = install_error;
+    }
     return false;
   }
 
