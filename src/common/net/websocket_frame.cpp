@@ -240,9 +240,12 @@ std::string EncodeWebSocketFrame(WsOpcode opcode, std::string_view payload, bool
   }
 
   const std::size_t payload_len = payload.size();
-  const std::uint8_t len_code = (payload_len < 126)       ? static_cast<std::uint8_t>(payload_len)
-                                : (payload_len <= 0xFFFF) ? 126
-                                                          : 127;
+  std::uint8_t len_code = 127;
+  if (payload_len < 126) {
+    len_code = static_cast<std::uint8_t>(payload_len);
+  } else if (payload_len <= 0xFFFF) {
+    len_code = 126;
+  }
   const auto& desc = GetLenDescriptor(len_code);
 
   std::string frame;
