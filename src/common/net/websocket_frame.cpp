@@ -63,53 +63,6 @@ constexpr const LenDescriptor& GetLenDescriptor(std::uint8_t len_code) noexcept 
   return kLenDescriptors[2];
 }
 
-std::string_view TruncateUtf8Safe(std::string_view text, std::size_t max_bytes) {
-  std::size_t offset = 0;
-  std::size_t last_valid_offset = 0;
-  while (offset < text.size()) {
-    const auto first = static_cast<unsigned char>(text[offset]);
-    std::size_t length = 0;
-    std::uint32_t codepoint = 0;
-    if (first <= 0x7f) {
-      length = 1;
-      codepoint = first;
-    } else if (first >= 0xc2 && first <= 0xdf) {
-      length = 2;
-      codepoint = first & 0x1f;
-    } else if (first >= 0xe0 && first <= 0xef) {
-      length = 3;
-      codepoint = first & 0x0f;
-    } else if (first >= 0xf0 && first <= 0xf4) {
-      length = 4;
-      codepoint = first & 0x07;
-    } else {
-      break;
-    }
-
-    if (length > text.size() - offset) {
-      break;
-    }
-    for (std::size_t i = 1; i < length; ++i) {
-      const auto continuation = static_cast<unsigned char>(text[offset + i]);
-      if ((continuation & 0xc0) != 0x80) {
-        return text.substr(0, last_valid_offset);
-      }
-      codepoint = (codepoint << 6) | (continuation & 0x3f);
-    }
-    if ((length == 2 && codepoint < 0x80) || (length == 3 && codepoint < 0x800) ||
-        (length == 4 && codepoint < 0x10000) || (codepoint >= 0xd800 && codepoint <= 0xdfff) ||
-        codepoint > 0x10ffff) {
-      return text.substr(0, last_valid_offset);
-    }
-    if (offset + length > max_bytes) {
-      break;
-    }
-    offset += length;
-    last_valid_offset = offset;
-  }
-  return text.substr(0, last_valid_offset);
-}
-
 } // namespace
 
 WsDecodeStatus ParseWebSocketFrameHeader(std::string_view buffer, WsFrameHeader* out_header,
@@ -261,6 +214,11 @@ WsDecodeStatus DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame,
       SetError(error, "Invalid WebSocket Close status code");
       return WsDecodeStatus::kProtocolError;
     }
+    const std::string_view reason(payload.data() + 2, payload.size() - 2);
+    if (!vinput::str::IsValidUtf8(reason)) {
+      SetError(error, "WebSocket Close reason is not valid UTF-8");
+      return WsDecodeStatus::kProtocolError;
+    }
   }
 
   out_frame->header = header;
@@ -388,7 +346,7 @@ std::string EncodeWebSocketPong(std::string_view payload) {
 std::string EncodeWebSocketClose(std::uint16_t status_code, std::string_view reason) {
   std::string payload;
   if (IsValidCloseStatusCode(status_code)) {
-    const std::string_view safe_reason = TruncateUtf8Safe(reason, 125 - 2);
+    const std::string_view safe_reason = vinput::str::TruncateUtf8Bytes(reason, 125 - 2);
     payload.reserve(2 + safe_reason.size());
     payload.push_back(static_cast<char>((status_code >> 8) & 0xFF));
     payload.push_back(static_cast<char>(status_code & 0xFF));

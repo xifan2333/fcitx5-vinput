@@ -513,6 +513,39 @@ void TestDrainLinesFromBuffer() {
   }
 }
 
+void TestUtf8ValidationAndTruncation() {
+  using vinput::str::IsValidUtf8;
+  using vinput::str::TruncateUtf8Bytes;
+
+  // Valid UTF-8 strings
+  TEST_ASSERT(IsValidUtf8(""));
+  TEST_ASSERT(IsValidUtf8("Hello, world!"));
+  TEST_ASSERT(IsValidUtf8("你好，世界！"));
+  TEST_ASSERT(IsValidUtf8("こんにちは"));
+  TEST_ASSERT(IsValidUtf8("🌟 Rocket 🚀"));
+
+  // Invalid UTF-8 strings
+  TEST_ASSERT(!IsValidUtf8(std::string_view("\xFF", 1)));
+  TEST_ASSERT(!IsValidUtf8(std::string_view("\xC0\xAF", 2)));
+  TEST_ASSERT(!IsValidUtf8(std::string_view("\xC1\x80", 2)));
+  TEST_ASSERT(!IsValidUtf8(std::string_view("\xE0\x80\xAF", 3)));
+  TEST_ASSERT(!IsValidUtf8(std::string_view("\xED\xA0\x80", 3)));
+  TEST_ASSERT(!IsValidUtf8(std::string_view("\xF4\x90\x80\x80", 4)));
+  TEST_ASSERT(!IsValidUtf8(std::string_view("\xE4\xBD", 2)));
+  TEST_ASSERT(!IsValidUtf8(std::string_view("Valid\x80Invalid", 13)));
+
+  // Truncation on UTF-8 boundaries ("你好" is 6 bytes)
+  TEST_ASSERT(TruncateUtf8Bytes("你好", 10) == "你好");
+  TEST_ASSERT(TruncateUtf8Bytes("你好", 6) == "你好");
+  TEST_ASSERT(TruncateUtf8Bytes("你好", 5) == "你");
+  TEST_ASSERT(TruncateUtf8Bytes("你好", 3) == "你");
+  TEST_ASSERT(TruncateUtf8Bytes("你好", 2).empty());
+  TEST_ASSERT(TruncateUtf8Bytes("你好", 0).empty());
+
+  // Truncation stops at invalid byte
+  TEST_ASSERT(TruncateUtf8Bytes(std::string_view("Prefix\xFFSuffix", 13), 10) == "Prefix");
+}
+
 int main() {
   TestTrimAsciiWhitespace();
   TestToLowerAndToUpperAscii();
@@ -529,5 +562,6 @@ int main() {
   TestJoinKeyValue();
   TestMaskSecret();
   TestDrainLinesFromBuffer();
+  TestUtf8ValidationAndTruncation();
   return 0;
 }

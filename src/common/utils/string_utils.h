@@ -587,4 +587,72 @@ inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
   return result;
 }
 
+inline std::string_view TruncateUtf8Bytes(std::string_view text, size_t max_bytes) noexcept {
+  size_t i = 0;
+  size_t last_valid = 0;
+  const size_t n = text.size();
+  while (i < n) {
+    const auto c0 = static_cast<unsigned char>(text[i]);
+    size_t len = 0;
+    if (c0 <= 0x7F) {
+      len = 1;
+    } else if (c0 >= 0xC2 && c0 <= 0xDF) {
+      if (i + 1 >= n) {
+        break;
+      }
+      const auto c1 = static_cast<unsigned char>(text[i + 1]);
+      if ((c1 & 0xC0) != 0x80) {
+        break;
+      }
+      len = 2;
+    } else if (c0 >= 0xE0 && c0 <= 0xEF) {
+      if (i + 2 >= n) {
+        break;
+      }
+      const auto c1 = static_cast<unsigned char>(text[i + 1]);
+      const auto c2 = static_cast<unsigned char>(text[i + 2]);
+      if ((c1 & 0xC0) != 0x80 || (c2 & 0xC0) != 0x80) {
+        break;
+      }
+      if (c0 == 0xE0 && c1 < 0xA0) {
+        break;
+      }
+      if (c0 == 0xED && c1 >= 0xA0) {
+        break;
+      }
+      len = 3;
+    } else if (c0 >= 0xF0 && c0 <= 0xF4) {
+      if (i + 3 >= n) {
+        break;
+      }
+      const auto c1 = static_cast<unsigned char>(text[i + 1]);
+      const auto c2 = static_cast<unsigned char>(text[i + 2]);
+      const auto c3 = static_cast<unsigned char>(text[i + 3]);
+      if ((c1 & 0xC0) != 0x80 || (c2 & 0xC0) != 0x80 || (c3 & 0xC0) != 0x80) {
+        break;
+      }
+      if (c0 == 0xF0 && c1 < 0x90) {
+        break;
+      }
+      if (c0 == 0xF4 && c1 > 0x8F) {
+        break;
+      }
+      len = 4;
+    } else {
+      break;
+    }
+
+    if (i + len > max_bytes) {
+      break;
+    }
+    i += len;
+    last_valid = i;
+  }
+  return text.substr(0, last_valid);
+}
+
+inline bool IsValidUtf8(std::string_view text) noexcept {
+  return TruncateUtf8Bytes(text, text.size()).size() == text.size();
+}
+
 } // namespace vinput::str

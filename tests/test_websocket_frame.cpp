@@ -322,6 +322,11 @@ void TestProtocolErrorDecode() {
   // Close frame with status code 0 (0x0000)
   TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\x88\x02\x00\x00", 4), &frame, &consumed,
                                    kMaxTestPayload, &error) == WsDecodeStatus::kProtocolError);
+
+  // Close frame with valid code 1000 but invalid UTF-8 reason (\xFF\xFF)
+  TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\x88\x04\x03\xE8\xFF\xFF", 6), &frame,
+                                   &consumed, kMaxTestPayload,
+                                   &error) == WsDecodeStatus::kProtocolError);
 }
 
 void TestFragmentedFrameAndControlHelpers() {
