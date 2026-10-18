@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -8,8 +7,8 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <poll.h>
+#include <stdlib.h>
 #include <string>
-#include <string_view>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -18,6 +17,7 @@
 #include <vector>
 
 #include "common/net/http_client.h"
+#include "common/net/http_types.h"
 
 namespace {
 
@@ -274,7 +274,7 @@ void TestCancelThenNextRequestIsIsolated() {
   vinput::net::HttpClient client;
   const std::string url = BuildMockServerUrl(server);
 
-  std::atomic<bool> cancel_token{true};
+  const std::atomic<bool> cancel_token{true};
   auto cancelled = ExecuteRequest(client, url, "A", "cancel-body", &cancel_token);
   AssertTrue(cancelled.cancelled, "cancel token aborts transfer");
   AssertTrue(!cancelled.Ok(), "cancelled request Ok() is false");
