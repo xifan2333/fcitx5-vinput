@@ -68,6 +68,7 @@ target_link_libraries(config PUBLIC
     Fcitx5::Config
     nlohmann_json::nlohmann_json
     ${GETTEXT_LIBRARIES}
+    OpenSSL::Crypto
 )
 
 target_link_libraries(common PUBLIC

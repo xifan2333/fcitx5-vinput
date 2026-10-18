@@ -38,4 +38,5 @@ bool EnsureParentDirectory(const std::filesystem::path& path, std::string* error
 bool ReadTextFile(const std::filesystem::path& path, std::string* content, std::string* error);
 bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view content,
                          std::string* error);
+std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error = nullptr);
 } // namespace vinput::file
