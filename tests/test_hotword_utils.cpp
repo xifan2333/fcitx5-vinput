@@ -297,6 +297,21 @@ void TestFileSizeLimit() {
   std::string error;
   TEST_ASSERT(!LoadTransducerHotwords(large_file.string(), &hotwords, &error));
   TEST_ASSERT(error.find("exceeds 1 MiB limit") != std::string::npos);
+
+  // Boundary: File size exceeding 1 MiB by exactly 1 byte (1024 * 1024 + 1)
+  const auto boundary_file = temp_dir->Path() / "boundary_large.txt";
+  {
+    std::ofstream out(boundary_file, std::ios::binary);
+    const std::string chunk(static_cast<std::size_t>(64) * 1024, 'a');
+    for (int i = 0; i < 16; ++i) {
+      out << chunk;
+    }
+    out << 'b';
+  }
+
+  error.clear();
+  TEST_ASSERT(!LoadTransducerHotwords(boundary_file.string(), &hotwords, &error));
+  TEST_ASSERT(error.find("exceeds 1 MiB limit") != std::string::npos);
 }
 
 void TestValidateTransducerHotwordAssets() {

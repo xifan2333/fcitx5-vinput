@@ -129,9 +129,15 @@ bool ReadHotwordFile(const std::string& path, std::string* content, std::string*
 
   std::string text;
   std::string read_error;
-  if (!vinput::file::ReadTextFile(file_path, &text, &read_error, kMaxHotwordFileBytes)) {
+  if (!vinput::file::ReadTextFile(file_path, &text, &read_error, kMaxHotwordFileBytes + 1)) {
     if (error) {
       *error = "failed to read hotwords file: " + path;
+    }
+    return false;
+  }
+  if (text.size() > kMaxHotwordFileBytes) {
+    if (error) {
+      *error = "hotwords file exceeds 1 MiB limit: " + path;
     }
     return false;
   }
