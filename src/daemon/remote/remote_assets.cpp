@@ -158,6 +158,7 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
     let composing = false
     let outputConnected = false
     let apiKey = ''
+    let terminalError = ''
 
     function readApiKey() {
       const params = new URLSearchParams(location.hash.replace(/^#/, ''))
@@ -175,6 +176,9 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
     }
 
     function setInput(state) {
+      if (terminalError && state === 'disconnected') {
+        return
+      }
       inputStatus.textContent = state
       inputDot.classList.toggle('on', state === 'connected')
       updateEnabled()
@@ -201,12 +205,19 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       }
     }
     const messageHandlers = {
-      auth_ok: () => setInput('connected'),
+      auth_ok: () => {
+        terminalError = ''
+        setInput('connected')
+      },
       init: msg => setOutput(msg.output_status || 'disconnected'),
       output_connected: () => setOutput('connected'),
       output_disconnected: () => setOutput('disconnected'),
-      busy: () => setInput('busy (occupied)'),
+      busy: () => {
+        terminalError = 'busy'
+        setInput('busy (occupied, retrying...)')
+      },
       error: msg => {
+        terminalError = 'error'
         localStorage.removeItem('vinput_remote_api_key')
         apiKey = ''
         setInput(msg && msg.message ? `failed: ${msg.message}` : 'failed')
@@ -214,11 +225,22 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
     }
 
     function connect() {
+      if (terminalError === 'error') {
+        return
+      }
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
       ws = new WebSocket(proto + '//' + location.host + '/ws')
-      setInput('connecting')
+      if (!terminalError) {
+        setInput('connecting')
+      }
       ws.onopen = () => {
         apiKey = apiKey || readApiKey()
+        if (!apiKey) {
+          terminalError = 'error'
+          setInput('failed: API key required')
+          ws.close()
+          return
+        }
         send({ type: 'auth', api_key: apiKey })
       }
       ws.onmessage = event => {
@@ -230,9 +252,13 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
         }
       }
       ws.onclose = () => {
-        setInput('disconnected')
+        if (!terminalError) {
+          setInput('disconnected')
+        }
         setOutput('disconnected')
-        setTimeout(connect, 1000)
+        if (terminalError !== 'error') {
+          setTimeout(connect, terminalError === 'busy' ? 2000 : 1000)
+        }
       }
       ws.onerror = () => ws.close()
     }
