@@ -1,9 +1,13 @@
 #include "common/net/http_server.h"
 
 #include <cerrno>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <netdb.h>
 #include <optional>
 #include <poll.h>
@@ -24,76 +28,63 @@ namespace {
 
 constexpr std::size_t kMaxHeaderBytes = 64ULL * 1024ULL; // 64 KB header limit
 
-std::string_view HttpStatusReason(long status_code) {
-  switch (status_code) {
-  case 200:
-    return "OK";
-  case 201:
-    return "Created";
-  case 204:
-    return "No Content";
-  case 301:
-    return "Moved Permanently";
-  case 302:
-    return "Found";
-  case 304:
-    return "Not Modified";
-  case 400:
-    return "Bad Request";
-  case 401:
-    return "Unauthorized";
-  case 403:
-    return "Forbidden";
-  case 404:
-    return "Not Found";
-  case 405:
-    return "Method Not Allowed";
-  case 413:
-    return "Payload Too Large";
-  case 431:
-    return "Request Header Fields Too Large";
-  case 500:
-    return "Internal Server Error";
-  case 501:
-    return "Not Implemented";
-  case 503:
-    return "Service Unavailable";
-  default:
-    return "Unknown";
+struct HttpStatusEntry {
+  long code;
+  std::string_view reason;
+};
+
+constexpr HttpStatusEntry kHttpStatusTable[] = {
+    {200, "OK"},
+    {201, "Created"},
+    {204, "No Content"},
+    {301, "Moved Permanently"},
+    {302, "Found"},
+    {304, "Not Modified"},
+    {400, "Bad Request"},
+    {401, "Unauthorized"},
+    {403, "Forbidden"},
+    {404, "Not Found"},
+    {405, "Method Not Allowed"},
+    {413, "Payload Too Large"},
+    {431, "Request Header Fields Too Large"},
+    {500, "Internal Server Error"},
+    {501, "Not Implemented"},
+    {503, "Service Unavailable"},
+};
+
+std::string_view HttpStatusReason(long status_code) noexcept {
+  for (const auto& entry : kHttpStatusTable) {
+    if (entry.code == status_code) {
+      return entry.reason;
+    }
   }
+  return "Unknown";
 }
 
-std::string_view MethodToString(HttpMethod method) {
-  switch (method) {
-  case HttpMethod::Get:
-    return "GET";
-  case HttpMethod::Post:
-    return "POST";
-  case HttpMethod::Put:
-    return "PUT";
-  case HttpMethod::Delete:
-    return "DELETE";
-  case HttpMethod::Head:
-    return "HEAD";
+struct HttpMethodEntry {
+  HttpMethod method;
+  std::string_view name;
+};
+
+constexpr HttpMethodEntry kHttpMethodTable[] = {
+    {HttpMethod::Get, "GET"},       {HttpMethod::Post, "POST"}, {HttpMethod::Put, "PUT"},
+    {HttpMethod::Delete, "DELETE"}, {HttpMethod::Head, "HEAD"},
+};
+
+std::string_view MethodToString(HttpMethod method) noexcept {
+  for (const auto& entry : kHttpMethodTable) {
+    if (entry.method == method) {
+      return entry.name;
+    }
   }
   return "GET";
 }
 
-std::optional<HttpMethod> StringToMethod(std::string_view str) {
-  if (str == "GET") {
-    return HttpMethod::Get;
-  }
-  if (str == "POST") {
-    return HttpMethod::Post;
-  }
-  if (str == "PUT") {
-    return HttpMethod::Put;
-  }
-  if (str == "DELETE") {
-    return HttpMethod::Delete;
-  }
-  if (str == "HEAD") {
-    return HttpMethod::Head;
+std::optional<HttpMethod> StringToMethod(std::string_view str) noexcept {
+  for (const auto& entry : kHttpMethodTable) {
+    if (entry.name == str) {
+      return entry.method;
+    }
   }
   return std::nullopt;
 }
@@ -179,12 +170,113 @@ bool SendErrorResponse(int fd, long status_code, std::string_view message,
   return SendHttpResponse(fd, resp);
 }
 
+bool ReadHttpHeaders(int fd, std::string* buffer, std::size_t max_bytes) {
+  char chunk[4096];
+  while (buffer->find("\r\n\r\n") == std::string::npos) {
+    const ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
+    if (n > 0) {
+      buffer->append(chunk, static_cast<std::size_t>(n));
+      if (buffer->find("\r\n\r\n") == std::string::npos && buffer->size() > max_bytes) {
+        SendErrorResponse(fd, 431, "Request Header Fields Too Large\n");
+        return false;
+      }
+      continue;
+    }
+    if (n < 0 && errno == EINTR) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+bool ParseHttpRequestHeader(std::string_view raw_data, HttpRequest* out_req,
+                            std::string* out_initial_body) {
+  const std::size_t header_end = raw_data.find("\r\n\r\n");
+  if (header_end == std::string_view::npos) {
+    return false;
+  }
+
+  const std::string headers_part(raw_data.substr(0, header_end));
+  *out_initial_body = std::string(raw_data.substr(header_end + 4));
+
+  std::istringstream stream(headers_part);
+  std::string request_line;
+  if (!std::getline(stream, request_line)) {
+    return false;
+  }
+  if (!request_line.empty() && request_line.back() == '\r') {
+    request_line.pop_back();
+  }
+
+  std::istringstream req_stream(request_line);
+  std::string method_str;
+  std::string target;
+  std::string http_version;
+  req_stream >> method_str >> target >> http_version;
+
+  const auto method = StringToMethod(method_str);
+  if (!method || target.empty()) {
+    return false;
+  }
+
+  std::vector<HttpHeader> headers;
+  std::string line;
+  while (std::getline(stream, line)) {
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    const auto pair = vinput::str::SplitPair(line, ':', /*trim_whitespace=*/true);
+    if (pair) {
+      headers.push_back({std::string(pair->first), std::string(pair->second)});
+    }
+  }
+
+  out_req->url = std::move(target);
+  out_req->method = *method;
+  out_req->headers = std::move(headers);
+  return true;
+}
+
+std::size_t ExtractContentLength(const std::vector<HttpHeader>& headers) {
+  const auto cl_val = FindHeader(headers, "Content-Length");
+  if (!cl_val) {
+    return 0;
+  }
+  const std::string trimmed = vinput::str::TrimAsciiWhitespace(*cl_val);
+  if (trimmed.empty()) {
+    return 0;
+  }
+  return static_cast<std::size_t>(std::strtoull(trimmed.c_str(), nullptr, 10));
+}
+
+bool ReadHttpRequestBody(int fd, std::string* body, std::size_t expected_length) {
+  char chunk[4096];
+  while (body->size() < expected_length) {
+    const ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
+    if (n > 0) {
+      body->append(chunk, static_cast<std::size_t>(n));
+      continue;
+    }
+    if (n < 0 && errno == EINTR) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
 class WebSocketSessionImpl : public WebSocketSession,
                              public std::enable_shared_from_this<WebSocketSessionImpl> {
 public:
   explicit WebSocketSessionImpl(int fd) : fd_(fd) {}
 
   ~WebSocketSessionImpl() override { CloseInternal(1000, "", false); }
+
+  WebSocketSessionImpl(const WebSocketSessionImpl&) = delete;
+  WebSocketSessionImpl& operator=(const WebSocketSessionImpl&) = delete;
+  WebSocketSessionImpl(WebSocketSessionImpl&&) = delete;
+  WebSocketSessionImpl& operator=(WebSocketSessionImpl&&) = delete;
 
   bool SendText(std::string_view text) override { return SendRaw(EncodeWebSocketText(text)); }
 
@@ -208,18 +300,18 @@ public:
 
   void
   SetOnMessage(std::function<void(std::string_view payload, bool is_binary)> callback) override {
-    std::lock_guard<std::mutex> lock(cb_mutex_);
+    const std::lock_guard<std::mutex> lock(cb_mutex_);
     on_message_ = std::move(callback);
   }
 
   void SetOnClose(
       std::function<void(std::uint16_t status_code, std::string_view reason)> callback) override {
-    std::lock_guard<std::mutex> lock(cb_mutex_);
+    const std::lock_guard<std::mutex> lock(cb_mutex_);
     on_close_ = std::move(callback);
   }
 
   void SetOnError(std::function<void(std::string_view error)> callback) override {
-    std::lock_guard<std::mutex> lock(cb_mutex_);
+    const std::lock_guard<std::mutex> lock(cb_mutex_);
     on_error_ = std::move(callback);
   }
 
@@ -252,9 +344,14 @@ public:
 
         if (frame.header.opcode == WsOpcode::kPing) {
           SendPong(frame.payload);
-        } else if (frame.header.opcode == WsOpcode::kPong) {
-          // pong received, no-op
-        } else if (frame.header.opcode == WsOpcode::kClose) {
+          continue;
+        }
+
+        if (frame.header.opcode == WsOpcode::kPong) {
+          continue;
+        }
+
+        if (frame.header.opcode == WsOpcode::kClose) {
           std::uint16_t code = 1000;
           std::string reason;
           if (frame.payload.size() >= 2) {
@@ -264,25 +361,25 @@ public:
           }
           CloseInternal(code, reason, true);
           return;
-        } else if (frame.header.opcode == WsOpcode::kText ||
-                   frame.header.opcode == WsOpcode::kBinary ||
-                   frame.header.opcode == WsOpcode::kContinuation) {
-          if (!frame.header.fin) {
-            if (frame.header.opcode != WsOpcode::kContinuation) {
-              fragmented_opcode = frame.header.opcode;
-              fragmented_msg = std::move(frame.payload);
-            } else {
-              fragmented_msg.append(frame.payload);
-            }
+        }
+
+        // Text, Binary, or Continuation frames
+        if (!frame.header.fin) {
+          if (frame.header.opcode != WsOpcode::kContinuation) {
+            fragmented_opcode = frame.header.opcode;
+            fragmented_msg = std::move(frame.payload);
           } else {
-            if (frame.header.opcode == WsOpcode::kContinuation) {
-              fragmented_msg.append(frame.payload);
-              DispatchMessage(fragmented_msg, fragmented_opcode == WsOpcode::kBinary);
-              fragmented_msg.clear();
-            } else {
-              DispatchMessage(frame.payload, frame.header.opcode == WsOpcode::kBinary);
-            }
+            fragmented_msg.append(frame.payload);
           }
+          continue;
+        }
+
+        if (frame.header.opcode == WsOpcode::kContinuation) {
+          fragmented_msg.append(frame.payload);
+          DispatchMessage(fragmented_msg, fragmented_opcode == WsOpcode::kBinary);
+          fragmented_msg.clear();
+        } else {
+          DispatchMessage(frame.payload, frame.header.opcode == WsOpcode::kBinary);
         }
       }
 
@@ -304,7 +401,7 @@ private:
     if (closed_.load()) {
       return false;
     }
-    std::lock_guard<std::mutex> lock(send_mutex_);
+    const std::lock_guard<std::mutex> lock(send_mutex_);
     if (closed_.load() || fd_ < 0) {
       return false;
     }
@@ -320,7 +417,7 @@ private:
     if (send_close_frame && fd_ >= 0) {
       const std::string close_frame = EncodeWebSocketClose(status_code, reason);
       {
-        std::lock_guard<std::mutex> lock(send_mutex_);
+        const std::lock_guard<std::mutex> lock(send_mutex_);
         if (fd_ >= 0) {
           (void)WriteAll(fd_, close_frame);
         }
@@ -337,7 +434,7 @@ private:
   void DispatchMessage(std::string_view payload, bool is_binary) {
     std::function<void(std::string_view, bool)> cb;
     {
-      std::lock_guard<std::mutex> lock(cb_mutex_);
+      const std::lock_guard<std::mutex> lock(cb_mutex_);
       cb = on_message_;
     }
     if (cb) {
@@ -348,7 +445,7 @@ private:
   void DispatchClose(std::uint16_t code, std::string_view reason) {
     std::function<void(std::uint16_t, std::string_view)> cb;
     {
-      std::lock_guard<std::mutex> lock(cb_mutex_);
+      const std::lock_guard<std::mutex> lock(cb_mutex_);
       cb = on_close_;
     }
     if (cb) {
@@ -359,7 +456,7 @@ private:
   void DispatchError(std::string_view error) {
     std::function<void(std::string_view)> cb;
     {
-      std::lock_guard<std::mutex> lock(cb_mutex_);
+      const std::lock_guard<std::mutex> lock(cb_mutex_);
       cb = on_error_;
     }
     if (cb) {
@@ -393,13 +490,13 @@ void HttpServer::Post(std::string path, HttpHandler handler) {
 }
 
 void HttpServer::Route(HttpMethod method, std::string path, HttpHandler handler) {
-  std::lock_guard<std::mutex> lock(routes_mutex_);
+  const std::lock_guard<std::mutex> lock(routes_mutex_);
   routes_[std::move(path)][method] = std::move(handler);
 }
 
 void HttpServer::UpgradeWebSocket(std::string path, WebSocketHandler handler,
                                   WebSocketAuthorizer authorizer) {
-  std::lock_guard<std::mutex> lock(routes_mutex_);
+  const std::lock_guard<std::mutex> lock(routes_mutex_);
   ws_endpoints_[std::move(path)] = WebSocketEndpoint{
       .handler = std::move(handler),
       .authorizer = std::move(authorizer),
@@ -530,7 +627,7 @@ void HttpServer::Stop() {
     stop_pipe_[1] = -1;
   }
 
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  const std::lock_guard<std::mutex> lock(workers_mutex_);
   for (const auto& worker : workers_) {
     const int fd = worker->fd.load();
     if (fd >= 0) {
@@ -558,7 +655,7 @@ std::string HttpServer::BoundAddress() const {
 }
 
 void HttpServer::PruneFinishedWorkers() {
-  std::lock_guard<std::mutex> lock(workers_mutex_);
+  const std::lock_guard<std::mutex> lock(workers_mutex_);
   for (auto it = workers_.begin(); it != workers_.end();) {
     if ((*it)->done.load()) {
       if ((*it)->thread.joinable()) {
@@ -575,11 +672,13 @@ void HttpServer::AcceptLoop() {
   while (running_.load()) {
     PruneFinishedWorkers();
 
-    struct pollfd pfd[2];
+    pollfd pfd[2];
     pfd[0].fd = listen_fd_;
     pfd[0].events = POLLIN;
+    pfd[0].revents = 0;
     pfd[1].fd = stop_pipe_[0];
     pfd[1].events = POLLIN;
+    pfd[1].revents = 0;
 
     const int ret = poll(pfd, 2, -1);
     if (ret < 0) {
@@ -618,7 +717,7 @@ void HttpServer::AcceptLoop() {
         worker->done.store(true);
       });
 
-      std::lock_guard<std::mutex> lock(workers_mutex_);
+      const std::lock_guard<std::mutex> lock(workers_mutex_);
       workers_.push_back(std::move(worker));
     }
   }
@@ -631,99 +730,35 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
   }
 
   std::string buffer;
-  char chunk[4096];
-  std::size_t header_end = std::string::npos;
-
-  while (header_end == std::string::npos) {
-    const ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
-    if (n > 0) {
-      buffer.append(chunk, static_cast<std::size_t>(n));
-      header_end = buffer.find("\r\n\r\n");
-      if (header_end == std::string::npos && buffer.size() > kMaxHeaderBytes) {
-        SendErrorResponse(fd, 431, "Request Header Fields Too Large\n");
-        return;
-      }
-    } else if (n < 0 && errno == EINTR) {
-      continue;
-    } else {
-      return;
-    }
-  }
-
-  const std::string headers_part = buffer.substr(0, header_end);
-  std::string body = buffer.substr(header_end + 4);
-
-  std::istringstream stream(headers_part);
-  std::string request_line;
-  if (!std::getline(stream, request_line)) {
-    SendErrorResponse(fd, 400, "Bad Request\n");
+  if (!ReadHttpHeaders(fd, &buffer, kMaxHeaderBytes)) {
     return;
   }
-  if (!request_line.empty() && request_line.back() == '\r') {
-    request_line.pop_back();
-  }
 
-  std::istringstream req_stream(request_line);
-  std::string method_str;
-  std::string target;
-  std::string http_version;
-  req_stream >> method_str >> target >> http_version;
-
-  const auto method = StringToMethod(method_str);
-  if (!method || target.empty()) {
+  HttpRequest req;
+  std::string body;
+  if (!ParseHttpRequestHeader(buffer, &req, &body)) {
     SendErrorResponse(fd, 400, "Bad Request\n");
     return;
   }
 
-  std::vector<HttpHeader> headers;
-  std::string line;
-  while (std::getline(stream, line)) {
-    if (!line.empty() && line.back() == '\r') {
-      line.pop_back();
-    }
-    const auto pair = vinput::str::SplitPair(line, ':', /*trim_whitespace=*/true);
-    if (pair) {
-      headers.push_back({std::string(pair->first), std::string(pair->second)});
-    }
-  }
-
-  std::size_t content_length = 0;
-  if (const auto cl_val = FindHeader(headers, "Content-Length")) {
-    const std::string trimmed = vinput::str::TrimAsciiWhitespace(*cl_val);
-    if (!trimmed.empty()) {
-      content_length = static_cast<std::size_t>(std::strtoull(trimmed.c_str(), nullptr, 10));
-    }
-  }
-
+  const std::size_t content_length = ExtractContentLength(req.headers);
   if (content_length > config_.max_request_body_bytes) {
     SendErrorResponse(fd, 413, "Payload Too Large\n");
     return;
   }
 
-  while (body.size() < content_length) {
-    const ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
-    if (n > 0) {
-      body.append(chunk, static_cast<std::size_t>(n));
-    } else if (n < 0 && errno == EINTR) {
-      continue;
-    } else {
-      return;
-    }
+  if (!ReadHttpRequestBody(fd, &body, content_length)) {
+    return;
   }
-
-  HttpRequest req;
-  req.url = target;
-  req.method = *method;
-  req.headers = std::move(headers);
   req.body = std::move(body);
 
-  const std::string path = target.substr(0, target.find('?'));
+  const std::string path = req.url.substr(0, req.url.find('?'));
 
-  // Handle WebSocket Upgrade
+  // Route Guard: WebSocket Upgrade
   if (IsWebSocketUpgradeRequest(req.headers)) {
     WebSocketEndpoint endpoint;
     {
-      std::lock_guard<std::mutex> lock(routes_mutex_);
+      const std::lock_guard<std::mutex> lock(routes_mutex_);
       const auto ws_it = ws_endpoints_.find(path);
       if (ws_it == ws_endpoints_.end()) {
         SendErrorResponse(fd, 404, "Not Found\n");
@@ -735,7 +770,7 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
     if (endpoint.authorizer) {
       const auto auth_resp = endpoint.authorizer(req);
       if (auth_resp.has_value()) {
-        SendHttpResponse(fd, *auth_resp, *method);
+        SendHttpResponse(fd, *auth_resp, req.method);
         return;
       }
     }
@@ -770,17 +805,18 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
     return;
   }
 
+  // Route Guard: Standard HTTP Routing
   HttpHandler matched_handler;
   std::vector<HttpMethod> allowed_methods;
 
   {
-    std::lock_guard<std::mutex> lock(routes_mutex_);
+    const std::lock_guard<std::mutex> lock(routes_mutex_);
     const auto it = routes_.find(path);
     if (it == routes_.end()) {
       SendErrorResponse(fd, 404, "Not Found\n");
       return;
     }
-    const auto method_it = it->second.find(*method);
+    const auto method_it = it->second.find(req.method);
     if (method_it == it->second.end()) {
       for (const auto& [m, _] : it->second) {
         allowed_methods.push_back(m);
@@ -803,7 +839,7 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
   }
 
   const HttpResponse resp = matched_handler(req);
-  SendHttpResponse(fd, resp, *method);
+  SendHttpResponse(fd, resp, req.method);
 }
 
 } // namespace vinput::net
