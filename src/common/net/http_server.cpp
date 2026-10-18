@@ -18,7 +18,6 @@
 #include <string_view>
 #include <sys/poll.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -191,12 +190,19 @@ bool SendErrorResponse(int fd, long status_code, std::string_view message,
   return SendHttpResponse(fd, resp);
 }
 
-bool ReadHttpHeaders(int fd, std::string* buffer, std::size_t max_bytes) {
+bool ReadHttpHeaders(int fd, std::string* buffer, std::size_t max_bytes, int timeout_ms) {
   char chunk[4096];
   while (buffer->find("\r\n\r\n") == std::string::npos) {
     if (buffer->size() > max_bytes) {
       SendErrorResponse(fd, 431, "Request Header Fields Too Large\n");
       return false;
+    }
+    if (timeout_ms > 0) {
+      pollfd pfd{.fd = fd, .events = POLLIN, .revents = 0};
+      const int pret = poll(&pfd, 1, timeout_ms);
+      if (pret <= 0) {
+        return false;
+      }
     }
     const ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
     if (n > 0) {
@@ -282,9 +288,16 @@ std::optional<std::size_t> ExtractContentLength(const std::vector<HttpHeader>& h
   return static_cast<std::size_t>(std::strtoull(std::string(trimmed).c_str(), nullptr, 10));
 }
 
-bool ReadHttpRequestBody(int fd, std::string* body, std::size_t expected_length) {
+bool ReadHttpRequestBody(int fd, std::string* body, std::size_t expected_length, int timeout_ms) {
   char chunk[4096];
   while (body->size() < expected_length) {
+    if (timeout_ms > 0) {
+      pollfd pfd{.fd = fd, .events = POLLIN, .revents = 0};
+      const int pret = poll(&pfd, 1, timeout_ms);
+      if (pret <= 0) {
+        return false;
+      }
+    }
     const ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
     if (n > 0) {
       body->append(chunk, static_cast<std::size_t>(n));
@@ -814,14 +827,6 @@ void HttpServer::AcceptLoop() {
         }
       }
 
-      // Configure read timeout guard
-      if (config_.read_timeout_seconds > 0) {
-        timeval tv{};
-        tv.tv_sec = config_.read_timeout_seconds;
-        tv.tv_usec = 0;
-        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-      }
-
       auto worker = std::make_shared<ClientWorker>();
       worker->fd.store(client_fd);
       worker->thread = std::thread([this, worker]() {
@@ -846,8 +851,9 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
   }
 
   try {
+    const int timeout_ms = config_.read_timeout_seconds * 1000;
     std::string buffer;
-    if (!ReadHttpHeaders(fd, &buffer, kMaxHeaderBytes)) {
+    if (!ReadHttpHeaders(fd, &buffer, kMaxHeaderBytes, timeout_ms)) {
       return;
     }
 
@@ -870,7 +876,7 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
       return;
     }
 
-    if (!ReadHttpRequestBody(fd, &body, content_length)) {
+    if (!ReadHttpRequestBody(fd, &body, content_length, timeout_ms)) {
       return;
     }
     req.body = std::move(body);
