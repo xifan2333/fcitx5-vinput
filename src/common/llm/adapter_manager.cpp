@@ -22,6 +22,7 @@ extern "C" {
 }
 
 #include "common/config/core_config_types.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/process_utils.h"
 
@@ -313,34 +314,8 @@ bool WritePidFile(std::string_view adapter_id, pid_t pid, std::string* error) {
     return false;
   }
 
-  std::error_code ec;
-  const fs::path runtime_dir = vinput::path::AdapterRuntimeDir();
-  fs::create_directories(runtime_dir, ec);
-  if (ec) {
-    if (error != nullptr) {
-      *error = "failed to create runtime directory: " + ec.message();
-    }
-    return false;
-  }
-
-  std::ofstream pid_file(PidPath(adapter_id), std::ios::out | std::ios::trunc);
-  if (!pid_file.is_open()) {
-    if (error != nullptr) {
-      *error = "failed to write pid file: " + std::string(adapter_id);
-    }
-    return false;
-  }
-  pid_file << pid << ' ' << start_time;
-  if (!pid_file.good()) {
-    if (error != nullptr) {
-      *error = "failed to persist pid file: " + std::string(adapter_id);
-    }
-    return false;
-  }
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
+  const std::string content = std::to_string(pid) + ' ' + std::to_string(start_time);
+  return vinput::file::AtomicWriteTextFile(PidPath(adapter_id), content, error);
 }
 
 void RemovePidFile(std::string_view adapter_id) {

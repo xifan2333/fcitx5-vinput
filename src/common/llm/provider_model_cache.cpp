@@ -2,18 +2,16 @@
 
 #include <ctime>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <nlohmann/json.hpp>
 #include <nlohmann/json_fwd.hpp>
 #include <set>
 #include <string>
-#include <system_error>
 #include <utility>
 #include <vector>
 
 #include "common/config/core_config.h"
 #include "common/scene/postprocess_scene.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 
 namespace vinput::llm {
@@ -27,13 +25,13 @@ bool ReadCacheFile(nlohmann::json* out) {
   *out = nlohmann::json::object();
 
   const auto path = vinput::path::ProviderModelCachePath();
-  std::ifstream ifs(path);
-  if (!ifs.is_open()) {
+  std::string content;
+  if (!vinput::file::ReadTextFile(path, &content, nullptr)) {
     return false;
   }
 
   try {
-    *out = nlohmann::json::parse(ifs);
+    *out = nlohmann::json::parse(content);
     return out->is_object();
   } catch (...) {
     *out = nlohmann::json::object();
@@ -43,25 +41,7 @@ bool ReadCacheFile(nlohmann::json* out) {
 
 bool WriteCacheFile(const nlohmann::json& data, std::string* error) {
   const auto path = vinput::path::ProviderModelCachePath();
-  std::error_code ec;
-  std::filesystem::create_directories(path.parent_path(), ec);
-  if (ec) {
-    if (error != nullptr) {
-      *error = "Failed to create cache directory: " + ec.message();
-    }
-    return false;
-  }
-
-  std::ofstream ofs(path, std::ios::out | std::ios::trunc);
-  if (!ofs.is_open()) {
-    if (error != nullptr) {
-      *error = "Failed to write model cache file: " + path.string();
-    }
-    return false;
-  }
-
-  ofs << data.dump(2);
-  return true;
+  return vinput::file::AtomicWriteTextFile(path, data.dump(2), error);
 }
 
 } // namespace
