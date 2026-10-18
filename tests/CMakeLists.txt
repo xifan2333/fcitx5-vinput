@@ -232,6 +232,14 @@ target_include_directories(test_file_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_file_utils PRIVATE common pthread)
 add_test(NAME test_file_utils COMMAND test_file_utils)
 
+add_executable(test_hotword_utils
+    test_hotword_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/asr/hotword_utils.cpp
+)
+target_include_directories(test_hotword_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_hotword_utils PRIVATE common pthread)
+add_test(NAME test_hotword_utils COMMAND test_hotword_utils)
+
 add_executable(test_locale_utils test_locale_utils.cpp)
 target_include_directories(test_locale_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_locale_utils COMMAND test_locale_utils)
