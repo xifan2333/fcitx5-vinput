@@ -213,7 +213,10 @@ std::string EncodeWebSocketFrame(WsOpcode opcode, std::string_view payload, bool
   }
 
   if (mask_key != nullptr) {
-    frame.append(reinterpret_cast<const char*>(mask_key), 4);
+    const std::span<const std::uint8_t, 4> mask(mask_key, 4);
+    for (const auto byte : mask) {
+      frame.push_back(static_cast<char>(byte));
+    }
     const std::size_t payload_start = frame.size();
     frame.append(payload);
     ApplyWebSocketMask(frame.data() + payload_start, payload.size(), mask_key, 0);
