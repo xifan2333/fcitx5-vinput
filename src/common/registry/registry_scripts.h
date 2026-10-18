@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -63,7 +64,8 @@ std::filesystem::path RelativePathForId(std::string_view id);
 std::string IdFromRelativePath(std::string_view type, const std::filesystem::path& relative_path);
 std::filesystem::path DefaultLocalScriptPath(Kind kind, std::string_view id);
 bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path* local_path,
-                    std::string* error, std::string* resolved_script_url = nullptr);
+                    std::string* error, std::string* resolved_script_url = nullptr,
+                    const std::atomic<bool>* cancel_token = nullptr);
 bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
                             const std::filesystem::path& script_path, std::string* error);
 bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,

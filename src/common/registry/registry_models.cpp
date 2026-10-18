@@ -2,6 +2,7 @@
 
 #include <archive.h>
 #include <archive_entry.h>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -265,14 +266,16 @@ std::vector<RemoteModelEntry> ModelRepository::FetchRegistry(
 }
 
 bool ModelRepository::InstallModel(const std::string& registry_url, const std::string& model_id,
-                                   ProgressCallback progress_cb, std::string* error) const {
+                                   ProgressCallback progress_cb, std::string* error,
+                                   const std::atomic<bool>* cancel_token) const {
   return InstallModel(std::vector<std::string>{registry_url}, model_id, std::move(progress_cb),
-                      error, nullptr);
+                      error, nullptr, cancel_token);
 }
 
 bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls,
                                    const std::string& model_id, ProgressCallback progress_cb,
-                                   std::string* error, std::string* resolved_registry_url) const {
+                                   std::string* error, std::string* resolved_registry_url,
+                                   const std::atomic<bool>* cancel_token) const {
   // Fetch registry without i18n refresh when config context is unavailable.
   std::string fetch_err;
   auto entries =
@@ -337,6 +340,7 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
   // Try each URL in order (fallback on failure)
   vinput::download::Options download_options;
   download_options.timeout_seconds = 600;
+  download_options.cancel_token = cancel_token;
   download_options.progress_cb = [progress_cb](const vinput::download::Progress& progress) {
     if (!progress_cb) {
       return;
@@ -353,6 +357,14 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
     fs::remove_all(tmp_dir, ec);
     if (error) {
       *error = download_result.error.empty() ? "download failed" : download_result.error;
+    }
+    return false;
+  }
+
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    fs::remove_all(tmp_dir, ec);
+    if (error != nullptr) {
+      *error = "download cancelled";
     }
     return false;
   }
@@ -491,7 +503,8 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
 bool ModelRepository::InstallModel(const CoreConfig& config,
                                    const std::vector<std::string>& registry_urls,
                                    const std::string& model_id, ProgressCallback progress_cb,
-                                   std::string* error, std::string* resolved_registry_url) const {
+                                   std::string* error, std::string* resolved_registry_url,
+                                   const std::atomic<bool>* cancel_token) const {
   // Fetch registry
   std::string fetch_err;
   auto entries = FetchRegistry(config, registry_urls, &fetch_err, resolved_registry_url);
@@ -555,6 +568,7 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   // Try each URL in order (fallback on failure)
   vinput::download::Options download_options;
   download_options.timeout_seconds = 600;
+  download_options.cancel_token = cancel_token;
   download_options.progress_cb = [progress_cb](const vinput::download::Progress& progress) {
     if (!progress_cb) {
       return;
@@ -571,6 +585,14 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
     fs::remove_all(tmp_dir, ec);
     if (error) {
       *error = download_result.error.empty() ? "download failed" : download_result.error;
+    }
+    return false;
+  }
+
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    fs::remove_all(tmp_dir, ec);
+    if (error != nullptr) {
+      *error = "download cancelled";
     }
     return false;
   }

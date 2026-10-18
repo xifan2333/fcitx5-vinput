@@ -1,6 +1,7 @@
 #include "common/registry/registry_scripts.h"
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <system_error>
@@ -286,7 +287,8 @@ std::filesystem::path DefaultLocalScriptPath(Kind kind, std::string_view id) {
 }
 
 bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path* local_path,
-                    std::string* error, std::string* resolved_script_url) {
+                    std::string* error, std::string* resolved_script_url,
+                    const std::atomic<bool>* cancel_token) {
   if (!vinput::version::Satisfies(vinput::version::CurrentHostVersion(), entry.vinput_version)) {
     if (error != nullptr) {
       *error = "Resource '" + entry.id + "' is incompatible with current vinput host (requires " +
@@ -317,6 +319,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
 
   vinput::download::Options options;
   options.timeout_seconds = 120;
+  options.cancel_token = cancel_token;
   vinput::download::Result result;
   if (!vinput::download::DownloadFile(entry.script_urls, tmp_path, options, &result)) {
     if (resolved_script_url != nullptr) {
@@ -327,6 +330,18 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
     }
     std::error_code rm_ec;
     fs::remove(tmp_path, rm_ec);
+    return false;
+  }
+
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    std::error_code rm_ec;
+    fs::remove(tmp_path, rm_ec);
+    if (resolved_script_url != nullptr) {
+      resolved_script_url->clear();
+    }
+    if (error != nullptr) {
+      *error = "download cancelled";
+    }
     return false;
   }
 

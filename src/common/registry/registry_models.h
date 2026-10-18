@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -51,13 +52,16 @@ public:
 
   // Download and install a model
   bool InstallModel(const std::string& registry_url, const std::string& model_id,
-                    ProgressCallback progress_cb, std::string* error) const;
+                    ProgressCallback progress_cb, std::string* error,
+                    const std::atomic<bool>* cancel_token = nullptr) const;
   bool InstallModel(const std::vector<std::string>& registry_urls, const std::string& model_id,
                     ProgressCallback progress_cb, std::string* error,
-                    std::string* resolved_registry_url = nullptr) const;
+                    std::string* resolved_registry_url = nullptr,
+                    const std::atomic<bool>* cancel_token = nullptr) const;
   bool InstallModel(const CoreConfig& config, const std::vector<std::string>& registry_urls,
                     const std::string& model_id, ProgressCallback progress_cb, std::string* error,
-                    std::string* resolved_registry_url = nullptr) const;
+                    std::string* resolved_registry_url = nullptr,
+                    const std::atomic<bool>* cancel_token = nullptr) const;
 
 private:
   bool VerifySha256(const std::filesystem::path& file, const std::string& expected,
