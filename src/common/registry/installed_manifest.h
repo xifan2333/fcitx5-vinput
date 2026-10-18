@@ -32,6 +32,4 @@ private:
   std::map<std::string, InstalledRecord> records_;
 };
 
-std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error = nullptr);
-
 } // namespace vinput::registry

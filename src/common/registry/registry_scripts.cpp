@@ -13,6 +13,7 @@
 #include "common/registry/registry_cache.h"
 #include "common/registry/registry_fetch.h"
 #include "common/utils/downloader.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/string_utils.h"
 #include "common/utils/version_utils.h"
@@ -352,7 +353,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
   std::string actual_sha;
   if (!entry.sha256.empty()) {
     std::string sha_error;
-    actual_sha = vinput::registry::ComputeFileSha256(tmp_path, &sha_error);
+    actual_sha = vinput::file::ComputeFileSha256(tmp_path, &sha_error);
     if (!sha_error.empty() || actual_sha != entry.sha256) {
       std::error_code rm_ec;
       fs::remove(tmp_path, rm_ec);
@@ -394,7 +395,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
   }
 
   const std::string final_sha =
-      actual_sha.empty() ? vinput::registry::ComputeFileSha256(path) : actual_sha;
+      actual_sha.empty() ? vinput::file::ComputeFileSha256(path) : actual_sha;
   auto manifest = vinput::registry::InstalledManifest::Load();
   manifest.RecordInstalled(entry.id, kind == Kind::kAsrProvider ? "provider" : "adapter",
                            entry.version, final_sha);
@@ -545,7 +546,7 @@ ResourceVersionInfo CheckResourceVersion(const vinput::registry::InstalledManife
     info.installed_version = record->version;
     info.installed_sha256 = record->sha256;
   } else if (script_exists) {
-    info.installed_sha256 = vinput::registry::ComputeFileSha256(script_path);
+    info.installed_sha256 = vinput::file::ComputeFileSha256(script_path);
   }
 
   if (!script_exists) {

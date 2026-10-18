@@ -32,10 +32,6 @@ std::filesystem::path ResolveManifestPath(const std::filesystem::path& path) {
 
 } // namespace
 
-std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error) {
-  return vinput::file::ComputeFileSha256(path, error);
-}
-
 InstalledManifest InstalledManifest::Load(const std::filesystem::path& path) {
   InstalledManifest manifest;
   const auto actual_path = ResolveManifestPath(path);

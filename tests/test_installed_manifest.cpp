@@ -7,6 +7,7 @@
 
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_scripts.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/version_utils.h"
 
 namespace {
@@ -74,7 +75,7 @@ void TestComputeFileSha256() {
   }
 
   std::string err;
-  const std::string hex = vinput::registry::ComputeFileSha256(tmp_file, &err);
+  const std::string hex = vinput::file::ComputeFileSha256(tmp_file, &err);
   ExpectTrue(err.empty());
   // printf "hello world\n" | sha256sum ->
   // a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447
