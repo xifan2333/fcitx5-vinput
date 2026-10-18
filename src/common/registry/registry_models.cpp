@@ -297,212 +297,7 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
     return false;
   }
 
-  // Ensure base_dir exists before mkdtemp
-  {
-    std::error_code mkdir_ec;
-    fs::create_directories(base_dir_, mkdir_ec);
-    if (mkdir_ec) {
-      if (error)
-        *error = "failed to create model directory: " + mkdir_ec.message();
-      return false;
-    }
-  }
-
-  // Create temporary directory with random name to avoid symlink race
-  std::string tmp_template = (base_dir_ / ".tmp-XXXXXX").string();
-  char* tmp_result = mkdtemp(tmp_template.data());
-  if (!tmp_result) {
-    if (error)
-      *error = "failed to create temp dir";
-    return false;
-  }
-  const fs::path tmp_dir = fs::path(tmp_result);
-  std::error_code ec;
-
-  // Determine archive filename from first URL
-  std::string archive_name = model_id + ".tar.gz";
-  {
-    auto pos = found->urls[0].rfind('/');
-    if (pos != std::string::npos && pos + 1 < found->urls[0].size()) {
-      archive_name = found->urls[0].substr(pos + 1);
-      // Strip query string if present
-      auto q = archive_name.find('?');
-      if (q != std::string::npos)
-        archive_name = archive_name.substr(0, q);
-    }
-  }
-
-  const fs::path archive_path = tmp_dir / archive_name;
-
-  // Try each URL in order (fallback on failure)
-  vinput::download::Options download_options;
-  download_options.timeout_seconds = 600;
-  download_options.cancel_token = cancel_token;
-  download_options.progress_cb = [progress_cb](const vinput::download::Progress& progress) {
-    if (!progress_cb) {
-      return;
-    }
-    InstallProgress install_progress;
-    install_progress.downloaded_bytes = progress.downloaded_bytes;
-    install_progress.total_bytes = progress.total_bytes;
-    install_progress.speed_bps = progress.speed_bps;
-    progress_cb(install_progress);
-  };
-  vinput::download::Result download_result;
-  if (!vinput::download::DownloadFile(found->urls, archive_path, download_options,
-                                      &download_result)) {
-    fs::remove_all(tmp_dir, ec);
-    if (error) {
-      *error = download_result.error.empty() ? "download failed" : download_result.error;
-    }
-    return false;
-  }
-
-  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-    fs::remove_all(tmp_dir, ec);
-    if (error != nullptr) {
-      *error = "download cancelled";
-    }
-    return false;
-  }
-
-  // Verify SHA256 (stub)
-  std::string verify_err;
-  if (!VerifySha256(archive_path, found->sha256, &verify_err)) {
-    fs::remove_all(tmp_dir, ec);
-    if (error)
-      *error = verify_err;
-    return false;
-  }
-
-  // Extract
-  const fs::path extracted_dir = tmp_dir / "extracted";
-  fs::create_directories(extracted_dir, ec);
-  std::string extract_err;
-  if (!ExtractArchive(archive_path, extracted_dir, &extract_err)) {
-    fs::remove_all(tmp_dir, ec);
-    if (error)
-      *error = extract_err;
-    return false;
-  }
-
-  // If archive extracted into a single top-level directory, flatten it
-  {
-    std::vector<fs::path> top_entries;
-    for (const auto& entry : fs::directory_iterator(extracted_dir)) {
-      top_entries.push_back(entry.path());
-    }
-    if (top_entries.size() == 1 && fs::is_directory(top_entries[0])) {
-      const fs::path single_dir = top_entries[0];
-      const fs::path flatten_tmp = tmp_dir / "flatten";
-      fs::rename(single_dir, flatten_tmp, ec);
-      if (!ec) {
-        for (const auto& entry : fs::directory_iterator(flatten_tmp)) {
-          fs::rename(entry.path(), extracted_dir / entry.path().filename(), ec);
-        }
-        fs::remove_all(flatten_tmp, ec);
-      }
-    }
-  }
-
-  if (!found->vinput_model.is_null() && !found->vinput_model.empty()) {
-    const fs::path json_path = extracted_dir / "vinput-model.json";
-    if (!found->vinput_model.is_object()) {
-      fs::remove_all(tmp_dir, ec);
-      if (error)
-        *error = "registry field 'vinput_model' must be a JSON object";
-      return false;
-    }
-    std::string json_content = found->vinput_model.dump(2) + "\n";
-    std::string write_err;
-    if (!vinput::file::AtomicWriteTextFile(json_path, json_content, &write_err)) {
-      fs::remove_all(tmp_dir, ec);
-      if (error)
-        *error = "failed to write vinput-model.json: " + write_err;
-      return false;
-    }
-  }
-
-  json effective_manifest;
-  std::string provision_error;
-  if (!LoadEffectiveModelManifest(extracted_dir, &effective_manifest, &provision_error) ||
-      !ProvisionBpeVocabulary(extracted_dir, effective_manifest, &provision_error)) {
-    fs::remove_all(tmp_dir, ec);
-    if (error)
-      *error = "failed to prepare hotword assets: " + provision_error;
-    return false;
-  }
-
-  const fs::path relative_path = ModelManager::RelativePathForId(model_id);
-  if (relative_path.empty()) {
-    fs::remove_all(tmp_dir, ec);
-    if (error)
-      *error = "invalid model id: " + model_id;
-    return false;
-  }
-  const fs::path dest_dir = base_dir_ / relative_path;
-  const fs::path backup_dir = tmp_dir / "previous-install";
-  std::error_code exists_ec;
-  const bool had_existing = fs::exists(dest_dir, exists_ec);
-  if (exists_ec) {
-    fs::remove_all(tmp_dir, ec);
-    if (error)
-      *error = "failed to inspect existing model installation: " + exists_ec.message();
-    return false;
-  }
-
-  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-    fs::remove_all(tmp_dir, ec);
-    if (error != nullptr) {
-      *error = "download cancelled";
-    }
-    return false;
-  }
-
-  if (had_existing) {
-    fs::rename(dest_dir, backup_dir, ec);
-    if (ec) {
-      fs::remove_all(tmp_dir, ec);
-      if (error)
-        *error = "failed to stage existing model for replacement: " + ec.message();
-      return false;
-    }
-  }
-
-  fs::create_directories(dest_dir.parent_path(), ec);
-  if (ec) {
-    if (had_existing) {
-      std::error_code rollback_ec;
-      fs::rename(backup_dir, dest_dir, rollback_ec);
-    }
-    fs::remove_all(tmp_dir, ec);
-    if (error) {
-      *error = "failed to create model parent directory: " + ec.message();
-    }
-    return false;
-  }
-
-  fs::rename(extracted_dir, dest_dir, ec);
-  if (ec) {
-    std::string install_error = "failed to activate new model installation: " + ec.message();
-    if (had_existing) {
-      std::error_code rollback_ec;
-      fs::rename(backup_dir, dest_dir, rollback_ec);
-      if (rollback_ec) {
-        if (error) {
-          *error = install_error + "; rollback also failed: " + rollback_ec.message();
-        }
-        return false;
-      }
-    }
-    fs::remove_all(tmp_dir, ec);
-    if (error)
-      *error = install_error;
-    return false;
-  }
-
-  fs::remove_all(tmp_dir, ec);
-  return true;
+  return InstallModelEntry(*found, std::move(progress_cb), error, cancel_token);
 }
 
 bool ModelRepository::InstallModel(const CoreConfig& config,
@@ -540,34 +335,25 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
     return false;
   }
 
-  // Ensure base_dir exists before mkdtemp
-  {
-    std::error_code mkdir_ec;
-    fs::create_directories(base_dir_, mkdir_ec);
-    if (mkdir_ec) {
-      if (error)
-        *error = "failed to create model directory: " + mkdir_ec.message();
-      return false;
-    }
-  }
+  return InstallModelEntry(*found, std::move(progress_cb), error, cancel_token);
+}
 
-  // Create temporary directory with random name to avoid symlink race
-  std::string tmp_template = (base_dir_ / ".tmp-XXXXXX").string();
-  char* tmp_result = mkdtemp(tmp_template.data());
-  if (!tmp_result) {
-    if (error)
-      *error = "failed to create temp dir";
+bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found, ProgressCallback progress_cb,
+                                        std::string* error,
+                                        const std::atomic<bool>* cancel_token) const {
+  auto temp_dir = vinput::file::ScopedTempDir::Create(base_dir_, ".tmp-", error);
+  if (!temp_dir) {
     return false;
   }
-  const fs::path tmp_dir = fs::path(tmp_result);
+  const fs::path& tmp_dir = temp_dir->Path();
   std::error_code ec;
 
   // Determine archive filename from first URL
-  std::string archive_name = model_id + ".tar.gz";
-  {
-    auto pos = found->urls[0].rfind('/');
-    if (pos != std::string::npos && pos + 1 < found->urls[0].size()) {
-      archive_name = found->urls[0].substr(pos + 1);
+  std::string archive_name = found.id + ".tar.gz";
+  if (!found.urls.empty()) {
+    auto pos = found.urls[0].rfind('/');
+    if (pos != std::string::npos && pos + 1 < found.urls[0].size()) {
+      archive_name = found.urls[0].substr(pos + 1);
       // Strip query string if present
       auto q = archive_name.find('?');
       if (q != std::string::npos)
@@ -592,9 +378,8 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
     progress_cb(install_progress);
   };
   vinput::download::Result download_result;
-  if (!vinput::download::DownloadFile(found->urls, archive_path, download_options,
+  if (!vinput::download::DownloadFile(found.urls, archive_path, download_options,
                                       &download_result)) {
-    fs::remove_all(tmp_dir, ec);
     if (error) {
       *error = download_result.error.empty() ? "download failed" : download_result.error;
     }
@@ -602,7 +387,6 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   }
 
   if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-    fs::remove_all(tmp_dir, ec);
     if (error != nullptr) {
       *error = "download cancelled";
     }
@@ -611,8 +395,7 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
 
   // Verify SHA256 (stub)
   std::string verify_err;
-  if (!VerifySha256(archive_path, found->sha256, &verify_err)) {
-    fs::remove_all(tmp_dir, ec);
+  if (!VerifySha256(archive_path, found.sha256, &verify_err)) {
     if (error)
       *error = verify_err;
     return false;
@@ -623,7 +406,6 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   fs::create_directories(extracted_dir, ec);
   std::string extract_err;
   if (!ExtractArchive(archive_path, extracted_dir, &extract_err)) {
-    fs::remove_all(tmp_dir, ec);
     if (error)
       *error = extract_err;
     return false;
@@ -651,18 +433,16 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   }
 
   // Write vinput-model.json if provided
-  if (!found->vinput_model.is_null() && !found->vinput_model.empty()) {
+  if (!found.vinput_model.is_null() && !found.vinput_model.empty()) {
     const fs::path json_path = extracted_dir / "vinput-model.json";
-    if (!found->vinput_model.is_object()) {
-      fs::remove_all(tmp_dir, ec);
+    if (!found.vinput_model.is_object()) {
       if (error)
         *error = "registry field 'vinput_model' must be a JSON object";
       return false;
     }
-    std::string json_content = found->vinput_model.dump(2) + "\n";
+    std::string json_content = found.vinput_model.dump(2) + "\n";
     std::string write_err;
     if (!vinput::file::AtomicWriteTextFile(json_path, json_content, &write_err)) {
-      fs::remove_all(tmp_dir, ec);
       if (error)
         *error = "failed to write vinput-model.json: " + write_err;
       return false;
@@ -673,7 +453,6 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   std::string provision_error;
   if (!LoadEffectiveModelManifest(extracted_dir, &effective_manifest, &provision_error) ||
       !ProvisionBpeVocabulary(extracted_dir, effective_manifest, &provision_error)) {
-    fs::remove_all(tmp_dir, ec);
     if (error)
       *error = "failed to prepare hotword assets: " + provision_error;
     return false;
@@ -681,11 +460,10 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
 
   // Replace the destination by rename so the old model stays intact until
   // the new one is fully extracted and ready.
-  const fs::path relative_path = ModelManager::RelativePathForId(model_id);
+  const fs::path relative_path = ModelManager::RelativePathForId(found.id);
   if (relative_path.empty()) {
-    fs::remove_all(tmp_dir, ec);
     if (error)
-      *error = "invalid model id: " + model_id;
+      *error = "invalid model id: " + found.id;
     return false;
   }
   const fs::path dest_dir = base_dir_ / relative_path;
@@ -693,14 +471,12 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   std::error_code exists_ec;
   const bool had_existing = fs::exists(dest_dir, exists_ec);
   if (exists_ec) {
-    fs::remove_all(tmp_dir, ec);
     if (error)
       *error = "failed to inspect existing model installation: " + exists_ec.message();
     return false;
   }
 
   if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-    fs::remove_all(tmp_dir, ec);
     if (error != nullptr) {
       *error = "download cancelled";
     }
@@ -710,7 +486,6 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   if (had_existing) {
     fs::rename(dest_dir, backup_dir, ec);
     if (ec) {
-      fs::remove_all(tmp_dir, ec);
       if (error)
         *error = "failed to stage existing model for replacement: " + ec.message();
       return false;
@@ -723,7 +498,6 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
       std::error_code rollback_ec;
       fs::rename(backup_dir, dest_dir, rollback_ec);
     }
-    fs::remove_all(tmp_dir, ec);
     if (error) {
       *error = "failed to create model parent directory: " + ec.message();
     }
@@ -743,14 +517,12 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
         return false;
       }
     }
-    fs::remove_all(tmp_dir, ec);
     if (error)
       *error = install_error;
     return false;
   }
 
-  // Clean up temp dir
-  fs::remove_all(tmp_dir, ec);
+  // Clean up temp dir via RAII ScopedTempDir
   return true;
 }
 

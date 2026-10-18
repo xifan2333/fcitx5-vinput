@@ -1,8 +1,10 @@
 #include "common/utils/file_utils.h"
 
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <system_error>
 #include <unistd.h>
 
@@ -86,6 +88,90 @@ bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::
 } // namespace
 
 namespace vinput::file {
+
+ScopedTempDir::ScopedTempDir(std::filesystem::path path)
+    : path_(std::move(path)), active_(!path_.empty()) {}
+
+ScopedTempDir::~ScopedTempDir() {
+  Remove();
+}
+
+ScopedTempDir::ScopedTempDir(ScopedTempDir&& other) noexcept
+    : path_(std::move(other.path_)), active_(other.active_) {
+  other.active_ = false;
+  other.path_.clear();
+}
+
+ScopedTempDir& ScopedTempDir::operator=(ScopedTempDir&& other) noexcept {
+  if (this != &other) {
+    Remove();
+    path_ = std::move(other.path_);
+    active_ = other.active_;
+    other.active_ = false;
+    other.path_.clear();
+  }
+  return *this;
+}
+
+std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path& base_dir,
+                                                     std::string_view prefix, std::string* error) {
+  std::error_code ec;
+  std::filesystem::path dir = base_dir;
+  if (dir.empty()) {
+    dir = std::filesystem::temp_directory_path(ec);
+    if (ec) {
+      if (error) {
+        *error = "Failed to determine system temporary directory: " + ec.message();
+      }
+      return nullptr;
+    }
+  } else {
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+      if (error) {
+        *error = "Failed to create directory " + dir.string() + ": " + ec.message();
+      }
+      return nullptr;
+    }
+  }
+
+  std::string tmpl;
+  if (prefix.ends_with("XXXXXX")) {
+    tmpl = (dir / prefix).string();
+  } else {
+    tmpl = (dir / (std::string(prefix) + "XXXXXX")).string();
+  }
+
+  char* result = ::mkdtemp(tmpl.data());
+  if (!result) {
+    if (error) {
+      *error = "Failed to create temporary directory: " + std::string(std::strerror(errno));
+    }
+    return nullptr;
+  }
+
+  return std::make_unique<ScopedTempDir>(std::filesystem::path(result));
+}
+
+void ScopedTempDir::Remove() {
+  if (active_ && !path_.empty()) {
+    std::error_code ec;
+    std::filesystem::remove_all(path_, ec);
+    active_ = false;
+  }
+}
+
+void ScopedTempDir::Dismiss() {
+  active_ = false;
+}
+
+const std::filesystem::path& ScopedTempDir::Path() const {
+  return path_;
+}
+
+bool ScopedTempDir::IsValid() const {
+  return active_ && !path_.empty();
+}
 
 bool ResolveSymlinkPath(const std::filesystem::path& path, std::filesystem::path* resolved,
                         std::string* error) {

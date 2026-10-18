@@ -64,6 +64,8 @@ public:
                     const std::atomic<bool>* cancel_token = nullptr) const;
 
 private:
+  bool InstallModelEntry(const RemoteModelEntry& found, ProgressCallback progress_cb,
+                         std::string* error, const std::atomic<bool>* cancel_token) const;
   bool VerifySha256(const std::filesystem::path& file, const std::string& expected,
                     std::string* error) const;
   bool ExtractArchive(const std::filesystem::path& archive, const std::filesystem::path& dest,
