@@ -5,9 +5,14 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "common/net/websocket_frame.h"
+
+namespace {
+
+constexpr std::size_t kMaxTestPayload = 1024ULL * 1024;
+
+} // namespace
 
 inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
@@ -24,12 +29,12 @@ void TestHandshakeAcceptCalculation() {
   // RFC 6455 Section 1.3 standard test vector
   const auto accept1 = ComputeWebSocketAccept("dGhlIHNhbXBsZSBub25jZQ==");
   TEST_ASSERT(accept1.has_value());
-  TEST_ASSERT(*accept1 == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+  TEST_ASSERT(accept1.value_or("") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
 
   // Leading and trailing whitespace should be trimmed
   const auto accept2 = ComputeWebSocketAccept("  dGhlIHNhbXBsZSBub25jZQ== \r\n");
   TEST_ASSERT(accept2.has_value());
-  TEST_ASSERT(*accept2 == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+  TEST_ASSERT(accept2.value_or("") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
 
   // Empty or whitespace-only keys must be rejected
   TEST_ASSERT(!ComputeWebSocketAccept("").has_value());
@@ -119,7 +124,7 @@ void TestShortFrameCodec() {
   WsFrame frame1;
   std::size_t consumed1 = 0;
   std::string error1;
-  TEST_ASSERT(DecodeWebSocketFrame(wire_unmasked, &frame1, &consumed1, 1024 * 1024, &error1));
+  TEST_ASSERT(DecodeWebSocketFrame(wire_unmasked, &frame1, &consumed1, kMaxTestPayload, &error1));
   TEST_ASSERT(consumed1 == wire_unmasked.size());
   TEST_ASSERT(frame1.header.fin);
   TEST_ASSERT(frame1.header.opcode == WsOpcode::kText);
@@ -137,7 +142,7 @@ void TestShortFrameCodec() {
   WsFrame frame2;
   std::size_t consumed2 = 0;
   std::string error2;
-  TEST_ASSERT(DecodeWebSocketFrame(wire_masked, &frame2, &consumed2, 1024 * 1024, &error2));
+  TEST_ASSERT(DecodeWebSocketFrame(wire_masked, &frame2, &consumed2, kMaxTestPayload, &error2));
   TEST_ASSERT(consumed2 == wire_masked.size());
   TEST_ASSERT(frame2.header.fin);
   TEST_ASSERT(frame2.header.opcode == WsOpcode::kText);
@@ -170,7 +175,7 @@ void TestMediumAndLargeFrameCodec() {
 
   WsFrame frame_med;
   std::size_t consumed_med = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(wire_medium, &frame_med, &consumed_med, 1024 * 1024));
+  TEST_ASSERT(DecodeWebSocketFrame(wire_medium, &frame_med, &consumed_med, kMaxTestPayload));
   TEST_ASSERT(consumed_med == wire_medium.size());
   TEST_ASSERT(frame_med.header.fin);
   TEST_ASSERT(frame_med.header.opcode == WsOpcode::kBinary);
@@ -187,7 +192,7 @@ void TestMediumAndLargeFrameCodec() {
 
   WsFrame frame_large;
   std::size_t consumed_large = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(wire_large, &frame_large, &consumed_large, 1024 * 1024));
+  TEST_ASSERT(DecodeWebSocketFrame(wire_large, &frame_large, &consumed_large, kMaxTestPayload));
   TEST_ASSERT(consumed_large == wire_large.size());
   TEST_ASSERT(frame_large.header.fin);
   TEST_ASSERT(frame_large.header.opcode == WsOpcode::kText);
@@ -211,13 +216,13 @@ void TestStreamingAndIncompleteBuffer() {
   for (std::size_t i = 1; i < wire.size(); ++i) {
     const std::string_view partial(wire.data(), i);
     consumed = 999;
-    const bool ok = DecodeWebSocketFrame(partial, &frame, &consumed, 1024 * 1024, &error);
+    const bool ok = DecodeWebSocketFrame(partial, &frame, &consumed, kMaxTestPayload, &error);
     TEST_ASSERT(!ok);
     TEST_ASSERT(consumed == 0);
   }
 
   // Full frame feed
-  TEST_ASSERT(DecodeWebSocketFrame(wire, &frame, &consumed, 1024 * 1024, &error));
+  TEST_ASSERT(DecodeWebSocketFrame(wire, &frame, &consumed, kMaxTestPayload, &error));
   TEST_ASSERT(consumed == wire.size());
   TEST_ASSERT(frame.payload == "Streaming payload test");
 

@@ -2,8 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <openssl/evp.h>
+#include <openssl/types.h>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -92,9 +95,7 @@ std::optional<WsFrameHeader> ParseWebSocketFrameHeader(std::string_view buffer) 
     if (buffer.size() < offset + 4) {
       return std::nullopt;
     }
-    for (std::size_t i = 0; i < 4; ++i) {
-      header.mask_key[i] = static_cast<std::uint8_t>(buffer[offset + i]);
-    }
+    std::memcpy(header.mask_key, buffer.data() + offset, 4);
     offset += 4;
   }
 
@@ -133,8 +134,13 @@ bool DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame, std::size
     }
     const std::uint8_t len_code = byte1 & 0x7F;
     const bool masked = (byte1 & 0x80) != 0;
-    const std::size_t required_header_size =
-        2 + (len_code == 126 ? 2 : (len_code == 127 ? 8 : 0)) + (masked ? 4 : 0);
+    std::size_t ext_len_bytes = 0;
+    if (len_code == 126) {
+      ext_len_bytes = 2;
+    } else if (len_code == 127) {
+      ext_len_bytes = 8;
+    }
+    const std::size_t required_header_size = 2 + ext_len_bytes + (masked ? 4 : 0);
     if (buffer.size() < required_header_size) {
       if (error != nullptr) {
         *error = "Incomplete frame header: waiting for extended length or mask";
@@ -207,9 +213,7 @@ std::string EncodeWebSocketFrame(WsOpcode opcode, std::string_view payload, bool
   }
 
   if (mask_key != nullptr) {
-    for (std::size_t i = 0; i < 4; ++i) {
-      frame.push_back(static_cast<char>(mask_key[i]));
-    }
+    frame.append(reinterpret_cast<const char*>(mask_key), 4);
     const std::size_t payload_start = frame.size();
     frame.append(payload);
     ApplyWebSocketMask(frame.data() + payload_start, payload.size(), mask_key, 0);
@@ -225,8 +229,9 @@ void ApplyWebSocketMask(char* data, std::size_t length, const std::uint8_t mask_
   if (data == nullptr || length == 0 || mask_key == nullptr) {
     return;
   }
+  const std::span<const std::uint8_t, 4> mask(mask_key, 4);
   for (std::size_t i = 0; i < length; ++i) {
-    data[i] = static_cast<char>(static_cast<std::uint8_t>(data[i]) ^ mask_key[(offset + i) % 4]);
+    data[i] = static_cast<char>(static_cast<std::uint8_t>(data[i]) ^ mask[(offset + i) % 4]);
   }
 }
 

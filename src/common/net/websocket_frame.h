@@ -43,7 +43,7 @@ std::optional<WsFrameHeader> ParseWebSocketFrameHeader(std::string_view buffer);
 // false. If frame violates protocol rules or exceeds max_payload_bytes, sets error message and
 // returns false.
 bool DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame, std::size_t* consumed_bytes,
-                          std::size_t max_payload_bytes = 16 * 1024 * 1024,
+                          std::size_t max_payload_bytes = 16ULL * 1024 * 1024,
                           std::string* error = nullptr);
 
 // Encodes a WebSocket frame.
