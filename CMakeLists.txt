@@ -45,6 +45,16 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 add_compile_options(-ffunction-sections -fdata-sections)
 add_link_options(-Wl,--gc-sections -Wl,--as-needed)
 
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+if(ipo_supported)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    message(STATUS "Interprocedural Optimization (LTO) enabled for Release builds")
+else()
+    message(STATUS "Interprocedural Optimization (LTO) not supported: ${ipo_error}")
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(
         -Wall
