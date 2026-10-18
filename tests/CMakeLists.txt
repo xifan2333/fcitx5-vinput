@@ -186,6 +186,11 @@ target_include_directories(test_curl_connection_cache PRIVATE ${CMAKE_SOURCE_DIR
 target_link_libraries(test_curl_connection_cache PRIVATE CURL::libcurl pthread)
 add_test(NAME test_curl_connection_cache COMMAND test_curl_connection_cache)
 
+add_executable(test_http_client test_http_client.cpp)
+target_include_directories(test_http_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_http_client PRIVATE common pthread)
+add_test(NAME test_http_client COMMAND test_http_client)
+
 add_executable(test_string_utils test_string_utils.cpp)
 target_include_directories(test_string_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_string_utils COMMAND test_string_utils)
