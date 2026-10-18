@@ -1,19 +1,19 @@
 #include "common/utils/file_utils.h"
 
 #include <cerrno>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <random>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <unistd.h>
 #include <utility>
+
+extern "C" {
+#include <stdlib.h>
+}
 
 namespace {
 
@@ -142,37 +142,22 @@ std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path
     }
   }
 
-  std::string_view clean_prefix = prefix;
-  if (clean_prefix.ends_with("XXXXXX")) {
-    clean_prefix = clean_prefix.substr(0, clean_prefix.size() - 6);
+  std::string tmpl;
+  if (prefix.ends_with("XXXXXX")) {
+    tmpl = (dir / prefix).string();
+  } else {
+    tmpl = (dir / (std::string(prefix) + "XXXXXX")).string();
   }
 
-  std::random_device rd;
-  std::mt19937_64 gen(rd());
-  std::uniform_int_distribution<uint64_t> dis;
-
-  constexpr int kMaxAttempts = 100;
-  for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
-    uint64_t rand_val = dis(gen);
-    char buf[17];
-    std::snprintf(buf, sizeof(buf), "%016lx", static_cast<unsigned long>(rand_val));
-    std::filesystem::path candidate = dir / (std::string(clean_prefix) + buf);
-    std::error_code create_ec;
-    if (std::filesystem::create_directory(candidate, create_ec)) {
-      std::error_code perm_ec;
-      std::filesystem::permissions(candidate,
-                                   std::filesystem::perms::owner_read |
-                                       std::filesystem::perms::owner_write |
-                                       std::filesystem::perms::owner_exec,
-                                   std::filesystem::perm_options::replace, perm_ec);
-      return std::make_unique<ScopedTempDir>(std::move(candidate));
+  char* result = ::mkdtemp(tmpl.data());
+  if (result == nullptr) {
+    if (error != nullptr) {
+      *error = "Failed to create temporary directory: " + std::string(std::strerror(errno));
     }
+    return nullptr;
   }
 
-  if (error != nullptr) {
-    *error = "Failed to create temporary directory after multiple attempts";
-  }
-  return nullptr;
+  return std::make_unique<ScopedTempDir>(std::filesystem::path(result));
 }
 
 void ScopedTempDir::Remove() {
