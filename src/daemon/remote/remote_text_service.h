@@ -39,6 +39,7 @@ public:
   void SetSessionControlCallbacks(StartCallback on_start, StopCallback on_stop);
 
   [[nodiscard]] std::vector<std::string> ListEndpoints() const;
+  [[nodiscard]] std::string GetText() const;
 
 private:
   struct Settings {
@@ -59,7 +60,6 @@ private:
   void NotifyInput(std::string_view type);
 
   void SetText(std::string text);
-  [[nodiscard]] std::string GetText() const;
   void ClearText();
   void ScheduleDebounce();
   void CancelDebounce();
