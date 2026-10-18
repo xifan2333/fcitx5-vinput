@@ -17,7 +17,7 @@ namespace vinput::download {
 namespace {
 
 vinput::net::ProgressCallback MakeProgressCallback(const ProgressCallback& cb) {
-  if (!cb) {
+  if (cb == nullptr) {
     return nullptr;
   }
   return [cb](const vinput::net::HttpProgress& hp) {
@@ -41,7 +41,7 @@ vinput::net::HttpRequest MakeRequest(const std::string& url, const Options& opti
 }
 
 void PopulateResult(const std::string& url, const vinput::net::HttpResponse& res, Result* result) {
-  if (!result) {
+  if (result == nullptr) {
     return;
   }
   result->resolved_url = url;
@@ -69,13 +69,13 @@ bool IsCancelled(const Options& options, const vinput::net::HttpResponse& res) {
 
 bool DownloadText(const std::vector<std::string>& urls, const Options& options,
                   std::string* content, Result* result) {
-  if (content) {
+  if (content != nullptr) {
     content->clear();
   }
 
   Result last_result;
   for (const auto& url : urls) {
-    if (options.cancel_token && options.cancel_token->load(std::memory_order_relaxed)) {
+    if (options.cancel_token != nullptr && options.cancel_token->load(std::memory_order_relaxed)) {
       last_result.ok = false;
       last_result.resolved_url = url;
       last_result.error = "download cancelled";
@@ -89,15 +89,15 @@ bool DownloadText(const std::vector<std::string>& urls, const Options& options,
     req.max_response_bytes =
         options.max_bytes > 0 ? options.max_bytes : std::numeric_limits<size_t>::max();
 
-    const auto res = vinput::net::HttpClient::Instance().Request(req);
+    auto res = vinput::net::HttpClient::Instance().Request(req);
     PopulateResult(url, res, &last_result);
     last_result.bytes_received = res.body.size();
 
     if (res.Ok()) {
-      if (content) {
+      if (content != nullptr) {
         *content = std::move(res.body);
       }
-      if (result) {
+      if (result != nullptr) {
         *result = std::move(last_result);
       }
       return true;
@@ -108,7 +108,7 @@ bool DownloadText(const std::vector<std::string>& urls, const Options& options,
     }
   }
 
-  if (result) {
+  if (result != nullptr) {
     *result = std::move(last_result);
   }
   return false;
@@ -118,7 +118,7 @@ bool DownloadFile(const std::vector<std::string>& urls, const std::filesystem::p
                   const Options& options, Result* result) {
   Result last_result;
   for (const auto& url : urls) {
-    if (options.cancel_token && options.cancel_token->load(std::memory_order_relaxed)) {
+    if (options.cancel_token != nullptr && options.cancel_token->load(std::memory_order_relaxed)) {
       last_result.ok = false;
       last_result.resolved_url = url;
       last_result.error = "download cancelled";
@@ -129,14 +129,14 @@ bool DownloadFile(const std::vector<std::string>& urls, const std::filesystem::p
     }
 
     const auto req = MakeRequest(url, options);
-    const auto res = vinput::net::HttpClient::Instance().DownloadToFile(req, dest);
+    auto res = vinput::net::HttpClient::Instance().DownloadToFile(req, dest);
     PopulateResult(url, res, &last_result);
 
     if (res.Ok()) {
       std::error_code ec;
       const auto sz = std::filesystem::file_size(dest, ec);
       last_result.bytes_received = ec ? 0 : sz;
-      if (result) {
+      if (result != nullptr) {
         *result = std::move(last_result);
       }
       return true;
@@ -148,7 +148,7 @@ bool DownloadFile(const std::vector<std::string>& urls, const std::filesystem::p
     }
   }
 
-  if (result) {
+  if (result != nullptr) {
     *result = std::move(last_result);
   }
   return false;

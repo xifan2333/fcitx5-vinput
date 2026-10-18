@@ -9,6 +9,7 @@
 #include <string>
 #include <sys/poll.h>
 #include <sys/socket.h>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -124,7 +125,7 @@ void TestDownloadTextSuccess() {
   MockHttpServer server;
   const std::string url = BuildUrl(server, "/text");
 
-  vinput::download::Options opts;
+  const vinput::download::Options opts;
   vinput::download::Result result;
   std::string content;
   const bool ok = vinput::download::DownloadText({url}, opts, &content, &result);
@@ -144,7 +145,7 @@ void TestDownloadTextFallback() {
   const std::string url404 = BuildUrl(server, "/404");
   const std::string url_ok = BuildUrl(server, "/text");
 
-  vinput::download::Options opts;
+  const vinput::download::Options opts;
   vinput::download::Result result;
   std::string content;
   const bool ok = vinput::download::DownloadText({url404, url_ok}, opts, &content, &result);
@@ -179,7 +180,7 @@ void TestDownloadTextCancellation() {
   const std::string url = BuildUrl(server, "/text");
   const std::string url2 = BuildUrl(server, "/text2");
 
-  std::atomic<bool> cancel_token{true};
+  const std::atomic<bool> cancel_token{true};
   vinput::download::Options opts;
   opts.cancel_token = &cancel_token;
   vinput::download::Result result;
@@ -203,7 +204,7 @@ void TestDownloadFileSuccess() {
   std::error_code ec;
   std::filesystem::remove(dest, ec);
 
-  vinput::download::Options opts;
+  const vinput::download::Options opts;
   vinput::download::Result result;
   const bool ok = vinput::download::DownloadFile({url}, dest, opts, &result);
 
@@ -232,7 +233,7 @@ void TestDownloadFileFallback() {
   std::error_code ec;
   std::filesystem::remove(dest, ec);
 
-  vinput::download::Options opts;
+  const vinput::download::Options opts;
   vinput::download::Result result;
   const bool ok = vinput::download::DownloadFile({url404, url_ok}, dest, opts, &result);
 
@@ -255,7 +256,7 @@ void TestDownloadFileCancellation() {
   std::error_code ec;
   std::filesystem::remove(dest, ec);
 
-  std::atomic<bool> cancel_token{true};
+  const std::atomic<bool> cancel_token{true};
   vinput::download::Options opts;
   opts.cancel_token = &cancel_token;
   vinput::download::Result result;
