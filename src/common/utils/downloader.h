@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,7 @@ struct Options {
   bool follow_redirects = true;
   ProgressCallback progress_cb;
   const std::atomic<bool>* cancel_token = nullptr;
+  std::optional<std::string> proxy = std::nullopt;
 };
 
 struct Result {

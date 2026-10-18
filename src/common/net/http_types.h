@@ -52,6 +52,7 @@ struct HttpResponse {
   long status_code = 0;
   std::string body;
   std::vector<HttpHeader> headers;
+  std::string effective_url;
   double total_time_ms = 0.0;
   std::string error_message;
   bool cancelled = false;

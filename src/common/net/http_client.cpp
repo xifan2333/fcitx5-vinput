@@ -428,9 +428,18 @@ public:
     const CURLcode code = curl_easy_perform(curl);
 
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status_code);
+    char* effective_url = nullptr;
+    curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url);
+    if (effective_url != nullptr && *effective_url != '\0') {
+      response.effective_url = effective_url;
+    }
     double total_sec = 0.0;
     curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &total_sec);
     response.total_time_ms = total_sec * 1000.0;
+
+    if (code == CURLE_OK && response.status_code == 0 && request.url.rfind("file://", 0) == 0) {
+      response.status_code = 200;
+    }
 
     if (prog_ctx.callback_exception) {
       response.error_message = "Progress callback threw an exception";

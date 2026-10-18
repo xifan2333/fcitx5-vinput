@@ -6,7 +6,6 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
-#include <stdlib.h>
 #include <string>
 #include <sys/poll.h>
 #include <sys/socket.h>
@@ -99,6 +98,11 @@ private:
             const std::string response =
                 "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
+          } else if (buffer.find("GET /redirect ") != std::string::npos) {
+            const std::string response =
+                "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + std::to_string(port_) +
+                "/text\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
           } else if (buffer.find("GET /slow ") != std::string::npos) {
             const std::string header =
                 "HTTP/1.1 200 OK\r\nContent-Length: 20000\r\nConnection: close\r\n\r\n";
@@ -141,11 +145,17 @@ std::string BuildUrl(const MockHttpServer& server, const std::string& path) {
   return "http://127.0.0.1:" + std::to_string(server.Port()) + path;
 }
 
+vinput::download::Options MakeTestOptions() {
+  vinput::download::Options opts;
+  opts.proxy = ""; // Direct loopback bypass without touching environment
+  return opts;
+}
+
 void TestDownloadTextSuccess() {
   MockHttpServer server;
   const std::string url = BuildUrl(server, "/text");
 
-  const vinput::download::Options opts;
+  const auto opts = MakeTestOptions();
   vinput::download::Result result;
   std::string content;
   const bool ok = vinput::download::DownloadText({url}, opts, &content, &result);
@@ -165,7 +175,7 @@ void TestDownloadTextFallback() {
   const std::string url404 = BuildUrl(server, "/404");
   const std::string url_ok = BuildUrl(server, "/text");
 
-  const vinput::download::Options opts;
+  const auto opts = MakeTestOptions();
   vinput::download::Result result;
   std::string content;
   const bool ok = vinput::download::DownloadText({url404, url_ok}, opts, &content, &result);
@@ -174,8 +184,8 @@ void TestDownloadTextFallback() {
   AssertTrue(ok, "DownloadText fallback succeeds");
   AssertTrue(content == "Hello Downloader", "content matches");
   AssertTrue(result.ok, "result.ok is true");
-  AssertTrue(result.resolved_url == url_ok, "resolved_url is the successful URL");
-  AssertTrue(server.RequestCount() == 2, "server received 2 requests for fallback");
+  AssertTrue(result.resolved_url == url_ok, "resolved_url matches second URL");
+  AssertTrue(server.RequestCount() == 2, "server received 2 requests");
   std::cout << "TestDownloadTextFallback passed\n";
 }
 
@@ -183,7 +193,7 @@ void TestDownloadTextMaxBytes() {
   MockHttpServer server;
   const std::string url = BuildUrl(server, "/large");
 
-  vinput::download::Options opts;
+  auto opts = MakeTestOptions();
   opts.max_bytes = 20; // Server returns 100 bytes
   vinput::download::Result result;
   std::string content;
@@ -201,7 +211,7 @@ void TestDownloadTextCancellation() {
   const std::string url2 = BuildUrl(server, "/text2");
 
   const std::atomic<bool> cancel_token{true};
-  vinput::download::Options opts;
+  auto opts = MakeTestOptions();
   opts.cancel_token = &cancel_token;
   vinput::download::Result result;
   std::string content;
@@ -220,7 +230,7 @@ void TestDownloadTextActiveCancellation() {
   const std::string url = BuildUrl(server, "/slow");
 
   std::atomic<bool> cancel_token{false};
-  vinput::download::Options opts;
+  auto opts = MakeTestOptions();
   opts.cancel_token = &cancel_token;
   opts.progress_cb = [&](const vinput::download::Progress& prog) {
     if (prog.downloaded_bytes > 0) {
@@ -244,7 +254,7 @@ void TestDownloadHttp204Fallback() {
   const std::string url204 = BuildUrl(server, "/204");
   const std::string url_ok = BuildUrl(server, "/text");
 
-  const vinput::download::Options opts;
+  const auto opts = MakeTestOptions();
   vinput::download::Result result;
   std::string content;
   const bool ok = vinput::download::DownloadText({url204, url_ok}, opts, &content, &result);
@@ -258,6 +268,25 @@ void TestDownloadHttp204Fallback() {
   std::cout << "TestDownloadHttp204Fallback passed\n";
 }
 
+void TestDownloadRedirectFollowed() {
+  MockHttpServer server;
+  const std::string url = BuildUrl(server, "/redirect");
+  const std::string expected_target = BuildUrl(server, "/text");
+
+  const auto opts = MakeTestOptions();
+  vinput::download::Result result;
+  std::string content;
+  const bool ok = vinput::download::DownloadText({url}, opts, &content, &result);
+
+  server.Stop();
+  AssertTrue(ok, "DownloadText with redirect succeeds");
+  AssertTrue(content == "Hello Downloader", "content matches");
+  AssertTrue(result.ok, "result.ok is true");
+  AssertTrue(result.resolved_url == expected_target,
+             "resolved_url reflects the effective redirected target");
+  std::cout << "TestDownloadRedirectFollowed passed\n";
+}
+
 void TestDownloadFileSuccess() {
   MockHttpServer server;
   const std::string url = BuildUrl(server, "/text");
@@ -267,7 +296,7 @@ void TestDownloadFileSuccess() {
   std::error_code ec;
   std::filesystem::remove(dest, ec);
 
-  const vinput::download::Options opts;
+  const auto opts = MakeTestOptions();
   vinput::download::Result result;
   const bool ok = vinput::download::DownloadFile({url}, dest, opts, &result);
 
@@ -296,7 +325,7 @@ void TestDownloadFileFallback() {
   std::error_code ec;
   std::filesystem::remove(dest, ec);
 
-  const vinput::download::Options opts;
+  const auto opts = MakeTestOptions();
   vinput::download::Result result;
   const bool ok = vinput::download::DownloadFile({url404, url_ok}, dest, opts, &result);
 
@@ -320,7 +349,7 @@ void TestDownloadFileCancellation() {
   std::filesystem::remove(dest, ec);
 
   const std::atomic<bool> cancel_token{true};
-  vinput::download::Options opts;
+  auto opts = MakeTestOptions();
   opts.cancel_token = &cancel_token;
   vinput::download::Result result;
   const bool ok = vinput::download::DownloadFile({url}, dest, opts, &result);
@@ -333,6 +362,35 @@ void TestDownloadFileCancellation() {
   std::cout << "TestDownloadFileCancellation passed\n";
 }
 
+void TestDownloadFileActiveCancellation() {
+  MockHttpServer server;
+  const std::string url = BuildUrl(server, "/slow");
+  const auto dest = std::filesystem::temp_directory_path() /
+                    ("vinput_test_dl_actcancel_" + std::to_string(getpid()) + ".txt");
+
+  std::error_code ec;
+  std::filesystem::remove(dest, ec);
+
+  std::atomic<bool> cancel_token{false};
+  auto opts = MakeTestOptions();
+  opts.cancel_token = &cancel_token;
+  opts.progress_cb = [&](const vinput::download::Progress& prog) {
+    if (prog.downloaded_bytes > 0) {
+      cancel_token.store(true, std::memory_order_relaxed);
+    }
+  };
+
+  vinput::download::Result result;
+  const bool ok = vinput::download::DownloadFile({url}, dest, opts, &result);
+
+  server.Stop();
+  AssertTrue(!ok, "DownloadFile fails on in-flight cancellation");
+  AssertTrue(!result.ok, "result.ok is false");
+  AssertTrue(result.error == "download cancelled", "error is download cancelled");
+  AssertTrue(!std::filesystem::exists(dest), "dest file was removed on cancellation");
+  std::cout << "TestDownloadFileActiveCancellation passed\n";
+}
+
 void TestDownloadFileProgressCallback() {
   MockHttpServer server;
   const std::string url = BuildUrl(server, "/text");
@@ -343,7 +401,7 @@ void TestDownloadFileProgressCallback() {
   std::filesystem::remove(dest, ec);
 
   bool progress_called = false;
-  vinput::download::Options opts;
+  auto opts = MakeTestOptions();
   opts.progress_cb = [&](const vinput::download::Progress& prog) {
     if (prog.downloaded_bytes > 0) {
       progress_called = true;
@@ -372,7 +430,7 @@ void TestDownloadFileFailureCleansUpExistingDest() {
   }
   AssertTrue(std::filesystem::exists(dest), "stale file exists before test");
 
-  const vinput::download::Options opts;
+  const auto opts = MakeTestOptions();
   vinput::download::Result result;
   const bool ok = vinput::download::DownloadFile({url404}, dest, opts, &result);
 
@@ -383,27 +441,57 @@ void TestDownloadFileFailureCleansUpExistingDest() {
   std::cout << "TestDownloadFileFailureCleansUpExistingDest passed\n";
 }
 
+void TestDownloadLocalFileUrl() {
+  const auto src_file = std::filesystem::temp_directory_path() /
+                        ("vinput_test_src_" + std::to_string(getpid()) + ".txt");
+  const auto dest_file = std::filesystem::temp_directory_path() /
+                         ("vinput_test_dst_" + std::to_string(getpid()) + ".txt");
+
+  std::error_code ec;
+  std::filesystem::remove(src_file, ec);
+  std::filesystem::remove(dest_file, ec);
+
+  {
+    std::ofstream out(src_file);
+    out << "Local File Content";
+  }
+
+  const std::string file_url = "file://" + src_file.string();
+  const auto opts = MakeTestOptions();
+
+  std::string content;
+  vinput::download::Result text_res;
+  const bool text_ok = vinput::download::DownloadText({file_url}, opts, &content, &text_res);
+  AssertTrue(text_ok, "DownloadText from file:// succeeds");
+  AssertTrue(content == "Local File Content", "text content matches local file");
+
+  vinput::download::Result file_res;
+  const bool file_ok = vinput::download::DownloadFile({file_url}, dest_file, opts, &file_res);
+  AssertTrue(file_ok, "DownloadFile from file:// succeeds");
+  AssertTrue(std::filesystem::exists(dest_file), "dest file created from file://");
+
+  std::filesystem::remove(src_file, ec);
+  std::filesystem::remove(dest_file, ec);
+  std::cout << "TestDownloadLocalFileUrl passed\n";
+}
+
 } // namespace
 
 int main() {
-  unsetenv("http_proxy");
-  unsetenv("HTTP_PROXY");
-  unsetenv("all_proxy");
-  unsetenv("ALL_PROXY");
-  setenv("no_proxy", "127.0.0.1,localhost", 1);
-  setenv("NO_PROXY", "127.0.0.1,localhost", 1);
-
   TestDownloadTextSuccess();
   TestDownloadTextFallback();
   TestDownloadTextMaxBytes();
   TestDownloadTextCancellation();
   TestDownloadTextActiveCancellation();
   TestDownloadHttp204Fallback();
+  TestDownloadRedirectFollowed();
   TestDownloadFileSuccess();
   TestDownloadFileFallback();
   TestDownloadFileCancellation();
+  TestDownloadFileActiveCancellation();
   TestDownloadFileProgressCallback();
   TestDownloadFileFailureCleansUpExistingDest();
+  TestDownloadLocalFileUrl();
   std::cout << "All Downloader unit tests passed successfully!\n";
   return 0;
 }

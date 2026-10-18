@@ -38,6 +38,7 @@ vinput::net::HttpRequest MakeRequest(const std::string& url, const Options& opti
   req.follow_redirects = options.follow_redirects;
   req.cancel_token = options.cancel_token;
   req.progress_cb = MakeProgressCallback(options.progress_cb);
+  req.proxy = options.proxy;
   return req;
 }
 
@@ -49,7 +50,7 @@ void PopulateResult(const std::string& url, const vinput::net::HttpResponse& res
   if (result == nullptr) {
     return;
   }
-  result->resolved_url = url;
+  result->resolved_url = res.effective_url.empty() ? url : res.effective_url;
   result->http_code = res.status_code;
 
   const bool http_ok = RequiresHttpStatusCheck(url) ? (res.status_code == 200) : true;
