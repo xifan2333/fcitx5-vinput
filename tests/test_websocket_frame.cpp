@@ -314,6 +314,14 @@ void TestProtocolErrorDecode() {
   // Close frame with 1 byte payload
   TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\x88\x01\x00", 3), &frame, &consumed,
                                    kMaxTestPayload, &error) == WsDecodeStatus::kProtocolError);
+
+  // Close frame with prohibited status code 1005 (0x03ED)
+  TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\x88\x02\x03\xED", 4), &frame, &consumed,
+                                   kMaxTestPayload, &error) == WsDecodeStatus::kProtocolError);
+
+  // Close frame with status code 0 (0x0000)
+  TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\x88\x02\x00\x00", 4), &frame, &consumed,
+                                   kMaxTestPayload, &error) == WsDecodeStatus::kProtocolError);
 }
 
 void TestFragmentedFrameAndControlHelpers() {
@@ -431,8 +439,13 @@ void TestFragmentedFrameAndControlHelpers() {
   TEST_ASSERT(DecodeWebSocketFrame(close_wire_utf8, &close_frame_utf8, &c_close_utf8) ==
               WsDecodeStatus::kOk);
   TEST_ASSERT(close_frame_utf8.payload.size() <= 125);
-  // 123 / 3 = 41 codepoints * 3 bytes = 123 bytes + 2 status bytes = 125 bytes
-  TEST_ASSERT(close_frame_utf8.payload.size() == 125);
+  // Invalid UTF-8 sequence in reason: must stop before invalid byte
+  const std::string close_wire_bad_utf8 = EncodeWebSocketClose(1000, "Valid\xFF\xFEInvalid");
+  WsFrame close_frame_bad_utf8;
+  std::size_t c_close_bad = 0;
+  TEST_ASSERT(DecodeWebSocketFrame(close_wire_bad_utf8, &close_frame_bad_utf8, &c_close_bad) ==
+              WsDecodeStatus::kOk);
+  TEST_ASSERT(close_frame_bad_utf8.payload.substr(2) == "Valid");
 }
 
 int main() {

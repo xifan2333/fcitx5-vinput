@@ -64,18 +64,47 @@ constexpr const LenDescriptor& GetLenDescriptor(std::uint8_t len_code) noexcept 
 }
 
 std::string_view TruncateUtf8Safe(std::string_view text, std::size_t max_bytes) {
-  if (text.size() <= max_bytes) {
-    return text;
-  }
   std::size_t offset = 0;
   std::size_t last_valid_offset = 0;
   while (offset < text.size()) {
-    std::size_t next_offset = offset;
-    vinput::str::NextUtf8Codepoint(text, next_offset);
-    if (next_offset > max_bytes) {
+    const auto first = static_cast<unsigned char>(text[offset]);
+    std::size_t length = 0;
+    std::uint32_t codepoint = 0;
+    if (first <= 0x7f) {
+      length = 1;
+      codepoint = first;
+    } else if (first >= 0xc2 && first <= 0xdf) {
+      length = 2;
+      codepoint = first & 0x1f;
+    } else if (first >= 0xe0 && first <= 0xef) {
+      length = 3;
+      codepoint = first & 0x0f;
+    } else if (first >= 0xf0 && first <= 0xf4) {
+      length = 4;
+      codepoint = first & 0x07;
+    } else {
       break;
     }
-    offset = next_offset;
+
+    if (length > text.size() - offset) {
+      break;
+    }
+    for (std::size_t i = 1; i < length; ++i) {
+      const auto continuation = static_cast<unsigned char>(text[offset + i]);
+      if ((continuation & 0xc0) != 0x80) {
+        return text.substr(0, last_valid_offset);
+      }
+      codepoint = (codepoint << 6) | (continuation & 0x3f);
+    }
+    if ((length == 2 && codepoint < 0x80) || (length == 3 && codepoint < 0x800) ||
+        (length == 4 && codepoint < 0x10000) || (codepoint >= 0xd800 && codepoint <= 0xdfff) ||
+        codepoint > 0x10ffff) {
+      return text.substr(0, last_valid_offset);
+    }
+    if (offset + length > max_bytes) {
+      break;
+    }
+    offset += length;
     last_valid_offset = offset;
   }
   return text.substr(0, last_valid_offset);
@@ -221,6 +250,17 @@ WsDecodeStatus DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame,
   std::string payload(buffer.substr(header.header_size, header.payload_length));
   if (header.masked) {
     ApplyWebSocketMask(payload.data(), payload.size(), header.mask_key, 0);
+  }
+
+  // Guard: Inbound close frame status code validation (RFC 6455 7.4)
+  if (header.opcode == WsOpcode::kClose && payload.size() >= 2) {
+    const auto status_code =
+        (static_cast<std::uint16_t>(static_cast<std::uint8_t>(payload[0])) << 8) |
+        static_cast<std::uint8_t>(payload[1]);
+    if (!IsValidCloseStatusCode(status_code)) {
+      SetError(error, "Invalid WebSocket Close status code");
+      return WsDecodeStatus::kProtocolError;
+    }
   }
 
   out_frame->header = header;
