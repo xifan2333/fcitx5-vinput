@@ -227,6 +227,11 @@ add_executable(test_time_utils test_time_utils.cpp)
 target_include_directories(test_time_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_time_utils COMMAND test_time_utils)
 
+add_executable(test_file_utils test_file_utils.cpp)
+target_include_directories(test_file_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_file_utils PRIVATE common pthread)
+add_test(NAME test_file_utils COMMAND test_file_utils)
+
 add_executable(test_locale_utils test_locale_utils.cpp)
 target_include_directories(test_locale_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_locale_utils COMMAND test_locale_utils)
