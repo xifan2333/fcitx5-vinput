@@ -75,10 +75,16 @@ std::filesystem::path XdgCacheHome() {
 } // namespace
 
 bool IsPathWithinRoot(const std::filesystem::path& path, const std::filesystem::path& root) {
-  auto path_it = path.begin();
-  auto root_it = root.begin();
-  for (; root_it != root.end(); ++root_it, ++path_it) {
-    if (path_it == path.end() || *path_it != *root_it) {
+  const auto norm_path = path.lexically_normal();
+  auto norm_root = root.lexically_normal();
+  while (norm_root.filename().empty() && norm_root.has_parent_path() &&
+         norm_root != norm_root.parent_path()) {
+    norm_root = norm_root.parent_path();
+  }
+  auto path_it = norm_path.begin();
+  auto root_it = norm_root.begin();
+  for (; root_it != norm_root.end(); ++root_it, ++path_it) {
+    if (path_it == norm_path.end() || *path_it != *root_it) {
       return false;
     }
   }

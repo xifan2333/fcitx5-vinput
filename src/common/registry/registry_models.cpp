@@ -510,6 +510,15 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
     if (had_existing) {
       std::error_code rollback_ec;
       fs::rename(backup_dir, dest_dir, rollback_ec);
+      if (rollback_ec) {
+        temp_dir->Dismiss();
+        if (error != nullptr) {
+          *error = "failed to create model parent directory: " + ec.message() +
+                   "; rollback also failed: " + rollback_ec.message() +
+                   "; previous installation preserved at: " + backup_dir.string();
+        }
+        return false;
+      }
     }
     if (error != nullptr) {
       *error = "failed to create model parent directory: " + ec.message();

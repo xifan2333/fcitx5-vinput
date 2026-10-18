@@ -31,6 +31,16 @@ void TestIsPathWithinRoot() {
   TEST_ASSERT(IsPathWithinRoot("/a/b/c/d", "/a/b/c"));
   TEST_ASSERT(IsPathWithinRoot("/a/b/c/d/e.txt", "/a/b/c"));
 
+  // Trailing slash in root
+  TEST_ASSERT(IsPathWithinRoot("/a/b/c", "/a/b/"));
+  TEST_ASSERT(IsPathWithinRoot("/a/b/c/d", "/a/b/"));
+
+  // Root directory
+  TEST_ASSERT(IsPathWithinRoot("/a/b/c", "/"));
+
+  // Traversal with .. escaping root
+  TEST_ASSERT(!IsPathWithinRoot("/a/b/c/../../x", "/a/b"));
+
   // Sibling with common prefix name (must not match because components differ)
   TEST_ASSERT(!IsPathWithinRoot("/a/b/c_extra", "/a/b/c"));
   TEST_ASSERT(!IsPathWithinRoot("/a/b/cd", "/a/b/c"));
@@ -42,6 +52,7 @@ void TestIsPathWithinRoot() {
   // Relative paths
   TEST_ASSERT(IsPathWithinRoot("models/sherpa/model.onnx", "models/sherpa"));
   TEST_ASSERT(!IsPathWithinRoot("models/other/model.onnx", "models/sherpa"));
+  TEST_ASSERT(!IsPathWithinRoot("models/sherpa/../other/model.onnx", "models/sherpa"));
 }
 
 void TestScopedTempDirLifecycle() {
