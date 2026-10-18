@@ -1,5 +1,6 @@
 #include "common/net/http_server.h"
 
+#include <arpa/inet.h>
 #include <asm-generic/socket.h>
 #include <atomic>
 #include <cerrno>
@@ -12,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -110,16 +112,6 @@ bool WriteAll(int fd, std::string_view data) {
     return false;
   }
   return true;
-}
-
-std::optional<std::string_view> FindHeader(const std::vector<HttpHeader>& headers,
-                                           std::string_view name) {
-  for (const auto& h : headers) {
-    if (vinput::str::EqualsIgnoreCase(h.name, name)) {
-      return h.value;
-    }
-  }
-  return std::nullopt;
 }
 
 bool HasHeader(const std::vector<HttpHeader>& headers, std::string_view name) {
@@ -873,6 +865,21 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
     if (!ParseHttpRequestHeader(buffer, &req, &body)) {
       SendErrorResponse(fd, 400, "Bad Request\n");
       return;
+    }
+
+    sockaddr_storage peer_addr{};
+    socklen_t peer_addr_len = sizeof(peer_addr);
+    if (getpeername(fd, static_cast<sockaddr*>(static_cast<void*>(&peer_addr)), &peer_addr_len) ==
+        0) {
+      char ip_buf[INET6_ADDRSTRLEN] = {};
+      if (peer_addr.ss_family == AF_INET) {
+        const auto* in = static_cast<const sockaddr_in*>(static_cast<const void*>(&peer_addr));
+        inet_ntop(AF_INET, &in->sin_addr, ip_buf, sizeof(ip_buf));
+      } else if (peer_addr.ss_family == AF_INET6) {
+        const auto* in6 = static_cast<const sockaddr_in6*>(static_cast<const void*>(&peer_addr));
+        inet_ntop(AF_INET6, &in6->sin6_addr, ip_buf, sizeof(ip_buf));
+      }
+      req.client_ip = ip_buf;
     }
 
     const auto content_length_opt = ExtractContentLength(req.headers);

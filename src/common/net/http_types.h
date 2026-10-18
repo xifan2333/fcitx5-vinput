@@ -6,7 +6,10 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
+
+#include "common/utils/string_utils.h"
 
 namespace vinput::net {
 
@@ -46,7 +49,27 @@ struct HttpRequest {
   const std::atomic<bool>* cancel_token = nullptr;
   ProgressCallback progress_cb = nullptr;
   bool allow_auto_resend = false; // False by default to prevent silent POST retry on disconnect
+  std::string client_ip;
+
+  [[nodiscard]] std::optional<std::string_view> Header(std::string_view name) const {
+    for (const auto& h : headers) {
+      if (vinput::str::EqualsIgnoreCase(h.name, name)) {
+        return h.value;
+      }
+    }
+    return std::nullopt;
+  }
 };
+
+inline std::optional<std::string_view> FindHeader(const std::vector<HttpHeader>& headers,
+                                                  std::string_view name) {
+  for (const auto& h : headers) {
+    if (vinput::str::EqualsIgnoreCase(h.name, name)) {
+      return h.value;
+    }
+  }
+  return std::nullopt;
+}
 
 struct HttpResponse {
   long status_code = 0;
