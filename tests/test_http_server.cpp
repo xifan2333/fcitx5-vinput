@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <utility>
 
 #include "common/net/http_server.h"
 #include "common/net/http_types.h"
