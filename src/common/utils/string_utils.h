@@ -178,6 +178,11 @@ inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
   return true;
 }
 
+[[nodiscard]] inline bool StartsWithIgnoreCase(std::string_view text,
+                                               std::string_view prefix) noexcept {
+  return text.size() >= prefix.size() && EqualsIgnoreCase(text.substr(0, prefix.size()), prefix);
+}
+
 inline std::vector<std::string_view> SplitByChar(std::string_view text, char delim) {
   std::vector<std::string_view> tokens;
   size_t start = 0;

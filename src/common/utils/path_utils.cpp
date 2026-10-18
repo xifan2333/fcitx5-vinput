@@ -1,6 +1,7 @@
 #include "common/utils/path_utils.h"
 
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <sys/stat.h>
 #include <system_error>
@@ -189,12 +190,12 @@ std::filesystem::path I18nCachePath(std::string_view locale) {
 }
 
 std::filesystem::path RemoteWebStaticDir() {
-  const std::filesystem::path source = VINPUT_REMOTE_WEB_DIR_SOURCE_PATH;
+  std::filesystem::path source = VINPUT_REMOTE_WEB_DIR_SOURCE_PATH;
   std::error_code ec;
   if (std::filesystem::exists(source, ec) && !ec) {
     return source;
   }
-  return std::filesystem::path(VINPUT_REMOTE_WEB_DIR_INSTALL_PATH);
+  return {VINPUT_REMOTE_WEB_DIR_INSTALL_PATH};
 }
 
 } // namespace vinput::path

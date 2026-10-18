@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 #include <cerrno>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -11,10 +10,12 @@
 #include <string_view>
 #include <sys/poll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/net/websocket_frame.h"
 
 #include "daemon/remote/remote_assets.h"
@@ -117,12 +118,15 @@ bool RecvFrame(int fd, vinput::net::WsFrame* out_frame, int timeout_ms = 3000) {
       return false;
     }
     buf.append(chunk, static_cast<std::size_t>(n));
-    const auto res = vinput::net::DecodeWebSocketFrame(buf);
-    if (res.status == vinput::net::WsDecodeStatus::kOk) {
-      *out_frame = res.frame;
+    std::size_t consumed = 0;
+    std::string err;
+    const auto res =
+        vinput::net::DecodeWebSocketFrame(buf, out_frame, &consumed, 1024ULL * 1024ULL, &err);
+    if (res == vinput::net::WsDecodeStatus::kOk) {
+      buf.erase(0, consumed);
       return true;
     }
-    if (res.status == vinput::net::WsDecodeStatus::kProtocolError) {
+    if (res == vinput::net::WsDecodeStatus::kProtocolError) {
       return false;
     }
   }
@@ -151,7 +155,7 @@ void TestRemoteTextServiceHttpAndWs() {
   cmd.env["VINPUT_ASR_PORT"] = std::to_string(port);
   cmd.env["VINPUT_ASR_API_KEY"] = api_key;
   cmd.env["VINPUT_ASR_DEBOUNCE_MS"] = "200";
-  config.asr.providers.push_back(cmd);
+  config.asr.providers.emplace_back(cmd);
 
   vinput::daemon::remote::RemoteTextService service;
   std::string err;
@@ -285,7 +289,7 @@ void TestRemoteTextServiceHttpAndWs() {
   (void)endpoints; // May be empty in loopback-only CI/container, but shouldn't crash
 
   // 8. Test Synchronize with inactive config shuts down service
-  CoreConfig empty_config;
+  const CoreConfig empty_config;
   TEST_ASSERT(service.Synchronize(empty_config, &err));
   TEST_ASSERT(err.empty());
 

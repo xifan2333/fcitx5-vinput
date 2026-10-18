@@ -21,7 +21,7 @@ namespace vinput::daemon::remote {
 
 class RemoteTextService {
 public:
-  RemoteTextService() = default;
+  RemoteTextService();
   ~RemoteTextService();
 
   RemoteTextService(const RemoteTextService&) = delete;
@@ -59,7 +59,7 @@ private:
   void CancelDebounce();
   void ForceDebounce();
   void DebounceLoop();
-  void SendEmptyCommit(const std::shared_ptr<vinput::net::WebSocketSession>& session);
+  static void SendEmptyCommit(const std::shared_ptr<vinput::net::WebSocketSession>& session);
   void SendFinalResult();
 
   Settings settings_;

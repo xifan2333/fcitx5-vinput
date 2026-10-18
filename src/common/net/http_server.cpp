@@ -867,19 +867,14 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
       return;
     }
 
-    sockaddr_storage peer_addr{};
-    socklen_t peer_addr_len = sizeof(peer_addr);
-    if (getpeername(fd, static_cast<sockaddr*>(static_cast<void*>(&peer_addr)), &peer_addr_len) ==
-        0) {
-      char ip_buf[INET6_ADDRSTRLEN] = {};
-      if (peer_addr.ss_family == AF_INET) {
-        const auto* in = static_cast<const sockaddr_in*>(static_cast<const void*>(&peer_addr));
-        inet_ntop(AF_INET, &in->sin_addr, ip_buf, sizeof(ip_buf));
-      } else if (peer_addr.ss_family == AF_INET6) {
-        const auto* in6 = static_cast<const sockaddr_in6*>(static_cast<const void*>(&peer_addr));
-        inet_ntop(AF_INET6, &in6->sin6_addr, ip_buf, sizeof(ip_buf));
+    sockaddr sa_peer[2]{};
+    socklen_t peer_addr_len = sizeof(sa_peer);
+    if (getpeername(fd, &sa_peer[0], &peer_addr_len) == 0) {
+      char ip_buf[NI_MAXHOST] = {};
+      if (getnameinfo(&sa_peer[0], peer_addr_len, ip_buf, sizeof(ip_buf), nullptr, 0,
+                      NI_NUMERICHOST) == 0) {
+        req.client_ip = ip_buf;
       }
-      req.client_ip = ip_buf;
     }
 
     const auto content_length_opt = ExtractContentLength(req.headers);

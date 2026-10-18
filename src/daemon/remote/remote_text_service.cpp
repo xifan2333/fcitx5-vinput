@@ -9,7 +9,9 @@
 #include <ifaddrs.h>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <net/if.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -110,6 +112,8 @@ std::string ExtractBearerToken(std::string_view auth_header) {
 
 } // namespace
 
+RemoteTextService::RemoteTextService() = default;
+
 RemoteTextService::~RemoteTextService() {
   Shutdown();
 }
@@ -117,7 +121,7 @@ RemoteTextService::~RemoteTextService() {
 bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* settings,
                                         bool* should_run, std::string* error) const {
   if (!settings) {
-    if (error) {
+    if (error != nullptr) {
       *error = "settings output is null";
     }
     return false;
@@ -129,7 +133,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
   const AsrProvider* provider = ResolveActiveAsrProvider(config);
   const auto* command = provider ? std::get_if<CommandAsrProvider>(provider) : nullptr;
   if (!command) {
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -137,7 +141,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
 
   const bool is_remote = command->id == kRemoteProviderId;
   if (!is_remote) {
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -148,7 +152,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
   if (!port_text.empty()) {
     const auto port = ParsePositiveInt(port_text);
     if (!port || *port > 65535) {
-      if (error) {
+      if (error != nullptr) {
         *error = "VINPUT_ASR_PORT must be between 1 and 65535.";
       }
       return false;
@@ -164,7 +168,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
   if (!debounce_text.empty()) {
     const auto debounce = ParsePositiveInt(debounce_text);
     if (!debounce) {
-      if (error) {
+      if (error != nullptr) {
         *error = "VINPUT_ASR_DEBOUNCE_MS must be a positive integer.";
       }
       return false;
@@ -174,7 +178,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
 
   out.api_key = vinput::interpolate::InterpolateEnv(EnvValue(command->env, "VINPUT_ASR_API_KEY"));
   if (out.api_key.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Remote ASR provider requires VINPUT_ASR_API_KEY.";
     }
     return false;
@@ -184,7 +188,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
   if (should_run) {
     *should_run = true;
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -203,7 +207,7 @@ bool RemoteTextService::Synchronize(const CoreConfig& config, std::string* error
     if (service_started_) {
       Shutdown();
     }
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -213,7 +217,7 @@ bool RemoteTextService::Synchronize(const CoreConfig& config, std::string* error
                              settings_.debounce_ms == next_settings.debounce_ms &&
                              settings_.api_key == next_settings.api_key;
   if (same_settings) {
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -244,9 +248,9 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
     if ((ifa->ifa_flags & IFF_UP) == 0 || (ifa->ifa_flags & IFF_LOOPBACK) != 0) {
       continue;
     }
-    const auto* sa = static_cast<const sockaddr_in*>(static_cast<const void*>(ifa->ifa_addr));
-    char buf[INET_ADDRSTRLEN] = {};
-    if (inet_ntop(AF_INET, &sa->sin_addr, buf, sizeof(buf)) == nullptr) {
+    char buf[NI_MAXHOST] = {};
+    if (getnameinfo(ifa->ifa_addr, sizeof(sockaddr_in), buf, sizeof(buf), nullptr, 0,
+                    NI_NUMERICHOST) != 0) {
       continue;
     }
     endpoints.emplace_back(std::string("http://") + buf + ":" + std::to_string(settings_.port));
@@ -308,13 +312,13 @@ void RemoteTextService::SetupRoutes(vinput::net::HttpServer* server) {
 
   server->UpgradeWebSocket(
       "/v1/realtime",
-      [this](std::shared_ptr<vinput::net::WebSocketSession> session,
+      [this](const std::shared_ptr<vinput::net::WebSocketSession>& session,
              const vinput::net::HttpRequest&) { HandleOutputSession(session); },
       std::move(realtime_authorizer));
 
   // WebSocket Input: /ws (in-band auth via first message)
   server->UpgradeWebSocket(
-      "/ws", [this](std::shared_ptr<vinput::net::WebSocketSession> session,
+      "/ws", [this](const std::shared_ptr<vinput::net::WebSocketSession>& session,
                     const vinput::net::HttpRequest&) { HandleInputSession(session); });
 }
 
@@ -329,7 +333,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
   SetupRoutes(server.get());
 
   if (!server->Start()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to bind remote ASR service on 0.0.0.0:" + std::to_string(settings.port);
     }
     return false;
@@ -344,7 +348,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
   } catch (const std::exception& e) {
     running_.store(false, std::memory_order_release);
     server->Stop();
-    if (error) {
+    if (error != nullptr) {
       *error = std::string("failed to start remote ASR debounce thread: ") + e.what();
     }
     return false;
@@ -354,7 +358,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
   service_started_ = true;
   std::fprintf(stderr, "vinput-daemon: remote ASR service listening on 0.0.0.0:%d\n",
                settings_.port);
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
