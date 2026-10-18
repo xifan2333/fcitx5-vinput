@@ -56,7 +56,9 @@ struct HttpResponse {
   std::string error_message;
   bool cancelled = false;
 
-  [[nodiscard]] bool Ok() const noexcept { return status_code >= 200 && status_code < 300; }
+  [[nodiscard]] bool Ok() const noexcept {
+    return status_code >= 200 && status_code < 300 && error_message.empty() && !cancelled;
+  }
 };
 
 } // namespace vinput::net

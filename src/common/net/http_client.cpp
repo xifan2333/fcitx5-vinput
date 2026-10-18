@@ -9,18 +9,25 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <fstream>
+#include <ios>
 #include <mutex>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
+
+#include "common/net/http_types.h"
 
 namespace vinput::net {
 
 namespace {
 
-void EnsureCurlGlobalInit() {
+bool EnsureCurlGlobalInit() {
   static std::once_flag flag;
-  std::call_once(flag, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
+  static bool initialized = false;
+  std::call_once(flag, []() { initialized = (curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK); });
+  return initialized;
 }
 
 std::string BuildProxyPolicySignature() {
@@ -45,7 +52,7 @@ std::string ExtractOrigin(std::string_view url) {
   if (scheme_end == std::string_view::npos) {
     return std::string(url);
   }
-  const auto path_start = url.find('/', scheme_end + 3);
+  const auto path_start = url.find_first_of("/?#", scheme_end + 3);
   if (path_start == std::string_view::npos) {
     return std::string(url);
   }
@@ -57,7 +64,7 @@ std::string ExtractAuthorization(const std::vector<HttpHeader>& headers) {
     if (h.name.size() == 13) {
       std::string lower;
       lower.reserve(13);
-      for (char c : h.name) {
+      for (const char c : h.name) {
         lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
       }
       if (lower == "authorization") {
@@ -73,7 +80,7 @@ bool HasUserAgent(const std::vector<HttpHeader>& headers) {
     if (h.name.size() == 10) {
       std::string lower;
       lower.reserve(10);
-      for (char c : h.name) {
+      for (const char c : h.name) {
         lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
       }
       if (lower == "user-agent") {
@@ -111,7 +118,7 @@ struct MemoryWriteContext {
 
 size_t MemoryWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const size_t total = size * nmemb;
-  if (!userdata || !ptr || total == 0) {
+  if (userdata == nullptr || ptr == nullptr || total == 0) {
     return 0;
   }
   auto* ctx = static_cast<MemoryWriteContext*>(userdata);
@@ -130,7 +137,7 @@ struct FileWriteContext {
 
 size_t FileWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const size_t total = size * nmemb;
-  if (!userdata || !ptr || total == 0) {
+  if (userdata == nullptr || ptr == nullptr || total == 0) {
     return 0;
   }
   auto* ctx = static_cast<FileWriteContext*>(userdata);
@@ -170,6 +177,7 @@ struct TransferProgressContext {
   std::chrono::steady_clock::time_point last_time;
   uint64_t last_bytes = 0;
   bool has_last = false;
+  bool callback_exception = false;
 };
 
 int TransferInfoCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal,
@@ -197,7 +205,12 @@ int TransferInfoCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, cu
     ctx->last_bytes = progress.downloaded_bytes;
     ctx->last_time = now;
     ctx->has_last = true;
-    ctx->callback(progress);
+    try {
+      ctx->callback(progress);
+    } catch (...) {
+      ctx->callback_exception = true;
+      return 1;
+    }
   }
   return 0;
 }
@@ -279,6 +292,12 @@ public:
 
   HttpResponse Execute(const HttpRequest& request, size_t (*write_cb)(char*, size_t, size_t, void*),
                        void* write_data, bool* overflow_flag) {
+    if (!EnsureCurlGlobalInit()) {
+      HttpResponse res;
+      res.error_message = "Failed to globally initialize libcurl";
+      return res;
+    }
+
     ConnectionIdentity id{
         .origin = ExtractOrigin(request.url),
         .credential = ExtractAuthorization(request.headers),
@@ -343,6 +362,16 @@ public:
       break;
     case HttpMethod::Delete:
       curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+      if (!request.body.empty()) {
+        if (request.allow_auto_resend) {
+          curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request.body.c_str());
+          curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(request.body.size()));
+        } else {
+          curl_easy_setopt(curl, CURLOPT_READFUNCTION, ReadRequestBodyCallback);
+          curl_easy_setopt(curl, CURLOPT_READDATA, &body_reader);
+          curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(request.body.size()));
+        }
+      }
       break;
     case HttpMethod::Head:
       curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
@@ -374,8 +403,10 @@ public:
     curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &total_sec);
     response.total_time_ms = total_sec * 1000.0;
 
-    if (code == CURLE_ABORTED_BY_CALLBACK && request.cancel_token != nullptr &&
-        request.cancel_token->load(std::memory_order_relaxed)) {
+    if (prog_ctx.callback_exception) {
+      response.error_message = "Progress callback threw an exception";
+    } else if (code == CURLE_ABORTED_BY_CALLBACK && request.cancel_token != nullptr &&
+               request.cancel_token->load(std::memory_order_relaxed)) {
       response.cancelled = true;
       response.error_message = "Request cancelled";
     } else if (code == CURLE_WRITE_ERROR && overflow_flag != nullptr && *overflow_flag) {
@@ -417,6 +448,19 @@ HttpResponse HttpClient::Get(const std::string& url, long timeout_ms,
   return Request(req);
 }
 
+HttpResponse HttpClient::Post(const std::string& url, const std::string& body,
+                              const std::vector<HttpHeader>& headers, long timeout_ms,
+                              const std::atomic<bool>* cancel_token) {
+  HttpRequest req;
+  req.url = url;
+  req.method = HttpMethod::Post;
+  req.body = body;
+  req.headers = headers;
+  req.timeout_ms = timeout_ms;
+  req.cancel_token = cancel_token;
+  return Request(req);
+}
+
 HttpResponse HttpClient::PostJson(const std::string& url, const std::string& json_body,
                                   const std::vector<HttpHeader>& extra_headers, long timeout_ms,
                                   const std::atomic<bool>* cancel_token) {
@@ -446,21 +490,47 @@ HttpResponse HttpClient::DownloadToFile(const HttpRequest& request,
     }
   }
 
-  std::ofstream out(dest_path, std::ios::binary | std::ios::trunc);
+  const std::filesystem::path temp_path =
+      dest_path.string() + ".tmp." +
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+  std::ofstream out(temp_path, std::ios::binary | std::ios::trunc);
   if (!out.is_open()) {
     HttpResponse res;
-    res.error_message = "Failed to open destination file for writing: " + dest_path.string();
+    res.error_message = "Failed to open destination file for writing: " + temp_path.string();
     return res;
   }
 
   FileWriteContext ctx{.stream = &out, .failed = false};
   HttpResponse res = impl_->Execute(request, FileWriteCallback, &ctx, nullptr);
+  out.flush();
+  const bool stream_good = out.good();
   out.close();
 
-  if (!res.Ok() || res.cancelled) {
-    std::filesystem::remove(dest_path, ec);
+  if (res.Ok() && !res.cancelled && !ctx.failed && stream_good) {
+    std::filesystem::rename(temp_path, dest_path, ec);
+    if (ec) {
+      std::filesystem::remove(temp_path, ec);
+      res.error_message = "Failed to commit downloaded file: " + ec.message();
+    }
+  } else {
+    std::filesystem::remove(temp_path, ec);
+    if (res.error_message.empty()) {
+      res.error_message = "Failed to write complete download stream";
+    }
   }
   return res;
+}
+
+HttpResponse HttpClient::DownloadToFile(const std::string& url,
+                                        const std::filesystem::path& dest_path,
+                                        ProgressCallback progress_cb,
+                                        const std::atomic<bool>* cancel_token) {
+  HttpRequest req;
+  req.url = url;
+  req.method = HttpMethod::Get;
+  req.progress_cb = std::move(progress_cb);
+  req.cancel_token = cancel_token;
+  return DownloadToFile(req, dest_path);
 }
 
 HttpClient& HttpClient::Instance() {
