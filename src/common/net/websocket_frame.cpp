@@ -2,10 +2,13 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <openssl/evp.h>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+
+#include "common/utils/string_utils.h"
 
 namespace vinput::net {
 
@@ -161,10 +164,7 @@ bool DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame, std::size
 
   std::string payload(buffer.substr(header.header_size, header.payload_length));
   if (header.masked) {
-    for (std::size_t i = 0; i < payload.size(); ++i) {
-      payload[i] =
-          static_cast<char>(static_cast<std::uint8_t>(payload[i]) ^ header.mask_key[i % 4]);
-    }
+    ApplyWebSocketMask(payload.data(), payload.size(), header.mask_key, 0);
   }
 
   out_frame->header = header;
@@ -212,15 +212,48 @@ std::string EncodeWebSocketFrame(WsOpcode opcode, std::string_view payload, bool
     }
     const std::size_t payload_start = frame.size();
     frame.append(payload);
-    for (std::size_t i = 0; i < payload.size(); ++i) {
-      frame[payload_start + i] =
-          static_cast<char>(static_cast<std::uint8_t>(frame[payload_start + i]) ^ mask_key[i % 4]);
-    }
+    ApplyWebSocketMask(frame.data() + payload_start, payload.size(), mask_key, 0);
   } else {
     frame.append(payload);
   }
 
   return frame;
+}
+
+void ApplyWebSocketMask(char* data, std::size_t length, const std::uint8_t mask_key[4],
+                        std::size_t offset) {
+  if (data == nullptr || length == 0 || mask_key == nullptr) {
+    return;
+  }
+  for (std::size_t i = 0; i < length; ++i) {
+    data[i] = static_cast<char>(static_cast<std::uint8_t>(data[i]) ^ mask_key[(offset + i) % 4]);
+  }
+}
+
+std::optional<std::string> ComputeWebSocketAccept(std::string_view client_key) {
+  const std::string_view trimmed_key = vinput::str::TrimAsciiWhitespaceView(client_key);
+  if (trimmed_key.empty()) {
+    return std::nullopt;
+  }
+  std::string combined;
+  combined.reserve(trimmed_key.size() + kWebSocketGuid.size());
+  combined.append(trimmed_key);
+  combined.append(kWebSocketGuid);
+
+  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+  if (ctx == nullptr) {
+    return std::nullopt;
+  }
+  unsigned char digest[EVP_MAX_MD_SIZE];
+  unsigned int digest_size = 0;
+  const bool ok = EVP_DigestInit_ex(ctx, EVP_sha1(), nullptr) == 1 &&
+                  EVP_DigestUpdate(ctx, combined.data(), combined.size()) == 1 &&
+                  EVP_DigestFinal_ex(ctx, digest, &digest_size) == 1;
+  EVP_MD_CTX_free(ctx);
+  if (!ok || digest_size == 0) {
+    return std::nullopt;
+  }
+  return vinput::str::Base64Encode(digest, digest_size);
 }
 
 std::string EncodeWebSocketText(std::string_view text, bool fin) {

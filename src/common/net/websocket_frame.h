@@ -17,6 +17,8 @@ enum class WsOpcode : std::uint8_t {
   kPong = 0xA,
 };
 
+constexpr std::string_view kWebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
 struct WsFrameHeader {
   bool fin = true;
   WsOpcode opcode = WsOpcode::kText;
@@ -48,6 +50,14 @@ bool DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame, std::size
 // If mask_key is non-null, masks the payload with mask_key.
 std::string EncodeWebSocketFrame(WsOpcode opcode, std::string_view payload, bool fin = true,
                                  const std::uint8_t* mask_key = nullptr);
+
+// Applies RFC 6455 4-byte XOR mask in-place to data with optional byte offset.
+void ApplyWebSocketMask(char* data, std::size_t length, const std::uint8_t mask_key[4],
+                        std::size_t offset = 0);
+
+// Computes RFC 6455 Sec-WebSocket-Accept response header value from client key.
+// Returns std::nullopt if client_key is empty or SHA-1 computation fails.
+std::optional<std::string> ComputeWebSocketAccept(std::string_view client_key);
 
 // Convenience encoding helpers
 std::string EncodeWebSocketText(std::string_view text, bool fin = true);
