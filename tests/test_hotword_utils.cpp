@@ -1,7 +1,9 @@
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <string>
 #include <string_view>
 
@@ -249,7 +251,8 @@ void TestUtf8Validation() {
   const auto bad_utf8_file = temp_dir->Path() / "bad_utf8.txt";
   {
     std::ofstream out(bad_utf8_file, std::ios::binary);
-    out << "\xff\xfe\x00";
+    const char bad_bytes[] = {'\xff', '\xfe'};
+    out.write(bad_bytes, sizeof(bad_bytes));
   }
   TEST_ASSERT(!LoadTransducerHotwords(bad_utf8_file.string(), &hotwords, &error));
   TEST_ASSERT(error.find("invalid hotwords file at byte") != std::string::npos);
@@ -258,7 +261,8 @@ void TestUtf8Validation() {
   const auto nul_file = temp_dir->Path() / "nul.txt";
   {
     std::ofstream out(nul_file, std::ios::binary);
-    out << "hello\0world\n";
+    const char nul_bytes[] = {'h', 'e', 'l', 'l', 'o', '\0', 'w', 'o', 'r', 'l', 'd', '\n'};
+    out.write(nul_bytes, sizeof(nul_bytes));
   }
   TEST_ASSERT(!LoadTransducerHotwords(nul_file.string(), &hotwords, &error));
   TEST_ASSERT(error.find("embedded NUL is not allowed") != std::string::npos);
@@ -283,7 +287,7 @@ void TestFileSizeLimit() {
   const auto large_file = temp_dir->Path() / "too_large.txt";
   {
     std::ofstream out(large_file, std::ios::binary);
-    std::string chunk(64 * 1024, 'a');
+    const std::string chunk(static_cast<std::size_t>(64) * 1024, 'a');
     for (int i = 0; i < 17; ++i) {
       out << chunk;
     }

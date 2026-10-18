@@ -1,6 +1,7 @@
 #include "daemon/asr/hotword_utils.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <locale>
@@ -253,7 +254,7 @@ bool LoadHotwordEntries(const std::string& path, std::vector<HotwordEntry>* entr
   entries->clear();
   const auto lines = vinput::str::SplitLines(content);
   entries->reserve(lines.size());
-  for (std::string_view line : lines) {
+  for (const std::string_view line : lines) {
     HotwordEntry entry;
     if (!ParseHotwordEntry(line, &entry, error)) {
       return false;
