@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
 #include <cctype>
+#include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -43,6 +45,10 @@ inline std::string FormatSize(uint64_t bytes) {
   if (bytes >= 1024)
     return FmtStr("%.1f KB", bytes / 1024.0);
   return FmtStr("%llu B", (unsigned long long)bytes);
+}
+
+constexpr bool IsAsciiWhitespace(char c) noexcept {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
 inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept {
@@ -656,8 +662,97 @@ inline std::string_view TruncateUtf8Bytes(std::string_view text, size_t max_byte
   return text.substr(0, last_valid);
 }
 
+inline bool ParseFloatStrict(std::string_view value, float* out = nullptr) noexcept {
+  if (value.empty()) {
+    return false;
+  }
+  std::string_view sv = value;
+  if (sv.starts_with('+')) {
+    sv.remove_prefix(1);
+    if (sv.empty()) {
+      return false;
+    }
+  }
+  float val = 0.0f;
+  const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+  if (ec != std::errc{} || ptr != sv.data() + sv.size() || !std::isfinite(val)) {
+    return false;
+  }
+  if (out != nullptr) {
+    *out = val;
+  }
+  return true;
+}
+
+struct Utf8ValidationResult {
+  bool valid = true;
+  size_t error_offset = 0;
+  const char* error_reason = nullptr;
+};
+
+inline Utf8ValidationResult ValidateUtf8Text(std::string_view text, bool allow_control_chars = true,
+                                             bool allow_embedded_nul = true) noexcept {
+  size_t offset = 0;
+  while (offset < text.size()) {
+    const auto first = static_cast<unsigned char>(text[offset]);
+    size_t length = 0;
+    uint32_t codepoint = 0;
+    if (first <= 0x7f) {
+      length = 1;
+      codepoint = first;
+    } else if (first >= 0xc2 && first <= 0xdf) {
+      length = 2;
+      codepoint = first & 0x1f;
+    } else if (first >= 0xe0 && first <= 0xef) {
+      length = 3;
+      codepoint = first & 0x0f;
+    } else if (first >= 0xf0 && first <= 0xf4) {
+      length = 4;
+      codepoint = first & 0x07;
+    } else {
+      return {false, offset, "invalid UTF-8 leading byte"};
+    }
+
+    if (length > text.size() - offset) {
+      return {false, offset, "truncated UTF-8 sequence"};
+    }
+    for (size_t i = 1; i < length; ++i) {
+      const auto continuation = static_cast<unsigned char>(text[offset + i]);
+      if ((continuation & 0xc0) != 0x80) {
+        return {false, offset + i, "invalid UTF-8 continuation byte"};
+      }
+      codepoint = (codepoint << 6) | (continuation & 0x3f);
+    }
+
+    const bool overlong = (length == 2 && codepoint < 0x80) || (length == 3 && codepoint < 0x800) ||
+                          (length == 4 && codepoint < 0x10000);
+    if (overlong) {
+      return {false, offset, "overlong UTF-8 sequence"};
+    }
+    if (codepoint >= 0xd800 && codepoint <= 0xdfff) {
+      return {false, offset, "UTF-8 encodes a surrogate code point"};
+    }
+    if (codepoint > 0x10ffff) {
+      return {false, offset, "UTF-8 code point exceeds U+10FFFF"};
+    }
+    if (!allow_embedded_nul && codepoint == 0) {
+      return {false, offset, "embedded NUL is not allowed"};
+    }
+    if (!allow_control_chars) {
+      const bool permitted_ascii_whitespace =
+          codepoint == '\t' || codepoint == '\n' || codepoint == '\r';
+      if ((!permitted_ascii_whitespace && codepoint < 0x20) ||
+          (codepoint >= 0x7f && codepoint <= 0x9f)) {
+        return {false, offset, "control character is not allowed"};
+      }
+    }
+    offset += length;
+  }
+  return {true, 0, nullptr};
+}
+
 inline bool IsValidUtf8(std::string_view text) noexcept {
-  return TruncateUtf8Bytes(text, text.size()).size() == text.size();
+  return ValidateUtf8Text(text, /*allow_control_chars=*/true, /*allow_embedded_nul=*/true).valid;
 }
 
 } // namespace vinput::str
