@@ -11,6 +11,7 @@
 #include <mutex>
 #include <net/if.h>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>

@@ -1,6 +1,5 @@
 #include "common/net/http_server.h"
 
-#include <arpa/inet.h>
 #include <asm-generic/socket.h>
 #include <atomic>
 #include <cerrno>
@@ -13,7 +12,6 @@
 #include <memory>
 #include <mutex>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <optional>
 #include <sstream>
 #include <string>

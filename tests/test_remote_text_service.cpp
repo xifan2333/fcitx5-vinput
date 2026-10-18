@@ -5,7 +5,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <netinet/in.h>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
 #include <sys/poll.h>
@@ -14,7 +13,6 @@
 #include <unistd.h>
 #include <vector>
 
-#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/net/websocket_frame.h"
 
@@ -22,8 +20,6 @@
 #include "daemon/remote/remote_text_service.h"
 
 namespace {
-
-using json = nlohmann::json;
 
 inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
@@ -249,7 +245,7 @@ void TestRemoteTextServiceHttpAndWs() {
 
     // Send auth payload
     const std::uint8_t mask1[4] = {0x11, 0x22, 0x33, 0x44};
-    const std::string auth_json = json{{"type", "auth"}, {"api_key", api_key}}.dump();
+    const std::string auth_json = "{\"type\":\"auth\",\"api_key\":\"" + api_key + "\"}";
     TEST_ASSERT(SendRaw(ws_fd, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
                                                                  auth_json, true, mask1)));
 
@@ -262,8 +258,7 @@ void TestRemoteTextServiceHttpAndWs() {
     TEST_ASSERT(frame2.payload.find("init") != std::string::npos);
 
     // Send text update
-    const std::string update_json =
-        json{{"type", "text_update"}, {"text", "Hello from Remote"}}.dump();
+    const std::string update_json = "{\"type\":\"text_update\",\"text\":\"Hello from Remote\"}";
     TEST_ASSERT(SendRaw(ws_fd, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
                                                                  update_json, true, mask1)));
 
