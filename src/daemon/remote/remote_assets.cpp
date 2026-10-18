@@ -137,13 +137,13 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       </div>
       <div class="tile">
         <div class="label">VInput session</div>
-        <div class="value"><span id="output-dot" class="dot"></span><span id="output-status">disconnected</span></div>
+        <div class="value"><span id="output-dot" class="dot"></span><span id="output-status">ready</span></div>
       </div>
     </section>
-    <textarea id="editor" spellcheck="false" disabled placeholder="Connect VInput, then type here."></textarea>
+    <textarea id="editor" spellcheck="false" enterkeyhint="send" disabled placeholder="Type or use mobile voice input here..."></textarea>
     <div class="bar">
       <span><span id="count">0</span> chars</span>
-      <button id="finalize" type="button" disabled>Send now</button>
+      <button id="finalize" type="button" disabled>Send</button>
     </div>
   </main>
   <script>
@@ -157,6 +157,7 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
     let ws = null
     let composing = false
     let outputConnected = false
+    let authenticated = false
     let apiKey = ''
     let terminalError = ''
 
@@ -187,40 +188,56 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       outputConnected = state === 'connected'
       outputStatus.textContent = state
       outputDot.classList.toggle('on', outputConnected)
-      if (!outputConnected) {
-        editor.value = ''
-        count.textContent = '0'
-      }
-      updateEnabled()
     }
     function updateEnabled() {
-      const enabled = ws && ws.readyState === WebSocket.OPEN && outputConnected
+      const enabled = ws && ws.readyState === WebSocket.OPEN && authenticated
       editor.disabled = !enabled
       finalize.disabled = !enabled
-      if (enabled) editor.focus()
+      if (enabled && document.activeElement !== editor) {
+        editor.focus()
+      }
     }
     function send(payload) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload))
       }
     }
+    function commitAndClear() {
+      if (editor.value.length === 0) {
+        return
+      }
+      send({ type: 'finalize' })
+      editor.value = ''
+      count.textContent = '0'
+      editor.focus()
+    }
     const messageHandlers = {
       auth_ok: () => {
+        authenticated = true
         terminalError = ''
         setInput('connected')
+        updateEnabled()
       },
-      init: msg => setOutput(msg.output_status || 'disconnected'),
+      init: msg => setOutput(msg.output_status || 'ready'),
       output_connected: () => setOutput('connected'),
-      output_disconnected: () => setOutput('disconnected'),
+      output_disconnected: () => setOutput('ready'),
+      committed: () => {
+        editor.value = ''
+        count.textContent = '0'
+      },
       busy: () => {
+        authenticated = false
         terminalError = 'busy'
         setInput('busy (occupied, retrying...)')
+        updateEnabled()
       },
       error: msg => {
+        authenticated = false
         terminalError = 'error'
         localStorage.removeItem('vinput_remote_api_key')
         apiKey = ''
         setInput(msg && msg.message ? `failed: ${msg.message}` : 'failed')
+        updateEnabled()
       }
     }
 
@@ -252,10 +269,12 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
         }
       }
       ws.onclose = () => {
+        authenticated = false
         if (!terminalError) {
           setInput('disconnected')
         }
-        setOutput('disconnected')
+        setOutput('ready')
+        updateEnabled()
         if (terminalError !== 'error') {
           setTimeout(connect, terminalError === 'busy' ? 2000 : 1000)
         }
@@ -272,7 +291,13 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       count.textContent = String(editor.value.length)
       if (!composing) send({ type: 'text_update', text: editor.value })
     })
-    finalize.addEventListener('click', () => send({ type: 'finalize' }))
+    editor.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        commitAndClear()
+      }
+    })
+    finalize.addEventListener('click', () => commitAndClear())
     connect()
   </script>
 </body>
