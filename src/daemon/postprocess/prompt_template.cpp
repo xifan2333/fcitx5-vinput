@@ -2,14 +2,13 @@
 
 #include <cerrno>
 #include <cstring>
-#include <fstream>
-#include <ios>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <sys/stat.h>
 
 #include "common/utils/debug_log.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/interpolation.h"
 
 namespace vinput::prompt_template {
@@ -46,37 +45,32 @@ std::optional<std::string> LoadFromFileUri(std::string_view uri, std::string* er
   if (path_view.empty() || path_view == "/") {
     return fail("empty path");
   }
-  const std::string path(path_view);
+  const std::filesystem::path path(path_view);
 
-  struct stat st{};
-  if (::stat(path.c_str(), &st) != 0) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec)) {
     if (error != nullptr) {
-      *error = std::string("stat failed: ") + std::strerror(errno);
+      *error = ec ? ec.message() : "file does not exist";
     }
     return std::nullopt;
   }
-  if (!S_ISREG(st.st_mode)) {
+  if (!std::filesystem::is_regular_file(path, ec)) {
     return fail("not a regular file");
   }
 
-  std::ifstream ifs(path, std::ios::binary);
-  if (!ifs) {
-    return fail("open failed");
+  std::string content;
+  std::string read_error;
+  if (!vinput::file::ReadTextFile(path, &content, &read_error, kMaxPromptFileBytes)) {
+    if (error != nullptr) {
+      *error = read_error;
+    }
+    return std::nullopt;
   }
 
-  // Read at most kMaxPromptFileBytes+1 bytes; the extra byte lets us detect
-  // oversize without loading the whole file.
-  std::string content;
-  content.resize(kMaxPromptFileBytes + 1);
-  ifs.read(content.data(), static_cast<std::streamsize>(content.size()));
-  const std::streamsize got = ifs.gcount();
-  const size_t read_bytes = got > 0 ? static_cast<size_t>(got) : 0;
-  content.resize(read_bytes);
-
-  if (content.size() > kMaxPromptFileBytes) {
+  const auto fsize = std::filesystem::file_size(path, ec);
+  if (!ec && fsize > kMaxPromptFileBytes) {
     vinput::debug::Log("prompt_template: file '%s' truncated to %zu bytes (cap)\n", path.c_str(),
                        kMaxPromptFileBytes);
-    content.resize(kMaxPromptFileBytes);
   }
   return content;
 }

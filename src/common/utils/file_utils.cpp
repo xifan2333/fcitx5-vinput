@@ -1,5 +1,6 @@
 #include "common/utils/file_utils.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -208,9 +209,10 @@ bool EnsureParentDirectory(const std::filesystem::path& path, std::string* error
   return true;
 }
 
-bool ReadTextFile(const std::filesystem::path& path, std::string* content, std::string* error) {
-  if (!content) {
-    if (error) {
+bool ReadTextFile(const std::filesystem::path& path, std::string* content, std::string* error,
+                  size_t max_bytes) {
+  if (content == nullptr) {
+    if (error != nullptr) {
       *error = "ReadTextFile requires a destination buffer.";
     }
     return false;
@@ -218,21 +220,46 @@ bool ReadTextFile(const std::filesystem::path& path, std::string* content, std::
 
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Failed to open file " + path.string();
     }
     return false;
   }
 
-  content->assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+  content->clear();
+  if (max_bytes > 0) {
+    std::error_code ec;
+    const auto sz = std::filesystem::file_size(path, ec);
+    size_t initial_cap = 4096;
+    if (!ec && sz > 0) {
+      initial_cap = std::min(max_bytes, static_cast<size_t>(sz));
+    }
+    content->reserve(initial_cap);
+
+    char chunk[8192];
+    size_t total_read = 0;
+    while (total_read < max_bytes) {
+      const size_t to_read = std::min(sizeof(chunk), max_bytes - total_read);
+      file.read(chunk, static_cast<std::streamsize>(to_read));
+      const std::streamsize bytes_read = file.gcount();
+      if (bytes_read <= 0) {
+        break;
+      }
+      content->append(chunk, static_cast<size_t>(bytes_read));
+      total_read += static_cast<size_t>(bytes_read);
+    }
+  } else {
+    content->assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+  }
+
   if (!file.good() && !file.eof()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Failed to read file " + path.string();
     }
     return false;
   }
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
