@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -32,6 +33,11 @@ public:
   bool Synchronize(const CoreConfig& config, std::string* error);
   void Shutdown();
 
+  using StartCallback = std::function<bool()>;
+  using StopCallback = std::function<bool(const std::string& scene_id)>;
+
+  void SetSessionControlCallbacks(StartCallback on_start, StopCallback on_stop);
+
   [[nodiscard]] std::vector<std::string> ListEndpoints() const;
 
 private:
@@ -59,11 +65,14 @@ private:
   void CancelDebounce();
   void ForceDebounce();
   void DebounceLoop();
+  void MaybeTriggerStart();
   static void SendEmptyCommit(const std::shared_ptr<vinput::net::WebSocketSession>& session);
   void SendFinalResult();
 
   Settings settings_;
   mutable std::mutex lifecycle_mutex_;
+  StartCallback on_start_;
+  StopCallback on_stop_;
   std::atomic<bool> running_{false};
   bool service_started_ = false;
 

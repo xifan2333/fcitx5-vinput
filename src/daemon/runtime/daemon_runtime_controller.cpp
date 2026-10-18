@@ -233,6 +233,18 @@ DaemonRuntimeController::DaemonRuntimeController(
   if (notify_fd_ < 0) {
     fprintf(stderr, "vinput-daemon: failed to create runtime notify fd: %s\n", strerror(errno));
   }
+
+  if (remote_text_service_) {
+    remote_text_service_->SetSessionControlCallbacks(
+        [this]() {
+          const auto res = StartRecording();
+          return res.ok;
+        },
+        [this](const std::string& scene_id) {
+          const auto res = StopRecording(scene_id);
+          return res.ok;
+        });
+  }
 }
 
 DaemonRuntimeController::~DaemonRuntimeController() {
@@ -1053,6 +1065,9 @@ void DaemonRuntimeController::StartWorker() {
 }
 
 void DaemonRuntimeController::Shutdown() {
+  if (remote_text_service_) {
+    remote_text_service_->SetSessionControlCallbacks(nullptr, nullptr);
+  }
   capture_->SetChunkCallback({});
   accepting_chunks_.store(false, std::memory_order_relaxed);
   pending_capture_stop_.store(false, std::memory_order_relaxed);
