@@ -1161,14 +1161,19 @@ void DaemonRuntimeController::WorkerMain() {
             order.audio_delivery_mode == vinput::daemon::asr::AudioDeliveryMode::Buffered) {
           // Apply peak normalization at the device boundary before inference.
           std::vector<float> float_samples(order.pcm.size());
-          for (std::size_t i = 0; i < order.pcm.size(); ++i)
+          for (std::size_t i = 0; i < order.pcm.size(); ++i) {
             float_samples[i] = static_cast<float>(order.pcm[i]) / 32768.0f;
+          }
+          order.pcm.clear();
+          order.pcm.shrink_to_fit();
           vinput::audio::PeakNormalize(float_samples);
-          for (std::size_t i = 0; i < order.pcm.size(); ++i)
-            order.pcm[i] =
-                static_cast<int16_t>(std::clamp(float_samples[i] * 32768.0f, -32768.0f, 32767.0f));
-        }
-        if (!order.pcm.empty()) {
+
+          std::string push_error;
+          std::lock_guard<std::mutex> session_lock(session_io_mutex_);
+          if (!order.session->PushAudio(float_samples, &push_error)) {
+            throw std::runtime_error(push_error.empty() ? kFailedToPushAudioError : push_error);
+          }
+        } else if (!order.pcm.empty()) {
           std::string push_error;
           std::lock_guard<std::mutex> session_lock(session_io_mutex_);
           if (!order.session->PushAudio(order.pcm, &push_error)) {
