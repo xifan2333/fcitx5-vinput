@@ -7,11 +7,8 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <poll.h>
-#include <stdlib.h>
 #include <string>
-#include <sys/poll.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
