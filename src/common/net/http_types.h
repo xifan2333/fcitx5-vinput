@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@ struct HttpRequest {
   long connect_timeout_ms = 5000;
   bool follow_redirects = true;
   size_t max_response_bytes = 10 * 1024 * 1024; // 10 MB default defensive limit
+  std::optional<std::string> proxy;             // nullopt: env default; "": bypass; set: custom
   const std::atomic<bool>* cancel_token = nullptr;
   ProgressCallback progress_cb = nullptr;
   bool allow_auto_resend = false; // False by default to prevent silent POST retry on disconnect
