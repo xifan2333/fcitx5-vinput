@@ -51,7 +51,6 @@ add_executable(daemon
     audio/audio_capture.cpp
     audio/audio_utils.cpp
     audio/output_ducker.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/audio/pipewire_device.cpp
     remote/remote_assets.cpp
     remote/remote_text_service.cpp
     runtime/dbus_service.cpp
@@ -75,6 +74,7 @@ target_include_directories(daemon PRIVATE
 
 target_link_libraries(daemon PRIVATE
     common
+    pipewire_device
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
     ${VINPUT_LOCAL_ASR_LIBS}

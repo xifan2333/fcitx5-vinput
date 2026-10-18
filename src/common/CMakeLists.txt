@@ -77,3 +77,24 @@ target_link_libraries(common PUBLIC
     LibArchive::LibArchive
     OpenSSL::Crypto
 )
+
+pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
+
+add_library(pipewire_device STATIC
+    audio/pipewire_device.cpp
+)
+
+set_target_properties(pipewire_device PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    OUTPUT_NAME "vinput-pipewire-device"
+)
+
+target_include_directories(pipewire_device PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${PIPEWIRE_INCLUDE_DIRS}
+)
+
+target_link_libraries(pipewire_device PUBLIC
+    config
+    ${PIPEWIRE_LIBRARIES}
+)

@@ -43,7 +43,6 @@ add_executable(cli
     config/scene_actions.cpp
     runtime/dbus_client.cpp
     runtime/systemd_client.cpp
-    ${CMAKE_SOURCE_DIR}/src/common/audio/pipewire_device.cpp
 )
 
 set_target_properties(cli PROPERTIES OUTPUT_NAME "vinput")
@@ -56,6 +55,7 @@ target_include_directories(cli PRIVATE
 
 target_link_libraries(cli PRIVATE
     common
+    pipewire_device
     CLI11::CLI11
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
