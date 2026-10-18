@@ -187,6 +187,19 @@
         ws.send(JSON.stringify(payload))
       }
     }
+    const messageHandlers = {
+      auth_ok: () => setInput('connected'),
+      init: msg => setOutput(msg.output_status || 'disconnected'),
+      output_connected: () => setOutput('connected'),
+      output_disconnected: () => setOutput('disconnected'),
+      busy: () => setInput('busy (occupied)'),
+      error: msg => {
+        localStorage.removeItem('vinput_remote_api_key')
+        apiKey = ''
+        setInput(msg && msg.message ? `failed: ${msg.message}` : 'failed')
+      }
+    }
+
     function connect() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
       ws = new WebSocket(proto + '//' + location.host + '/ws')
@@ -196,16 +209,11 @@
         send({ type: 'auth', api_key: apiKey })
       }
       ws.onmessage = event => {
-        let msg
-        try { msg = JSON.parse(event.data) } catch { return }
-        if (msg.type === 'auth_ok') setInput('connected')
-        if (msg.type === 'init') setOutput(msg.output_status || 'disconnected')
-        if (msg.type === 'output_connected') setOutput('connected')
-        if (msg.type === 'output_disconnected') setOutput('disconnected')
-        if (msg.type === 'error') {
-          localStorage.removeItem('vinput_remote_api_key')
-          apiKey = ''
-          setInput('failed')
+        try {
+          const msg = JSON.parse(event.data)
+          messageHandlers[msg?.type]?.(msg)
+        } catch {
+          // Ignore invalid JSON payloads
         }
       }
       ws.onclose = () => {
