@@ -71,7 +71,7 @@ bool ReadHotwordFile(const std::string& path, std::string* content, std::string*
   const auto utf8_res = vinput::str::ValidateUtf8Text(text, /*allow_control_chars=*/false,
                                                       /*allow_embedded_nul=*/false);
   if (!utf8_res.valid) {
-    if (error) {
+    if (error != nullptr) {
       *error = "invalid hotwords file at byte " + std::to_string(utf8_res.error_offset) + ": " +
                utf8_res.error_reason;
     }
