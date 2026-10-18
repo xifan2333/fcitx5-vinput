@@ -7,7 +7,6 @@
 #include <cstring>
 #include <memory>
 #include <netinet/in.h>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -356,11 +355,10 @@ void TestWebSocketUpgradeAndDuplex() {
   TEST_ASSERT(resp_frame.payload == "ping_data");
 
   // 4. SendJson test
-  active_session->SendJson(nlohmann::json{{"status", "ok"}, {"count", 42}});
+  active_session->SendJson(R"({"status":"ok","count":42})");
   TEST_ASSERT(RecvFrame(fd, &resp_frame));
   TEST_ASSERT(resp_frame.header.opcode == vinput::net::WsOpcode::kText);
-  TEST_ASSERT(resp_frame.payload.find("\"status\":\"ok\"") != std::string::npos);
-  TEST_ASSERT(resp_frame.payload.find("\"count\":42") != std::string::npos);
+  TEST_ASSERT(resp_frame.payload == R"({"status":"ok","count":42})");
 
   // 5. Unmasked client frame must be rejected with 1002 (RFC 6455 5.1)
   const std::string unmasked_frame =

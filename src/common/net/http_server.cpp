@@ -12,13 +12,14 @@
 #include <memory>
 #include <mutex>
 #include <netdb.h>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <sys/poll.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <thread>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -298,6 +299,10 @@ bool ReadHttpRequestBody(int fd, std::string* body, std::size_t expected_length)
   return true;
 }
 
+constexpr bool IsControlOpcode(WsOpcode opcode) noexcept {
+  return static_cast<std::uint8_t>(opcode) >= 0x8;
+}
+
 struct WsFragmentState {
   bool in_fragment = false;
   std::string buffer;
@@ -322,7 +327,7 @@ public:
     return SendRaw(EncodeWebSocketBinary(binary));
   }
 
-  bool SendJson(const nlohmann::json& json_val) override { return SendText(json_val.dump()); }
+  bool SendJson(std::string_view json_text) override { return SendText(json_text); }
 
   bool SendPing(std::string_view payload = {}) override {
     return SendRaw(EncodeWebSocketPing(payload));
