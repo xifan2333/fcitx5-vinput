@@ -1,5 +1,8 @@
-#include <QCoreApplication>
-#include <QPointer>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qeventloop.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qpointer.h>
+#include <QtCore/qthread.h>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>

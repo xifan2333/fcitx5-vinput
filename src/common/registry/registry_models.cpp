@@ -300,6 +300,13 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
     return false;
   }
 
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (error != nullptr) {
+      *error = "download cancelled";
+    }
+    return false;
+  }
+
   // Ensure base_dir exists before mkdtemp
   {
     std::error_code mkdir_ec;
@@ -454,6 +461,14 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
     return false;
   }
 
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    fs::remove_all(tmp_dir, ec);
+    if (error != nullptr) {
+      *error = "download cancelled";
+    }
+    return false;
+  }
+
   if (had_existing) {
     fs::rename(dest_dir, backup_dir, ec);
     if (ec) {
@@ -525,6 +540,13 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
   if (!found) {
     if (error)
       *error = "model not found in registry: " + model_id;
+    return false;
+  }
+
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (error != nullptr) {
+      *error = "download cancelled";
+    }
     return false;
   }
 
@@ -684,6 +706,14 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
     fs::remove_all(tmp_dir, ec);
     if (error)
       *error = "failed to inspect existing model installation: " + exists_ec.message();
+    return false;
+  }
+
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    fs::remove_all(tmp_dir, ec);
+    if (error != nullptr) {
+      *error = "download cancelled";
+    }
     return false;
   }
 

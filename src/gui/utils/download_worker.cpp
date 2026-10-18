@@ -1,5 +1,7 @@
 #include "gui/utils/download_worker.h"
 
+#include <atomic>
+#include <string>
 #include <utility>
 
 namespace vinput::gui {

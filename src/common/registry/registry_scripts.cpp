@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <system_error>
@@ -315,7 +316,9 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
     return false;
   }
 
-  const fs::path tmp_path = path.string() + ".download.tmp";
+  const fs::path tmp_path =
+      path.string() + ".download." +
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".tmp";
 
   vinput::download::Options options;
   options.timeout_seconds = 120;
@@ -364,6 +367,18 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
   if (!EnsureExecutable(tmp_path, error)) {
     std::error_code rm_ec;
     fs::remove(tmp_path, rm_ec);
+    return false;
+  }
+
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    std::error_code rm_ec;
+    fs::remove(tmp_path, rm_ec);
+    if (resolved_script_url != nullptr) {
+      resolved_script_url->clear();
+    }
+    if (error != nullptr) {
+      *error = "download cancelled";
+    }
     return false;
   }
 

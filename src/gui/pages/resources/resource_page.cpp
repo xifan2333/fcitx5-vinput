@@ -19,7 +19,9 @@
 #include <QtCore/qabstractitemmodel.h>
 #include <QtCore/qcoreevent.h>
 #include <QtCore/qnamespace.h>
+#include <QtCore/qpointer.h>
 #include <QtCore/qstringliteral.h>
+#include <QtCore/qthread.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qdesktopservices.h>
 #include <QtGui/qevent.h>
@@ -336,7 +338,13 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
 }
 
 ResourcePage::~ResourcePage() {
-  abortDownload();
+  if (downloadWorker_ != nullptr) {
+    downloadWorker_->disconnect(this);
+    downloadWorker_->Cancel();
+    downloadWorker_->wait();
+    delete downloadWorker_;
+    downloadWorker_ = nullptr;
+  }
 }
 
 void ResourcePage::reload() {
@@ -736,7 +744,7 @@ void ResourcePage::refreshAll() {
 // ---------------------------------------------------------------------------
 
 void ResourcePage::abortDownload() {
-  if (downloadWorker_) {
+  if (downloadWorker_ != nullptr) {
     downloadWorker_->disconnect(this);
     downloadWorker_->Cancel();
     downloadWorker_->setParent(nullptr);
@@ -856,7 +864,20 @@ void ResourcePage::onDownloadError(QString msg) {
   onDownloadFinished();
 }
 
-void ResourcePage::onDownloadFinished() {
+void ResourcePage::onDownloadFinished(DownloadWorker* originating_worker) {
+  if (originating_worker != nullptr) {
+    originating_worker->deleteLater();
+  }
+  if (downloadWorker_ != nullptr && originating_worker != nullptr &&
+      downloadWorker_ != originating_worker) {
+    return;
+  }
+  if (downloadWorker_ != nullptr &&
+      (originating_worker == nullptr || downloadWorker_ == originating_worker)) {
+    downloadWorker_->deleteLater();
+    downloadWorker_ = nullptr;
+  }
+
   if (btnDownloadModel_ != nullptr) {
     btnDownloadModel_->setEnabled(true);
   }
@@ -867,10 +888,6 @@ void ResourcePage::onDownloadFinished() {
   downloadStatusLabel_->setVisible(false);
   downloadProgressBar_->setValue(0);
   downloadProgressBar_->setVisible(false);
-  if (downloadWorker_) {
-    downloadWorker_->deleteLater();
-    downloadWorker_ = nullptr;
-  }
   refreshAll();
   updateProviderButtons();
   updateAdapterButtons();
@@ -906,7 +923,8 @@ void ResourcePage::onDownloadModelClicked() {
   connect(downloadWorker_, &DownloadWorker::progress, this, &ResourcePage::onDownloadProgress,
           Qt::QueuedConnection);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this, &ResourcePage::onDownloadFinished);
+  connect(downloadWorker_, &QThread::finished, this,
+          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
 
   CoreConfig config = ConfigManager::Get().Load();
 
@@ -917,7 +935,7 @@ void ResourcePage::onDownloadModelClicked() {
     return repo.InstallModel(
         config, urls, model_id.toStdString(),
         [worker](const InstallProgress& p) {
-          if (worker && p.total_bytes > 0) {
+          if (worker != nullptr && p.total_bytes > 0) {
             int percent = static_cast<int>((p.downloaded_bytes * 100) / p.total_bytes);
             QString speed = QString::fromStdString(
                                 vinput::str::FormatSize(static_cast<uint64_t>(p.speed_bps))) +
@@ -948,37 +966,50 @@ void ResourcePage::onAddProviderClicked() {
 
   downloadWorker_ = new DownloadWorker(this);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this, &ResourcePage::onDownloadFinished);
+  connect(downloadWorker_, &QThread::finished, this,
+          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
 
-  CoreConfig config = ConfigManager::Get().Load();
+  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+    const CoreConfig config = ConfigManager::Get().Load();
+    auto urls = ResolveAsrProviderRegistryUrls(config);
+    auto entries =
+        vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider, urls, err);
+    if (!err->empty()) {
+      return false;
+    }
 
-  downloadWorker_->SetTask(
-      [config, id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-        auto urls = ResolveAsrProviderRegistryUrls(config);
-        auto entries =
-            vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider, urls, err);
-        if (!err->empty())
-          return false;
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return false;
+    }
 
-        auto it = std::find_if(entries.begin(), entries.end(),
-                               [&](const auto& e) { return e.id == id.toStdString(); });
-        if (it == entries.end()) {
-          *err = "Provider not found in registry.";
-          return false;
-        }
+    auto it = std::find_if(entries.begin(), entries.end(),
+                           [&](const auto& e) { return e.id == id.toStdString(); });
+    if (it == entries.end()) {
+      *err = "Provider not found in registry.";
+      return false;
+    }
 
-        std::filesystem::path scriptPath;
-        if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kAsrProvider, &scriptPath,
-                                            err, nullptr, cancel_token)) {
-          return false;
-        }
+    std::filesystem::path scriptPath;
+    if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kAsrProvider, &scriptPath, err,
+                                        nullptr, cancel_token)) {
+      return false;
+    }
 
-        CoreConfig mutConfig = config;
-        if (!vinput::script::MaterializeAsrProvider(&mutConfig, *it, scriptPath, err)) {
-          return false;
-        }
-        return ConfigManager::Get().Save(mutConfig);
-      });
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return false;
+    }
+
+    CoreConfig mutConfig = ConfigManager::Get().Load();
+    if (!vinput::script::MaterializeAsrProvider(&mutConfig, *it, scriptPath, err)) {
+      return false;
+    }
+
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return false;
+    }
+
+    return ConfigManager::Get().Save(mutConfig);
+  });
   textLog_->append(tr("Installing provider %1...").arg(title));
   downloadWorker_->start();
 }
@@ -1004,54 +1035,67 @@ void ResourcePage::onUpdateProviderClicked() {
   downloadWorker_ = new DownloadWorker(this);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
   auto updateSucceeded = std::make_shared<std::atomic_bool>(false);
-  connect(downloadWorker_, &QThread::finished, this, [this, id, updateSucceeded]() {
-    onDownloadFinished();
-    if (!updateSucceeded->load()) {
-      return;
-    }
-    const CoreConfig config = ConfigManager::Get().Load();
-    if (config.asr.activeProvider == id.toStdString()) {
-      RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-        if (!ok) {
-          textLog_->append(tr("Warning: config saved, but failed to reload ASR backend: %1")
-                               .arg(QString::fromStdString(err)));
+  connect(downloadWorker_, &QThread::finished, this,
+          [this, id, updateSucceeded, worker = downloadWorker_]() {
+            onDownloadFinished(worker);
+            if (!updateSucceeded->load()) {
+              return;
+            }
+            const CoreConfig config = ConfigManager::Get().Load();
+            if (config.asr.activeProvider == id.toStdString()) {
+              RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
+                if (!ok) {
+                  textLog_->append(tr("Warning: config saved, but failed to reload ASR backend: %1")
+                                       .arg(QString::fromStdString(err)));
+                }
+              });
+            }
+          });
+
+  downloadWorker_->SetTask(
+      [id, updateSucceeded](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+        const CoreConfig config = ConfigManager::Get().Load();
+        auto urls = ResolveAsrProviderRegistryUrls(config);
+        auto entries =
+            vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider, urls, err);
+        if (!err->empty()) {
+          return false;
         }
+
+        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+          return false;
+        }
+
+        auto it = std::find_if(entries.begin(), entries.end(),
+                               [&](const auto& e) { return e.id == id.toStdString(); });
+        if (it == entries.end()) {
+          *err = "Provider not found in registry.";
+          return false;
+        }
+
+        std::filesystem::path scriptPath;
+        if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kAsrProvider, &scriptPath,
+                                            err, nullptr, cancel_token)) {
+          return false;
+        }
+
+        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+          return false;
+        }
+
+        CoreConfig mutConfig = ConfigManager::Get().Load();
+        if (!vinput::script::MaterializeAsrProvider(&mutConfig, *it, scriptPath, err)) {
+          return false;
+        }
+
+        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+          return false;
+        }
+
+        const bool saved = ConfigManager::Get().Save(mutConfig);
+        updateSucceeded->store(saved);
+        return saved;
       });
-    }
-  });
-
-  const CoreConfig config = ConfigManager::Get().Load();
-
-  downloadWorker_->SetTask([config, id, updateSucceeded](
-                               std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    auto urls = ResolveAsrProviderRegistryUrls(config);
-    auto entries =
-        vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider, urls, err);
-    if (!err->empty()) {
-      return false;
-    }
-
-    auto it = std::find_if(entries.begin(), entries.end(),
-                           [&](const auto& e) { return e.id == id.toStdString(); });
-    if (it == entries.end()) {
-      *err = "Provider not found in registry.";
-      return false;
-    }
-
-    std::filesystem::path scriptPath;
-    if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kAsrProvider, &scriptPath, err,
-                                        nullptr, cancel_token)) {
-      return false;
-    }
-
-    CoreConfig mutConfig = config;
-    if (!vinput::script::MaterializeAsrProvider(&mutConfig, *it, scriptPath, err)) {
-      return false;
-    }
-    const bool saved = ConfigManager::Get().Save(mutConfig);
-    updateSucceeded->store(saved);
-    return saved;
-  });
   textLog_->append(tr("Updating provider %1...").arg(title));
   downloadWorker_->start();
 }
@@ -1073,37 +1117,50 @@ void ResourcePage::onAddAdapterClicked() {
 
   downloadWorker_ = new DownloadWorker(this);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this, &ResourcePage::onDownloadFinished);
+  connect(downloadWorker_, &QThread::finished, this,
+          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
 
-  CoreConfig config = ConfigManager::Get().Load();
+  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+    const CoreConfig config = ConfigManager::Get().Load();
+    auto urls = ResolveLlmAdapterRegistryUrls(config);
+    auto entries =
+        vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter, urls, err);
+    if (!err->empty()) {
+      return false;
+    }
 
-  downloadWorker_->SetTask(
-      [config, id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-        auto urls = ResolveLlmAdapterRegistryUrls(config);
-        auto entries =
-            vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter, urls, err);
-        if (!err->empty())
-          return false;
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return false;
+    }
 
-        auto it = std::find_if(entries.begin(), entries.end(),
-                               [&](const auto& e) { return e.id == id.toStdString(); });
-        if (it == entries.end()) {
-          *err = "Adapter not found in registry.";
-          return false;
-        }
+    auto it = std::find_if(entries.begin(), entries.end(),
+                           [&](const auto& e) { return e.id == id.toStdString(); });
+    if (it == entries.end()) {
+      *err = "Adapter not found in registry.";
+      return false;
+    }
 
-        std::filesystem::path scriptPath;
-        if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kLlmAdapter, &scriptPath,
-                                            err, nullptr, cancel_token)) {
-          return false;
-        }
+    std::filesystem::path scriptPath;
+    if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kLlmAdapter, &scriptPath, err,
+                                        nullptr, cancel_token)) {
+      return false;
+    }
 
-        CoreConfig mutConfig = config;
-        if (!vinput::script::MaterializeLlmAdapter(&mutConfig, *it, scriptPath, err)) {
-          return false;
-        }
-        return ConfigManager::Get().Save(mutConfig);
-      });
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return false;
+    }
+
+    CoreConfig mutConfig = ConfigManager::Get().Load();
+    if (!vinput::script::MaterializeLlmAdapter(&mutConfig, *it, scriptPath, err)) {
+      return false;
+    }
+
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return false;
+    }
+
+    return ConfigManager::Get().Save(mutConfig);
+  });
   textLog_->append(tr("Installing adapter %1...").arg(title));
   downloadWorker_->start();
 }
@@ -1128,74 +1185,88 @@ void ResourcePage::onUpdateAdapterClicked() {
 
   downloadWorker_ = new DownloadWorker(this);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this, &ResourcePage::onDownloadFinished);
+  connect(downloadWorker_, &QThread::finished, this,
+          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
 
-  const CoreConfig config = ConfigManager::Get().Load();
+  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+    const CoreConfig config = ConfigManager::Get().Load();
+    auto urls = ResolveLlmAdapterRegistryUrls(config);
+    auto entries =
+        vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter, urls, err);
+    if (!err->empty()) {
+      return false;
+    }
 
-  downloadWorker_->SetTask(
-      [config, id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-        auto urls = ResolveLlmAdapterRegistryUrls(config);
-        auto entries =
-            vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter, urls, err);
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return false;
+    }
+
+    auto it = std::find_if(entries.begin(), entries.end(),
+                           [&](const auto& e) { return e.id == id.toStdString(); });
+    if (it == entries.end()) {
+      *err = "Adapter not found in registry.";
+      return false;
+    }
+
+    const bool was_running = vinput::adapter::IsRunning(id.toStdString());
+    bool stopped = false;
+    if (was_running) {
+      vinput::cli::DbusClient dbus;
+      std::string stop_err;
+      if (!dbus.StopAdapter(id.toStdString(), &stop_err)) {
+        *err = stop_err.empty() ? "Failed to stop adapter." : stop_err;
+        return false;
+      }
+      stopped = true;
+    }
+
+    auto restart = [&]() -> bool {
+      if (!stopped) {
+        return true;
+      }
+      vinput::cli::DbusClient dbus;
+      std::string start_err;
+      if (!dbus.StartAdapter(id.toStdString(), &start_err)) {
         if (!err->empty()) {
-          return false;
+          *err += "; ";
         }
+        *err += start_err.empty() ? "Failed to restart adapter." : start_err;
+        return false;
+      }
+      return true;
+    };
 
-        auto it = std::find_if(entries.begin(), entries.end(),
-                               [&](const auto& e) { return e.id == id.toStdString(); });
-        if (it == entries.end()) {
-          *err = "Adapter not found in registry.";
-          return false;
-        }
+    std::filesystem::path scriptPath;
+    if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kLlmAdapter, &scriptPath, err,
+                                        nullptr, cancel_token)) {
+      restart();
+      return false;
+    }
 
-        const bool was_running = vinput::adapter::IsRunning(id.toStdString());
-        bool stopped = false;
-        if (was_running) {
-          vinput::cli::DbusClient dbus;
-          std::string stop_err;
-          if (!dbus.StopAdapter(id.toStdString(), &stop_err)) {
-            *err = stop_err.empty() ? "Failed to stop adapter." : stop_err;
-            return false;
-          }
-          stopped = true;
-        }
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      restart();
+      return false;
+    }
 
-        auto restart = [&]() -> bool {
-          if (!stopped) {
-            return true;
-          }
-          vinput::cli::DbusClient dbus;
-          std::string start_err;
-          if (!dbus.StartAdapter(id.toStdString(), &start_err)) {
-            if (!err->empty()) {
-              *err += "; ";
-            }
-            *err += start_err.empty() ? "Failed to restart adapter." : start_err;
-            return false;
-          }
-          return true;
-        };
+    CoreConfig mutConfig = ConfigManager::Get().Load();
+    if (!vinput::script::MaterializeLlmAdapter(&mutConfig, *it, scriptPath, err)) {
+      restart();
+      return false;
+    }
 
-        std::filesystem::path scriptPath;
-        if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kLlmAdapter, &scriptPath,
-                                            err, nullptr, cancel_token)) {
-          restart();
-          return false;
-        }
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      restart();
+      return false;
+    }
 
-        CoreConfig mutConfig = config;
-        if (!vinput::script::MaterializeLlmAdapter(&mutConfig, *it, scriptPath, err)) {
-          restart();
-          return false;
-        }
-        if (!ConfigManager::Get().Save(mutConfig)) {
-          *err = "Failed to save configuration.";
-          restart();
-          return false;
-        }
+    if (!ConfigManager::Get().Save(mutConfig)) {
+      *err = "Failed to save configuration.";
+      restart();
+      return false;
+    }
 
-        return restart();
-      });
+    return restart();
+  });
   textLog_->append(tr("Updating adapter %1...").arg(title));
   downloadWorker_->start();
 }

@@ -2,13 +2,13 @@
 
 #include <QLabel>
 #include <QLineEdit>
-#include <QPointer>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTextEdit>
 #include <QWidget>
+#include <QtCore/qpointer.h>
 #include <cstdint>
 
 #include "common/asr/model_manager.h"
@@ -46,7 +46,7 @@ private slots:
   void updateAdapterButtons();
   void onDownloadProgress(int percent, QString speed);
   void onDownloadError(QString msg);
-  void onDownloadFinished();
+  void onDownloadFinished(DownloadWorker* originating_worker = nullptr);
 
 private:
   void populateLocalModels(const std::vector<ModelSummary>& models);
