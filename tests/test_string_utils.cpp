@@ -644,6 +644,9 @@ void TestParseFloatStrict() {
   TEST_ASSERT(ParseFloatStrict("+10.0", &v) && v == 10.0F);
   TEST_ASSERT(ParseFloatStrict("-1.5", &v) && v == -1.5F);
   TEST_ASSERT(ParseFloatStrict("1e-3", &v) && v == 0.001F);
+  TEST_ASSERT(ParseFloatStrict("0x1p+2", &v) && v == 4.0F);
+  TEST_ASSERT(ParseFloatStrict("-0x1p+2", &v) && v == -4.0F);
+  TEST_ASSERT(ParseFloatStrict("+0x1p+2", &v) && v == 4.0F);
   TEST_ASSERT(ParseFloatStrict("3.5")); // nullptr overload check
 
   // Strict rejections
@@ -656,6 +659,9 @@ void TestParseFloatStrict() {
   TEST_ASSERT(!ParseFloatStrict("Infinity"));
   TEST_ASSERT(!ParseFloatStrict("1.2.3"));
   TEST_ASSERT(!ParseFloatStrict("++1"));
+  TEST_ASSERT(!ParseFloatStrict("+-1"));
+  TEST_ASSERT(!ParseFloatStrict("-+1"));
+  TEST_ASSERT(!ParseFloatStrict("--1"));
   TEST_ASSERT(!ParseFloatStrict("1e9999"));
   TEST_ASSERT(!ParseFloatStrict("12abc"));
   TEST_ASSERT(!ParseFloatStrict(" 2.5"));

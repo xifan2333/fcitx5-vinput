@@ -21,19 +21,6 @@ namespace {
 
 constexpr std::uintmax_t kMaxHotwordFileBytes = 1024ULL * 1024ULL;
 
-bool ValidateHotwordUtf8(std::string_view text, std::string* error) {
-  const auto res = vinput::str::ValidateUtf8Text(text, /*allow_control_chars=*/false,
-                                                 /*allow_embedded_nul=*/false);
-  if (!res.valid) {
-    if (error) {
-      *error = "invalid hotwords file at byte " + std::to_string(res.error_offset) + ": " +
-               res.error_reason;
-    }
-    return false;
-  }
-  return true;
-}
-
 bool ReadHotwordFile(const std::string& path, std::string* content, std::string* error) {
   if (path.empty()) {
     if (content) {
@@ -81,7 +68,13 @@ bool ReadHotwordFile(const std::string& path, std::string* content, std::string*
     }
     return false;
   }
-  if (!ValidateHotwordUtf8(text, error)) {
+  const auto utf8_res = vinput::str::ValidateUtf8Text(text, /*allow_control_chars=*/false,
+                                                      /*allow_embedded_nul=*/false);
+  if (!utf8_res.valid) {
+    if (error) {
+      *error = "invalid hotwords file at byte " + std::to_string(utf8_res.error_offset) + ": " +
+               utf8_res.error_reason;
+    }
     return false;
   }
   if (content) {

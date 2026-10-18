@@ -110,17 +110,17 @@ void TestValidHotwordsParsing() {
   TEST_ASSERT(hotwords == "apple,banana,cherry");
   TEST_ASSERT(error.empty());
 
-  // Weighted hotwords with float scores
+  // Weighted hotwords with float scores (including hex floats)
   const auto weighted_file = temp_dir->Path() / "weighted.txt";
-  const std::string content = "alpha:2.5\nbeta:+10.0\ngamma:-1.5\ndelta:0\n";
+  const std::string content = "alpha:2.5\nbeta:+10.0\ngamma:-1.5\ndelta:0\nhex:0x1p+2\n";
   TEST_ASSERT(vinput::file::AtomicWriteTextFile(weighted_file, content, &write_err));
 
   TEST_ASSERT(LoadTransducerHotwords(weighted_file.string(), &hotwords, &error));
-  TEST_ASSERT(hotwords == "alpha :2.5\nbeta :+10.0\ngamma :-1.5\ndelta :0\n");
+  TEST_ASSERT(hotwords == "alpha :2.5\nbeta :+10.0\ngamma :-1.5\ndelta :0\nhex :0x1p+2\n");
   TEST_ASSERT(error.empty());
 
   TEST_ASSERT(LoadPromptHotwordsCsv(weighted_file.string(), &hotwords, &error));
-  TEST_ASSERT(hotwords == "alpha,beta,gamma,delta");
+  TEST_ASSERT(hotwords == "alpha,beta,gamma,delta,hex");
   TEST_ASSERT(error.empty());
 
   // Mixed blank lines, whitespace trimming, and CRLF line endings
@@ -235,6 +235,9 @@ void TestInvalidScores() {
   // Ill-formed numbers starting with digit/sign
   check_invalid("word:1.2.3");
   check_invalid("word:++1");
+  check_invalid("word:+-1");
+  check_invalid("word:-+1");
+  check_invalid("word:--1");
   check_invalid("word:1e9999");
 }
 

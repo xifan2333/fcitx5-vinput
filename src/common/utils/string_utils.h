@@ -668,16 +668,31 @@ inline bool ParseFloatStrict(std::string_view value, float* out = nullptr) noexc
     return false;
   }
   std::string_view sv = value;
+  bool is_negative = false;
   if (sv.starts_with('+')) {
     sv.remove_prefix(1);
-    if (sv.empty()) {
+    if (sv.empty() || sv.starts_with('+') || sv.starts_with('-')) {
+      return false;
+    }
+  } else if (sv.starts_with('-')) {
+    is_negative = true;
+    sv.remove_prefix(1);
+    if (sv.empty() || sv.starts_with('+') || sv.starts_with('-')) {
       return false;
     }
   }
+  std::chars_format fmt = std::chars_format::general;
+  if (sv.starts_with("0x") || sv.starts_with("0X")) {
+    sv.remove_prefix(2);
+    fmt = std::chars_format::hex;
+  }
   float val = 0.0F;
-  const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+  const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val, fmt);
   if (ec != std::errc{} || ptr != sv.data() + sv.size() || !std::isfinite(val)) {
     return false;
+  }
+  if (is_negative) {
+    val = -val;
   }
   if (out != nullptr) {
     *out = val;
