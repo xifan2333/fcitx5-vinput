@@ -2,12 +2,15 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <curl/curl.h>
 #include <curl/easy.h>
+#include <curl/system.h>
 #include <fstream>
 #include <ios>
 #include <mutex>
@@ -191,9 +194,22 @@ int TransferInfoCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, cu
   }
   if (ctx->callback) {
     HttpProgress progress;
-    progress.downloaded_bytes = static_cast<uint64_t>(dlnow > 0 ? dlnow : (ulnow > 0 ? ulnow : 0));
-    progress.total_bytes =
-        static_cast<uint64_t>(dltotal > 0 ? dltotal : (ultotal > 0 ? ultotal : 0));
+    uint64_t dl_bytes = 0;
+    if (dlnow > 0) {
+      dl_bytes = static_cast<uint64_t>(dlnow);
+    } else if (ulnow > 0) {
+      dl_bytes = static_cast<uint64_t>(ulnow);
+    }
+    progress.downloaded_bytes = dl_bytes;
+
+    uint64_t tot_bytes = 0;
+    if (dltotal > 0) {
+      tot_bytes = static_cast<uint64_t>(dltotal);
+    } else if (ultotal > 0) {
+      tot_bytes = static_cast<uint64_t>(ultotal);
+    }
+    progress.total_bytes = tot_bytes;
+
     const auto now = std::chrono::steady_clock::now();
     if (ctx->has_last) {
       const double elapsed = std::chrono::duration<double>(now - ctx->last_time).count();
@@ -217,11 +233,17 @@ int TransferInfoCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, cu
 
 struct CurlHeaderList {
   curl_slist* list = nullptr;
+  CurlHeaderList() = default;
   ~CurlHeaderList() {
     if (list != nullptr) {
       curl_slist_free_all(list);
     }
   }
+  CurlHeaderList(const CurlHeaderList&) = delete;
+  CurlHeaderList& operator=(const CurlHeaderList&) = delete;
+  CurlHeaderList(CurlHeaderList&&) = delete;
+  CurlHeaderList& operator=(CurlHeaderList&&) = delete;
+
   void Append(const std::string& str) { list = curl_slist_append(list, str.c_str()); }
 };
 
@@ -249,13 +271,18 @@ public:
     pool_.clear();
   }
 
+  Impl(const Impl&) = delete;
+  Impl& operator=(const Impl&) = delete;
+  Impl(Impl&&) = delete;
+  Impl& operator=(Impl&&) = delete;
+
   struct HandleLease {
     CURL* handle = nullptr;
     ConnectionIdentity identity;
   };
 
   HandleLease Acquire(const ConnectionIdentity& identity) {
-    std::scoped_lock lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     if (active_identity_ == identity && !pool_.empty()) {
       CURL* h = pool_.back();
       pool_.pop_back();
@@ -277,7 +304,7 @@ public:
     return {h, identity};
   }
 
-  void Release(HandleLease lease) {
+  void Release(const HandleLease& lease) {
     if (lease.handle == nullptr) {
       return;
     }
@@ -415,7 +442,7 @@ public:
       response.error_message = curl_easy_strerror(code);
     }
 
-    Release(std::move(lease));
+    Release(lease);
     return response;
   }
 
