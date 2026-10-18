@@ -1,0 +1,253 @@
+#include "common/net/websocket_frame.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+
+namespace vinput::net {
+
+namespace {
+
+constexpr bool IsValidOpcode(std::uint8_t opcode) {
+  switch (opcode) {
+  case static_cast<std::uint8_t>(WsOpcode::kContinuation):
+  case static_cast<std::uint8_t>(WsOpcode::kText):
+  case static_cast<std::uint8_t>(WsOpcode::kBinary):
+  case static_cast<std::uint8_t>(WsOpcode::kClose):
+  case static_cast<std::uint8_t>(WsOpcode::kPing):
+  case static_cast<std::uint8_t>(WsOpcode::kPong):
+    return true;
+  default:
+    return false;
+  }
+}
+
+constexpr bool IsControlOpcode(WsOpcode opcode) {
+  return static_cast<std::uint8_t>(opcode) >= 0x8;
+}
+
+} // namespace
+
+std::optional<WsFrameHeader> ParseWebSocketFrameHeader(std::string_view buffer) {
+  if (buffer.size() < 2) {
+    return std::nullopt;
+  }
+
+  const auto byte0 = static_cast<std::uint8_t>(buffer[0]);
+  const auto byte1 = static_cast<std::uint8_t>(buffer[1]);
+
+  const std::uint8_t opcode_val = byte0 & 0x0F;
+  if (!IsValidOpcode(opcode_val)) {
+    return std::nullopt;
+  }
+
+  WsFrameHeader header;
+  header.fin = (byte0 & 0x80) != 0;
+  header.opcode = static_cast<WsOpcode>(opcode_val);
+  header.masked = (byte1 & 0x80) != 0;
+
+  const std::uint8_t len_code = byte1 & 0x7F;
+  std::size_t offset = 2;
+
+  if (len_code < 126) {
+    header.payload_length = len_code;
+  } else if (len_code == 126) {
+    if (buffer.size() < offset + 2) {
+      return std::nullopt;
+    }
+    header.payload_length =
+        (static_cast<std::uint64_t>(static_cast<std::uint8_t>(buffer[offset])) << 8) |
+        static_cast<std::uint8_t>(buffer[offset + 1]);
+    offset += 2;
+  } else { // len_code == 127
+    if (buffer.size() < offset + 8) {
+      return std::nullopt;
+    }
+    std::uint64_t len = 0;
+    for (std::size_t i = 0; i < 8; ++i) {
+      len = (len << 8) | static_cast<std::uint8_t>(buffer[offset + i]);
+    }
+    // RFC 6455 5.2: Most significant bit MUST be 0
+    if ((len & (1ULL << 63)) != 0) {
+      return std::nullopt;
+    }
+    header.payload_length = len;
+    offset += 8;
+  }
+
+  // RFC 6455 5.5: Control frames MUST NOT be fragmented and MUST have payload length <= 125
+  if (IsControlOpcode(header.opcode)) {
+    if (!header.fin || header.payload_length > 125) {
+      return std::nullopt;
+    }
+  }
+
+  if (header.masked) {
+    if (buffer.size() < offset + 4) {
+      return std::nullopt;
+    }
+    for (std::size_t i = 0; i < 4; ++i) {
+      header.mask_key[i] = static_cast<std::uint8_t>(buffer[offset + i]);
+    }
+    offset += 4;
+  }
+
+  header.header_size = offset;
+  return header;
+}
+
+bool DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame, std::size_t* consumed_bytes,
+                          std::size_t max_payload_bytes, std::string* error) {
+  if (consumed_bytes != nullptr) {
+    *consumed_bytes = 0;
+  }
+  if (out_frame == nullptr || consumed_bytes == nullptr) {
+    if (error != nullptr) {
+      *error = "Invalid output pointer in DecodeWebSocketFrame";
+    }
+    return false;
+  }
+
+  const auto header_opt = ParseWebSocketFrameHeader(buffer);
+  if (!header_opt) {
+    if (buffer.size() < 2) {
+      if (error != nullptr) {
+        *error = "Incomplete frame header: buffer too short";
+      }
+      return false;
+    }
+    const auto byte0 = static_cast<std::uint8_t>(buffer[0]);
+    const auto byte1 = static_cast<std::uint8_t>(buffer[1]);
+    const std::uint8_t opcode_val = byte0 & 0x0F;
+    if (!IsValidOpcode(opcode_val)) {
+      if (error != nullptr) {
+        *error = "Invalid WebSocket opcode";
+      }
+      return false;
+    }
+    const std::uint8_t len_code = byte1 & 0x7F;
+    const bool masked = (byte1 & 0x80) != 0;
+    const std::size_t required_header_size =
+        2 + (len_code == 126 ? 2 : (len_code == 127 ? 8 : 0)) + (masked ? 4 : 0);
+    if (buffer.size() < required_header_size) {
+      if (error != nullptr) {
+        *error = "Incomplete frame header: waiting for extended length or mask";
+      }
+      return false;
+    }
+    if (error != nullptr) {
+      *error = "Malformed WebSocket frame header";
+    }
+    return false;
+  }
+
+  const WsFrameHeader& header = *header_opt;
+  if (header.payload_length > max_payload_bytes) {
+    if (error != nullptr) {
+      *error = "WebSocket frame payload exceeds maximum allowed size";
+    }
+    return false;
+  }
+
+  if (buffer.size() < header.header_size + header.payload_length) {
+    if (error != nullptr) {
+      *error = "Incomplete frame payload";
+    }
+    return false;
+  }
+
+  std::string payload(buffer.substr(header.header_size, header.payload_length));
+  if (header.masked) {
+    for (std::size_t i = 0; i < payload.size(); ++i) {
+      payload[i] =
+          static_cast<char>(static_cast<std::uint8_t>(payload[i]) ^ header.mask_key[i % 4]);
+    }
+  }
+
+  out_frame->header = header;
+  out_frame->payload = std::move(payload);
+  *consumed_bytes = header.header_size + header.payload_length;
+  return true;
+}
+
+std::string EncodeWebSocketFrame(WsOpcode opcode, std::string_view payload, bool fin,
+                                 const std::uint8_t* mask_key) {
+  std::string frame;
+  const std::size_t payload_len = payload.size();
+  std::size_t reserve_size = 2 + payload_len;
+  if (payload_len >= 126 && payload_len <= 0xFFFF) {
+    reserve_size += 2;
+  } else if (payload_len > 0xFFFF) {
+    reserve_size += 8;
+  }
+  if (mask_key != nullptr) {
+    reserve_size += 4;
+  }
+  frame.reserve(reserve_size);
+
+  const auto byte0 =
+      static_cast<char>((fin ? 0x80 : 0x00) | (static_cast<std::uint8_t>(opcode) & 0x0F));
+  frame.push_back(byte0);
+
+  const std::uint8_t mask_flag = (mask_key != nullptr) ? 0x80 : 0x00;
+  if (payload_len < 126) {
+    frame.push_back(static_cast<char>(mask_flag | static_cast<std::uint8_t>(payload_len)));
+  } else if (payload_len <= 0xFFFF) {
+    frame.push_back(static_cast<char>(mask_flag | 126));
+    frame.push_back(static_cast<char>((payload_len >> 8) & 0xFF));
+    frame.push_back(static_cast<char>(payload_len & 0xFF));
+  } else {
+    frame.push_back(static_cast<char>(mask_flag | 127));
+    for (int shift = 56; shift >= 0; shift -= 8) {
+      frame.push_back(static_cast<char>((static_cast<std::uint64_t>(payload_len) >> shift) & 0xFF));
+    }
+  }
+
+  if (mask_key != nullptr) {
+    for (std::size_t i = 0; i < 4; ++i) {
+      frame.push_back(static_cast<char>(mask_key[i]));
+    }
+    const std::size_t payload_start = frame.size();
+    frame.append(payload);
+    for (std::size_t i = 0; i < payload.size(); ++i) {
+      frame[payload_start + i] =
+          static_cast<char>(static_cast<std::uint8_t>(frame[payload_start + i]) ^ mask_key[i % 4]);
+    }
+  } else {
+    frame.append(payload);
+  }
+
+  return frame;
+}
+
+std::string EncodeWebSocketText(std::string_view text, bool fin) {
+  return EncodeWebSocketFrame(WsOpcode::kText, text, fin, nullptr);
+}
+
+std::string EncodeWebSocketBinary(std::string_view binary, bool fin) {
+  return EncodeWebSocketFrame(WsOpcode::kBinary, binary, fin, nullptr);
+}
+
+std::string EncodeWebSocketPing(std::string_view payload) {
+  return EncodeWebSocketFrame(WsOpcode::kPing, payload, true, nullptr);
+}
+
+std::string EncodeWebSocketPong(std::string_view payload) {
+  return EncodeWebSocketFrame(WsOpcode::kPong, payload, true, nullptr);
+}
+
+std::string EncodeWebSocketClose(std::uint16_t status_code, std::string_view reason) {
+  std::string payload;
+  if (status_code != 0 || !reason.empty()) {
+    payload.reserve(2 + reason.size());
+    payload.push_back(static_cast<char>((status_code >> 8) & 0xFF));
+    payload.push_back(static_cast<char>(status_code & 0xFF));
+    payload.append(reason);
+  }
+  return EncodeWebSocketFrame(WsOpcode::kClose, payload, true, nullptr);
+}
+
+} // namespace vinput::net

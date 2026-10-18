@@ -31,6 +31,7 @@ add_library(config STATIC
 set(VINPUT_REGISTRY_SOURCES
     asr/bpe_vocab_exporter.cpp
     net/http_client.cpp
+    net/websocket_frame.cpp
     registry/registry_fetch.cpp
     registry/registry_models.cpp
     registry/registry_cache.cpp
