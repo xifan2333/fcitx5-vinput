@@ -3,13 +3,16 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <locale>
 #include <sstream>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "common/asr/bpe_vocab_exporter.h"
 #include "common/asr/model_manager.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/sherpa_json_helpers.h"
@@ -123,23 +126,14 @@ bool ReadHotwordFile(const std::string& path, std::string* content, std::string*
     return false;
   }
 
-  std::ifstream input(file_path, std::ios::binary);
-  if (!input) {
-    if (error) {
-      *error = "failed to open hotwords file: " + path;
-    }
-    return false;
-  }
-  std::ostringstream buffer;
-  buffer << input.rdbuf();
-  if (!input.good() && !input.eof()) {
+  std::string text;
+  std::string read_error;
+  if (!vinput::file::ReadTextFile(file_path, &text, &read_error, kMaxHotwordFileBytes)) {
     if (error) {
       *error = "failed to read hotwords file: " + path;
     }
     return false;
   }
-
-  std::string text = std::move(buffer).str();
   if (!ValidateHotwordUtf8(text, error)) {
     return false;
   }
@@ -178,18 +172,14 @@ bool LooksLikeScore(std::string_view value) {
     return true;
   }
 
-  std::string lower(value);
-  for (char& c : lower) {
-    const auto byte = static_cast<unsigned char>(c);
-    if (byte >= 'A' && byte <= 'Z') {
-      c = static_cast<char>(byte - 'A' + 'a');
-    }
-  }
-  return lower == "nan" || lower.starts_with("nan(") || lower == "inf" || lower == "infinity";
+  return vinput::str::EqualsIgnoreCase(value, "nan") ||
+         vinput::str::StartsWithIgnoreCase(value, "nan(") ||
+         vinput::str::EqualsIgnoreCase(value, "inf") ||
+         vinput::str::EqualsIgnoreCase(value, "infinity");
 }
 
-bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error) {
-  line = vinput::str::TrimAsciiWhitespace(line);
+bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::string* error) {
+  const std::string_view line = vinput::str::TrimAsciiWhitespaceView(raw_line);
   if (line.empty()) {
     entry->text.clear();
     entry->score.clear();
@@ -199,7 +189,7 @@ bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error
   for (std::size_t i = 1; i < line.size(); ++i) {
     if (line[i] == ':' && IsAsciiWhitespace(line[i - 1])) {
       if (error) {
-        *error = "invalid hotword score; use 'word:3.5' without spaces: " + line;
+        *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
       }
       return false;
     }
@@ -207,32 +197,32 @@ bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error
 
   const auto pair = vinput::str::SplitPairRight(line, ':');
   if (!pair) {
-    entry->text = std::move(line);
+    entry->text = std::string(line);
     entry->score.clear();
     return true;
   }
 
   const std::string_view raw_text = pair->first;
   const std::string_view raw_score = pair->second;
-  const std::string score = vinput::str::TrimAsciiWhitespace(raw_score);
-  const std::string text = vinput::str::TrimAsciiWhitespace(raw_text);
+  const std::string_view score = vinput::str::TrimAsciiWhitespaceView(raw_score);
+  const std::string_view text = vinput::str::TrimAsciiWhitespaceView(raw_text);
   if (IsValidScore(score)) {
     const bool whitespace_before = !raw_text.empty() && IsAsciiWhitespace(raw_text.back());
     const bool whitespace_after = raw_score != score;
     if (whitespace_before || whitespace_after) {
       if (error) {
-        *error = "invalid hotword score; use 'word:3.5' without spaces: " + line;
+        *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
       }
       return false;
     }
     if (text.empty()) {
       if (error) {
-        *error = "hotword score has no preceding word or phrase: " + line;
+        *error = "hotword score has no preceding word or phrase: " + std::string(line);
       }
       return false;
     }
-    entry->text = text;
-    entry->score = score;
+    entry->text = std::string(text);
+    entry->score = std::string(score);
     return true;
   }
 
@@ -243,12 +233,12 @@ bool ParseHotwordEntry(std::string line, HotwordEntry* entry, std::string* error
   const bool whitespace_after = raw_score != score;
   if (whitespace_before || whitespace_after || LooksLikeScore(score)) {
     if (error) {
-      *error = "invalid hotword score; use 'word:3.5' without spaces: " + line;
+      *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
     }
     return false;
   }
 
-  entry->text = std::move(line);
+  entry->text = std::string(line);
   entry->score.clear();
   return true;
 }
@@ -261,11 +251,11 @@ bool LoadHotwordEntries(const std::string& path, std::vector<HotwordEntry>* entr
   }
 
   entries->clear();
-  std::istringstream lines(content);
-  std::string line;
-  while (std::getline(lines, line)) {
+  const auto lines = vinput::str::SplitLines(content);
+  entries->reserve(lines.size());
+  for (std::string_view line : lines) {
     HotwordEntry entry;
-    if (!ParseHotwordEntry(std::move(line), &entry, error)) {
+    if (!ParseHotwordEntry(line, &entry, error)) {
       return false;
     }
     if (!entry.text.empty()) {
@@ -294,7 +284,16 @@ bool LoadTransducerHotwords(const std::string& path, std::string* hotwords, std:
     return false;
   }
 
+  size_t total_size = 0;
+  for (const auto& entry : entries) {
+    total_size += entry.text.size() + 1;
+    if (!entry.score.empty()) {
+      total_size += 2 + entry.score.size();
+    }
+  }
+
   hotwords->clear();
+  hotwords->reserve(total_size);
   for (const auto& entry : entries) {
     *hotwords += entry.text;
     if (!entry.score.empty()) {
@@ -312,13 +311,12 @@ bool LoadPromptHotwordsCsv(const std::string& path, std::string* hotwords, std::
     return false;
   }
 
-  hotwords->clear();
-  for (std::size_t i = 0; i < entries.size(); ++i) {
-    if (i) {
-      hotwords->push_back(',');
-    }
-    *hotwords += entries[i].text;
+  std::vector<std::string_view> words;
+  words.reserve(entries.size());
+  for (const auto& entry : entries) {
+    words.emplace_back(entry.text);
   }
+  *hotwords = vinput::str::Join(words, ",");
   return true;
 }
 
