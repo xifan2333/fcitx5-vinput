@@ -1,7 +1,6 @@
 #include "daemon/remote/remote_text_service.h"
 
 #include <algorithm>
-#include <arpa/inet.h>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -12,7 +11,6 @@
 #include <mutex>
 #include <net/if.h>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
@@ -328,6 +326,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
   vinput::net::HttpServerConfig config;
   config.host = "0.0.0.0";
   config.port = static_cast<std::uint16_t>(settings_.port);
+  config.max_ws_payload_bytes = 2ULL * 1024ULL * 1024ULL;
 
   auto server = std::make_unique<vinput::net::HttpServer>(config);
   SetupRoutes(server.get());
@@ -382,16 +381,18 @@ void RemoteTextService::Shutdown() {
     http_server_.reset();
   }
 
+  std::shared_ptr<vinput::net::WebSocketSession> out_to_close;
+  std::shared_ptr<vinput::net::WebSocketSession> in_to_close;
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
-    if (output_session_) {
-      output_session_->Close();
-      output_session_.reset();
-    }
-    if (input_session_) {
-      input_session_->Close();
-      input_session_.reset();
-    }
+    out_to_close = std::move(output_session_);
+    in_to_close = std::move(input_session_);
+  }
+  if (out_to_close) {
+    out_to_close->Close();
+  }
+  if (in_to_close) {
+    in_to_close->Close();
   }
 
   if (was_running) {
@@ -402,23 +403,35 @@ void RemoteTextService::Shutdown() {
 
 void RemoteTextService::HandleOutputSession(
     const std::shared_ptr<vinput::net::WebSocketSession>& session) {
+  bool already_connected = false;
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
     if (output_session_ && output_session_->IsOpen()) {
-      session->SendJson(json{{"event_id", NewEventId("event")},
-                             {"type", "error"},
-                             {"error", json{{"message", "Output client already connected."}}}}
-                            .dump());
-      session->Close(1008, "Output client already connected.");
-      return;
+      already_connected = true;
+    } else {
+      output_session_ = session;
     }
-    output_session_ = session;
+  }
+
+  if (already_connected) {
+    session->SendJson(json{{"event_id", NewEventId("event")},
+                           {"type", "error"},
+                           {"error", json{{"message", "Output client already connected."}}}}
+                          .dump());
+    session->Close(1008, "Output client already connected.");
+    return;
   }
 
   NotifyInput("output_connected");
 
-  session->SetOnMessage([this, session](std::string_view payload, bool is_binary) {
+  session->SetOnMessage([this, weak_session = std::weak_ptr<vinput::net::WebSocketSession>(
+                                   session)](std::string_view payload, bool is_binary) {
     if (is_binary) {
+      return;
+    }
+
+    const auto current_session = weak_session.lock();
+    if (!current_session) {
       return;
     }
 
@@ -435,15 +448,16 @@ void RemoteTextService::HandleOutputSession(
       if (event.contains("session")) {
         session_data = event["session"];
       }
-      session->SendJson(json{{"event_id", NewEventId("event")},
-                             {"type", "session.updated"},
-                             {"session", std::move(session_data)}}
-                            .dump());
+      current_session->SendJson(json{
+          {"event_id", NewEventId("event")},
+          {"type", "session.updated"},
+          {"session",
+           std::move(session_data)}}.dump());
     } else if (type == "input_audio_buffer.append") {
       // Audio frames are ignored as input comes via /ws
     } else if (type == "input_audio_buffer.commit") {
       if (GetText().empty()) {
-        SendEmptyCommit(session);
+        SendEmptyCommit(current_session);
       } else {
         CancelDebounce();
         SendFinalResult();
@@ -451,16 +465,22 @@ void RemoteTextService::HandleOutputSession(
     }
   });
 
-  session->SetOnClose([this, session](std::uint16_t /*status_code*/, std::string_view /*reason*/) {
+  session->SetOnClose([this, weak_session = std::weak_ptr<vinput::net::WebSocketSession>(session)](
+                          std::uint16_t /*status_code*/, std::string_view /*reason*/) {
+    const auto s = weak_session.lock();
+    bool was_active = false;
     {
       const std::lock_guard<std::mutex> lock(state_mutex_);
-      if (output_session_ == session) {
+      if (s && output_session_ == s) {
         output_session_.reset();
+        was_active = true;
       }
     }
-    CancelDebounce();
-    ClearText();
-    NotifyInput("output_disconnected");
+    if (was_active) {
+      CancelDebounce();
+      ClearText();
+      NotifyInput("output_disconnected");
+    }
   });
 }
 
@@ -471,8 +491,14 @@ void RemoteTextService::HandleInputSession(
   };
   auto state = std::make_shared<InputState>();
 
-  session->SetOnMessage([this, session, state](std::string_view payload, bool is_binary) {
+  session->SetOnMessage([this, weak_session = std::weak_ptr<vinput::net::WebSocketSession>(session),
+                         state](std::string_view payload, bool is_binary) {
     if (is_binary) {
+      return;
+    }
+
+    const auto current_session = weak_session.lock();
+    if (!current_session) {
       return;
     }
 
@@ -481,8 +507,8 @@ void RemoteTextService::HandleInputSession(
       event = json::parse(payload);
     } catch (const std::exception&) {
       if (!state->authenticated) {
-        session->SendJson(json{{"type", "error"}, {"message", "Invalid JSON."}}.dump());
-        session->Close(1008, "Invalid JSON.");
+        current_session->SendJson(json{{"type", "error"}, {"message", "Invalid JSON."}}.dump());
+        current_session->Close(1008, "Invalid JSON.");
       }
       return;
     }
@@ -491,24 +517,30 @@ void RemoteTextService::HandleInputSession(
       const std::string type = event.value("type", std::string{});
       const std::string api_key = event.value("api_key", std::string{});
       if (type != "auth" || !ValidateApiKey(api_key)) {
-        session->SendJson(json{{"type", "error"}, {"message", "Unauthorized."}}.dump());
-        session->Close(1008, "Unauthorized.");
+        current_session->SendJson(json{{"type", "error"}, {"message", "Unauthorized."}}.dump());
+        current_session->Close(1008, "Unauthorized.");
         return;
       }
 
-      session->SendJson(json{{"type", "auth_ok"}}.dump());
-      state->authenticated = true;
-
+      bool duplicate_client = false;
       {
         const std::lock_guard<std::mutex> lock(state_mutex_);
-        if (input_session_ && input_session_->IsOpen() && input_session_ != session) {
-          session->SendJson(
-              json{{"type", "error"}, {"message", "Input client already connected."}}.dump());
-          session->Close(1008, "Input client already connected.");
-          return;
+        if (input_session_ && input_session_->IsOpen() && input_session_ != current_session) {
+          duplicate_client = true;
+        } else {
+          input_session_ = current_session;
         }
-        input_session_ = session;
       }
+
+      if (duplicate_client) {
+        current_session->SendJson(
+            json{{"type", "busy"}, {"message", "Input client already connected."}}.dump());
+        current_session->Close(1008, "Input client already connected.");
+        return;
+      }
+
+      current_session->SendJson(json{{"type", "auth_ok"}}.dump());
+      state->authenticated = true;
 
       std::string output_status = "disconnected";
       {
@@ -517,7 +549,7 @@ void RemoteTextService::HandleInputSession(
           output_status = "connected";
         }
       }
-      session->SendJson(json{{"type", "init"}, {"output_status", output_status}}.dump());
+      current_session->SendJson(json{{"type", "init"}, {"output_status", output_status}}.dump());
       return;
     }
 
@@ -530,14 +562,20 @@ void RemoteTextService::HandleInputSession(
     }
   });
 
-  session->SetOnClose([this, session](std::uint16_t /*status_code*/, std::string_view /*reason*/) {
+  session->SetOnClose([this, weak_session = std::weak_ptr<vinput::net::WebSocketSession>(session)](
+                          std::uint16_t /*status_code*/, std::string_view /*reason*/) {
+    const auto s = weak_session.lock();
+    bool was_active = false;
     {
       const std::lock_guard<std::mutex> lock(state_mutex_);
-      if (input_session_ == session) {
+      if (s && input_session_ == s) {
         input_session_.reset();
+        was_active = true;
       }
     }
-    CancelDebounce();
+    if (was_active) {
+      CancelDebounce();
+    }
   });
 }
 

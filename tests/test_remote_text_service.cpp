@@ -104,31 +104,34 @@ std::string RecvUntil(int fd, std::string_view delimiter, int timeout_ms = 3000)
   return result;
 }
 
-bool RecvFrame(int fd, vinput::net::WsFrame* out_frame, int timeout_ms = 3000) {
-  std::string buf;
-  char chunk[512];
+bool RecvFrame(int fd, std::string* inout_buffer, vinput::net::WsFrame* out_frame,
+               int timeout_ms = 3000) {
   while (true) {
+    if (!inout_buffer->empty()) {
+      std::size_t consumed = 0;
+      std::string err;
+      const auto res = vinput::net::DecodeWebSocketFrame(*inout_buffer, out_frame, &consumed,
+                                                         1024ULL * 1024ULL, &err);
+      if (res == vinput::net::WsDecodeStatus::kOk) {
+        inout_buffer->erase(0, consumed);
+        return true;
+      }
+      if (res == vinput::net::WsDecodeStatus::kProtocolError) {
+        return false;
+      }
+    }
+
     pollfd pfd{.fd = fd, .events = POLLIN, .revents = 0};
     const int ret = poll(&pfd, 1, timeout_ms);
     if (ret <= 0) {
       return false;
     }
+    char chunk[512];
     const ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
     if (n <= 0) {
       return false;
     }
-    buf.append(chunk, static_cast<std::size_t>(n));
-    std::size_t consumed = 0;
-    std::string err;
-    const auto res =
-        vinput::net::DecodeWebSocketFrame(buf, out_frame, &consumed, 1024ULL * 1024ULL, &err);
-    if (res == vinput::net::WsDecodeStatus::kOk) {
-      buf.erase(0, consumed);
-      return true;
-    }
-    if (res == vinput::net::WsDecodeStatus::kProtocolError) {
-      return false;
-    }
+    inout_buffer->append(chunk, static_cast<std::size_t>(n));
   }
 }
 
@@ -214,6 +217,7 @@ void TestRemoteTextServiceHttpAndWs() {
   // 5. Test WebSocket /v1/realtime Authorized with Bearer
   const int realtime_fd = ConnectToPort(port);
   TEST_ASSERT(realtime_fd >= 0);
+  std::string rt_buf;
   {
     const std::string req = "GET /v1/realtime HTTP/1.1\r\n"
                             "Host: 127.0.0.1\r\n"
@@ -232,6 +236,7 @@ void TestRemoteTextServiceHttpAndWs() {
   {
     const int ws_fd = ConnectToPort(port);
     TEST_ASSERT(ws_fd >= 0);
+    std::string ws_buf;
     const std::string req = "GET /ws HTTP/1.1\r\n"
                             "Host: 127.0.0.1\r\n"
                             "Upgrade: websocket\r\n"
@@ -249,11 +254,11 @@ void TestRemoteTextServiceHttpAndWs() {
                                                                  auth_json, true, mask1)));
 
     vinput::net::WsFrame frame1;
-    TEST_ASSERT(RecvFrame(ws_fd, &frame1));
+    TEST_ASSERT(RecvFrame(ws_fd, &ws_buf, &frame1));
     TEST_ASSERT(frame1.payload.find("auth_ok") != std::string::npos);
 
     vinput::net::WsFrame frame2;
-    TEST_ASSERT(RecvFrame(ws_fd, &frame2));
+    TEST_ASSERT(RecvFrame(ws_fd, &ws_buf, &frame2));
     TEST_ASSERT(frame2.payload.find("init") != std::string::npos);
 
     // Send text update
@@ -264,17 +269,17 @@ void TestRemoteTextServiceHttpAndWs() {
 
     // Realtime client should receive committed, delta, completed
     vinput::net::WsFrame rt_frame1;
-    TEST_ASSERT(RecvFrame(realtime_fd, &rt_frame1));
+    TEST_ASSERT(RecvFrame(realtime_fd, &rt_buf, &rt_frame1));
     TEST_ASSERT(rt_frame1.payload.find("input_audio_buffer.committed") != std::string::npos);
 
     vinput::net::WsFrame rt_frame2;
-    TEST_ASSERT(RecvFrame(realtime_fd, &rt_frame2));
+    TEST_ASSERT(RecvFrame(realtime_fd, &rt_buf, &rt_frame2));
     TEST_ASSERT(rt_frame2.payload.find("conversation.item.input_audio_transcription.delta") !=
                 std::string::npos);
     TEST_ASSERT(rt_frame2.payload.find("Hello from Remote") != std::string::npos);
 
     vinput::net::WsFrame rt_frame3;
-    TEST_ASSERT(RecvFrame(realtime_fd, &rt_frame3));
+    TEST_ASSERT(RecvFrame(realtime_fd, &rt_buf, &rt_frame3));
     TEST_ASSERT(rt_frame3.payload.find("conversation.item.input_audio_transcription.completed") !=
                 std::string::npos);
     TEST_ASSERT(rt_frame3.payload.find("Hello from Remote") != std::string::npos);
