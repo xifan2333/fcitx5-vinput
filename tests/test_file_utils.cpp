@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -249,6 +250,105 @@ void TestReadTextFile() {
   TEST_ASSERT(err == "ReadTextFile requires a destination buffer.");
 }
 
+void TestAtomicWriteTextFile() {
+  using vinput::file::AtomicWriteTextFile;
+  using vinput::file::ReadTextFile;
+  using vinput::file::ScopedTempDir;
+
+  const auto temp_dir = ScopedTempDir::Create("", ".tmp-test-atomic-");
+  TEST_ASSERT(temp_dir != nullptr);
+
+  // 1. Basic write and read back
+  const fs::path file1 = temp_dir->Path() / "atomic.txt";
+  std::string err = "initial";
+  TEST_ASSERT(AtomicWriteTextFile(file1, "hello atomic world", &err));
+  TEST_ASSERT(err.empty());
+  std::string read_back;
+  TEST_ASSERT(ReadTextFile(file1, &read_back, &err));
+  TEST_ASSERT(read_back == "hello atomic world");
+
+  // 2. Overwrite existing file
+  TEST_ASSERT(AtomicWriteTextFile(file1, "updated content", &err));
+  TEST_ASSERT(err.empty());
+  read_back.clear();
+  TEST_ASSERT(ReadTextFile(file1, &read_back, &err));
+  TEST_ASSERT(read_back == "updated content");
+
+  // 3. Empty content write
+  const fs::path empty_file = temp_dir->Path() / "empty.txt";
+  TEST_ASSERT(AtomicWriteTextFile(empty_file, "", &err));
+  TEST_ASSERT(err.empty());
+  read_back.clear();
+  TEST_ASSERT(ReadTextFile(empty_file, &read_back, &err));
+  TEST_ASSERT(read_back.empty());
+  TEST_ASSERT(fs::file_size(empty_file) == 0);
+
+  // 4. Auto-create nested parent directories
+  const fs::path nested_file = temp_dir->Path() / "nested" / "sub" / "deep" / "doc.txt";
+  TEST_ASSERT(!fs::exists(nested_file.parent_path()));
+  TEST_ASSERT(AtomicWriteTextFile(nested_file, "nested data", &err));
+  TEST_ASSERT(err.empty());
+  read_back.clear();
+  TEST_ASSERT(ReadTextFile(nested_file, &read_back, &err));
+  TEST_ASSERT(read_back == "nested data");
+
+  // 5. Large content write (buffer loop)
+  const fs::path large_file = temp_dir->Path() / "large.txt";
+  const std::string large_data(100000, 'Z');
+  TEST_ASSERT(AtomicWriteTextFile(large_file, large_data, &err));
+  TEST_ASSERT(err.empty());
+  read_back.clear();
+  TEST_ASSERT(ReadTextFile(large_file, &read_back, &err));
+  TEST_ASSERT(read_back.size() == 100000);
+  TEST_ASSERT(read_back == large_data);
+
+  // 6. Symlink handling: write through symlink to existing file
+  const fs::path real_file = temp_dir->Path() / "real.txt";
+  TEST_ASSERT(AtomicWriteTextFile(real_file, "original real", &err));
+  const fs::path symlink_file = temp_dir->Path() / "symlink.txt";
+  std::error_code ec;
+  fs::create_symlink(real_file, symlink_file, ec);
+  TEST_ASSERT(!ec);
+  TEST_ASSERT(fs::is_symlink(symlink_file));
+
+  TEST_ASSERT(AtomicWriteTextFile(symlink_file, "modified via symlink", &err));
+  TEST_ASSERT(err.empty());
+  // The symlink must still be a symlink
+  TEST_ASSERT(fs::is_symlink(symlink_file));
+  // The content of the real target must be updated
+  read_back.clear();
+  TEST_ASSERT(ReadTextFile(real_file, &read_back, &err));
+  TEST_ASSERT(read_back == "modified via symlink");
+
+  // 7. Symlink handling: write through dangling symlink
+  const fs::path dangling_target = temp_dir->Path() / "dangling_target.txt";
+  const fs::path dangling_symlink = temp_dir->Path() / "dangling_link.txt";
+  fs::create_symlink(dangling_target, dangling_symlink, ec);
+  TEST_ASSERT(!ec);
+  TEST_ASSERT(fs::is_symlink(dangling_symlink));
+  TEST_ASSERT(!fs::exists(dangling_target));
+
+  TEST_ASSERT(AtomicWriteTextFile(dangling_symlink, "created target", &err));
+  TEST_ASSERT(err.empty());
+  TEST_ASSERT(fs::is_symlink(dangling_symlink));
+  TEST_ASSERT(fs::exists(dangling_target));
+  read_back.clear();
+  TEST_ASSERT(ReadTextFile(dangling_target, &read_back, &err));
+  TEST_ASSERT(read_back == "created target");
+
+  // 8. Error handling: invalid directory component (parent is a regular file)
+  const fs::path blocker_file = temp_dir->Path() / "blocker";
+  TEST_ASSERT(AtomicWriteTextFile(blocker_file, "blocking file", &err));
+  const fs::path impossible_file = blocker_file / "child.txt";
+  err.clear();
+  TEST_ASSERT(!AtomicWriteTextFile(impossible_file, "should fail", &err));
+  TEST_ASSERT(!err.empty());
+
+  // 9. Nullptr error pointer on success and failure
+  TEST_ASSERT(AtomicWriteTextFile(file1, "null err success", nullptr));
+  TEST_ASSERT(!AtomicWriteTextFile(impossible_file, "null err failure", nullptr));
+}
+
 int main() {
   TestIsPathWithinRoot();
   TestScopedTempDirLifecycle();
@@ -256,6 +356,7 @@ int main() {
   TestScopedTempDirDismiss();
   TestComputeFileSha256();
   TestReadTextFile();
+  TestAtomicWriteTextFile();
   std::printf("test_file_utils: all tests passed\n");
   return 0;
 }

@@ -328,6 +328,9 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
     return false;
   }
 
+  if (error != nullptr) {
+    error->clear();
+  }
   return true;
 }
 
