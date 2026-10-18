@@ -11,6 +11,7 @@
 #include <QVBoxLayout>
 #include <QtGui/qclipboard.h>
 #include <QtGui/qguiapplication.h>
+#include <QtWidgets/qmessagebox.h>
 #include <fstream>
 #include <nlohmann/json.hpp>
 
