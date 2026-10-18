@@ -8,7 +8,6 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
-#include <openssl/evp.h>
 #include <string>
 #include <vector>
 
@@ -553,62 +552,23 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
 
 bool ModelRepository::VerifySha256(const fs::path& file, const std::string& expected,
                                    std::string* error) const {
-  if (expected.empty())
+  if (expected.empty()) {
     return true;
-
-  std::ifstream in(file, std::ios::binary);
-  if (!in.is_open()) {
-    if (error)
-      *error = "failed to open file for SHA256 verification: " + file.string();
-    return false;
   }
 
-  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-  if (!ctx) {
-    if (error)
-      *error = "failed to create EVP_MD_CTX";
-    return false;
-  }
-
-  if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
-    EVP_MD_CTX_free(ctx);
-    if (error)
-      *error = "EVP_DigestInit_ex failed";
-    return false;
-  }
-
-  char buf[8192];
-  while (in.read(buf, sizeof(buf)) || in.gcount() > 0) {
-    if (EVP_DigestUpdate(ctx, buf, static_cast<size_t>(in.gcount())) != 1) {
-      EVP_MD_CTX_free(ctx);
-      if (error)
-        *error = "EVP_DigestUpdate failed";
-      return false;
+  std::string calc_err;
+  const std::string hex = vinput::file::ComputeFileSha256(file, &calc_err);
+  if (hex.empty()) {
+    if (error != nullptr) {
+      *error = calc_err;
     }
-  }
-
-  unsigned char hash[EVP_MAX_MD_SIZE];
-  unsigned int hash_len = 0;
-  if (EVP_DigestFinal_ex(ctx, hash, &hash_len) != 1) {
-    EVP_MD_CTX_free(ctx);
-    if (error)
-      *error = "EVP_DigestFinal_ex failed";
     return false;
-  }
-  EVP_MD_CTX_free(ctx);
-
-  // Convert to hex string
-  std::string hex;
-  hex.reserve(hash_len * 2);
-  for (unsigned int i = 0; i < hash_len; ++i) {
-    char pair[3];
-    std::snprintf(pair, sizeof(pair), "%02x", hash[i]);
-    hex += pair;
   }
 
   if (hex != expected) {
-    if (error)
+    if (error != nullptr) {
       *error = "SHA256 mismatch: expected " + expected + ", got " + hex;
+    }
     return false;
   }
 

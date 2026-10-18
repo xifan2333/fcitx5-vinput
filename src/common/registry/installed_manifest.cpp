@@ -8,8 +8,6 @@
 #include <ios>
 #include <nlohmann/json.hpp>
 #include <nlohmann/json_fwd.hpp>
-#include <openssl/evp.h>
-#include <openssl/types.h>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -35,64 +33,7 @@ std::filesystem::path ResolveManifestPath(const std::filesystem::path& path) {
 } // namespace
 
 std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file.is_open()) {
-    if (error != nullptr) {
-      *error = "failed to open file for SHA-256 calculation: " + path.string();
-    }
-    return {};
-  }
-
-  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-  if (ctx == nullptr) {
-    if (error != nullptr) {
-      *error = "failed to allocate EVP_MD_CTX";
-    }
-    return {};
-  }
-
-  if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
-    EVP_MD_CTX_free(ctx);
-    if (error != nullptr) {
-      *error = "EVP_DigestInit_ex failed";
-    }
-    return {};
-  }
-
-  char buffer[8192];
-  while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
-    if (EVP_DigestUpdate(ctx, buffer, static_cast<size_t>(file.gcount())) != 1) {
-      EVP_MD_CTX_free(ctx);
-      if (error != nullptr) {
-        *error = "EVP_DigestUpdate failed";
-      }
-      return {};
-    }
-  }
-
-  unsigned char hash[EVP_MAX_MD_SIZE];
-  unsigned int hash_len = 0;
-  if (EVP_DigestFinal_ex(ctx, hash, &hash_len) != 1) {
-    EVP_MD_CTX_free(ctx);
-    if (error != nullptr) {
-      *error = "EVP_DigestFinal_ex failed";
-    }
-    return {};
-  }
-  EVP_MD_CTX_free(ctx);
-
-  std::string hex;
-  hex.reserve(static_cast<size_t>(hash_len) * 2);
-  for (size_t i = 0; i < static_cast<size_t>(hash_len); ++i) {
-    char pair[3];
-    std::snprintf(pair, sizeof(pair), "%02x", *(hash + i));
-    hex += pair;
-  }
-
-  if (error != nullptr) {
-    error->clear();
-  }
-  return hex;
+  return vinput::file::ComputeFileSha256(path, error);
 }
 
 InstalledManifest InstalledManifest::Load(const std::filesystem::path& path) {
