@@ -211,6 +211,11 @@
         <translation>错误</translation>
     </message>
     <message>
+        <location filename="../src/gui/app/mainwindow.cpp" line="132"/>
+        <source>Failed to save hotwords file.</source>
+        <translation>保存热词文件失败。</translation>
+    </message>
+    <message>
         <location filename="../src/gui/app/mainwindow.cpp" line="136"/>
         <source>Failed to save config.</source>
         <translation>保存配置失败。</translation>

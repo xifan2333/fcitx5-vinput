@@ -125,8 +125,13 @@ void MainWindow::onSaveClicked() {
   }
   if (!hotwordsFile.isEmpty()) {
     // Write hotwords content to file
-    vinput::file::AtomicWriteTextFile(hotwordsFile.toStdString(),
-                                      hotwordPage_->hotwordsContent().toStdString(), nullptr);
+    std::string write_err;
+    if (!vinput::file::AtomicWriteTextFile(hotwordsFile.toStdString(),
+                                           hotwordPage_->hotwordsContent().toStdString(),
+                                           &write_err)) {
+      QMessageBox::critical(this, tr("Error"), tr("Failed to save hotwords file."));
+      return;
+    }
   }
 #endif
 

@@ -14,6 +14,7 @@
 #include <openssl/types.h>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
 #include <system_error>
 #include <unistd.h>
 #include <utility>
@@ -289,6 +290,12 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
     if (error)
       *error = std::string("mkstemp failed: ") + std::strerror(errno);
     return false;
+  }
+
+  std::error_code status_ec;
+  const auto target_status = std::filesystem::status(resolved_target, status_ec);
+  if (!status_ec && std::filesystem::exists(target_status)) {
+    ::fchmod(fd, static_cast<mode_t>(target_status.permissions() & std::filesystem::perms::all));
   }
 
   // Write content

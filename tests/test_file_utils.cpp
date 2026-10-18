@@ -1,4 +1,3 @@
-#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -273,6 +272,16 @@ void TestAtomicWriteTextFile() {
   read_back.clear();
   TEST_ASSERT(ReadTextFile(file1, &read_back, &err));
   TEST_ASSERT(read_back == "updated content");
+
+  // Verify permissions preserved on overwrite
+  const fs::path perm_file = temp_dir->Path() / "perm.txt";
+  TEST_ASSERT(AtomicWriteTextFile(perm_file, "initial", &err));
+  fs::permissions(perm_file, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read,
+                  fs::perm_options::replace);
+  const auto original_perms = fs::status(perm_file).permissions();
+  TEST_ASSERT(AtomicWriteTextFile(perm_file, "updated with perm", &err));
+  const auto updated_perms = fs::status(perm_file).permissions();
+  TEST_ASSERT(updated_perms == original_perms);
 
   // 3. Empty content write
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
