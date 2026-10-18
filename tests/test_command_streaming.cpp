@@ -5,6 +5,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <span>
 #include <string>
 #include <sys/wait.h>
 #include <thread>
@@ -89,7 +90,7 @@ void TestSilentSessionReapsChild() {
   ExpectTrue(session != nullptr, "CreateSession failed: " + error);
 
   // Push empty audio to start child process
-  ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
 
   const int child_pid = ReadPidFileWithRetry(pid_file);
   ExpectTrue(child_pid > 0, "Failed to read child pid file for silent session");
@@ -139,7 +140,8 @@ void TestDestructionReapsChild() {
     auto session = backend->CreateSession(&error);
     ExpectTrue(session != nullptr, "CreateSession failed: " + error);
 
-    ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
+    ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error),
+               "PushAudio failed: " + error);
 
     const int child_pid = ReadPidFileWithRetry(pid_file);
     ExpectTrue(child_pid > 0, "Failed to read child pid file for destruct session");
@@ -176,7 +178,7 @@ void TestFinalTextSessionReapsChild() {
   auto session = backend->CreateSession(&error);
   ExpectTrue(session != nullptr, "CreateSession failed: " + error);
 
-  ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
 
   const int child_pid = ReadPidFileWithRetry(pid_file);
   ExpectTrue(child_pid > 0, "Failed to read child pid file for final text session");
@@ -216,7 +218,7 @@ void TestCancelReapsChild() {
   auto session = backend->CreateSession(&error);
   ExpectTrue(session != nullptr, "CreateSession failed: " + error);
 
-  ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
 
   const int child_pid = ReadPidFileWithRetry(pid_file);
   ExpectTrue(child_pid > 0, "Failed to read child pid file for cancel session");
@@ -252,7 +254,7 @@ void TestOutputEofWait(bool produce_final, int id) {
   ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
   auto session = backend->CreateSession(&error);
   ExpectTrue(session != nullptr, "CreateSession failed: " + error);
-  ExpectTrue(session->PushAudio({}, &error), "PushAudio failed: " + error);
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
   const int child_pid = ReadPidFileWithRetry(pid_file);
   ExpectTrue(child_pid > 0, "Failed to read child pid before EOF test");
 
@@ -314,7 +316,7 @@ void TestStalledProviderWriteIsBounded() {
   ExpectTrue(child_pid > 0, "stalled provider did not start");
   const auto started = std::chrono::steady_clock::now();
   alarm(6);
-  const bool ok = session->PushAudio({}, &error);
+  const bool ok = session->PushAudio(std::span<const int16_t>{}, &error);
   const auto elapsed = std::chrono::steady_clock::now() - started;
   ExpectTrue(!ok && !error.empty(), "a filled provider pipe must eventually report failure");
   ExpectTrue(elapsed < std::chrono::seconds(2), "outbound write must respect its timeout");
@@ -338,7 +340,8 @@ void TestCancelDoesNotStartProvider() {
   auto session = backend->CreateSession(&error);
   ExpectTrue(session != nullptr, "CreateSession failed");
   session->Cancel();
-  ExpectTrue(!session->PushAudio({}, &error), "PushAudio after Cancel must fail");
+  ExpectTrue(!session->PushAudio(std::span<const int16_t>{}, &error),
+             "PushAudio after Cancel must fail");
   ExpectTrue(!session->Finish(&error), "Finish after Cancel must fail");
   const bool started = access(marker.c_str(), F_OK) == 0;
   unlink(marker.c_str());

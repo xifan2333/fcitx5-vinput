@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -57,14 +58,16 @@ public:
 
 inline bool RecognitionSession::PushAudio(std::span<const float> samples, std::string* error) {
   if (samples.empty()) {
-    if (error != nullptr) {
-      error->clear();
-    }
-    return true;
+    return PushAudio(std::span<const int16_t>{}, error);
   }
   std::vector<int16_t> pcm(samples.size());
   for (std::size_t i = 0; i < samples.size(); ++i) {
-    pcm[i] = static_cast<int16_t>(std::clamp(samples[i] * 32768.0f, -32768.0f, 32767.0f));
+    const float val = samples[i];
+    if (!std::isfinite(val)) {
+      pcm[i] = 0;
+    } else {
+      pcm[i] = static_cast<int16_t>(std::clamp(val * 32768.0F, -32768.0F, 32767.0F));
+    }
   }
   return PushAudio(pcm, error);
 }

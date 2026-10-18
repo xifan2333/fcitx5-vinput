@@ -7,6 +7,7 @@
 #include <functional>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
+#include <span>
 #include <unistd.h>
 #include <unordered_map>
 #include <utility>
@@ -445,30 +446,36 @@ public:
                        VadTrimmer* vad)
       : recognizer_(recognizer), vad_available_(vad_available), vad_(vad) {}
 
+  using RecognitionSession::PushAudio;
+
   bool PushAudio(std::span<const float> samples, std::string* error) override {
     if (finished_) {
-      if (error)
+      if (error != nullptr) {
         *error = "Recognition session already finished.";
+      }
       return false;
     }
     samples_.insert(samples_.end(), samples.begin(), samples.end());
-    if (error)
+    if (error != nullptr) {
       error->clear();
+    }
     return true;
   }
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (finished_) {
-      if (error)
+      if (error != nullptr) {
         *error = "Recognition session already finished.";
+      }
       return false;
     }
     samples_.reserve(samples_.size() + pcm.size());
-    for (int16_t sample : pcm) {
-      samples_.push_back(static_cast<float>(sample) / 32768.0f);
+    for (const int16_t sample : pcm) {
+      samples_.push_back(static_cast<float>(sample) / 32768.0F);
     }
-    if (error)
+    if (error != nullptr) {
       error->clear();
+    }
     return true;
   }
 

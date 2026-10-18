@@ -40,6 +40,8 @@ public:
   AsyncRecognitionSession(AsyncRecognitionSession&&) = delete;
   AsyncRecognitionSession& operator=(AsyncRecognitionSession&&) = delete;
 
+  using RecognitionSession::PushAudio;
+
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override;
   bool Finish(std::string* error) override;
   void Cancel() override;
