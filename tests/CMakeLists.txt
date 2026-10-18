@@ -211,3 +211,21 @@ add_test(NAME test_time_utils COMMAND test_time_utils)
 add_executable(test_locale_utils test_locale_utils.cpp)
 target_include_directories(test_locale_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_locale_utils COMMAND test_locale_utils)
+
+find_package(Qt6 COMPONENTS Core QUIET)
+if(Qt6_FOUND)
+    add_executable(test_download_worker
+        test_download_worker.cpp
+        ${CMAKE_SOURCE_DIR}/src/gui/utils/download_worker.cpp
+    )
+    target_include_directories(test_download_worker PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/gui
+    )
+    target_link_libraries(test_download_worker PRIVATE
+        Qt6::Core
+        pthread
+    )
+    set_target_properties(test_download_worker PROPERTIES AUTOMOC ON)
+    add_test(NAME test_download_worker COMMAND test_download_worker)
+endif()
