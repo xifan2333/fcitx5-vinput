@@ -1,11 +1,8 @@
 #include "daemon/asr/hotword_utils.h"
 
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <locale>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -24,72 +21,15 @@ namespace {
 
 constexpr std::uintmax_t kMaxHotwordFileBytes = 1024ULL * 1024ULL;
 
-bool IsAsciiWhitespace(char c) {
-  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-}
-
 bool ValidateHotwordUtf8(std::string_view text, std::string* error) {
-  auto fail = [&](std::size_t offset, std::string_view reason) {
+  const auto res = vinput::str::ValidateUtf8Text(text, /*allow_control_chars=*/false,
+                                                 /*allow_embedded_nul=*/false);
+  if (!res.valid) {
     if (error) {
-      *error =
-          "invalid hotwords file at byte " + std::to_string(offset) + ": " + std::string(reason);
+      *error = "invalid hotwords file at byte " + std::to_string(res.error_offset) + ": " +
+               res.error_reason;
     }
     return false;
-  };
-
-  std::size_t offset = 0;
-  while (offset < text.size()) {
-    const auto first = static_cast<unsigned char>(text[offset]);
-    std::size_t length = 0;
-    std::uint32_t codepoint = 0;
-    if (first <= 0x7f) {
-      length = 1;
-      codepoint = first;
-    } else if (first >= 0xc2 && first <= 0xdf) {
-      length = 2;
-      codepoint = first & 0x1f;
-    } else if (first >= 0xe0 && first <= 0xef) {
-      length = 3;
-      codepoint = first & 0x0f;
-    } else if (first >= 0xf0 && first <= 0xf4) {
-      length = 4;
-      codepoint = first & 0x07;
-    } else {
-      return fail(offset, "invalid UTF-8 leading byte");
-    }
-
-    if (length > text.size() - offset) {
-      return fail(offset, "truncated UTF-8 sequence");
-    }
-    for (std::size_t i = 1; i < length; ++i) {
-      const auto continuation = static_cast<unsigned char>(text[offset + i]);
-      if ((continuation & 0xc0) != 0x80) {
-        return fail(offset + i, "invalid UTF-8 continuation byte");
-      }
-      codepoint = (codepoint << 6) | (continuation & 0x3f);
-    }
-
-    const bool overlong = (length == 2 && codepoint < 0x80) || (length == 3 && codepoint < 0x800) ||
-                          (length == 4 && codepoint < 0x10000);
-    if (overlong) {
-      return fail(offset, "overlong UTF-8 sequence");
-    }
-    if (codepoint >= 0xd800 && codepoint <= 0xdfff) {
-      return fail(offset, "UTF-8 encodes a surrogate code point");
-    }
-    if (codepoint > 0x10ffff) {
-      return fail(offset, "UTF-8 code point exceeds U+10FFFF");
-    }
-    if (codepoint == 0) {
-      return fail(offset, "embedded NUL is not allowed");
-    }
-    const bool permitted_ascii_whitespace =
-        codepoint == '\t' || codepoint == '\n' || codepoint == '\r';
-    if ((!permitted_ascii_whitespace && codepoint < 0x20) ||
-        (codepoint >= 0x7f && codepoint <= 0x9f)) {
-      return fail(offset, "control character is not allowed");
-    }
-    offset += length;
   }
   return true;
 }
@@ -159,15 +99,7 @@ struct HotwordEntry {
 };
 
 bool IsValidScore(std::string_view value) {
-  if (value.empty()) {
-    return false;
-  }
-  std::istringstream input{std::string(value)};
-  input.imbue(std::locale::classic());
-  input >> std::noskipws;
-  float score = 0.0f;
-  input >> score;
-  return input.eof() && !input.fail() && std::isfinite(score);
+  return vinput::str::ParseFloatStrict(value);
 }
 
 bool LooksLikeScore(std::string_view value) {
@@ -194,7 +126,7 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
   }
 
   for (std::size_t i = 1; i < line.size(); ++i) {
-    if (line[i] == ':' && IsAsciiWhitespace(line[i - 1])) {
+    if (line[i] == ':' && vinput::str::IsAsciiWhitespace(line[i - 1])) {
       if (error) {
         *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
       }
@@ -214,7 +146,8 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
   const std::string_view score = vinput::str::TrimAsciiWhitespaceView(raw_score);
   const std::string_view text = vinput::str::TrimAsciiWhitespaceView(raw_text);
   if (IsValidScore(score)) {
-    const bool whitespace_before = !raw_text.empty() && IsAsciiWhitespace(raw_text.back());
+    const bool whitespace_before =
+        !raw_text.empty() && vinput::str::IsAsciiWhitespace(raw_text.back());
     const bool whitespace_after = raw_score != score;
     if (whitespace_before || whitespace_after) {
       if (error) {
@@ -236,7 +169,8 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
   // A separated ':...' token or an attached numeric-looking suffix is an
   // invalid score. Other colon-containing terms (for example URLs) remain
   // literal text.
-  const bool whitespace_before = !raw_text.empty() && IsAsciiWhitespace(raw_text.back());
+  const bool whitespace_before =
+      !raw_text.empty() && vinput::str::IsAsciiWhitespace(raw_text.back());
   const bool whitespace_after = raw_score != score;
   if (whitespace_before || whitespace_after || LooksLikeScore(score)) {
     if (error) {
