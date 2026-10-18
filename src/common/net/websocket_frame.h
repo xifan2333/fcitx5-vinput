@@ -17,6 +17,13 @@ enum class WsOpcode : std::uint8_t {
   kPong = 0xA,
 };
 
+enum class WsDecodeStatus : std::uint8_t {
+  kOk,
+  kNeedMoreData,
+  kProtocolError,
+  kPayloadTooLarge,
+};
+
 constexpr std::string_view kWebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 struct WsFrameHeader {
@@ -33,18 +40,24 @@ struct WsFrame {
   std::string payload;
 };
 
-// Parses the WebSocket frame header from buffer without consuming payload.
-// Returns std::nullopt if the buffer does not yet contain a complete and valid header.
+// Parses WebSocket frame header and returns structured status.
+WsDecodeStatus ParseWebSocketFrameHeader(std::string_view buffer, WsFrameHeader* out_header,
+                                         std::string* error = nullptr);
+
+// Convenience overload: returns std::nullopt if the buffer does not yet contain a complete and
+// valid header.
 std::optional<WsFrameHeader> ParseWebSocketFrameHeader(std::string_view buffer);
 
 // Decodes a complete WebSocket frame from buffer.
-// If successful, stores frame into *out_frame, bytes consumed into *consumed_bytes, and returns
-// true. If buffer does not yet contain the full frame payload, sets *consumed_bytes = 0 and returns
-// false. If frame violates protocol rules or exceeds max_payload_bytes, sets error message and
-// returns false.
-bool DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame, std::size_t* consumed_bytes,
-                          std::size_t max_payload_bytes = 16ULL * 1024 * 1024,
-                          std::string* error = nullptr);
+// Returns:
+// - WsDecodeStatus::kOk: frame successfully decoded; *out_frame and *consumed_bytes are populated.
+// - WsDecodeStatus::kNeedMoreData: buffer incomplete; *consumed_bytes is set to 0.
+// - WsDecodeStatus::kProtocolError: frame header or framing violates RFC 6455.
+// - WsDecodeStatus::kPayloadTooLarge: payload exceeds max_payload_bytes.
+WsDecodeStatus DecodeWebSocketFrame(std::string_view buffer, WsFrame* out_frame,
+                                    std::size_t* consumed_bytes,
+                                    std::size_t max_payload_bytes = 16ULL * 1024 * 1024,
+                                    std::string* error = nullptr);
 
 // Encodes a WebSocket frame.
 // If mask_key is non-null, masks the payload with mask_key.

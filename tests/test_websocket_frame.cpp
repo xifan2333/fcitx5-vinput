@@ -74,7 +74,6 @@ void TestMaskingUtility() {
 
 void TestParseHeaderIncompleteAndInvalid() {
   using vinput::net::ParseWebSocketFrameHeader;
-  using vinput::net::WsOpcode;
 
   // Truncated buffers
   TEST_ASSERT(!ParseWebSocketFrameHeader("").has_value());
@@ -93,11 +92,28 @@ void TestParseHeaderIncompleteAndInvalid() {
   TEST_ASSERT(!ParseWebSocketFrameHeader(trunc_mask).has_value());
 
   // Reserved opcode (e.g. 0x3, 0x7, 0xB, 0xF)
-  TEST_ASSERT(!ParseWebSocketFrameHeader("\x83\x00").has_value());
-  TEST_ASSERT(!ParseWebSocketFrameHeader("\x8F\x00").has_value());
+  TEST_ASSERT(!ParseWebSocketFrameHeader(std::string_view("\x83\x00", 2)).has_value());
+  TEST_ASSERT(!ParseWebSocketFrameHeader(std::string_view("\x8F\x00", 2)).has_value());
+
+  // RSV1-3 bits set (RFC 6455 5.2: must be 0)
+  TEST_ASSERT(!ParseWebSocketFrameHeader(std::string_view("\xC1\x00", 2)).has_value()); // RSV1
+  TEST_ASSERT(!ParseWebSocketFrameHeader(std::string_view("\xA1\x00", 2)).has_value()); // RSV2
+  TEST_ASSERT(!ParseWebSocketFrameHeader(std::string_view("\x91\x00", 2)).has_value()); // RSV3
+
+  // Non-canonical length encodings (RFC 6455 5.2)
+  // 16-bit encoding with length < 126
+  TEST_ASSERT(!ParseWebSocketFrameHeader(std::string_view("\x81\x7e\x00\x05", 4)).has_value());
+  // 64-bit encoding with length <= 65535
+  TEST_ASSERT(
+      !ParseWebSocketFrameHeader(std::string_view("\x81\x7f\x00\x00\x00\x00\x00\x00\x01\x00", 10))
+           .has_value());
+
+  // Close frame with exactly 1 byte payload (RFC 6455 5.5.1: invalid)
+  TEST_ASSERT(!ParseWebSocketFrameHeader(std::string_view("\x88\x01", 2)).has_value());
 
   // Control frame fragmented (RFC 6455 5.5: must NOT be fragmented)
-  TEST_ASSERT(!ParseWebSocketFrameHeader("\x09\x00").has_value()); // Ping with FIN=0
+  TEST_ASSERT(
+      !ParseWebSocketFrameHeader(std::string_view("\x09\x00", 2)).has_value()); // Ping FIN=0
 
   // Control frame with payload length > 125
   const std::string ping_too_large = std::string("\x89\x7e\x00\x80", 4); // 128 bytes
@@ -106,11 +122,15 @@ void TestParseHeaderIncompleteAndInvalid() {
   // 64-bit length with MSB set (RFC 6455 5.2: MSB must be 0)
   const std::string msb_set = std::string("\x81\x7f\x80\x00\x00\x00\x00\x00\x00\x01", 10);
   TEST_ASSERT(!ParseWebSocketFrameHeader(msb_set).has_value());
+
+  // Positive control assertion: valid 0-byte Ping frame parses successfully
+  TEST_ASSERT(ParseWebSocketFrameHeader(std::string_view("\x89\x00", 2)).has_value());
 }
 
 void TestShortFrameCodec() {
   using vinput::net::DecodeWebSocketFrame;
   using vinput::net::EncodeWebSocketFrame;
+  using vinput::net::WsDecodeStatus;
   using vinput::net::WsFrame;
   using vinput::net::WsOpcode;
 
@@ -124,7 +144,8 @@ void TestShortFrameCodec() {
   WsFrame frame1;
   std::size_t consumed1 = 0;
   std::string error1;
-  TEST_ASSERT(DecodeWebSocketFrame(wire_unmasked, &frame1, &consumed1, kMaxTestPayload, &error1));
+  TEST_ASSERT(DecodeWebSocketFrame(wire_unmasked, &frame1, &consumed1, kMaxTestPayload, &error1) ==
+              WsDecodeStatus::kOk);
   TEST_ASSERT(consumed1 == wire_unmasked.size());
   TEST_ASSERT(frame1.header.fin);
   TEST_ASSERT(frame1.header.opcode == WsOpcode::kText);
@@ -142,7 +163,8 @@ void TestShortFrameCodec() {
   WsFrame frame2;
   std::size_t consumed2 = 0;
   std::string error2;
-  TEST_ASSERT(DecodeWebSocketFrame(wire_masked, &frame2, &consumed2, kMaxTestPayload, &error2));
+  TEST_ASSERT(DecodeWebSocketFrame(wire_masked, &frame2, &consumed2, kMaxTestPayload, &error2) ==
+              WsDecodeStatus::kOk);
   TEST_ASSERT(consumed2 == wire_masked.size());
   TEST_ASSERT(frame2.header.fin);
   TEST_ASSERT(frame2.header.opcode == WsOpcode::kText);
@@ -158,6 +180,7 @@ void TestShortFrameCodec() {
 void TestMediumAndLargeFrameCodec() {
   using vinput::net::DecodeWebSocketFrame;
   using vinput::net::EncodeWebSocketFrame;
+  using vinput::net::WsDecodeStatus;
   using vinput::net::WsFrame;
   using vinput::net::WsOpcode;
 
@@ -175,7 +198,8 @@ void TestMediumAndLargeFrameCodec() {
 
   WsFrame frame_med;
   std::size_t consumed_med = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(wire_medium, &frame_med, &consumed_med, kMaxTestPayload));
+  TEST_ASSERT(DecodeWebSocketFrame(wire_medium, &frame_med, &consumed_med, kMaxTestPayload) ==
+              WsDecodeStatus::kOk);
   TEST_ASSERT(consumed_med == wire_medium.size());
   TEST_ASSERT(frame_med.header.fin);
   TEST_ASSERT(frame_med.header.opcode == WsOpcode::kBinary);
@@ -192,7 +216,8 @@ void TestMediumAndLargeFrameCodec() {
 
   WsFrame frame_large;
   std::size_t consumed_large = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(wire_large, &frame_large, &consumed_large, kMaxTestPayload));
+  TEST_ASSERT(DecodeWebSocketFrame(wire_large, &frame_large, &consumed_large, kMaxTestPayload) ==
+              WsDecodeStatus::kOk);
   TEST_ASSERT(consumed_large == wire_large.size());
   TEST_ASSERT(frame_large.header.fin);
   TEST_ASSERT(frame_large.header.opcode == WsOpcode::kText);
@@ -204,6 +229,7 @@ void TestMediumAndLargeFrameCodec() {
 void TestStreamingAndIncompleteBuffer() {
   using vinput::net::DecodeWebSocketFrame;
   using vinput::net::EncodeWebSocketText;
+  using vinput::net::WsDecodeStatus;
   using vinput::net::WsFrame;
 
   const std::string wire = EncodeWebSocketText("Streaming payload test");
@@ -216,13 +242,14 @@ void TestStreamingAndIncompleteBuffer() {
   for (std::size_t i = 1; i < wire.size(); ++i) {
     const std::string_view partial(wire.data(), i);
     consumed = 999;
-    const bool ok = DecodeWebSocketFrame(partial, &frame, &consumed, kMaxTestPayload, &error);
-    TEST_ASSERT(!ok);
+    const auto status = DecodeWebSocketFrame(partial, &frame, &consumed, kMaxTestPayload, &error);
+    TEST_ASSERT(status == WsDecodeStatus::kNeedMoreData);
     TEST_ASSERT(consumed == 0);
   }
 
   // Full frame feed
-  TEST_ASSERT(DecodeWebSocketFrame(wire, &frame, &consumed, kMaxTestPayload, &error));
+  TEST_ASSERT(DecodeWebSocketFrame(wire, &frame, &consumed, kMaxTestPayload, &error) ==
+              WsDecodeStatus::kOk);
   TEST_ASSERT(consumed == wire.size());
   TEST_ASSERT(frame.payload == "Streaming payload test");
 
@@ -233,7 +260,7 @@ void TestStreamingAndIncompleteBuffer() {
 
   WsFrame frame1;
   std::size_t consumed1 = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(multi_stream, &frame1, &consumed1));
+  TEST_ASSERT(DecodeWebSocketFrame(multi_stream, &frame1, &consumed1) == WsDecodeStatus::kOk);
   TEST_ASSERT(consumed1 == wire.size());
   TEST_ASSERT(frame1.payload == "Streaming payload test");
 
@@ -241,7 +268,7 @@ void TestStreamingAndIncompleteBuffer() {
                                    multi_stream.size() - consumed1);
   WsFrame frame2;
   std::size_t consumed2 = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(remaining, &frame2, &consumed2));
+  TEST_ASSERT(DecodeWebSocketFrame(remaining, &frame2, &consumed2) == WsDecodeStatus::kOk);
   TEST_ASSERT(consumed2 == wire2.size());
   TEST_ASSERT(frame2.payload == "Second message");
 }
@@ -249,6 +276,7 @@ void TestStreamingAndIncompleteBuffer() {
 void TestPayloadLimitExceeded() {
   using vinput::net::DecodeWebSocketFrame;
   using vinput::net::EncodeWebSocketText;
+  using vinput::net::WsDecodeStatus;
   using vinput::net::WsFrame;
 
   const std::string wire = EncodeWebSocketText(std::string(1024, 'X'));
@@ -257,9 +285,35 @@ void TestPayloadLimitExceeded() {
   std::string error;
 
   // Max payload is 512 bytes, frame is 1024 bytes
-  const bool ok = DecodeWebSocketFrame(wire, &frame, &consumed, 512, &error);
-  TEST_ASSERT(!ok);
+  const auto status = DecodeWebSocketFrame(wire, &frame, &consumed, 512, &error);
+  TEST_ASSERT(status == WsDecodeStatus::kPayloadTooLarge);
   TEST_ASSERT(!error.empty());
+}
+
+void TestProtocolErrorDecode() {
+  using vinput::net::DecodeWebSocketFrame;
+  using vinput::net::WsDecodeStatus;
+  using vinput::net::WsFrame;
+
+  WsFrame frame;
+  std::size_t consumed = 0;
+  std::string error;
+
+  // RSV bit set
+  TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\xC1\x00", 2), &frame, &consumed,
+                                   kMaxTestPayload, &error) == WsDecodeStatus::kProtocolError);
+
+  // Invalid opcode
+  TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\x83\x00", 2), &frame, &consumed,
+                                   kMaxTestPayload, &error) == WsDecodeStatus::kProtocolError);
+
+  // Non-canonical 16-bit length
+  TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\x81\x7e\x00\x05Hello", 9), &frame, &consumed,
+                                   kMaxTestPayload, &error) == WsDecodeStatus::kProtocolError);
+
+  // Close frame with 1 byte payload
+  TEST_ASSERT(DecodeWebSocketFrame(std::string_view("\x88\x01\x00", 3), &frame, &consumed,
+                                   kMaxTestPayload, &error) == WsDecodeStatus::kProtocolError);
 }
 
 void TestFragmentedFrameAndControlHelpers() {
@@ -269,6 +323,7 @@ void TestFragmentedFrameAndControlHelpers() {
   using vinput::net::EncodeWebSocketFrame;
   using vinput::net::EncodeWebSocketPing;
   using vinput::net::EncodeWebSocketPong;
+  using vinput::net::WsDecodeStatus;
   using vinput::net::WsFrame;
   using vinput::net::WsOpcode;
 
@@ -278,31 +333,39 @@ void TestFragmentedFrameAndControlHelpers() {
 
   WsFrame f1;
   std::size_t c1 = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(frag1, &f1, &c1));
+  TEST_ASSERT(DecodeWebSocketFrame(frag1, &f1, &c1) == WsDecodeStatus::kOk);
   TEST_ASSERT(!f1.header.fin);
   TEST_ASSERT(f1.header.opcode == WsOpcode::kText);
   TEST_ASSERT(f1.payload == "Part 1 ");
 
   WsFrame f2;
   std::size_t c2 = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(frag2, &f2, &c2));
+  TEST_ASSERT(DecodeWebSocketFrame(frag2, &f2, &c2) == WsDecodeStatus::kOk);
   TEST_ASSERT(f2.header.fin);
   TEST_ASSERT(f2.header.opcode == WsOpcode::kContinuation);
   TEST_ASSERT(f2.payload == "Part 2");
 
-  // 2. Ping / Pong helpers
+  // 2. Ping / Pong helpers (including oversized payload truncation to 125 bytes)
   const std::string ping_wire = EncodeWebSocketPing("heartbeat");
   WsFrame ping_frame;
   std::size_t c_ping = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(ping_wire, &ping_frame, &c_ping));
+  TEST_ASSERT(DecodeWebSocketFrame(ping_wire, &ping_frame, &c_ping) == WsDecodeStatus::kOk);
   TEST_ASSERT(ping_frame.header.fin);
   TEST_ASSERT(ping_frame.header.opcode == WsOpcode::kPing);
   TEST_ASSERT(ping_frame.payload == "heartbeat");
 
+  const std::string ping_oversized = EncodeWebSocketPing(std::string(200, 'P'));
+  WsFrame ping_oversized_frame;
+  std::size_t c_ping_over = 0;
+  TEST_ASSERT(DecodeWebSocketFrame(ping_oversized, &ping_oversized_frame, &c_ping_over) ==
+              WsDecodeStatus::kOk);
+  TEST_ASSERT(ping_oversized_frame.header.payload_length == 125);
+  TEST_ASSERT(ping_oversized_frame.payload.size() == 125);
+
   const std::string pong_wire = EncodeWebSocketPong("heartbeat");
   WsFrame pong_frame;
   std::size_t c_pong = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(pong_wire, &pong_frame, &c_pong));
+  TEST_ASSERT(DecodeWebSocketFrame(pong_wire, &pong_frame, &c_pong) == WsDecodeStatus::kOk);
   TEST_ASSERT(pong_frame.header.fin);
   TEST_ASSERT(pong_frame.header.opcode == WsOpcode::kPong);
   TEST_ASSERT(pong_frame.payload == "heartbeat");
@@ -311,7 +374,7 @@ void TestFragmentedFrameAndControlHelpers() {
   const std::string bin_wire = EncodeWebSocketBinary("\x01\x02\x03\x04");
   WsFrame bin_frame;
   std::size_t c_bin = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(bin_wire, &bin_frame, &c_bin));
+  TEST_ASSERT(DecodeWebSocketFrame(bin_wire, &bin_frame, &c_bin) == WsDecodeStatus::kOk);
   TEST_ASSERT(bin_frame.header.fin);
   TEST_ASSERT(bin_frame.header.opcode == WsOpcode::kBinary);
   TEST_ASSERT(bin_frame.payload == "\x01\x02\x03\x04");
@@ -321,7 +384,7 @@ void TestFragmentedFrameAndControlHelpers() {
   const std::string close_wire1 = EncodeWebSocketClose(1000, "Session ended");
   WsFrame close_frame1;
   std::size_t c_close1 = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(close_wire1, &close_frame1, &c_close1));
+  TEST_ASSERT(DecodeWebSocketFrame(close_wire1, &close_frame1, &c_close1) == WsDecodeStatus::kOk);
   TEST_ASSERT(close_frame1.header.fin);
   TEST_ASSERT(close_frame1.header.opcode == WsOpcode::kClose);
   TEST_ASSERT(close_frame1.payload.size() == 2 + std::string("Session ended").size());
@@ -335,10 +398,41 @@ void TestFragmentedFrameAndControlHelpers() {
   const std::string close_wire2 = EncodeWebSocketClose(0, "");
   WsFrame close_frame2;
   std::size_t c_close2 = 0;
-  TEST_ASSERT(DecodeWebSocketFrame(close_wire2, &close_frame2, &c_close2));
+  TEST_ASSERT(DecodeWebSocketFrame(close_wire2, &close_frame2, &c_close2) == WsDecodeStatus::kOk);
   TEST_ASSERT(close_frame2.header.fin);
   TEST_ASSERT(close_frame2.header.opcode == WsOpcode::kClose);
   TEST_ASSERT(close_frame2.payload.empty());
+
+  // Code 0 with non-empty reason: reason should be ignored, status code 0 must NOT be sent
+  const std::string close_wire_zero = EncodeWebSocketClose(0, "ignored reason");
+  WsFrame close_frame_zero;
+  std::size_t c_close_zero = 0;
+  TEST_ASSERT(DecodeWebSocketFrame(close_wire_zero, &close_frame_zero, &c_close_zero) ==
+              WsDecodeStatus::kOk);
+  TEST_ASSERT(close_frame_zero.payload.empty());
+
+  // Prohibited status codes (1005, 1006) must not be sent on the wire
+  const std::string close_wire_1005 = EncodeWebSocketClose(1005, "should be empty");
+  WsFrame close_frame_1005;
+  std::size_t c_close_1005 = 0;
+  TEST_ASSERT(DecodeWebSocketFrame(close_wire_1005, &close_frame_1005, &c_close_1005) ==
+              WsDecodeStatus::kOk);
+  TEST_ASSERT(close_frame_1005.payload.empty());
+
+  // Long UTF-8 reason string: must be truncated to <= 123 bytes without splitting UTF-8 characters
+  // "测试" is 6 bytes (3 bytes each). Repeat 30 times = 180 bytes.
+  std::string long_utf8;
+  for (int i = 0; i < 30; ++i) {
+    long_utf8 += "测试";
+  }
+  const std::string close_wire_utf8 = EncodeWebSocketClose(1000, long_utf8);
+  WsFrame close_frame_utf8;
+  std::size_t c_close_utf8 = 0;
+  TEST_ASSERT(DecodeWebSocketFrame(close_wire_utf8, &close_frame_utf8, &c_close_utf8) ==
+              WsDecodeStatus::kOk);
+  TEST_ASSERT(close_frame_utf8.payload.size() <= 125);
+  // 123 / 3 = 41 codepoints * 3 bytes = 123 bytes + 2 status bytes = 125 bytes
+  TEST_ASSERT(close_frame_utf8.payload.size() == 125);
 }
 
 int main() {
@@ -351,6 +445,7 @@ int main() {
   TestMediumAndLargeFrameCodec();
   TestStreamingAndIncompleteBuffer();
   TestPayloadLimitExceeded();
+  TestProtocolErrorDecode();
   TestFragmentedFrameAndControlHelpers();
 
   std::printf("All WebSocket frame tests passed successfully!\n");
