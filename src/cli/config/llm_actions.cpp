@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <curl/curl.h>
 #include <filesystem>
 #include <map>
 #include <nlohmann/json.hpp>
@@ -16,6 +15,8 @@
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
+#include "common/net/http_client.h"
+#include "common/net/http_types.h"
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
@@ -760,21 +761,6 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
   return 0;
 }
 
-namespace {
-
-size_t CurlWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
-  const size_t total = size * nmemb;
-  if (!userdata || !ptr || total == 0)
-    return 0;
-  auto* buf = static_cast<std::string*>(userdata);
-  if (buf->size() + total > 1 * 1024 * 1024)
-    return 0;
-  buf->append(ptr, total);
-  return total;
-}
-
-} // namespace
-
 int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   CoreConfig config = LoadCoreConfig();
   const auto* provider = ResolveLlmProvider(config, id);
@@ -793,55 +779,37 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
     url.pop_back();
   url += vinput::llm::kOpenAiModelsPath;
 
-  CURL* curl = curl_easy_init();
-  if (!curl) {
-    fmt.PrintError(_("Failed to initialize libcurl."));
-    return 1;
-  }
-
-  struct curl_slist* headers = nullptr;
   const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider->api_key);
   if (vinput::interpolate::HasInterpolation(provider->api_key) && resolved_api_key.empty()) {
     fmt.PrintWarning(vinput::str::FmtStr(
         _("Environment variable '%s' referenced in API key for provider '%s' is unset or empty."),
         provider->api_key, provider->id));
   }
+
+  vinput::net::HttpRequest req;
+  req.url = url;
+  req.timeout_ms = 10000;
+  req.follow_redirects = true;
+  req.headers.push_back({"User-Agent", std::string(vinput::llm::kHttpUserAgent)});
   if (!resolved_api_key.empty()) {
-    std::string auth = std::string(vinput::llm::kAuthorizationHeader) + ": " +
-                       vinput::llm::kBearerPrefix + resolved_api_key;
-    headers = curl_slist_append(headers, auth.c_str());
+    req.headers.push_back({std::string(vinput::llm::kAuthorizationHeader),
+                           std::string(vinput::llm::kBearerPrefix) + resolved_api_key});
   }
 
-  std::string response_body;
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, vinput::llm::kHttpUserAgent);
+  const auto res = vinput::net::HttpClient::Instance().Request(req);
 
-  CURLcode code = curl_easy_perform(curl);
-  long status_code = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
-
-  if (headers)
-    curl_slist_free_all(headers);
-  curl_easy_cleanup(curl);
-
-  if (code != CURLE_OK) {
-    fmt.PrintError(vinput::str::FmtStr(_("Connection failed: %s"), curl_easy_strerror(code)));
-    return 1;
-  }
-
-  if (status_code < 200 || status_code >= 300) {
-    fmt.PrintError(vinput::str::FmtStr(_("HTTP %ld: %s"), status_code, response_body));
+  if (!res.Ok()) {
+    if (res.status_code == 0) {
+      fmt.PrintError(vinput::str::FmtStr(_("Connection failed: %s"), res.error_message));
+    } else {
+      fmt.PrintError(vinput::str::FmtStr(_("HTTP %ld: %s"), res.status_code, res.body));
+    }
     return 1;
   }
 
   nlohmann::json response;
   try {
-    response = nlohmann::json::parse(response_body);
+    response = nlohmann::json::parse(res.body);
   } catch (const std::exception& e) {
     fmt.PrintError(vinput::str::FmtStr(_("Invalid JSON response: %s"), e.what()));
     return 1;

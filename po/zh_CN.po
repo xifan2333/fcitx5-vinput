@@ -834,10 +834,6 @@ msgstr "LLM 提供商 '%s' 已更新。"
 msgid "Provider base_url is empty."
 msgstr "提供商 base_url 为空。"
 
-#: src/cli/config/llm_actions.cpp:811
-msgid "Failed to initialize libcurl."
-msgstr "初始化 libcurl 失败。"
-
 #: src/cli/config/llm_actions.cpp:819
 #, c-format
 msgid ""
