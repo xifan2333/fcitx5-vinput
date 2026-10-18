@@ -11,8 +11,10 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <curl/system.h>
+#include <filesystem>
 #include <fstream>
 #include <ios>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -308,7 +310,7 @@ public:
     if (lease.handle == nullptr) {
       return;
     }
-    std::scoped_lock lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     if (active_identity_ == lease.identity && pool_.size() < kMaxPoolSize) {
       curl_easy_reset(lease.handle);
       pool_.push_back(lease.handle);
@@ -318,21 +320,21 @@ public:
   }
 
   HttpResponse Execute(const HttpRequest& request, size_t (*write_cb)(char*, size_t, size_t, void*),
-                       void* write_data, bool* overflow_flag) {
+                       void* write_data, const bool* overflow_flag) {
     if (!EnsureCurlGlobalInit()) {
       HttpResponse res;
       res.error_message = "Failed to globally initialize libcurl";
       return res;
     }
 
-    ConnectionIdentity id{
+    const ConnectionIdentity id{
         .origin = ExtractOrigin(request.url),
         .credential = ExtractAuthorization(request.headers),
         .proxy_policy =
             request.proxy.has_value() ? ("custom=" + *request.proxy) : BuildProxyPolicySignature(),
     };
 
-    HandleLease lease = Acquire(id);
+    const HandleLease lease = Acquire(id);
     if (lease.handle == nullptr) {
       HttpResponse res;
       res.error_message = "Failed to initialize libcurl handle";

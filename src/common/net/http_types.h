@@ -10,7 +10,7 @@
 
 namespace vinput::net {
 
-enum class HttpMethod {
+enum class HttpMethod : std::uint8_t {
   Get,
   Post,
   Put,
