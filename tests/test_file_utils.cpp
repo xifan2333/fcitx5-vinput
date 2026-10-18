@@ -4,6 +4,8 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <system_error>
+#include <utility>
 
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -85,7 +87,7 @@ void TestScopedTempDirMove() {
     TEST_ASSERT(fs::exists(created_path));
 
     // Move construct
-    ScopedTempDir dir2 = std::move(*dir1);
+    const ScopedTempDir dir2 = std::move(*dir1);
     TEST_ASSERT(!dir1->IsValid());
     TEST_ASSERT(dir2.IsValid());
     TEST_ASSERT(dir2.Path() == created_path);

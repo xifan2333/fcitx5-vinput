@@ -3,10 +3,14 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <memory>
+#include <stdlib.h>
+#include <string_view>
 #include <system_error>
 #include <unistd.h>
+#include <utility>
 
 namespace {
 
@@ -120,7 +124,7 @@ std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path
   if (dir.empty()) {
     dir = std::filesystem::temp_directory_path(ec);
     if (ec) {
-      if (error) {
+      if (error != nullptr) {
         *error = "Failed to determine system temporary directory: " + ec.message();
       }
       return nullptr;
@@ -128,7 +132,7 @@ std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path
   } else {
     std::filesystem::create_directories(dir, ec);
     if (ec) {
-      if (error) {
+      if (error != nullptr) {
         *error = "Failed to create directory " + dir.string() + ": " + ec.message();
       }
       return nullptr;
@@ -143,8 +147,8 @@ std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path
   }
 
   char* result = ::mkdtemp(tmpl.data());
-  if (!result) {
-    if (error) {
+  if (result == nullptr) {
+    if (error != nullptr) {
       *error = "Failed to create temporary directory: " + std::string(std::strerror(errno));
     }
     return nullptr;
