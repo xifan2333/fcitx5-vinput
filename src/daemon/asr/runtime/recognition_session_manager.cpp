@@ -30,6 +30,16 @@ public:
     return session_->PushAudio(pcm, error);
   }
 
+  bool PushAudio(std::span<const float> samples, std::string* error) override {
+    if (!session_) {
+      if (error) {
+        *error = "Recognition session is not initialized.";
+      }
+      return false;
+    }
+    return session_->PushAudio(samples, error);
+  }
+
   bool Finish(std::string* error) override {
     if (!session_) {
       if (error) {

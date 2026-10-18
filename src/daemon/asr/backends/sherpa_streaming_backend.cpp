@@ -36,7 +36,7 @@ public:
 
   ~SherpaStreamingSession() override { Reset(); }
 
-  bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
+  bool PushAudio(std::span<const float> samples, std::string* error) override {
     if (finished_) {
       if (error) {
         *error = "Recognition session already finished.";
@@ -51,6 +51,26 @@ public:
       return false;
     }
 
+    if (samples.empty()) {
+      if (error) {
+        error->clear();
+      }
+      return true;
+    }
+
+    UpdateAudioStats(samples);
+
+    SherpaOnnxOnlineStreamAcceptWaveform(stream_, 16000, samples.data(),
+                                         static_cast<int32_t>(samples.size()));
+    DecodeAvailable();
+
+    if (error) {
+      error->clear();
+    }
+    return true;
+  }
+
+  bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (pcm.empty()) {
       if (error) {
         error->clear();
@@ -62,16 +82,7 @@ public:
     for (std::size_t i = 0; i < pcm.size(); ++i) {
       samples[i] = static_cast<float>(pcm[i]) / 32768.0f;
     }
-    UpdateAudioStats(samples);
-
-    SherpaOnnxOnlineStreamAcceptWaveform(stream_, 16000, samples.data(),
-                                         static_cast<int32_t>(samples.size()));
-    DecodeAvailable();
-
-    if (error) {
-      error->clear();
-    }
-    return true;
+    return PushAudio(std::span<const float>(samples), error);
   }
 
   bool Finish(std::string* error) override {

@@ -445,13 +445,28 @@ public:
                        VadTrimmer* vad)
       : recognizer_(recognizer), vad_available_(vad_available), vad_(vad) {}
 
+  bool PushAudio(std::span<const float> samples, std::string* error) override {
+    if (finished_) {
+      if (error)
+        *error = "Recognition session already finished.";
+      return false;
+    }
+    samples_.insert(samples_.end(), samples.begin(), samples.end());
+    if (error)
+      error->clear();
+    return true;
+  }
+
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (finished_) {
       if (error)
         *error = "Recognition session already finished.";
       return false;
     }
-    pcm_.insert(pcm_.end(), pcm.begin(), pcm.end());
+    samples_.reserve(samples_.size() + pcm.size());
+    for (int16_t sample : pcm) {
+      samples_.push_back(static_cast<float>(sample) / 32768.0f);
+    }
     if (error)
       error->clear();
     return true;
@@ -465,23 +480,18 @@ public:
     }
     finished_ = true;
 
-    if (pcm_.size() < kMinSamplesForInference) {
-      fprintf(stderr, "vinput: skipping ASR for short audio: %zu samples (%.1f ms)\n", pcm_.size(),
-              static_cast<double>(pcm_.size()) * 1000.0 / 16000.0);
+    if (samples_.size() < kMinSamplesForInference) {
+      fprintf(stderr, "vinput: skipping ASR for short audio: %zu samples (%.1f ms)\n",
+              samples_.size(), static_cast<double>(samples_.size()) * 1000.0 / 16000.0);
       events_.push_back({RecognitionEventKind::Completed, {}, {}});
       if (error)
         error->clear();
       return true;
     }
 
-    // Convert int16 → float [-1, 1]
-    std::vector<float> samples(pcm_.size());
-    for (size_t i = 0; i < pcm_.size(); ++i)
-      samples[i] = static_cast<float>(pcm_[i]) / 32768.0f;
-
     if (vad_available_ && vad_) {
-      samples = vad_->Trim(samples, 16000);
-      if (samples.size() < kMinSamplesForInference) {
+      samples_ = vad_->Trim(samples_, 16000);
+      if (samples_.size() < kMinSamplesForInference) {
         fprintf(stderr, "vinput: audio too short after VAD trim, skipping\n");
         events_.push_back({RecognitionEventKind::Completed, {}, {}});
         if (error)
@@ -490,7 +500,7 @@ public:
       }
     }
 
-    std::string text = InferOffline(recognizer_, samples);
+    std::string text = InferOffline(recognizer_, samples_);
     if (!text.empty())
       events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
@@ -501,7 +511,7 @@ public:
 
   void Cancel() override {
     finished_ = true;
-    pcm_.clear();
+    samples_.clear();
     events_.clear();
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
   }
@@ -517,7 +527,7 @@ private:
   bool vad_available_;
   VadTrimmer* vad_;
   bool finished_ = false;
-  std::vector<int16_t> pcm_;
+  std::vector<float> samples_;
   std::vector<RecognitionEvent> events_;
 };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -48,10 +49,25 @@ public:
   virtual ~RecognitionSession() = default;
 
   virtual bool PushAudio(std::span<const int16_t> pcm, std::string* error) = 0;
+  virtual bool PushAudio(std::span<const float> samples, std::string* error);
   virtual bool Finish(std::string* error) = 0;
   virtual void Cancel() = 0;
   virtual std::vector<RecognitionEvent> PollEvents() = 0;
 };
+
+inline bool RecognitionSession::PushAudio(std::span<const float> samples, std::string* error) {
+  if (samples.empty()) {
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+  std::vector<int16_t> pcm(samples.size());
+  for (std::size_t i = 0; i < samples.size(); ++i) {
+    pcm[i] = static_cast<int16_t>(std::clamp(samples[i] * 32768.0f, -32768.0f, 32767.0f));
+  }
+  return PushAudio(pcm, error);
+}
 
 class AsrBackend {
 public:
