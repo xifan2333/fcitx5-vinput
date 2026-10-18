@@ -205,6 +205,15 @@ target_include_directories(test_websocket_frame PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_websocket_frame PRIVATE common pthread)
 add_test(NAME test_websocket_frame COMMAND test_websocket_frame)
 
+add_executable(test_remote_text_service
+    test_remote_text_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/remote/remote_assets.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/remote/remote_text_service.cpp
+)
+target_include_directories(test_remote_text_service PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_remote_text_service PRIVATE common pthread)
+add_test(NAME test_remote_text_service COMMAND test_remote_text_service)
+
 add_executable(test_downloader test_downloader.cpp)
 target_include_directories(test_downloader PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_downloader PRIVATE common pthread)
