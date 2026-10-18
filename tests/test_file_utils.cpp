@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -149,16 +150,16 @@ void TestComputeFileSha256() {
     out << "hello world\n";
   }
   std::string err;
-  std::string hash1 = ComputeFileSha256(file1, &err);
+  const std::string hash1 = ComputeFileSha256(file1, &err);
   TEST_ASSERT(err.empty());
   TEST_ASSERT(hash1 == "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447");
 
   // 2. Empty file
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
   {
-    std::ofstream out(empty_file, std::ios::binary);
+    const std::ofstream out(empty_file, std::ios::binary);
   }
-  std::string hash_empty = ComputeFileSha256(empty_file, &err);
+  const std::string hash_empty = ComputeFileSha256(empty_file, &err);
   TEST_ASSERT(err.empty());
   TEST_ASSERT(hash_empty == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 
@@ -169,18 +170,18 @@ void TestComputeFileSha256() {
     std::string data(10000, 'a');
     out.write(data.data(), static_cast<std::streamsize>(data.size()));
   }
-  std::string hash_large = ComputeFileSha256(large_file, &err);
+  const std::string hash_large = ComputeFileSha256(large_file, &err);
   TEST_ASSERT(err.empty());
   TEST_ASSERT(hash_large == "27dd1f61b867b6a0f6e9d8a41c43231de52107e53ae424de8f847b821db4b711");
 
   // 4. Non-existent file
   const fs::path missing_file = temp_dir->Path() / "missing.txt";
-  std::string hash_missing = ComputeFileSha256(missing_file, &err);
+  const std::string hash_missing = ComputeFileSha256(missing_file, &err);
   TEST_ASSERT(hash_missing.empty());
   TEST_ASSERT(!err.empty());
 
   // 5. Nullptr error pointer
-  std::string hash_null_err = ComputeFileSha256(missing_file, nullptr);
+  const std::string hash_null_err = ComputeFileSha256(missing_file, nullptr);
   TEST_ASSERT(hash_null_err.empty());
 }
 
@@ -219,7 +220,7 @@ void TestReadTextFile() {
   // 4. Empty file with max_bytes limit
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
   {
-    std::ofstream out(empty_file, std::ios::binary);
+    const std::ofstream out(empty_file, std::ios::binary);
   }
   content.clear();
   TEST_ASSERT(ReadTextFile(empty_file, &content, &err, 10));

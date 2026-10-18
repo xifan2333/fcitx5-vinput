@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 
 #include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"

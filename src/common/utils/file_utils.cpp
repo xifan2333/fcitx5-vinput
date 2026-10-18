@@ -2,12 +2,16 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <ios>
+#include <iterator>
 #include <memory>
 #include <openssl/evp.h>
+#include <openssl/types.h>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -336,7 +340,8 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
     return {};
   }
 
-  std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(), &EVP_MD_CTX_free);
+  const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
+                                                                    &EVP_MD_CTX_free);
   if (ctx == nullptr) {
     if (error != nullptr) {
       *error = "failed to allocate EVP_MD_CTX";
@@ -374,7 +379,7 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
   hex.reserve(static_cast<size_t>(hash_len) * 2);
   for (size_t i = 0; i < static_cast<size_t>(hash_len); ++i) {
     char pair[3];
-    std::snprintf(pair, sizeof(pair), "%02x", hash[i]);
+    std::snprintf(pair, sizeof(pair), "%02x", *(hash + i));
     hex += pair;
   }
 
