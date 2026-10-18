@@ -12,10 +12,10 @@
 #include <mutex>
 #include <netdb.h>
 #include <optional>
-#include <poll.h>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <sys/poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <utility>
@@ -511,23 +511,24 @@ void HttpServer::UpgradeWebSocket(std::string path,
                                   std::function<void(std::string_view, bool)> on_message,
                                   std::function<void(std::uint16_t, std::string_view)> on_close,
                                   std::function<void(std::string_view)> on_error) {
-  UpgradeWebSocket(std::move(path),
-                   [on_connect = std::move(on_connect), on_message = std::move(on_message),
-                    on_close = std::move(on_close), on_error = std::move(on_error)](
-                       std::shared_ptr<WebSocketSession> session, const HttpRequest& /*req*/) {
-                     if (on_message) {
-                       session->SetOnMessage(on_message);
-                     }
-                     if (on_close) {
-                       session->SetOnClose(on_close);
-                     }
-                     if (on_error) {
-                       session->SetOnError(on_error);
-                     }
-                     if (on_connect) {
-                       on_connect(session);
-                     }
-                   });
+  UpgradeWebSocket(
+      std::move(path),
+      [on_connect = std::move(on_connect), on_message = std::move(on_message),
+       on_close = std::move(on_close), on_error = std::move(on_error)](
+          const std::shared_ptr<WebSocketSession>& session, const HttpRequest& /*req*/) {
+        if (on_message) {
+          session->SetOnMessage(on_message);
+        }
+        if (on_close) {
+          session->SetOnClose(on_close);
+        }
+        if (on_error) {
+          session->SetOnError(on_error);
+        }
+        if (on_connect) {
+          on_connect(session);
+        }
+      });
 }
 
 bool HttpServer::Start() {
@@ -583,13 +584,16 @@ bool HttpServer::Start() {
   const int pflags = fcntl(stop_pipe_[0], F_GETFL, 0);
   fcntl(stop_pipe_[0], F_SETFL, pflags | O_NONBLOCK);
 
-  sockaddr_storage ss{};
-  socklen_t slen = sizeof(ss);
-  if (getsockname(listen_fd, reinterpret_cast<sockaddr*>(&ss), &slen) == 0) {
+  union {
+    sockaddr_storage storage;
+    sockaddr sa;
+  } ss{};
+  socklen_t slen = sizeof(ss.storage);
+  if (getsockname(listen_fd, &ss.sa, &slen) == 0) {
     char host_buf[NI_MAXHOST];
     char serv_buf[NI_MAXSERV];
-    if (getnameinfo(reinterpret_cast<sockaddr*>(&ss), slen, host_buf, sizeof(host_buf), serv_buf,
-                    sizeof(serv_buf), NI_NUMERICHOST | NI_NUMERICSERV) == 0) {
+    if (getnameinfo(&ss.sa, slen, host_buf, sizeof(host_buf), serv_buf, sizeof(serv_buf),
+                    NI_NUMERICHOST | NI_NUMERICSERV) == 0) {
       bound_address_ = host_buf;
       bound_port_ = static_cast<std::uint16_t>(std::atoi(serv_buf));
     }
@@ -690,14 +694,16 @@ void HttpServer::AcceptLoop() {
       }
       break;
     }
-    if (pfd[1].revents & (POLLIN | POLLERR | POLLHUP)) {
+    if ((pfd[1].revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
       break;
     }
-    if (pfd[0].revents & POLLIN) {
-      sockaddr_storage client_addr{};
-      socklen_t client_len = sizeof(client_addr);
-      const int client_fd =
-          accept(listen_fd_, reinterpret_cast<sockaddr*>(&client_addr), &client_len);
+    if ((pfd[0].revents & POLLIN) != 0) {
+      union {
+        sockaddr_storage storage;
+        sockaddr sa;
+      } client_addr{};
+      socklen_t client_len = sizeof(client_addr.storage);
+      const int client_fd = accept(listen_fd_, &client_addr.sa, &client_len);
       if (client_fd < 0) {
         if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
           continue;
