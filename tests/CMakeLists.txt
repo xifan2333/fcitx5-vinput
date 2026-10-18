@@ -195,6 +195,11 @@ target_include_directories(test_http_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_http_client PRIVATE common pthread)
 add_test(NAME test_http_client COMMAND test_http_client)
 
+add_executable(test_websocket_frame test_websocket_frame.cpp)
+target_include_directories(test_websocket_frame PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_websocket_frame PRIVATE common pthread)
+add_test(NAME test_websocket_frame COMMAND test_websocket_frame)
+
 add_executable(test_downloader test_downloader.cpp)
 target_include_directories(test_downloader PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_downloader PRIVATE common pthread)
