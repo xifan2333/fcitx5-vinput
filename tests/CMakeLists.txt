@@ -181,10 +181,14 @@ target_include_directories(test_async_context_writer PRIVATE
 target_link_libraries(test_async_context_writer PRIVATE pthread)
 add_test(NAME test_async_context_writer COMMAND test_async_context_writer)
 
-add_executable(test_curl_connection_cache test_curl_connection_cache.cpp)
-target_include_directories(test_curl_connection_cache PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_curl_connection_cache PRIVATE CURL::libcurl pthread)
-add_test(NAME test_curl_connection_cache COMMAND test_curl_connection_cache)
+add_executable(test_post_processor
+    test_post_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/post_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/prompt_template.cpp
+)
+target_include_directories(test_post_processor PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_post_processor PRIVATE common pthread)
+add_test(NAME test_post_processor COMMAND test_post_processor)
 
 add_executable(test_http_client test_http_client.cpp)
 target_include_directories(test_http_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
