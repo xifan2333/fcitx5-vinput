@@ -6,8 +6,8 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
-#include <poll.h>
 #include <string>
+#include <sys/poll.h>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
@@ -171,13 +171,17 @@ std::string BuildMockServerUrl(const MockHttpServer& server, const std::string& 
 
 vinput::net::HttpResponse ExecuteRequest(vinput::net::HttpClient& client, const std::string& url,
                                          const std::string& auth_bearer, const std::string& body,
-                                         const std::atomic<bool>* cancel_token = nullptr) {
+                                         const std::atomic<bool>* cancel_token = nullptr,
+                                         bool direct_bypass = true) {
   vinput::net::HttpRequest req;
   req.url = url;
   req.method = vinput::net::HttpMethod::Post;
   req.body = body;
   req.timeout_ms = 3000;
   req.cancel_token = cancel_token;
+  if (direct_bypass) {
+    req.proxy = ""; // Explicit direct loopback bypass
+  }
   if (!auth_bearer.empty()) {
     req.headers.push_back({"Authorization", "Bearer " + auth_bearer});
   }
@@ -185,18 +189,19 @@ vinput::net::HttpResponse ExecuteRequest(vinput::net::HttpClient& client, const 
 }
 
 void TestIsolationAcrossIdentityChanges() {
-  setenv("no_proxy", "127.0.0.1", 1);
   MockHttpServer server(MockServerBehavior::KeepAlive);
   vinput::net::HttpClient client;
   const std::string url = BuildMockServerUrl(server);
 
-  AssertTrue(ExecuteRequest(client, url, "A", "one").Ok(), "request one");
-  AssertTrue(ExecuteRequest(client, url, "A", "two").Ok(), "request two");
-  AssertTrue(ExecuteRequest(client, url, "B", "three").Ok(), "request three");
+  // Request 1: Auth A, direct proxy
+  AssertTrue(ExecuteRequest(client, url, "A", "one", nullptr, true).Ok(), "request one");
+  // Request 2: Auth A, same identity -> reuses connection 1
+  AssertTrue(ExecuteRequest(client, url, "A", "two", nullptr, true).Ok(), "request two");
+  // Request 3: Auth B, credential changed -> new connection 2
+  AssertTrue(ExecuteRequest(client, url, "B", "three", nullptr, true).Ok(), "request three");
 
-  // Invalidate proxy policy signature via environment variable while keeping loopback intact
-  setenv("no_proxy", "127.0.0.1,localhost", 1);
-  AssertTrue(ExecuteRequest(client, url, "B", "four").Ok(), "request four");
+  // Request 4: Auth B, proxy policy changed to ambient (nullopt) -> new connection 3
+  AssertTrue(ExecuteRequest(client, url, "B", "four", nullptr, false).Ok(), "request four");
 
   server.Stop();
   AssertTrue(server.AcceptedConnectionCount() == 3,
@@ -212,7 +217,6 @@ void TestIsolationAcrossIdentityChanges() {
 }
 
 void TestTenConsecutiveRequestsReuseOneConnection() {
-  setenv("no_proxy", "127.0.0.1", 1);
   MockHttpServer server(MockServerBehavior::KeepAlive);
   vinput::net::HttpClient client;
   const std::string url = BuildMockServerUrl(server);
@@ -230,7 +234,6 @@ void TestTenConsecutiveRequestsReuseOneConnection() {
 }
 
 void TestConnectionCloseReconnectsCleanly() {
-  setenv("no_proxy", "127.0.0.1", 1);
   MockHttpServer server(MockServerBehavior::CloseEachConnection);
   vinput::net::HttpClient client;
   const std::string url = BuildMockServerUrl(server);
@@ -247,7 +250,6 @@ void TestConnectionCloseReconnectsCleanly() {
 }
 
 void TestDroppedResponseIsNotResent() {
-  setenv("no_proxy", "127.0.0.1", 1);
   MockHttpServer server(MockServerBehavior::DropSecondRequestBody);
   vinput::net::HttpClient client;
   const std::string url = BuildMockServerUrl(server);
@@ -266,7 +268,6 @@ void TestDroppedResponseIsNotResent() {
 }
 
 void TestCancelThenNextRequestIsIsolated() {
-  setenv("no_proxy", "127.0.0.1", 1);
   MockHttpServer server(MockServerBehavior::KeepAlive);
   vinput::net::HttpClient client;
   const std::string url = BuildMockServerUrl(server);
@@ -290,21 +291,35 @@ void TestCancelThenNextRequestIsIsolated() {
 }
 
 void TestGetAndDownloadToFile() {
-  setenv("no_proxy", "127.0.0.1", 1);
   MockHttpServer server(MockServerBehavior::KeepAlive);
   vinput::net::HttpClient client;
   const std::string url = BuildMockServerUrl(server);
 
-  // Test Get
-  auto get_res = client.Get(url);
+  // Test Get with direct proxy
+  vinput::net::HttpRequest get_req;
+  get_req.url = url;
+  get_req.method = vinput::net::HttpMethod::Get;
+  get_req.proxy = "";
+  auto get_res = client.Request(get_req);
   AssertTrue(get_res.Ok() && get_res.body == "OK", "Get request succeeds");
 
   // Test Post helper
-  auto post_res = client.Post(url, "plain-body");
+  vinput::net::HttpRequest post_req;
+  post_req.url = url;
+  post_req.method = vinput::net::HttpMethod::Post;
+  post_req.body = "plain-body";
+  post_req.proxy = "";
+  auto post_res = client.Request(post_req);
   AssertTrue(post_res.Ok() && post_res.body == "OK", "Post helper succeeds");
 
   // Test PostJson
-  auto post_json_res = client.PostJson(url, R"({"key":"val"})");
+  vinput::net::HttpRequest json_req;
+  json_req.url = url;
+  json_req.method = vinput::net::HttpMethod::Post;
+  json_req.body = R"({"key":"val"})";
+  json_req.headers.push_back({"Content-Type", "application/json"});
+  json_req.proxy = "";
+  auto post_json_res = client.Request(json_req);
   AssertTrue(post_json_res.Ok() && post_json_res.body == "OK", "PostJson succeeds");
 
   // Test DownloadToFile with existing file preservation
@@ -317,7 +332,11 @@ void TestGetAndDownloadToFile() {
     seed << "pre-existing content";
   }
 
-  auto dl_res = client.DownloadToFile(url, temp_file);
+  vinput::net::HttpRequest dl_req;
+  dl_req.url = url;
+  dl_req.method = vinput::net::HttpMethod::Get;
+  dl_req.proxy = "";
+  auto dl_res = client.DownloadToFile(dl_req, temp_file);
   AssertTrue(dl_res.Ok(), "DownloadToFile succeeds");
   AssertTrue(std::filesystem::exists(temp_file), "downloaded file exists");
 
@@ -333,7 +352,6 @@ void TestGetAndDownloadToFile() {
 }
 
 void TestQueryOnlyUrlOriginReuse() {
-  setenv("no_proxy", "127.0.0.1", 1);
   MockHttpServer server(MockServerBehavior::KeepAlive);
   vinput::net::HttpClient client;
 
@@ -353,7 +371,6 @@ void TestQueryOnlyUrlOriginReuse() {
 } // namespace
 
 int main() {
-  setenv("no_proxy", "127.0.0.1", 1);
   TestIsolationAcrossIdentityChanges();
   TestTenConsecutiveRequestsReuseOneConnection();
   TestConnectionCloseReconnectsCleanly();
