@@ -1,7 +1,6 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qeventloop.h>
 #include <QtCore/qobject.h>
-#include <QtCore/qpointer.h>
 #include <QtCore/qthread.h>
 #include <atomic>
 #include <chrono>
@@ -22,7 +21,7 @@ void AssertTrue(bool condition, const char* message) {
   }
 }
 
-void ProcessEventsUntil(QCoreApplication& app, const std::function<bool()>& predicate,
+void ProcessEventsUntil(const std::function<bool()>& predicate,
                         std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
   const auto start = std::chrono::steady_clock::now();
   while (!predicate()) {
@@ -30,7 +29,7 @@ void ProcessEventsUntil(QCoreApplication& app, const std::function<bool()>& pred
       std::cerr << "Timed out waiting for predicate\n";
       std::abort();
     }
-    app.processEvents(QEventLoop::AllEvents, 50);
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 }
@@ -47,12 +46,12 @@ void TestSuccessTask(QCoreApplication& app) {
   worker->SetTask([](std::string* /*err*/) -> bool { return true; });
   worker->start();
 
-  ProcessEventsUntil(app, [&] { return finished_emitted; });
+  ProcessEventsUntil([&] { return finished_emitted; });
   AssertTrue(!error_emitted, "success task must not emit error");
   AssertTrue(!worker->IsCancelled(), "worker should not be cancelled");
 
   worker->deleteLater();
-  ProcessEventsUntil(app, [&] { return true; }, std::chrono::milliseconds(50));
+  ProcessEventsUntil([&] { return true; }, std::chrono::milliseconds(50));
 }
 
 void TestFailureTaskEmitsError(QCoreApplication& app) {
@@ -72,7 +71,7 @@ void TestFailureTaskEmitsError(QCoreApplication& app) {
   });
   worker->start();
 
-  ProcessEventsUntil(app, [&] { return finished_emitted; });
+  ProcessEventsUntil([&] { return finished_emitted; });
   AssertTrue(received_error == "test failure message", "failure task must emit expected error");
   AssertTrue(!worker->IsCancelled(), "worker should not be cancelled");
 
@@ -101,13 +100,13 @@ void TestCooperativeCancellation(QCoreApplication& app) {
   });
   worker->start();
 
-  ProcessEventsUntil(app, [&] { return task_started.load(); });
+  ProcessEventsUntil([&] { return task_started.load(); });
   AssertTrue(!worker->IsCancelled(), "worker not cancelled yet");
 
   worker->Cancel();
   AssertTrue(worker->IsCancelled(), "worker must be cancelled after Cancel()");
 
-  ProcessEventsUntil(app, [&] { return finished_emitted; });
+  ProcessEventsUntil([&] { return finished_emitted; });
   AssertTrue(!error_emitted, "cancelled task must not emit error");
 
   worker->deleteLater();
@@ -137,12 +136,12 @@ void TestProgressSuppressionOnCancel(QCoreApplication& app) {
                    [&](int, const QString&) { ++progress_count; });
 
   worker.ReportProgress(10, "1 MB/s");
-  app.processEvents();
+  QCoreApplication::processEvents();
   AssertTrue(progress_count == 1, "progress emitted when not cancelled");
 
   worker.Cancel();
   worker.ReportProgress(20, "2 MB/s");
-  app.processEvents();
+  QCoreApplication::processEvents();
   AssertTrue(progress_count == 1, "progress dropped after Cancel()");
 }
 

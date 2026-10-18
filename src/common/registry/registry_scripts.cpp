@@ -5,6 +5,7 @@
 #include <chrono>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <string>
 #include <system_error>
 
 #include "common/config/core_config_types.h"
