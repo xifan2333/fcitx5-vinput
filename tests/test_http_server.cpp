@@ -1,17 +1,17 @@
 #include <arpa/inet.h>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <netinet/in.h>
+#include <optional>
 #include <poll.h>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
-#include <thread>
 #include <unistd.h>
-#include <vector>
 
 #include "common/net/http_server.h"
 #include "common/net/http_types.h"
@@ -72,7 +72,7 @@ std::string RecvUntil(int fd, std::string_view delimiter, int timeout_ms = 3000)
     if (elapsed > timeout_ms) {
       break;
     }
-    struct pollfd pfd{};
+    pollfd pfd{};
     pfd.fd = fd;
     pfd.events = POLLIN;
     const int ret = poll(&pfd, 1, 100);
@@ -106,7 +106,7 @@ bool RecvFrame(int fd, vinput::net::WsFrame* out_frame, int timeout_ms = 3000) {
     if (elapsed > timeout_ms) {
       return false;
     }
-    struct pollfd pfd{};
+    pollfd pfd{};
     pfd.fd = fd;
     pfd.events = POLLIN;
     const int ret = poll(&pfd, 1, 100);

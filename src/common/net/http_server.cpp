@@ -1,20 +1,20 @@
 #include "common/net/http_server.h"
 
-#include <arpa/inet.h>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <netdb.h>
-#include <netinet/in.h>
+#include <optional>
 #include <poll.h>
 #include <sstream>
 #include <string_view>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
+#include "common/net/http_types.h"
 #include "common/net/websocket_frame.h"
 #include "common/utils/string_utils.h"
 
@@ -22,7 +22,7 @@ namespace vinput::net {
 
 namespace {
 
-constexpr std::size_t kMaxHeaderBytes = 64 * 1024; // 64 KB header limit
+constexpr std::size_t kMaxHeaderBytes = 64ULL * 1024ULL; // 64 KB header limit
 
 std::string_view HttpStatusReason(long status_code) {
   switch (status_code) {
@@ -128,6 +128,11 @@ bool HasHeader(const std::vector<HttpHeader>& headers, std::string_view name) {
   return FindHeader(headers, name).has_value();
 }
 
+bool ContainsIgnoreCase(std::string_view text, std::string_view needle) {
+  return vinput::str::ToLowerAscii(text).find(vinput::str::ToLowerAscii(needle)) !=
+         std::string::npos;
+}
+
 bool IsWebSocketUpgradeRequest(const std::vector<HttpHeader>& headers) {
   const auto upgrade = FindHeader(headers, "Upgrade");
   const auto connection = FindHeader(headers, "Connection");
@@ -137,7 +142,7 @@ bool IsWebSocketUpgradeRequest(const std::vector<HttpHeader>& headers) {
   if (!vinput::str::EqualsIgnoreCase(*upgrade, "websocket")) {
     return false;
   }
-  return vinput::str::ContainsIgnoreCase(*connection, "Upgrade");
+  return ContainsIgnoreCase(*connection, "Upgrade");
 }
 
 bool SendHttpResponse(int fd, const HttpResponse& response, HttpMethod method = HttpMethod::Get) {
@@ -430,7 +435,7 @@ bool HttpServer::Start() {
     return false;
   }
 
-  struct addrinfo hints{};
+  addrinfo hints{};
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
