@@ -18,6 +18,26 @@ endif()
 
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 
+add_library(client_runtime STATIC
+    runtime/dbus_client.cpp
+    runtime/systemd_client.cpp
+)
+
+set_target_properties(client_runtime PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    OUTPUT_NAME "vinput-client-runtime"
+)
+
+target_include_directories(client_runtime PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${SDBUS_INCLUDE_DIRS}
+)
+
+target_link_libraries(client_runtime PUBLIC
+    config
+    ${SDBUS_LIBRARIES}
+)
+
 add_executable(cli
     main.cpp
     utils/formatter.cpp
@@ -41,8 +61,6 @@ add_executable(cli
     config/register_llm.cpp
     config/register_scene.cpp
     config/scene_actions.cpp
-    runtime/dbus_client.cpp
-    runtime/systemd_client.cpp
 )
 
 set_target_properties(cli PROPERTIES OUTPUT_NAME "vinput")
@@ -56,6 +74,7 @@ target_include_directories(cli PRIVATE
 target_link_libraries(cli PRIVATE
     common
     pipewire_device
+    client_runtime
     CLI11::CLI11
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
