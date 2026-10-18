@@ -39,6 +39,12 @@ include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cma
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+
+add_compile_options(-ffunction-sections -fdata-sections)
+add_link_options(-Wl,--gc-sections -Wl,--as-needed)
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(
         -Wall
