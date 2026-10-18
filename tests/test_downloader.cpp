@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
+#include <stdlib.h>
 #include <string>
 #include <sys/poll.h>
 #include <sys/socket.h>

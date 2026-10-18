@@ -156,10 +156,11 @@ bool DownloadFile(const std::vector<std::string>& urls, const std::filesystem::p
     }
   }
 
+  const bool success = last_result.ok;
   if (result != nullptr) {
     *result = std::move(last_result);
   }
-  if (!last_result.ok) {
+  if (!success) {
     std::error_code ec;
     std::filesystem::remove(dest, ec);
   }
