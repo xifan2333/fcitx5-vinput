@@ -325,7 +325,7 @@ struct WsFragmentState {
 class WebSocketSessionImpl : public WebSocketSession,
                              public std::enable_shared_from_this<WebSocketSessionImpl> {
 public:
-  explicit WebSocketSessionImpl(int fd) : fd_(fd) {}
+  explicit WebSocketSessionImpl(int fd) : read_fd_(fd), fd_(fd) {}
 
   ~WebSocketSessionImpl() override { CloseInternal(1000, "", false); }
 
@@ -410,7 +410,7 @@ public:
         }
       }
 
-      const ssize_t n = recv(fd_, chunk, sizeof(chunk), 0);
+      const ssize_t n = recv(read_fd_, chunk, sizeof(chunk), 0);
       if (n > 0) {
         buffer.append(chunk, static_cast<std::size_t>(n));
       } else if (n < 0 && errno == EINTR) {
@@ -576,6 +576,7 @@ private:
     }
   }
 
+  const int read_fd_ = -1;
   int fd_ = -1;
   std::atomic<bool> closed_{false};
   std::mutex send_mutex_;
@@ -950,11 +951,15 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
 
       upgraded = true;
       auto session = std::make_shared<WebSocketSessionImpl>(fd);
-      if (endpoint.handler) {
-        endpoint.handler(session, req);
+      try {
+        if (endpoint.handler) {
+          endpoint.handler(session, req);
+        }
+        session->RunDuplexLoop(config_.max_ws_payload_bytes, std::move(req.body));
+      } catch (...) {
+        session->Close(1011, "Internal error");
+        throw;
       }
-
-      session->RunDuplexLoop(config_.max_ws_payload_bytes, std::move(req.body));
       return;
     }
 
