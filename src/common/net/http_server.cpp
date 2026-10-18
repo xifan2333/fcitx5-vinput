@@ -1,5 +1,7 @@
 #include "common/net/http_server.h"
 
+#include <asm-generic/socket.h>
+#include <atomic>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -12,6 +14,7 @@
 #include <optional>
 #include <poll.h>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -513,16 +516,16 @@ void HttpServer::UpgradeWebSocket(std::string path,
                     on_close = std::move(on_close), on_error = std::move(on_error)](
                        std::shared_ptr<WebSocketSession> session, const HttpRequest& /*req*/) {
                      if (on_message) {
-                       session->SetOnMessage(std::move(on_message));
+                       session->SetOnMessage(on_message);
                      }
                      if (on_close) {
-                       session->SetOnClose(std::move(on_close));
+                       session->SetOnClose(on_close);
                      }
                      if (on_error) {
-                       session->SetOnError(std::move(on_error));
+                       session->SetOnError(on_error);
                      }
                      if (on_connect) {
-                       on_connect(std::move(session));
+                       on_connect(session);
                      }
                    });
 }
@@ -538,10 +541,10 @@ bool HttpServer::Start() {
   hints.ai_flags = AI_PASSIVE;
 
   const char* node = config_.host.empty() ? nullptr : config_.host.c_str();
-  std::string port_str = std::to_string(config_.port);
+  const std::string port_str = std::to_string(config_.port);
   struct addrinfo* res = nullptr;
   const int gai_rc = getaddrinfo(node, port_str.c_str(), &hints, &res);
-  if (gai_rc != 0 || !res) {
+  if (gai_rc != 0 || res == nullptr) {
     return false;
   }
 
