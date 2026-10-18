@@ -117,6 +117,12 @@ install(FILES
 )
 
 install(FILES
+    ${CMAKE_SOURCE_DIR}/data/web/remote/index.html
+    ${CMAKE_SOURCE_DIR}/data/web/remote/favicon.svg
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/web/remote
+)
+
+install(FILES
     ${CMAKE_SOURCE_DIR}/data/man/en/vinput.1
     ${CMAKE_SOURCE_DIR}/data/man/en/vinput-daemon.1
     ${CMAKE_SOURCE_DIR}/data/man/en/vinput-gui.1

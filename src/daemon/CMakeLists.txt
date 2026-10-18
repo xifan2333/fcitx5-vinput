@@ -52,6 +52,7 @@ add_executable(daemon
     audio/audio_utils.cpp
     audio/output_ducker.cpp
     ${CMAKE_SOURCE_DIR}/src/common/audio/pipewire_device.cpp
+    remote/remote_assets.cpp
     remote/remote_text_service.cpp
     runtime/dbus_service.cpp
     runtime/daemon_runtime_controller.cpp
