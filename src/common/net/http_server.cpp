@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <utility>
 
+#include "common/net/websocket_frame.h"
 #include "common/utils/string_utils.h"
 
 namespace vinput::net {
@@ -172,6 +173,203 @@ bool SendErrorResponse(int fd, long status_code, std::string_view message,
   resp.headers = extra_headers;
   return SendHttpResponse(fd, resp);
 }
+
+class WebSocketSessionImpl : public WebSocketSession,
+                             public std::enable_shared_from_this<WebSocketSessionImpl> {
+public:
+  explicit WebSocketSessionImpl(int fd) : fd_(fd) {}
+
+  ~WebSocketSessionImpl() override { CloseInternal(1000, "", false); }
+
+  bool SendText(std::string_view text) override { return SendRaw(EncodeWebSocketText(text)); }
+
+  bool SendBinary(std::string_view binary) override {
+    return SendRaw(EncodeWebSocketBinary(binary));
+  }
+
+  bool SendPing(std::string_view payload = {}) override {
+    return SendRaw(EncodeWebSocketPing(payload));
+  }
+
+  bool SendPong(std::string_view payload = {}) override {
+    return SendRaw(EncodeWebSocketPong(payload));
+  }
+
+  void Close(std::uint16_t status_code = 1000, std::string_view reason = {}) override {
+    CloseInternal(status_code, reason, true);
+  }
+
+  bool IsOpen() const override { return !closed_.load(); }
+
+  void
+  SetOnMessage(std::function<void(std::string_view payload, bool is_binary)> callback) override {
+    std::lock_guard<std::mutex> lock(cb_mutex_);
+    on_message_ = std::move(callback);
+  }
+
+  void SetOnClose(
+      std::function<void(std::uint16_t status_code, std::string_view reason)> callback) override {
+    std::lock_guard<std::mutex> lock(cb_mutex_);
+    on_close_ = std::move(callback);
+  }
+
+  void SetOnError(std::function<void(std::string_view error)> callback) override {
+    std::lock_guard<std::mutex> lock(cb_mutex_);
+    on_error_ = std::move(callback);
+  }
+
+  void RunDuplexLoop(std::size_t max_ws_payload_bytes, std::string initial_buffer = {}) {
+    std::string buffer = std::move(initial_buffer);
+    char chunk[4096];
+    std::string fragmented_msg;
+    WsOpcode fragmented_opcode = WsOpcode::kText;
+
+    while (!closed_.load()) {
+      while (!buffer.empty()) {
+        WsFrame frame;
+        std::size_t consumed = 0;
+        std::string err;
+        const auto status =
+            DecodeWebSocketFrame(buffer, &frame, &consumed, max_ws_payload_bytes, &err);
+
+        if (status == WsDecodeStatus::kNeedMoreData) {
+          break;
+        }
+
+        if (status != WsDecodeStatus::kOk) {
+          DispatchError(err);
+          const std::uint16_t code = (status == WsDecodeStatus::kPayloadTooLarge) ? 1009 : 1002;
+          CloseInternal(code, err, true);
+          return;
+        }
+
+        buffer.erase(0, consumed);
+
+        if (frame.header.opcode == WsOpcode::kPing) {
+          SendPong(frame.payload);
+        } else if (frame.header.opcode == WsOpcode::kPong) {
+          // pong received, no-op
+        } else if (frame.header.opcode == WsOpcode::kClose) {
+          std::uint16_t code = 1000;
+          std::string reason;
+          if (frame.payload.size() >= 2) {
+            code = (static_cast<std::uint8_t>(frame.payload[0]) << 8) |
+                   static_cast<std::uint8_t>(frame.payload[1]);
+            reason = frame.payload.substr(2);
+          }
+          CloseInternal(code, reason, true);
+          return;
+        } else if (frame.header.opcode == WsOpcode::kText ||
+                   frame.header.opcode == WsOpcode::kBinary ||
+                   frame.header.opcode == WsOpcode::kContinuation) {
+          if (!frame.header.fin) {
+            if (frame.header.opcode != WsOpcode::kContinuation) {
+              fragmented_opcode = frame.header.opcode;
+              fragmented_msg = std::move(frame.payload);
+            } else {
+              fragmented_msg.append(frame.payload);
+            }
+          } else {
+            if (frame.header.opcode == WsOpcode::kContinuation) {
+              fragmented_msg.append(frame.payload);
+              DispatchMessage(fragmented_msg, fragmented_opcode == WsOpcode::kBinary);
+              fragmented_msg.clear();
+            } else {
+              DispatchMessage(frame.payload, frame.header.opcode == WsOpcode::kBinary);
+            }
+          }
+        }
+      }
+
+      const ssize_t n = recv(fd_, chunk, sizeof(chunk), 0);
+      if (n > 0) {
+        buffer.append(chunk, static_cast<std::size_t>(n));
+      } else if (n < 0 && errno == EINTR) {
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    CloseInternal(1006, "Connection closed", false);
+  }
+
+private:
+  bool SendRaw(std::string_view frame_bytes) {
+    if (closed_.load()) {
+      return false;
+    }
+    std::lock_guard<std::mutex> lock(send_mutex_);
+    if (closed_.load() || fd_ < 0) {
+      return false;
+    }
+    return WriteAll(fd_, frame_bytes);
+  }
+
+  void CloseInternal(std::uint16_t status_code, std::string_view reason, bool send_close_frame) {
+    bool expected = false;
+    if (!closed_.compare_exchange_strong(expected, true)) {
+      return;
+    }
+
+    if (send_close_frame && fd_ >= 0) {
+      const std::string close_frame = EncodeWebSocketClose(status_code, reason);
+      {
+        std::lock_guard<std::mutex> lock(send_mutex_);
+        if (fd_ >= 0) {
+          (void)WriteAll(fd_, close_frame);
+        }
+      }
+    }
+
+    if (fd_ >= 0) {
+      shutdown(fd_, SHUT_RDWR);
+    }
+
+    DispatchClose(status_code, reason);
+  }
+
+  void DispatchMessage(std::string_view payload, bool is_binary) {
+    std::function<void(std::string_view, bool)> cb;
+    {
+      std::lock_guard<std::mutex> lock(cb_mutex_);
+      cb = on_message_;
+    }
+    if (cb) {
+      cb(payload, is_binary);
+    }
+  }
+
+  void DispatchClose(std::uint16_t code, std::string_view reason) {
+    std::function<void(std::uint16_t, std::string_view)> cb;
+    {
+      std::lock_guard<std::mutex> lock(cb_mutex_);
+      cb = on_close_;
+    }
+    if (cb) {
+      cb(code, reason);
+    }
+  }
+
+  void DispatchError(std::string_view error) {
+    std::function<void(std::string_view)> cb;
+    {
+      std::lock_guard<std::mutex> lock(cb_mutex_);
+      cb = on_error_;
+    }
+    if (cb) {
+      cb(error);
+    }
+  }
+
+  int fd_ = -1;
+  std::atomic<bool> closed_{false};
+  std::mutex send_mutex_;
+  std::mutex cb_mutex_;
+  std::function<void(std::string_view, bool)> on_message_;
+  std::function<void(std::uint16_t, std::string_view)> on_close_;
+  std::function<void(std::string_view)> on_error_;
+};
 
 } // namespace
 
@@ -516,18 +714,54 @@ void HttpServer::HandleClient(const std::shared_ptr<ClientWorker>& worker) {
 
   const std::string path = target.substr(0, target.find('?'));
 
-  // Handle WebSocket Upgrade (will be wired to session in Task 2)
+  // Handle WebSocket Upgrade
   if (IsWebSocketUpgradeRequest(req.headers)) {
-    std::unique_lock<std::mutex> lock(routes_mutex_);
-    const auto ws_it = ws_endpoints_.find(path);
-    if (ws_it == ws_endpoints_.end()) {
-      lock.unlock();
-      SendErrorResponse(fd, 404, "Not Found\n");
+    WebSocketEndpoint endpoint;
+    {
+      std::lock_guard<std::mutex> lock(routes_mutex_);
+      const auto ws_it = ws_endpoints_.find(path);
+      if (ws_it == ws_endpoints_.end()) {
+        SendErrorResponse(fd, 404, "Not Found\n");
+        return;
+      }
+      endpoint = ws_it->second;
+    }
+
+    if (endpoint.authorizer) {
+      const auto auth_resp = endpoint.authorizer(req);
+      if (auth_resp.has_value()) {
+        SendHttpResponse(fd, *auth_resp, *method);
+        return;
+      }
+    }
+
+    const auto sec_key = FindHeader(req.headers, "Sec-WebSocket-Key");
+    if (!sec_key || sec_key->empty()) {
+      SendErrorResponse(fd, 400, "Missing Sec-WebSocket-Key\n");
       return;
     }
-    // Stubbed for Task 2
-    lock.unlock();
-    SendErrorResponse(fd, 501, "WebSocket upgrade handled in Task 2\n");
+
+    const auto accept_val = ComputeWebSocketAccept(*sec_key);
+    if (!accept_val) {
+      SendErrorResponse(fd, 500, "Failed to compute WebSocket accept key\n");
+      return;
+    }
+
+    std::ostringstream handshake;
+    handshake << "HTTP/1.1 101 Switching Protocols\r\n"
+              << "Upgrade: websocket\r\n"
+              << "Connection: Upgrade\r\n"
+              << "Sec-WebSocket-Accept: " << *accept_val << "\r\n\r\n";
+    if (!WriteAll(fd, handshake.str())) {
+      return;
+    }
+
+    auto session = std::make_shared<WebSocketSessionImpl>(fd);
+    if (endpoint.handler) {
+      endpoint.handler(session, req);
+    }
+
+    session->RunDuplexLoop(config_.max_ws_payload_bytes, std::move(req.body));
     return;
   }
 
