@@ -4,22 +4,21 @@
 #include <array>
 #include <atomic>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <curl/curl.h>
-#include <curl/easy.h>
 #include <fstream>
-#include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/llm/defaults.h"
+#include "common/net/http_client.h"
+#include "common/net/http_types.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/interpolation.h"
@@ -27,7 +26,6 @@
 #include "common/utils/string_utils.h"
 #include "common/utils/url_utils.h"
 
-#include "daemon/postprocess/curl_connection_cache.h"
 #include "daemon/postprocess/prompt_template.h"
 
 namespace {
@@ -36,104 +34,6 @@ using json = nlohmann::json;
 constexpr std::size_t kMaxLoggedResponseBytes = 2048;
 constexpr std::size_t kMaxResponseBytes = 1ULL * 1024ULL * 1024ULL; // 1 MB limit
 constexpr long kDefaultConnectTimeoutMs = 5000;
-
-std::string CurlProxyPolicySignature() {
-  // The request has no per-provider proxy/TLS overrides today. Include the
-  // environment policy used by libcurl so changes invalidate old connections.
-  static constexpr std::array<const char*, 11> kVariables = {
-      "http_proxy", "HTTP_PROXY", "https_proxy",    "HTTPS_PROXY",   "all_proxy",   "ALL_PROXY",
-      "no_proxy",   "NO_PROXY",   "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR"};
-  std::string signature;
-  for (const char* name : kVariables) {
-    const char* value = std::getenv(name);
-    if (value != nullptr) {
-      signature.append(name);
-      signature.push_back('=');
-      signature.append(value);
-      signature.push_back('\0');
-    }
-  }
-  return signature;
-}
-
-struct CurlGuard {
-  CURL* curl = nullptr;
-  struct curl_slist* headers = nullptr;
-
-  CurlGuard() = default;
-  CurlGuard(const CurlGuard&) = delete;
-  CurlGuard& operator=(const CurlGuard&) = delete;
-  CurlGuard(CurlGuard&&) = delete;
-  CurlGuard& operator=(CurlGuard&&) = delete;
-
-  ~CurlGuard() {
-    if (headers != nullptr) {
-      curl_slist_free_all(headers);
-    }
-    if (curl != nullptr) {
-      // Clear every per-request callback, header pointer and body pointer
-      // before response/headers/context locals are destroyed.
-      curl_easy_reset(curl);
-    }
-  }
-};
-
-struct CurlRequestContext {
-  const std::atomic<bool>* shutdown_flag = nullptr;
-  const std::atomic<bool>* request_cancel_flag = nullptr;
-};
-
-// Feeds the request body to libcurl through a read callback. No seek
-// callback is provided on purpose: experiments with libcurl 8.22 showed
-// that CURLOPT_POSTFIELDS silently resends a POST when the server drops
-// the connection after receiving the full body (the duplicate reached the
-// server while the client reported success), whereas a read callback
-// without rewind capability fails with CURLE_SEND_FAIL_REWIND instead.
-// Failing the rewrite (and falling back to the raw ASR text) is preferable
-// to a duplicate, potentially billed, LLM request. End-to-end exactly-once
-// semantics remain server-dependent and are not claimed here.
-struct CurlBodyReader {
-  std::string_view body;
-  std::size_t offset = 0;
-};
-
-size_t ReadRequestBody(char* buffer, size_t size, size_t nmemb, void* userdata) {
-  auto* reader = static_cast<CurlBodyReader*>(userdata);
-  if (reader == nullptr) {
-    return CURL_READFUNC_ABORT;
-  }
-  const std::size_t remaining = reader->body.size() - reader->offset;
-  const std::size_t to_copy = std::min(remaining, size * nmemb);
-  if (to_copy > 0) {
-    std::memcpy(buffer, reader->body.data() + reader->offset, to_copy);
-    reader->offset += to_copy;
-  }
-  return to_copy;
-}
-
-bool CancellationRequested(const CurlRequestContext& ctx) {
-  return (ctx.shutdown_flag != nullptr && ctx.shutdown_flag->load(std::memory_order_relaxed)) ||
-         (ctx.request_cancel_flag != nullptr &&
-          ctx.request_cancel_flag->load(std::memory_order_relaxed));
-}
-
-size_t WriteResponseCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
-  const size_t total = size * nmemb;
-  if (!userdata || !ptr || total == 0) {
-    return 0;
-  }
-
-  auto* response = static_cast<std::string*>(userdata);
-  if (response->size() + total > kMaxResponseBytes)
-    return 0;
-  response->append(ptr, total);
-  return total;
-}
-
-int ProgressCallback(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
-  const auto* ctx = static_cast<const CurlRequestContext*>(clientp);
-  return ctx != nullptr && CancellationRequested(*ctx) ? 1 : 0;
-}
 
 json BuildCandidatesResponseFormat() {
   return {
@@ -176,17 +76,19 @@ void LogLlmInput(const LlmProvider& provider, const std::string& url, std::strin
                      QuoteForLog(text).c_str());
 }
 
-void LogLlmRequest(const LlmProvider& provider, const std::string& url, const curl_slist* headers,
-                   std::string_view body) {
+void LogLlmRequest(const LlmProvider& provider, const std::string& url,
+                   const std::vector<vinput::net::HttpHeader>& headers, std::string_view body) {
   // Debug-only: dump headers and body verbatim. The API key is included in
   // plain text since this is gated by VINPUT_DEBUG and intended for local
   // inspection; users who share logs are responsible for redacting first.
   std::string header_dump;
-  for (const curl_slist* n = headers; n != nullptr; n = n->next) {
+  for (const auto& header : headers) {
     if (!header_dump.empty()) {
       header_dump.append("; ");
     }
-    header_dump.append(n->data ? n->data : "");
+    header_dump.append(header.name);
+    header_dump.append(": ");
+    header_dump.append(header.value);
   }
   vinput::debug::Log("LLM request provider=%s url=%s headers=[%s]\n",
                      provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(),
@@ -335,16 +237,18 @@ void MergeExtraBody(json& request, const nlohmann::json& extra, const LlmProvide
 }
 
 std::optional<std::vector<std::string>>
-RewriteWithOpenAiCompatible(CurlConnectionCache* curl_cache, const std::string& text,
-                            const vinput::scene::Definition& scene, const LlmProvider& provider,
-                            int max_llm_candidates, std::string* error_out,
-                            const std::string& task_prompt = {},
+RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Definition& scene,
+                            const LlmProvider& provider, int max_llm_candidates,
+                            std::string* error_out, const std::string& task_prompt = {},
                             const std::atomic<bool>* shutdown_flag = nullptr,
                             const std::atomic<bool>* request_cancel_flag = nullptr,
                             std::string_view asr_var = {}, std::string_view selected_var = {}) {
-  CurlRequestContext request_context{.shutdown_flag = shutdown_flag,
-                                     .request_cancel_flag = request_cancel_flag};
-  if (CancellationRequested(request_context)) {
+  const auto is_cancelled = [&]() noexcept {
+    return (shutdown_flag != nullptr && shutdown_flag->load(std::memory_order_relaxed)) ||
+           (request_cancel_flag != nullptr && request_cancel_flag->load(std::memory_order_relaxed));
+  };
+
+  if (is_cancelled()) {
     if (error_out != nullptr) {
       error_out->clear();
     }
@@ -365,7 +269,7 @@ RewriteWithOpenAiCompatible(CurlConnectionCache* curl_cache, const std::string& 
     std::string load_err;
     auto loaded = vinput::prompt_template::LoadFromFileUri(base_prompt, &load_err);
     if (!loaded) {
-      if (error_out) {
+      if (error_out != nullptr) {
         *error_out = "Prompt file load failed: " + base_prompt + ": " + load_err;
       }
       return std::nullopt;
@@ -433,107 +337,79 @@ RewriteWithOpenAiCompatible(CurlConnectionCache* curl_cache, const std::string& 
             "empty\n",
             provider.api_key.c_str(), provider.id.c_str());
   }
-  // The cache holds one easy handle per PostProcessor. Reuse is only allowed
-  // for the same endpoint, resolved credentials and environment policy.
-  if (curl_cache == nullptr) {
-    if (error_out != nullptr) {
-      *error_out = "libcurl was not initialized.";
-    }
-    return std::nullopt;
-  }
-  auto lease = curl_cache->Acquire(CurlConnectionIdentity{
-      .endpoint = url, .credential = resolved_api_key, .proxy_policy = CurlProxyPolicySignature()});
-  CurlGuard guard;
-  guard.curl = lease.handle;
-  if (guard.curl == nullptr) {
-    if (error_out != nullptr) {
-      *error_out = "Failed to initialize libcurl easy handle.";
-    }
-    return std::nullopt;
-  }
-  guard.headers = curl_slist_append(nullptr, vinput::llm::kJsonContentTypeHeader);
+
+  std::atomic<bool> cancel_token{is_cancelled()};
+
+  vinput::net::HttpRequest req;
+  req.url = url;
+  req.method = vinput::net::HttpMethod::Post;
+  req.body = request_body;
+  req.timeout_ms = scene.timeout_ms;
+  req.connect_timeout_ms =
+      static_cast<long>(std::min(scene.timeout_ms, static_cast<int>(kDefaultConnectTimeoutMs)));
+  req.max_response_bytes = kMaxResponseBytes;
+  req.cancel_token = &cancel_token;
+  req.allow_auto_resend = false;
+  req.headers.push_back({"Content-Type", "application/json"});
+  req.headers.push_back({"User-Agent", std::string(vinput::llm::kHttpUserAgent)});
   if (!resolved_api_key.empty()) {
-    const std::string auth = std::string(vinput::llm::kAuthorizationHeader) + ": " +
-                             vinput::llm::kBearerPrefix + resolved_api_key;
-    guard.headers = curl_slist_append(guard.headers, auth.c_str());
+    req.headers.push_back({std::string(vinput::llm::kAuthorizationHeader),
+                           std::string(vinput::llm::kBearerPrefix) + resolved_api_key});
   }
+
+  req.progress_cb = [&](const vinput::net::HttpProgress&) {
+    if (is_cancelled()) {
+      cancel_token.store(true, std::memory_order_relaxed);
+    }
+  };
 
   if (vinput::debug::Enabled()) {
-    LogLlmRequest(provider, url, guard.headers, request_body);
+    LogLlmRequest(provider, url, req.headers, request_body);
   }
 
-  CurlBodyReader body_reader{.body = request_body, .offset = 0};
-  curl_easy_setopt(guard.curl, CURLOPT_POST, 1L);
-  curl_easy_setopt(guard.curl, CURLOPT_HTTPHEADER, guard.headers);
-  // See CurlBodyReader: no seek callback, so libcurl cannot automatically
-  // resend this POST if a reused connection dies mid-request.
-  curl_easy_setopt(guard.curl, CURLOPT_READFUNCTION, ReadRequestBody);
-  curl_easy_setopt(guard.curl, CURLOPT_READDATA, &body_reader);
-  curl_easy_setopt(guard.curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(request_body.size()));
-  curl_easy_setopt(guard.curl, CURLOPT_WRITEFUNCTION, WriteResponseCallback);
-  curl_easy_setopt(
-      guard.curl, CURLOPT_CONNECTTIMEOUT_MS,
-      static_cast<long>(std::min(scene.timeout_ms, static_cast<int>(kDefaultConnectTimeoutMs))));
-  curl_easy_setopt(guard.curl, CURLOPT_TIMEOUT_MS, scene.timeout_ms);
-  curl_easy_setopt(guard.curl, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(guard.curl, CURLOPT_USERAGENT, vinput::llm::kHttpUserAgent);
+  const auto res = vinput::net::HttpClient::Instance().Request(req);
 
-  std::string response_body;
-  curl_easy_setopt(guard.curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(guard.curl, CURLOPT_WRITEDATA, &response_body);
-  curl_easy_setopt(guard.curl, CURLOPT_NOPROGRESS, 0L);
-  curl_easy_setopt(guard.curl, CURLOPT_XFERINFOFUNCTION, ProgressCallback);
-  curl_easy_setopt(guard.curl, CURLOPT_XFERINFODATA, &request_context);
-
-  CURLcode curl_code = curl_easy_perform(guard.curl);
-  long status_code = 0;
-  double total_time_sec = 0.0;
-  curl_easy_getinfo(guard.curl, CURLINFO_RESPONSE_CODE, &status_code);
-  curl_easy_getinfo(guard.curl, CURLINFO_TOTAL_TIME, &total_time_sec);
-  const double total_time_ms = total_time_sec * 1000.0;
-
-  const bool cancelled =
-      curl_code == CURLE_ABORTED_BY_CALLBACK && CancellationRequested(request_context);
-
-  if (cancelled) {
+  if (res.cancelled) {
     vinput::debug::Log("LLM request provider=%s url=%s cancelled after %.1fms\n",
                        provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(),
-                       total_time_ms);
-    if (error_out) {
+                       res.total_time_ms);
+    if (error_out != nullptr) {
       error_out->clear();
     }
     return std::nullopt;
   }
 
-  if (curl_code != CURLE_OK) {
-    const std::string msg = std::string("LLM request failed: ") + curl_easy_strerror(curl_code);
+  if (!res.error_message.empty()) {
+    const std::string msg = std::string("LLM request failed: ") + res.error_message;
     fprintf(stderr, "vinput-daemon: LLM request provider=%s url=%s failed after %.1fms: %s\n",
-            provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(), total_time_ms,
-            curl_easy_strerror(curl_code));
-    if (error_out)
+            provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(), res.total_time_ms,
+            res.error_message.c_str());
+    if (error_out != nullptr) {
       *error_out = msg;
+    }
     return std::nullopt;
   }
 
-  LogResponseSummary(provider, url, status_code, total_time_ms);
+  LogResponseSummary(provider, url, res.status_code, res.total_time_ms);
 
-  if (status_code < 200 || status_code >= 300) {
-    const std::string msg = "HTTP " + std::to_string(status_code) + ": " + response_body;
+  if (res.status_code < 200 || res.status_code >= 300) {
+    const std::string msg = "HTTP " + std::to_string(res.status_code) + ": " + res.body;
     if (vinput::debug::Enabled()) {
-      LogResponseBody("LLM error response from", url, response_body);
+      LogResponseBody("LLM error response from", url, res.body);
     }
-    if (error_out)
+    if (error_out != nullptr) {
       *error_out = msg;
+    }
     return std::nullopt;
   }
 
   if (vinput::debug::Enabled()) {
-    LogResponseBody("LLM raw response from", url, response_body);
+    LogResponseBody("LLM raw response from", url, res.body);
   }
 
   json response;
   try {
-    response = json::parse(response_body);
+    response = json::parse(res.body);
   } catch (const std::exception& e) {
     fprintf(stderr, "vinput-daemon: failed to parse LLM response JSON from %s: %s\n", url.c_str(),
             e.what());
@@ -551,9 +427,7 @@ RewriteWithOpenAiCompatible(CurlConnectionCache* curl_cache, const std::string& 
 
   auto candidates = ExtractCandidates(response);
   if (candidates.empty()) {
-    fprintf(stderr,
-            "vinput-daemon: LLM response from %s returned no valid "
-            "candidates\n",
+    fprintf(stderr, "vinput-daemon: LLM response from %s returned no valid candidates\n",
             url.c_str());
     return std::nullopt;
   }
@@ -572,21 +446,6 @@ void AppendCandidate(vinput::result::Payload& payload, std::string text, const c
 }
 
 } // namespace
-
-PostProcessor::PostProcessor() {
-  const CURLcode code = curl_global_init(CURL_GLOBAL_DEFAULT);
-  if (code != CURLE_OK) {
-    fprintf(stderr, "vinput-daemon: curl_global_init failed: %s\n", curl_easy_strerror(code));
-  } else {
-    curl_cache_ = std::make_unique<CurlConnectionCache>();
-  }
-}
-
-PostProcessor::~PostProcessor() {
-  // Destroy cached easy handle before shutting down libcurl globally.
-  curl_cache_.reset();
-  curl_global_cleanup();
-}
 
 void PostProcessor::Shutdown() {
   shutting_down_.store(true, std::memory_order_relaxed);
@@ -612,9 +471,8 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
     return fallback;
   }
 
-  auto rewritten =
-      RewriteWithOpenAiCompatible(curl_cache_.get(), normalized, scene, *provider,
-                                  max_llm_candidates, error_out, {}, &shutting_down_, cancel_flag);
+  auto rewritten = RewriteWithOpenAiCompatible(normalized, scene, *provider, max_llm_candidates,
+                                               error_out, {}, &shutting_down_, cancel_flag);
   if (!rewritten.has_value()) {
     return fallback;
   }
@@ -685,7 +543,7 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
     std::string load_err;
     auto loaded = vinput::prompt_template::LoadFromFileUri(task_prompt, &load_err);
     if (!loaded) {
-      if (error_out) {
+      if (error_out != nullptr) {
         *error_out = "Prompt file load failed: " + task_prompt + ": " + load_err;
       }
       return fallback;
@@ -717,7 +575,7 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
   // Data is already embedded in task_prompt (legacy XML tags) or will be
   // substituted via {{asr}}/{{selected}} (interpolation). Pass empty text to
   // avoid double-appending.
-  auto rewritten = RewriteWithOpenAiCompatible(curl_cache_.get(), "", command_scene, *provider,
+  auto rewritten = RewriteWithOpenAiCompatible("", command_scene, *provider,
                                                command_max_llm_candidates, error_out, task_prompt,
                                                &shutting_down_, cancel_flag, asr_var, selected_var);
 

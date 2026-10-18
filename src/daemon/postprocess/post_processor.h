@@ -1,19 +1,16 @@
 #pragma once
 
 #include <atomic>
-#include <memory>
 #include <string>
 
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config_types.h"
 #include "common/scene/postprocess_scene.h"
 
-class CurlConnectionCache;
-
 class PostProcessor {
 public:
-  PostProcessor();
-  ~PostProcessor();
+  PostProcessor() = default;
+  ~PostProcessor() = default;
 
   void Shutdown();
 
@@ -30,6 +27,5 @@ public:
                                          const std::atomic<bool>* cancel_flag = nullptr) const;
 
 private:
-  std::unique_ptr<CurlConnectionCache> curl_cache_;
   mutable std::atomic<bool> shutting_down_{false};
 };
