@@ -245,7 +245,7 @@ void TestRemoteTextServiceHttpAndWs() {
 
     // Send auth payload
     const std::uint8_t mask1[4] = {0x11, 0x22, 0x33, 0x44};
-    const std::string auth_json = "{\"type\":\"auth\",\"api_key\":\"" + api_key + "\"}";
+    const std::string auth_json = std::string(R"({"type":"auth","api_key":")") + api_key + R"("})";
     TEST_ASSERT(SendRaw(ws_fd, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
                                                                  auth_json, true, mask1)));
 
@@ -258,7 +258,7 @@ void TestRemoteTextServiceHttpAndWs() {
     TEST_ASSERT(frame2.payload.find("init") != std::string::npos);
 
     // Send text update
-    const std::string update_json = "{\"type\":\"text_update\",\"text\":\"Hello from Remote\"}";
+    const std::string update_json = R"({"type":"text_update","text":"Hello from Remote"})";
     TEST_ASSERT(SendRaw(ws_fd, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
                                                                  update_json, true, mask1)));
 
