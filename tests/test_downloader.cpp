@@ -90,19 +90,38 @@ private:
         const auto head_end = buffer.find("\r\n\r\n");
         if (head_end != std::string::npos) {
           ++request_count_;
-          std::string response;
           if (buffer.find("GET /404 ") != std::string::npos) {
-            response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            const std::string response =
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
+          } else if (buffer.find("GET /204 ") != std::string::npos) {
+            const std::string response =
+                "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
+          } else if (buffer.find("GET /slow ") != std::string::npos) {
+            const std::string header =
+                "HTTP/1.1 200 OK\r\nContent-Length: 20000\r\nConnection: close\r\n\r\n";
+            send(client_fd, header.data(), header.size(), MSG_NOSIGNAL);
+            const std::string chunk(50, 'Z');
+            for (int i = 0; i < 20 && !stop_requested_.load(); ++i) {
+              if (send(client_fd, chunk.data(), chunk.size(), MSG_NOSIGNAL) <= 0) {
+                break;
+              }
+              usleep(15000);
+            }
           } else if (buffer.find("GET /large ") != std::string::npos) {
             const std::string body(100, 'X');
-            response = "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
-                       "\r\nConnection: close\r\n\r\n" + body;
+            const std::string response =
+                "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
+                "\r\nConnection: close\r\n\r\n" + body;
+            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
           } else {
             const std::string body = "Hello Downloader";
-            response = "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
-                       "\r\nConnection: close\r\n\r\n" + body;
+            const std::string response =
+                "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
+                "\r\nConnection: close\r\n\r\n" + body;
+            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
           }
-          send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
           break;
         }
       }
@@ -193,6 +212,49 @@ void TestDownloadTextCancellation() {
   AssertTrue(result.error == "download cancelled", "error is download cancelled");
   AssertTrue(server.RequestCount() == 0, "server saw no requests on pre-cancelled token");
   std::cout << "TestDownloadTextCancellation passed\n";
+}
+
+void TestDownloadTextActiveCancellation() {
+  MockHttpServer server;
+  const std::string url = BuildUrl(server, "/slow");
+
+  std::atomic<bool> cancel_token{false};
+  vinput::download::Options opts;
+  opts.cancel_token = &cancel_token;
+  opts.progress_cb = [&](const vinput::download::Progress& prog) {
+    if (prog.downloaded_bytes > 0) {
+      cancel_token.store(true, std::memory_order_relaxed);
+    }
+  };
+
+  vinput::download::Result result;
+  std::string content;
+  const bool ok = vinput::download::DownloadText({url}, opts, &content, &result);
+
+  server.Stop();
+  AssertTrue(!ok, "DownloadText fails on in-flight cancellation");
+  AssertTrue(!result.ok, "result.ok is false");
+  AssertTrue(result.error == "download cancelled", "error is download cancelled");
+  std::cout << "TestDownloadTextActiveCancellation passed\n";
+}
+
+void TestDownloadHttp204Fallback() {
+  MockHttpServer server;
+  const std::string url204 = BuildUrl(server, "/204");
+  const std::string url_ok = BuildUrl(server, "/text");
+
+  const vinput::download::Options opts;
+  vinput::download::Result result;
+  std::string content;
+  const bool ok = vinput::download::DownloadText({url204, url_ok}, opts, &content, &result);
+
+  server.Stop();
+  AssertTrue(ok, "DownloadText fallback from 204 succeeds");
+  AssertTrue(content == "Hello Downloader", "content matches");
+  AssertTrue(result.ok, "result.ok is true");
+  AssertTrue(result.resolved_url == url_ok, "resolved_url matches second URL");
+  AssertTrue(server.RequestCount() == 2, "server received 2 requests");
+  std::cout << "TestDownloadHttp204Fallback passed\n";
 }
 
 void TestDownloadFileSuccess() {
@@ -297,17 +359,50 @@ void TestDownloadFileProgressCallback() {
   std::cout << "TestDownloadFileProgressCallback passed\n";
 }
 
+void TestDownloadFileFailureCleansUpExistingDest() {
+  MockHttpServer server;
+  const std::string url404 = BuildUrl(server, "/404");
+  const auto dest = std::filesystem::temp_directory_path() /
+                    ("vinput_test_dl_cleanup_" + std::to_string(getpid()) + ".txt");
+
+  {
+    std::ofstream out(dest);
+    out << "stale data";
+  }
+  AssertTrue(std::filesystem::exists(dest), "stale file exists before test");
+
+  const vinput::download::Options opts;
+  vinput::download::Result result;
+  const bool ok = vinput::download::DownloadFile({url404}, dest, opts, &result);
+
+  server.Stop();
+  AssertTrue(!ok, "DownloadFile fails for 404");
+  AssertTrue(!result.ok, "result.ok is false");
+  AssertTrue(!std::filesystem::exists(dest), "dest file was removed on failure");
+  std::cout << "TestDownloadFileFailureCleansUpExistingDest passed\n";
+}
+
 } // namespace
 
 int main() {
+  unsetenv("http_proxy");
+  unsetenv("HTTP_PROXY");
+  unsetenv("all_proxy");
+  unsetenv("ALL_PROXY");
+  setenv("no_proxy", "127.0.0.1,localhost", 1);
+  setenv("NO_PROXY", "127.0.0.1,localhost", 1);
+
   TestDownloadTextSuccess();
   TestDownloadTextFallback();
   TestDownloadTextMaxBytes();
   TestDownloadTextCancellation();
+  TestDownloadTextActiveCancellation();
+  TestDownloadHttp204Fallback();
   TestDownloadFileSuccess();
   TestDownloadFileFallback();
   TestDownloadFileCancellation();
   TestDownloadFileProgressCallback();
+  TestDownloadFileFailureCleansUpExistingDest();
   std::cout << "All Downloader unit tests passed successfully!\n";
   return 0;
 }

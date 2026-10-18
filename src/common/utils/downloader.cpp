@@ -34,10 +34,15 @@ vinput::net::HttpRequest MakeRequest(const std::string& url, const Options& opti
   req.url = url;
   req.method = vinput::net::HttpMethod::Get;
   req.timeout_ms = options.timeout_seconds * 1000;
+  req.connect_timeout_ms = options.timeout_seconds * 1000;
   req.follow_redirects = options.follow_redirects;
   req.cancel_token = options.cancel_token;
   req.progress_cb = MakeProgressCallback(options.progress_cb);
   return req;
+}
+
+bool RequiresHttpStatusCheck(const std::string& url) {
+  return url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0;
 }
 
 void PopulateResult(const std::string& url, const vinput::net::HttpResponse& res, Result* result) {
@@ -46,15 +51,18 @@ void PopulateResult(const std::string& url, const vinput::net::HttpResponse& res
   }
   result->resolved_url = url;
   result->http_code = res.status_code;
-  result->ok = res.Ok();
-  if (res.Ok()) {
+
+  const bool http_ok = RequiresHttpStatusCheck(url) ? (res.status_code == 200) : true;
+  result->ok = res.Ok() && http_ok;
+
+  if (result->ok) {
     result->error.clear();
   } else if (res.cancelled) {
     result->error = "download cancelled";
-  } else if (res.status_code != 0) {
-    result->error = "download failed with HTTP " + std::to_string(res.status_code);
   } else if (!res.error_message.empty()) {
     result->error = "download failed: " + res.error_message;
+  } else if (RequiresHttpStatusCheck(url) && res.status_code != 200 && res.status_code != 0) {
+    result->error = "download failed with HTTP " + std::to_string(res.status_code);
   } else {
     result->error = "download failed";
   }
@@ -93,7 +101,7 @@ bool DownloadText(const std::vector<std::string>& urls, const Options& options,
     PopulateResult(url, res, &last_result);
     last_result.bytes_received = res.body.size();
 
-    if (res.Ok()) {
+    if (last_result.ok) {
       if (content != nullptr) {
         *content = std::move(res.body);
       }
@@ -132,7 +140,7 @@ bool DownloadFile(const std::vector<std::string>& urls, const std::filesystem::p
     auto res = vinput::net::HttpClient::Instance().DownloadToFile(req, dest);
     PopulateResult(url, res, &last_result);
 
-    if (res.Ok()) {
+    if (last_result.ok) {
       std::error_code ec;
       const auto sz = std::filesystem::file_size(dest, ec);
       last_result.bytes_received = ec ? 0 : sz;
@@ -150,6 +158,10 @@ bool DownloadFile(const std::vector<std::string>& urls, const std::filesystem::p
 
   if (result != nullptr) {
     *result = std::move(last_result);
+  }
+  if (!last_result.ok) {
+    std::error_code ec;
+    std::filesystem::remove(dest, ec);
   }
   return false;
 }

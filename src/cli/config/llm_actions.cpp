@@ -789,6 +789,7 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
   vinput::net::HttpRequest req;
   req.url = url;
   req.timeout_ms = 10000;
+  req.max_response_bytes = 1024 * 1024;
   req.follow_redirects = true;
   req.headers.push_back({"User-Agent", std::string(vinput::llm::kHttpUserAgent)});
   if (!resolved_api_key.empty()) {
