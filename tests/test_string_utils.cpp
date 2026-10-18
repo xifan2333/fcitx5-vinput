@@ -546,6 +546,122 @@ void TestUtf8ValidationAndTruncation() {
   TEST_ASSERT(TruncateUtf8Bytes(std::string_view("Prefix\xFFSuffix", 13), 10) == "Prefix");
 }
 
+void TestIsAsciiWhitespace() {
+  using vinput::str::IsAsciiWhitespace;
+
+  TEST_ASSERT(IsAsciiWhitespace(' '));
+  TEST_ASSERT(IsAsciiWhitespace('\t'));
+  TEST_ASSERT(IsAsciiWhitespace('\r'));
+  TEST_ASSERT(IsAsciiWhitespace('\n'));
+
+  TEST_ASSERT(!IsAsciiWhitespace('a'));
+  TEST_ASSERT(!IsAsciiWhitespace('0'));
+  TEST_ASSERT(!IsAsciiWhitespace('\0'));
+  TEST_ASSERT(!IsAsciiWhitespace('\v'));
+  TEST_ASSERT(!IsAsciiWhitespace('\f'));
+  TEST_ASSERT(!IsAsciiWhitespace('\x7f'));
+}
+
+void TestValidateUtf8TextDetailed() {
+  using vinput::str::ValidateUtf8Text;
+
+  // Valid inputs
+  auto res = ValidateUtf8Text("");
+  TEST_ASSERT(res.valid);
+
+  res = ValidateUtf8Text("hello world");
+  TEST_ASSERT(res.valid);
+
+  res = ValidateUtf8Text("语音输入法 🚀");
+  TEST_ASSERT(res.valid);
+
+  // Invalid leading byte
+  res = ValidateUtf8Text(std::string_view("\xFF", 1));
+  TEST_ASSERT(!res.valid);
+  TEST_ASSERT(res.error_offset == 0);
+  TEST_ASSERT(std::string_view(res.error_reason) == "invalid UTF-8 leading byte");
+
+  // Truncated sequence
+  res = ValidateUtf8Text(std::string_view("\xE4\xBD", 2));
+  TEST_ASSERT(!res.valid);
+  TEST_ASSERT(res.error_offset == 0);
+  TEST_ASSERT(std::string_view(res.error_reason) == "truncated UTF-8 sequence");
+
+  // Invalid continuation byte
+  res = ValidateUtf8Text(std::string_view("\xE4\xBD\x20", 3));
+  TEST_ASSERT(!res.valid);
+  TEST_ASSERT(res.error_offset == 2);
+  TEST_ASSERT(std::string_view(res.error_reason) == "invalid UTF-8 continuation byte");
+
+  // Overlong sequence
+  res = ValidateUtf8Text(std::string_view("\xE0\x80\xAF", 3));
+  TEST_ASSERT(!res.valid);
+  TEST_ASSERT(res.error_offset == 0);
+  TEST_ASSERT(std::string_view(res.error_reason) == "overlong UTF-8 sequence");
+
+  // Surrogate codepoint
+  res = ValidateUtf8Text(std::string_view("\xED\xA0\x80", 3));
+  TEST_ASSERT(!res.valid);
+  TEST_ASSERT(res.error_offset == 0);
+  TEST_ASSERT(std::string_view(res.error_reason) == "UTF-8 encodes a surrogate code point");
+
+  // Exceeds U+10FFFF
+  res = ValidateUtf8Text(std::string_view("\xF4\x90\x80\x80", 4));
+  TEST_ASSERT(!res.valid);
+  TEST_ASSERT(res.error_offset == 0);
+  TEST_ASSERT(std::string_view(res.error_reason) == "UTF-8 code point exceeds U+10FFFF");
+
+  // Embedded NUL
+  const std::string_view nul_str("hello\0world", 11);
+  res = ValidateUtf8Text(nul_str, /*allow_control_chars=*/true, /*allow_embedded_nul=*/true);
+  TEST_ASSERT(res.valid);
+
+  res = ValidateUtf8Text(nul_str, /*allow_control_chars=*/true, /*allow_embedded_nul=*/false);
+  TEST_ASSERT(!res.valid);
+  TEST_ASSERT(res.error_offset == 5);
+  TEST_ASSERT(std::string_view(res.error_reason) == "embedded NUL is not allowed");
+
+  // Control characters
+  res = ValidateUtf8Text("line1\t\r\nline2", /*allow_control_chars=*/false);
+  TEST_ASSERT(res.valid);
+
+  const std::string_view bell_str("bell\x07sound", 10);
+  res = ValidateUtf8Text(bell_str, /*allow_control_chars=*/true);
+  TEST_ASSERT(res.valid);
+
+  res = ValidateUtf8Text(bell_str, /*allow_control_chars=*/false);
+  TEST_ASSERT(!res.valid);
+  TEST_ASSERT(res.error_offset == 4);
+  TEST_ASSERT(std::string_view(res.error_reason) == "control character is not allowed");
+}
+
+void TestParseFloatStrict() {
+  using vinput::str::ParseFloatStrict;
+
+  float v = 0.0f;
+  TEST_ASSERT(ParseFloatStrict("0", &v) && v == 0.0f);
+  TEST_ASSERT(ParseFloatStrict("2.5", &v) && v == 2.5f);
+  TEST_ASSERT(ParseFloatStrict("+10.0", &v) && v == 10.0f);
+  TEST_ASSERT(ParseFloatStrict("-1.5", &v) && v == -1.5f);
+  TEST_ASSERT(ParseFloatStrict("1e-3", &v) && v == 0.001f);
+  TEST_ASSERT(ParseFloatStrict("3.5")); // nullptr overload check
+
+  // Strict rejections
+  TEST_ASSERT(!ParseFloatStrict(""));
+  TEST_ASSERT(!ParseFloatStrict("+"));
+  TEST_ASSERT(!ParseFloatStrict("-"));
+  TEST_ASSERT(!ParseFloatStrict("nan"));
+  TEST_ASSERT(!ParseFloatStrict("NaN"));
+  TEST_ASSERT(!ParseFloatStrict("inf"));
+  TEST_ASSERT(!ParseFloatStrict("Infinity"));
+  TEST_ASSERT(!ParseFloatStrict("1.2.3"));
+  TEST_ASSERT(!ParseFloatStrict("++1"));
+  TEST_ASSERT(!ParseFloatStrict("1e9999"));
+  TEST_ASSERT(!ParseFloatStrict("12abc"));
+  TEST_ASSERT(!ParseFloatStrict(" 2.5"));
+  TEST_ASSERT(!ParseFloatStrict("2.5 "));
+}
+
 int main() {
   TestTrimAsciiWhitespace();
   TestToLowerAndToUpperAscii();
@@ -563,5 +679,8 @@ int main() {
   TestMaskSecret();
   TestDrainLinesFromBuffer();
   TestUtf8ValidationAndTruncation();
+  TestIsAsciiWhitespace();
+  TestValidateUtf8TextDetailed();
+  TestParseFloatStrict();
   return 0;
 }
