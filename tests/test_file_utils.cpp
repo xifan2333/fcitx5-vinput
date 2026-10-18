@@ -156,9 +156,8 @@ void TestComputeFileSha256() {
 
   // 2. Empty file
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
-  {
-    const std::ofstream out(empty_file, std::ios::binary);
-  }
+  std::ofstream out_empty(empty_file, std::ios::binary);
+  out_empty.close();
   const std::string hash_empty = ComputeFileSha256(empty_file, &err);
   TEST_ASSERT(err.empty());
   TEST_ASSERT(hash_empty == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
@@ -219,9 +218,8 @@ void TestReadTextFile() {
 
   // 4. Empty file with max_bytes limit
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
-  {
-    const std::ofstream out(empty_file, std::ios::binary);
-  }
+  std::ofstream out_empty(empty_file, std::ios::binary);
+  out_empty.close();
   content.clear();
   TEST_ASSERT(ReadTextFile(empty_file, &content, &err, 10));
   TEST_ASSERT(err.empty());
