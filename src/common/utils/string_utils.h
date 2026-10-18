@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -673,7 +674,7 @@ inline bool ParseFloatStrict(std::string_view value, float* out = nullptr) noexc
       return false;
     }
   }
-  float val = 0.0f;
+  float val = 0.0F;
   const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
   if (ec != std::errc{} || ptr != sv.data() + sv.size() || !std::isfinite(val)) {
     return false;

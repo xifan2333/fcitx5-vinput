@@ -638,12 +638,12 @@ void TestValidateUtf8TextDetailed() {
 void TestParseFloatStrict() {
   using vinput::str::ParseFloatStrict;
 
-  float v = 0.0f;
-  TEST_ASSERT(ParseFloatStrict("0", &v) && v == 0.0f);
-  TEST_ASSERT(ParseFloatStrict("2.5", &v) && v == 2.5f);
-  TEST_ASSERT(ParseFloatStrict("+10.0", &v) && v == 10.0f);
-  TEST_ASSERT(ParseFloatStrict("-1.5", &v) && v == -1.5f);
-  TEST_ASSERT(ParseFloatStrict("1e-3", &v) && v == 0.001f);
+  float v = 0.0F;
+  TEST_ASSERT(ParseFloatStrict("0", &v) && v == 0.0F);
+  TEST_ASSERT(ParseFloatStrict("2.5", &v) && v == 2.5F);
+  TEST_ASSERT(ParseFloatStrict("+10.0", &v) && v == 10.0F);
+  TEST_ASSERT(ParseFloatStrict("-1.5", &v) && v == -1.5F);
+  TEST_ASSERT(ParseFloatStrict("1e-3", &v) && v == 0.001F);
   TEST_ASSERT(ParseFloatStrict("3.5")); // nullptr overload check
 
   // Strict rejections
