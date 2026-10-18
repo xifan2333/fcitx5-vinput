@@ -18,6 +18,7 @@
 #include "common/registry/registry_fetch.h"
 #include "common/utils/downloader.h"
 #include "common/utils/file_utils.h"
+#include "common/utils/path_utils.h"
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -27,17 +28,6 @@ using json = nlohmann::json;
 // ---------------------------------------------------------------------------
 
 namespace {
-
-bool IsPathWithinRoot(const fs::path& path, const fs::path& root) {
-  auto path_it = path.begin();
-  auto root_it = root.begin();
-  for (; root_it != root.end(); ++root_it, ++path_it) {
-    if (path_it == path.end() || *path_it != *root_it) {
-      return false;
-    }
-  }
-  return true;
-}
 
 std::vector<RemoteModelEntry> ParseRegistryJson(const std::string& content, std::string* error) {
   std::vector<RemoteModelEntry> entries;
@@ -916,7 +906,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
       break;
     }
 
-    if (!IsPathWithinRoot(fs::weakly_canonical(check_path), dest_root)) {
+    if (!vinput::path::IsPathWithinRoot(fs::weakly_canonical(check_path), dest_root)) {
       if (error)
         *error = "archive entry escapes extraction root: " + entry_path;
       success = false;

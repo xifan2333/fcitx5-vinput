@@ -74,6 +74,17 @@ std::filesystem::path XdgCacheHome() {
 
 } // namespace
 
+bool IsPathWithinRoot(const std::filesystem::path& path, const std::filesystem::path& root) {
+  auto path_it = path.begin();
+  auto root_it = root.begin();
+  for (; root_it != root.end(); ++root_it, ++path_it) {
+    if (path_it == path.end() || *path_it != *root_it) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::filesystem::path VinputConfigDir() {
   return XdgConfigHome() / "vinput";
 }

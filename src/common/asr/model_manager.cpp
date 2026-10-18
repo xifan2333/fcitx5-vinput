@@ -54,17 +54,6 @@ std::vector<std::string> SplitModelId(std::string_view model_id) {
   return {"model", source, name};
 }
 
-bool IsPathWithinRoot(const fs::path& path, const fs::path& root) {
-  auto path_it = path.begin();
-  auto root_it = root.begin();
-  for (; root_it != root.end(); ++root_it, ++path_it) {
-    if (path_it == path.end() || *path_it != *root_it) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // Walk only the install layout produced by ModelRepository::InstallModel:
 //   <base>/<engine>/<name>/vinput-model.json
 // corresponding to id model.<engine>.<name>. Never recurse into model file trees.
@@ -133,7 +122,7 @@ bool ResolveModelMetadataPath(const fs::path& model_dir, const fs::path& model_r
     }
     return false;
   }
-  if (!IsPathWithinRoot(candidate, model_root)) {
+  if (!vinput::path::IsPathWithinRoot(candidate, model_root)) {
     if (error) {
       *error = "path escapes model directory: " + raw_path;
     }
@@ -610,7 +599,7 @@ bool ModelManager::Remove(const std::string& model_id, std::string* error) const
     return false;
   }
 
-  if (!IsPathWithinRoot(dir, base)) {
+  if (!vinput::path::IsPathWithinRoot(dir, base)) {
     if (error)
       *error = "invalid model id: " + model_id;
     return false;

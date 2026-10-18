@@ -3,6 +3,8 @@
 #include <string_view>
 
 namespace vinput::path {
+[[nodiscard]] bool IsPathWithinRoot(const std::filesystem::path& path,
+                                    const std::filesystem::path& root);
 std::string_view DaemonServiceUnitName();
 std::filesystem::path DaemonExecutablePath();
 std::filesystem::path DaemonServiceUnitInstallPath();
