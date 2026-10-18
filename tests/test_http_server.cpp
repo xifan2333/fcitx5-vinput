@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <netinet/in.h>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -145,6 +146,13 @@ void TestHttpRouting() {
     return res;
   });
 
+  server.Get("/nocontent", [](const vinput::net::HttpRequest&) {
+    vinput::net::HttpResponse res;
+    res.status_code = 204;
+    res.body = "should_be_suppressed";
+    return res;
+  });
+
   TEST_ASSERT(server.Start());
   const std::uint16_t port = server.BoundPort();
   TEST_ASSERT(port > 0);
@@ -182,6 +190,18 @@ void TestHttpRouting() {
     const std::string resp = RecvUntil(fd, "pong");
     TEST_ASSERT(resp.find("HTTP/1.1 200 OK") != std::string::npos);
     TEST_ASSERT(resp.find("pong") != std::string::npos);
+    close(fd);
+  }
+
+  // 4. GET /nocontent (204 No Content suppresses body and Content-Length)
+  {
+    const int fd = ConnectToPort(port);
+    TEST_ASSERT(fd >= 0);
+    TEST_ASSERT(SendRaw(fd, "GET /nocontent HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"));
+    const std::string resp = RecvUntil(fd, "\r\n\r\n");
+    TEST_ASSERT(resp.find("HTTP/1.1 204 No Content") != std::string::npos);
+    TEST_ASSERT(resp.find("Content-Length") == std::string::npos);
+    TEST_ASSERT(resp.find("should_be_suppressed") == std::string::npos);
     close(fd);
   }
 
@@ -245,6 +265,18 @@ void TestHttpErrors() {
     TEST_ASSERT(SendRaw(fd, req));
     const std::string resp = RecvUntil(fd, "\r\n\r\n");
     TEST_ASSERT(resp.find("HTTP/1.1 413 Payload Too Large") != std::string::npos);
+    close(fd);
+  }
+
+  // 5. Malformed Content-Length (strictly numeric)
+  {
+    const int fd = ConnectToPort(port);
+    TEST_ASSERT(fd >= 0);
+    const std::string req =
+        "POST /ping HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 10junk\r\n\r\n12345";
+    TEST_ASSERT(SendRaw(fd, req));
+    const std::string resp = RecvUntil(fd, "\r\n\r\n");
+    TEST_ASSERT(resp.find("HTTP/1.1 400 Bad Request") != std::string::npos);
     close(fd);
   }
 
@@ -323,13 +355,23 @@ void TestWebSocketUpgradeAndDuplex() {
   TEST_ASSERT(resp_frame.header.opcode == vinput::net::WsOpcode::kPong);
   TEST_ASSERT(resp_frame.payload == "ping_data");
 
-  // 4. Close frame
-  const std::string client_close =
-      vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kClose, "\x03\xE8", true, mask3);
-  TEST_ASSERT(SendRaw(fd, client_close));
+  // 4. SendJson test
+  active_session->SendJson(nlohmann::json{{"status", "ok"}, {"count", 42}});
+  TEST_ASSERT(RecvFrame(fd, &resp_frame));
+  TEST_ASSERT(resp_frame.header.opcode == vinput::net::WsOpcode::kText);
+  TEST_ASSERT(resp_frame.payload.find("\"status\":\"ok\"") != std::string::npos);
+  TEST_ASSERT(resp_frame.payload.find("\"count\":42") != std::string::npos);
 
+  // 5. Unmasked client frame must be rejected with 1002 (RFC 6455 5.1)
+  const std::string unmasked_frame =
+      vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText, "unmasked", true, nullptr);
+  TEST_ASSERT(SendRaw(fd, unmasked_frame));
   TEST_ASSERT(RecvFrame(fd, &resp_frame));
   TEST_ASSERT(resp_frame.header.opcode == vinput::net::WsOpcode::kClose);
+  TEST_ASSERT(resp_frame.payload.size() >= 2);
+  const auto close_code = (static_cast<std::uint8_t>(resp_frame.payload[0]) << 8) |
+                          static_cast<std::uint8_t>(resp_frame.payload[1]);
+  TEST_ASSERT(close_code == 1002);
 
   close(fd);
   server.Stop();

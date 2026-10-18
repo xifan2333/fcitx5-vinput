@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +29,7 @@ public:
 
   virtual bool SendText(std::string_view text) = 0;
   virtual bool SendBinary(std::string_view binary) = 0;
+  virtual bool SendJson(const nlohmann::json& json_val) = 0;
   virtual bool SendPing(std::string_view payload = {}) = 0;
   virtual bool SendPong(std::string_view payload = {}) = 0;
   virtual void Close(std::uint16_t status_code = 1000, std::string_view reason = {}) = 0;
@@ -49,6 +51,8 @@ struct HttpServerConfig {
   std::uint16_t port = 0; // 0 for automatic ephemeral port allocation
   std::size_t max_request_body_bytes = 1024ULL * 1024ULL;
   std::size_t max_ws_payload_bytes = 16ULL * 1024ULL * 1024ULL;
+  std::size_t max_connections = 64;
+  int read_timeout_seconds = 15;
 };
 
 struct WebSocketEndpoint {
@@ -83,10 +87,10 @@ public:
   // Lifecycle management
   bool Start();
   void Stop();
-  bool IsRunning() const;
+  [[nodiscard]] bool IsRunning() const;
 
-  std::uint16_t BoundPort() const;
-  std::string BoundAddress() const;
+  [[nodiscard]] std::uint16_t BoundPort() const;
+  [[nodiscard]] std::string BoundAddress() const;
 
 private:
   struct ClientWorker {
