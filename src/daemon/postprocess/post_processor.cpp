@@ -350,6 +350,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   req.max_response_bytes = kMaxResponseBytes;
   req.cancel_token = &cancel_token;
   req.allow_auto_resend = false;
+  req.follow_redirects = false;
   req.headers.push_back({"Content-Type", "application/json"});
   req.headers.push_back({"User-Agent", std::string(vinput::llm::kHttpUserAgent)});
   if (!resolved_api_key.empty()) {

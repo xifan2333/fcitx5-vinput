@@ -66,17 +66,17 @@ public:
 
   [[nodiscard]] std::uint16_t Port() const { return port_; }
 
-  std::vector<std::string> CapturedBodies() const {
+  [[nodiscard]] std::vector<std::string> CapturedBodies() const {
     const std::lock_guard lock(mutex_);
     return captured_bodies_;
   }
 
-  std::vector<std::string> CapturedHeaders() const {
+  [[nodiscard]] std::vector<std::string> CapturedHeaders() const {
     const std::lock_guard lock(mutex_);
     return captured_headers_;
   }
 
-  int RequestCount() const { return request_count_.load(); }
+  [[nodiscard]] int RequestCount() const { return request_count_.load(); }
 
 private:
   bool ReadHttpRequest(int client_fd, std::string& out_body, std::string& out_header) const {
@@ -139,27 +139,27 @@ private:
           response =
               "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: "
               "19\r\nConnection: close\r\n\r\nInternal Server Err";
+        } else if (request_header.find("POST /redirect/") != std::string::npos) {
+          response = "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + std::to_string(port_) +
+                     "/v1/chat/completions\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         } else if (request_header.find("POST /malformed/") != std::string::npos) {
           const std::string body = "{not-json}";
           response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                      std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
         } else if (request_header.find("POST /empty_cands/") != std::string::npos) {
-          const std::string body =
-              "{\"choices\":[{\"message\":{\"content\":\"{\\\"candidates\\\":[]}\"}}]}";
+          const std::string body = R"({"choices":[{"message":{"content":"{\"candidates\":[]}"}}]})";
           response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                      std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
         } else if (request_header.find("POST /slow/") != std::string::npos) {
           std::this_thread::sleep_for(std::chrono::milliseconds(300));
           const std::string body =
-              "{\"choices\":[{\"message\":{\"content\":\"{\\\"candidates\\\":[\\\"Slow "
-              "Result\\\"]}\"}}]}";
+              R"({"choices":[{"message":{"content":"{\"candidates\":[\"Slow Result\"]}"}}]})";
           response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                      std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
         } else {
           // Standard successful OpenAI compatible response
           const std::string body =
-              "{\"choices\":[{\"message\":{\"content\":\"{\\\"candidates\\\":[\\\"Candidate "
-              "1\\\",\\\"Candidate 2\\\"]}\"}}]}";
+              R"({"choices":[{"message":{"content":"{\"candidates\":[\"Candidate 1\",\"Candidate 2\"]}"}}]})";
           response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                      std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
         }
@@ -205,7 +205,7 @@ vinput::scene::Definition CreateTestScene() {
 }
 
 void TestProcessSuccess() {
-  MockHttpServer server;
+  const MockHttpServer server;
   const CoreConfig config = CreateTestConfig(server.Port(), "/v1");
   const auto scene = CreateTestScene();
   const PostProcessor processor;
@@ -235,12 +235,14 @@ void TestProcessSuccess() {
   const auto req_json = nlohmann::json::parse(bodies[0]);
   AssertTrue(req_json["model"] == "gpt-test-model", "model passed in request json");
   AssertTrue(req_json["custom_knob"] == 42, "extra_body passed in request json");
-  AssertTrue(bodies[0].find("<vinput-asr>\nhello world\n</vinput-asr>") != std::string::npos,
+
+  const auto prompt_content = req_json["messages"][0]["content"].get<std::string>();
+  AssertTrue(prompt_content.find("<vinput-asr>\nhello world\n</vinput-asr>") != std::string::npos,
              "ASR text wrapped in XML tags in prompt");
 }
 
 void TestProcessCommandSuccess() {
-  MockHttpServer server;
+  const MockHttpServer server;
   const CoreConfig config = CreateTestConfig(server.Port(), "/v1");
   vinput::scene::Definition command_scene;
   command_scene.id = "translate";
@@ -267,13 +269,15 @@ void TestProcessCommandSuccess() {
 
   const auto bodies = server.CapturedBodies();
   AssertTrue(!bodies.empty(), "server should receive command request body");
-  AssertTrue(bodies[0].find("Translate to English from 你好") != std::string::npos,
+  const auto req_json = nlohmann::json::parse(bodies[0]);
+  const auto prompt_content = req_json["messages"][0]["content"].get<std::string>();
+  AssertTrue(prompt_content.find("Translate to English from 你好") != std::string::npos,
              "template interpolation applied for command prompt");
 }
 
 void TestProcessEmptyInputFallback() {
   const PostProcessor processor;
-  CoreConfig config;
+  const CoreConfig config;
   const auto scene = CreateTestScene();
 
   const auto payload = processor.Process("   ", scene, config, nullptr, nullptr);
@@ -285,7 +289,7 @@ void TestProcessEmptyInputFallback() {
 }
 
 void TestProcessCancelFlagPreCheck() {
-  MockHttpServer server;
+  const MockHttpServer server;
   const CoreConfig config = CreateTestConfig(server.Port(), "/v1");
   const auto scene = CreateTestScene();
   const PostProcessor processor;
@@ -301,7 +305,7 @@ void TestProcessCancelFlagPreCheck() {
 }
 
 void TestProcessInFlightCancellation() {
-  MockHttpServer server;
+  const MockHttpServer server;
   const CoreConfig config = CreateTestConfig(server.Port(), "/slow");
   auto scene = CreateTestScene();
   scene.timeout_ms = 5000;
@@ -323,7 +327,7 @@ void TestProcessInFlightCancellation() {
 }
 
 void TestPostProcessorShutdown() {
-  MockHttpServer server;
+  const MockHttpServer server;
   const CoreConfig config = CreateTestConfig(server.Port(), "/v1");
   const auto scene = CreateTestScene();
   PostProcessor processor;
@@ -338,7 +342,7 @@ void TestPostProcessorShutdown() {
 }
 
 void TestHttp500ErrorFallback() {
-  MockHttpServer server;
+  const MockHttpServer server;
   const CoreConfig config = CreateTestConfig(server.Port(), "/error500");
   const auto scene = CreateTestScene();
   const PostProcessor processor;
@@ -351,8 +355,22 @@ void TestHttp500ErrorFallback() {
   AssertTrue(payload.commitText == "500 test", "fallback to raw text on error");
 }
 
+void TestRedirectErrorFallback() {
+  const MockHttpServer server;
+  const CoreConfig config = CreateTestConfig(server.Port(), "/redirect");
+  const auto scene = CreateTestScene();
+  const PostProcessor processor;
+
+  std::string error_out;
+  const auto payload = processor.Process("redirect test", scene, config, &error_out, nullptr);
+
+  AssertTrue(!error_out.empty(), "error_out populated on HTTP 302 redirect");
+  AssertTrue(error_out.find("302") != std::string::npos, "error_out mentions HTTP 302");
+  AssertTrue(payload.commitText == "redirect test", "fallback to raw text on redirect");
+}
+
 void TestMalformedJsonFallback() {
-  MockHttpServer server;
+  const MockHttpServer server;
   const CoreConfig config = CreateTestConfig(server.Port(), "/malformed");
   const auto scene = CreateTestScene();
   const PostProcessor processor;
@@ -363,7 +381,7 @@ void TestMalformedJsonFallback() {
 }
 
 void TestEmptyCandidatesFallback() {
-  MockHttpServer server;
+  const MockHttpServer server;
   const CoreConfig config = CreateTestConfig(server.Port(), "/empty_cands");
   const auto scene = CreateTestScene();
   const PostProcessor processor;
@@ -374,7 +392,7 @@ void TestEmptyCandidatesFallback() {
 }
 
 void TestProviderNotFoundFallback() {
-  CoreConfig config;
+  const CoreConfig config;
   auto scene = CreateTestScene();
   scene.provider_id = "missing_provider";
   const PostProcessor processor;
@@ -394,6 +412,7 @@ int main() {
   TestProcessInFlightCancellation();
   TestPostProcessorShutdown();
   TestHttp500ErrorFallback();
+  TestRedirectErrorFallback();
   TestMalformedJsonFallback();
   TestEmptyCandidatesFallback();
   TestProviderNotFoundFallback();

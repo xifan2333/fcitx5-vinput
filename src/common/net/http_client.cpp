@@ -229,6 +229,9 @@ int TransferInfoCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, cu
       ctx->callback_exception = true;
       return 1;
     }
+    if (ctx->cancel_token != nullptr && ctx->cancel_token->load(std::memory_order_relaxed)) {
+      return 1;
+    }
   }
   return 0;
 }
