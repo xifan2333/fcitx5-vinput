@@ -2,6 +2,7 @@
 
 #include <QLabel>
 #include <QLineEdit>
+#include <QPointer>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QTabWidget>
@@ -23,6 +24,7 @@ class ResourcePage : public QWidget {
 
 public:
   explicit ResourcePage(QWidget* parent = nullptr);
+  ~ResourcePage() override;
 
   void reload();
 
@@ -79,7 +81,7 @@ private:
   QPushButton* btnUpdateAdapter_;
   QPushButton* btnRemoveAdapter_;
   QPushButton* btnRefreshResources_;
-  DownloadWorker* downloadWorker_ = nullptr;
+  QPointer<DownloadWorker> downloadWorker_;
   std::vector<RemoteModelEntry> remoteModels_;
   std::vector<vinput::script::RegistryEntry> remoteProviders_;
   std::vector<vinput::script::RegistryEntry> remoteAdapters_;
