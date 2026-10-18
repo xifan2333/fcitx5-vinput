@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "common/net/http_server.h"
@@ -38,7 +39,9 @@ int ConnectToPort(std::uint16_t port) {
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
   inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
-  if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+  sockaddr sa{};
+  std::memcpy(&sa, &addr, sizeof(addr));
+  if (connect(fd, &sa, sizeof(sa)) != 0) {
     close(fd);
     return -1;
   }

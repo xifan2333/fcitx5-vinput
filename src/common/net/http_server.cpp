@@ -299,7 +299,7 @@ public:
     CloseInternal(status_code, reason, true);
   }
 
-  bool IsOpen() const override { return !closed_.load(); }
+  [[nodiscard]] bool IsOpen() const override { return !closed_.load(); }
 
   void
   SetOnMessage(std::function<void(std::string_view payload, bool is_binary)> callback) override {
@@ -584,15 +584,13 @@ bool HttpServer::Start() {
   const int pflags = fcntl(stop_pipe_[0], F_GETFL, 0);
   fcntl(stop_pipe_[0], F_SETFL, pflags | O_NONBLOCK);
 
-  union {
-    sockaddr_storage storage;
-    sockaddr sa;
-  } ss{};
-  socklen_t slen = sizeof(ss.storage);
-  if (getsockname(listen_fd, &ss.sa, &slen) == 0) {
+  sockaddr_storage ss{};
+  socklen_t slen = sizeof(ss);
+  auto* sa = static_cast<sockaddr*>(static_cast<void*>(&ss));
+  if (getsockname(listen_fd, sa, &slen) == 0) {
     char host_buf[NI_MAXHOST];
     char serv_buf[NI_MAXSERV];
-    if (getnameinfo(&ss.sa, slen, host_buf, sizeof(host_buf), serv_buf, sizeof(serv_buf),
+    if (getnameinfo(sa, slen, host_buf, sizeof(host_buf), serv_buf, sizeof(serv_buf),
                     NI_NUMERICHOST | NI_NUMERICSERV) == 0) {
       bound_address_ = host_buf;
       bound_port_ = static_cast<std::uint16_t>(std::atoi(serv_buf));
@@ -698,12 +696,10 @@ void HttpServer::AcceptLoop() {
       break;
     }
     if ((pfd[0].revents & POLLIN) != 0) {
-      union {
-        sockaddr_storage storage;
-        sockaddr sa;
-      } client_addr{};
-      socklen_t client_len = sizeof(client_addr.storage);
-      const int client_fd = accept(listen_fd_, &client_addr.sa, &client_len);
+      sockaddr_storage client_addr{};
+      socklen_t client_len = sizeof(client_addr);
+      auto* sa = static_cast<sockaddr*>(static_cast<void*>(&client_addr));
+      const int client_fd = accept(listen_fd_, sa, &client_len);
       if (client_fd < 0) {
         if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
           continue;

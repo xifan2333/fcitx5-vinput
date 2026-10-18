@@ -20,12 +20,18 @@ namespace vinput::net {
 class WebSocketSession {
 public:
   virtual ~WebSocketSession() = default;
+  WebSocketSession() = default;
+  WebSocketSession(const WebSocketSession&) = delete;
+  WebSocketSession& operator=(const WebSocketSession&) = delete;
+  WebSocketSession(WebSocketSession&&) = delete;
+  WebSocketSession& operator=(WebSocketSession&&) = delete;
+
   virtual bool SendText(std::string_view text) = 0;
   virtual bool SendBinary(std::string_view binary) = 0;
   virtual bool SendPing(std::string_view payload = {}) = 0;
   virtual bool SendPong(std::string_view payload = {}) = 0;
   virtual void Close(std::uint16_t status_code = 1000, std::string_view reason = {}) = 0;
-  virtual bool IsOpen() const = 0;
+  [[nodiscard]] virtual bool IsOpen() const = 0;
 
   virtual void
   SetOnMessage(std::function<void(std::string_view payload, bool is_binary)> callback) = 0;
@@ -41,8 +47,8 @@ using WebSocketAuthorizer = std::function<std::optional<HttpResponse>(const Http
 struct HttpServerConfig {
   std::string host = "127.0.0.1";
   std::uint16_t port = 0; // 0 for automatic ephemeral port allocation
-  std::size_t max_request_body_bytes = 1024 * 1024;
-  std::size_t max_ws_payload_bytes = 16ULL * 1024 * 1024;
+  std::size_t max_request_body_bytes = 1024ULL * 1024ULL;
+  std::size_t max_ws_payload_bytes = 16ULL * 1024ULL * 1024ULL;
 };
 
 struct WebSocketEndpoint {
