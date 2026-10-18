@@ -584,13 +584,12 @@ bool HttpServer::Start() {
   const int pflags = fcntl(stop_pipe_[0], F_GETFL, 0);
   fcntl(stop_pipe_[0], F_SETFL, pflags | O_NONBLOCK);
 
-  sockaddr_storage ss{};
-  socklen_t slen = sizeof(ss);
-  auto* sa = static_cast<sockaddr*>(static_cast<void*>(&ss));
-  if (getsockname(listen_fd, sa, &slen) == 0) {
+  sockaddr sa_buf[2]{};
+  socklen_t slen = sizeof(sa_buf);
+  if (getsockname(listen_fd, &sa_buf[0], &slen) == 0) {
     char host_buf[NI_MAXHOST];
     char serv_buf[NI_MAXSERV];
-    if (getnameinfo(sa, slen, host_buf, sizeof(host_buf), serv_buf, sizeof(serv_buf),
+    if (getnameinfo(&sa_buf[0], slen, host_buf, sizeof(host_buf), serv_buf, sizeof(serv_buf),
                     NI_NUMERICHOST | NI_NUMERICSERV) == 0) {
       bound_address_ = host_buf;
       bound_port_ = static_cast<std::uint16_t>(std::atoi(serv_buf));
@@ -696,10 +695,7 @@ void HttpServer::AcceptLoop() {
       break;
     }
     if ((pfd[0].revents & POLLIN) != 0) {
-      sockaddr_storage client_addr{};
-      socklen_t client_len = sizeof(client_addr);
-      auto* sa = static_cast<sockaddr*>(static_cast<void*>(&client_addr));
-      const int client_fd = accept(listen_fd_, sa, &client_len);
+      const int client_fd = accept(listen_fd_, nullptr, nullptr);
       if (client_fd < 0) {
         if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
           continue;

@@ -4,12 +4,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <netinet/in.h>
 #include <optional>
-#include <poll.h>
 #include <string>
 #include <string_view>
+#include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -39,9 +40,9 @@ int ConnectToPort(std::uint16_t port) {
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
   inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
-  sockaddr sa{};
-  std::memcpy(&sa, &addr, sizeof(addr));
-  if (connect(fd, &sa, sizeof(sa)) != 0) {
+  sockaddr sa_buf[2]{};
+  std::memcpy(&sa_buf[0], &addr, sizeof(addr));
+  if (connect(fd, &sa_buf[0], sizeof(addr)) != 0) {
     close(fd);
     return -1;
   }
@@ -79,7 +80,7 @@ std::string RecvUntil(int fd, std::string_view delimiter, int timeout_ms = 3000)
     pfd.fd = fd;
     pfd.events = POLLIN;
     const int ret = poll(&pfd, 1, 100);
-    if (ret > 0 && (pfd.revents & POLLIN)) {
+    if (ret > 0 && (pfd.revents & POLLIN) != 0) {
       const ssize_t n = recv(fd, buf, sizeof(buf), 0);
       if (n > 0) {
         result.append(buf, static_cast<std::size_t>(n));
@@ -99,7 +100,7 @@ bool RecvFrame(int fd, vinput::net::WsFrame* out_frame, int timeout_ms = 3000) {
     std::size_t consumed = 0;
     std::string err;
     const auto status =
-        vinput::net::DecodeWebSocketFrame(buffer, out_frame, &consumed, 1024 * 1024, &err);
+        vinput::net::DecodeWebSocketFrame(buffer, out_frame, &consumed, 1024ULL * 1024ULL, &err);
     if (status == vinput::net::WsDecodeStatus::kOk) {
       return true;
     }
@@ -113,7 +114,7 @@ bool RecvFrame(int fd, vinput::net::WsFrame* out_frame, int timeout_ms = 3000) {
     pfd.fd = fd;
     pfd.events = POLLIN;
     const int ret = poll(&pfd, 1, 100);
-    if (ret > 0 && (pfd.revents & POLLIN)) {
+    if (ret > 0 && (pfd.revents & POLLIN) != 0) {
       const ssize_t n = recv(fd, buf, sizeof(buf), 0);
       if (n > 0) {
         buffer.append(buf, static_cast<std::size_t>(n));
@@ -259,7 +260,7 @@ void TestWebSocketUpgradeAndDuplex() {
   server.UpgradeWebSocket(
       "/ws",
       [&active_session](std::shared_ptr<vinput::net::WebSocketSession> session) {
-        active_session = session;
+        active_session = std::move(session);
       },
       [&active_session](std::string_view msg, bool is_binary) {
         if (!is_binary && msg == "hello") {
@@ -340,7 +341,7 @@ void TestWebSocketAuthorizer() {
 
   server.UpgradeWebSocket(
       "/secure",
-      [](std::shared_ptr<vinput::net::WebSocketSession>, const vinput::net::HttpRequest&) {},
+      [](const std::shared_ptr<vinput::net::WebSocketSession>&, const vinput::net::HttpRequest&) {},
       [](const vinput::net::HttpRequest& req) -> std::optional<vinput::net::HttpResponse> {
         for (const auto& h : req.headers) {
           if (vinput::str::EqualsIgnoreCase(h.name, "Authorization") &&
