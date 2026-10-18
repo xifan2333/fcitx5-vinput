@@ -76,7 +76,6 @@ target_link_libraries(daemon PRIVATE
     common
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
-    CURL::libcurl
     ${VINPUT_LOCAL_ASR_LIBS}
     pthread
 )
