@@ -229,7 +229,7 @@ bool RemoteTextService::Synchronize(const CoreConfig& config, std::string* error
 }
 
 void RemoteTextService::SetSessionControlCallbacks(StartCallback on_start, StopCallback on_stop) {
-  const std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+  const std::lock_guard<std::mutex> lock(callback_mutex_);
   on_start_ = std::move(on_start);
   on_stop_ = std::move(on_stop);
 }
@@ -237,7 +237,7 @@ void RemoteTextService::SetSessionControlCallbacks(StartCallback on_start, StopC
 void RemoteTextService::MaybeTriggerStart() {
   StartCallback cb;
   {
-    const std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+    const std::lock_guard<std::mutex> lock(callback_mutex_);
     cb = on_start_;
   }
   if (!cb) {
@@ -251,7 +251,10 @@ void RemoteTextService::MaybeTriggerStart() {
     }
   }
   if (needs_start) {
-    cb();
+    bool expected = false;
+    if (start_in_progress_.compare_exchange_strong(expected, true)) {
+      cb();
+    }
   }
 }
 
@@ -393,6 +396,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
 
 void RemoteTextService::Shutdown() {
   const bool was_running = running_.exchange(false, std::memory_order_acq_rel);
+  start_in_progress_.store(false, std::memory_order_release);
   {
     const std::lock_guard<std::mutex> lock(debounce_mutex_);
     debounce_stop_ = true;
@@ -702,6 +706,8 @@ void RemoteTextService::SendEmptyCommit(
 }
 
 void RemoteTextService::SendFinalResult() {
+  start_in_progress_.store(false, std::memory_order_release);
+
   std::shared_ptr<vinput::net::WebSocketSession> session;
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
@@ -711,6 +717,14 @@ void RemoteTextService::SendFinalResult() {
   const std::string text = GetText();
   if (text.empty()) {
     NotifyInput("committed");
+    StopCallback stop_cb;
+    {
+      const std::lock_guard<std::mutex> lock(callback_mutex_);
+      stop_cb = on_stop_;
+    }
+    if (stop_cb) {
+      stop_cb("");
+    }
     return;
   }
 
@@ -739,7 +753,7 @@ void RemoteTextService::SendFinalResult() {
 
   StopCallback stop_cb;
   {
-    const std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+    const std::lock_guard<std::mutex> lock(callback_mutex_);
     stop_cb = on_stop_;
   }
   if (stop_cb) {

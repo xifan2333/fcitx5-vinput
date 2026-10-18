@@ -71,8 +71,10 @@ private:
 
   Settings settings_;
   mutable std::mutex lifecycle_mutex_;
+  mutable std::mutex callback_mutex_;
   StartCallback on_start_;
   StopCallback on_stop_;
+  std::atomic<bool> start_in_progress_{false};
   std::atomic<bool> running_{false};
   bool service_started_ = false;
 

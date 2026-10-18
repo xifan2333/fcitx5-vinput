@@ -203,9 +203,11 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       }
     }
     function commitAndClear() {
-      if (editor.value.length === 0) {
+      const text = editor.value
+      if (text.length === 0) {
         return
       }
+      send({ type: 'text_update', text: text })
       send({ type: 'finalize' })
       editor.value = ''
       count.textContent = '0'
@@ -293,6 +295,9 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
     })
     editor.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.isComposing || composing || e.keyCode === 229) {
+          return
+        }
         e.preventDefault()
         commitAndClear()
       }

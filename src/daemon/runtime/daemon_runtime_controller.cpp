@@ -234,7 +234,7 @@ DaemonRuntimeController::DaemonRuntimeController(
     fprintf(stderr, "vinput-daemon: failed to create runtime notify fd: %s\n", strerror(errno));
   }
 
-  if (remote_text_service_) {
+  if (remote_text_service_ != nullptr) {
     remote_text_service_->SetSessionControlCallbacks(
         [this]() {
           const auto res = StartRecording();
@@ -1065,7 +1065,7 @@ void DaemonRuntimeController::StartWorker() {
 }
 
 void DaemonRuntimeController::Shutdown() {
-  if (remote_text_service_) {
+  if (remote_text_service_ != nullptr) {
     remote_text_service_->SetSessionControlCallbacks(nullptr, nullptr);
   }
   capture_->SetChunkCallback({});

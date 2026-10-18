@@ -1,5 +1,7 @@
 #include <arpa/inet.h>
+#include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -10,6 +12,7 @@
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -311,15 +314,15 @@ void TestPhoneDrivenDirectSession() {
   config.asr.providers.emplace_back(cmd);
 
   vinput::daemon::remote::RemoteTextService service;
-  bool start_called = false;
-  bool stop_called = false;
+  std::atomic<bool> start_called{false};
+  std::atomic<bool> stop_called{false};
   service.SetSessionControlCallbacks(
       [&start_called]() {
-        start_called = true;
+        start_called.store(true);
         return true;
       },
       [&stop_called](const std::string&) {
-        stop_called = true;
+        stop_called.store(true);
         return true;
       });
 
@@ -354,21 +357,30 @@ void TestPhoneDrivenDirectSession() {
   TEST_ASSERT(RecvFrame(ws_fd, &ws_buf, &frame2));
   TEST_ASSERT(frame2.payload.find("init") != std::string::npos);
 
+  auto wait_for = [](const std::atomic<bool>& flag, int timeout_ms = 3000) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (!flag.load() && std::chrono::steady_clock::now() < deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return flag.load();
+  };
+
   // 1. Phone sends text -> should trigger start_called!
   const std::string update_json = R"({"type":"text_update","text":"Mobile speaks"})";
   TEST_ASSERT(SendRaw(ws_fd, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
                                                                update_json, true, mask)));
-  TEST_ASSERT(start_called);
+  TEST_ASSERT(wait_for(start_called));
 
   // 2. Phone sends finalize -> should trigger stop_called and receive committed!
   const std::string finalize_json = R"({"type":"finalize"})";
   TEST_ASSERT(SendRaw(ws_fd, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
                                                                finalize_json, true, mask)));
-  TEST_ASSERT(stop_called);
+  TEST_ASSERT(wait_for(stop_called));
 
   vinput::net::WsFrame frame3;
   TEST_ASSERT(RecvFrame(ws_fd, &ws_buf, &frame3));
   TEST_ASSERT(frame3.payload.find("committed") != std::string::npos);
+  TEST_ASSERT(service.GetText().empty());
 
   close(ws_fd);
   service.Shutdown();
