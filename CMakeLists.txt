@@ -96,7 +96,6 @@ endif()
 find_package(Gettext REQUIRED)
 
 pkg_check_modules(SDBUS REQUIRED libsystemd)
-find_package(CURL REQUIRED)
 find_package(LibArchive REQUIRED)
 find_package(OpenSSL REQUIRED)
 
