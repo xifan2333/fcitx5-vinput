@@ -387,40 +387,6 @@ bool ApplyIniRule(fcitx::RawConfig& root, const MigrationRule& rule,
   return changed;
 }
 
-bool LineMatchesKey(std::string_view line, std::string_view key) {
-  while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) {
-    line.remove_prefix(1);
-  }
-  if (!line.starts_with(key)) {
-    return false;
-  }
-  const auto rest = line.substr(key.size());
-  return rest.empty() || rest.front() == '=' || rest.front() == ' ' || rest.front() == '\t';
-}
-
-bool HasOutdatedIniKeys(std::string_view conf_content) {
-  static constexpr std::string_view kOutdatedKeys[] = {
-      "SceneMenuKey",
-      "AsrMenuKey",
-      "HoldActivationDelay",
-  };
-  size_t start = 0;
-  while (start < conf_content.size()) {
-    size_t end = conf_content.find('\n', start);
-    if (end == std::string_view::npos) {
-      end = conf_content.size();
-    }
-    const auto line = conf_content.substr(start, end - start);
-    for (const auto key : kOutdatedKeys) {
-      if (LineMatchesKey(line, key)) {
-        return true;
-      }
-    }
-    start = end + 1;
-  }
-  return false;
-}
-
 } // namespace
 
 bool HasPendingMigrations(const std::filesystem::path& config_path,
