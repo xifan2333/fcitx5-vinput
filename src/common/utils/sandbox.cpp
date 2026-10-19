@@ -2,9 +2,9 @@
 
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <string_view>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "common/utils/path_utils.h"
 
@@ -15,11 +15,21 @@ namespace {
 constexpr const char* kSandboxInfoPath = "/.flatpak-info";
 constexpr const char* kFlatpakAppId = "org.fcitx.Fcitx5";
 
-std::string ReadFileContents(const std::filesystem::path& path) {
-  std::ifstream f(path);
-  if (!f)
-    return {};
-  return {std::istreambuf_iterator<char>(f), {}};
+bool CheckDirectoryWritable(const std::filesystem::path& dir) {
+  if (dir.empty()) {
+    return false;
+  }
+  std::error_code ec;
+  if (std::filesystem::exists(dir, ec) && !ec) {
+    return ::access(dir.c_str(), W_OK) == 0;
+  }
+  const auto parent = dir.parent_path();
+  if (!parent.empty() && parent != dir) {
+    if (std::filesystem::exists(parent, ec) && !ec) {
+      return ::access(parent.c_str(), W_OK) == 0;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -38,6 +48,25 @@ bool DetectSandbox(const char* flatpak_id, const char* container, const char* in
     return stat(info_path, &st) == 0;
   }
   return false;
+}
+
+std::vector<std::string> ProbeMissingPermissions(const ProbeOptions& options) {
+  std::vector<std::string> missing;
+
+  if (options.pipewire_socket_path.empty() ||
+      ::access(options.pipewire_socket_path.c_str(), R_OK | W_OK) != 0) {
+    missing.emplace_back("pipewire");
+  }
+
+  if (!CheckDirectoryWritable(options.systemd_dir)) {
+    missing.emplace_back("xdg-config/systemd");
+  }
+
+  if (!CheckDirectoryWritable(options.cache_dir)) {
+    missing.emplace_back("xdg-cache");
+  }
+
+  return missing;
 }
 
 } // namespace detail
@@ -65,17 +94,27 @@ std::vector<std::string> DaemonLogFilter() {
 }
 
 std::vector<std::string> MissingSandboxPermissions() {
-  std::vector<std::string> missing;
   if (!IsInSandbox())
-    return missing;
+    return {};
 
-  std::string info = ReadFileContents(kSandboxInfoPath);
-  if (info.find("pipewire") == std::string::npos)
-    missing.emplace_back("pipewire");
-  if (info.find("xdg-config/systemd") == std::string::npos)
-    missing.emplace_back("xdg-config/systemd");
-  if (info.find("xdg-cache") == std::string::npos)
-    missing.emplace_back("xdg-cache");
+  static const std::vector<std::string> missing = []() {
+    detail::ProbeOptions options;
+    const char* runtime_dir = std::getenv("XDG_RUNTIME_DIR");
+    if (runtime_dir != nullptr && *runtime_dir != '\0') {
+      options.pipewire_socket_path = std::filesystem::path(runtime_dir) / "pipewire-0";
+    } else {
+      options.pipewire_socket_path =
+          std::filesystem::path("/run/user") / std::to_string(::getuid()) / "pipewire-0";
+    }
+    options.systemd_dir = vinput::path::UserSystemdUnitDir();
+    const char* home = std::getenv("HOME");
+    if (home != nullptr && *home != '\0') {
+      options.cache_dir = std::filesystem::path(home) / ".cache" / "vinput";
+    } else {
+      options.cache_dir = vinput::path::VinputCacheDir();
+    }
+    return detail::ProbeMissingPermissions(options);
+  }();
 
   return missing;
 }

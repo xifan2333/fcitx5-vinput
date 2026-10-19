@@ -1,4 +1,5 @@
 #pragma once
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -6,6 +7,14 @@ namespace vinput::sandbox {
 
 namespace detail {
 bool DetectSandbox(const char* flatpak_id, const char* container, const char* info_path);
+
+struct ProbeOptions {
+  std::filesystem::path pipewire_socket_path;
+  std::filesystem::path systemd_dir;
+  std::filesystem::path cache_dir;
+};
+
+std::vector<std::string> ProbeMissingPermissions(const ProbeOptions& options);
 } // namespace detail
 
 // Whether running inside a sandbox (e.g. Flatpak).
