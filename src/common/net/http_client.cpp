@@ -19,7 +19,6 @@
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <unistd.h>
 #include <unordered_map>
 #include <utility>
 #include <vector>
