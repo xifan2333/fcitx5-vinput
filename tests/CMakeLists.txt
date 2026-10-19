@@ -230,6 +230,11 @@ target_include_directories(test_file_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_file_utils PRIVATE common pthread)
 add_test(NAME test_file_utils COMMAND test_file_utils)
 
+add_executable(test_sandbox test_sandbox.cpp)
+target_include_directories(test_sandbox PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_sandbox PRIVATE common pthread)
+add_test(NAME test_sandbox COMMAND test_sandbox)
+
 add_executable(test_hotword_utils
     test_hotword_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/asr/hotword_utils.cpp
