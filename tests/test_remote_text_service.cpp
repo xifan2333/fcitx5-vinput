@@ -7,7 +7,6 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <variant>
 #include <vector>
 
 #include "common/config/core_config_types.h"

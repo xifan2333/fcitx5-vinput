@@ -1,6 +1,7 @@
 #include "daemon/remote/remote_text_service.h"
 
 #include <algorithm>
+#include <asm-generic/socket.h>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -18,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>

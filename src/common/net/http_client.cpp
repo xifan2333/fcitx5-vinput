@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unistd.h>
 #include <unordered_map>
 #include <utility>
@@ -171,8 +172,12 @@ public:
       }
       httplib::detail::UrlComponents p_uc;
       if (httplib::detail::parse_url(p_url, p_uc)) {
-        const int p_port =
-            p_uc.port.empty() ? (p_uc.scheme == "https" ? 443 : 80) : std::atoi(p_uc.port.c_str());
+        int p_port = 80;
+        if (!p_uc.port.empty()) {
+          p_port = std::atoi(p_uc.port.c_str());
+        } else if (p_uc.scheme == "https") {
+          p_port = 443;
+        }
         cli->set_proxy(p_uc.host, p_port);
       }
     };
