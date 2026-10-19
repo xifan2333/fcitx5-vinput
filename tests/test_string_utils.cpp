@@ -668,6 +668,7 @@ void TestParseFloatStrict() {
   TEST_ASSERT(!ParseFloatStrict("2.5 "));
 }
 
+namespace {
 void TestFmtStr() {
   using vinput::str::FmtStr;
   using vinput::str::FormatSize;
@@ -681,7 +682,7 @@ void TestFmtStr() {
   // FormatSize checks
   TEST_ASSERT(FormatSize(500) == "500 B");
   TEST_ASSERT(FormatSize(1024) == "1.0 KB");
-  TEST_ASSERT(FormatSize(1024 * 1024) == "1.0 MB");
+  TEST_ASSERT(FormatSize(1024ULL * 1024) == "1.0 MB");
   TEST_ASSERT(FormatSize(1024ULL * 1024 * 1024 * 2) == "2.0 GB");
 
   // 2. std::string arguments (lvalue reference, temporary/rvalue)
@@ -702,7 +703,7 @@ void TestFmtStr() {
   const std::string_view mid_slice(base.data() + 6, 5); // "world"
   TEST_ASSERT(FmtStr("[%s]-[%s]", slice, mid_slice) == "[hello]-[world]");
 
-  const std::string_view empty_view(base.data(), 0);
+  const std::string_view empty_view{};
   TEST_ASSERT(FmtStr("Empty: [%s]", empty_view) == "Empty: []");
 
   // 5. Interleaved multiple string_views, strings, numbers, and pointers (stack & register ABI
@@ -716,6 +717,7 @@ void TestFmtStr() {
   const std::string combined = FmtStr("%s-%d-%s-%s-%d-%s", p1, 10, mixed_str, p2, 20, p3);
   TEST_ASSERT(combined == "alpha-10-middle-beta-20-gamma");
 }
+} // namespace
 
 int main() {
   TestTrimAsciiWhitespace();
