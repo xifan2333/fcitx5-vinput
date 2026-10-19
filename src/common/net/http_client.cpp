@@ -11,11 +11,11 @@
 #include <functional>
 #include <httplib.h>
 #include <ios>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <ratio>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unistd.h>
@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "common/net/http_types.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/string_utils.h"
 
 namespace vinput::net {
@@ -47,18 +48,6 @@ std::string BuildProxyPolicySignature() {
   return signature;
 }
 
-std::string ExtractOrigin(std::string_view url) {
-  const auto scheme_end = url.find("://");
-  if (scheme_end == std::string_view::npos) {
-    return std::string(url);
-  }
-  const auto path_start = url.find_first_of("/?#", scheme_end + 3);
-  if (path_start == std::string_view::npos) {
-    return std::string(url);
-  }
-  return std::string(url.substr(0, path_start));
-}
-
 std::string ExtractAuthorization(const std::vector<HttpHeader>& headers) {
   for (const auto& h : headers) {
     if (vinput::str::EqualsIgnoreCase(h.name, "authorization")) {
@@ -73,94 +62,6 @@ bool HasUserAgent(const std::vector<HttpHeader>& headers) {
     if (vinput::str::EqualsIgnoreCase(h.name, "user-agent")) {
       return true;
     }
-  }
-  return false;
-}
-
-void ParseHostAndPort(std::string_view host_port_str, std::string& out_host, int& out_port,
-                      std::string& out_user, std::string& out_pass) {
-  out_host.clear();
-  out_port = 80;
-  out_user.clear();
-  out_pass.clear();
-
-  std::string_view sv = host_port_str;
-  if (sv.starts_with("http://")) {
-    sv.remove_prefix(7);
-    out_port = 80;
-  } else if (sv.starts_with("https://")) {
-    sv.remove_prefix(8);
-    out_port = 443;
-  }
-  const auto slash = sv.find('/');
-  if (slash != std::string_view::npos) {
-    sv = sv.substr(0, slash);
-  }
-
-  const auto at_pos = sv.find('@');
-  if (at_pos != std::string_view::npos) {
-    const std::string_view creds = sv.substr(0, at_pos);
-    sv.remove_prefix(at_pos + 1);
-    const auto colon = creds.find(':');
-    if (colon != std::string_view::npos) {
-      out_user = std::string(creds.substr(0, colon));
-      out_pass = std::string(creds.substr(colon + 1));
-    } else {
-      out_user = std::string(creds);
-    }
-  }
-
-  if (sv.starts_with('[')) {
-    const auto close_bracket = sv.find(']');
-    if (close_bracket != std::string_view::npos) {
-      out_host = std::string(sv.substr(1, close_bracket - 1));
-      if (close_bracket + 1 < sv.size() && sv[close_bracket + 1] == ':') {
-        out_port = std::atoi(std::string(sv.substr(close_bracket + 2)).c_str());
-      }
-      return;
-    }
-  }
-
-  const auto colon = sv.rfind(':');
-  if (colon != std::string_view::npos) {
-    out_host = std::string(sv.substr(0, colon));
-    out_port = std::atoi(std::string(sv.substr(colon + 1)).c_str());
-  } else {
-    out_host = std::string(sv);
-  }
-}
-
-bool IsHostExemptFromProxy(std::string_view host) {
-  const char* no_proxy = std::getenv("no_proxy");
-  if (no_proxy == nullptr) {
-    no_proxy = std::getenv("NO_PROXY");
-  }
-  if (no_proxy == nullptr || *no_proxy == '\0') {
-    return false;
-  }
-  std::string_view np(no_proxy);
-  while (!np.empty()) {
-    const auto comma = np.find(',');
-    std::string_view token = (comma == std::string_view::npos) ? np : np.substr(0, comma);
-    token = vinput::str::TrimAsciiWhitespaceView(token);
-    if (token == "*") {
-      return true;
-    }
-    if (!token.empty()) {
-      if (token.front() == '.') {
-        if (host.ends_with(token) || host == token.substr(1)) {
-          return true;
-        }
-      } else {
-        if (host == token || host.ends_with("." + std::string(token))) {
-          return true;
-        }
-      }
-    }
-    if (comma == std::string_view::npos) {
-      break;
-    }
-    np.remove_prefix(comma + 1);
   }
   return false;
 }
@@ -193,26 +94,6 @@ public:
   Impl& operator=(Impl&&) = delete;
 
   HttpResponse Execute(const HttpRequest& request, const std::filesystem::path* dest_path) {
-    if (request.url.starts_with("file://")) {
-      const std::string path = request.url.substr(7);
-      std::ifstream in(path, std::ios::binary);
-      if (!in.is_open()) {
-        HttpResponse resp;
-        resp.status_code = 404;
-        resp.error_message = "File not found: " + path;
-        return resp;
-      }
-      HttpResponse resp;
-      resp.status_code = 200;
-      if (dest_path != nullptr) {
-        std::ofstream out(*dest_path, std::ios::binary);
-        out << in.rdbuf();
-      } else {
-        resp.body.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-      }
-      return resp;
-    }
-
     httplib::detail::UrlComponents uc;
     if (!httplib::detail::parse_url(request.url, uc)) {
       HttpResponse resp;
@@ -220,18 +101,40 @@ public:
       return resp;
     }
 
+    // 1. Unified File protocol handler using vinput::file infrastructure
+    if (uc.scheme == "file") {
+      HttpResponse resp;
+      const std::filesystem::path file_path(uc.path);
+      if (dest_path != nullptr) {
+        std::error_code ec;
+        std::filesystem::create_directories(dest_path->parent_path(), ec);
+        std::filesystem::copy_file(file_path, *dest_path,
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+          resp.status_code = 404;
+          resp.error_message = "Failed to copy local file: " + ec.message();
+          return resp;
+        }
+      } else {
+        if (!vinput::file::ReadTextFile(file_path, &resp.body, &resp.error_message,
+                                        request.max_response_bytes)) {
+          resp.status_code = 404;
+          return resp;
+        }
+      }
+      resp.status_code = 200;
+      resp.effective_url = request.url;
+      return resp;
+    }
+
+    // 2. HTTP/HTTPS protocol handler
     std::string host = uc.host;
     if (host.find(':') != std::string::npos && !host.starts_with('[')) {
       host = "[" + host + "]";
     }
-    std::string origin = uc.scheme + "://" + host;
-    if (!uc.port.empty()) {
-      origin += ":" + uc.port;
-    }
-    std::string path_and_query = uc.path.empty() ? "/" : uc.path;
-    if (!uc.query.empty()) {
-      path_and_query += "?" + uc.query;
-    }
+    const std::string origin = uc.scheme + "://" + host + (uc.port.empty() ? "" : ":" + uc.port);
+    const std::string path_and_query =
+        (uc.path.empty() ? "/" : uc.path) + (uc.query.empty() ? "" : "?" + uc.query);
 
     const ConnectionIdentity id{
         .origin = origin,
@@ -262,14 +165,15 @@ public:
     }
 
     auto apply_proxy = [&](std::string_view proxy_str) {
-      std::string p_host;
-      int p_port = 80;
-      std::string p_user;
-      std::string p_pass;
-      ParseHostAndPort(proxy_str, p_host, p_port, p_user, p_pass);
-      cli->set_proxy(p_host, p_port);
-      if (!p_user.empty() || !p_pass.empty()) {
-        cli->set_proxy_basic_auth(p_user, p_pass);
+      std::string p_url(proxy_str);
+      if (!p_url.starts_with("http://") && !p_url.starts_with("https://")) {
+        p_url = "http://" + p_url;
+      }
+      httplib::detail::UrlComponents p_uc;
+      if (httplib::detail::parse_url(p_url, p_uc)) {
+        const int p_port =
+            p_uc.port.empty() ? (p_uc.scheme == "https" ? 443 : 80) : std::atoi(p_uc.port.c_str());
+        cli->set_proxy(p_uc.host, p_port);
       }
     };
 
@@ -277,7 +181,7 @@ public:
       if (!request.proxy->empty()) {
         apply_proxy(*request.proxy);
       }
-    } else if (!IsHostExemptFromProxy(uc.host)) {
+    } else {
       const char* ambient_proxy = nullptr;
       if (uc.scheme == "https") {
         ambient_proxy = std::getenv("https_proxy");
@@ -298,6 +202,25 @@ public:
       }
       if (ambient_proxy != nullptr && *ambient_proxy != '\0') {
         apply_proxy(ambient_proxy);
+      }
+
+      // Delegate no_proxy matching completely to cpp-httplib native set_no_proxy()
+      const char* no_proxy = std::getenv("no_proxy");
+      if (no_proxy == nullptr) {
+        no_proxy = std::getenv("NO_PROXY");
+      }
+      if (no_proxy != nullptr && *no_proxy != '\0') {
+        std::vector<std::string> patterns;
+        std::stringstream ss(no_proxy);
+        for (std::string item; std::getline(ss, item, ',');) {
+          const auto trimmed = vinput::str::TrimAsciiWhitespace(item);
+          if (!trimmed.empty()) {
+            patterns.push_back(trimmed);
+          }
+        }
+        if (!patterns.empty()) {
+          cli->set_no_proxy(patterns);
+        }
       }
     }
 

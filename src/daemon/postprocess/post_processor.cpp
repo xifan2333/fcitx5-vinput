@@ -370,7 +370,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
   const auto res = vinput::net::HttpClient::Instance().Request(req);
 
-  if (res.cancelled) {
+  if (res.cancelled || is_cancelled()) {
     vinput::debug::Log("LLM request provider=%s url=%s cancelled after %.1fms\n",
                        provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(),
                        res.total_time_ms);
