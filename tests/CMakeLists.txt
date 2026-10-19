@@ -250,6 +250,11 @@ add_executable(test_locale_utils test_locale_utils.cpp)
 target_include_directories(test_locale_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_locale_utils COMMAND test_locale_utils)
 
+add_executable(test_logging test_logging.cpp)
+target_include_directories(test_logging PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_logging PRIVATE common pthread)
+add_test(NAME test_logging COMMAND test_logging)
+
 find_package(Qt6 COMPONENTS Core QUIET)
 if(Qt6_FOUND)
     add_executable(test_download_worker
