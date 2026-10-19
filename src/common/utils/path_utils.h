@@ -12,6 +12,7 @@ std::filesystem::path DaemonServiceUnitTemplatePath();
 std::filesystem::path ExpandUserPath(std::string_view path);
 std::filesystem::path VinputConfigDir();
 std::filesystem::path VinputDataDir();
+std::filesystem::path VinputCacheDir();
 std::filesystem::path DefaultModelBaseDir();
 std::filesystem::path CoreConfigPath();
 std::filesystem::path FcitxAddonConfigPath();
