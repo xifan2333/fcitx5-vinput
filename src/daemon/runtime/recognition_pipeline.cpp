@@ -47,9 +47,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
     return output;
   }
 
-  if (vinput::log::GetLogger()->should_log(spdlog::level::debug)) {
-    LogRecognizedText(order.recognized_text, order.is_command, order.scene_id);
-  }
+  LogRecognizedText(order.recognized_text, order.is_command, order.scene_id);
 
   vinput::scene::Config scene_config;
   scene_config.activeSceneId = settings.scenes.activeScene;

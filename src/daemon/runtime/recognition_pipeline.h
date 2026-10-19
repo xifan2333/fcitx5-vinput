@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "common/asr/recognition_result.h"
-#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/dbus/error_info.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
