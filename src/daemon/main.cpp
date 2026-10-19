@@ -517,6 +517,10 @@ int main(int argc, char* argv[]) {
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--no-asr") == 0) {
       disable_asr = true;
+    } else if (std::strncmp(argv[i], "--log-level=", 12) == 0) {
+      vinput::log::SetLogLevel(argv[i] + 12);
+    } else if (std::strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
+      vinput::log::SetLogLevel(argv[++i]);
     }
   }
 

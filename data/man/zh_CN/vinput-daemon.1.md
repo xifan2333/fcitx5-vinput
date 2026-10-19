@@ -9,7 +9,15 @@ footer: fcitx5-vinput
 vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 
 # 语法
-**vinput-daemon**
+**vinput-daemon** [*选项*]
+
+# 选项
+
+**--no-asr**
+:   启动时不启用本地语音识别引擎。
+
+**--log-level**=*LEVEL*
+:   设置日志过滤门槛：`trace`、`debug`、`info`、`warn`、`error`、`critical`、`off`（默认值：`info`）。亦可通过环境变量 `VINPUT_LOG_LEVEL` 设置。
 
 # 描述
 **vinput-daemon** 是 **fcitx5-vinput** 的后台核心服务组件，通过 D-Bus（`org.fcitx.Vinput`）与 Fcitx5 插件及 CLI 工具通信。
@@ -45,8 +53,8 @@ vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 **VINPUT_CAPTURE_IDLE_DESTROY_MS**
 :   闲置超时时间（毫秒），超时后销毁未激活的 PipeWire 音频流（默认值：`15000`，即 15 秒）。
 
-**VINPUT_DEBUG**
-:   设置为 `1` 可开启详细的调试日志输出。
+**VINPUT_LOG_LEVEL**
+:   日志过滤门槛：`trace`、`debug`、`info`、`warn`、`error`、`critical`、`off`（默认值：`info`）。排查问题时可设置为 `debug` 或 `trace`。
 
 **VINPUT_CONFIG_PATH**
 :   自定义 `config.json` 的配置文件路径。

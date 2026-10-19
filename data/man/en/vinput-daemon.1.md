@@ -9,7 +9,15 @@ footer: fcitx5-vinput
 vinput-daemon - Background speech recognition and processing daemon for fcitx5-vinput
 
 # SYNOPSIS
-**vinput-daemon**
+**vinput-daemon** [*OPTIONS*]
+
+# OPTIONS
+
+**--no-asr**
+:   Start daemon with local speech recognition engine disabled.
+
+**--log-level**=*LEVEL*
+:   Set log filtering threshold: `trace`, `debug`, `info`, `warn`, `error`, `critical`, `off` (default: `info`). Can also be specified via the `VINPUT_LOG_LEVEL` environment variable.
 
 # DESCRIPTION
 **vinput-daemon** is the background service component of **fcitx5-vinput**. It communicates with the Fcitx5 addon over D-Bus (`org.fcitx.Vinput`).
@@ -45,8 +53,8 @@ View daemon logs:
 **VINPUT_CAPTURE_IDLE_DESTROY_MS**
 :   Idle grace period in milliseconds before destroying an inactive reusable PipeWire stream (default: `15000`, 15 seconds).
 
-**VINPUT_DEBUG**
-:   Set to `1` to enable verbose debugging logs in stdout/journald.
+**VINPUT_LOG_LEVEL**
+:   Log filtering threshold: `trace`, `debug`, `info`, `warn`, `error`, `critical`, `off` (default: `info`). Set to `debug` or `trace` for verbose troubleshooting logs.
 
 **VINPUT_CONFIG_PATH**
 :   Override the path to `config.json`.
