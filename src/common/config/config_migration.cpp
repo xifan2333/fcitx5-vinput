@@ -468,10 +468,13 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
   }
 
   std::string raw_conf;
+  fcitx::RawConfig conf_raw_config;
   if (conf_exists) {
     if (!vinput::file::ReadTextFile(real_conf_path, &raw_conf, &report.error)) {
       return report;
     }
+    std::istringstream iss(raw_conf);
+    fcitx::readFromIni(conf_raw_config, iss);
   }
 
   const auto max_rule_ver = GetMaxRuleVersion();
@@ -491,7 +494,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     }
   }
 
-  const bool conf_has_outdated = conf_exists && HasOutdatedIniKeys(raw_conf);
+  const bool conf_has_outdated = conf_exists && HasOutdatedIniKeys(conf_raw_config);
 
   if (config_satisfies && !conf_has_outdated) {
     report.needed = false;
@@ -554,59 +557,13 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     }
   }
 
-  std::vector<std::string> conf_lines;
   if (conf_exists) {
-    const std::string_view sv(raw_conf);
-    size_t start = 0;
-    while (start <= sv.size()) {
-      const size_t end = sv.find('\n', start);
-      if (end == std::string_view::npos) {
-        if (start < sv.size()) {
-          conf_lines.emplace_back(sv.substr(start));
-        }
-        break;
-      }
-      conf_lines.emplace_back(sv.substr(start, end - start));
-      start = end + 1;
-    }
-
     for (const auto& rule : rules) {
       if (rule.target_file != "vinput.conf") {
         continue;
       }
-      std::vector<std::string> new_lines;
-      new_lines.reserve(conf_lines.size());
-      bool rule_triggered = false;
-      for (const auto& line : conf_lines) {
-        if (rule.action == ActionType::IniReplaceKey) {
-          if (LineMatchesKey(line, rule.path)) {
-            const auto eq_idx = line.find('=');
-            const std::string val = (eq_idx != std::string::npos) ? line.substr(eq_idx) : "";
-            new_lines.push_back(std::string(rule.new_key) + val);
-            report.changes.push_back({
-                .file = "vinput.conf",
-                .description = "replaced key '" + std::string(rule.path) + "' with '" +
-                               std::string(rule.new_key) + "'",
-            });
-            rule_triggered = true;
-            conf_changed = true;
-            continue;
-          }
-        } else if (rule.action == ActionType::IniRemoveKey) {
-          if (LineMatchesKey(line, rule.path)) {
-            report.changes.push_back({
-                .file = "vinput.conf",
-                .description = "removed obsolete key '" + std::string(rule.path) + "'",
-            });
-            rule_triggered = true;
-            conf_changed = true;
-            continue;
-          }
-        }
-        new_lines.push_back(line);
-      }
-      if (rule_triggered) {
-        conf_lines = std::move(new_lines);
+      if (ApplyIniRule(conf_raw_config, rule, report.changes)) {
+        conf_changed = true;
       }
     }
   }
@@ -647,13 +604,8 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     }
     report.conf_backup = backup_file;
 
-    std::string new_conf_str;
-    for (const auto& line : conf_lines) {
-      new_conf_str += line;
-      new_conf_str += '\n';
-    }
-    if (!vinput::file::AtomicWriteTextFile(real_conf_path, new_conf_str, &err)) {
-      report.error = "Failed to write migrated " + real_conf_path.string() + ": " + err;
+    if (!fcitx::safeSaveAsIni(conf_raw_config, real_conf_path.string())) {
+      report.error = "Failed to write migrated " + real_conf_path.string();
       return report;
     }
   }
