@@ -9,10 +9,8 @@
 #endif
 
 #include <cctype>
-#include <concepts>
 #include <cstdlib>
 #include <memory>
-#include <source_location>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -29,7 +27,7 @@ ParseLogLevel(std::string_view level_str,
   }
   std::string lower;
   lower.reserve(level_str.size());
-  for (char c : level_str) {
+  for (const char c : level_str) {
     lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
   }
   if (lower == "trace") {
@@ -96,8 +94,8 @@ inline std::shared_ptr<spdlog::logger>& GetLogger() {
   return s_logger;
 }
 
-inline void SetLogPattern(std::string pattern) {
-  GetLogger()->set_pattern(std::move(pattern));
+inline void SetLogPattern(const std::string& pattern) {
+  GetLogger()->set_pattern(pattern);
 }
 
 inline void SetLogLevel(spdlog::level::level_enum level) {
@@ -112,74 +110,11 @@ inline spdlog::level::level_enum GetLogLevel() {
   return GetLogger()->level();
 }
 
-struct FormatWithLocation {
-  std::string_view fmt;
-  std::source_location loc;
-
-  template <typename S>
-    requires std::convertible_to<S, std::string_view>
-  constexpr FormatWithLocation(const S& s, std::source_location l = std::source_location::current())
-      : fmt(s), loc(l) {}
-};
-
-template <typename... Args> inline void Trace(FormatWithLocation f, Args&&... args) {
-  auto& logger = GetLogger();
-  if (!logger->should_log(spdlog::level::trace)) {
-    return;
-  }
-  spdlog::source_loc sloc{f.loc.file_name(), static_cast<int>(f.loc.line()), f.loc.function_name()};
-  logger->log(sloc, spdlog::level::trace, spdlog::fmt_lib::runtime(f.fmt),
-              std::forward<Args>(args)...);
-}
-
-template <typename... Args> inline void Debug(FormatWithLocation f, Args&&... args) {
-  auto& logger = GetLogger();
-  if (!logger->should_log(spdlog::level::debug)) {
-    return;
-  }
-  spdlog::source_loc sloc{f.loc.file_name(), static_cast<int>(f.loc.line()), f.loc.function_name()};
-  logger->log(sloc, spdlog::level::debug, spdlog::fmt_lib::runtime(f.fmt),
-              std::forward<Args>(args)...);
-}
-
-template <typename... Args> inline void Info(FormatWithLocation f, Args&&... args) {
-  auto& logger = GetLogger();
-  if (!logger->should_log(spdlog::level::info)) {
-    return;
-  }
-  spdlog::source_loc sloc{f.loc.file_name(), static_cast<int>(f.loc.line()), f.loc.function_name()};
-  logger->log(sloc, spdlog::level::info, spdlog::fmt_lib::runtime(f.fmt),
-              std::forward<Args>(args)...);
-}
-
-template <typename... Args> inline void Warn(FormatWithLocation f, Args&&... args) {
-  auto& logger = GetLogger();
-  if (!logger->should_log(spdlog::level::warn)) {
-    return;
-  }
-  spdlog::source_loc sloc{f.loc.file_name(), static_cast<int>(f.loc.line()), f.loc.function_name()};
-  logger->log(sloc, spdlog::level::warn, spdlog::fmt_lib::runtime(f.fmt),
-              std::forward<Args>(args)...);
-}
-
-template <typename... Args> inline void Error(FormatWithLocation f, Args&&... args) {
-  auto& logger = GetLogger();
-  if (!logger->should_log(spdlog::level::err)) {
-    return;
-  }
-  spdlog::source_loc sloc{f.loc.file_name(), static_cast<int>(f.loc.line()), f.loc.function_name()};
-  logger->log(sloc, spdlog::level::err, spdlog::fmt_lib::runtime(f.fmt),
-              std::forward<Args>(args)...);
-}
-
-template <typename... Args> inline void Critical(FormatWithLocation f, Args&&... args) {
-  auto& logger = GetLogger();
-  if (!logger->should_log(spdlog::level::critical)) {
-    return;
-  }
-  spdlog::source_loc sloc{f.loc.file_name(), static_cast<int>(f.loc.line()), f.loc.function_name()};
-  logger->log(sloc, spdlog::level::critical, spdlog::fmt_lib::runtime(f.fmt),
-              std::forward<Args>(args)...);
-}
-
 } // namespace vinput::log
+
+#define VLOG_TRACE(...) SPDLOG_LOGGER_TRACE(::vinput::log::GetLogger(), __VA_ARGS__)
+#define VLOG_DEBUG(...) SPDLOG_LOGGER_DEBUG(::vinput::log::GetLogger(), __VA_ARGS__)
+#define VLOG_INFO(...) SPDLOG_LOGGER_INFO(::vinput::log::GetLogger(), __VA_ARGS__)
+#define VLOG_WARN(...) SPDLOG_LOGGER_WARN(::vinput::log::GetLogger(), __VA_ARGS__)
+#define VLOG_ERROR(...) SPDLOG_LOGGER_ERROR(::vinput::log::GetLogger(), __VA_ARGS__)
+#define VLOG_CRITICAL(...) SPDLOG_LOGGER_CRITICAL(::vinput::log::GetLogger(), __VA_ARGS__)

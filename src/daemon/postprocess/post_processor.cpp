@@ -95,9 +95,8 @@ void LogResponseBody(const char* prefix, const std::string& url, std::string_vie
 
 void LogResponseSummary(const LlmProvider& provider, const std::string& url, long status_code,
                         double total_time_ms) {
-  vinput::log::Debug("LLM request provider={} url={} status={} time={:.1f}ms",
-                     provider.id.empty() ? "(unnamed)" : provider.id, url, status_code,
-                     total_time_ms);
+  VLOG_DEBUG("LLM request provider={} url={} status={} time={:.1f}ms",
+             provider.id.empty() ? "(unnamed)" : provider.id, url, status_code, total_time_ms);
 }
 
 std::vector<std::string> ExtractCandidates(const json& response) {
@@ -228,8 +227,8 @@ void MergeExtraBody(json& request, const nlohmann::json& extra, const LlmProvide
   for (auto it = extra.begin(); it != extra.end(); ++it) {
     const std::string& key = it.key();
     if (std::find(kProtected.begin(), kProtected.end(), key) != kProtected.end()) {
-      vinput::log::Debug("LLM extra_body provider={}: ignoring protected key '{}'",
-                         provider.id.empty() ? "(unnamed)" : provider.id, key);
+      VLOG_DEBUG("LLM extra_body provider={}: ignoring protected key '{}'",
+                 provider.id.empty() ? "(unnamed)" : provider.id, key);
       continue;
     }
     request[key] = it.value();
@@ -368,8 +367,8 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   const auto res = vinput::net::HttpClient::Instance().Request(req);
 
   if (res.cancelled) {
-    vinput::log::Debug("LLM request provider={} url={} cancelled after {:.1f}ms",
-                       provider.id.empty() ? "(unnamed)" : provider.id, url, res.total_time_ms);
+    VLOG_DEBUG("LLM request provider={} url={} cancelled after {:.1f}ms",
+               provider.id.empty() ? "(unnamed)" : provider.id, url, res.total_time_ms);
     if (error_out != nullptr) {
       error_out->clear();
     }

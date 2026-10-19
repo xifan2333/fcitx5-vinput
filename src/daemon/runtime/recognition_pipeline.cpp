@@ -22,8 +22,8 @@ std::string QuoteRecognitionText(std::string_view text) {
 }
 
 void LogRecognizedText(const std::string& text, bool is_command, std::string_view scene_id) {
-  vinput::log::Debug("recognized text command={} scene={}: {}", is_command ? "true" : "false",
-                     scene_id.empty() ? "(default)" : scene_id, QuoteRecognitionText(text));
+  VLOG_DEBUG("recognized text command={} scene={}: {}", is_command ? "true" : "false",
+             scene_id.empty() ? "(default)" : scene_id, QuoteRecognitionText(text));
 }
 
 } // namespace

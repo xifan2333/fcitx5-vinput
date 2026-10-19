@@ -70,8 +70,8 @@ std::optional<std::string> LoadFromFileUri(std::string_view uri, std::string* er
 
   const auto fsize = std::filesystem::file_size(path, ec);
   if (!ec && fsize > kMaxPromptFileBytes) {
-    vinput::log::Debug("prompt_template: file '{}' truncated to {} bytes (cap)", path,
-                       kMaxPromptFileBytes);
+    VLOG_DEBUG("prompt_template: file '{}' truncated to {} bytes (cap)", path.string(),
+               kMaxPromptFileBytes);
   }
   return content;
 }

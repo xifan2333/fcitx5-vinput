@@ -59,12 +59,12 @@ void TestLoggingCalls() {
   SetLogLevel(spdlog::level::trace);
 
   // Exercise every level and format parameters
-  Trace("test trace message");
-  Debug("test debug message with number: {}", 42);
-  Info("test info message with string: {}", "vinput");
-  Warn("test warn message: {} {:.2f}", "ratio", 0.75);
-  Error("test error message: code={}", -1);
-  Critical("test critical message");
+  VLOG_TRACE("test trace message");
+  VLOG_DEBUG("test debug message with number: {}", 42);
+  VLOG_INFO("test info message with string: {}", "vinput");
+  VLOG_WARN("test warn message: {} {:.2f}", "ratio", 0.75);
+  VLOG_ERROR("test error message: code={}", -1);
+  VLOG_CRITICAL("test critical message");
 }
 
 void TestLogPattern() {
@@ -72,7 +72,7 @@ void TestLogPattern() {
 
   TEST_ASSERT(!kDefaultLogPattern.empty());
   SetLogPattern("[%n] [%l] %v");
-  Info("test with custom pattern");
+  VLOG_INFO("test with custom pattern");
   // Restore default pattern
   SetLogPattern(std::string(kDefaultLogPattern));
 }
