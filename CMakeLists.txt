@@ -100,7 +100,7 @@ find_package(LibArchive REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 option(VINPUT_FETCH_HTTPLIB "Fetch cpp-httplib with FetchContent when not found" ON)
-find_package(httplib QUIET)
+find_package(httplib 0.53.0 QUIET)
 if(NOT httplib_FOUND)
     if(VINPUT_FETCH_HTTPLIB)
         include(FetchContent)

@@ -134,8 +134,7 @@ public:
       host = "[" + host + "]";
     }
     const std::string origin = uc.scheme + "://" + host + (uc.port.empty() ? "" : ":" + uc.port);
-    const std::string path_and_query =
-        (uc.path.empty() ? "/" : uc.path) + (uc.query.empty() ? "" : "?" + uc.query);
+    const std::string path_and_query = (uc.path.empty() ? "/" : uc.path) + uc.query;
 
     const ConnectionIdentity id{
         .origin = origin,
@@ -145,6 +144,7 @@ public:
     };
 
     std::shared_ptr<httplib::Client> cli = Acquire(id);
+    const bool new_client = !cli;
     if (!cli) {
       cli = std::make_shared<httplib::Client>(origin);
     }
@@ -182,11 +182,11 @@ public:
       }
     };
 
-    if (request.proxy.has_value()) {
+    if (new_client && request.proxy.has_value()) {
       if (!request.proxy->empty()) {
         apply_proxy(*request.proxy);
       }
-    } else {
+    } else if (new_client) {
       const char* ambient_proxy = nullptr;
       if (uc.scheme == "https") {
         ambient_proxy = std::getenv("https_proxy");
@@ -290,8 +290,10 @@ public:
       std::error_code ec;
       std::filesystem::create_directories(dest_path->parent_path(), ec);
 
-      const auto tmp_path = dest_path->parent_path() /
-                            (dest_path->filename().string() + ".tmp." + std::to_string(getpid()));
+      const auto tmp_path =
+          dest_path->parent_path() /
+          (dest_path->filename().string() + ".tmp." +
+           std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
       std::ofstream out_file(tmp_path, std::ios::binary);
       if (!out_file.is_open()) {
         HttpResponse resp;

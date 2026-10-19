@@ -137,7 +137,7 @@ RemoteTextService::~RemoteTextService() {
 
 int RemoteTextService::Port() const {
   const std::lock_guard<std::mutex> lock(lifecycle_mutex_);
-  return settings_.port;
+  return bound_port_ > 0 ? bound_port_ : settings_.port;
 }
 
 bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* settings,
@@ -303,7 +303,8 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
                     NI_NUMERICHOST) != 0) {
       continue;
     }
-    endpoints.emplace_back(std::string("http://") + buf + ":" + std::to_string(settings_.port));
+    endpoints.emplace_back(std::string("http://") + buf + ":" +
+                           std::to_string(bound_port_ > 0 ? bound_port_ : settings_.port));
   }
   freeifaddrs(ifaddr);
 
@@ -381,7 +382,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
       }
       return false;
     }
-    settings_.port = p;
+    bound_port_ = p;
   } else {
     if (!server->bind_to_port("0.0.0.0", settings_.port)) {
       if (error != nullptr) {
@@ -389,6 +390,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
       }
       return false;
     }
+    bound_port_ = settings_.port;
   }
 
   running_.store(true, std::memory_order_release);
@@ -460,6 +462,7 @@ void RemoteTextService::Shutdown() {
   if (was_running) {
     ClearText();
   }
+  bound_port_ = 0;
   service_started_ = false;
 }
 

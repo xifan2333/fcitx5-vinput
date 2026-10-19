@@ -73,6 +73,7 @@ private:
   void SendFinalResult();
 
   Settings settings_;
+  int bound_port_ = 0;
   mutable std::mutex lifecycle_mutex_;
   mutable std::mutex callback_mutex_;
   StartCallback on_start_;
