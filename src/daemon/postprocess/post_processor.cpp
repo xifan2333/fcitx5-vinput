@@ -56,42 +56,6 @@ std::string BuildRequestUrl(const std::string& base_url) {
 
 // TODO(#407): Modernize LLM payload logging (request/response body and header dumps)
 // after migrating to modern zero-copy JSON library (e.g. glaze).
-#if 0
-std::string QuoteForLog(std::string_view text) {
-  if (text.size() > kMaxLoggedResponseBytes) {
-    std::string truncated(text.substr(0, kMaxLoggedResponseBytes));
-    truncated += "...(truncated)";
-    return truncated;
-  }
-  return std::string(text);
-}
-
-void LogLlmInput(const LlmProvider& provider, const std::string& url, std::string_view text) {
-  VINPUT_LOG_DEBUG("LLM input provider={} url={}: {}",
-                   provider.id.empty() ? "(unnamed)" : provider.id, url,
-                   QuoteForLog(text));
-}
-
-void LogLlmRequest(const LlmProvider& provider, const std::string& url,
-                   const std::vector<vinput::net::HttpHeader>& headers, std::string_view body) {
-  std::string header_dump;
-  for (const auto& header : headers) {
-    if (!header_dump.empty()) {
-      header_dump.append("; ");
-    }
-    header_dump.append(header.name);
-    header_dump.append(": ");
-    header_dump.append(header.value);
-  }
-  VINPUT_LOG_DEBUG("LLM request provider={} url={} headers=[{}]",
-                   provider.id.empty() ? "(unnamed)" : provider.id, url, header_dump);
-  VINPUT_LOG_DEBUG("LLM request body: {}", QuoteForLog(body));
-}
-
-void LogResponseBody(const char* prefix, const std::string& url, std::string_view body) {
-  VINPUT_LOG_DEBUG("{} {}: {}", prefix, url, QuoteForLog(body));
-}
-#endif
 
 void LogResponseSummary(const LlmProvider& provider, const std::string& url, long status_code,
                         double total_time_ms) {

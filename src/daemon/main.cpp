@@ -90,6 +90,16 @@ bool WaitForProcessExit(pid_t pid, std::chrono::milliseconds timeout, int* statu
   return false;
 }
 
+int ExtractProcessExitCode(int status) {
+  if (WIFEXITED(status)) {
+    return WEXITSTATUS(status);
+  }
+  if (WIFSIGNALED(status)) {
+    return 128 + WTERMSIG(status);
+  }
+  return -1;
+}
+
 void TerminateProcessBounded(pid_t pid) {
   if (pid <= 0) {
     return;
@@ -400,9 +410,7 @@ private:
         adapter.stderr_fd = -1;
       }
 
-      VLOG_DEBUG("adapter exited id={} code={}", adapter.id,
-                 WIFEXITED(status) ? WEXITSTATUS(status)
-                                   : (WIFSIGNALED(status) ? 128 + WTERMSIG(status) : -1));
+      VLOG_DEBUG("adapter exited id={} code={}", adapter.id, ExtractProcessExitCode(status));
       exited_ids.push_back(id);
     }
 

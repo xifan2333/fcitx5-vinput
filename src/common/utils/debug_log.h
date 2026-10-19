@@ -11,11 +11,12 @@
 #include <cctype>
 #include <cstdlib>
 #include <memory>
+#include <spdlog/common.h>
+#include <spdlog/logger.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
-#include <utility>
 
 namespace vinput::log {
 
@@ -67,10 +68,10 @@ inline constexpr std::string_view kDefaultLogPattern =
 inline std::string DetermineInitialLogPattern() {
   if (const char* env_pattern = std::getenv("VINPUT_LOG_PATTERN")) {
     if (env_pattern[0] != '\0') {
-      return std::string(env_pattern);
+      return env_pattern;
     }
   }
-  return std::string(kDefaultLogPattern);
+  return std::string{kDefaultLogPattern};
 }
 
 inline std::shared_ptr<spdlog::logger> CreateDefaultLogger() {

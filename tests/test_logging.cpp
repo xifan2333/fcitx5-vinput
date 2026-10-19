@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <spdlog/common.h>
 #include <string>
 
 #include "common/utils/debug_log.h"
