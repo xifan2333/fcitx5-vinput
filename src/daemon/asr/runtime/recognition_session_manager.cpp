@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <utility>
 
+#include "common/config/core_config.h"
 #include "common/i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
