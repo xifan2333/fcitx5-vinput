@@ -12,6 +12,8 @@
 #include <memory>
 #include <mutex>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -816,6 +818,17 @@ void HttpServer::AcceptLoop() {
         continue;
       }
       fcntl(client_fd, F_SETFD, FD_CLOEXEC);
+
+      int keepalive = 1;
+      setsockopt(client_fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+#if defined(__linux__) && defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL) && defined(TCP_KEEPCNT)
+      int idle = 30; // start probing after 30s of inactivity
+      int intvl = 5; // probe every 5s
+      int cnt = 3;   // drop connection after 3 failed probes (total ~45s)
+      setsockopt(client_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+      setsockopt(client_fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl, sizeof(intvl));
+      setsockopt(client_fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt));
+#endif
 
       // Concurrency limit guard
       {
