@@ -400,4 +400,26 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
   return hex;
 }
 
+bool IsDirectoryWritable(const std::filesystem::path& path) {
+  if (path.empty()) {
+    return false;
+  }
+  std::error_code ec;
+  if (std::filesystem::exists(path, ec) && !ec) {
+    if (std::filesystem::is_directory(path, ec) && !ec) {
+      return ::access(path.c_str(), W_OK | X_OK) == 0;
+    }
+    return false;
+  }
+  const auto parent = path.parent_path();
+  if (!parent.empty() && parent != path) {
+    if (std::filesystem::exists(parent, ec) && !ec) {
+      if (std::filesystem::is_directory(parent, ec) && !ec) {
+        return ::access(parent.c_str(), W_OK | X_OK) == 0;
+      }
+    }
+  }
+  return false;
+}
+
 } // namespace vinput::file

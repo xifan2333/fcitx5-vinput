@@ -358,6 +358,38 @@ void TestAtomicWriteTextFile() {
   TEST_ASSERT(!AtomicWriteTextFile(impossible_file, "null err failure", nullptr));
 }
 
+void TestIsDirectoryWritable() {
+  using vinput::file::IsDirectoryWritable;
+
+  // Empty path
+  TEST_ASSERT(!IsDirectoryWritable(""));
+
+  // Existing writable temp directory
+  std::string err;
+  const auto temp_dir = vinput::file::ScopedTempDir::Create({}, ".tmp-dir-write-", &err);
+  TEST_ASSERT(temp_dir != nullptr);
+  TEST_ASSERT(IsDirectoryWritable(temp_dir->Path()));
+
+  // Existing regular file (not a directory)
+  const fs::path regular_file = temp_dir->Path() / "file.txt";
+  {
+    std::ofstream ofs(regular_file);
+    ofs << "content";
+  }
+  TEST_ASSERT(!IsDirectoryWritable(regular_file));
+
+  // Non-existent subdirectory whose parent exists and is writable
+  const fs::path sub_dir = temp_dir->Path() / "new_sub_dir";
+  TEST_ASSERT(IsDirectoryWritable(sub_dir));
+
+  // Non-existent path whose parent is a regular file
+  const fs::path blocked_path = regular_file / "child";
+  TEST_ASSERT(!IsDirectoryWritable(blocked_path));
+
+  // Completely non-existent root
+  TEST_ASSERT(!IsDirectoryWritable("/nonexistent_root_dir_xyz/sub/path"));
+}
+
 int main() {
   TestIsPathWithinRoot();
   TestScopedTempDirLifecycle();
@@ -366,6 +398,7 @@ int main() {
   TestComputeFileSha256();
   TestReadTextFile();
   TestAtomicWriteTextFile();
+  TestIsDirectoryWritable();
   std::printf("test_file_utils: all tests passed\n");
   return 0;
 }

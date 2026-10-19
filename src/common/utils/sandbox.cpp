@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 
 namespace vinput::sandbox {
@@ -16,28 +17,6 @@ namespace {
 
 constexpr const char* kSandboxInfoPath = "/.flatpak-info";
 constexpr const char* kFlatpakAppId = "org.fcitx.Fcitx5";
-
-bool CheckDirectoryWritable(const std::filesystem::path& dir) {
-  if (dir.empty()) {
-    return false;
-  }
-  std::error_code ec;
-  if (std::filesystem::exists(dir, ec) && !ec) {
-    if (std::filesystem::is_directory(dir, ec) && !ec) {
-      return ::access(dir.c_str(), W_OK | X_OK) == 0;
-    }
-    return false;
-  }
-  const auto parent = dir.parent_path();
-  if (!parent.empty() && parent != dir) {
-    if (std::filesystem::exists(parent, ec) && !ec) {
-      if (std::filesystem::is_directory(parent, ec) && !ec) {
-        return ::access(parent.c_str(), W_OK | X_OK) == 0;
-      }
-    }
-  }
-  return false;
-}
 
 } // namespace
 
@@ -65,11 +44,11 @@ std::vector<std::string> ProbeMissingPermissions(const ProbeOptions& options) {
     missing.emplace_back("pipewire");
   }
 
-  if (!CheckDirectoryWritable(options.systemd_dir)) {
+  if (!vinput::file::IsDirectoryWritable(options.systemd_dir)) {
     missing.emplace_back("xdg-config/systemd");
   }
 
-  if (!CheckDirectoryWritable(options.cache_dir)) {
+  if (!vinput::file::IsDirectoryWritable(options.cache_dir)) {
     missing.emplace_back("xdg-cache");
   }
 

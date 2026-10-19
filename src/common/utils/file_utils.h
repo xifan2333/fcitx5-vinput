@@ -41,4 +41,8 @@ bool ReadTextFile(const std::filesystem::path& path, std::string* content,
 bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view content,
                          std::string* error);
 std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error = nullptr);
+
+// Check if a directory (or its immediate parent if target does not yet exist)
+// exists, is a valid directory, and has write and search permissions (W_OK | X_OK).
+[[nodiscard]] bool IsDirectoryWritable(const std::filesystem::path& path);
 } // namespace vinput::file
