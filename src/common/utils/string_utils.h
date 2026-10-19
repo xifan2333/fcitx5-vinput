@@ -6,12 +6,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <initializer_list>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -19,23 +21,50 @@
 namespace vinput::str {
 
 namespace detail {
+
+template <typename T> auto PrepareStorage(const T& v) {
+  using RawT = std::decay_t<T>;
+  if constexpr (std::is_same_v<RawT, std::string_view>) {
+    return std::string(v);
+  } else {
+    return std::cref(v);
+  }
+}
+
 template <typename T> auto ToCArg(const T& v) {
-  if constexpr (std::is_same_v<std::decay_t<T>, std::string>) {
+  using RawT = std::decay_t<T>;
+  if constexpr (std::is_same_v<RawT, std::string>) {
     return v.c_str();
   } else {
+    static_assert(!std::is_same_v<RawT, std::string_view>,
+                  "std::string_view must be adapted via PrepareStorage before snprintf");
     return v;
   }
 }
+
+template <typename T> auto ToCArg(const std::reference_wrapper<T>& ref) {
+  return ToCArg(ref.get());
+}
+
 } // namespace detail
 
 template <typename... Args> std::string FmtStr(const char* fmt, const Args&... args) {
-  int n = std::snprintf(nullptr, 0, fmt, detail::ToCArg(args)...);
-  if (n < 0)
-    return fmt;
-  std::string buf(static_cast<size_t>(n) + 1, '\0');
-  std::snprintf(buf.data(), buf.size(), fmt, detail::ToCArg(args)...);
-  buf.resize(static_cast<size_t>(n));
-  return buf;
+  if (fmt == nullptr) {
+    return {};
+  }
+  auto storage = std::make_tuple(detail::PrepareStorage(args)...);
+  return std::apply(
+      [fmt](const auto&... items) {
+        int n = std::snprintf(nullptr, 0, fmt, detail::ToCArg(items)...);
+        if (n < 0) {
+          return std::string(fmt);
+        }
+        std::string buf(static_cast<std::size_t>(n) + 1, '\0');
+        std::snprintf(buf.data(), buf.size(), fmt, detail::ToCArg(items)...);
+        buf.resize(static_cast<std::size_t>(n));
+        return buf;
+      },
+      storage);
 }
 
 inline std::string FormatSize(uint64_t bytes) {
