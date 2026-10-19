@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
-#include <sys/stat.h>
 #include <system_error>
 #include <unistd.h>
 #include <vector>
@@ -52,8 +51,8 @@ bool DetectSandbox(const char* flatpak_id, const char* container, const char* in
     return true;
   }
   if (info_path != nullptr && *info_path != '\0') {
-    struct stat st{};
-    return stat(info_path, &st) == 0;
+    std::error_code ec;
+    return std::filesystem::exists(info_path, ec) && !ec;
   }
   return false;
 }
