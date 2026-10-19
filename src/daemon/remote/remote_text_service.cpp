@@ -554,21 +554,19 @@ void RemoteTextService::HandleInputSession(
         return;
       }
 
-      bool duplicate_client = false;
+      std::shared_ptr<vinput::net::WebSocketSession> old_session;
       {
         const std::lock_guard<std::mutex> lock(state_mutex_);
-        if (input_session_ && input_session_->IsOpen() && input_session_ != current_session) {
-          duplicate_client = true;
-        } else {
-          input_session_ = current_session;
+        if (input_session_ && input_session_ != current_session) {
+          old_session = input_session_;
         }
+        input_session_ = current_session;
       }
 
-      if (duplicate_client) {
-        current_session->SendJson(
-            json{{"type", "busy"}, {"message", "Input client already connected."}}.dump());
-        current_session->Close(1008, "Input client already connected.");
-        return;
+      if (old_session) {
+        CancelDebounce();
+        ClearText();
+        old_session->Close(1000, "Replaced by new authenticated session.");
       }
 
       current_session->SendJson(json{{"type", "auth_ok"}}.dump());
