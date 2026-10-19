@@ -70,14 +70,7 @@ private:
   std::unique_ptr<RecognitionSession> session_;
 };
 
-bool ShouldDisableAsr(const CoreConfig& config, bool disable_asr_by_flag, std::string* reason) {
-  if (disable_asr_by_flag) {
-    if (reason) {
-      *reason = _("ASR disabled by command line.");
-    }
-    return true;
-  }
-
+bool ShouldDisableAsr(const CoreConfig& config, std::string* reason) {
   const AsrProvider* provider = ResolveActiveAsrProvider(config);
   if (!provider) {
     if (reason) {
@@ -131,8 +124,7 @@ void LogActiveBackend(const CoreConfig& config) {
 
 } // namespace
 
-RecognitionSessionManager::RecognitionSessionManager(bool disable_asr_by_flag)
-    : disable_asr_by_flag_(disable_asr_by_flag) {}
+RecognitionSessionManager::RecognitionSessionManager() = default;
 
 RecognitionSessionManager::~RecognitionSessionManager() {
   Shutdown();
@@ -141,7 +133,7 @@ RecognitionSessionManager::~RecognitionSessionManager() {
 bool RecognitionSessionManager::Initialize(const CoreConfig& settings,
                                            std::string* disabled_reason) {
   std::string disabled_state_reason;
-  if (ShouldDisableAsr(settings, disable_asr_by_flag_, &disabled_state_reason)) {
+  if (ShouldDisableAsr(settings, &disabled_state_reason)) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     ApplyDisabledStateLocked();
     if (disabled_reason) {
@@ -181,7 +173,7 @@ bool RecognitionSessionManager::Initialize(const CoreConfig& settings,
 
 bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, std::string* error) {
   std::string disabled_reason;
-  if (ShouldDisableAsr(settings, disable_asr_by_flag_, &disabled_reason)) {
+  if (ShouldDisableAsr(settings, &disabled_reason)) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     ApplyDisabledStateLocked();
     if (error) {

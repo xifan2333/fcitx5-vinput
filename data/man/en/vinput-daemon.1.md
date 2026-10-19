@@ -13,9 +13,6 @@ vinput-daemon - Background speech recognition and processing daemon for fcitx5-v
 
 # OPTIONS
 
-**--no-asr**
-:   Start daemon with local speech recognition engine disabled.
-
 **--log-level**=*LEVEL*
 :   Set log filtering threshold: `trace`, `debug`, `info`, `warn`, `error`, `critical`, `off` (default: `info`). Can also be specified via the `VINPUT_LOG_LEVEL` environment variable.
 

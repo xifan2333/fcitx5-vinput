@@ -36,7 +36,7 @@ public:
     bool has_effective_backend = false;
   };
 
-  explicit RecognitionSessionManager(bool disable_asr_by_flag);
+  RecognitionSessionManager();
   ~RecognitionSessionManager();
 
   bool Initialize(const CoreConfig& settings, std::string* disabled_reason);
@@ -73,7 +73,6 @@ private:
   void ApplyDisabledStateLocked();
   void NotifyReloadResult(bool success, const std::string& message);
 
-  bool disable_asr_by_flag_ = false;
   mutable std::mutex state_mutex_;
   std::condition_variable reload_cv_;
   bool reload_worker_running_ = false;

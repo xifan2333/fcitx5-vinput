@@ -1738,10 +1738,6 @@ msgstr "Proc (已停止)"
 msgid "Local ASR model configuration is missing for provider '%s'."
 msgstr "提供商 '%s' 的本地 ASR 模型配置缺失。请先配置模型。"
 
-#: src/daemon/asr/runtime/recognition_session_manager.cpp:63
-msgid "ASR disabled by command line."
-msgstr "ASR 已被命令行禁用。"
-
 #: src/daemon/asr/runtime/recognition_session_manager.cpp:71
 msgid "No active ASR provider configured."
 msgstr "未配置活跃的 ASR 提供商。"

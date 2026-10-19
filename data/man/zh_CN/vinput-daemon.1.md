@@ -13,9 +13,6 @@ vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 
 # 选项
 
-**--no-asr**
-:   启动时不启用本地语音识别引擎。
-
 **--log-level**=*LEVEL*
 :   设置日志过滤门槛：`trace`、`debug`、`info`、`warn`、`error`、`critical`、`off`（默认值：`info`）。亦可通过环境变量 `VINPUT_LOG_LEVEL` 设置。
 

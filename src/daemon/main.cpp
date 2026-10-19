@@ -513,11 +513,8 @@ int main(int argc, char* argv[]) {
   signal(SIGTERM, signal_handler);
   signal(SIGINT, signal_handler);
 
-  bool disable_asr = false;
   for (int i = 1; i < argc; ++i) {
-    if (std::strcmp(argv[i], "--no-asr") == 0) {
-      disable_asr = true;
-    } else if (std::strncmp(argv[i], "--log-level=", 12) == 0) {
+    if (std::strncmp(argv[i], "--log-level=", 12) == 0) {
       vinput::log::SetLogLevel(argv[i] + 12);
     } else if (std::strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
       vinput::log::SetLogLevel(argv[++i]);
@@ -526,7 +523,7 @@ int main(int argc, char* argv[]) {
 
   auto startup_settings = LoadCoreConfig();
   NormalizeCoreConfig(&startup_settings);
-  vinput::daemon::asr::RecognitionSessionManager recognition_manager(disable_asr);
+  vinput::daemon::asr::RecognitionSessionManager recognition_manager;
 
   std::string asr_disabled_reason;
   if (!recognition_manager.Initialize(startup_settings, &asr_disabled_reason)) {
