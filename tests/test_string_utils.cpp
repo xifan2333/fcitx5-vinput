@@ -705,6 +705,7 @@ void TestFmtStr() {
 
   const std::string_view empty_view{};
   TEST_ASSERT(FmtStr("Empty: [%s]", empty_view) == "Empty: []");
+  TEST_ASSERT(FmtStr("Direct default view: [%s]", std::string_view{}) == "Direct default view: []");
 
   // 5. Interleaved multiple string_views, strings, numbers, and pointers (stack & register ABI
   // alignment check)

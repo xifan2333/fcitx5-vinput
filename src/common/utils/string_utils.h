@@ -25,7 +25,7 @@ namespace detail {
 template <typename T> auto PrepareStorage(const T& v) {
   using RawT = std::decay_t<T>;
   if constexpr (std::is_same_v<RawT, std::string_view>) {
-    return std::string(v);
+    return v.empty() ? std::string{} : std::string(v);
   } else {
     return std::cref(v);
   }
