@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 #include <system_error>
 
+#include "common/utils/sandbox.h"
+
 #include "config.h"
 
 namespace vinput::path {
@@ -28,8 +30,7 @@ std::filesystem::path FlatpakBundledExecutablePath(std::string_view name) {
 }
 
 bool IsInsideFlatpak() {
-  struct stat st;
-  return stat("/.flatpak-info", &st) == 0;
+  return vinput::sandbox::IsInSandbox();
 }
 
 std::filesystem::path UserSystemdUnitPath(std::string_view unit_name) {

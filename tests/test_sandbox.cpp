@@ -60,7 +60,7 @@ void TestDetectSandbox() {
 
   // Existing file as info path
   const TempDirGuard temp;
-  fs::path dummy_info = temp.path / "dummy-flatpak-info";
+  const fs::path dummy_info = temp.path / "dummy-flatpak-info";
   {
     std::ofstream ofs(dummy_info);
     ofs << "sample";
@@ -73,16 +73,16 @@ void TestProbeMissingPermissions() {
   using vinput::sandbox::detail::ProbeOptions;
 
   const TempDirGuard temp;
-  fs::path pw_socket = temp.path / "pipewire-0";
+  const fs::path pw_socket = temp.path / "pipewire-0";
   {
     std::ofstream ofs(pw_socket);
     ofs << "socket";
   }
-  fs::path systemd_dir = temp.path / "systemd" / "user";
+  const fs::path systemd_dir = temp.path / "systemd" / "user";
   std::error_code ec;
   fs::create_directories(systemd_dir, ec);
 
-  fs::path cache_dir = temp.path / "cache" / "vinput";
+  const fs::path cache_dir = temp.path / "cache" / "vinput";
   fs::create_directories(cache_dir, ec);
 
   // Case 1: All valid and present
@@ -150,7 +150,7 @@ void TestFormatOverrideCommands() {
 
   // Single permission
   {
-    std::string cmds = FormatOverrideCommands({"pipewire"});
+    const std::string cmds = FormatOverrideCommands({"pipewire"});
     TEST_ASSERT(
         cmds.find("flatpak override --user --filesystem=xdg-run/pipewire-0 org.fcitx.Fcitx5") !=
         std::string::npos);
@@ -160,7 +160,8 @@ void TestFormatOverrideCommands() {
 
   // All three permissions
   {
-    std::string cmds = FormatOverrideCommands({"pipewire", "xdg-config/systemd", "xdg-cache"});
+    const std::string cmds =
+        FormatOverrideCommands({"pipewire", "xdg-config/systemd", "xdg-cache"});
     TEST_ASSERT(
         cmds.find("flatpak override --user --filesystem=xdg-run/pipewire-0 org.fcitx.Fcitx5") !=
         std::string::npos);
@@ -176,13 +177,13 @@ void TestFormatOverrideCommands() {
 
 void TestGeneralSandboxApis() {
   // IsInSandbox() should return a consistent boolean
-  bool in_sb1 = vinput::sandbox::IsInSandbox();
-  bool in_sb2 = vinput::sandbox::IsInSandbox();
+  const bool in_sb1 = vinput::sandbox::IsInSandbox();
+  const bool in_sb2 = vinput::sandbox::IsInSandbox();
   TEST_ASSERT(in_sb1 == in_sb2);
 
   // MissingSandboxPermissions() should be consistent
-  auto missing1 = vinput::sandbox::MissingSandboxPermissions();
-  auto missing2 = vinput::sandbox::MissingSandboxPermissions();
+  const auto missing1 = vinput::sandbox::MissingSandboxPermissions();
+  const auto missing2 = vinput::sandbox::MissingSandboxPermissions();
   TEST_ASSERT(missing1 == missing2);
 
   if (!in_sb1) {
@@ -190,8 +191,8 @@ void TestGeneralSandboxApis() {
   }
 
   // WrapHostCommand
-  std::vector<std::string> args = {"echo", "hello"};
-  auto wrapped = vinput::sandbox::WrapHostCommand(args);
+  const std::vector<std::string> args = {"echo", "hello"};
+  const auto wrapped = vinput::sandbox::WrapHostCommand(args);
   if (!in_sb1) {
     TEST_ASSERT(wrapped == args);
   } else {
@@ -201,12 +202,12 @@ void TestGeneralSandboxApis() {
   }
 
   // DaemonLogFilter
-  auto log_filter = vinput::sandbox::DaemonLogFilter();
+  const auto log_filter = vinput::sandbox::DaemonLogFilter();
   TEST_ASSERT(!log_filter.empty());
 
   // RewriteServiceUnit
-  std::string unit = "ExecStart=/usr/bin/daemon\nRestart=always\n";
-  auto rewritten = vinput::sandbox::RewriteServiceUnit(unit);
+  const std::string unit = "ExecStart=/usr/bin/daemon\nRestart=always\n";
+  const auto rewritten = vinput::sandbox::RewriteServiceUnit(unit);
   if (!in_sb1) {
     TEST_ASSERT(rewritten == unit);
   }

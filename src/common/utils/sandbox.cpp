@@ -24,12 +24,17 @@ bool CheckDirectoryWritable(const std::filesystem::path& dir) {
   }
   std::error_code ec;
   if (std::filesystem::exists(dir, ec) && !ec) {
-    return ::access(dir.c_str(), W_OK) == 0;
+    if (std::filesystem::is_directory(dir, ec) && !ec) {
+      return ::access(dir.c_str(), W_OK | X_OK) == 0;
+    }
+    return false;
   }
   const auto parent = dir.parent_path();
   if (!parent.empty() && parent != dir) {
     if (std::filesystem::exists(parent, ec) && !ec) {
-      return ::access(parent.c_str(), W_OK) == 0;
+      if (std::filesystem::is_directory(parent, ec) && !ec) {
+        return ::access(parent.c_str(), W_OK | X_OK) == 0;
+      }
     }
   }
   return false;
@@ -110,12 +115,7 @@ std::vector<std::string> MissingSandboxPermissions() {
           std::filesystem::path("/run/user") / std::to_string(::getuid()) / "pipewire-0";
     }
     options.systemd_dir = vinput::path::UserSystemdUnitDir();
-    const char* home = std::getenv("HOME");
-    if (home != nullptr && *home != '\0') {
-      options.cache_dir = std::filesystem::path(home) / ".cache" / "vinput";
-    } else {
-      options.cache_dir = vinput::path::VinputCacheDir();
-    }
+    options.cache_dir = vinput::path::VinputCacheDir();
     return detail::ProbeMissingPermissions(options);
   }();
 
