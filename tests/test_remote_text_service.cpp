@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <variant>
 #include <vector>
 
 #include "common/config/core_config_types.h"
@@ -64,25 +65,11 @@ void TestRemoteTextServiceHttpAndWs() {
   TEST_ASSERT(service.Synchronize(config, &err));
   TEST_ASSERT(err.empty());
 
-  const auto endpoints = service.ListEndpoints();
-  (void)endpoints; // May be empty in loopback-only CI/container, but shouldn't crash
-
-  // Connect to ephemeral port
-  // Parse port from endpoints or use a known free port
-  // Let's bind with port 0 or an explicit port
-  service.Shutdown();
-
-  // Pick a dedicated port for deterministic testing
-  int test_port = 0;
-  {
-    httplib::Server temp_svr;
-    test_port = temp_svr.bind_to_any_port("127.0.0.1");
-  }
+  const int test_port = service.Port();
   TEST_ASSERT(test_port > 0);
 
-  config.asr.providers[0].env["VINPUT_ASR_PORT"] = std::to_string(test_port);
-  TEST_ASSERT(service.Synchronize(config, &err));
-  TEST_ASSERT(err.empty());
+  const auto endpoints = service.ListEndpoints();
+  (void)endpoints; // May be empty in loopback-only CI/container, but shouldn't crash
 
   httplib::Client cli("127.0.0.1", test_port);
 
@@ -120,16 +107,16 @@ void TestRemoteTextServiceHttpAndWs() {
   }
 
   // 5. Test WebSocket /v1/realtime Authorized with Bearer
-  httplib::Headers rt_headers = {{"Authorization", "Bearer " + api_key}};
+  const httplib::Headers rt_headers = {{"Authorization", "Bearer " + api_key}};
   httplib::ws::WebSocketClient rt_ws("ws://127.0.0.1:" + std::to_string(test_port) + "/v1/realtime",
                                      rt_headers);
   auto rt_conn = rt_ws.connect();
-  TEST_ASSERT(rt_conn);
+  TEST_ASSERT(bool(rt_conn));
 
   // 6. Test WebSocket /ws authentication and debounce text dispatch
   {
     httplib::ws::WebSocketClient ws("ws://127.0.0.1:" + std::to_string(test_port) + "/ws");
-    TEST_ASSERT(ws.connect());
+    TEST_ASSERT(bool(ws.connect()));
 
     // Send auth payload
     const std::string auth_json = std::string(R"({"type":"auth","api_key":")") + api_key + R"("})";
@@ -178,19 +165,13 @@ void TestRemoteTextServiceHttpAndWs() {
 }
 
 void TestPhoneDrivenDirectSession() {
-  int test_port = 0;
-  {
-    httplib::Server temp_svr;
-    test_port = temp_svr.bind_to_any_port("127.0.0.1");
-  }
-  TEST_ASSERT(test_port > 0);
   const std::string api_key = "direct_phone_key_456";
 
   CoreConfig config;
   config.asr.activeProvider = "provider.vinput.remote.streaming";
   CommandAsrProvider cmd;
   cmd.id = "provider.vinput.remote.streaming";
-  cmd.env["VINPUT_ASR_PORT"] = std::to_string(test_port);
+  cmd.env["VINPUT_ASR_PORT"] = "0"; // Ephemeral port
   cmd.env["VINPUT_ASR_API_KEY"] = api_key;
   cmd.env["VINPUT_ASR_DEBOUNCE_MS"] = "200";
   config.asr.providers.emplace_back(cmd);
@@ -212,8 +193,11 @@ void TestPhoneDrivenDirectSession() {
   TEST_ASSERT(service.Synchronize(config, &err));
   TEST_ASSERT(err.empty());
 
+  const int test_port = service.Port();
+  TEST_ASSERT(test_port > 0);
+
   httplib::ws::WebSocketClient ws("ws://127.0.0.1:" + std::to_string(test_port) + "/ws");
-  TEST_ASSERT(ws.connect());
+  TEST_ASSERT(bool(ws.connect()));
 
   // Authenticate
   const std::string auth_json = std::string(R"({"type":"auth","api_key":")") + api_key + R"("})";
@@ -247,19 +231,13 @@ void TestPhoneDrivenDirectSession() {
 }
 
 void TestInputSessionPreemption() {
-  int test_port = 0;
-  {
-    httplib::Server temp_svr;
-    test_port = temp_svr.bind_to_any_port("127.0.0.1");
-  }
-  TEST_ASSERT(test_port > 0);
   const std::string api_key = "preempt_key_789";
 
   CoreConfig config;
   config.asr.activeProvider = "provider.vinput.remote.streaming";
   CommandAsrProvider cmd;
   cmd.id = "provider.vinput.remote.streaming";
-  cmd.env["VINPUT_ASR_PORT"] = std::to_string(test_port);
+  cmd.env["VINPUT_ASR_PORT"] = "0"; // Ephemeral port
   cmd.env["VINPUT_ASR_API_KEY"] = api_key;
   cmd.env["VINPUT_ASR_DEBOUNCE_MS"] = "200";
   config.asr.providers.emplace_back(cmd);
@@ -281,11 +259,14 @@ void TestInputSessionPreemption() {
   TEST_ASSERT(service.Synchronize(config, &err));
   TEST_ASSERT(err.empty());
 
+  const int test_port = service.Port();
+  TEST_ASSERT(test_port > 0);
+
   const std::string auth_json = std::string(R"({"type":"auth","api_key":")") + api_key + R"("})";
 
   // 1. Client 1 connects and authenticates
   httplib::ws::WebSocketClient ws1("ws://127.0.0.1:" + std::to_string(test_port) + "/ws");
-  TEST_ASSERT(ws1.connect());
+  TEST_ASSERT(bool(ws1.connect()));
   TEST_ASSERT(ws1.send(auth_json));
 
   std::string frame1_auth;
@@ -303,7 +284,7 @@ void TestInputSessionPreemption() {
 
   // 2. Client 2 connects with the same valid API key and authenticates -> preempts Client 1
   httplib::ws::WebSocketClient ws2("ws://127.0.0.1:" + std::to_string(test_port) + "/ws");
-  TEST_ASSERT(ws2.connect());
+  TEST_ASSERT(bool(ws2.connect()));
   TEST_ASSERT(ws2.send(auth_json));
 
   // Client 2 should receive auth_ok and init

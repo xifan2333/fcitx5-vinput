@@ -70,6 +70,7 @@
                   qt6.qtbase
                   cli11
                   nlohmann_json
+                  httplib
                   clang
                   mold
                 ])
@@ -81,6 +82,7 @@
               cmakeFlags = [
                 "-DVINPUT_ENABLE_LOCAL_ASR=${if enableLocalAsr then "ON" else "OFF"}"
                 "-DVINPUT_FETCH_CLI11=OFF"
+                "-DVINPUT_FETCH_HTTPLIB=OFF"
                 "-DCMAKE_BUILD_TYPE=Release"
                 "-DCMAKE_C_COMPILER=clang"
                 "-DCMAKE_CXX_COMPILER=clang++"
@@ -153,6 +155,7 @@
               cli11
               sherpa-deps.sherpa-onnx
               nlohmann_json
+              httplib
             ];
           };
         }

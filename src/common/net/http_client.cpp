@@ -9,13 +9,17 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <httplib.h>
 #include <ios>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <ratio>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -179,7 +183,14 @@ public:
     cli->set_connection_timeout(request.connect_timeout_ms / 1000,
                                 (request.connect_timeout_ms % 1000) * 1000);
     cli->set_write_timeout(request.timeout_ms / 1000, (request.timeout_ms % 1000) * 1000);
-    cli->set_payload_max_length(request.max_response_bytes);
+
+    // In cpp-httplib, payload_max_length of 0 means unlimited.
+    // For file downloads (streamed to disk), do not cap to 10MB default.
+    if (dest_path != nullptr) {
+      cli->set_payload_max_length(0);
+    } else {
+      cli->set_payload_max_length(request.max_response_bytes);
+    }
 
     // Proxy setup
     if (request.proxy.has_value()) {
@@ -263,10 +274,15 @@ public:
     httplib::Result res;
 
     if (dest_path != nullptr) {
-      std::ofstream out_file(*dest_path, std::ios::binary);
+      std::error_code ec;
+      std::filesystem::create_directories(dest_path->parent_path(), ec);
+
+      const auto tmp_path = dest_path->parent_path() /
+                            (dest_path->filename().string() + ".tmp." + std::to_string(getpid()));
+      std::ofstream out_file(tmp_path, std::ios::binary);
       if (!out_file.is_open()) {
         HttpResponse resp;
-        resp.error_message = "Failed to open destination file: " + dest_path->string();
+        resp.error_message = "Failed to open destination file: " + tmp_path.string();
         Release(id, cli);
         return resp;
       }
@@ -283,6 +299,16 @@ public:
           },
           progress_fn);
       out_file.flush();
+      out_file.close();
+
+      if (res && res->status >= 200 && res->status < 300) {
+        std::filesystem::rename(tmp_path, *dest_path, ec);
+        if (ec) {
+          std::filesystem::remove(tmp_path, ec);
+        }
+      } else {
+        std::filesystem::remove(tmp_path, ec);
+      }
     } else {
       switch (request.method) {
       case HttpMethod::Get:
@@ -294,7 +320,7 @@ public:
         if (ct_opt.has_value()) {
           ct = std::string(*ct_opt);
         }
-        res = cli->Post(path_and_query, headers, request.body, ct.c_str(), progress_fn);
+        res = cli->Post(path_and_query, headers, request.body, ct, progress_fn);
         break;
       }
       case HttpMethod::Put: {
@@ -303,7 +329,7 @@ public:
         if (ct_opt.has_value()) {
           ct = std::string(*ct_opt);
         }
-        res = cli->Put(path_and_query, headers, request.body, ct.c_str(), progress_fn);
+        res = cli->Put(path_and_query, headers, request.body, ct, progress_fn);
         break;
       }
       case HttpMethod::Delete: {
@@ -312,7 +338,7 @@ public:
         if (ct_opt.has_value()) {
           ct = std::string(*ct_opt);
         }
-        res = cli->Delete(path_and_query, headers, request.body, ct.c_str(), progress_fn);
+        res = cli->Delete(path_and_query, headers, request.body, ct, progress_fn);
         break;
       }
       case HttpMethod::Head:
@@ -331,6 +357,12 @@ public:
       response.body = std::move(res->body);
       for (const auto& [k, v] : res->headers) {
         response.headers.push_back({k, v});
+      }
+      const auto loc = res->get_header_value("Location");
+      if (!loc.empty()) {
+        response.effective_url = loc;
+      } else {
+        response.effective_url = request.url;
       }
       Release(id, cli);
     } else {

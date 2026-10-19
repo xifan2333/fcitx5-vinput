@@ -99,19 +99,27 @@ pkg_check_modules(SDBUS REQUIRED libsystemd)
 find_package(LibArchive REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# Header-Only cpp-httplib (Pinned modern version with native WebSocket support)
-include(FetchContent)
-set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_INSTALL OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_TEST OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_USE_OPENSSL_IF_AVAILABLE ON CACHE BOOL "" FORCE)
-FetchContent_Declare(
-    httplib
-    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-    GIT_TAG v0.62.0
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(httplib)
+option(VINPUT_FETCH_HTTPLIB "Fetch cpp-httplib with FetchContent when not found" ON)
+find_package(httplib QUIET)
+if(NOT httplib_FOUND)
+    if(VINPUT_FETCH_HTTPLIB)
+        include(FetchContent)
+        set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)
+        set(HTTPLIB_INSTALL OFF CACHE BOOL "" FORCE)
+        set(HTTPLIB_TEST OFF CACHE BOOL "" FORCE)
+        set(HTTPLIB_USE_OPENSSL_IF_AVAILABLE ON CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            httplib
+            GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+            GIT_TAG v0.62.0
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(httplib)
+    else()
+        message(FATAL_ERROR
+            "httplib was not found. Install httplib or enable VINPUT_FETCH_HTTPLIB.")
+    endif()
+endif()
 if(NOT TARGET httplib::httplib AND TARGET httplib)
     add_library(httplib::httplib ALIAS httplib)
 endif()

@@ -42,6 +42,7 @@ public:
 
   [[nodiscard]] std::vector<std::string> ListEndpoints() const;
   [[nodiscard]] std::string GetText() const;
+  [[nodiscard]] int Port() const;
 
 private:
   struct Settings {

@@ -18,6 +18,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <sys/socket.h>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -35,6 +36,21 @@ namespace {
 using json = nlohmann::json;
 
 constexpr std::string_view kRemoteProviderId = "provider.vinput.remote.streaming";
+
+std::optional<int> ParsePort(std::string_view value) {
+  const std::string_view trimmed = vinput::str::TrimAsciiWhitespaceView(value);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+  int parsed = 0;
+  const char* begin = trimmed.data();
+  const char* end = begin + trimmed.size();
+  const auto result = std::from_chars(begin, end, parsed);
+  if (result.ec != std::errc{} || result.ptr != end || parsed < 0 || parsed > 65535) {
+    return std::nullopt;
+  }
+  return parsed;
+}
 
 std::optional<int> ParsePositiveInt(std::string_view value) {
   const std::string_view trimmed = vinput::str::TrimAsciiWhitespaceView(value);
@@ -80,13 +96,13 @@ std::optional<int> ParsePortFromWsUrl(std::string_view url) {
         authority[close + 1] != ':') {
       return std::nullopt;
     }
-    return ParsePositiveInt(authority.substr(close + 2));
+    return ParsePort(authority.substr(close + 2));
   }
   const std::size_t colon = authority.rfind(':');
   if (colon == std::string_view::npos || colon + 1 >= authority.size()) {
     return std::nullopt;
   }
-  return ParsePositiveInt(authority.substr(colon + 1));
+  return ParsePort(authority.substr(colon + 1));
 }
 
 std::string NewEventId(std::string_view prefix) {
@@ -116,6 +132,11 @@ RemoteTextService::RemoteTextService() = default;
 
 RemoteTextService::~RemoteTextService() {
   Shutdown();
+}
+
+int RemoteTextService::Port() const {
+  const std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+  return settings_.port;
 }
 
 bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* settings,
@@ -150,18 +171,16 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
   Settings out;
   const std::string port_text = EnvValue(command->env, "VINPUT_ASR_PORT");
   if (!port_text.empty()) {
-    const auto port = ParsePositiveInt(port_text);
-    if (!port || *port > 65535) {
+    const auto port = ParsePort(port_text);
+    if (!port) {
       if (error != nullptr) {
-        *error = "VINPUT_ASR_PORT must be between 1 and 65535.";
+        *error = "VINPUT_ASR_PORT must be between 0 and 65535.";
       }
       return false;
     }
     out.port = *port;
   } else if (const auto port = ParsePortFromWsUrl(EnvValue(command->env, "VINPUT_ASR_URL"))) {
-    if (*port <= 65535) {
-      out.port = *port;
-    }
+    out.port = *port;
   }
 
   const std::string debounce_text = EnvValue(command->env, "VINPUT_ASR_DEBOUNCE_MS");
@@ -413,6 +432,16 @@ void RemoteTextService::Shutdown() {
     debounce_thread_.join();
   }
 
+  {
+    const std::lock_guard<std::mutex> lock(state_mutex_);
+    if (output_ws_ != nullptr && output_ws_->is_open()) {
+      output_ws_->close(httplib::ws::CloseStatus::Normal, "Service shutting down");
+    }
+    if (input_ws_ != nullptr && input_ws_->is_open()) {
+      input_ws_->close(httplib::ws::CloseStatus::Normal, "Service shutting down");
+    }
+  }
+
   if (http_server_) {
     http_server_->stop();
   }
@@ -450,7 +479,15 @@ void RemoteTextService::HandleOutputSession(httplib::ws::WebSocket& ws) {
   NotifyInput("output_connected");
 
   std::string payload;
-  while (ws.read(payload)) {
+  while (ws.is_open()) {
+    const auto ret = ws.read(payload);
+    if (ret == httplib::ws::ReadResult::Fail) {
+      break;
+    }
+    if (ret != httplib::ws::ReadResult::Text) {
+      continue;
+    }
+
     json event;
     try {
       event = json::parse(payload);
@@ -499,7 +536,15 @@ void RemoteTextService::HandleInputSession(httplib::ws::WebSocket& ws) {
   bool authenticated = false;
   std::string payload;
 
-  while (ws.read(payload)) {
+  while (ws.is_open()) {
+    const auto ret = ws.read(payload);
+    if (ret == httplib::ws::ReadResult::Fail) {
+      break;
+    }
+    if (ret != httplib::ws::ReadResult::Text) {
+      continue;
+    }
+
     json event;
     try {
       event = json::parse(payload);
