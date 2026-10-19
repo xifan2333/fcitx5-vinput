@@ -73,6 +73,7 @@ target_link_libraries(config PUBLIC
 
 target_link_libraries(common PUBLIC
     config
+    httplib::httplib
     CURL::libcurl
     LibArchive::LibArchive
     OpenSSL::Crypto
