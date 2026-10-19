@@ -63,6 +63,18 @@ inline spdlog::level::level_enum DetermineInitialLogLevel() {
   return spdlog::level::info;
 }
 
+inline constexpr std::string_view kDefaultLogPattern =
+    "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v";
+
+inline std::string DetermineInitialLogPattern() {
+  if (const char* env_pattern = std::getenv("VINPUT_LOG_PATTERN")) {
+    if (env_pattern[0] != '\0') {
+      return std::string(env_pattern);
+    }
+  }
+  return std::string(kDefaultLogPattern);
+}
+
 inline std::shared_ptr<spdlog::logger> CreateDefaultLogger() {
   auto sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
   const char* no_color = std::getenv("NO_COLOR");
@@ -74,7 +86,7 @@ inline std::shared_ptr<spdlog::logger> CreateDefaultLogger() {
   }
 
   auto logger = std::make_shared<spdlog::logger>("vinput", sink);
-  logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v");
+  logger->set_pattern(DetermineInitialLogPattern());
   logger->set_level(DetermineInitialLogLevel());
   return logger;
 }
@@ -82,6 +94,10 @@ inline std::shared_ptr<spdlog::logger> CreateDefaultLogger() {
 inline std::shared_ptr<spdlog::logger>& GetLogger() {
   static std::shared_ptr<spdlog::logger> s_logger = CreateDefaultLogger();
   return s_logger;
+}
+
+inline void SetLogPattern(std::string pattern) {
+  GetLogger()->set_pattern(std::move(pattern));
 }
 
 inline void SetLogLevel(spdlog::level::level_enum level) {
