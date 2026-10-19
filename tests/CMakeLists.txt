@@ -238,6 +238,14 @@ target_include_directories(test_hotword_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_hotword_utils PRIVATE common pthread)
 add_test(NAME test_hotword_utils COMMAND test_hotword_utils)
 
+add_executable(test_output_ducker
+    test_output_ducker.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/audio/output_ducker.cpp
+)
+target_include_directories(test_output_ducker PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_output_ducker PRIVATE common pthread)
+add_test(NAME test_output_ducker COMMAND test_output_ducker)
+
 add_executable(test_locale_utils test_locale_utils.cpp)
 target_include_directories(test_locale_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_locale_utils COMMAND test_locale_utils)
