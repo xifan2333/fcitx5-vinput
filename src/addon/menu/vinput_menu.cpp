@@ -38,8 +38,6 @@
 
 namespace {
 
-constexpr int kMenuPageSize = 10;
-
 struct ParsedPaletteQuery {
   const PaletteCommand* command = nullptr;
   std::string terms;
@@ -264,34 +262,6 @@ bool IsPrintableMenuInput(const fcitx::Key& key) {
     }
   }
   return true;
-}
-
-int DigitSelectionIndex(fcitx::CandidateList* candidate_list, int digit) {
-  auto* pageable = candidate_list ? candidate_list->toPageable() : nullptr;
-  int current_page = pageable ? pageable->currentPage() : 0;
-  if (current_page < 0) {
-    current_page = 0;
-  }
-  return current_page * kMenuPageSize + digit;
-}
-
-int CurrentSelectionIndex(fcitx::CandidateList* candidate_list) {
-  if (!candidate_list) {
-    return -1;
-  }
-
-  int current_index = candidate_list->cursorIndex();
-  if (current_index < 0) {
-    return -1;
-  }
-
-  auto* pageable = candidate_list->toPageable();
-  int current_page = pageable ? pageable->currentPage() : 0;
-  if (current_page < 0) {
-    current_page = 0;
-  }
-
-  return current_page * kMenuPageSize + current_index;
 }
 
 void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
@@ -873,9 +843,8 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   const int digit = keyEvent.key().digitSelection();
-  const int digit_index = DigitSelectionIndex(candidate_list.get(), digit);
-  if (digit >= 0 && digit_index < static_cast<int>(palette_filtered_indices_.size())) {
-    selectPaletteItem(palette_filtered_indices_[digit_index], palette_menu_ic_);
+  if (candidate_list && digit >= 0 && digit < candidate_list->size()) {
+    candidate_list->candidate(digit).select(palette_menu_ic_);
     keyEvent.filterAndAccept();
     return true;
   }
@@ -895,12 +864,12 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (IsEnterKey(keyEvent.key())) {
-    int index = CurrentSelectionIndex(candidate_list.get());
+    int index = candidate_list ? candidate_list->cursorIndex() : -1;
     if (index < 0) {
-      index = palette_filtered_indices_.empty() ? -1 : 0;
+      index = 0;
     }
-    if (index >= 0 && index < static_cast<int>(palette_filtered_indices_.size())) {
-      selectPaletteItem(palette_filtered_indices_[index], palette_menu_ic_);
+    if (candidate_list && index >= 0 && index < candidate_list->size()) {
+      candidate_list->candidate(index).select(palette_menu_ic_);
     } else {
       hidePaletteMenu();
     }
