@@ -13,7 +13,7 @@
 #include <cstdlib>
 #include <memory>
 #include <source_location>
-#include <spdlog/sinks/stderr_color_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
