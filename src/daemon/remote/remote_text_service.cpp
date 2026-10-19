@@ -1,6 +1,5 @@
 #include "daemon/remote/remote_text_service.h"
 
-#define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <algorithm>
 #include <charconv>
 #include <chrono>

@@ -1,6 +1,5 @@
 #include "common/net/http_client.h"
 
-#define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -78,9 +77,13 @@ bool HasUserAgent(const std::vector<HttpHeader>& headers) {
   return false;
 }
 
-void ParseHostAndPort(std::string_view host_port_str, std::string& out_host, int& out_port) {
+void ParseHostAndPort(std::string_view host_port_str, std::string& out_host, int& out_port,
+                      std::string& out_user, std::string& out_pass) {
   out_host.clear();
   out_port = 80;
+  out_user.clear();
+  out_pass.clear();
+
   std::string_view sv = host_port_str;
   if (sv.starts_with("http://")) {
     sv.remove_prefix(7);
@@ -93,6 +96,31 @@ void ParseHostAndPort(std::string_view host_port_str, std::string& out_host, int
   if (slash != std::string_view::npos) {
     sv = sv.substr(0, slash);
   }
+
+  const auto at_pos = sv.find('@');
+  if (at_pos != std::string_view::npos) {
+    const std::string_view creds = sv.substr(0, at_pos);
+    sv.remove_prefix(at_pos + 1);
+    const auto colon = creds.find(':');
+    if (colon != std::string_view::npos) {
+      out_user = std::string(creds.substr(0, colon));
+      out_pass = std::string(creds.substr(colon + 1));
+    } else {
+      out_user = std::string(creds);
+    }
+  }
+
+  if (sv.starts_with('[')) {
+    const auto close_bracket = sv.find(']');
+    if (close_bracket != std::string_view::npos) {
+      out_host = std::string(sv.substr(1, close_bracket - 1));
+      if (close_bracket + 1 < sv.size() && sv[close_bracket + 1] == ':') {
+        out_port = std::atoi(std::string(sv.substr(close_bracket + 2)).c_str());
+      }
+      return;
+    }
+  }
+
   const auto colon = sv.rfind(':');
   if (colon != std::string_view::npos) {
     out_host = std::string(sv.substr(0, colon));
@@ -100,6 +128,41 @@ void ParseHostAndPort(std::string_view host_port_str, std::string& out_host, int
   } else {
     out_host = std::string(sv);
   }
+}
+
+bool IsHostExemptFromProxy(std::string_view host) {
+  const char* no_proxy = std::getenv("no_proxy");
+  if (no_proxy == nullptr) {
+    no_proxy = std::getenv("NO_PROXY");
+  }
+  if (no_proxy == nullptr || *no_proxy == '\0') {
+    return false;
+  }
+  std::string_view np(no_proxy);
+  while (!np.empty()) {
+    const auto comma = np.find(',');
+    std::string_view token = (comma == std::string_view::npos) ? np : np.substr(0, comma);
+    token = vinput::str::TrimAsciiWhitespaceView(token);
+    if (token == "*") {
+      return true;
+    }
+    if (!token.empty()) {
+      if (token.front() == '.') {
+        if (host.ends_with(token) || host == token.substr(1)) {
+          return true;
+        }
+      } else {
+        if (host == token || host.ends_with("." + std::string(token))) {
+          return true;
+        }
+      }
+    }
+    if (comma == std::string_view::npos) {
+      break;
+    }
+    np.remove_prefix(comma + 1);
+  }
+  return false;
 }
 
 struct ConnectionIdentity {
@@ -157,7 +220,11 @@ public:
       return resp;
     }
 
-    std::string origin = uc.scheme + "://" + uc.host;
+    std::string host = uc.host;
+    if (host.find(':') != std::string::npos && !host.starts_with('[')) {
+      host = "[" + host + "]";
+    }
+    std::string origin = uc.scheme + "://" + host;
     if (!uc.port.empty()) {
       origin += ":" + uc.port;
     }
@@ -178,6 +245,8 @@ public:
       cli = std::make_shared<httplib::Client>(origin);
     }
 
+    // Explicitly enable persistent keep-alive connections on client
+    cli->set_keep_alive(true);
     cli->set_follow_location(request.follow_redirects);
     cli->set_read_timeout(request.timeout_ms / 1000, (request.timeout_ms % 1000) * 1000);
     cli->set_connection_timeout(request.connect_timeout_ms / 1000,
@@ -185,34 +254,50 @@ public:
     cli->set_write_timeout(request.timeout_ms / 1000, (request.timeout_ms % 1000) * 1000);
 
     // In cpp-httplib, payload_max_length of 0 means unlimited.
-    // For file downloads (streamed to disk), do not cap to 10MB default.
+    // For file downloads (streamed directly to disk), do not clamp with in-memory limit.
     if (dest_path != nullptr) {
       cli->set_payload_max_length(0);
     } else {
       cli->set_payload_max_length(request.max_response_bytes);
     }
 
-    // Proxy setup
+    auto apply_proxy = [&](std::string_view proxy_str) {
+      std::string p_host;
+      int p_port = 80;
+      std::string p_user;
+      std::string p_pass;
+      ParseHostAndPort(proxy_str, p_host, p_port, p_user, p_pass);
+      cli->set_proxy(p_host, p_port);
+      if (!p_user.empty() || !p_pass.empty()) {
+        cli->set_proxy_basic_auth(p_user, p_pass);
+      }
+    };
+
     if (request.proxy.has_value()) {
       if (!request.proxy->empty()) {
-        std::string p_host;
-        int p_port = 80;
-        ParseHostAndPort(*request.proxy, p_host, p_port);
-        cli->set_proxy(p_host, p_port);
+        apply_proxy(*request.proxy);
       }
-    } else {
-      const char* ambient_proxy = std::getenv("https_proxy");
-      if (ambient_proxy == nullptr && uc.scheme == "http") {
+    } else if (!IsHostExemptFromProxy(uc.host)) {
+      const char* ambient_proxy = nullptr;
+      if (uc.scheme == "https") {
+        ambient_proxy = std::getenv("https_proxy");
+        if (ambient_proxy == nullptr) {
+          ambient_proxy = std::getenv("HTTPS_PROXY");
+        }
+      } else {
         ambient_proxy = std::getenv("http_proxy");
+        if (ambient_proxy == nullptr) {
+          ambient_proxy = std::getenv("HTTP_PROXY");
+        }
       }
       if (ambient_proxy == nullptr) {
         ambient_proxy = std::getenv("all_proxy");
+        if (ambient_proxy == nullptr) {
+          ambient_proxy = std::getenv("ALL_PROXY");
+        }
       }
       if (ambient_proxy != nullptr && *ambient_proxy != '\0') {
-        std::string p_host;
-        int p_port = 80;
-        ParseHostAndPort(ambient_proxy, p_host, p_port);
-        cli->set_proxy(p_host, p_port);
+        apply_proxy(ambient_proxy);
       }
     }
 
@@ -352,6 +437,13 @@ public:
     response.total_time_ms =
         std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
+    if (request.cancel_token != nullptr && request.cancel_token->load(std::memory_order_relaxed)) {
+      response.cancelled = true;
+      response.error_message = "Request cancelled";
+      Release(id, cli);
+      return response;
+    }
+
     if (res) {
       response.status_code = res->status;
       response.body = std::move(res->body);
@@ -360,7 +452,10 @@ public:
       }
       const auto loc = res->get_header_value("Location");
       if (!loc.empty()) {
-        response.effective_url = loc;
+        response.effective_url = loc.starts_with('/') ? (origin + loc) : loc;
+      } else if (!res->location.empty()) {
+        response.effective_url =
+            res->location.starts_with('/') ? (origin + res->location) : res->location;
       } else {
         response.effective_url = request.url;
       }
@@ -377,7 +472,6 @@ public:
       } else {
         response.error_message = httplib::to_string(err);
       }
-      // On connection error or drop, discard the client instance so next request reconnects freshly
     }
 
     return response;

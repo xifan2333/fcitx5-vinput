@@ -1,4 +1,3 @@
-#define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <atomic>
 #include <chrono>
 #include <cstdint>
