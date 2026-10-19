@@ -1,6 +1,7 @@
 #include <chrono>
 #include <exception>
 #include <fcitx-config/rawconfig.h>
+#include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
@@ -196,13 +197,13 @@ void runAllTests() {
   expect(close_shift_r.filtered() && close_shift_r.accepted(),
          "Close Shift_R release is consumed and closes palette");
 
-  std::cout << "--- 6. Testing Palette Menu Pagination & Selection (pageSize = 5, #401) ---\n";
+  std::cout << "--- 6. Testing Palette Menu Pagination & Selection (pageSize = 2, #401) ---\n";
   {
     fcitx::RawConfig global_config;
-    global_config.setValueByPath("Behavior/DefaultPageSize", "5");
+    global_config.setValueByPath("Behavior/DefaultPageSize", "2");
     instance.globalConfig().load(global_config);
-    expect(instance.globalConfig().defaultPageSize() == 5,
-           "defaultPageSize must be configured to 5");
+    expect(instance.globalConfig().defaultPageSize() == 2,
+           "defaultPageSize must be configured to 2");
 
     // 6a. Open palette menu via Shift_R tap
     fcitx::KeyEvent open_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
@@ -214,13 +215,13 @@ void runAllTests() {
     expect(candidate_list != nullptr, "Candidate list must be present after opening palette");
     auto* pageable = candidate_list->toPageable();
     expect(pageable != nullptr, "Candidate list must implement PageableCandidateList");
-    expect(pageable->totalPages() == 2, "7 command entries with pageSize 5 must form 2 pages");
+    expect(pageable->totalPages() == 2, "4 command entries with pageSize 2 must form 2 pages");
     expect(pageable->currentPage() == 0, "Initial page must be page 0");
-    expect(candidate_list->size() == 5, "First page must contain 5 candidates");
+    expect(candidate_list->size() == 2, "First page must contain 2 candidates");
     expect(candidate_list->candidate(0).text().toString() == "/model",
            "First candidate must be /model");
-    expect(candidate_list->candidate(4).text().toString() == "/reload",
-           "Fifth candidate must be /reload");
+    expect(candidate_list->candidate(1).text().toString() == "/asr",
+           "Second candidate must be /asr");
 
     // 6b. Page down to page 1
     fcitx::KeyEvent pgdn(&ic, fcitx::Key(FcitxKey_Page_Down), false);
@@ -228,26 +229,28 @@ void runAllTests() {
     expect(pgdn.filtered() && pgdn.accepted(), "Page_Down must be filtered and accepted");
     expect(pageable->currentPage() == 1, "Pageable current page must now be 1");
     expect(candidate_list->size() == 2, "Second page must contain remaining 2 candidates");
-    expect(candidate_list->candidate(0).text().toString() == "/stop",
-           "Page 1 first candidate must be /stop");
-    expect(candidate_list->candidate(1).text().toString() == "/help",
-           "Page 1 second candidate must be /help");
+    expect(candidate_list->candidate(0).text().toString() == "/scene",
+           "Page 1 first candidate must be /scene");
+    expect(candidate_list->candidate(1).text().toString() == "/proc",
+           "Page 1 second candidate must be /proc");
 
     // 6c. Select first candidate on page 1 with digit key '1' (digitSelection() == 0)
-    // Previously, DigitSelectionIndex used current_page * 10 + 0 = 10, which overflowed (10 >= 7).
-    // Now it uses candidate_list->candidate(digit).select(...) and correctly selects /stop.
+    // Previously, DigitSelectionIndex used current_page * 10 + 0 = 10, which overflowed (10 >= 4).
+    // Now it uses candidate_list->candidate(digit).select(...) and correctly selects /scene.
     fcitx::KeyEvent digit_1_p(&ic, fcitx::Key(FcitxKey_1), false);
     engine.handleKeyEvent(digit_1_p);
     expect(digit_1_p.filtered() && digit_1_p.accepted(),
-           "Digit 1 on page 1 must select candidate 0 on page 1 (/stop)");
+           "Digit 1 on page 1 must select candidate 0 on page 1 (/scene)");
 
     fcitx::KeyEvent digit_1_r(&ic, fcitx::Key(FcitxKey_1), true);
     engine.handleKeyEvent(digit_1_r);
     expect(digit_1_r.filtered() && digit_1_r.accepted(), "Digit 1 release must be consumed");
 
-    // Menu should still be open, now showing /stop sub-query
+    // Verify /scene was actually selected: menu remains open and title updates to reflect Scene
     candidate_list = ic.inputPanel().candidateList();
     expect(candidate_list != nullptr, "Menu must stay open after command entry selection");
+    expect(ic.inputPanel().auxUp().toString().find(_("Scene")) != std::string::npos,
+           "Menu title must reflect Scene after selecting /scene with digit 1");
 
     // Close menu with Escape keys
     fcitx::KeyEvent esc_p1(&ic, fcitx::Key(FcitxKey_Escape), false);
@@ -279,6 +282,12 @@ void runAllTests() {
     expect(enter_k.filtered() && enter_k.accepted(),
            "Enter key on page 1 must select the candidate at cursor");
 
+    // Verify /proc was actually selected by checking title reflects Proc
+    candidate_list = ic.inputPanel().candidateList();
+    expect(candidate_list != nullptr, "Menu must stay open after command entry selection");
+    expect(ic.inputPanel().auxUp().toString().find(_("Proc")) != std::string::npos,
+           "Menu title must reflect Proc after selecting /proc with Enter");
+
     // Close menu again
     fcitx::KeyEvent esc2_p1(&ic, fcitx::Key(FcitxKey_Escape), false);
     engine.handleKeyEvent(esc2_p1);
@@ -289,8 +298,8 @@ void runAllTests() {
     fcitx::KeyEvent esc2_r2(&ic, fcitx::Key(FcitxKey_Escape), true);
     engine.handleKeyEvent(esc2_r2);
 
-    // 6e. Test out-of-range digit selection on page 1 (5 candidates configured, page 1 has 2 items)
-    // Pressing digit '5' (digitSelection() == 4) must not access out of bounds
+    // 6e. Test out-of-range digit selection on page 1 (2 candidates on page 1)
+    // Pressing digit '3' (digitSelection() == 2) must not access out of bounds
     fcitx::KeyEvent open3_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
     engine.handleKeyEvent(open3_p);
     fcitx::KeyEvent open3_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
@@ -299,8 +308,8 @@ void runAllTests() {
     fcitx::KeyEvent pgdn3(&ic, fcitx::Key(FcitxKey_Page_Down), false);
     engine.handleKeyEvent(pgdn3);
 
-    fcitx::KeyEvent digit_5_p(&ic, fcitx::Key(FcitxKey_5), false);
-    engine.handleKeyEvent(digit_5_p);
+    fcitx::KeyEvent digit_3_p(&ic, fcitx::Key(FcitxKey_3), false);
+    engine.handleKeyEvent(digit_3_p);
     // An out-of-range digit candidate selection dismisses the menu safely
     expect(ic.inputPanel().candidateList() == nullptr || ic.inputPanel().candidateList()->empty(),
            "Out-of-range digit key on page 1 must dismiss menu without out-of-bounds access");
