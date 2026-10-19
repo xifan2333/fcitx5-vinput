@@ -134,6 +134,14 @@ bool RecvFrame(int fd, std::string* inout_buffer, vinput::net::WsFrame* out_fram
   }
 }
 
+bool WaitFor(const std::atomic<bool>& flag, int timeout_ms = 3000) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (!flag.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return flag.load();
+}
+
 void TestRemoteAssets() {
   const std::string html = vinput::daemon::remote::LoadRemoteIndexHtml();
   TEST_ASSERT(!html.empty());
@@ -357,25 +365,17 @@ void TestPhoneDrivenDirectSession() {
   TEST_ASSERT(RecvFrame(ws_fd, &ws_buf, &frame2));
   TEST_ASSERT(frame2.payload.find("init") != std::string::npos);
 
-  auto wait_for = [](const std::atomic<bool>& flag, int timeout_ms = 3000) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    while (!flag.load() && std::chrono::steady_clock::now() < deadline) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    return flag.load();
-  };
-
   // 1. Phone sends text -> should trigger start_called!
   const std::string update_json = R"({"type":"text_update","text":"Mobile speaks"})";
   TEST_ASSERT(SendRaw(ws_fd, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
                                                                update_json, true, mask)));
-  TEST_ASSERT(wait_for(start_called));
+  TEST_ASSERT(WaitFor(start_called));
 
   // 2. Phone sends finalize -> should trigger stop_called and receive committed!
   const std::string finalize_json = R"({"type":"finalize"})";
   TEST_ASSERT(SendRaw(ws_fd, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
                                                                finalize_json, true, mask)));
-  TEST_ASSERT(wait_for(stop_called));
+  TEST_ASSERT(WaitFor(stop_called));
 
   vinput::net::WsFrame frame3;
   TEST_ASSERT(RecvFrame(ws_fd, &ws_buf, &frame3));
@@ -386,12 +386,123 @@ void TestPhoneDrivenDirectSession() {
   service.Shutdown();
 }
 
+void TestInputSessionPreemption() {
+  const std::uint16_t port = FindFreePort();
+  const std::string api_key = "preempt_key_789";
+
+  CoreConfig config;
+  config.asr.activeProvider = "provider.vinput.remote.streaming";
+  CommandAsrProvider cmd;
+  cmd.id = "provider.vinput.remote.streaming";
+  cmd.env["VINPUT_ASR_PORT"] = std::to_string(port);
+  cmd.env["VINPUT_ASR_API_KEY"] = api_key;
+  cmd.env["VINPUT_ASR_DEBOUNCE_MS"] = "200";
+  config.asr.providers.emplace_back(cmd);
+
+  vinput::daemon::remote::RemoteTextService service;
+  std::atomic<bool> start_called{false};
+  std::atomic<bool> stop_called{false};
+  service.SetSessionControlCallbacks(
+      [&start_called]() {
+        start_called.store(true);
+        return true;
+      },
+      [&stop_called](const std::string&) {
+        stop_called.store(true);
+        return true;
+      });
+
+  std::string err;
+  TEST_ASSERT(service.Synchronize(config, &err));
+  TEST_ASSERT(err.empty());
+
+  const std::string ws_handshake = "GET /ws HTTP/1.1\r\n"
+                                   "Host: 127.0.0.1\r\n"
+                                   "Upgrade: websocket\r\n"
+                                   "Connection: Upgrade\r\n"
+                                   "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                                   "Sec-WebSocket-Version: 13\r\n\r\n";
+  const std::uint8_t mask1[4] = {0x11, 0x22, 0x33, 0x44};
+  const std::uint8_t mask2[4] = {0x55, 0x66, 0x77, 0x88};
+  const std::string auth_json = std::string(R"({"type":"auth","api_key":")") + api_key + R"("})";
+
+  // 1. Client 1 connects and authenticates
+  const int ws_fd1 = ConnectToPort(port);
+  TEST_ASSERT(ws_fd1 >= 0);
+  std::string ws_buf1;
+  TEST_ASSERT(SendRaw(ws_fd1, ws_handshake));
+  const std::string resp1 = RecvUntil(ws_fd1, "\r\n\r\n");
+  TEST_ASSERT(resp1.find("HTTP/1.1 101 Switching Protocols") != std::string::npos);
+
+  TEST_ASSERT(SendRaw(ws_fd1, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
+                                                                auth_json, true, mask1)));
+  vinput::net::WsFrame frame1_auth;
+  TEST_ASSERT(RecvFrame(ws_fd1, &ws_buf1, &frame1_auth));
+  TEST_ASSERT(frame1_auth.payload.find("auth_ok") != std::string::npos);
+
+  vinput::net::WsFrame frame1_init;
+  TEST_ASSERT(RecvFrame(ws_fd1, &ws_buf1, &frame1_init));
+  TEST_ASSERT(frame1_init.payload.find("init") != std::string::npos);
+
+  // 2. Client 2 connects with the same valid API key and authenticates -> preempts Client 1
+  const int ws_fd2 = ConnectToPort(port);
+  TEST_ASSERT(ws_fd2 >= 0);
+  std::string ws_buf2;
+  TEST_ASSERT(SendRaw(ws_fd2, ws_handshake));
+  const std::string resp2 = RecvUntil(ws_fd2, "\r\n\r\n");
+  TEST_ASSERT(resp2.find("HTTP/1.1 101 Switching Protocols") != std::string::npos);
+
+  TEST_ASSERT(SendRaw(ws_fd2, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
+                                                                auth_json, true, mask2)));
+
+  // Client 2 should receive auth_ok and init
+  vinput::net::WsFrame frame2_auth;
+  TEST_ASSERT(RecvFrame(ws_fd2, &ws_buf2, &frame2_auth));
+  TEST_ASSERT(frame2_auth.payload.find("auth_ok") != std::string::npos);
+
+  vinput::net::WsFrame frame2_init;
+  TEST_ASSERT(RecvFrame(ws_fd2, &ws_buf2, &frame2_init));
+  TEST_ASSERT(frame2_init.payload.find("init") != std::string::npos);
+
+  // 3. Client 1 should receive Close frame with status 1000
+  vinput::net::WsFrame close_frame1;
+  TEST_ASSERT(RecvFrame(ws_fd1, &ws_buf1, &close_frame1));
+  TEST_ASSERT(close_frame1.header.opcode == vinput::net::WsOpcode::kClose);
+  TEST_ASSERT(close_frame1.payload.size() >= 2);
+  const auto close_code =
+      (static_cast<std::uint16_t>(static_cast<std::uint8_t>(close_frame1.payload[0])) << 8) |
+      static_cast<std::uint8_t>(close_frame1.payload[1]);
+  TEST_ASSERT(close_code == 1000);
+  TEST_ASSERT(close_frame1.payload.substr(2) == "Replaced by new authenticated session.");
+
+  // 4. Client 2 can send input events normally
+  const std::string update_json = R"({"type":"text_update","text":"Client 2 took over"})";
+  TEST_ASSERT(SendRaw(ws_fd2, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
+                                                                update_json, true, mask2)));
+  TEST_ASSERT(WaitFor(start_called));
+
+  const std::string finalize_json = R"({"type":"finalize"})";
+  TEST_ASSERT(SendRaw(ws_fd2, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
+                                                                finalize_json, true, mask2)));
+  TEST_ASSERT(WaitFor(stop_called));
+
+  vinput::net::WsFrame frame2_committed;
+  TEST_ASSERT(RecvFrame(ws_fd2, &ws_buf2, &frame2_committed));
+  TEST_ASSERT(frame2_committed.payload.find("committed") != std::string::npos);
+  TEST_ASSERT(service.GetText().empty());
+
+  close(ws_fd1);
+  close(ws_fd2);
+  service.Shutdown();
+}
+
 } // namespace
 
 int main() {
   TestRemoteAssets();
   TestRemoteTextServiceHttpAndWs();
   TestPhoneDrivenDirectSession();
+  TestInputSessionPreemption();
   std::puts("All remote text service tests passed!");
   return 0;
 }
