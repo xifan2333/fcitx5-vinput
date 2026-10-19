@@ -1,8 +1,5 @@
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <string>
-#include <thread>
 
 #include "daemon/audio/output_ducker.h"
 

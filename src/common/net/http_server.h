@@ -46,7 +46,7 @@ using WebSocketHandler = std::function<void(std::shared_ptr<WebSocketSession>, c
 using WebSocketAuthorizer = std::function<std::optional<HttpResponse>(const HttpRequest&)>;
 
 struct HttpServerConfig {
-  std::string host = "127.0.0.1";
+  std::string host = "0.0.0.0";
   std::uint16_t port = 0; // 0 for automatic ephemeral port allocation
   std::size_t max_request_body_bytes = 1024ULL * 1024ULL;
   std::size_t max_ws_payload_bytes = 16ULL * 1024ULL * 1024ULL;

@@ -1,6 +1,7 @@
 #include "common/utils/process_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -647,7 +648,7 @@ bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text, 
     }
 
     const int poll_rc = poll(&pfd, 1, timeout_ms);
-    if (poll_rc > 0 && (pfd.revents & POLLIN)) {
+    if (poll_rc > 0 && (pfd.revents & POLLIN) != 0) {
       while (true) {
         const ssize_t bytes = read(stdout_pipe[0], buffer.data(), buffer.size());
         if (bytes > 0) {
@@ -667,7 +668,7 @@ bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text, 
           break;
         }
       }
-    } else if (poll_rc > 0 && (pfd.revents & (POLLHUP | POLLERR))) {
+    } else if (poll_rc > 0 && (pfd.revents & (POLLHUP | POLLERR)) != 0) {
       while (true) {
         const ssize_t bytes = read(stdout_pipe[0], buffer.data(), buffer.size());
         if (bytes > 0) {

@@ -1,13 +1,14 @@
 #pragma once
 
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <queue>
 #include <thread>
 
 namespace vinput::daemon::audio {
 
-enum class DuckerAction { Duck, Restore };
+enum class DuckerAction : std::uint8_t { Duck, Restore };
 
 struct DuckerTask {
   DuckerAction action{DuckerAction::Duck};
