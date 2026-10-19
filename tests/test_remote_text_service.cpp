@@ -444,6 +444,12 @@ void TestInputSessionPreemption() {
   TEST_ASSERT(RecvFrame(ws_fd1, &ws_buf1, &frame1_init));
   TEST_ASSERT(frame1_init.payload.find("init") != std::string::npos);
 
+  // Client 1 starts speaking -> triggers start_called
+  const std::string client1_speech = R"({"type":"text_update","text":"Client 1 speaking"})";
+  TEST_ASSERT(SendRaw(ws_fd1, vinput::net::EncodeWebSocketFrame(vinput::net::WsOpcode::kText,
+                                                                client1_speech, true, mask1)));
+  TEST_ASSERT(WaitFor(start_called));
+
   // 2. Client 2 connects with the same valid API key and authenticates -> preempts Client 1
   const int ws_fd2 = ConnectToPort(port);
   TEST_ASSERT(ws_fd2 >= 0);
@@ -464,7 +470,14 @@ void TestInputSessionPreemption() {
   TEST_ASSERT(RecvFrame(ws_fd2, &ws_buf2, &frame2_init));
   TEST_ASSERT(frame2_init.payload.find("init") != std::string::npos);
 
-  // 3. Client 1 should receive Close frame with status 1000
+  // Preemption should stop Client 1's ongoing recording
+  TEST_ASSERT(WaitFor(stop_called));
+
+  // 3. Client 1 should receive displaced event then Close frame with status 1000
+  vinput::net::WsFrame frame1_displaced;
+  TEST_ASSERT(RecvFrame(ws_fd1, &ws_buf1, &frame1_displaced));
+  TEST_ASSERT(frame1_displaced.payload.find("displaced") != std::string::npos);
+
   vinput::net::WsFrame close_frame1;
   TEST_ASSERT(RecvFrame(ws_fd1, &ws_buf1, &close_frame1));
   TEST_ASSERT(close_frame1.header.opcode == vinput::net::WsOpcode::kClose);
@@ -474,6 +487,10 @@ void TestInputSessionPreemption() {
       static_cast<std::uint8_t>(close_frame1.payload[1]);
   TEST_ASSERT(close_code == 1000);
   TEST_ASSERT(close_frame1.payload.substr(2) == "Replaced by new authenticated session.");
+
+  // Reset tracking flags for Client 2
+  start_called.store(false);
+  stop_called.store(false);
 
   // 4. Client 2 can send input events normally
   const std::string update_json = R"({"type":"text_update","text":"Client 2 took over"})";

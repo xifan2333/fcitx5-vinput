@@ -12,7 +12,6 @@
 #include <memory>
 #include <mutex>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <optional>
 #include <sstream>

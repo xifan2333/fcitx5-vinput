@@ -143,12 +143,10 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
     <textarea id="editor" spellcheck="false" enterkeyhint="send" disabled placeholder="Type or use mobile voice input here..."></textarea>
     <div class="bar">
       <span><span id="count">0</span> chars</span>
-      <button id="finalize" type="button" disabled>Send</button>
     </div>
   </main>
   <script>
     const editor = document.getElementById('editor')
-    const finalize = document.getElementById('finalize')
     const count = document.getElementById('count')
     const inputStatus = document.getElementById('input-status')
     const outputStatus = document.getElementById('output-status')
@@ -176,15 +174,15 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       return entered
     }
 
-    function setInput(state) {
-      if (terminalError && state === 'disconnected') {
+    function setInputStatus(state, detail = '') {
+      if (terminalError && state === 'disconnected' && !detail) {
         return
       }
-      inputStatus.textContent = state
+      inputStatus.textContent = detail ? `${state} (${detail})` : state
       inputDot.classList.toggle('on', state === 'connected')
       updateEnabled()
     }
-    function setOutput(state) {
+    function setOutputStatus(state) {
       outputConnected = state === 'connected'
       outputStatus.textContent = state
       outputDot.classList.toggle('on', outputConnected)
@@ -192,7 +190,6 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
     function updateEnabled() {
       const enabled = ws && ws.readyState === WebSocket.OPEN && authenticated
       editor.disabled = !enabled
-      finalize.disabled = !enabled
       if (enabled && document.activeElement !== editor) {
         editor.focus()
       }
@@ -217,20 +214,26 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       auth_ok: () => {
         authenticated = true
         terminalError = ''
-        setInput('connected')
+        setInputStatus('connected')
         updateEnabled()
       },
-      init: msg => setOutput(msg.output_status || 'ready'),
-      output_connected: () => setOutput('connected'),
-      output_disconnected: () => setOutput('ready'),
+      init: msg => setOutputStatus(msg.output_status || 'ready'),
+      output_connected: () => setOutputStatus('connected'),
+      output_disconnected: () => setOutputStatus('ready'),
       committed: () => {
         editor.value = ''
         count.textContent = '0'
       },
+      displaced: msg => {
+        authenticated = false
+        terminalError = 'displaced'
+        setInputStatus('disconnected', msg && msg.message ? msg.message : 'Replaced by new session')
+        updateEnabled()
+      },
       busy: () => {
         authenticated = false
         terminalError = 'busy'
-        setInput('busy (occupied, retrying...)')
+        setInputStatus('busy (occupied, retrying...)')
         updateEnabled()
       },
       error: msg => {
@@ -238,7 +241,7 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
         terminalError = 'error'
         localStorage.removeItem('vinput_remote_api_key')
         apiKey = ''
-        setInput(msg && msg.message ? `failed: ${msg.message}` : 'failed')
+        setInputStatus(msg && msg.message ? `failed: ${msg.message}` : 'failed')
         updateEnabled()
       }
     }
@@ -250,13 +253,13 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
       ws = new WebSocket(proto + '//' + location.host + '/ws')
       if (!terminalError) {
-        setInput('connecting')
+        setInputStatus('connecting')
       }
       ws.onopen = () => {
         apiKey = apiKey || readApiKey()
         if (!apiKey) {
           terminalError = 'error'
-          setInput('failed: API key required')
+          setInputStatus('failed: API key required')
           ws.close()
           return
         }
@@ -273,11 +276,11 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
       ws.onclose = () => {
         authenticated = false
         if (!terminalError) {
-          setInput('disconnected')
+          setInputStatus('disconnected')
         }
-        setOutput('ready')
+        setOutputStatus('ready')
         updateEnabled()
-        if (terminalError !== 'error') {
+        if (terminalError !== 'error' && terminalError !== 'displaced') {
           setTimeout(connect, terminalError === 'busy' ? 2000 : 1000)
         }
       }
@@ -299,7 +302,12 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
         commitAndClear()
       }
     })
-    finalize.addEventListener('click', () => commitAndClear())
+    document.querySelector('.status').addEventListener('click', () => {
+      if (terminalError === 'displaced') {
+        terminalError = ''
+        connect()
+      }
+    })
     connect()
   </script>
 </body>
