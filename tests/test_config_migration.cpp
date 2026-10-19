@@ -268,6 +268,67 @@ void TestVersionConstraintAndCustomizationPreserved() {
   std::filesystem::remove_all(tmp_dir, ec);
 }
 
+void TestUndefinedFieldsAndIntegrityPreserved() {
+  const auto tmp_dir = std::filesystem::temp_directory_path() / "vinput_test_mig_undefined_fields";
+  std::filesystem::remove_all(tmp_dir);
+  std::filesystem::create_directories(tmp_dir);
+
+  const auto config_path = tmp_dir / "config.json";
+  const auto conf_path = tmp_dir / "vinput.conf";
+
+  const nlohmann::json valid_cfg = {
+      {"version", ">=2.4.0"},
+  };
+  std::string err;
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, valid_cfg.dump(2) + "\n", &err), err);
+
+  const std::string conf_with_custom = "[Trigger]\n"
+                                       "TriggerKey=Alt_R\n"
+                                       "SceneMenuKey=Alt+Shift+V\n"
+                                       "AsrMenuKey=Control+Shift+V\n"
+                                       "CustomTriggerOption=CustomValue\n"
+                                       "\n"
+                                       "[CustomSection]\n"
+                                       "CustomKey=CustomVal\n"
+                                       "AnotherKey=AnotherVal\n";
+  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, conf_with_custom, &err), err);
+
+  const auto report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(report.error.empty(), report.error);
+  ExpectTrue(report.needed, "Migration should be needed");
+  ExpectTrue(report.applied, "Migration should be applied");
+
+  std::string read_conf_str;
+  ExpectTrue(vinput::file::ReadTextFile(conf_path, &read_conf_str, &err), err);
+
+  // Replaced / removed keys
+  ExpectTrue(read_conf_str.find("MenuKey=Alt+Shift+V") != std::string::npos,
+             "MenuKey must be present after renaming SceneMenuKey");
+  ExpectTrue(read_conf_str.find("SceneMenuKey") == std::string::npos,
+             "SceneMenuKey must be removed");
+  ExpectTrue(read_conf_str.find("AsrMenuKey") == std::string::npos, "AsrMenuKey must be removed");
+
+  // Undefined and custom keys/sections must be fully preserved
+  ExpectTrue(read_conf_str.find("TriggerKey=Alt_R") != std::string::npos,
+             "TriggerKey must be preserved");
+  ExpectTrue(read_conf_str.find("CustomTriggerOption=CustomValue") != std::string::npos,
+             "CustomTriggerOption must be preserved");
+  ExpectTrue(read_conf_str.find("[CustomSection]") != std::string::npos,
+             "[CustomSection] must be preserved");
+  ExpectTrue(read_conf_str.find("CustomKey=CustomVal") != std::string::npos,
+             "CustomKey must be preserved");
+  ExpectTrue(read_conf_str.find("AnotherKey=AnotherVal") != std::string::npos,
+             "AnotherKey must be preserved");
+
+  // Idempotency check
+  const auto second_report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(second_report.error.empty(), second_report.error);
+  ExpectTrue(!second_report.needed, "Second run should report needed == false");
+
+  std::error_code ec;
+  std::filesystem::remove_all(tmp_dir, ec);
+}
+
 } // namespace
 
 int main() {
@@ -276,6 +337,7 @@ int main() {
   TestSymlinkPreservation();
   TestDefaultTemplateFastPath();
   TestVersionConstraintAndCustomizationPreserved();
+  TestUndefinedFieldsAndIntegrityPreserved();
   std::cout << "All test_config_migration tests passed!\n";
   return 0;
 }

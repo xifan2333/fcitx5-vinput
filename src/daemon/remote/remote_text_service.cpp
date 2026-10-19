@@ -1,10 +1,12 @@
 #include "daemon/remote/remote_text_service.h"
 
 #include <algorithm>
+#include <asm-generic/socket.h>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <httplib.h>
 #include <ifaddrs.h>
 #include <map>
 #include <memory>
@@ -16,12 +18,13 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <sys/socket.h>
+#include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "common/config/core_config.h"
-#include "common/net/http_server.h"
-#include "common/net/http_types.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
 
@@ -34,6 +37,21 @@ namespace {
 using json = nlohmann::json;
 
 constexpr std::string_view kRemoteProviderId = "provider.vinput.remote.streaming";
+
+std::optional<int> ParsePort(std::string_view value) {
+  const std::string_view trimmed = vinput::str::TrimAsciiWhitespaceView(value);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+  int parsed = 0;
+  const char* begin = trimmed.data();
+  const char* end = begin + trimmed.size();
+  const auto result = std::from_chars(begin, end, parsed);
+  if (result.ec != std::errc{} || result.ptr != end || parsed < 0 || parsed > 65535) {
+    return std::nullopt;
+  }
+  return parsed;
+}
 
 std::optional<int> ParsePositiveInt(std::string_view value) {
   const std::string_view trimmed = vinput::str::TrimAsciiWhitespaceView(value);
@@ -79,13 +97,13 @@ std::optional<int> ParsePortFromWsUrl(std::string_view url) {
         authority[close + 1] != ':') {
       return std::nullopt;
     }
-    return ParsePositiveInt(authority.substr(close + 2));
+    return ParsePort(authority.substr(close + 2));
   }
   const std::size_t colon = authority.rfind(':');
   if (colon == std::string_view::npos || colon + 1 >= authority.size()) {
     return std::nullopt;
   }
-  return ParsePositiveInt(authority.substr(colon + 1));
+  return ParsePort(authority.substr(colon + 1));
 }
 
 std::string NewEventId(std::string_view prefix) {
@@ -115,6 +133,11 @@ RemoteTextService::RemoteTextService() = default;
 
 RemoteTextService::~RemoteTextService() {
   Shutdown();
+}
+
+int RemoteTextService::Port() const {
+  const std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+  return bound_port_ > 0 ? bound_port_ : settings_.port;
 }
 
 bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* settings,
@@ -149,18 +172,16 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
   Settings out;
   const std::string port_text = EnvValue(command->env, "VINPUT_ASR_PORT");
   if (!port_text.empty()) {
-    const auto port = ParsePositiveInt(port_text);
-    if (!port || *port > 65535) {
+    const auto port = ParsePort(port_text);
+    if (!port) {
       if (error != nullptr) {
-        *error = "VINPUT_ASR_PORT must be between 1 and 65535.";
+        *error = "VINPUT_ASR_PORT must be between 0 and 65535.";
       }
       return false;
     }
     out.port = *port;
   } else if (const auto port = ParsePortFromWsUrl(EnvValue(command->env, "VINPUT_ASR_URL"))) {
-    if (*port <= 65535) {
-      out.port = *port;
-    }
+    out.port = *port;
   }
 
   const std::string debounce_text = EnvValue(command->env, "VINPUT_ASR_DEBOUNCE_MS");
@@ -246,7 +267,7 @@ void RemoteTextService::MaybeTriggerStart() {
   bool needs_start = false;
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
-    if (!output_session_ || !output_session_->IsOpen()) {
+    if (output_ws_ == nullptr || !output_ws_->is_open()) {
       needs_start = true;
     }
   }
@@ -282,7 +303,8 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
                     NI_NUMERICHOST) != 0) {
       continue;
     }
-    endpoints.emplace_back(std::string("http://") + buf + ":" + std::to_string(settings_.port));
+    endpoints.emplace_back(std::string("http://") + buf + ":" +
+                           std::to_string(bound_port_ > 0 ? bound_port_ : settings_.port));
   }
   freeifaddrs(ifaddr);
 
@@ -291,82 +313,84 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
   return endpoints;
 }
 
-void RemoteTextService::SetupRoutes(vinput::net::HttpServer* server) {
-  server->Get("/", [](const vinput::net::HttpRequest&) {
-    vinput::net::HttpResponse resp;
-    resp.status_code = 200;
-    resp.headers = {{"Content-Type", "text/html; charset=utf-8"}};
-    resp.body = LoadRemoteIndexHtml();
-    return resp;
+void RemoteTextService::SetupRoutes(httplib::Server* server) {
+  server->Get("/", [](const httplib::Request&, httplib::Response& res) {
+    res.set_content(LoadRemoteIndexHtml(), "text/html; charset=utf-8");
   });
 
-  server->Get("/favicon.svg", [](const vinput::net::HttpRequest&) {
-    vinput::net::HttpResponse resp;
-    resp.status_code = 200;
-    resp.headers = {{"Content-Type", "image/svg+xml"}};
-    resp.body = LoadRemoteFaviconSvg();
-    return resp;
+  server->Get("/favicon.svg", [](const httplib::Request&, httplib::Response& res) {
+    res.set_content(LoadRemoteFaviconSvg(), "image/svg+xml");
   });
 
-  server->Get("/health", [](const vinput::net::HttpRequest&) {
-    vinput::net::HttpResponse resp;
-    resp.status_code = 200;
-    resp.headers = {{"Content-Type", "application/json; charset=utf-8"}};
-    resp.body = "{\"ok\":true}\n";
-    return resp;
+  server->Get("/health", [](const httplib::Request&, httplib::Response& res) {
+    res.set_content("{\"ok\":true}\n", "application/json; charset=utf-8");
+  });
+
+  // Pre-request handler for /v1/realtime local loopback and Bearer auth verification
+  server->set_pre_request_handler([this](const httplib::Request& req, httplib::Response& res) {
+    if (req.path == "/v1/realtime") {
+      if (!IsLoopbackAddress(req.remote_addr)) {
+        res.status = 403;
+        res.set_content("Realtime endpoint is local-only.\n", "text/plain; charset=utf-8");
+        return httplib::Server::HandlerResponse::Handled;
+      }
+
+      const auto auth = req.get_header_value("Authorization");
+      if (auth.empty() || !ValidateApiKey(ExtractBearerToken(auth))) {
+        res.status = 401;
+        res.set_content("Unauthorized.\n", "text/plain; charset=utf-8");
+        return httplib::Server::HandlerResponse::Handled;
+      }
+    }
+    return httplib::Server::HandlerResponse::Unhandled;
   });
 
   // WebSocket Output: /v1/realtime (local-only, Bearer auth)
-  auto realtime_authorizer =
-      [this](const vinput::net::HttpRequest& req) -> std::optional<vinput::net::HttpResponse> {
-    if (!IsLoopbackAddress(req.client_ip)) {
-      vinput::net::HttpResponse resp;
-      resp.status_code = 403;
-      resp.headers = {{"Content-Type", "text/plain; charset=utf-8"}};
-      resp.body = "Realtime endpoint is local-only.\n";
-      return resp;
-    }
-
-    const auto auth = req.Header("Authorization");
-    if (!auth || !ValidateApiKey(ExtractBearerToken(*auth))) {
-      vinput::net::HttpResponse resp;
-      resp.status_code = 401;
-      resp.headers = {{"Content-Type", "text/plain; charset=utf-8"}};
-      resp.body = "Unauthorized.\n";
-      return resp;
-    }
-
-    return std::nullopt;
-  };
-
-  server->UpgradeWebSocket(
-      "/v1/realtime",
-      [this](const std::shared_ptr<vinput::net::WebSocketSession>& session,
-             const vinput::net::HttpRequest&) { HandleOutputSession(session); },
-      std::move(realtime_authorizer));
+  server->WebSocket("/v1/realtime", [this](const httplib::Request&, httplib::ws::WebSocket& ws) {
+    HandleOutputSession(ws);
+  });
 
   // WebSocket Input: /ws (in-band auth via first message)
-  server->UpgradeWebSocket(
-      "/ws", [this](const std::shared_ptr<vinput::net::WebSocketSession>& session,
-                    const vinput::net::HttpRequest&) { HandleInputSession(session); });
+  server->WebSocket("/ws", [this](const httplib::Request&, httplib::ws::WebSocket& ws) {
+    HandleInputSession(ws);
+  });
 }
 
 bool RemoteTextService::Start(const Settings& settings, std::string* error) {
   settings_ = settings;
 
-  vinput::net::HttpServerConfig config;
-  config.host = "0.0.0.0";
-  config.port = static_cast<std::uint16_t>(settings_.port);
-  config.max_ws_payload_bytes = 2ULL * 1024ULL * 1024ULL;
+  auto server = std::make_unique<httplib::Server>();
 
-  auto server = std::make_unique<vinput::net::HttpServer>(config);
+  server->set_socket_options([](socket_t sock) {
+#ifdef _WIN32
+    httplib::set_socket_opt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, 1);
+#else
+    httplib::set_socket_opt(sock, SOL_SOCKET, SO_REUSEADDR, 1);
+#endif
+  });
+
+  server->set_payload_max_length(2ULL * 1024ULL * 1024ULL);
+  server->set_read_timeout(15);
+
   SetupRoutes(server.get());
 
-  if (!server->Start()) {
-    if (error != nullptr) {
-      *error = "failed to bind remote ASR service on 0.0.0.0:" + std::to_string(settings.port);
+  if (settings_.port == 0) {
+    const int p = server->bind_to_any_port("0.0.0.0");
+    if (p <= 0) {
+      if (error != nullptr) {
+        *error = "failed to bind remote ASR service on ephemeral port";
+      }
+      return false;
     }
-    return false;
+    bound_port_ = p;
+  } else {
+    if (!server->bind_to_port("0.0.0.0", settings_.port)) {
+      if (error != nullptr) {
+        *error = "failed to bind remote ASR service on 0.0.0.0:" + std::to_string(settings_.port);
+      }
+      return false;
+    }
+    bound_port_ = settings_.port;
   }
 
   running_.store(true, std::memory_order_release);
@@ -377,7 +401,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
     debounce_thread_ = std::thread([this]() { DebounceLoop(); });
   } catch (const std::exception& e) {
     running_.store(false, std::memory_order_release);
-    server->Stop();
+    server->stop();
     if (error != nullptr) {
       *error = std::string("failed to start remote ASR debounce thread: ") + e.what();
     }
@@ -385,6 +409,9 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
   }
 
   http_server_ = std::move(server);
+  server_thread_ = std::thread([this]() { http_server_->listen_after_bind(); });
+  http_server_->wait_until_ready();
+
   service_started_ = true;
   std::fprintf(stderr, "vinput-daemon: remote ASR service listening on 0.0.0.0:%d\n",
                settings_.port);
@@ -408,70 +435,68 @@ void RemoteTextService::Shutdown() {
     debounce_thread_.join();
   }
 
-  if (http_server_) {
-    http_server_->Stop();
-    http_server_.reset();
-  }
-
-  std::shared_ptr<vinput::net::WebSocketSession> out_to_close;
-  std::shared_ptr<vinput::net::WebSocketSession> in_to_close;
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
-    out_to_close = std::move(output_session_);
-    in_to_close = std::move(input_session_);
+    if (output_ws_ != nullptr && output_ws_->is_open()) {
+      output_ws_->close(httplib::ws::CloseStatus::Normal, "Service shutting down");
+    }
+    if (input_ws_ != nullptr && input_ws_->is_open()) {
+      input_ws_->close(httplib::ws::CloseStatus::Normal, "Service shutting down");
+    }
   }
-  if (out_to_close) {
-    out_to_close->Close();
+
+  if (http_server_) {
+    http_server_->stop();
   }
-  if (in_to_close) {
-    in_to_close->Close();
+  if (server_thread_.joinable()) {
+    server_thread_.join();
+  }
+  http_server_.reset();
+
+  {
+    const std::lock_guard<std::mutex> lock(state_mutex_);
+    output_ws_ = nullptr;
+    input_ws_ = nullptr;
   }
 
   if (was_running) {
     ClearText();
   }
+  bound_port_ = 0;
   service_started_ = false;
 }
 
-void RemoteTextService::HandleOutputSession(
-    const std::shared_ptr<vinput::net::WebSocketSession>& session) {
-  bool already_connected = false;
+void RemoteTextService::HandleOutputSession(httplib::ws::WebSocket& ws) {
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
-    if (output_session_ && output_session_->IsOpen()) {
-      already_connected = true;
-    } else {
-      output_session_ = session;
+    if (output_ws_ != nullptr && output_ws_->is_open()) {
+      ws.send(json{{"event_id", NewEventId("event")},
+                   {"type", "error"},
+                   {"error", json{{"message", "Output client already connected."}}}}
+                  .dump());
+      ws.close(httplib::ws::CloseStatus::PolicyViolation, "Output client already connected.");
+      return;
     }
-  }
-
-  if (already_connected) {
-    session->SendJson(json{{"event_id", NewEventId("event")},
-                           {"type", "error"},
-                           {"error", json{{"message", "Output client already connected."}}}}
-                          .dump());
-    session->Close(1008, "Output client already connected.");
-    return;
+    output_ws_ = &ws;
   }
 
   NotifyInput("output_connected");
 
-  session->SetOnMessage([this, weak_session = std::weak_ptr<vinput::net::WebSocketSession>(
-                                   session)](std::string_view payload, bool is_binary) {
-    if (is_binary) {
-      return;
+  std::string payload;
+  while (ws.is_open()) {
+    const auto ret = ws.read(payload);
+    if (ret == httplib::ws::ReadResult::Fail) {
+      break;
     }
-
-    const auto current_session = weak_session.lock();
-    if (!current_session) {
-      return;
+    if (ret != httplib::ws::ReadResult::Text) {
+      continue;
     }
 
     json event;
     try {
       event = json::parse(payload);
     } catch (const std::exception&) {
-      return;
+      continue;
     }
 
     const std::string type = event.value("type", std::string{});
@@ -480,90 +505,81 @@ void RemoteTextService::HandleOutputSession(
       if (event.contains("session")) {
         session_data = event["session"];
       }
-      current_session->SendJson(json{
-          {"event_id", NewEventId("event")},
-          {"type", "session.updated"},
-          {"session",
-           std::move(session_data)}}.dump());
+      ws.send(json{{"event_id", NewEventId("event")},
+                   {"type", "session.updated"},
+                   {"session", std::move(session_data)}}
+                  .dump());
     } else if (type == "input_audio_buffer.append") {
       // Audio frames are ignored as input comes via /ws
     } else if (type == "input_audio_buffer.commit") {
       if (GetText().empty()) {
-        SendEmptyCommit(current_session);
+        SendEmptyCommit(ws);
       } else {
         CancelDebounce();
         SendFinalResult();
       }
     }
-  });
+  }
 
-  session->SetOnClose([this, weak_session = std::weak_ptr<vinput::net::WebSocketSession>(session)](
-                          std::uint16_t /*status_code*/, std::string_view /*reason*/) {
-    const auto s = weak_session.lock();
-    bool was_active = false;
-    {
-      const std::lock_guard<std::mutex> lock(state_mutex_);
-      if (s && output_session_ == s) {
-        output_session_.reset();
-        was_active = true;
-      }
+  bool was_active = false;
+  {
+    const std::lock_guard<std::mutex> lock(state_mutex_);
+    if (output_ws_ == &ws) {
+      output_ws_ = nullptr;
+      was_active = true;
     }
-    if (was_active) {
-      CancelDebounce();
-      ClearText();
-      NotifyInput("output_disconnected");
-    }
-  });
+  }
+  if (was_active) {
+    CancelDebounce();
+    ClearText();
+    NotifyInput("output_disconnected");
+  }
 }
 
-void RemoteTextService::HandleInputSession(
-    const std::shared_ptr<vinput::net::WebSocketSession>& session) {
-  struct InputState {
-    bool authenticated = false;
-  };
-  auto state = std::make_shared<InputState>();
+void RemoteTextService::HandleInputSession(httplib::ws::WebSocket& ws) {
+  bool authenticated = false;
+  std::string payload;
 
-  session->SetOnMessage([this, weak_session = std::weak_ptr<vinput::net::WebSocketSession>(session),
-                         state](std::string_view payload, bool is_binary) {
-    if (is_binary) {
-      return;
+  while (ws.is_open()) {
+    const auto ret = ws.read(payload);
+    if (ret == httplib::ws::ReadResult::Fail) {
+      break;
     }
-
-    const auto current_session = weak_session.lock();
-    if (!current_session) {
-      return;
+    if (ret != httplib::ws::ReadResult::Text) {
+      continue;
     }
 
     json event;
     try {
       event = json::parse(payload);
     } catch (const std::exception&) {
-      if (!state->authenticated) {
-        current_session->SendJson(json{{"type", "error"}, {"message", "Invalid JSON."}}.dump());
-        current_session->Close(1008, "Invalid JSON.");
+      if (!authenticated) {
+        ws.send(json{{"type", "error"}, {"message", "Invalid JSON."}}.dump());
+        ws.close(httplib::ws::CloseStatus::PolicyViolation, "Invalid JSON.");
+        return;
       }
-      return;
+      continue;
     }
 
-    if (!state->authenticated) {
+    if (!authenticated) {
       const std::string type = event.value("type", std::string{});
       const std::string api_key = event.value("api_key", std::string{});
       if (type != "auth" || !ValidateApiKey(api_key)) {
-        current_session->SendJson(json{{"type", "error"}, {"message", "Unauthorized."}}.dump());
-        current_session->Close(1008, "Unauthorized.");
+        ws.send(json{{"type", "error"}, {"message", "Unauthorized."}}.dump());
+        ws.close(httplib::ws::CloseStatus::PolicyViolation, "Unauthorized.");
         return;
       }
 
-      std::shared_ptr<vinput::net::WebSocketSession> old_session;
+      httplib::ws::WebSocket* old_ws = nullptr;
       {
         const std::lock_guard<std::mutex> lock(state_mutex_);
-        if (input_session_ && input_session_ != current_session) {
-          old_session = input_session_;
+        if (input_ws_ != nullptr && input_ws_ != &ws) {
+          old_ws = input_ws_;
         }
-        input_session_ = current_session;
+        input_ws_ = &ws;
       }
 
-      if (old_session) {
+      if (old_ws != nullptr) {
         CancelDebounce();
         ClearText();
         if (start_in_progress_.load()) {
@@ -577,33 +593,31 @@ void RemoteTextService::HandleInputSession(
           }
           start_in_progress_.store(false);
         }
-        std::thread([old_session]() {
-          if (old_session->IsOpen()) {
-            old_session->SendJson(
-                json{{"type", "displaced"}, {"message", "Replaced by new authenticated session."}}
-                    .dump());
-            old_session->Close(1000, "Replaced by new authenticated session.");
-          }
-        }).detach();
+        if (old_ws->is_open()) {
+          old_ws->send(
+              json{{"type", "displaced"}, {"message", "Replaced by new authenticated session."}}
+                  .dump());
+          old_ws->close(httplib::ws::CloseStatus::Normal, "Replaced by new authenticated session.");
+        }
       }
 
-      current_session->SendJson(json{{"type", "auth_ok"}}.dump());
-      state->authenticated = true;
+      ws.send(json{{"type", "auth_ok"}}.dump());
+      authenticated = true;
 
       std::string output_status = "disconnected";
       {
         const std::lock_guard<std::mutex> lock(state_mutex_);
-        if (output_session_ && output_session_->IsOpen()) {
+        if (output_ws_ != nullptr && output_ws_->is_open()) {
           output_status = "connected";
         }
       }
-      current_session->SendJson(json{{"type", "init"}, {"output_status", output_status}}.dump());
-      return;
+      ws.send(json{{"type", "init"}, {"output_status", output_status}}.dump());
+      continue;
     }
 
     {
       const std::lock_guard<std::mutex> lock(state_mutex_);
-      if (input_session_ != current_session) {
+      if (input_ws_ != &ws) {
         return;
       }
     }
@@ -619,23 +633,19 @@ void RemoteTextService::HandleInputSession(
     } else if (type == "finalize") {
       ForceDebounce();
     }
-  });
+  }
 
-  session->SetOnClose([this, weak_session = std::weak_ptr<vinput::net::WebSocketSession>(session)](
-                          std::uint16_t /*status_code*/, std::string_view /*reason*/) {
-    const auto s = weak_session.lock();
-    bool was_active = false;
-    {
-      const std::lock_guard<std::mutex> lock(state_mutex_);
-      if (s && input_session_ == s) {
-        input_session_.reset();
-        was_active = true;
-      }
+  bool was_active = false;
+  {
+    const std::lock_guard<std::mutex> lock(state_mutex_);
+    if (input_ws_ == &ws) {
+      input_ws_ = nullptr;
+      was_active = true;
     }
-    if (was_active) {
-      CancelDebounce();
-    }
-  });
+  }
+  if (was_active) {
+    CancelDebounce();
+  }
 }
 
 bool RemoteTextService::ValidateApiKey(std::string_view api_key) const {
@@ -651,13 +661,9 @@ bool RemoteTextService::ValidateApiKey(std::string_view api_key) const {
 }
 
 void RemoteTextService::NotifyInput(std::string_view type) {
-  std::shared_ptr<vinput::net::WebSocketSession> session;
-  {
-    const std::lock_guard<std::mutex> lock(state_mutex_);
-    session = input_session_;
-  }
-  if (session && session->IsOpen()) {
-    session->SendJson(json{{"type", type}}.dump());
+  const std::lock_guard<std::mutex> lock(state_mutex_);
+  if (input_ws_ != nullptr && input_ws_->is_open()) {
+    input_ws_->send(json{{"type", type}}.dump());
   }
 }
 
@@ -718,24 +724,17 @@ void RemoteTextService::DebounceLoop() {
   }
 }
 
-void RemoteTextService::SendEmptyCommit(
-    const std::shared_ptr<vinput::net::WebSocketSession>& session) {
-  if (session && session->IsOpen()) {
-    session->SendJson(json{{"event_id", NewEventId("event")},
-                           {"type", "input_audio_buffer.committed"},
-                           {"item_id", NewEventId("item")}}
-                          .dump());
+void RemoteTextService::SendEmptyCommit(httplib::ws::WebSocket& ws) {
+  if (ws.is_open()) {
+    ws.send(json{{"event_id", NewEventId("event")},
+                 {"type", "input_audio_buffer.committed"},
+                 {"item_id", NewEventId("item")}}
+                .dump());
   }
 }
 
 void RemoteTextService::SendFinalResult() {
   start_in_progress_.store(false, std::memory_order_release);
-
-  std::shared_ptr<vinput::net::WebSocketSession> session;
-  {
-    const std::lock_guard<std::mutex> lock(state_mutex_);
-    session = output_session_;
-  }
 
   const std::string text = GetText();
   if (text.empty()) {
@@ -751,24 +750,27 @@ void RemoteTextService::SendFinalResult() {
     return;
   }
 
-  if (session && session->IsOpen()) {
-    const std::string item_id = NewEventId("item");
-    session->SendJson(json{
-        {"event_id", NewEventId("event")},
-        {"type", "input_audio_buffer.committed"},
-        {"item_id",
-         item_id}}.dump());
-    session->SendJson(json{
-        {"event_id", NewEventId("event")},
-        {"type", "conversation.item.input_audio_transcription.delta"},
-        {"item_id", item_id},
-        {"delta", text}}.dump());
-    session->SendJson(json{
-        {"event_id", NewEventId("event")},
-        {"type", "conversation.item.input_audio_transcription.completed"},
-        {"item_id", item_id},
-        {"transcript",
-         text}}.dump());
+  {
+    const std::lock_guard<std::mutex> lock(state_mutex_);
+    if (output_ws_ != nullptr && output_ws_->is_open()) {
+      const std::string item_id = NewEventId("item");
+      output_ws_->send(json{
+          {"event_id", NewEventId("event")},
+          {"type", "input_audio_buffer.committed"},
+          {"item_id",
+           item_id}}.dump());
+      output_ws_->send(json{
+          {"event_id", NewEventId("event")},
+          {"type", "conversation.item.input_audio_transcription.delta"},
+          {"item_id", item_id},
+          {"delta", text}}.dump());
+      output_ws_->send(json{
+          {"event_id", NewEventId("event")},
+          {"type", "conversation.item.input_audio_transcription.completed"},
+          {"item_id", item_id},
+          {"transcript",
+           text}}.dump());
+    }
   }
 
   ClearText();
