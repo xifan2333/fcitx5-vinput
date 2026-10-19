@@ -32,6 +32,10 @@ std::vector<std::string> DaemonLogFilter();
 // permissions are present).
 std::vector<std::string> MissingSandboxPermissions();
 
+// Format actionable flatpak override commands to fix missing permissions.
+// Returns an empty string if missing_permissions is empty.
+std::string FormatOverrideCommands(const std::vector<std::string>& missing_permissions);
+
 // Rewrite a systemd unit content string so ExecStart points to the sandboxed
 // daemon executable.  Returns the original content unchanged when not
 // sandboxed.

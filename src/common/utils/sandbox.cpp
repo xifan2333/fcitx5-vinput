@@ -119,6 +119,33 @@ std::vector<std::string> MissingSandboxPermissions() {
   return missing;
 }
 
+std::string FormatOverrideCommands(const std::vector<std::string>& missing_permissions) {
+  if (missing_permissions.empty()) {
+    return {};
+  }
+  std::string result;
+  for (const auto& perm : missing_permissions) {
+    if (perm == "pipewire") {
+      result += "flatpak override --user --filesystem=xdg-run/pipewire-0 ";
+      result += kFlatpakAppId;
+      result += '\n';
+    } else if (perm == "xdg-config/systemd") {
+      result += "flatpak override --user --filesystem=xdg-config/systemd:create ";
+      result += kFlatpakAppId;
+      result += '\n';
+    } else if (perm == "xdg-cache") {
+      result += "flatpak override --user --filesystem=xdg-cache ";
+      result += kFlatpakAppId;
+      result += '\n';
+    }
+  }
+  if (!result.empty()) {
+    result += "flatpak kill ";
+    result += kFlatpakAppId;
+  }
+  return result;
+}
+
 std::string RewriteServiceUnit(const std::string& content) {
   if (!IsInSandbox())
     return content;

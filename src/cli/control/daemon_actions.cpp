@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "common/i18n.h"
+#include "common/utils/sandbox.h"
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -18,6 +19,30 @@ int RunDaemonControlStatus(Formatter& fmt, const CliContext& ctx) {
       fmt.PrintJson({{"running", false}});
     } else {
       fmt.PrintError(_("Daemon is not running."));
+      if (vinput::sandbox::IsInSandbox()) {
+        const auto missing = vinput::sandbox::MissingSandboxPermissions();
+        if (!missing.empty()) {
+          fmt.PrintWarning(_("Missing Flatpak permissions:"));
+          for (const auto& perm : missing) {
+            fmt.PrintWarning("  - " + perm);
+          }
+          const std::string override_cmds = vinput::sandbox::FormatOverrideCommands(missing);
+          if (!override_cmds.empty()) {
+            fmt.PrintInfo(_("To grant permissions, run:"));
+            std::string::size_type start = 0;
+            while (start < override_cmds.size()) {
+              auto end = override_cmds.find('\n', start);
+              if (end == std::string::npos) {
+                end = override_cmds.size();
+              }
+              if (end > start) {
+                fmt.PrintInfo("  " + override_cmds.substr(start, end - start));
+              }
+              start = end + 1;
+            }
+          }
+        }
+      }
     }
     return 1;
   }

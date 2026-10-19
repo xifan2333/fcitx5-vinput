@@ -1757,3 +1757,11 @@ msgstr "当前阶段没有可取消的操作。"
 #: src/daemon/runtime/daemon_runtime_controller.cpp:604
 msgid "Recording is not active."
 msgstr "当前未在录音。"
+
+#: src/cli/control/daemon_actions.cpp:25
+msgid "Missing Flatpak permissions:"
+msgstr "缺失 Flatpak 权限："
+
+#: src/cli/control/daemon_actions.cpp:30
+msgid "To grant permissions, run:"
+msgstr "如需授权，请运行："

@@ -38,6 +38,12 @@ void ensureDaemonServiceInstalled() {
   if (!vinput::sandbox::IsInSandbox())
     return;
 
+  const auto missing = vinput::sandbox::MissingSandboxPermissions();
+  if (!missing.empty()) {
+    FCITX_LOG(Warn) << "vinput: missing sandbox permissions, run override commands:\n"
+                    << vinput::sandbox::FormatOverrideCommands(missing);
+  }
+
   const std::filesystem::path dest = vinput::path::DaemonServiceUnitInstallPath();
   if (dest.empty()) {
     return;

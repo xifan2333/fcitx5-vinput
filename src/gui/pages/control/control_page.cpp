@@ -785,10 +785,9 @@ void ControlPage::checkSandboxPermissions() {
   if (missing.empty())
     return;
 
-  const QString commands = QStringLiteral(
-      "flatpak override --user --filesystem=xdg-run/pipewire-0 org.fcitx.Fcitx5\n"
-      "flatpak override --user --filesystem=xdg-config/systemd:create org.fcitx.Fcitx5\n"
-      "flatpak kill org.fcitx.Fcitx5");
+  const QString commands = QString::fromStdString(vinput::sandbox::FormatOverrideCommands(missing));
+  if (commands.isEmpty())
+    return;
 
   QMessageBox msg(this);
   msg.setIcon(QMessageBox::Warning);
