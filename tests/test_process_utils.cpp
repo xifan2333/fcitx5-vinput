@@ -182,6 +182,58 @@ void TestSpawnForMonitoring() {
   ExpectTrue(status == 0, "Child process should exit cleanly with status 0");
 }
 
+void TestRunCommandSilent() {
+  vinput::process::CommandSpec spec;
+  spec.command = "sh";
+  spec.args = {"-c", "exit 0"};
+  spec.timeout_ms = 1000;
+
+  int rc = -1;
+  ExpectTrue(vinput::process::RunCommandSilent(spec, &rc), "Silent command should succeed");
+  ExpectTrue(rc == 0, "Exit code should be 0");
+
+  spec.args = {"-c", "exit 42"};
+  rc = -1;
+  ExpectTrue(!vinput::process::RunCommandSilent(spec, &rc), "Non-zero exit should return false");
+  ExpectTrue(rc == 42, "Exit code should be 42");
+
+  spec.command = "";
+  ExpectTrue(!vinput::process::RunCommandSilent(spec, &rc), "Empty command should fail");
+
+  spec.command = "sh";
+  spec.args = {"-c", "sleep 5"};
+  spec.timeout_ms = 50;
+  ExpectTrue(!vinput::process::RunCommandSilent(spec, &rc), "Timed out command should fail");
+}
+
+void TestRunCommandCaptureStdout() {
+  vinput::process::CommandSpec spec;
+  spec.command = "sh";
+  spec.args = {"-c", "echo 'Volume: 0.75'"};
+  spec.timeout_ms = 1000;
+
+  std::string stdout_text;
+  int rc = -1;
+  ExpectTrue(vinput::process::RunCommandCaptureStdout(spec, &stdout_text, &rc),
+             "Capture stdout should succeed");
+  ExpectTrue(rc == 0, "Exit code should be 0");
+  ExpectTrue(stdout_text == "Volume: 0.75\n", "Captured stdout mismatch: " + stdout_text);
+
+  spec.args = {"-c", "echo 'error message' >&2; exit 2"};
+  stdout_text.clear();
+  rc = -1;
+  ExpectTrue(!vinput::process::RunCommandCaptureStdout(spec, &stdout_text, &rc),
+             "Failure command should return false");
+  ExpectTrue(rc == 2, "Exit code should be 2");
+  ExpectTrue(stdout_text.empty(), "Stdout should be empty");
+
+  spec.command = "sh";
+  spec.args = {"-c", "sleep 5"};
+  spec.timeout_ms = 50;
+  ExpectTrue(!vinput::process::RunCommandCaptureStdout(spec, &stdout_text, &rc),
+             "Timed out command should return false");
+}
+
 } // namespace
 
 int main() {
@@ -192,6 +244,8 @@ int main() {
   TestChildExitWithLeakedPipeDoesNotHang();
   TestClosedFdsDoesNotBusySpin();
   TestSpawnForMonitoring();
+  TestRunCommandSilent();
+  TestRunCommandCaptureStdout();
   std::cout << "All test_process_utils passed!\n";
   return 0;
 }

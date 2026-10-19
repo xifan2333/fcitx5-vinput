@@ -459,4 +459,239 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
   return true;
 }
 
+bool RunCommandSilent(const CommandSpec& spec, int* exit_code) {
+  if (spec.command.empty()) {
+    if (exit_code != nullptr) {
+      *exit_code = -1;
+    }
+    return false;
+  }
+
+  std::vector<std::string> argv_storage;
+  std::vector<std::string> envp_storage;
+  const auto argv = BuildArgv(spec, &argv_storage);
+  const auto envp = BuildEnvp(spec, &envp_storage);
+
+  posix_spawn_file_actions_t actions;
+  if (posix_spawn_file_actions_init(&actions) != 0) {
+    if (exit_code != nullptr) {
+      *exit_code = -1;
+    }
+    return false;
+  }
+
+  posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
+  posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
+  posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+
+  pid_t pid = -1;
+  const int spawn_rc =
+      posix_spawnp(&pid, spec.command.c_str(), &actions, nullptr, argv.data(), envp.data());
+  posix_spawn_file_actions_destroy(&actions);
+
+  if (spawn_rc != 0 || pid <= 0) {
+    if (exit_code != nullptr) {
+      *exit_code = -1;
+    }
+    return false;
+  }
+
+  int status = 0;
+  if (spec.timeout_ms <= 0) {
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
+    const int rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    if (exit_code != nullptr) {
+      *exit_code = rc;
+    }
+    return rc == 0;
+  }
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(spec.timeout_ms);
+  while (true) {
+    pid_t wait_rc = waitpid(pid, &status, kWaitNoHang);
+    while (wait_rc < 0 && errno == EINTR) {
+      wait_rc = waitpid(pid, &status, kWaitNoHang);
+    }
+    if (wait_rc == pid) {
+      const int rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+      if (exit_code != nullptr) {
+        *exit_code = rc;
+      }
+      return rc == 0;
+    }
+    if (wait_rc < 0 && errno == ECHILD) {
+      if (exit_code != nullptr) {
+        *exit_code = -1;
+      }
+      return false;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      kill(pid, SIGKILL);
+      while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+      }
+      if (exit_code != nullptr) {
+        *exit_code = -1;
+      }
+      return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+}
+
+bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text, int* exit_code) {
+  if (stdout_text != nullptr) {
+    stdout_text->clear();
+  }
+  if (spec.command.empty()) {
+    if (exit_code != nullptr) {
+      *exit_code = -1;
+    }
+    return false;
+  }
+
+  int stdout_pipe[2] = {-1, -1};
+  if (!CreateCloexecPipe(stdout_pipe)) {
+    if (exit_code != nullptr) {
+      *exit_code = -1;
+    }
+    return false;
+  }
+
+  std::vector<std::string> argv_storage;
+  std::vector<std::string> envp_storage;
+  const auto argv = BuildArgv(spec, &argv_storage);
+  const auto envp = BuildEnvp(spec, &envp_storage);
+
+  posix_spawn_file_actions_t actions;
+  if (posix_spawn_file_actions_init(&actions) != 0) {
+    CloseIfOpen(&stdout_pipe[0]);
+    CloseIfOpen(&stdout_pipe[1]);
+    if (exit_code != nullptr) {
+      *exit_code = -1;
+    }
+    return false;
+  }
+
+  posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
+  posix_spawn_file_actions_adddup2(&actions, stdout_pipe[1], 1);
+  posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]);
+  posix_spawn_file_actions_addclose(&actions, stdout_pipe[1]);
+  posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+
+  pid_t pid = -1;
+  const int spawn_rc =
+      posix_spawnp(&pid, spec.command.c_str(), &actions, nullptr, argv.data(), envp.data());
+  posix_spawn_file_actions_destroy(&actions);
+  CloseIfOpen(&stdout_pipe[1]);
+
+  if (spawn_rc != 0 || pid <= 0) {
+    CloseIfOpen(&stdout_pipe[0]);
+    if (exit_code != nullptr) {
+      *exit_code = -1;
+    }
+    return false;
+  }
+
+  (void)SetNonBlocking(stdout_pipe[0]);
+
+  const auto deadline = spec.timeout_ms > 0 ? std::chrono::steady_clock::now() +
+                                                  std::chrono::milliseconds(spec.timeout_ms)
+                                            : std::chrono::steady_clock::time_point::max();
+
+  std::array<char, 4096> buffer{};
+  bool stdout_open = true;
+  bool child_exited = false;
+  int status = 0;
+
+  while (stdout_open || !child_exited) {
+    if (!child_exited) {
+      pid_t wait_rc = waitpid(pid, &status, kWaitNoHang);
+      while (wait_rc < 0 && errno == EINTR) {
+        wait_rc = waitpid(pid, &status, kWaitNoHang);
+      }
+      if (wait_rc == pid || (wait_rc < 0 && errno == ECHILD)) {
+        child_exited = true;
+      }
+    }
+
+    if (std::chrono::steady_clock::now() >= deadline) {
+      if (!child_exited) {
+        kill(pid, SIGKILL);
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+        }
+      }
+      CloseIfOpen(&stdout_pipe[0]);
+      if (exit_code != nullptr) {
+        *exit_code = -1;
+      }
+      return false;
+    }
+
+    if (!stdout_open) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      continue;
+    }
+
+    pollfd pfd{};
+    pfd.fd = stdout_pipe[0];
+    pfd.events = POLLIN;
+
+    int timeout_ms = 50;
+    if (spec.timeout_ms > 0) {
+      const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 deadline - std::chrono::steady_clock::now())
+                                 .count();
+      timeout_ms = remaining > 0 ? std::min<int>(50, static_cast<int>(remaining)) : 0;
+    }
+
+    const int poll_rc = poll(&pfd, 1, timeout_ms);
+    if (poll_rc > 0 && (pfd.revents & POLLIN)) {
+      while (true) {
+        const ssize_t bytes = read(stdout_pipe[0], buffer.data(), buffer.size());
+        if (bytes > 0) {
+          if (stdout_text != nullptr) {
+            stdout_text->append(buffer.data(), static_cast<std::size_t>(bytes));
+          }
+        } else if (bytes == 0) {
+          stdout_open = false;
+          CloseIfOpen(&stdout_pipe[0]);
+          break;
+        } else {
+          if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            break;
+          }
+          stdout_open = false;
+          CloseIfOpen(&stdout_pipe[0]);
+          break;
+        }
+      }
+    } else if (poll_rc > 0 && (pfd.revents & (POLLHUP | POLLERR))) {
+      while (true) {
+        const ssize_t bytes = read(stdout_pipe[0], buffer.data(), buffer.size());
+        if (bytes > 0) {
+          if (stdout_text != nullptr) {
+            stdout_text->append(buffer.data(), static_cast<std::size_t>(bytes));
+          }
+        } else {
+          break;
+        }
+      }
+      stdout_open = false;
+      CloseIfOpen(&stdout_pipe[0]);
+    } else if (poll_rc == 0 && child_exited) {
+      stdout_open = false;
+      CloseIfOpen(&stdout_pipe[0]);
+    }
+  }
+
+  CloseIfOpen(&stdout_pipe[0]);
+  const int rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+  if (exit_code != nullptr) {
+    *exit_code = rc;
+  }
+  return rc == 0;
+}
+
 } // namespace vinput::process
