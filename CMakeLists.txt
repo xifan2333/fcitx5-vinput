@@ -93,6 +93,30 @@ if(NOT nlohmann_json_FOUND)
             "nlohmann_json was not found. Install nlohmann_json or enable VINPUT_FETCH_NLOHMANN_JSON.")
     endif()
 endif()
+
+option(VINPUT_FETCH_SPDLOG "Fetch spdlog with FetchContent when not found" ON)
+find_package(spdlog QUIET)
+if(NOT spdlog_FOUND)
+    if(VINPUT_FETCH_SPDLOG)
+        include(FetchContent)
+        set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+        set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+        set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            spdlog
+            GIT_REPOSITORY https://github.com/gabime/spdlog.git
+            GIT_TAG v1.15.1
+        )
+        FetchContent_MakeAvailable(spdlog)
+    else()
+        message(FATAL_ERROR
+            "spdlog was not found. Install spdlog or enable VINPUT_FETCH_SPDLOG.")
+    endif()
+endif()
+if(NOT TARGET spdlog::spdlog_header_only AND TARGET spdlog_header_only)
+    add_library(spdlog::spdlog_header_only ALIAS spdlog_header_only)
+endif()
 find_package(Gettext REQUIRED)
 
 pkg_check_modules(SDBUS REQUIRED libsystemd)

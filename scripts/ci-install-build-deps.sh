@@ -70,6 +70,7 @@ ubuntu24.04)
     libfcitx5utils-dev \
     fcitx5-modules-dev \
     libcli11-dev \
+    libspdlog-dev \
     nlohmann-json3-dev
   install_qt_apt
   ;;
@@ -105,6 +106,7 @@ debian12)
     libfcitx5utils-dev \
     fcitx5-modules-dev \
     libcli11-dev \
+    libspdlog-dev \
     nlohmann-json3-dev
   install_qt_apt
   ;;
@@ -128,7 +130,8 @@ fedora43)
     systemd-devel \
     fcitx5-devel \
     nlohmann-json-devel \
-    cli11-devel
+    cli11-devel \
+    spdlog-devel
   install_qt_dnf
   ;;
 opensuse-leap)
@@ -161,7 +164,8 @@ opensuse-leap)
     zstd \
     fcitx5-devel \
     cli11-devel \
-    nlohmann_json-devel
+    nlohmann_json-devel \
+    spdlog-devel
   install_qt_zypper
   ;;
 archlinux)
@@ -180,6 +184,7 @@ archlinux)
     pipewire \
     pkgconf \
     sccache \
+    spdlog \
     systemd
   install_qt_pacman
   ;;

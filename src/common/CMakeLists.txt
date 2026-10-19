@@ -69,6 +69,7 @@ target_link_libraries(config PUBLIC
     nlohmann_json::nlohmann_json
     ${GETTEXT_LIBRARIES}
     OpenSSL::Crypto
+    spdlog::spdlog_header_only
 )
 
 target_link_libraries(common PUBLIC
