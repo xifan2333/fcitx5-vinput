@@ -121,12 +121,12 @@ void LogActiveBackend(const CoreConfig& config) {
   BackendDescriptor descriptor;
   std::string error;
   if (!DescribeActiveBackend(config, &descriptor, &error)) {
-    vinput::debug::Log("ASR provider=(missing)\n");
+    vinput::log::Debug("ASR provider=(missing)");
     return;
   }
 
-  vinput::debug::Log("ASR provider=%s type=%s backend=%s\n", descriptor.provider_id.c_str(),
-                     descriptor.provider_type.c_str(), descriptor.backend_id.c_str());
+  vinput::log::Debug("ASR provider={} type={} backend={}", descriptor.provider_id,
+                     descriptor.provider_type, descriptor.backend_id);
 }
 
 } // namespace
@@ -214,10 +214,10 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
     target_backend_signature_ = signature;
     reload_requested_ = true;
     last_reload_error_.clear();
-    vinput::debug::Log("queue ASR backend reload provider=%s model=%s signature=%s\n",
-                       target_provider_id_.empty() ? "(none)" : target_provider_id_.c_str(),
-                       target_model_id_.empty() ? "(none)" : target_model_id_.c_str(),
-                       target_backend_signature_.c_str());
+    vinput::log::Debug("queue ASR backend reload provider={} model={} signature={}",
+                       target_provider_id_.empty() ? "(none)" : target_provider_id_,
+                       target_model_id_.empty() ? "(none)" : target_model_id_,
+                       target_backend_signature_);
   }
 
   reload_cv_.notify_one();
@@ -366,8 +366,7 @@ bool RecognitionSessionManager::CreatePreparedBackend(const CoreConfig& settings
   }
   warmup_session->Cancel();
   const auto prepare_elapsed_ms = vinput::time::MillisecondsSince(prepare_started_at);
-  vinput::debug::Log("ASR backend prepared and warmed up in %lld ms\n",
-                     static_cast<long long>(prepare_elapsed_ms));
+  vinput::log::Debug("ASR backend prepared and warmed up in {} ms", prepare_elapsed_ms);
 
   prepared->backend = std::move(backend);
   prepared->descriptor = descriptor;
@@ -503,7 +502,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
     PreparedBackend prepared;
     std::string error;
     const auto reload_started_at = std::chrono::steady_clock::now();
-    vinput::debug::Log("ASR backend reload worker started\n");
+    vinput::log::Debug("ASR backend reload worker started");
     const bool ok = CreatePreparedBackendForReload(settings, signature, &prepared, &error);
     const auto reload_elapsed_ms = vinput::time::MillisecondsSince(reload_started_at);
 
@@ -519,8 +518,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
         last_reload_error_.clear();
         reload_in_progress_ = false;
       }
-      vinput::debug::Log("ASR backend reload applied asynchronously in %lld ms\n",
-                         static_cast<long long>(reload_elapsed_ms));
+      vinput::log::Debug("ASR backend reload applied asynchronously in {} ms", reload_elapsed_ms);
       NotifyReloadResult(true, {});
       continue;
     }

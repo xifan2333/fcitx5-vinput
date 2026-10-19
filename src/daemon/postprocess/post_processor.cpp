@@ -54,6 +54,9 @@ std::string BuildRequestUrl(const std::string& base_url) {
   return vinput::url::JoinPath(base_url, kChatCompletions);
 }
 
+// TODO(#407): Modernize LLM payload logging (request/response body and header dumps)
+// after migrating to modern zero-copy JSON library (e.g. glaze).
+#if 0
 std::string QuoteForLog(std::string_view text) {
   if (text.size() > kMaxLoggedResponseBytes) {
     std::string truncated(text.substr(0, kMaxLoggedResponseBytes));
@@ -63,24 +66,14 @@ std::string QuoteForLog(std::string_view text) {
   return std::string(text);
 }
 
-void LogResponseSummary(const LlmProvider& provider, const std::string& url, long status_code,
-                        double total_time_ms) {
-  vinput::debug::Log("LLM request provider=%s url=%s status=%ld time=%.1fms\n",
-                     provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(),
-                     status_code, total_time_ms);
-}
-
 void LogLlmInput(const LlmProvider& provider, const std::string& url, std::string_view text) {
-  vinput::debug::Log("LLM input provider=%s url=%s: %s\n",
-                     provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(),
-                     QuoteForLog(text).c_str());
+  VINPUT_LOG_DEBUG("LLM input provider={} url={}: {}",
+                   provider.id.empty() ? "(unnamed)" : provider.id, url,
+                   QuoteForLog(text));
 }
 
 void LogLlmRequest(const LlmProvider& provider, const std::string& url,
                    const std::vector<vinput::net::HttpHeader>& headers, std::string_view body) {
-  // Debug-only: dump headers and body verbatim. The API key is included in
-  // plain text since this is gated by VINPUT_DEBUG and intended for local
-  // inspection; users who share logs are responsible for redacting first.
   std::string header_dump;
   for (const auto& header : headers) {
     if (!header_dump.empty()) {
@@ -90,14 +83,21 @@ void LogLlmRequest(const LlmProvider& provider, const std::string& url,
     header_dump.append(": ");
     header_dump.append(header.value);
   }
-  vinput::debug::Log("LLM request provider=%s url=%s headers=[%s]\n",
-                     provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(),
-                     header_dump.c_str());
-  vinput::debug::Log("LLM request body: %s\n", QuoteForLog(body).c_str());
+  VINPUT_LOG_DEBUG("LLM request provider={} url={} headers=[{}]",
+                   provider.id.empty() ? "(unnamed)" : provider.id, url, header_dump);
+  VINPUT_LOG_DEBUG("LLM request body: {}", QuoteForLog(body));
 }
 
 void LogResponseBody(const char* prefix, const std::string& url, std::string_view body) {
-  vinput::debug::Log("%s %s: %s\n", prefix, url.c_str(), QuoteForLog(body).c_str());
+  VINPUT_LOG_DEBUG("{} {}: {}", prefix, url, QuoteForLog(body));
+}
+#endif
+
+void LogResponseSummary(const LlmProvider& provider, const std::string& url, long status_code,
+                        double total_time_ms) {
+  vinput::log::Debug("LLM request provider={} url={} status={} time={:.1f}ms",
+                     provider.id.empty() ? "(unnamed)" : provider.id, url, status_code,
+                     total_time_ms);
 }
 
 std::vector<std::string> ExtractCandidates(const json& response) {
@@ -228,8 +228,8 @@ void MergeExtraBody(json& request, const nlohmann::json& extra, const LlmProvide
   for (auto it = extra.begin(); it != extra.end(); ++it) {
     const std::string& key = it.key();
     if (std::find(kProtected.begin(), kProtected.end(), key) != kProtected.end()) {
-      vinput::debug::Log("LLM extra_body provider=%s: ignoring protected key '%s'\n",
-                         provider.id.empty() ? "(unnamed)" : provider.id.c_str(), key.c_str());
+      vinput::log::Debug("LLM extra_body provider={}: ignoring protected key '{}'",
+                         provider.id.empty() ? "(unnamed)" : provider.id, key);
       continue;
     }
     request[key] = it.value();
@@ -313,9 +313,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   }
   user_content.append(constraints_suffix);
 
-  if (vinput::debug::Enabled()) {
-    LogLlmInput(provider, url, text);
-  }
+  // TODO(#407): re-enable with modern JSON library: LogLlmInput(provider, url, text);
 
   std::vector<json> messages;
   messages.push_back({{"role", "user"}, {"content", user_content}});
@@ -364,16 +362,14 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
     }
   };
 
-  if (vinput::debug::Enabled()) {
-    LogLlmRequest(provider, url, req.headers, request_body);
-  }
+  // TODO(#407): re-enable with modern JSON library: LogLlmRequest(provider, url, req.headers,
+  // request_body);
 
   const auto res = vinput::net::HttpClient::Instance().Request(req);
 
   if (res.cancelled) {
-    vinput::debug::Log("LLM request provider=%s url=%s cancelled after %.1fms\n",
-                       provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(),
-                       res.total_time_ms);
+    vinput::log::Debug("LLM request provider={} url={} cancelled after {:.1f}ms",
+                       provider.id.empty() ? "(unnamed)" : provider.id, url, res.total_time_ms);
     if (error_out != nullptr) {
       error_out->clear();
     }
@@ -395,18 +391,14 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
   if (res.status_code < 200 || res.status_code >= 300) {
     const std::string msg = "HTTP " + std::to_string(res.status_code) + ": " + res.body;
-    if (vinput::debug::Enabled()) {
-      LogResponseBody("LLM error response from", url, res.body);
-    }
+    // TODO(#407): LogResponseBody("LLM error response from", url, res.body);
     if (error_out != nullptr) {
       *error_out = msg;
     }
     return std::nullopt;
   }
 
-  if (vinput::debug::Enabled()) {
-    LogResponseBody("LLM raw response from", url, res.body);
-  }
+  // TODO(#407): LogResponseBody("LLM raw response from", url, res.body);
 
   json response;
   try {
@@ -420,9 +412,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   const auto error_it = response.find("error");
   if (error_it != response.end()) {
     fprintf(stderr, "vinput-daemon: LLM response from %s contains error\n", url.c_str());
-    if (vinput::debug::Enabled()) {
-      LogResponseBody("LLM parsed error payload from", url, error_it->dump());
-    }
+    // TODO(#407): LogResponseBody("LLM parsed error payload from", url, error_it->dump());
     return std::nullopt;
   }
 

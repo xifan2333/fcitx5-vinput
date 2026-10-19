@@ -189,7 +189,7 @@ public:
         fprintf(stderr, "vinput-daemon: failed to autostart adapter '%s': %s\n", adapter.id.c_str(),
                 result.message.c_str());
       } else {
-        vinput::debug::Log("autostarted adapter '%s'\n", adapter.id.c_str());
+        vinput::log::Debug("autostarted adapter '{}'", adapter.id);
       }
     }
   }
@@ -263,7 +263,7 @@ private:
         [this, &adapter](std::string_view raw_line) {
           const std::string line = vinput::str::TrimAsciiWhitespace(raw_line);
           if (!line.empty()) {
-            vinput::debug::Log("adapter[%s] stderr: %s\n", adapter.id.c_str(), line.c_str());
+            vinput::log::Debug("adapter[{}] stderr: {}", adapter.id, line);
             EmitNotification(line);
           }
         },
@@ -321,8 +321,7 @@ private:
                                       .stderr_fd = process.stderr_fd,
                                       .stderr_buffer = {},
                                   });
-    vinput::debug::Log("adapter started id=%s pid=%d\n", adapter_id.c_str(),
-                       static_cast<int>(process.pid));
+    vinput::log::Debug("adapter started id={} pid={}", adapter_id, static_cast<int>(process.pid));
     return DbusService::MethodResult::Success();
   }
 
@@ -347,7 +346,7 @@ private:
     if (tracked_pid > 0) {
       TerminateProcessBounded(tracked_pid);
       vinput::adapter::RemovePidFile(adapter_id);
-      vinput::debug::Log("adapter stopped id=%s\n", adapter_id.c_str());
+      vinput::log::Debug("adapter stopped id={}", adapter_id);
       return DbusService::MethodResult::Success();
     }
 
@@ -356,7 +355,7 @@ private:
       return DbusService::MethodResult::Failure(error.empty() ? "failed to stop adapter" : error);
     }
 
-    vinput::debug::Log("adapter stopped id=%s\n", adapter_id.c_str());
+    vinput::log::Debug("adapter stopped id={}", adapter_id);
     return DbusService::MethodResult::Success();
   }
 
@@ -401,7 +400,7 @@ private:
         adapter.stderr_fd = -1;
       }
 
-      vinput::debug::Log("adapter exited id=%s code=%d\n", adapter.id.c_str(),
+      vinput::log::Debug("adapter exited id={} code={}", adapter.id,
                          WIFEXITED(status) ? WEXITSTATUS(status)
                                            : (WIFSIGNALED(status) ? 128 + WTERMSIG(status) : -1));
       exited_ids.push_back(id);

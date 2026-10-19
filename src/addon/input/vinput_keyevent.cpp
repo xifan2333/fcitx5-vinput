@@ -129,7 +129,7 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
       } else {
         clearVoicePresentation(ic);
       }
-      vinput::debug::Log("command trigger ignored because no selection text is available\n");
+      vinput::log::Debug("command trigger ignored because no selection text is available");
       updateVoicePresentation(ic, NoSelectionPreeditText());
       return;
     }
@@ -139,11 +139,10 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
     if (!callStartCommandRecording(selected_text)) {
       finishFrontendSession(ic);
       if (bus_ == nullptr) {
-        vinput::debug::Log("command trigger fallback: daemon bus unavailable\n");
+        vinput::log::Debug("command trigger fallback: daemon bus unavailable");
         updateVoicePresentation(ic, DaemonUnavailablePreeditText());
       } else if (!daemonSyncAllowed()) {
-        vinput::debug::Log(
-            "command trigger fallback: daemon sync throttled after timeout/failure\n");
+        vinput::log::Debug("command trigger fallback: daemon sync throttled after timeout/failure");
         updateVoicePresentation(ic, DaemonNotRespondingPreeditText());
       }
     }
@@ -153,11 +152,10 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
     if (!callStartRecording()) {
       finishFrontendSession(ic);
       if (bus_ == nullptr) {
-        vinput::debug::Log("record trigger fallback: daemon bus unavailable\n");
+        vinput::log::Debug("record trigger fallback: daemon bus unavailable");
         updateVoicePresentation(ic, DaemonUnavailablePreeditText());
       } else if (!daemonSyncAllowed()) {
-        vinput::debug::Log(
-            "record trigger fallback: daemon sync throttled after timeout/failure\n");
+        vinput::log::Debug("record trigger fallback: daemon sync throttled after timeout/failure");
         updateVoicePresentation(ic, DaemonNotRespondingPreeditText());
       }
     }

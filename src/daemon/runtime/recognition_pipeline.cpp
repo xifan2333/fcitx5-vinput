@@ -22,9 +22,8 @@ std::string QuoteRecognitionText(std::string_view text) {
 }
 
 void LogRecognizedText(const std::string& text, bool is_command, std::string_view scene_id) {
-  vinput::debug::Log("recognized text command=%s scene=%s: %s\n", is_command ? "true" : "false",
-                     scene_id.empty() ? "(default)" : std::string(scene_id).c_str(),
-                     QuoteRecognitionText(text).c_str());
+  vinput::log::Debug("recognized text command={} scene={}: {}", is_command ? "true" : "false",
+                     scene_id.empty() ? "(default)" : scene_id, QuoteRecognitionText(text));
 }
 
 } // namespace
@@ -48,9 +47,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
     return output;
   }
 
-  if (vinput::debug::Enabled()) {
-    LogRecognizedText(order.recognized_text, order.is_command, order.scene_id);
-  }
+  LogRecognizedText(order.recognized_text, order.is_command, order.scene_id);
 
   vinput::scene::Config scene_config;
   scene_config.activeSceneId = settings.scenes.activeScene;

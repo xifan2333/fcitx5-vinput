@@ -116,10 +116,10 @@ void AudioCapture::processCallback() {
         const std::scoped_lock lock(timing_mutex_);
         if (recording_armed_at_.has_value() && !first_buffer_at_.has_value()) {
           first_buffer_at_ = std::chrono::steady_clock::now();
-          vinput::debug::Log("capture first buffer after %ld ms (samples=%u)\n",
-                             static_cast<long>(vinput::time::MillisecondsBetween(
-                                 *recording_armed_at_, *first_buffer_at_)),
-                             n_samples);
+          vinput::log::Debug(
+              "capture first buffer after {} ms (samples={})",
+              vinput::time::MillisecondsBetween(*recording_armed_at_, *first_buffer_at_),
+              n_samples);
         }
       }
       {
@@ -159,7 +159,7 @@ void AudioCapture::onStateChanged(void* userdata, enum pw_stream_state old,
                                   enum pw_stream_state state, const char* error) {
   (void)userdata;
   const char* err_str = (error != nullptr && error[0] != '\0') ? error : nullptr;
-  vinput::debug::Log("capture stream state: %s -> %s%s%s\n", pw_stream_state_as_string(old),
+  vinput::log::Debug("capture stream state: {} -> {}{}{}", pw_stream_state_as_string(old),
                      pw_stream_state_as_string(state), err_str != nullptr ? " error=" : "",
                      err_str != nullptr ? err_str : "");
   if (state == PW_STREAM_STATE_ERROR) {
@@ -354,13 +354,13 @@ void AudioCapture::ScheduleIdleDestroy() {
     return;
   }
   idle_destroy_deadline_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(grace_ms);
-  vinput::debug::Log("capture idle destroy scheduled in %ld ms\n", grace_ms);
+  vinput::log::Debug("capture idle destroy scheduled in {} ms", grace_ms);
 }
 
 void AudioCapture::CancelIdleDestroy() {
   std::lock_guard<std::mutex> lock(timing_mutex_);
   if (idle_destroy_deadline_.has_value()) {
-    vinput::debug::Log("capture idle destroy cancelled\n");
+    vinput::log::Debug("capture idle destroy cancelled");
   }
   idle_destroy_deadline_.reset();
 }
@@ -385,7 +385,7 @@ bool AudioCapture::MaybeDestroyExpiredStream() {
     return false;
   }
 
-  vinput::debug::Log("capture idle grace expired; destroying reusable stream\n");
+  vinput::log::Debug("capture idle grace expired; destroying reusable stream");
   DestroyStream();
   return true;
 }
@@ -483,8 +483,8 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     const auto active_start = std::chrono::steady_clock::now();
     if (!SetStreamActive(true, error)) {
       // Reuse path failed — fall back to full recreate once.
-      vinput::debug::Log("capture set_active(true) on reused stream failed (%s), recreating\n",
-                         error && !error->empty() ? error->c_str() : "unknown");
+      vinput::log::Debug("capture set_active(true) on reused stream failed ({}), recreating",
+                         error && !error->empty() ? *error : "unknown");
       DestroyStream();
       local_timing.stream_reused = false;
       local_timing.created_new_stream = true;
@@ -510,8 +510,8 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     }
   }
 
-  vinput::debug::Log("capture begin idle_gap_ms=%ld create_stream_ms=%ld set_active_ms=%ld "
-                     "stream_reused=%d created_new_stream=%d reuse_policy=%d\n",
+  vinput::log::Debug("capture begin idle_gap_ms={} create_stream_ms={} set_active_ms={} "
+                     "stream_reused={} created_new_stream={} reuse_policy={}",
                      local_timing.idle_gap_ms, local_timing.create_stream_ms,
                      local_timing.set_active_ms, local_timing.stream_reused ? 1 : 0,
                      local_timing.created_new_stream ? 1 : 0,
@@ -528,7 +528,7 @@ void AudioCapture::EndRecording() {
   if (StreamReuseEnabled() && stream_) {
     std::string error;
     if (!SetStreamActive(false, &error)) {
-      vinput::debug::Log("capture EndRecording set_active(false) failed: %s\n", error.c_str());
+      vinput::log::Debug("capture EndRecording set_active(false) failed: {}", error);
       DestroyStream();
       return;
     }
@@ -545,8 +545,8 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
   if (StreamReuseEnabled() && stream_) {
     std::string error;
     if (!SetStreamActive(false, &error)) {
-      vinput::debug::Log("capture StopAndGetBuffer set_active(false) failed: %s; destroying\n",
-                         error.c_str());
+      vinput::log::Debug("capture StopAndGetBuffer set_active(false) failed: {}; destroying",
+                         error);
       DestroyStream();
     } else if (IdleDestroyMs() <= 0) {
       DestroyStream();
@@ -598,7 +598,7 @@ void AudioCapture::SetTargetObject(std::string target_object) {
   // Target change invalidates a connected stream. Destroy when not recording so
   // the next BeginRecording reconnects to the new source.
   if (!recording_.load(std::memory_order_relaxed) && stream_) {
-    vinput::debug::Log("capture target changed; destroying reusable stream for reconnect\n");
+    vinput::log::Debug("capture target changed; destroying reusable stream for reconnect");
     DestroyStream();
   }
 }

@@ -167,7 +167,7 @@ void OutputDucker::ProcessDuck(double scale) {
 
   saved_volume_ = *current;
   worker_ducked_ = true;
-  vinput::debug::Log("ducked output volume %.2f -> %.2f (%.0f%%)\n", *current, target,
+  vinput::log::Debug("ducked output volume {:.2f} -> {:.2f} ({:.0f}%)", *current, target,
                      scale * 100.0);
 }
 
@@ -179,7 +179,7 @@ void OutputDucker::ProcessRestore() {
   const double restore_to = saved_volume_;
   saved_volume_ = 0.0;
   if (SetDefaultSinkVolume(restore_to)) {
-    vinput::debug::Log("restored output volume -> %.2f\n", restore_to);
+    vinput::log::Debug("restored output volume -> {:.2f}", restore_to);
   } else {
     fprintf(stderr, "vinput-daemon: failed to restore output volume to %.2f\n", restore_to);
   }
