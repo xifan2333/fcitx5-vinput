@@ -11,7 +11,6 @@
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <span>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -344,21 +343,24 @@ bool ApplyIniRule(fcitx::RawConfig& root, const MigrationRule& rule,
     fcitx::RawConfig* parent = nullptr;
     std::string key;
     if (slash != std::string::npos) {
-      parent = root.get(path.substr(0, slash)).get();
+      const auto parent_node = root.get(path.substr(0, slash));
+      if (parent_node != nullptr) {
+        parent = parent_node.get();
+      }
       key = path.substr(slash + 1);
     } else {
       parent = &root;
       key = path;
     }
-    if (!parent) {
+    if (parent == nullptr) {
       continue;
     }
 
     if (rule.action == ActionType::IniReplaceKey) {
-      auto old_node = parent->get(key);
-      if (old_node) {
+      const auto old_node = parent->get(key);
+      if (old_node != nullptr) {
         const std::string new_key(rule.new_key);
-        if (!parent->get(new_key)) {
+        if (parent->get(new_key) == nullptr) {
           auto new_node = parent->get(new_key, true);
           *new_node = *old_node;
           changes.push_back({
@@ -439,8 +441,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     if (!vinput::file::ReadTextFile(real_conf_path, &raw_conf, &report.error)) {
       return report;
     }
-    std::istringstream iss(raw_conf);
-    fcitx::readFromIni(conf_raw_config, iss);
+    fcitx::readAsIni(conf_raw_config, real_conf_path.string());
   }
 
   const auto max_rule_ver = GetMaxRuleVersion();
