@@ -5,6 +5,7 @@
 #include <dbus_public.h>
 #include <fcitx-config/iniparser.h>
 #include <fcitx-utils/event.h>
+#include <fcitx-utils/log.h>
 #include <fcitx/inputcontext.h>
 #include <fstream>
 #include <memory>

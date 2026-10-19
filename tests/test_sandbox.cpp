@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <unistd.h>
 #include <vector>
 
@@ -34,6 +35,10 @@ struct TempDirGuard {
     std::error_code ec;
     fs::remove_all(path, ec);
   }
+  TempDirGuard(const TempDirGuard&) = delete;
+  TempDirGuard& operator=(const TempDirGuard&) = delete;
+  TempDirGuard(TempDirGuard&&) = delete;
+  TempDirGuard& operator=(TempDirGuard&&) = delete;
 };
 
 void TestDetectSandbox() {
@@ -54,7 +59,7 @@ void TestDetectSandbox() {
   TEST_ASSERT(!DetectSandbox(nullptr, nullptr, nullptr));
 
   // Existing file as info path
-  TempDirGuard temp;
+  const TempDirGuard temp;
   fs::path dummy_info = temp.path / "dummy-flatpak-info";
   {
     std::ofstream ofs(dummy_info);
@@ -67,7 +72,7 @@ void TestProbeMissingPermissions() {
   using vinput::sandbox::detail::ProbeMissingPermissions;
   using vinput::sandbox::detail::ProbeOptions;
 
-  TempDirGuard temp;
+  const TempDirGuard temp;
   fs::path pw_socket = temp.path / "pipewire-0";
   {
     std::ofstream ofs(pw_socket);

@@ -782,12 +782,14 @@ void ControlPage::onDaemonRestart() {
 
 void ControlPage::checkSandboxPermissions() {
   auto missing = vinput::sandbox::MissingSandboxPermissions();
-  if (missing.empty())
+  if (missing.empty()) {
     return;
+  }
 
   const QString commands = QString::fromStdString(vinput::sandbox::FormatOverrideCommands(missing));
-  if (commands.isEmpty())
+  if (commands.isEmpty()) {
     return;
+  }
 
   QMessageBox msg(this);
   msg.setIcon(QMessageBox::Warning);
