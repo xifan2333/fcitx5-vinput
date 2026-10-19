@@ -4,7 +4,6 @@
 #include <functional>
 
 #include "common/config/core_config.h"
-#include "common/config/core_config_types.h"
 #include "common/dbus/error_info.h"
 #include "common/utils/debug_log.h"
 
