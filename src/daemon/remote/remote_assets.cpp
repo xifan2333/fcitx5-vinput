@@ -130,7 +130,7 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
   <main>
     <h1>VInput Remote</h1>
     <div class="sub">Local network text input</div>
-    <section class="status">
+    <section class="status" role="button" tabindex="0" title="Click to reconnect if disconnected">
       <div class="tile">
         <div class="label">Phone input</div>
         <div class="value"><span id="input-dot" class="dot"></span><span id="input-status">connecting</span></div>
@@ -251,21 +251,24 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
         return
       }
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(proto + '//' + location.host + '/ws')
+      const socket = new WebSocket(proto + '//' + location.host + '/ws')
+      ws = socket
       if (!terminalError) {
         setInputStatus('connecting')
       }
-      ws.onopen = () => {
+      socket.onopen = () => {
+        if (ws !== socket) return
         apiKey = apiKey || readApiKey()
         if (!apiKey) {
           terminalError = 'error'
           setInputStatus('failed: API key required')
-          ws.close()
+          socket.close()
           return
         }
         send({ type: 'auth', api_key: apiKey })
       }
-      ws.onmessage = event => {
+      socket.onmessage = event => {
+        if (ws !== socket) return
         try {
           const msg = JSON.parse(event.data)
           messageHandlers[msg?.type]?.(msg)
@@ -273,7 +276,8 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
           // Ignore invalid JSON payloads
         }
       }
-      ws.onclose = () => {
+      socket.onclose = () => {
+        if (ws !== socket) return
         authenticated = false
         if (!terminalError) {
           setInputStatus('disconnected')
@@ -284,7 +288,10 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
           setTimeout(connect, terminalError === 'busy' ? 2000 : 1000)
         }
       }
-      ws.onerror = () => ws.close()
+      socket.onerror = () => {
+        if (ws !== socket) return
+        socket.close()
+      }
     }
     editor.addEventListener('compositionstart', () => { composing = true })
     editor.addEventListener('compositionend', () => {
@@ -302,10 +309,18 @@ constexpr std::string_view kFallbackIndexHtml = R"HTML(<!doctype html>
         commitAndClear()
       }
     })
-    document.querySelector('.status').addEventListener('click', () => {
+    const statusSection = document.querySelector('.status')
+    function triggerReconnect() {
       if (terminalError === 'displaced') {
         terminalError = ''
         connect()
+      }
+    }
+    statusSection.addEventListener('click', triggerReconnect)
+    statusSection.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        triggerReconnect()
       }
     })
     connect()
