@@ -31,8 +31,6 @@ add_library(config STATIC
 set(VINPUT_REGISTRY_SOURCES
     asr/bpe_vocab_exporter.cpp
     net/http_client.cpp
-    net/http_server.cpp
-    net/websocket_frame.cpp
     registry/registry_fetch.cpp
     registry/registry_models.cpp
     registry/registry_cache.cpp
@@ -74,7 +72,6 @@ target_link_libraries(config PUBLIC
 target_link_libraries(common PUBLIC
     config
     httplib::httplib
-    CURL::libcurl
     LibArchive::LibArchive
     OpenSSL::Crypto
 )

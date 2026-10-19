@@ -193,16 +193,6 @@ target_include_directories(test_http_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_http_client PRIVATE common pthread)
 add_test(NAME test_http_client COMMAND test_http_client)
 
-add_executable(test_http_server test_http_server.cpp)
-target_include_directories(test_http_server PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_http_server PRIVATE common pthread)
-add_test(NAME test_http_server COMMAND test_http_server)
-
-add_executable(test_websocket_frame test_websocket_frame.cpp)
-target_include_directories(test_websocket_frame PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_websocket_frame PRIVATE common pthread)
-add_test(NAME test_websocket_frame COMMAND test_websocket_frame)
-
 add_executable(test_remote_text_service
     test_remote_text_service.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/remote/remote_assets.cpp

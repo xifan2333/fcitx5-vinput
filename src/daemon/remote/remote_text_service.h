@@ -13,10 +13,12 @@
 
 struct CoreConfig;
 
-namespace vinput::net {
-class HttpServer;
-class WebSocketSession;
-} // namespace vinput::net
+namespace httplib {
+class Server;
+namespace ws {
+class WebSocket;
+}
+} // namespace httplib
 
 namespace vinput::daemon::remote {
 
@@ -51,10 +53,10 @@ private:
   bool ExtractSettings(const CoreConfig& config, Settings* settings, bool* should_run,
                        std::string* error) const;
   bool Start(const Settings& settings, std::string* error);
-  void SetupRoutes(vinput::net::HttpServer* server);
+  void SetupRoutes(httplib::Server* server);
 
-  void HandleOutputSession(const std::shared_ptr<vinput::net::WebSocketSession>& session);
-  void HandleInputSession(const std::shared_ptr<vinput::net::WebSocketSession>& session);
+  void HandleOutputSession(httplib::ws::WebSocket& ws);
+  void HandleInputSession(httplib::ws::WebSocket& ws);
 
   [[nodiscard]] bool ValidateApiKey(std::string_view api_key) const;
   void NotifyInput(std::string_view type);
@@ -66,7 +68,7 @@ private:
   void ForceDebounce();
   void DebounceLoop();
   void MaybeTriggerStart();
-  static void SendEmptyCommit(const std::shared_ptr<vinput::net::WebSocketSession>& session);
+  static void SendEmptyCommit(httplib::ws::WebSocket& ws);
   void SendFinalResult();
 
   Settings settings_;
@@ -78,12 +80,13 @@ private:
   std::atomic<bool> running_{false};
   bool service_started_ = false;
 
-  std::unique_ptr<vinput::net::HttpServer> http_server_;
+  std::unique_ptr<httplib::Server> http_server_;
+  std::thread server_thread_;
   std::thread debounce_thread_;
 
   mutable std::mutex state_mutex_;
-  std::shared_ptr<vinput::net::WebSocketSession> input_session_;
-  std::shared_ptr<vinput::net::WebSocketSession> output_session_;
+  httplib::ws::WebSocket* input_ws_ = nullptr;
+  httplib::ws::WebSocket* output_ws_ = nullptr;
 
   mutable std::mutex text_mutex_;
   std::string current_text_;
