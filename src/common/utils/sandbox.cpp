@@ -1,7 +1,9 @@
 #include "common/utils/sandbox.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <string_view>
 #include <sys/stat.h>
 
 #include "common/utils/path_utils.h"
@@ -22,9 +24,28 @@ std::string ReadFileContents(const std::filesystem::path& path) {
 
 } // namespace
 
+namespace detail {
+
+bool DetectSandbox(const char* flatpak_id, const char* container, const char* info_path) {
+  if (flatpak_id != nullptr && *flatpak_id != '\0') {
+    return true;
+  }
+  if (container != nullptr && std::string_view(container) == "flatpak") {
+    return true;
+  }
+  if (info_path != nullptr && *info_path != '\0') {
+    struct stat st;
+    return stat(info_path, &st) == 0;
+  }
+  return false;
+}
+
+} // namespace detail
+
 bool IsInSandbox() {
-  struct stat st;
-  return stat(kSandboxInfoPath, &st) == 0;
+  static const bool in_sandbox =
+      detail::DetectSandbox(std::getenv("FLATPAK_ID"), std::getenv("container"), kSandboxInfoPath);
+  return in_sandbox;
 }
 
 std::vector<std::string> WrapHostCommand(std::vector<std::string> args) {

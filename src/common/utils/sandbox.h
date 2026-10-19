@@ -4,6 +4,10 @@
 
 namespace vinput::sandbox {
 
+namespace detail {
+bool DetectSandbox(const char* flatpak_id, const char* container, const char* info_path);
+} // namespace detail
+
 // Whether running inside a sandbox (e.g. Flatpak).
 bool IsInSandbox();
 
