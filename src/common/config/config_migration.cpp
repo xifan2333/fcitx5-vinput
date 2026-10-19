@@ -4,11 +4,14 @@
 #include <cmath>
 #include <cstdint>
 #include <ctime>
+#include <fcitx-config/iniparser.h>
+#include <fcitx-config/rawconfig.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -290,6 +293,98 @@ bool WalkAndApply(nlohmann::json& node, std::span<const std::string_view> segmen
   }
 
   return any_changed;
+}
+
+bool HasOutdatedIniKeys(const fcitx::RawConfig& conf) {
+  static constexpr std::string_view kOutdatedKeys[] = {
+      "SceneMenuKey",
+      "AsrMenuKey",
+      "HoldActivationDelay",
+  };
+  bool found = false;
+  conf.visitSubItems(
+      [&](const fcitx::RawConfig& node, const std::string& /*path*/) {
+        for (const auto key : kOutdatedKeys) {
+          if (node.name() == key) {
+            found = true;
+            return false;
+          }
+        }
+        return true;
+      },
+      "", true);
+  return found;
+}
+
+bool ApplyIniRule(fcitx::RawConfig& root, const MigrationRule& rule,
+                  std::vector<MigrationChange>& changes) {
+  std::vector<std::string> matching_paths;
+  root.visitSubItems(
+      [&](const fcitx::RawConfig& node, const std::string& path) {
+        if (rule.path.find('/') != std::string_view::npos) {
+          if (path == rule.path) {
+            matching_paths.push_back(path);
+          }
+        } else {
+          if (node.name() == rule.path) {
+            matching_paths.push_back(path);
+          }
+        }
+        return true;
+      },
+      "", true);
+
+  if (matching_paths.empty()) {
+    return false;
+  }
+
+  bool changed = false;
+  for (const auto& path : matching_paths) {
+    const auto slash = path.rfind('/');
+    fcitx::RawConfig* parent = nullptr;
+    std::string key;
+    if (slash != std::string::npos) {
+      parent = root.get(path.substr(0, slash)).get();
+      key = path.substr(slash + 1);
+    } else {
+      parent = &root;
+      key = path;
+    }
+    if (!parent) {
+      continue;
+    }
+
+    if (rule.action == ActionType::IniReplaceKey) {
+      auto old_node = parent->get(key);
+      if (old_node) {
+        const std::string new_key(rule.new_key);
+        if (!parent->get(new_key)) {
+          auto new_node = parent->get(new_key, true);
+          *new_node = *old_node;
+          changes.push_back({
+              .file = "vinput.conf",
+              .description = "replaced key '" + std::string(rule.path) + "' with '" + new_key + "'",
+          });
+        } else {
+          changes.push_back({
+              .file = "vinput.conf",
+              .description = "removed obsolete duplicate key '" + std::string(rule.path) + "'",
+          });
+        }
+        parent->remove(key);
+        changed = true;
+      }
+    } else if (rule.action == ActionType::IniRemoveKey) {
+      if (parent->remove(key)) {
+        changes.push_back({
+            .file = "vinput.conf",
+            .description = "removed obsolete key '" + std::string(rule.path) + "'",
+        });
+        changed = true;
+      }
+    }
+  }
+  return changed;
 }
 
 bool LineMatchesKey(std::string_view line, std::string_view key) {
