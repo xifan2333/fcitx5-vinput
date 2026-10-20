@@ -13,9 +13,9 @@ namespace vinput::interpolate {
 /// - `{{env:VAR}}`: raw="{{env:VAR}}", scheme="env", key="VAR"
 /// - `{{asr}}`: raw="{{asr}}", scheme="", key="asr"
 struct Placeholder {
-  std::string_view raw;
-  std::string_view scheme;
-  std::string_view key;
+  std::string_view raw{};
+  std::string_view scheme{};
+  std::string_view key{};
 };
 
 /// Resolver callback for interpolation.
@@ -24,15 +24,15 @@ struct Placeholder {
 using Resolver = std::function<std::optional<std::string>(const Placeholder& placeholder)>;
 
 /// Checks whether `text` contains any interpolation placeholder (`${...}` or `{{...}}`).
-bool HasInterpolation(std::string_view text);
+[[nodiscard]] bool HasInterpolation(std::string_view text) noexcept;
 
 /// Interpolates placeholders in `text` using `resolver`.
 /// Unhandled placeholders (resolver returns std::nullopt) are preserved verbatim.
-std::string Interpolate(std::string_view text, const Resolver& resolver);
+[[nodiscard]] std::string Interpolate(std::string_view text, const Resolver& resolver);
 
 /// Resolves environment variables from `${VAR}` and `{{env.VAR}}` / `{{env:VAR}}`.
 /// If the variable is unset in the process environment, it resolves to an empty string.
 /// Plain text without env placeholders is returned unchanged.
-std::string InterpolateEnv(std::string_view text);
+[[nodiscard]] std::string InterpolateEnv(std::string_view text);
 
 } // namespace vinput::interpolate

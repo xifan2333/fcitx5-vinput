@@ -11,7 +11,7 @@
 
 namespace vinput::interpolate {
 
-bool HasInterpolation(std::string_view text) {
+bool HasInterpolation(std::string_view text) noexcept {
   return text.find("${") != std::string_view::npos || text.find("{{") != std::string_view::npos;
 }
 

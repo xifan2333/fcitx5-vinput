@@ -21,11 +21,11 @@ constexpr size_t kMaxPromptFileBytes = 256ULL * 1024ULL; // 256 KiB safety cap
 
 } // namespace
 
-bool IsFileUri(std::string_view s) {
+bool IsFileUri(std::string_view s) noexcept {
   return s.starts_with(kFileUriPrefix);
 }
 
-bool HasInterpolation(std::string_view s) {
+bool HasInterpolation(std::string_view s) noexcept {
   return s.find("{{") != std::string_view::npos;
 }
 
