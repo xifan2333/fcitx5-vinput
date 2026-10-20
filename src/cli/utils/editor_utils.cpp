@@ -4,57 +4,58 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <subprocess.hpp>
 #include <utility>
 #include <vector>
 
-bool SplitEditorCommand(std::string_view command, std::vector<std::string>* args) {
-  if (args == nullptr) {
-    return false;
-  }
-  args->clear();
+namespace {
+
+enum class QuoteMode {
+  None,
+  Single,
+  Double,
+};
+
+} // namespace
+
+std::optional<std::vector<std::string>> SplitEditorCommand(std::string_view command) {
+  std::vector<std::string> args;
   std::string current;
-  bool in_single_quote = false;
-  bool in_double_quote = false;
-  bool escaping = false;
+  auto mode = QuoteMode::None;
+  bool escape = false;
 
   for (const char ch : command) {
-    if (escaping) {
+    if (escape) {
       current.push_back(ch);
-      escaping = false;
-      continue;
-    }
-    if (!in_single_quote && ch == '\\') {
-      escaping = true;
-      continue;
-    }
-    if (!in_double_quote && ch == '\'') {
-      in_single_quote = !in_single_quote;
-      continue;
-    }
-    if (!in_single_quote && ch == '"') {
-      in_double_quote = !in_double_quote;
-      continue;
-    }
-    if (!in_single_quote && !in_double_quote && std::isspace(static_cast<unsigned char>(ch)) != 0) {
+      escape = false;
+    } else if (ch == '\\' && mode != QuoteMode::Single) {
+      escape = true;
+    } else if (ch == '\'' && mode != QuoteMode::Double) {
+      mode = (mode == QuoteMode::Single) ? QuoteMode::None : QuoteMode::Single;
+    } else if (ch == '"' && mode != QuoteMode::Single) {
+      mode = (mode == QuoteMode::Double) ? QuoteMode::None : QuoteMode::Double;
+    } else if (mode == QuoteMode::None && std::isspace(static_cast<unsigned char>(ch)) != 0) {
       if (!current.empty()) {
-        args->push_back(std::move(current));
-        current.clear();
+        args.push_back(std::exchange(current, {}));
       }
-      continue;
+    } else {
+      current.push_back(ch);
     }
-    current.push_back(ch);
   }
 
-  if (escaping || in_single_quote || in_double_quote) {
-    return false;
+  if (escape || mode != QuoteMode::None) {
+    return std::nullopt;
   }
   if (!current.empty()) {
-    args->push_back(std::move(current));
+    args.push_back(std::move(current));
   }
-  return !args->empty();
+  if (args.empty()) {
+    return std::nullopt;
+  }
+  return args;
 }
 
 int OpenInEditor(const std::filesystem::path& file_path) {
@@ -66,14 +67,14 @@ int OpenInEditor(const std::filesystem::path& file_path) {
     editor = "vi";
   }
 
-  std::vector<std::string> args;
-  if (!SplitEditorCommand(editor, &args)) {
+  auto args = SplitEditorCommand(editor);
+  if (!args.has_value()) {
     return -1;
   }
-  args.push_back(file_path.string());
+  args->push_back(file_path.string());
 
   try {
-    return subprocess::call(args);
+    return subprocess::call(*args);
   } catch (const std::exception&) {
     return -1;
   }

@@ -15,28 +15,34 @@ inline void AssertTrue(bool condition, const char* message, const char* file, in
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
 void TestSplitEditorCommand() {
-  std::vector<std::string> args;
-  TEST_ASSERT(SplitEditorCommand("vi", &args));
-  TEST_ASSERT(args.size() == 1 && args[0] == "vi");
+  auto args = SplitEditorCommand("vi");
+  TEST_ASSERT(args.has_value());
+  TEST_ASSERT(args->size() == 1 && (*args)[0] == "vi");
 
-  TEST_ASSERT(SplitEditorCommand("code --wait", &args));
-  TEST_ASSERT(args.size() == 2 && args[0] == "code" && args[1] == "--wait");
+  args = SplitEditorCommand("code --wait");
+  TEST_ASSERT(args.has_value());
+  TEST_ASSERT(args->size() == 2 && (*args)[0] == "code" && (*args)[1] == "--wait");
 
-  TEST_ASSERT(SplitEditorCommand("sh -c 'exit 0'", &args));
-  TEST_ASSERT(args.size() == 3 && args[0] == "sh" && args[1] == "-c" && args[2] == "exit 0");
+  args = SplitEditorCommand("sh -c 'exit 0'");
+  TEST_ASSERT(args.has_value());
+  TEST_ASSERT(args->size() == 3 && (*args)[0] == "sh" && (*args)[1] == "-c" &&
+              (*args)[2] == "exit 0");
 
-  TEST_ASSERT(SplitEditorCommand("\"/path with spaces/editor\" -w", &args));
-  TEST_ASSERT(args.size() == 2 && args[0] == "/path with spaces/editor" && args[1] == "-w");
+  args = SplitEditorCommand("\"/path with spaces/editor\" -w");
+  TEST_ASSERT(args.has_value());
+  TEST_ASSERT(args->size() == 2 && (*args)[0] == "/path with spaces/editor" && (*args)[1] == "-w");
 
   // Escaped characters and metacharacters preserved verbatim without shell expansion
-  TEST_ASSERT(SplitEditorCommand("nano -c \\{foo\\}", &args));
-  TEST_ASSERT(args.size() == 3 && args[0] == "nano" && args[1] == "-c" && args[2] == "{foo}");
+  args = SplitEditorCommand("nano -c \\{foo\\}");
+  TEST_ASSERT(args.has_value());
+  TEST_ASSERT(args->size() == 3 && (*args)[0] == "nano" && (*args)[1] == "-c" &&
+              (*args)[2] == "{foo}");
 
-  // Invalid unmatched quotes
-  TEST_ASSERT(!SplitEditorCommand("code 'unclosed", &args));
-  TEST_ASSERT(!SplitEditorCommand("code \"unclosed", &args));
-  TEST_ASSERT(!SplitEditorCommand("", &args));
-  TEST_ASSERT(!SplitEditorCommand("   ", &args));
+  // Invalid unmatched quotes & empty
+  TEST_ASSERT(!SplitEditorCommand("code 'unclosed"));
+  TEST_ASSERT(!SplitEditorCommand("code \"unclosed"));
+  TEST_ASSERT(!SplitEditorCommand(""));
+  TEST_ASSERT(!SplitEditorCommand("   "));
 }
 
 int main() {
