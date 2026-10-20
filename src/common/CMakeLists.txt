@@ -72,6 +72,7 @@ target_link_libraries(config PUBLIC
     nonstd::scope
     unicodelib::unicodelib
     mio::mio
+    glaze::glaze
 )
 
 target_link_libraries(common PUBLIC

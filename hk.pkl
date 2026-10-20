@@ -1,6 +1,8 @@
 amends "package://github.com/jdx/hk/releases/download/v2.0.0/hk@2.0.0#/Config.pkl"
 import "package://github.com/jdx/hk/releases/download/v2.0.0/hk@2.0.0#/Builtins.pkl"
 
+exclude = List("3rdparty/**")
+
 local linters = new Mapping<String, Step> {
   ["clang-format"] = (Builtins.clang_format) {
     glob = List("src/**/*.cpp", "src/**/*.h", "tests/**/*.cpp", "tests/**/*.h")

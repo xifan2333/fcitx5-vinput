@@ -205,6 +205,12 @@ target_include_directories(3rdparty_mio SYSTEM INTERFACE
 )
 add_library(mio::mio ALIAS 3rdparty_mio)
 
+add_library(3rdparty_glaze INTERFACE)
+target_include_directories(3rdparty_glaze SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/glaze/include
+)
+add_library(glaze::glaze ALIAS 3rdparty_glaze)
+
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit")

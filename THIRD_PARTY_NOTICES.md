@@ -65,6 +65,12 @@ This file lists third-party software that this project depends on or bundles, an
    - Upstream: https://github.com/mandreyel/mio
    - Version: commit 8b6b7d8 (imported 2026-10-21, vendored in `3rdparty/mio/`)
 
+7. **stephenberry/glaze** (`3rdparty/glaze/`)
+   - Description: Extremely fast, in-memory, C++20/C++23 header-only JSON and reflection library.
+   - License: MIT
+   - Upstream: https://github.com/stephenberry/glaze
+   - Version: v2.9.5 (commit 7c298ef6c403c505cf6291b686e32d943f1fb102, imported 2026-10-21, vendored in `3rdparty/glaze/`)
+
 ## Models / data downloaded by users (not bundled)
 
 1. **sherpa-onnx ASR models**
