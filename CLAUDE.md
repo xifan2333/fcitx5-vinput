@@ -33,6 +33,7 @@ gh workflow run release.yml --ref <branch> && gh run watch     # Remote multi-ar
 - **PR Micro-Slicing**: Keep functional code changes <300 lines; break large epics into stacked micro-PRs.
 - **AI Attribution & Disclosure**: Append `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*` to PR descriptions, review fixes, and substantive comments.
 - **Dialectical Review Bot Triage & Pre-Action Reporting**: Never blindly follow CodeRabbit/Greptile suggestions. Critically evaluate findings against C++20 and project architecture. Before writing fix code, the agent MUST explicitly report its analysis (true issues vs. false positives and next actions) to the user in chat.
+- **Non-Blocking Handover (No CI Polling)**: Never busy-wait on remote CI (`gh run watch` or sleep polling). After `gh pr ready`, output PR/run URLs and yield control. Further review triage or merge actions are event-driven upon user prompt.
 - **Upstream-First API Policy (Context7)**:
   - `src/addon/`: Fcitx5 (`fcitx/fcitx5`)
   - `src/daemon/asr/`: sherpa-onnx (`k2-fsa/sherpa-onnx`)

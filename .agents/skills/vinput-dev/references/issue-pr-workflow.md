@@ -139,23 +139,24 @@ For each unchecked `- [ ]` task in order:
    gh workflow run ci.yml --ref <branch>
    ```
 
-### Phase 3: Mark Ready & Automated Review
-Since every task commit was already pushed and checked off during Phase 2, mark the PR ready for full validation:
+### Phase 3: Mark Ready & Non-blocking Handover
+Since every task commit was already pushed and checked off during Phase 2, mark the PR ready to activate full validation:
 ```bash
 # 1. Mark PR ready for review (automatically triggers full matrix CI and review bots)
 gh pr ready
-
-# 2. Monitor CI status
-gh pr checks
 ```
 
-### Phase 4: Automated Review Triage & Fix Loop (Dialectical Protocol)
-Once marked ready, monitor CI and review bot outputs (CodeRabbit, Greptile):
-```bash
-# 1. Check CI status
-gh pr checks
+**Strict Handover Rule (No Blocking Polling)**:
+Agents are **strictly prohibited** from busy-waiting or executing blocking polling loops (e.g. `gh run watch`, `while true` sleep polling, or repeatedly spamming `gh pr checks`). Polling locks the conversation context, consumes unnecessary tokens, and is far less timely than GitHub's native push/web notifications.
+Immediately after marking ready, the agent **MUST** output a structured handover summary and conclude its turn:
+1. Provide the PR link and GitHub Actions run URL;
+2. Summarize completed tasks and verification points;
+3. Hand over control to the human maintainer. The maintainer will inspect CI asynchronously and prompt the agent if review bot triage or fixes are needed.
 
-# 2. Inspect review bot comments (top-level and line-level threads)
+### Phase 4: Event-Driven Review Triage & Fix Loop (Dialectical Protocol)
+Triggered **asynchronously on maintainer prompt** or when review bot feedback is posted:
+```bash
+# 1. Inspect review bot comments (top-level and line-level threads)
 gh pr view --comments
 gh api repos/:owner/:repo/pulls/<pr_id>/comments
 ```
