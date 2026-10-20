@@ -131,6 +131,7 @@ target_include_directories(test_editor_utils PRIVATE
 
 target_link_libraries(test_editor_utils PRIVATE
     subprocess::subprocess
+    CLI11::CLI11
 )
 
 add_test(NAME test_editor_utils COMMAND test_editor_utils)
