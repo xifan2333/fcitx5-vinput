@@ -197,7 +197,11 @@ void MainWindow::checkNotification() {
     opts.timeout_seconds = 5;
     opts.cancel_token = cancel_token;
     if (!vinput::download::DownloadText(urls, opts, &content)) {
-      return true; // silent fail
+      return true; // silent fail or cancelled
+    }
+
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return true;
     }
 
     nlohmann::json j;
@@ -230,6 +234,10 @@ void MainWindow::checkNotification() {
     const QString text = localizedString(j.value("text", nlohmann::json{}));
     const QString url = QString::fromStdString(j.value("url", std::string{}));
     const QString id = QString::number(remote_id);
+
+    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+      return true;
+    }
 
     if (!self) {
       return true;
