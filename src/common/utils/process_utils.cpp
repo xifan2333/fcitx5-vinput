@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <exception>
 #include <fcntl.h>
@@ -13,6 +14,7 @@
 #include <string>
 #include <subprocess.hpp>
 #include <sys/poll.h>
+#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -91,9 +93,9 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
                           subprocess::output{subprocess::PIPE}, subprocess::error{subprocess::PIPE},
                           subprocess::environment{env_map}, subprocess::session_leader{true});
 
-    const int in_fd = proc.input_fd();
-    const int out_fd = proc.output_fd();
-    const int err_fd = proc.error_fd();
+    const int in_fd = proc.input() != nullptr ? fileno(proc.input()) : -1;
+    const int out_fd = proc.output() != nullptr ? fileno(proc.output()) : -1;
+    const int err_fd = proc.error() != nullptr ? fileno(proc.error()) : -1;
 
     if (in_fd >= 0) {
       SetNonBlocking(in_fd);
@@ -215,8 +217,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
           proc.close_input();
           in_open = false;
         } else {
-          const auto* bytes = static_cast<const char*>(static_cast<const void*>(input.data()));
-          const ssize_t written = write(in_fd, bytes + input_offset, remaining);
+          const ssize_t written = write(in_fd, input.data() + input_offset, remaining);
           if (written > 0) {
             input_offset += static_cast<std::size_t>(written);
             if (input_offset >= input.size()) {
@@ -328,9 +329,9 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
 
     if (process_out != nullptr) {
       process_out->pid = proc.pid();
-      const int err_fd = proc.error_fd();
-      if (err_fd >= 0) {
-        const int dup_fd = fcntl(err_fd, F_DUPFD_CLOEXEC, 0);
+      FILE* err_fp = proc.error();
+      if (err_fp != nullptr) {
+        const int dup_fd = fcntl(fileno(err_fp), F_DUPFD_CLOEXEC, 0);
         if (dup_fd < 0) {
           if (error != nullptr) {
             *error = "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));
