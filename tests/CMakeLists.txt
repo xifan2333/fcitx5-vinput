@@ -119,6 +119,32 @@ target_link_libraries(test_process_utils PRIVATE
 
 add_test(NAME test_process_utils COMMAND test_process_utils)
 
+add_executable(test_editor_utils
+    test_editor_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/utils/editor_utils.cpp
+)
+
+target_include_directories(test_editor_utils PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/cli
+)
+
+target_link_libraries(test_editor_utils PRIVATE
+    subprocess::subprocess
+)
+
+add_test(NAME test_editor_utils COMMAND test_editor_utils)
+
+add_executable(test_scope_guard
+    test_scope_guard.cpp
+)
+
+target_include_directories(test_scope_guard PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+add_test(NAME test_scope_guard COMMAND test_scope_guard)
+
 add_executable(test_config_migration
     test_config_migration.cpp
 )
