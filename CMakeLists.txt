@@ -148,6 +148,15 @@ if(NOT TARGET httplib::httplib AND TARGET httplib)
     add_library(httplib::httplib ALIAS httplib)
 endif()
 
+find_package(subprocess QUIET)
+if(NOT TARGET subprocess::subprocess AND NOT TARGET subprocess)
+    add_library(3rdparty_subprocess INTERFACE)
+    target_include_directories(3rdparty_subprocess SYSTEM INTERFACE
+        ${CMAKE_SOURCE_DIR}/3rdparty/subprocess
+    )
+    add_library(subprocess::subprocess ALIAS 3rdparty_subprocess)
+endif()
+
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit")

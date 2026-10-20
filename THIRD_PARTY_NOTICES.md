@@ -31,6 +31,13 @@ This file lists third-party software that this project depends on or bundles, an
    - License: MIT
    - Upstream: https://github.com/nlohmann/json
 
+## Bundled third-party libraries (in `3rdparty/`)
+
+1. **cpp-subprocess** (cross-platform subprocess library for modern C++)
+   - License: MIT
+   - Upstream: https://github.com/arun11299/cpp-subprocess
+   - Version: v2.5 (vendored in `3rdparty/subprocess/`)
+
 ## Models / data downloaded by users (not bundled)
 
 1. **sherpa-onnx ASR models**
