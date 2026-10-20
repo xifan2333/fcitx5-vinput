@@ -193,6 +193,12 @@ target_include_directories(3rdparty_unicodelib SYSTEM INTERFACE
 )
 add_library(unicodelib::unicodelib ALIAS 3rdparty_unicodelib)
 
+add_library(3rdparty_readerwriterqueue INTERFACE)
+target_include_directories(3rdparty_readerwriterqueue SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/readerwriterqueue
+)
+add_library(readerwriterqueue::readerwriterqueue ALIAS 3rdparty_readerwriterqueue)
+
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit")

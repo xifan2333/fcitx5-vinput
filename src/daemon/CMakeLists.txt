@@ -76,6 +76,7 @@ target_link_libraries(daemon PRIVATE
     common
     pipewire_device
     base64::base64
+    readerwriterqueue::readerwriterqueue
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
     ${VINPUT_LOCAL_ASR_LIBS}
