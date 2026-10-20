@@ -1,13 +1,19 @@
 #include "common/utils/process_utils.h"
 
 #include <chrono>
+#include <condition_variable>
+#include <csignal>
+#include <cstddef>
+#include <cstdio>
 #include <exception>
 #include <fcntl.h>
-#include <future>
 #include <map>
+#include <mutex>
 #include <string>
 #include <subprocess.hpp>
+#include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "common/utils/interpolation.h"
@@ -75,22 +81,48 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
         cmd, subprocess::input{subprocess::PIPE}, subprocess::output{subprocess::PIPE},
         subprocess::error{subprocess::PIPE}, subprocess::environment{env_map});
 
-    const char* in_ptr = reinterpret_cast<const char*>(input.data());
-    const size_t in_size = input.size();
+    const auto* in_ptr = static_cast<const char*>(static_cast<const void*>(input.data()));
+    const std::size_t in_size = input.size();
 
     if (spec.timeout_ms > 0) {
-      auto fut = std::async(std::launch::async,
-                            [&proc, in_ptr, in_size] { return proc.communicate(in_ptr, in_size); });
-      if (fut.wait_for(std::chrono::milliseconds(spec.timeout_ms)) == std::future_status::timeout) {
-        result.timed_out = true;
-        proc.kill(SIGKILL);
+      std::mutex comm_mutex;
+      std::condition_variable comm_cv;
+      bool done = false;
+      subprocess::Buffer out_buf;
+      subprocess::Buffer err_buf;
+
+      std::thread comm_thread([&] {
         try {
-          proc.wait();
-        } catch (...) {
+          auto res = proc.communicate(in_ptr, in_size);
+          const std::scoped_lock lock(comm_mutex);
+          out_buf = std::move(res.first);
+          err_buf = std::move(res.second);
+          done = true;
+        } catch (const std::exception&) {
+          const std::scoped_lock lock(comm_mutex);
+          done = true;
         }
+        comm_cv.notify_one();
+      });
+
+      std::unique_lock lock(comm_mutex);
+      if (!comm_cv.wait_for(lock, std::chrono::milliseconds(spec.timeout_ms),
+                            [&] { return done; })) {
+        result.timed_out = true;
+        if (proc.pid() > 0) {
+          ::kill(-proc.pid(), SIGKILL);
+          ::kill(proc.pid(), SIGKILL);
+        }
+        proc.close_input();
+        proc.close_output();
+        proc.close_error();
+        lock.unlock();
+        comm_thread.join();
         return result;
       }
-      auto [out_buf, err_buf] = fut.get();
+      lock.unlock();
+      comm_thread.join();
+
       result.exit_code = proc.retcode();
       result.stdout_text.assign(out_buf.buf.data(), out_buf.length);
       result.stderr_text.assign(err_buf.buf.data(), err_buf.length);
@@ -115,12 +147,12 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
 
 bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& working_dir,
                         SpawnedProcess* process_out, std::string* error) {
-  if (process_out) {
+  if (process_out != nullptr) {
     process_out->pid = -1;
     process_out->stderr_fd = -1;
   }
   if (spec.command.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Command is empty.";
     }
     return false;
@@ -135,19 +167,19 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
         subprocess::error{subprocess::PIPE}, subprocess::cwd{working_dir.string()},
         subprocess::environment{env_map}, subprocess::session_leader{true});
 
-    if (process_out) {
+    if (process_out != nullptr) {
       process_out->pid = proc.pid();
       FILE* err_fp = proc.error();
-      if (err_fp) {
+      if (err_fp != nullptr) {
         process_out->stderr_fd = dup(fileno(err_fp));
       }
     }
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
   } catch (const std::exception& e) {
-    if (error) {
+    if (error != nullptr) {
       *error = e.what();
     }
     return false;

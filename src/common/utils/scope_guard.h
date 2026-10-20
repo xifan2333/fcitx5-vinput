@@ -1,6 +1,5 @@
 #pragma once
 
-#include <exception>
 #include <fcntl.h>
 #include <type_traits>
 #include <unistd.h>
