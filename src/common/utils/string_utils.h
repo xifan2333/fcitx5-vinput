@@ -7,9 +7,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <initializer_list>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -71,14 +73,22 @@ template <typename... Args> std::string FmtStr(const char* fmt, const Args&... a
       storage);
 }
 
+template <typename... Args>
+inline std::string Format(std::format_string<Args...> fmt, Args&&... args) {
+  return std::format(fmt, std::forward<Args>(args)...);
+}
+
 inline std::string FormatSize(uint64_t bytes) {
-  if (bytes >= 1024ULL * 1024 * 1024)
-    return FmtStr("%.1f GB", bytes / (1024.0 * 1024 * 1024));
-  if (bytes >= 1024ULL * 1024)
-    return FmtStr("%.1f MB", bytes / (1024.0 * 1024));
-  if (bytes >= 1024)
-    return FmtStr("%.1f KB", bytes / 1024.0);
-  return FmtStr("%llu B", (unsigned long long)bytes);
+  if (bytes >= 1024ULL * 1024 * 1024) {
+    return std::format("{:.1f} GB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024));
+  }
+  if (bytes >= 1024ULL * 1024) {
+    return std::format("{:.1f} MB", static_cast<double>(bytes) / (1024.0 * 1024));
+  }
+  if (bytes >= 1024) {
+    return std::format("{:.1f} KB", static_cast<double>(bytes) / 1024.0);
+  }
+  return std::format("{} B", bytes);
 }
 
 constexpr bool IsAsciiWhitespace(char c) noexcept {
@@ -86,15 +96,16 @@ constexpr bool IsAsciiWhitespace(char c) noexcept {
 }
 
 inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept {
-  size_t begin = 0;
-  while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin]))) {
-    begin++;
+  const auto is_ws = [](char c) noexcept { return std::isspace(static_cast<unsigned char>(c)); };
+  const auto not_ws = [&](char c) noexcept { return !is_ws(c); };
+  const auto start = std::ranges::find_if(text, not_ws);
+  if (start == text.end()) {
+    return {};
   }
-  size_t end = text.size();
-  while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
-    end--;
-  }
-  return text.substr(begin, end - begin);
+  const auto rstart = std::ranges::find_if(text | std::views::reverse, not_ws);
+  const auto begin_idx = static_cast<size_t>(start - text.begin());
+  const auto end_idx = static_cast<size_t>(text.rend() - rstart);
+  return text.substr(begin_idx, end_idx - begin_idx);
 }
 
 inline std::string TrimAsciiWhitespace(std::string_view text) {
@@ -207,15 +218,8 @@ inline std::string ToUpperAscii(std::string_view text) {
 }
 
 inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
-  if (a.size() != b.size()) {
-    return false;
-  }
-  for (size_t i = 0; i < a.size(); ++i) {
-    if (ToLowerAsciiChar(a[i]) != ToLowerAsciiChar(b[i])) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::equal(
+      a, b, [](char ca, char cb) noexcept { return ToLowerAsciiChar(ca) == ToLowerAsciiChar(cb); });
 }
 
 [[nodiscard]] inline bool StartsWithIgnoreCase(std::string_view text,

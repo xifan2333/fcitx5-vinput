@@ -761,6 +761,18 @@ void TestUtf8VisualWidthAndTruncateMiddle() {
   TEST_ASSERT(truncated.find("...") != std::string::npos);
   TEST_ASSERT(Utf8VisualWidth(truncated) <= 20);
 }
+
+void TestFormat() {
+  using vinput::str::Format;
+  using vinput::str::FormatSize;
+
+  TEST_ASSERT(Format("Hello, {}!", "world") == "Hello, world!");
+  TEST_ASSERT(Format("Number: {}, Float: {:.2f}", 42, 3.14159) == "Number: 42, Float: 3.14");
+  TEST_ASSERT(FormatSize(500) == "500 B");
+  TEST_ASSERT(FormatSize(1536) == "1.5 KB");
+  TEST_ASSERT(FormatSize(1048576 * 2) == "2.0 MB");
+  TEST_ASSERT(FormatSize(1024ULL * 1024 * 1024 * 3) == "3.0 GB");
+}
 } // namespace
 
 int main() {
@@ -785,5 +797,6 @@ int main() {
   TestParseFloatStrict();
   TestFmtStr();
   TestUtf8VisualWidthAndTruncateMiddle();
+  TestFormat();
   return 0;
 }
