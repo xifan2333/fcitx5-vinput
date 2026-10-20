@@ -75,6 +75,7 @@ target_include_directories(daemon PRIVATE
 target_link_libraries(daemon PRIVATE
     common
     pipewire_device
+    base64::base64
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
     ${VINPUT_LOCAL_ASR_LIBS}

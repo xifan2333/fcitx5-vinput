@@ -69,7 +69,6 @@ target_link_libraries(config PUBLIC
     OpenSSL::Crypto
     spdlog::spdlog_header_only
     unicodelib::unicodelib
-    base64::base64
 )
 
 target_link_libraries(common PUBLIC

@@ -1,6 +1,5 @@
 #pragma once
 #include <algorithm>
-#include <base64.hpp>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -112,14 +111,6 @@ inline std::string TrimAsciiWhitespace(std::string_view text) {
   return std::string(TrimAsciiWhitespaceView(text));
 }
 
-[[nodiscard]] constexpr std::string_view StripPrefix(std::string_view text,
-                                                     std::string_view prefix) noexcept {
-  if (text.starts_with(prefix)) {
-    return text.substr(prefix.size());
-  }
-  return text;
-}
-
 [[nodiscard]] constexpr std::string_view StripSuffix(std::string_view text,
                                                      std::string_view suffix) noexcept {
   if (text.ends_with(suffix)) {
@@ -186,35 +177,11 @@ SplitPairRight(std::string_view text, char delimiter, bool trim_whitespace = fal
 }
 
 inline char ToLowerAsciiChar(char ch) noexcept {
-  if (ch >= 'A' && ch <= 'Z') {
-    return static_cast<char>(ch - 'A' + 'a');
-  }
-  return ch;
+  return static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
 }
 
 inline char ToUpperAsciiChar(char ch) noexcept {
-  if (ch >= 'a' && ch <= 'z') {
-    return static_cast<char>(ch - 'a' + 'A');
-  }
-  return ch;
-}
-
-inline std::string ToLowerAscii(std::string_view text) {
-  std::string result;
-  result.reserve(text.size());
-  for (const char ch : text) {
-    result.push_back(ToLowerAsciiChar(ch));
-  }
-  return result;
-}
-
-inline std::string ToUpperAscii(std::string_view text) {
-  std::string result;
-  result.reserve(text.size());
-  for (const char ch : text) {
-    result.push_back(ToUpperAsciiChar(ch));
-  }
-  return result;
+  return static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
 }
 
 inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
@@ -398,51 +365,6 @@ inline std::string MaskSecret(std::string_view secret, size_t head_keep = 4, siz
   return result;
 }
 
-inline std::string Base64Encode(std::span<const std::byte> data) {
-  if (data.empty()) {
-    return {};
-  }
-  return ::base64::encode_into<std::string>(data.begin(), data.end());
-}
-
-inline std::string Base64Encode(std::string_view text) {
-  if (text.empty()) {
-    return {};
-  }
-  return ::base64::to_base64(text);
-}
-
-inline std::string Base64Encode(const char* data, size_t size) {
-  if (data == nullptr || size == 0) {
-    return {};
-  }
-  return ::base64::to_base64(std::string_view(data, size));
-}
-
-inline std::string Base64Encode(const unsigned char* data, size_t size) {
-  if (data == nullptr || size == 0) {
-    return {};
-  }
-  return ::base64::encode_into<std::string>(data, data + size);
-}
-
-inline std::string Base64Decode(std::string_view text, bool remove_linebreaks = false) {
-  if (text.empty()) {
-    return {};
-  }
-  if (!remove_linebreaks) {
-    return ::base64::from_base64(text);
-  }
-  std::string sanitized;
-  sanitized.reserve(text.size());
-  for (const char c : text) {
-    if (c != '\r' && c != '\n') {
-      sanitized.push_back(c);
-    }
-  }
-  return ::base64::from_base64(sanitized);
-}
-
 inline bool IsCjkCodepoint(uint32_t cp) noexcept {
   const auto c = static_cast<char32_t>(cp);
   return unicode::is_unified_ideograph(c) || unicode::is_ideographic(c);
@@ -461,19 +383,9 @@ inline uint32_t LastUtf8Codepoint(std::string_view s) noexcept {
   if (s.empty()) {
     return 0;
   }
-  size_t i = s.size();
-  while (i > 0) {
-    --i;
-    if ((static_cast<unsigned char>(s[i]) & 0xC0) != 0x80) {
-      char32_t cp = 0;
-      const size_t len = unicode::utf8::decode_codepoint(s.data() + i, s.size() - i, cp);
-      if (len > 0) {
-        return static_cast<uint32_t>(cp);
-      }
-      break;
-    }
-  }
-  return 0;
+  std::u32string u32;
+  unicode::utf8::decode(s.data(), s.size(), u32);
+  return u32.empty() ? 0 : static_cast<uint32_t>(u32.back());
 }
 
 inline bool IsSentenceEndingPunctuation(uint32_t cp) noexcept {
@@ -664,75 +576,28 @@ inline Utf8ValidationResult ValidateUtf8Text(std::string_view text, bool allow_c
                                              bool allow_embedded_nul = true) noexcept {
   size_t offset = 0;
   while (offset < text.size()) {
-    const auto first = static_cast<unsigned char>(text[offset]);
-    size_t length = 0;
-    uint32_t codepoint = 0;
-    if (first <= 0x7f) {
-      length = 1;
-      codepoint = first;
-    } else if (first >= 0xc2 && first <= 0xdf) {
-      length = 2;
-      codepoint = first & 0x1f;
-    } else if (first >= 0xe0 && first <= 0xef) {
-      length = 3;
-      codepoint = first & 0x0f;
-    } else if (first >= 0xf0 && first <= 0xf4) {
-      length = 4;
-      codepoint = first & 0x07;
-    } else {
-      return {false, offset, "invalid UTF-8 leading byte"};
+    size_t bytes = 0;
+    char32_t cp = 0;
+    if (!unicode::utf8::decode_codepoint(text.data() + offset, text.size() - offset, bytes, cp)) {
+      return {false, offset, "invalid UTF-8 sequence"};
     }
-
-    if (length > text.size() - offset) {
-      return {false, offset, "truncated UTF-8 sequence"};
-    }
-    for (size_t i = 1; i < length; ++i) {
-      const auto continuation = static_cast<unsigned char>(text[offset + i]);
-      if ((continuation & 0xc0) != 0x80) {
-        return {false, offset + i, "invalid UTF-8 continuation byte"};
-      }
-      codepoint = (codepoint << 6) | (continuation & 0x3f);
-    }
-
-    const bool overlong = (length == 2 && codepoint < 0x80) || (length == 3 && codepoint < 0x800) ||
-                          (length == 4 && codepoint < 0x10000);
-    if (overlong) {
-      return {false, offset, "overlong UTF-8 sequence"};
-    }
-    if (codepoint >= 0xd800 && codepoint <= 0xdfff) {
-      return {false, offset, "UTF-8 encodes a surrogate code point"};
-    }
-    if (codepoint > 0x10ffff) {
-      return {false, offset, "UTF-8 code point exceeds U+10FFFF"};
-    }
-    if (!allow_embedded_nul && codepoint == 0) {
+    if (!allow_embedded_nul && cp == 0) {
       return {false, offset, "embedded NUL is not allowed"};
     }
     if (!allow_control_chars) {
-      const bool permitted_ascii_whitespace =
-          codepoint == '\t' || codepoint == '\n' || codepoint == '\r';
-      if ((!permitted_ascii_whitespace && codepoint < 0x20) ||
-          (codepoint >= 0x7f && codepoint <= 0x9f)) {
+      const bool is_ascii_whitespace = (cp == '\t' || cp == '\n' || cp == '\r');
+      if (!is_ascii_whitespace &&
+          (unicode::general_category(cp) == unicode::GeneralCategory::Cc || cp < 0x20)) {
         return {false, offset, "control character is not allowed"};
       }
     }
-    offset += length;
+    offset += bytes;
   }
   return {true, 0, nullptr};
 }
 
 inline bool IsValidUtf8(std::string_view text) noexcept {
-  size_t offset = 0;
-  while (offset < text.size()) {
-    char32_t cp = 0;
-    const size_t len =
-        unicode::utf8::decode_codepoint(text.data() + offset, text.size() - offset, cp);
-    if (len == 0 || !unicode::is_scalar_value(cp)) {
-      return false;
-    }
-    offset += len;
-  }
-  return true;
+  return ValidateUtf8Text(text).valid;
 }
 
 } // namespace vinput::str

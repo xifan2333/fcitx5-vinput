@@ -1,6 +1,7 @@
 #include "daemon/asr/backends/command_streaming_backend.h"
 
 #include <algorithm>
+#include <base64.hpp>
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -405,7 +406,8 @@ private:
 
     json payload = {
         {"type", "audio"},
-        {"audio_base64", vinput::str::Base64Encode(pending_chunk_)},
+        {"audio_base64",
+         base64::encode_into<std::string>(pending_chunk_.begin(), pending_chunk_.end())},
         {"commit", commit},
     };
     pending_chunk_.clear();
