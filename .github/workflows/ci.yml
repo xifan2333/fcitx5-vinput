@@ -71,6 +71,7 @@ jobs:
       - name: Configure CMake
         run: |
           cmake --preset release-clang-mold \
+            -DVINPUT_ENABLE_WERROR=ON \
             -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
             -DVINPUT_RUNTIME_MODE=bundled
 
@@ -84,7 +85,7 @@ jobs:
           database: 'build'
           tidy-checks: ''
           version: '18'
-          lines-changed-only: true
+          lines-changed-only: false
           files-changed-only: true
           step-summary: true
           file-annotations: true
