@@ -10,6 +10,7 @@
 #include <QPushButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QtCore/qpointer.h>
 #include <QtGui/qclipboard.h>
 #include <QtGui/qguiapplication.h>
 #include <QtWidgets/qmessagebox.h>
@@ -186,7 +187,7 @@ QString localizedString(const nlohmann::json& obj) {
 } // namespace
 
 void MainWindow::checkNotification() {
-  QPointer<MainWindow> self(this);
+  const QPointer<MainWindow> self(this);
   auto* worker = new vinput::gui::DownloadWorker(this);
   worker->SetTask([self](std::string* /*error*/, const std::atomic<bool>* cancel_token) -> bool {
     const std::vector<std::string> urls = {
@@ -239,14 +240,14 @@ void MainWindow::checkNotification() {
       return true;
     }
 
-    if (!self) {
+    if (self.isNull()) {
       return true;
     }
 
     QMetaObject::invokeMethod(
         self.data(),
         [self, id, title, text, url]() {
-          if (self) {
+          if (!self.isNull()) {
             self->onNotificationReady(id, title, text, url);
           }
         },
