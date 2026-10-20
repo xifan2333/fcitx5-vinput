@@ -53,19 +53,26 @@ template <typename... Args> std::string FmtStr(const char* fmt, const Args&... a
   if (fmt == nullptr) {
     return {};
   }
-  const auto storage = std::make_tuple(detail::PrepareStorage(args)...);
-  return std::apply(
-      [fmt](const auto&... items) {
-        const int n = std::snprintf(nullptr, 0, fmt, detail::ToCArg(items)...);
-        if (n < 0) {
-          return std::string(fmt);
-        }
-        std::string buf(static_cast<std::size_t>(n) + 1, '\0');
-        std::snprintf(buf.data(), buf.size(), fmt, detail::ToCArg(items)...);
-        buf.resize(static_cast<std::size_t>(n));
-        return buf;
-      },
-      storage);
+  if constexpr (sizeof...(Args) == 0) {
+    // No substitution requested (common for plain gettext messages); returning the
+    // text verbatim also avoids passing a non-literal format to snprintf
+    // (-Wformat-security).
+    return std::string(fmt);
+  } else {
+    const auto storage = std::make_tuple(detail::PrepareStorage(args)...);
+    return std::apply(
+        [fmt](const auto&... items) {
+          const int n = std::snprintf(nullptr, 0, fmt, detail::ToCArg(items)...);
+          if (n < 0) {
+            return std::string(fmt);
+          }
+          std::string buf(static_cast<std::size_t>(n) + 1, '\0');
+          std::snprintf(buf.data(), buf.size(), fmt, detail::ToCArg(items)...);
+          buf.resize(static_cast<std::size_t>(n));
+          return buf;
+        },
+        storage);
+  }
 }
 
 // =========================================================================
