@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <base64.h>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -391,41 +392,38 @@ inline std::string MaskSecret(std::string_view secret, size_t head_keep = 4, siz
 }
 
 inline std::string Base64Encode(std::span<const std::byte> data) {
-  static constexpr std::string_view kTable =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  std::string result;
-  result.reserve(((data.size() + 2) / 3) * 4);
-  for (size_t i = 0; i < data.size(); i += 3) {
-    const auto b0 = static_cast<unsigned int>(data[i]);
-    const auto b1 = (i + 1 < data.size()) ? static_cast<unsigned int>(data[i + 1]) : 0;
-    const auto b2 = (i + 2 < data.size()) ? static_cast<unsigned int>(data[i + 2]) : 0;
-    const unsigned int triple = (b0 << 16) | (b1 << 8) | b2;
-    result.push_back(kTable[(triple >> 18) & 0x3F]);
-    result.push_back(kTable[(triple >> 12) & 0x3F]);
-    result.push_back((i + 1 < data.size()) ? kTable[(triple >> 6) & 0x3F] : '=');
-    result.push_back((i + 2 < data.size()) ? kTable[triple & 0x3F] : '=');
+  if (data.empty()) {
+    return {};
   }
-  return result;
+  return ::base64_encode(reinterpret_cast<const unsigned char*>(data.data()), data.size());
 }
 
 inline std::string Base64Encode(std::string_view text) {
-  const auto bytes = std::as_bytes(std::span(text.data(), text.size()));
-  return Base64Encode(bytes);
+  if (text.empty()) {
+    return {};
+  }
+  return ::base64_encode(text);
 }
 
 inline std::string Base64Encode(const char* data, size_t size) {
   if (data == nullptr || size == 0) {
     return {};
   }
-  return Base64Encode(std::string_view(data, size));
+  return ::base64_encode(reinterpret_cast<const unsigned char*>(data), size);
 }
 
 inline std::string Base64Encode(const unsigned char* data, size_t size) {
   if (data == nullptr || size == 0) {
     return {};
   }
-  const auto bytes = std::as_bytes(std::span<const unsigned char>(data, size));
-  return Base64Encode(bytes);
+  return ::base64_encode(data, size);
+}
+
+inline std::string Base64Decode(std::string_view text, bool remove_linebreaks = false) {
+  if (text.empty()) {
+    return {};
+  }
+  return ::base64_decode(text, remove_linebreaks);
 }
 
 inline bool IsCjkCodepoint(uint32_t cp) {

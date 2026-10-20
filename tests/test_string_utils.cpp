@@ -125,6 +125,7 @@ void TestSplitLines() {
 }
 
 void TestBase64Encode() {
+  using vinput::str::Base64Decode;
   using vinput::str::Base64Encode;
 
   // RFC 4648 test vectors
@@ -135,6 +136,19 @@ void TestBase64Encode() {
   TEST_ASSERT(Base64Encode("foob") == "Zm9vYg==");
   TEST_ASSERT(Base64Encode("fooba") == "Zm9vYmE=");
   TEST_ASSERT(Base64Encode("foobar") == "Zm9vYmFy");
+
+  // Decode RFC 4648 test vectors
+  TEST_ASSERT(Base64Decode("").empty());
+  TEST_ASSERT(Base64Decode("Zg==") == "f");
+  TEST_ASSERT(Base64Decode("Zm8=") == "fo");
+  TEST_ASSERT(Base64Decode("Zm9v") == "foo");
+  TEST_ASSERT(Base64Decode("Zm9vYg==") == "foob");
+  TEST_ASSERT(Base64Decode("Zm9vYmE=") == "fooba");
+  TEST_ASSERT(Base64Decode("Zm9vYmFy") == "foobar");
+
+  // Round-trip test
+  const std::string original = "Hello, fcitx5-vinput audio base64!";
+  TEST_ASSERT(Base64Decode(Base64Encode(original)) == original);
 
   // Raw unsigned char pointer test
   const unsigned char data[] = {'H', 'e', 'l', 'l', 'o'};
