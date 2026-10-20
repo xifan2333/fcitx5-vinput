@@ -8,7 +8,11 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
+#include <unicodelib.h>
+#include <unicodelib_encodings.h>
+#include <vector>
 
 #include "common/asr/recognition_result.h"
 #include "common/config/vinput_config.h"
@@ -70,11 +74,107 @@ std::string DaemonNotRespondingPreeditText() {
   return _("Voice input daemon is not responding.");
 }
 
-std::string LimitPreviewText(const std::string& text, int max_display_width) {
-  if (max_display_width <= 0) {
-    return text;
+std::string LimitPreviewText(std::string_view text, int max_display_width) {
+  if (max_display_width <= 0 || text.empty()) {
+    return std::string(text);
   }
-  return vinput::str::TruncateMiddleUtf8(text, static_cast<size_t>(max_display_width), "...");
+  const size_t max_width = static_cast<size_t>(max_display_width);
+  std::u32string u32;
+  unicode::utf8::decode(text.data(), text.size(), u32);
+  const size_t total_width =
+      static_cast<size_t>(std::max(0, unicode::width(u32, unicode::AmbiguousWidth::Wide)));
+  if (total_width <= max_width) {
+    return std::string(text);
+  }
+
+  constexpr std::string_view ellipsis = "...";
+  std::u32string ellipsis_u32;
+  unicode::utf8::decode(ellipsis.data(), ellipsis.size(), ellipsis_u32);
+  const size_t ellipsis_width =
+      static_cast<size_t>(std::max(0, unicode::width(ellipsis_u32, unicode::AmbiguousWidth::Wide)));
+
+  struct GraphemeInfo {
+    size_t start;
+    size_t length;
+    size_t width;
+  };
+  std::vector<GraphemeInfo> graphemes;
+  size_t i = 0;
+  while (i < u32.size()) {
+    const size_t glen = unicode::grapheme_length(u32.data() + i, u32.size() - i);
+    const size_t gwidth = static_cast<size_t>(
+        std::max(0, unicode::width(u32.data() + i, glen, unicode::AmbiguousWidth::Wide)));
+    graphemes.push_back({i, glen, gwidth});
+    i += glen;
+  }
+
+  if (max_width <= ellipsis_width + 4) {
+    size_t cur_width = 0;
+    size_t tail_start_idx = graphemes.size();
+    for (size_t g = graphemes.size(); g > 0; --g) {
+      const auto& gi = graphemes[g - 1];
+      if (cur_width + gi.width > max_width) {
+        break;
+      }
+      cur_width += gi.width;
+      tail_start_idx = g - 1;
+    }
+    if (tail_start_idx >= graphemes.size()) {
+      return {};
+    }
+    const std::u32string tail_u32 = u32.substr(graphemes[tail_start_idx].start);
+    std::string result;
+    unicode::utf8::encode(tail_u32.data(), tail_u32.size(), result);
+    return result;
+  }
+
+  const size_t available_content_width = max_width - ellipsis_width;
+  size_t target_head_width = std::max<size_t>(6, std::min<size_t>(14, available_content_width / 4));
+  if (target_head_width >= available_content_width) {
+    target_head_width = available_content_width / 2;
+  }
+  const size_t target_tail_width = available_content_width - target_head_width;
+
+  size_t head_count = 0;
+  size_t cur_head_width = 0;
+  for (const auto& gi : graphemes) {
+    if (cur_head_width + gi.width > target_head_width) {
+      break;
+    }
+    cur_head_width += gi.width;
+    ++head_count;
+  }
+
+  size_t tail_start_idx = graphemes.size();
+  size_t cur_tail_width = 0;
+  for (size_t g = graphemes.size(); g > head_count; --g) {
+    const auto& gi = graphemes[g - 1];
+    if (cur_tail_width + gi.width > target_tail_width) {
+      break;
+    }
+    cur_tail_width += gi.width;
+    tail_start_idx = g - 1;
+  }
+
+  const std::u32string head_u32 =
+      (head_count > 0)
+          ? u32.substr(0, graphemes[head_count - 1].start + graphemes[head_count - 1].length)
+          : std::u32string{};
+  const std::u32string tail_u32 = (tail_start_idx < graphemes.size())
+                                      ? u32.substr(graphemes[tail_start_idx].start)
+                                      : std::u32string{};
+
+  std::string head_str;
+  unicode::utf8::encode(head_u32.data(), head_u32.size(), head_str);
+  std::string tail_str;
+  unicode::utf8::encode(tail_u32.data(), tail_u32.size(), tail_str);
+
+  std::string result;
+  result.reserve(head_str.size() + ellipsis.size() + tail_str.size());
+  result.append(head_str);
+  result.append(ellipsis);
+  result.append(tail_str);
+  return result;
 }
 
 std::string ComposeLivePreedit(const std::string& transcript_text, const std::string& fallback_text,

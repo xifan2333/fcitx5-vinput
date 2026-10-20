@@ -390,6 +390,16 @@ void TestIsDirectoryWritable() {
   TEST_ASSERT(!IsDirectoryWritable("/nonexistent_root_dir_xyz/sub/path"));
 }
 
+void TestFormatFileSize() {
+  using vinput::file::FormatFileSize;
+
+  TEST_ASSERT(FormatFileSize(500) == "500 B");
+  TEST_ASSERT(FormatFileSize(1024) == "1.0 KB");
+  TEST_ASSERT(FormatFileSize(1536) == "1.5 KB");
+  TEST_ASSERT(FormatFileSize(1048576ULL * 2) == "2.0 MB");
+  TEST_ASSERT(FormatFileSize(1024ULL * 1024 * 1024 * 3) == "3.0 GB");
+}
+
 int main() {
   TestIsPathWithinRoot();
   TestScopedTempDirLifecycle();
@@ -399,6 +409,7 @@ int main() {
   TestReadTextFile();
   TestAtomicWriteTextFile();
   TestIsDirectoryWritable();
+  TestFormatFileSize();
   std::printf("test_file_utils: all tests passed\n");
   return 0;
 }

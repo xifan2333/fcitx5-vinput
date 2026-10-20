@@ -1,10 +1,9 @@
 #pragma once
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
-#include <cstdint>
 #include <cstdio>
-#include <format>
 #include <functional>
 #include <initializer_list>
 #include <optional>
@@ -13,8 +12,6 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
-#include <unicodelib.h>
-#include <unicodelib_encodings.h>
 #include <utility>
 #include <vector>
 
@@ -48,6 +45,10 @@ template <typename T> auto ToCArg(const std::reference_wrapper<T>& ref) {
 
 } // namespace detail
 
+// =========================================================================
+// 1. Formatting (i18n Gettext Bridge)
+// =========================================================================
+
 template <typename... Args> std::string FmtStr(const char* fmt, const Args&... args) {
   if (fmt == nullptr) {
     return {};
@@ -67,20 +68,11 @@ template <typename... Args> std::string FmtStr(const char* fmt, const Args&... a
       storage);
 }
 
-inline std::string FormatSize(uint64_t bytes) {
-  if (bytes >= 1024ULL * 1024 * 1024) {
-    return std::format("{:.1f} GB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024));
-  }
-  if (bytes >= 1024ULL * 1024) {
-    return std::format("{:.1f} MB", static_cast<double>(bytes) / (1024.0 * 1024));
-  }
-  if (bytes >= 1024) {
-    return std::format("{:.1f} KB", static_cast<double>(bytes) / 1024.0);
-  }
-  return std::format("{} B", bytes);
-}
+// =========================================================================
+// 2. Trimming (Zero-Copy)
+// =========================================================================
 
-inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept {
+[[nodiscard]] inline std::string_view Trim(std::string_view text) noexcept {
   const auto not_ws = [](char c) noexcept -> bool {
     return std::isspace(static_cast<unsigned char>(c)) == 0;
   };
@@ -93,6 +85,14 @@ inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept 
   const auto end_idx = static_cast<size_t>(text.rend() - rstart);
   return text.substr(begin_idx, end_idx - begin_idx);
 }
+
+[[nodiscard]] inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept {
+  return Trim(text);
+}
+
+// =========================================================================
+// 3. Affixes (Prefix & Suffix)
+// =========================================================================
 
 [[nodiscard]] constexpr std::string_view StripSuffix(std::string_view text,
                                                      std::string_view suffix) noexcept {
@@ -110,70 +110,11 @@ constexpr bool ConsumePrefix(std::string_view* text, std::string_view prefix) no
   return false;
 }
 
-inline std::optional<std::pair<std::string_view, std::string_view>>
-SplitPair(std::string_view text, char delimiter, bool trim_whitespace = false) noexcept {
-  const size_t pos = text.find(delimiter);
-  if (pos == std::string_view::npos) {
-    return std::nullopt;
-  }
-  std::string_view first = text.substr(0, pos);
-  std::string_view second = text.substr(pos + 1);
-  if (trim_whitespace) {
-    first = TrimAsciiWhitespaceView(first);
-    second = TrimAsciiWhitespaceView(second);
-  }
-  return std::make_pair(first, second);
-}
+// =========================================================================
+// 4. Splitting
+// =========================================================================
 
-inline std::optional<std::pair<std::string_view, std::string_view>>
-SplitPair(std::string_view text, std::string_view delimiter,
-          bool trim_whitespace = false) noexcept {
-  if (delimiter.empty()) {
-    return std::nullopt;
-  }
-  const size_t pos = text.find(delimiter);
-  if (pos == std::string_view::npos) {
-    return std::nullopt;
-  }
-  std::string_view first = text.substr(0, pos);
-  std::string_view second = text.substr(pos + delimiter.size());
-  if (trim_whitespace) {
-    first = TrimAsciiWhitespaceView(first);
-    second = TrimAsciiWhitespaceView(second);
-  }
-  return std::make_pair(first, second);
-}
-
-inline std::optional<std::pair<std::string_view, std::string_view>>
-SplitPairRight(std::string_view text, char delimiter, bool trim_whitespace = false) noexcept {
-  const size_t pos = text.rfind(delimiter);
-  if (pos == std::string_view::npos) {
-    return std::nullopt;
-  }
-  std::string_view first = text.substr(0, pos);
-  std::string_view second = text.substr(pos + 1);
-  if (trim_whitespace) {
-    first = TrimAsciiWhitespaceView(first);
-    second = TrimAsciiWhitespaceView(second);
-  }
-  return std::make_pair(first, second);
-}
-
-inline char ToLowerAsciiChar(char ch) noexcept {
-  return static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-}
-
-inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
-  return std::ranges::equal(
-      a, b, [](char ca, char cb) noexcept { return ToLowerAsciiChar(ca) == ToLowerAsciiChar(cb); });
-}
-
-[[nodiscard]] inline bool StartsWithIgnoreCase(std::string_view text,
-                                               std::string_view prefix) noexcept {
-  return text.size() >= prefix.size() && EqualsIgnoreCase(text.substr(0, prefix.size()), prefix);
-}
-
-inline std::vector<std::string_view> SplitByChar(std::string_view text, char delim) {
+inline std::vector<std::string_view> Split(std::string_view text, char delim) {
   std::vector<std::string_view> tokens;
   size_t start = 0;
   while (start <= text.size()) {
@@ -186,6 +127,10 @@ inline std::vector<std::string_view> SplitByChar(std::string_view text, char del
     start = end + 1;
   }
   return tokens;
+}
+
+inline std::vector<std::string_view> SplitByChar(std::string_view text, char delim) {
+  return Split(text, delim);
 }
 
 inline std::vector<std::string_view> SplitLines(std::string_view text) {
@@ -206,6 +151,71 @@ inline std::vector<std::string_view> SplitLines(std::string_view text) {
   }
   return lines;
 }
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+SplitOnce(std::string_view text, char delimiter) noexcept {
+  const size_t pos = text.find(delimiter);
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  return std::make_pair(text.substr(0, pos), text.substr(pos + 1));
+}
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+SplitOnce(std::string_view text, std::string_view delimiter) noexcept {
+  if (delimiter.empty()) {
+    return std::nullopt;
+  }
+  const size_t pos = text.find(delimiter);
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  return std::make_pair(text.substr(0, pos), text.substr(pos + delimiter.size()));
+}
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+RSplitOnce(std::string_view text, char delimiter) noexcept {
+  const size_t pos = text.rfind(delimiter);
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  return std::make_pair(text.substr(0, pos), text.substr(pos + 1));
+}
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+SplitPair(std::string_view text, char delimiter, bool trim_whitespace = false) noexcept {
+  const auto pair = SplitOnce(text, delimiter);
+  if (!pair || !trim_whitespace) {
+    return pair;
+  }
+  return std::make_pair(Trim(pair->first), Trim(pair->second));
+}
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+SplitPair(std::string_view text, std::string_view delimiter,
+          bool trim_whitespace = false) noexcept {
+  const auto pair = SplitOnce(text, delimiter);
+  if (!pair || !trim_whitespace) {
+    return pair;
+  }
+  return std::make_pair(Trim(pair->first), Trim(pair->second));
+}
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+SplitPairRight(std::string_view text, char delimiter, bool trim_whitespace = false) noexcept {
+  const auto pair = RSplitOnce(text, delimiter);
+  if (!pair) {
+    return std::nullopt;
+  }
+  if (!trim_whitespace) {
+    return pair;
+  }
+  return std::make_pair(Trim(pair->first), Trim(pair->second));
+}
+
+// =========================================================================
+// 5. Joining
+// =========================================================================
 
 template <typename Container>
 inline std::string Join(const Container& elements, std::string_view delimiter) {
@@ -280,135 +290,20 @@ inline std::string JoinKeyValue(const MapContainer& map, std::string_view item_d
   return result;
 }
 
-inline bool IsCjkCodepoint(uint32_t cp) noexcept {
-  const auto c = static_cast<char32_t>(cp);
-  return unicode::is_unified_ideograph(c) || unicode::is_ideographic(c);
+// =========================================================================
+// 6. Comparison (Case-Insensitive)
+// =========================================================================
+
+inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
+  return std::ranges::equal(a, b, [](char ca, char cb) noexcept {
+    return std::tolower(static_cast<unsigned char>(ca)) ==
+           std::tolower(static_cast<unsigned char>(cb));
+  });
 }
 
-inline uint32_t FirstUtf8Codepoint(std::string_view s) noexcept {
-  if (s.empty()) {
-    return 0;
-  }
-  char32_t cp = 0;
-  const size_t len = unicode::utf8::decode_codepoint(s.data(), s.size(), cp);
-  return len > 0 ? static_cast<uint32_t>(cp) : 0;
-}
-
-inline uint32_t LastUtf8Codepoint(std::string_view s) noexcept {
-  if (s.empty()) {
-    return 0;
-  }
-  std::u32string u32;
-  unicode::utf8::decode(s.data(), s.size(), u32);
-  return u32.empty() ? 0 : static_cast<uint32_t>(u32.back());
-}
-
-inline bool IsSentenceEndingPunctuation(uint32_t cp) noexcept {
-  const auto c = static_cast<char32_t>(cp);
-  return unicode::is_sentence_terminal(c) || c == U'…' || c == U'\n';
-}
-
-inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
-                                      std::string_view ellipsis = "...") {
-  if (max_width == 0) {
-    return std::string(text);
-  }
-
-  std::u32string u32;
-  unicode::utf8::decode(text.data(), text.size(), u32);
-  const size_t total_width =
-      static_cast<size_t>(std::max(0, unicode::width(u32, unicode::AmbiguousWidth::Wide)));
-  if (total_width <= max_width) {
-    return std::string(text);
-  }
-
-  std::u32string ellipsis_u32;
-  unicode::utf8::decode(ellipsis.data(), ellipsis.size(), ellipsis_u32);
-  const size_t ellipsis_width =
-      static_cast<size_t>(std::max(0, unicode::width(ellipsis_u32, unicode::AmbiguousWidth::Wide)));
-
-  struct GraphemeInfo {
-    size_t start;
-    size_t length;
-    size_t width;
-  };
-  std::vector<GraphemeInfo> graphemes;
-  size_t i = 0;
-  while (i < u32.size()) {
-    const size_t glen = unicode::grapheme_length(u32.data() + i, u32.size() - i);
-    const size_t gwidth = static_cast<size_t>(
-        std::max(0, unicode::width(u32.data() + i, glen, unicode::AmbiguousWidth::Wide)));
-    graphemes.push_back({i, glen, gwidth});
-    i += glen;
-  }
-
-  if (max_width <= ellipsis_width + 4) {
-    size_t cur_width = 0;
-    size_t tail_start_idx = graphemes.size();
-    for (size_t g = graphemes.size(); g > 0; --g) {
-      const auto& gi = graphemes[g - 1];
-      if (cur_width + gi.width > max_width) {
-        break;
-      }
-      cur_width += gi.width;
-      tail_start_idx = g - 1;
-    }
-    if (tail_start_idx >= graphemes.size()) {
-      return {};
-    }
-    const std::u32string tail_u32 = u32.substr(graphemes[tail_start_idx].start);
-    std::string result;
-    unicode::utf8::encode(tail_u32.data(), tail_u32.size(), result);
-    return result;
-  }
-
-  const size_t available_content_width = max_width - ellipsis_width;
-  size_t target_head_width = std::max<size_t>(6, std::min<size_t>(14, available_content_width / 4));
-  if (target_head_width >= available_content_width) {
-    target_head_width = available_content_width / 2;
-  }
-  const size_t target_tail_width = available_content_width - target_head_width;
-
-  size_t head_count = 0;
-  size_t cur_head_width = 0;
-  for (const auto& gi : graphemes) {
-    if (cur_head_width + gi.width > target_head_width) {
-      break;
-    }
-    cur_head_width += gi.width;
-    ++head_count;
-  }
-
-  size_t tail_start_idx = graphemes.size();
-  size_t cur_tail_width = 0;
-  for (size_t g = graphemes.size(); g > head_count; --g) {
-    const auto& gi = graphemes[g - 1];
-    if (cur_tail_width + gi.width > target_tail_width) {
-      break;
-    }
-    cur_tail_width += gi.width;
-    tail_start_idx = g - 1;
-  }
-
-  const std::u32string head_u32 =
-      (head_count > 0)
-          ? u32.substr(0, graphemes[head_count - 1].start + graphemes[head_count - 1].length)
-          : std::u32string{};
-  const std::u32string tail_u32 = (tail_start_idx < graphemes.size())
-                                      ? u32.substr(graphemes[tail_start_idx].start)
-                                      : std::u32string{};
-
-  std::string head_str;
-  unicode::utf8::encode(head_u32.data(), head_u32.size(), head_str);
-  std::string tail_str;
-  unicode::utf8::encode(tail_u32.data(), tail_u32.size(), tail_str);
-
-  std::string result;
-  result.reserve(head_str.size() + ellipsis.size() + tail_str.size());
-  result.append(head_str);
-  result.append(ellipsis);
-  result.append(tail_str);
-  return result;
+[[nodiscard]] inline bool StartsWithIgnoreCase(std::string_view text,
+                                               std::string_view prefix) noexcept {
+  return text.size() >= prefix.size() && EqualsIgnoreCase(text.substr(0, prefix.size()), prefix);
 }
 
 } // namespace vinput::str

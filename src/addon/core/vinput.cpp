@@ -12,6 +12,8 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
+#include <unicodelib.h>
+#include <unicodelib_encodings.h>
 
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
@@ -33,6 +35,41 @@ namespace {
 
 constexpr const char* kContextSourceUser = "user";
 constexpr uint64_t kContextFlushDelayUsec = 5 * 1000 * 1000; // 5 seconds
+
+bool IsCjkAtBoundary(std::string_view left, std::string_view right) noexcept {
+  auto decode_first = [](std::string_view s) -> char32_t {
+    if (s.empty()) {
+      return 0;
+    }
+    char32_t cp = 0;
+    return unicode::utf8::decode_codepoint(s.data(), s.size(), cp) > 0 ? cp : 0;
+  };
+  auto decode_last = [](std::string_view s) -> char32_t {
+    if (s.empty()) {
+      return 0;
+    }
+    std::u32string u32;
+    unicode::utf8::decode(s.data(), s.size(), u32);
+    return u32.empty() ? 0 : u32.back();
+  };
+  auto is_cjk = [](char32_t cp) -> bool {
+    return unicode::is_unified_ideograph(cp) || unicode::is_ideographic(cp);
+  };
+  return is_cjk(decode_last(left)) || is_cjk(decode_first(right));
+}
+
+bool EndsWithSentenceTerminal(std::string_view text) noexcept {
+  if (text.empty()) {
+    return false;
+  }
+  std::u32string u32;
+  unicode::utf8::decode(text.data(), text.size(), u32);
+  if (u32.empty()) {
+    return false;
+  }
+  const char32_t cp = u32.back();
+  return unicode::is_sentence_terminal(cp) || cp == U'…' || cp == U'\n';
+}
 
 // Auto-install systemd service when running inside a sandbox.
 void ensureDaemonServiceInstalled() {
@@ -355,18 +392,14 @@ void VinputEngine::accumulateContextBuffer(const std::string& text, fcitx::Input
 
   // Language-aware joining.
   if (!context_buffer_text_.empty()) {
-    const bool cjk_boundary =
-        vinput::str::IsCjkCodepoint(vinput::str::LastUtf8Codepoint(context_buffer_text_)) ||
-        vinput::str::IsCjkCodepoint(vinput::str::FirstUtf8Codepoint(text));
-    if (!cjk_boundary && context_buffer_text_.back() != ' ') {
+    if (!IsCjkAtBoundary(context_buffer_text_, text) && context_buffer_text_.back() != ' ') {
       context_buffer_text_ += ' ';
     }
   }
   context_buffer_text_ += text;
 
   // Sentence-ending punctuation → flush immediately.
-  const uint32_t last_cp = vinput::str::LastUtf8Codepoint(context_buffer_text_);
-  if (vinput::str::IsSentenceEndingPunctuation(last_cp)) {
+  if (EndsWithSentenceTerminal(context_buffer_text_)) {
     flushContextBuffer();
     return;
   }

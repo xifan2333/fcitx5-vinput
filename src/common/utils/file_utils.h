@@ -45,4 +45,7 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
 // Check if a directory (or its immediate parent if target does not yet exist)
 // exists, is a valid directory, and has write and search permissions (W_OK | X_OK).
 [[nodiscard]] bool IsDirectoryWritable(const std::filesystem::path& path);
+
+// Formats a file or transfer size in bytes to a human-readable string (B, KB, MB, GB).
+std::string FormatFileSize(uint64_t bytes);
 } // namespace vinput::file

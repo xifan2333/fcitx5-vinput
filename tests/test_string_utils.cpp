@@ -6,8 +6,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <unicodelib.h>
-#include <unicodelib_encodings.h>
 #include <utility>
 #include <vector>
 
@@ -23,29 +21,35 @@ inline void AssertTrue(bool condition, const char* message, const char* file, in
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
 void TestTrimAsciiWhitespaceView() {
+  using vinput::str::Trim;
   using vinput::str::TrimAsciiWhitespaceView;
 
   // Empty string
+  TEST_ASSERT(Trim("").empty());
   TEST_ASSERT(TrimAsciiWhitespaceView("").empty());
 
   // Pure whitespace
+  TEST_ASSERT(Trim("   \t\r\n ").empty());
   TEST_ASSERT(TrimAsciiWhitespaceView("   \t\r\n ").empty());
 
   // Leading and trailing whitespace
+  TEST_ASSERT(Trim("  hello world  \n") == "hello world");
   TEST_ASSERT(TrimAsciiWhitespaceView("  hello world  \n") == "hello world");
+  TEST_ASSERT(Trim("\t\tvinput\r") == "vinput");
   TEST_ASSERT(TrimAsciiWhitespaceView("\t\tvinput\r") == "vinput");
 
   // No whitespace to trim
+  TEST_ASSERT(Trim("abc") == "abc");
   TEST_ASSERT(TrimAsciiWhitespaceView("abc") == "abc");
 
   // Zero-copy check: returned string_view points inside original buffer
   const std::string_view original = "  inner text  ";
-  const std::string_view trimmed = TrimAsciiWhitespaceView(original);
+  const std::string_view trimmed = Trim(original);
   TEST_ASSERT(trimmed == "inner text");
   TEST_ASSERT(trimmed.data() == original.data() + 2);
 
   // Owning copy is built by the caller
-  const std::string string_res(TrimAsciiWhitespaceView("  to string test  "));
+  const std::string string_res(Trim("  to string test  "));
   TEST_ASSERT(string_res == "to string test");
 }
 
@@ -61,10 +65,11 @@ void TestEqualsIgnoreCase() {
 }
 
 void TestSplitByChar() {
+  using vinput::str::Split;
   using vinput::str::SplitByChar;
 
   // Single segment
-  const auto res1 = SplitByChar("hello", '.');
+  const auto res1 = Split("hello", '.');
   TEST_ASSERT(res1.size() == 1 && res1[0] == "hello");
 
   // Multiple segments
@@ -153,10 +158,11 @@ void TestConsumePrefix() {
 }
 
 void TestSplitPair() {
+  using vinput::str::SplitOnce;
   using vinput::str::SplitPair;
 
   // Normal char delimiter
-  const auto pair1 = SplitPair("KEY=VALUE", '=');
+  const auto pair1 = SplitOnce("KEY=VALUE", '=');
   TEST_ASSERT(pair1.has_value());
   if (pair1.has_value()) {
     TEST_ASSERT(pair1->first == "KEY" && pair1->second == "VALUE");
@@ -222,10 +228,11 @@ void TestSplitPair() {
 }
 
 void TestSplitPairRight() {
+  using vinput::str::RSplitOnce;
   using vinput::str::SplitPairRight;
 
   // Split on rightmost delimiter
-  const auto pair1 = SplitPairRight("a:b:c", ':');
+  const auto pair1 = RSplitOnce("a:b:c", ':');
   TEST_ASSERT(pair1.has_value());
   if (pair1.has_value()) {
     TEST_ASSERT(pair1->first == "a:b" && pair1->second == "c");
@@ -318,19 +325,12 @@ void TestJoinKeyValue() {
 namespace {
 void TestFmtStr() {
   using vinput::str::FmtStr;
-  using vinput::str::FormatSize;
 
   // 1. Basic formatting: nullptr, no args, integers, floats, string literals
   TEST_ASSERT(FmtStr(nullptr).empty());
   TEST_ASSERT(FmtStr("hello world") == "hello world");
   TEST_ASSERT(FmtStr("Number: %d, Float: %.2f", 42, 3.14159) == "Number: 42, Float: 3.14");
   TEST_ASSERT(FmtStr("Literal: %s", "constant") == "Literal: constant");
-
-  // FormatSize checks
-  TEST_ASSERT(FormatSize(500) == "500 B");
-  TEST_ASSERT(FormatSize(1024) == "1.0 KB");
-  TEST_ASSERT(FormatSize(1024ULL * 1024) == "1.0 MB");
-  TEST_ASSERT(FormatSize(1024ULL * 1024 * 1024 * 2) == "2.0 GB");
 
   // 2. std::string arguments (lvalue reference, temporary/rvalue)
   const std::string s_lvalue = "my_string";
@@ -366,82 +366,6 @@ void TestFmtStr() {
   TEST_ASSERT(combined == "alpha-10-middle-beta-20-gamma");
 }
 
-namespace {
-
-size_t DisplayWidth(std::string_view text) {
-  std::u32string u32;
-  unicode::utf8::decode(text.data(), text.size(), u32);
-  return static_cast<size_t>(std::max(0, unicode::width(u32, unicode::AmbiguousWidth::Wide)));
-}
-
-} // namespace
-
-void TestCjkBoundaryAndSentenceTerminal() {
-  using vinput::str::FirstUtf8Codepoint;
-  using vinput::str::IsCjkCodepoint;
-  using vinput::str::IsSentenceEndingPunctuation;
-  using vinput::str::LastUtf8Codepoint;
-
-  // First / Last codepoint
-  TEST_ASSERT(FirstUtf8Codepoint("") == 0);
-  TEST_ASSERT(FirstUtf8Codepoint("hello") == 'h');
-  TEST_ASSERT(FirstUtf8Codepoint("你好") == 0x4F60);
-  TEST_ASSERT(LastUtf8Codepoint("") == 0);
-  TEST_ASSERT(LastUtf8Codepoint("hello") == 'o');
-  TEST_ASSERT(LastUtf8Codepoint("你好") == 0x597D);
-
-  // CJK Codepoint check
-  TEST_ASSERT(IsCjkCodepoint(0x4F60)); // '你'
-  TEST_ASSERT(IsCjkCodepoint(0x597D)); // '好'
-  TEST_ASSERT(IsCjkCodepoint(0x4E2D)); // '中'
-  TEST_ASSERT(IsCjkCodepoint(0x6587)); // '文'
-  TEST_ASSERT(!IsCjkCodepoint('a'));
-  TEST_ASSERT(!IsCjkCodepoint('1'));
-  TEST_ASSERT(!IsCjkCodepoint(0x1F680));
-
-  // Sentence ending punctuation check
-  TEST_ASSERT(IsSentenceEndingPunctuation(0x3002)); // '。'
-  TEST_ASSERT(IsSentenceEndingPunctuation(0xFF01)); // '！'
-  TEST_ASSERT(IsSentenceEndingPunctuation(0xFF1F)); // '？'
-  TEST_ASSERT(IsSentenceEndingPunctuation(0x2026)); // '…'
-  TEST_ASSERT(IsSentenceEndingPunctuation('.'));
-  TEST_ASSERT(IsSentenceEndingPunctuation('!'));
-  TEST_ASSERT(IsSentenceEndingPunctuation('?'));
-  TEST_ASSERT(IsSentenceEndingPunctuation('\n'));
-  TEST_ASSERT(!IsSentenceEndingPunctuation(','));
-  TEST_ASSERT(!IsSentenceEndingPunctuation(0xFF0C)); // '，'
-}
-
-void TestTruncateMiddleUtf8() {
-  using vinput::str::TruncateMiddleUtf8;
-
-  TEST_ASSERT(TruncateMiddleUtf8("hello", 10) == "hello");
-  TEST_ASSERT(TruncateMiddleUtf8("short", 0) == "short");
-
-  const std::string long_text = "这是一段非常非常长的语音识别通知文本需要被合理截断展示";
-  const std::string truncated = TruncateMiddleUtf8(long_text, 20, "...");
-  TEST_ASSERT(truncated.find("...") != std::string::npos);
-  TEST_ASSERT(DisplayWidth(truncated) <= 20);
-
-  // Grapheme clusters (emoji and keycaps) must never be split apart.
-  const std::string emoji_text = "通知: 🚀🚀🚀 语音识别已完成 1️⃣2️⃣3️⃣";
-  const std::string emoji_trunc = TruncateMiddleUtf8(emoji_text, 16, "...");
-  TEST_ASSERT(emoji_trunc.find("...") != std::string::npos);
-  TEST_ASSERT(DisplayWidth(emoji_trunc) <= 16);
-
-  // Narrow budget branch keeps the tail only.
-  const std::string tail_only = TruncateMiddleUtf8(long_text, 3, "...");
-  TEST_ASSERT(DisplayWidth(tail_only) <= 3);
-}
-
-void TestFormatSize() {
-  using vinput::str::FormatSize;
-
-  TEST_ASSERT(FormatSize(500) == "500 B");
-  TEST_ASSERT(FormatSize(1536) == "1.5 KB");
-  TEST_ASSERT(FormatSize(1048576ULL * 2) == "2.0 MB");
-  TEST_ASSERT(FormatSize(1024ULL * 1024 * 1024 * 3) == "3.0 GB");
-}
 } // namespace
 
 int main() {
@@ -456,8 +380,5 @@ int main() {
   TestJoin();
   TestJoinKeyValue();
   TestFmtStr();
-  TestCjkBoundaryAndSentenceTerminal();
-  TestTruncateMiddleUtf8();
-  TestFormatSize();
   return 0;
 }

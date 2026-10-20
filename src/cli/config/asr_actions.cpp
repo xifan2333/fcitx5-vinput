@@ -14,6 +14,7 @@
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/string_utils.h"
 
@@ -679,7 +680,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
             {"language", model.language},
             {"supports_hotwords", model.supports_hotwords()},
             {"size_bytes", model.size_bytes},
-            {"size", vinput::str::FormatSize(model.size_bytes)},
+            {"size", vinput::file::FormatFileSize(model.size_bytes)},
             {"status", isInstalled(model.id) ? "installed" : "available"},
         });
       }
@@ -693,7 +694,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
     for (const auto& model : remoteModels) {
       rows.push_back({vinput::cli::HumanizeResourceId(model.id, model.short_id),
                       display_map.at(model.id).title, model.model_type(), model.language,
-                      vinput::str::FormatSize(model.size_bytes),
+                      vinput::file::FormatFileSize(model.size_bytes),
                       model.supports_hotwords() ? _("yes") : _("no"),
                       isInstalled(model.id) ? _("installed") : _("available")});
     }
@@ -722,7 +723,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
           {"language", model.language},
           {"supports_hotwords", model.supports_hotwords},
           {"size_bytes", model.size_bytes},
-          {"size", vinput::str::FormatSize(model.size_bytes)},
+          {"size", vinput::file::FormatFileSize(model.size_bytes)},
           {"status", status},
       });
     }
@@ -743,7 +744,8 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
     const auto display_it = installed_display_map.find(model.id);
     rows.push_back({vinput::cli::HumanizeResourceId(installed_display_map, model.id),
                     display_it == installed_display_map.end() ? model.id : display_it->second.title,
-                    model.model_type, model.language, vinput::str::FormatSize(model.size_bytes),
+                    model.model_type, model.language,
+                    vinput::file::FormatFileSize(model.size_bytes),
                     model.supports_hotwords ? _("yes") : _("no"), status});
   }
   fmt.PrintTable(headers, rows);

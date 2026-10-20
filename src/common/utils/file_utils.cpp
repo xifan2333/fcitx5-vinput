@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <ios>
 #include <iterator>
@@ -420,6 +422,19 @@ bool IsDirectoryWritable(const std::filesystem::path& path) {
     }
   }
   return false;
+}
+
+std::string FormatFileSize(uint64_t bytes) {
+  if (bytes >= 1024ULL * 1024 * 1024) {
+    return std::format("{:.1f} GB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024));
+  }
+  if (bytes >= 1024ULL * 1024) {
+    return std::format("{:.1f} MB", static_cast<double>(bytes) / (1024.0 * 1024));
+  }
+  if (bytes >= 1024) {
+    return std::format("{:.1f} KB", static_cast<double>(bytes) / 1024.0);
+  }
+  return std::format("{} B", bytes);
 }
 
 } // namespace vinput::file

@@ -42,6 +42,7 @@
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_models.h"
 #include "common/registry/registry_scripts.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -434,7 +435,8 @@ void ResourcePage::populateLocalModels(const std::vector<ModelSummary>& models) 
     tableInstalledModels_->setItem(row, 0, MakeCell(title, id));
     tableInstalledModels_->setItem(row, 1, MakeCell(QString::fromStdString(model.model_type)));
     tableInstalledModels_->setItem(row, 2, MakeCell(QString::fromStdString(model.language)));
-    auto* sizeCell = MakeCell(QString::fromStdString(vinput::str::FormatSize(model.size_bytes)));
+    auto* sizeCell =
+        MakeCell(QString::fromStdString(vinput::file::FormatFileSize(model.size_bytes)));
     sizeCell->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     tableInstalledModels_->setItem(row, 3, sizeCell);
 
@@ -492,7 +494,8 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
     tableAvailableModels_->setItem(row, 1, MakeCell(desc));
     tableAvailableModels_->setItem(row, 2, MakeCell(QString::fromStdString(model.model_type())));
     tableAvailableModels_->setItem(row, 3, MakeCell(QString::fromStdString(model.language)));
-    auto* sizeCell = MakeCell(QString::fromStdString(vinput::str::FormatSize(model.size_bytes)));
+    auto* sizeCell =
+        MakeCell(QString::fromStdString(vinput::file::FormatFileSize(model.size_bytes)));
     sizeCell->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     tableAvailableModels_->setItem(row, 4, sizeCell);
 
@@ -938,7 +941,7 @@ void ResourcePage::onDownloadModelClicked() {
           if (worker != nullptr && p.total_bytes > 0) {
             int percent = static_cast<int>((p.downloaded_bytes * 100) / p.total_bytes);
             QString speed = QString::fromStdString(
-                                vinput::str::FormatSize(static_cast<uint64_t>(p.speed_bps))) +
+                                vinput::file::FormatFileSize(static_cast<uint64_t>(p.speed_bps))) +
                             "/s";
             worker->ReportProgress(percent, speed);
           }
