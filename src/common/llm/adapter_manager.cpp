@@ -21,6 +21,8 @@ extern "C" {
 #include <signal.h>
 }
 
+#include <nonstd/scope.hpp>
+
 #include "common/config/core_config_types.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -415,12 +417,12 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     // window to the gap between that check and the signal itself.
     return StopByPid(record, adapter_id, error);
   }
+  auto pidfd_guard = nonstd::make_scope_exit([pidfd] { close(pidfd); });
 
   if (!RecordMatchesLiveProcess(record)) {
     // The pinned process is not the adapter: either the adapter already exited or
     // the pid was recycled. Signals sent through the descriptor could only reach
     // the pinned instance, so drop the stale state and signal nothing.
-    close(pidfd);
     RemovePidFile(adapter_id);
     if (error != nullptr) {
       *error = "adapter is not running, stale pid file removed: " + std::string(adapter_id);
@@ -430,7 +432,6 @@ bool Stop(std::string_view adapter_id, std::string* error) {
 
   if (!SignalPinnedProcess(pidfd, SIGTERM)) {
     const int signal_errno = errno;
-    close(pidfd);
     if (signal_errno == ESRCH) {
       // The adapter exited before the signal could be delivered.
       RemovePidFile(adapter_id);
@@ -452,7 +453,6 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     if (!SignalPinnedProcess(pidfd, SIGKILL)) {
       const int signal_errno = errno;
       if (signal_errno != ESRCH) {
-        close(pidfd);
         if (error != nullptr) {
           *error = "failed to force-kill adapter " + std::string(adapter_id) + ": " +
                    std::strerror(signal_errno);
@@ -462,7 +462,6 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     }
     wait = WaitForPidFdExit(pidfd, kForceKillAttempts);
   }
-  close(pidfd);
 
   if (wait != ExitWait::Exited) {
     // Keep the record so the adapter can still be located and retried, and report

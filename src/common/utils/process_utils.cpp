@@ -5,19 +5,21 @@
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
-#include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <exception>
 #include <fcntl.h>
+#include <map>
 #include <optional>
-#include <poll.h>
-#include <spawn.h>
 #include <string>
-#include <sys/wait.h>
+#include <subprocess.hpp>
+#include <sys/poll.h>
+#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include "common/utils/interpolation.h"
-#include "common/utils/time_utils.h"
 
 extern char** environ;
 
@@ -25,70 +27,38 @@ namespace vinput::process {
 
 namespace {
 
-constexpr int kWaitNoHang = 1;
-
 bool SetNonBlocking(int fd) {
-  int flags = fcntl(fd, F_GETFL, 0);
+  const int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0) {
     return false;
   }
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
-std::vector<char*> BuildArgv(const CommandSpec& spec, std::vector<std::string>* storage) {
-  storage->clear();
-  storage->reserve(spec.args.size() + 1);
-  storage->push_back(spec.command);
+std::vector<std::string> BuildCmd(const CommandSpec& spec) {
+  std::vector<std::string> cmd;
+  cmd.reserve(spec.args.size() + 1);
+  cmd.push_back(spec.command);
   for (const auto& arg : spec.args) {
-    storage->push_back(arg);
+    cmd.push_back(arg);
   }
-
-  std::vector<char*> argv;
-  argv.reserve(storage->size() + 1);
-  for (auto& arg : *storage) {
-    argv.push_back(arg.data());
-  }
-  argv.push_back(nullptr);
-  return argv;
+  return cmd;
 }
 
-std::vector<char*> BuildEnvp(const CommandSpec& spec, std::vector<std::string>* storage) {
-  storage->clear();
-
+std::map<std::string, std::string> BuildEnvMap(const CommandSpec& spec) {
+  std::map<std::string, std::string> env_map;
   for (char** env = environ; env && *env; ++env) {
-    storage->push_back(*env);
+    const std::string entry(*env);
+    const auto eq_pos = entry.find('=');
+    if (eq_pos != std::string::npos) {
+      env_map[entry.substr(0, eq_pos)] = entry.substr(eq_pos + 1);
+    }
   }
 
   for (const auto& [key, value] : spec.env) {
-    bool replaced = false;
-    const std::string resolved_value = vinput::interpolate::InterpolateEnv(value);
-    const std::string prefix = key + "=";
-    for (auto& entry : *storage) {
-      if (entry.rfind(prefix, 0) == 0) {
-        entry = prefix + resolved_value;
-        replaced = true;
-        break;
-      }
-    }
-    if (!replaced) {
-      storage->push_back(prefix + resolved_value);
-    }
+    env_map[key] = vinput::interpolate::InterpolateEnv(value);
   }
-
-  std::vector<char*> envp;
-  envp.reserve(storage->size() + 1);
-  for (auto& entry : *storage) {
-    envp.push_back(entry.data());
-  }
-  envp.push_back(nullptr);
-  return envp;
-}
-
-void CloseIfOpen(int* fd) {
-  if (*fd >= 0) {
-    close(*fd);
-    *fd = -1;
-  }
+  return env_map;
 }
 
 } // namespace
@@ -114,350 +84,274 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
     return result;
   }
 
-  int stdin_pipe[2] = {-1, -1};
-  int stdout_pipe[2] = {-1, -1};
-  int stderr_pipe[2] = {-1, -1};
-  if (!CreateCloexecPipe(stdin_pipe) || !CreateCloexecPipe(stdout_pipe) ||
-      !CreateCloexecPipe(stderr_pipe)) {
-    result.launch_failed = true;
-    result.stderr_text = std::string("pipe failed: ") + std::strerror(errno);
-    CloseIfOpen(&stdin_pipe[0]);
-    CloseIfOpen(&stdin_pipe[1]);
-    CloseIfOpen(&stdout_pipe[0]);
-    CloseIfOpen(&stdout_pipe[1]);
-    CloseIfOpen(&stderr_pipe[0]);
-    CloseIfOpen(&stderr_pipe[1]);
-    return result;
-  }
+  const auto cmd = BuildCmd(spec);
+  const auto env_map = BuildEnvMap(spec);
 
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_adddup2(&actions, stdin_pipe[0], STDIN_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, stdout_pipe[1], STDOUT_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, stderr_pipe[1], STDERR_FILENO);
-  posix_spawn_file_actions_addclose(&actions, stdin_pipe[1]);
-  posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]);
-  posix_spawn_file_actions_addclose(&actions, stderr_pipe[0]);
+  try {
+    auto proc =
+        subprocess::Popen(cmd, subprocess::input{subprocess::PIPE},
+                          subprocess::output{subprocess::PIPE}, subprocess::error{subprocess::PIPE},
+                          subprocess::environment{env_map}, subprocess::session_leader{true});
 
-  std::vector<std::string> argv_storage;
-  std::vector<char*> argv = BuildArgv(spec, &argv_storage);
-  std::vector<std::string> env_storage;
-  std::vector<char*> envp = BuildEnvp(spec, &env_storage);
+    const int in_fd = proc.input() != nullptr ? subprocess_fileno(proc.input()) : -1;
+    const int out_fd = proc.output() != nullptr ? subprocess_fileno(proc.output()) : -1;
+    const int err_fd = proc.error() != nullptr ? subprocess_fileno(proc.error()) : -1;
 
-  pid_t pid = -1;
-  const int spawn_rc =
-      posix_spawnp(&pid, spec.command.c_str(), &actions, nullptr, argv.data(), envp.data());
-  posix_spawn_file_actions_destroy(&actions);
-
-  CloseIfOpen(&stdin_pipe[0]);
-  CloseIfOpen(&stdout_pipe[1]);
-  CloseIfOpen(&stderr_pipe[1]);
-
-  if (spawn_rc != 0) {
-    result.launch_failed = true;
-    result.stderr_text = std::string("failed to launch command: ") + std::strerror(spawn_rc);
-    CloseIfOpen(&stdin_pipe[1]);
-    CloseIfOpen(&stdout_pipe[0]);
-    CloseIfOpen(&stderr_pipe[0]);
-    return result;
-  }
-
-  if (!SetNonBlocking(stdin_pipe[1]) || !SetNonBlocking(stdout_pipe[0]) ||
-      !SetNonBlocking(stderr_pipe[0])) {
-    result.launch_failed = true;
-    result.stderr_text = std::string("fcntl failed: ") + std::strerror(errno);
-    kill(pid, SIGKILL);
-    waitpid(pid, nullptr, 0);
-    CloseIfOpen(&stdin_pipe[1]);
-    CloseIfOpen(&stdout_pipe[0]);
-    CloseIfOpen(&stderr_pipe[0]);
-    return result;
-  }
-
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(spec.timeout_ms);
-  std::size_t input_offset = 0;
-  bool stdout_open = true;
-  bool stderr_open = true;
-  bool stdin_open = true;
-  int status = 0;
-  bool child_exited = false;
-  std::optional<std::chrono::steady_clock::time_point> child_exited_at;
-
-  if (input.empty()) {
-    CloseIfOpen(&stdin_pipe[1]);
-    stdin_open = false;
-  }
-
-  while (stdin_open || stdout_open || stderr_open || !child_exited) {
-    if (!child_exited) {
-      pid_t wait_rc = waitpid(pid, &status, kWaitNoHang);
-      while (wait_rc < 0 && errno == EINTR) {
-        wait_rc = waitpid(pid, &status, kWaitNoHang);
-      }
-      if (wait_rc == pid || (wait_rc < 0 && errno == ECHILD)) {
-        child_exited = true;
-        child_exited_at = std::chrono::steady_clock::now();
-        CloseIfOpen(&stdin_pipe[1]);
-        stdin_open = false;
-      }
+    if (in_fd >= 0) {
+      SetNonBlocking(in_fd);
+    }
+    if (out_fd >= 0) {
+      SetNonBlocking(out_fd);
+    }
+    if (err_fd >= 0) {
+      SetNonBlocking(err_fd);
     }
 
-    const auto now = std::chrono::steady_clock::now();
-    if (now >= deadline) {
-      result.timed_out = true;
+    const auto start_time = std::chrono::steady_clock::now();
+    const auto deadline = spec.timeout_ms > 0
+                              ? start_time + std::chrono::milliseconds(spec.timeout_ms)
+                              : std::chrono::steady_clock::time_point::max();
+
+    std::size_t input_offset = 0;
+    bool in_open = (in_fd >= 0 && !input.empty());
+    bool out_open = (out_fd >= 0);
+    bool err_open = (err_fd >= 0);
+
+    if (in_fd >= 0 && input.empty()) {
+      proc.close_input();
+      in_open = false;
+    }
+
+    bool child_exited = false;
+    int child_exit_code = -1;
+    std::optional<std::chrono::steady_clock::time_point> child_exited_at;
+
+    std::array<char, 4096> drain_buffer{};
+
+    while (in_open || out_open || err_open || !child_exited) {
       if (!child_exited) {
-        kill(pid, SIGKILL);
-        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+        const int poll_res = proc.poll();
+        if (poll_res != -1) {
+          child_exited = true;
+          child_exit_code = poll_res;
+          child_exited_at = std::chrono::steady_clock::now();
+          if (in_open) {
+            proc.close_input();
+            in_open = false;
+          }
         }
       }
-      CloseIfOpen(&stdin_pipe[1]);
-      stdin_open = false;
-      break;
-    }
 
-    if (child_exited && child_exited_at.has_value()) {
-      constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
-      if (now - *child_exited_at >= kPostExitGrace) {
+      const auto now = std::chrono::steady_clock::now();
+      if (spec.timeout_ms > 0 && now >= deadline) {
+        result.timed_out = true;
+        proc.kill();
         break;
       }
-    }
 
-    pollfd fds[3];
-    nfds_t nfds = 0;
-
-    if (stdin_open) {
-      fds[nfds].fd = stdin_pipe[1];
-      fds[nfds].events = POLLOUT;
-      fds[nfds].revents = 0;
-      ++nfds;
-    }
-    if (stdout_open) {
-      fds[nfds].fd = stdout_pipe[0];
-      fds[nfds].events = POLLIN;
-      fds[nfds].revents = 0;
-      ++nfds;
-    }
-    if (stderr_open) {
-      fds[nfds].fd = stderr_pipe[0];
-      fds[nfds].events = POLLIN;
-      fds[nfds].revents = 0;
-      ++nfds;
-    }
-
-    if (nfds == 0) {
-      if (!child_exited) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        continue;
+      if (child_exited && child_exited_at.has_value()) {
+        constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
+        if (now - child_exited_at.value() >= kPostExitGrace) {
+          break;
+        }
       }
-      break;
-    }
 
-    int timeout_ms = vinput::time::RemainingTimeoutMs(deadline, 100, now);
-    if (child_exited && child_exited_at.has_value()) {
-      constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
-      timeout_ms =
-          vinput::time::RemainingTimeoutMs(*child_exited_at + kPostExitGrace, timeout_ms, now);
-    }
+      std::vector<pollfd> pfds;
+      pfds.reserve(3);
 
-    const int poll_rc = poll(fds, nfds, timeout_ms);
-    if (poll_rc < 0) {
-      if (errno == EINTR) {
-        continue;
+      int in_idx = -1;
+      int out_idx = -1;
+      int err_idx = -1;
+
+      if (in_open && in_fd >= 0) {
+        in_idx = static_cast<int>(pfds.size());
+        pollfd pfd{};
+        pfd.fd = in_fd;
+        pfd.events = POLLOUT;
+        pfd.revents = 0;
+        pfds.push_back(pfd);
       }
-      result.launch_failed = true;
-      result.stderr_text = std::string("poll failed: ") + std::strerror(errno);
-      kill(pid, SIGKILL);
-      while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
+      if (out_open && out_fd >= 0) {
+        out_idx = static_cast<int>(pfds.size());
+        pollfd pfd{};
+        pfd.fd = out_fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        pfds.push_back(pfd);
       }
-      break;
-    }
-    if (poll_rc == 0 && child_exited) {
-      break;
-    }
+      if (err_open && err_fd >= 0) {
+        err_idx = static_cast<int>(pfds.size());
+        pollfd pfd{};
+        pfd.fd = err_fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        pfds.push_back(pfd);
+      }
 
-    nfds_t index = 0;
-    if (stdin_open) {
-      if (fds[index].revents & POLLOUT) {
+      if (pfds.empty()) {
+        if (!child_exited) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+          continue;
+        }
+        break;
+      }
+
+      int wait_ms = 50;
+      if (spec.timeout_ms > 0) {
+        const auto rem =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+        wait_ms = std::clamp<int>(static_cast<int>(rem), 0, 50);
+      }
+
+      const int poll_rc = poll(pfds.data(), static_cast<nfds_t>(pfds.size()), wait_ms);
+      if (poll_rc < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
+      }
+
+      if (in_idx >= 0 && (pfds[static_cast<std::size_t>(in_idx)].revents & POLLOUT) != 0) {
         const std::size_t remaining = input.size() - input_offset;
         if (remaining == 0) {
-          CloseIfOpen(&stdin_pipe[1]);
-          stdin_open = false;
-          ++index;
+          proc.close_input();
+          in_open = false;
         } else {
-          const auto* bytes = reinterpret_cast<const std::uint8_t*>(input.data()) + input_offset;
-          const ssize_t written = write(stdin_pipe[1], bytes, remaining);
+          const ssize_t written = write(in_fd, input.data() + input_offset, remaining);
           if (written > 0) {
             input_offset += static_cast<std::size_t>(written);
             if (input_offset >= input.size()) {
-              CloseIfOpen(&stdin_pipe[1]);
-              stdin_open = false;
+              proc.close_input();
+              in_open = false;
             }
           } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-            CloseIfOpen(&stdin_pipe[1]);
-            stdin_open = false;
-          }
-          ++index;
-        }
-      } else if (fds[index].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-        CloseIfOpen(&stdin_pipe[1]);
-        stdin_open = false;
-        ++index;
-      } else {
-        ++index;
-      }
-    }
-
-    auto drain_fd = [](int fd, std::string* out, bool* open_flag) {
-      char buffer[4096];
-      while (true) {
-        const ssize_t n = read(fd, buffer, sizeof(buffer));
-        if (n > 0) {
-          out->append(buffer, static_cast<std::size_t>(n));
-          continue;
-        }
-        if (n == 0) {
-          *open_flag = false;
-        }
-        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-          if (errno == EINTR) {
-            continue;
+            proc.close_input();
+            in_open = false;
           }
         }
-        break;
       }
-    };
 
-    if (stdout_open) {
-      if (fds[index].revents & POLLIN) {
-        drain_fd(stdout_pipe[0], &result.stdout_text, &stdout_open);
-        if (!stdout_open) {
-          CloseIfOpen(&stdout_pipe[0]);
+      if (out_idx >= 0) {
+        const auto rev = pfds[static_cast<std::size_t>(out_idx)].revents;
+        if ((rev & POLLIN) != 0) {
+          while (true) {
+            const ssize_t n = read(out_fd, drain_buffer.data(), drain_buffer.size());
+            if (n > 0) {
+              result.stdout_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
+            } else if (n == 0) {
+              out_open = false;
+              break;
+            } else {
+              break;
+            }
+          }
+        } else if ((rev & (POLLHUP | POLLERR)) != 0) {
+          while (true) {
+            const ssize_t n = read(out_fd, drain_buffer.data(), drain_buffer.size());
+            if (n > 0) {
+              result.stdout_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
+            } else {
+              break;
+            }
+          }
+          out_open = false;
         }
-      } else if (fds[index].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-        drain_fd(stdout_pipe[0], &result.stdout_text, &stdout_open);
-        CloseIfOpen(&stdout_pipe[0]);
-        stdout_open = false;
       }
-      ++index;
+
+      if (err_idx >= 0) {
+        const auto rev = pfds[static_cast<std::size_t>(err_idx)].revents;
+        if ((rev & POLLIN) != 0) {
+          while (true) {
+            const ssize_t n = read(err_fd, drain_buffer.data(), drain_buffer.size());
+            if (n > 0) {
+              result.stderr_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
+            } else if (n == 0) {
+              err_open = false;
+              break;
+            } else {
+              break;
+            }
+          }
+        } else if ((rev & (POLLHUP | POLLERR)) != 0) {
+          while (true) {
+            const ssize_t n = read(err_fd, drain_buffer.data(), drain_buffer.size());
+            if (n > 0) {
+              result.stderr_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
+            } else {
+              break;
+            }
+          }
+          err_open = false;
+        }
+      }
     }
 
-    if (stderr_open) {
-      if (fds[index].revents & POLLIN) {
-        drain_fd(stderr_pipe[0], &result.stderr_text, &stderr_open);
-        if (!stderr_open) {
-          CloseIfOpen(&stderr_pipe[0]);
-        }
-      } else if (fds[index].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-        drain_fd(stderr_pipe[0], &result.stderr_text, &stderr_open);
-        CloseIfOpen(&stderr_pipe[0]);
-        stderr_open = false;
-      }
+    if (result.timed_out) {
+      result.exit_code = -1;
+    } else if (child_exited) {
+      result.exit_code = child_exit_code;
+    } else {
+      result.exit_code = proc.wait();
     }
-  }
-
-  CloseIfOpen(&stdin_pipe[1]);
-  CloseIfOpen(&stdout_pipe[0]);
-  CloseIfOpen(&stderr_pipe[0]);
-
-  if (result.timed_out) {
-    result.exit_code = -1;
+    return result;
+  } catch (const subprocess::OSError& e) {
+    result.launch_failed = true;
+    result.stderr_text = e.what();
+    return result;
+  } catch (const std::exception& e) {
+    result.launch_failed = true;
+    result.stderr_text = e.what();
     return result;
   }
-
-  if (result.launch_failed) {
-    result.exit_code = -1;
-    return result;
-  }
-
-  if (WIFEXITED(status)) {
-    result.exit_code = WEXITSTATUS(status);
-  } else if (WIFSIGNALED(status)) {
-    result.exit_code = 128 + WTERMSIG(status);
-  }
-
-  return result;
 }
 
 bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& working_dir,
                         SpawnedProcess* process_out, std::string* error) {
-  if (process_out) {
+  if (process_out != nullptr) {
     process_out->pid = -1;
     process_out->stderr_fd = -1;
   }
   if (spec.command.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Command is empty.";
     }
     return false;
   }
 
-  int stderr_pipe[2] = {-1, -1};
-  if (!CreateCloexecPipe(stderr_pipe)) {
-    if (error) {
-      *error = std::string("pipe failed: ") + std::strerror(errno);
+  const auto cmd = BuildCmd(spec);
+  const auto env_map = BuildEnvMap(spec);
+
+  try {
+    auto proc = subprocess::Popen(
+        cmd, subprocess::input{"/dev/null"}, subprocess::output{"/dev/null"},
+        subprocess::error{subprocess::PIPE}, subprocess::cwd{working_dir.string()},
+        subprocess::environment{env_map}, subprocess::session_leader{true});
+
+    if (process_out != nullptr) {
+      process_out->pid = proc.pid();
+      FILE* err_fp = proc.error();
+      if (err_fp != nullptr) {
+        const int dup_fd = fcntl(subprocess_fileno(err_fp), F_DUPFD_CLOEXEC, 0);
+        if (dup_fd < 0) {
+          if (error != nullptr) {
+            *error = "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));
+          }
+          proc.kill();
+          return false;
+        }
+        process_out->stderr_fd = dup_fd;
+      }
+    }
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  } catch (const std::exception& e) {
+    if (error != nullptr) {
+      *error = e.what();
     }
     return false;
   }
-
-  std::vector<std::string> argv_storage;
-  std::vector<char*> argv = BuildArgv(spec, &argv_storage);
-  std::vector<std::string> env_storage;
-  std::vector<char*> envp = BuildEnvp(spec, &env_storage);
-
-  pid_t pid = fork();
-  if (pid < 0) {
-    CloseIfOpen(&stderr_pipe[0]);
-    CloseIfOpen(&stderr_pipe[1]);
-    if (error) {
-      *error = std::string("fork failed: ") + std::strerror(errno);
-    }
-    return false;
-  }
-
-  if (pid == 0) {
-    CloseIfOpen(&stderr_pipe[0]);
-
-    const int devnull = open("/dev/null", O_RDWR);
-    if (devnull >= 0) {
-      dup2(devnull, STDIN_FILENO);
-      dup2(devnull, STDOUT_FILENO);
-      close(devnull);
-    }
-    dup2(stderr_pipe[1], STDERR_FILENO);
-    CloseIfOpen(&stderr_pipe[1]);
-
-    setsid();
-
-    if (!working_dir.empty()) {
-      chdir(working_dir.c_str());
-    }
-
-    environ = envp.data();
-
-    execvp(spec.command.c_str(), argv.data());
-    _exit(127);
-  }
-
-  CloseIfOpen(&stderr_pipe[1]);
-  if (!SetNonBlocking(stderr_pipe[0])) {
-    CloseIfOpen(&stderr_pipe[0]);
-    kill(pid, SIGKILL);
-    waitpid(pid, nullptr, 0);
-    if (error) {
-      *error = std::string("fcntl failed: ") + std::strerror(errno);
-    }
-    return false;
-  }
-
-  if (process_out) {
-    process_out->pid = pid;
-    process_out->stderr_fd = stderr_pipe[0];
-  }
-  if (error) {
-    error->clear();
-  }
-  return true;
 }
 
 bool RunCommandSilent(const CommandSpec& spec, int* exit_code) {
@@ -468,77 +362,11 @@ bool RunCommandSilent(const CommandSpec& spec, int* exit_code) {
     return false;
   }
 
-  std::vector<std::string> argv_storage;
-  std::vector<std::string> envp_storage;
-  const auto argv = BuildArgv(spec, &argv_storage);
-  const auto envp = BuildEnvp(spec, &envp_storage);
-
-  posix_spawn_file_actions_t actions;
-  if (posix_spawn_file_actions_init(&actions) != 0) {
-    if (exit_code != nullptr) {
-      *exit_code = -1;
-    }
-    return false;
+  const auto result = RunCommandWithInput(spec, {});
+  if (exit_code != nullptr) {
+    *exit_code = result.exit_code;
   }
-
-  posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
-  posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
-  posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
-
-  pid_t pid = -1;
-  const int spawn_rc =
-      posix_spawnp(&pid, spec.command.c_str(), &actions, nullptr, argv.data(), envp.data());
-  posix_spawn_file_actions_destroy(&actions);
-
-  if (spawn_rc != 0 || pid <= 0) {
-    if (exit_code != nullptr) {
-      *exit_code = -1;
-    }
-    return false;
-  }
-
-  int status = 0;
-  if (spec.timeout_ms <= 0) {
-    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-    }
-    const int rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-    if (exit_code != nullptr) {
-      *exit_code = rc;
-    }
-    return rc == 0;
-  }
-
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(spec.timeout_ms);
-  while (true) {
-    pid_t wait_rc = waitpid(pid, &status, kWaitNoHang);
-    while (wait_rc < 0 && errno == EINTR) {
-      wait_rc = waitpid(pid, &status, kWaitNoHang);
-    }
-    if (wait_rc == pid) {
-      const int rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-      if (exit_code != nullptr) {
-        *exit_code = rc;
-      }
-      return rc == 0;
-    }
-    if (wait_rc < 0 && errno == ECHILD) {
-      if (exit_code != nullptr) {
-        *exit_code = -1;
-      }
-      return false;
-    }
-    if (std::chrono::steady_clock::now() >= deadline) {
-      kill(pid, SIGKILL);
-      while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-      }
-      if (exit_code != nullptr) {
-        *exit_code = -1;
-      }
-      return false;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-  }
+  return !result.launch_failed && !result.timed_out && result.exit_code == 0;
 }
 
 bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text, int* exit_code) {
@@ -552,147 +380,14 @@ bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text, 
     return false;
   }
 
-  int stdout_pipe[2] = {-1, -1};
-  if (!CreateCloexecPipe(stdout_pipe)) {
-    if (exit_code != nullptr) {
-      *exit_code = -1;
-    }
-    return false;
+  const auto result = RunCommandWithInput(spec, {});
+  if (stdout_text != nullptr) {
+    *stdout_text = result.stdout_text;
   }
-
-  std::vector<std::string> argv_storage;
-  std::vector<std::string> envp_storage;
-  const auto argv = BuildArgv(spec, &argv_storage);
-  const auto envp = BuildEnvp(spec, &envp_storage);
-
-  posix_spawn_file_actions_t actions;
-  if (posix_spawn_file_actions_init(&actions) != 0) {
-    CloseIfOpen(&stdout_pipe[0]);
-    CloseIfOpen(&stdout_pipe[1]);
-    if (exit_code != nullptr) {
-      *exit_code = -1;
-    }
-    return false;
-  }
-
-  posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
-  posix_spawn_file_actions_adddup2(&actions, stdout_pipe[1], 1);
-  posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]);
-  posix_spawn_file_actions_addclose(&actions, stdout_pipe[1]);
-  posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
-
-  pid_t pid = -1;
-  const int spawn_rc =
-      posix_spawnp(&pid, spec.command.c_str(), &actions, nullptr, argv.data(), envp.data());
-  posix_spawn_file_actions_destroy(&actions);
-  CloseIfOpen(&stdout_pipe[1]);
-
-  if (spawn_rc != 0 || pid <= 0) {
-    CloseIfOpen(&stdout_pipe[0]);
-    if (exit_code != nullptr) {
-      *exit_code = -1;
-    }
-    return false;
-  }
-
-  (void)SetNonBlocking(stdout_pipe[0]);
-
-  const auto deadline = spec.timeout_ms > 0 ? std::chrono::steady_clock::now() +
-                                                  std::chrono::milliseconds(spec.timeout_ms)
-                                            : std::chrono::steady_clock::time_point::max();
-
-  std::array<char, 4096> buffer{};
-  bool stdout_open = true;
-  bool child_exited = false;
-  int status = 0;
-
-  while (stdout_open || !child_exited) {
-    if (!child_exited) {
-      pid_t wait_rc = waitpid(pid, &status, kWaitNoHang);
-      while (wait_rc < 0 && errno == EINTR) {
-        wait_rc = waitpid(pid, &status, kWaitNoHang);
-      }
-      if (wait_rc == pid || (wait_rc < 0 && errno == ECHILD)) {
-        child_exited = true;
-      }
-    }
-
-    if (std::chrono::steady_clock::now() >= deadline) {
-      if (!child_exited) {
-        kill(pid, SIGKILL);
-        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-        }
-      }
-      CloseIfOpen(&stdout_pipe[0]);
-      if (exit_code != nullptr) {
-        *exit_code = -1;
-      }
-      return false;
-    }
-
-    if (!stdout_open) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(2));
-      continue;
-    }
-
-    pollfd pfd{};
-    pfd.fd = stdout_pipe[0];
-    pfd.events = POLLIN;
-
-    int timeout_ms = 50;
-    if (spec.timeout_ms > 0) {
-      const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 deadline - std::chrono::steady_clock::now())
-                                 .count();
-      timeout_ms = remaining > 0 ? std::min<int>(50, static_cast<int>(remaining)) : 0;
-    }
-
-    const int poll_rc = poll(&pfd, 1, timeout_ms);
-    if (poll_rc > 0 && (pfd.revents & POLLIN) != 0) {
-      while (true) {
-        const ssize_t bytes = read(stdout_pipe[0], buffer.data(), buffer.size());
-        if (bytes > 0) {
-          if (stdout_text != nullptr) {
-            stdout_text->append(buffer.data(), static_cast<std::size_t>(bytes));
-          }
-        } else if (bytes == 0) {
-          stdout_open = false;
-          CloseIfOpen(&stdout_pipe[0]);
-          break;
-        } else {
-          if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            break;
-          }
-          stdout_open = false;
-          CloseIfOpen(&stdout_pipe[0]);
-          break;
-        }
-      }
-    } else if (poll_rc > 0 && (pfd.revents & (POLLHUP | POLLERR)) != 0) {
-      while (true) {
-        const ssize_t bytes = read(stdout_pipe[0], buffer.data(), buffer.size());
-        if (bytes > 0) {
-          if (stdout_text != nullptr) {
-            stdout_text->append(buffer.data(), static_cast<std::size_t>(bytes));
-          }
-        } else {
-          break;
-        }
-      }
-      stdout_open = false;
-      CloseIfOpen(&stdout_pipe[0]);
-    } else if (poll_rc == 0 && child_exited) {
-      stdout_open = false;
-      CloseIfOpen(&stdout_pipe[0]);
-    }
-  }
-
-  CloseIfOpen(&stdout_pipe[0]);
-  const int rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
   if (exit_code != nullptr) {
-    *exit_code = rc;
+    *exit_code = result.exit_code;
   }
-  return rc == 0;
+  return !result.launch_failed && !result.timed_out && result.exit_code == 0;
 }
 
 } // namespace vinput::process

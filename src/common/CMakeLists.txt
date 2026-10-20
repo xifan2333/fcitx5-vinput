@@ -68,6 +68,8 @@ target_link_libraries(config PUBLIC
     ${GETTEXT_LIBRARIES}
     OpenSSL::Crypto
     spdlog::spdlog_header_only
+    subprocess::subprocess
+    nonstd::scope
     unicodelib::unicodelib
 )
 

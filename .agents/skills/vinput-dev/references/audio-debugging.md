@@ -10,12 +10,14 @@ journalctl --user -u vinput-daemon.service -f -n 100
 # or via CLI
 vinput daemon logs -f
 
-# Run daemon directly in foreground for interactive debugging
+# Run daemon directly in foreground with debug/trace logging
 vinput daemon stop
-VINPUT_DEBUG=1 vinput-daemon
+VINPUT_LOG_LEVEL=debug vinput-daemon
+# or via flag
+vinput-daemon --log-level debug
 
-# Or enable debug logging for the systemd user service
-systemctl --user set-environment VINPUT_DEBUG=1
+# Enable debug logging for the systemd user service
+systemctl --user set-environment VINPUT_LOG_LEVEL=debug
 vinput daemon restart
 vinput daemon logs -f
 ```

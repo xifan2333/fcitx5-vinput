@@ -3,13 +3,14 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <subprocess.hpp>
 #include <vector>
 
 #include "common/utils/debug_log.h"
-#include "common/utils/process_utils.h"
 
 namespace vinput::daemon::audio {
 
@@ -38,16 +39,18 @@ std::optional<double> ParseVolume(const std::string& text) {
 // Reads the current volume of the default sink using a single stdout pipe
 // without allocating stdin or stderr pipes.
 std::optional<double> ReadDefaultSinkVolume() {
-  vinput::process::CommandSpec spec;
-  spec.command = kWpctl;
-  spec.args = {"get-volume", kDefaultSink};
-  spec.timeout_ms = kWpctlTimeoutMs;
-
-  std::string stdout_text;
-  if (!vinput::process::RunCommandCaptureStdout(spec, &stdout_text)) {
+  try {
+    auto proc =
+        subprocess::Popen({kWpctl, "get-volume", kDefaultSink},
+                          subprocess::output{subprocess::PIPE}, subprocess::error{"/dev/null"});
+    auto [out_buf, err_buf] = proc.communicate();
+    if (proc.retcode() != 0) {
+      return std::nullopt;
+    }
+    return ParseVolume(std::string(out_buf.buf.data(), out_buf.length));
+  } catch (const std::exception&) {
     return std::nullopt;
   }
-  return ParseVolume(stdout_text);
 }
 
 // Sets the volume of the default sink using zero pipes (redirecting streams
@@ -56,12 +59,13 @@ bool SetDefaultSinkVolume(double volume) {
   char buffer[32];
   std::snprintf(buffer, sizeof(buffer), "%.4F", volume);
 
-  vinput::process::CommandSpec spec;
-  spec.command = kWpctl;
-  spec.args = {"set-volume", kDefaultSink, buffer};
-  spec.timeout_ms = kWpctlTimeoutMs;
-
-  return vinput::process::RunCommandSilent(spec);
+  try {
+    return subprocess::call({kWpctl, "set-volume", kDefaultSink, buffer},
+                            subprocess::input{"/dev/null"}, subprocess::output{"/dev/null"},
+                            subprocess::error{"/dev/null"}) == 0;
+  } catch (const std::exception&) {
+    return false;
+  }
 }
 
 } // namespace

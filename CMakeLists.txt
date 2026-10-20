@@ -117,6 +117,23 @@ endif()
 if(NOT TARGET spdlog::spdlog_header_only AND TARGET spdlog_header_only)
     add_library(spdlog::spdlog_header_only ALIAS spdlog_header_only)
 endif()
+option(VINPUT_FETCH_CLI11 "Fetch CLI11 with FetchContent when not found" ON)
+find_package(CLI11 QUIET)
+if(NOT CLI11_FOUND)
+    if(VINPUT_FETCH_CLI11)
+        include(FetchContent)
+        FetchContent_Declare(
+            CLI11
+            GIT_REPOSITORY https://github.com/CLIUtils/CLI11
+            GIT_TAG v2.4.2
+        )
+        FetchContent_MakeAvailable(CLI11)
+    else()
+        message(FATAL_ERROR
+            "CLI11 was not found. Install CLI11 or enable VINPUT_FETCH_CLI11.")
+    endif()
+endif()
+
 find_package(Gettext REQUIRED)
 
 pkg_check_modules(SDBUS REQUIRED libsystemd)
@@ -147,6 +164,21 @@ endif()
 if(NOT TARGET httplib::httplib AND TARGET httplib)
     add_library(httplib::httplib ALIAS httplib)
 endif()
+
+find_package(subprocess QUIET)
+if(NOT TARGET subprocess::subprocess AND NOT TARGET subprocess)
+    add_library(3rdparty_subprocess INTERFACE)
+    target_include_directories(3rdparty_subprocess SYSTEM INTERFACE
+        ${CMAKE_SOURCE_DIR}/3rdparty/subprocess
+    )
+    add_library(subprocess::subprocess ALIAS 3rdparty_subprocess)
+endif()
+
+add_library(3rdparty_scope INTERFACE)
+target_include_directories(3rdparty_scope SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/scope
+)
+add_library(nonstd::scope ALIAS 3rdparty_scope)
 
 # 3rdparty vendored libraries (Track 2: Header-Only with SYSTEM INTERFACE)
 add_library(3rdparty_base64 INTERFACE)
