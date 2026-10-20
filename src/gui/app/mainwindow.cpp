@@ -12,6 +12,7 @@
 #include <QtGui/qclipboard.h>
 #include <QtGui/qguiapplication.h>
 #include <QtWidgets/qmessagebox.h>
+#include <atomic>
 #include <fstream>
 #include <nlohmann/json.hpp>
 
@@ -185,13 +186,14 @@ QString localizedString(const nlohmann::json& obj) {
 
 void MainWindow::checkNotification() {
   auto* worker = new vinput::gui::DownloadWorker(this);
-  worker->SetTask([this](std::string* /*error*/) -> bool {
+  worker->SetTask([this](std::string* /*error*/, const std::atomic<bool>* cancel_token) -> bool {
     const std::vector<std::string> urls = {
         "https://raw.githubusercontent.com/xifan2333/fcitx5-vinput/main/"
         "notification.json"};
     std::string content;
     vinput::download::Options opts;
     opts.timeout_seconds = 5;
+    opts.cancel_token = cancel_token;
     if (!vinput::download::DownloadText(urls, opts, &content)) {
       return true; // silent fail
     }
