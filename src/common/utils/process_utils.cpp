@@ -4,13 +4,14 @@
 #include <condition_variable>
 #include <csignal>
 #include <cstddef>
-#include <cstdio>
 #include <exception>
 #include <fcntl.h>
 #include <map>
 #include <mutex>
+#include <stdio.h>
 #include <string>
 #include <subprocess.hpp>
+#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -77,12 +78,15 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
   const auto env_map = BuildEnvMap(spec);
 
   try {
-    auto proc = subprocess::Popen(
-        cmd, subprocess::input{subprocess::PIPE}, subprocess::output{subprocess::PIPE},
-        subprocess::error{subprocess::PIPE}, subprocess::environment{env_map});
+    auto proc =
+        subprocess::Popen(cmd, subprocess::input{subprocess::PIPE},
+                          subprocess::output{subprocess::PIPE}, subprocess::error{subprocess::PIPE},
+                          subprocess::environment{env_map}, subprocess::session_leader{true});
 
-    const auto* in_ptr = static_cast<const char*>(static_cast<const void*>(input.data()));
-    const std::size_t in_size = input.size();
+    std::vector<char> in_buf(input.size());
+    for (std::size_t i = 0; i < input.size(); ++i) {
+      in_buf[i] = static_cast<char>(input[i]);
+    }
 
     if (spec.timeout_ms > 0) {
       std::mutex comm_mutex;
@@ -93,7 +97,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
 
       std::thread comm_thread([&] {
         try {
-          auto res = proc.communicate(in_ptr, in_size);
+          auto res = proc.communicate(in_buf);
           const std::scoped_lock lock(comm_mutex);
           out_buf = std::move(res.first);
           err_buf = std::move(res.second);
@@ -109,13 +113,13 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       if (!comm_cv.wait_for(lock, std::chrono::milliseconds(spec.timeout_ms),
                             [&] { return done; })) {
         result.timed_out = true;
-        if (proc.pid() > 0) {
-          ::kill(-proc.pid(), SIGKILL);
-          ::kill(proc.pid(), SIGKILL);
+        proc.kill(SIGKILL);
+        if (proc.output() != nullptr) {
+          ::close(fileno(proc.output()));
         }
-        proc.close_input();
-        proc.close_output();
-        proc.close_error();
+        if (proc.error() != nullptr) {
+          ::close(fileno(proc.error()));
+        }
         lock.unlock();
         comm_thread.join();
         return result;
@@ -129,7 +133,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       return result;
     }
 
-    auto [out_buf, err_buf] = proc.communicate(in_ptr, in_size);
+    auto [out_buf, err_buf] = proc.communicate(in_buf);
     result.exit_code = proc.retcode();
     result.stdout_text.assign(out_buf.buf.data(), out_buf.length);
     result.stderr_text.assign(err_buf.buf.data(), err_buf.length);

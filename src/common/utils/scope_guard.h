@@ -1,6 +1,5 @@
 #pragma once
 
-#include <fcntl.h>
 #include <type_traits>
 #include <unistd.h>
 #include <utility>
@@ -63,7 +62,7 @@ template <typename F> [[nodiscard]] auto make_scope_exit(F&& f) {
  */
 class UniqueFd {
 public:
-  constexpr UniqueFd() noexcept : fd_(-1) {}
+  constexpr UniqueFd() noexcept = default;
   explicit UniqueFd(int fd) noexcept : fd_(fd) {}
   ~UniqueFd() noexcept { reset(); }
 
