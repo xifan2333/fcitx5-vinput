@@ -148,6 +148,61 @@ if(NOT TARGET httplib::httplib AND TARGET httplib)
     add_library(httplib::httplib ALIAS httplib)
 endif()
 
+option(VINPUT_FETCH_UNI_ALGO "Fetch uni-algo with FetchContent when not found" ON)
+find_package(uni-algo QUIET)
+if(NOT uni-algo_FOUND)
+    if(VINPUT_FETCH_UNI_ALGO)
+        include(FetchContent)
+        set(UNI_ALGO_HEADER_ONLY ON CACHE BOOL "" FORCE)
+        set(UNI_ALGO_INSTALL OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            uni-algo
+            GIT_REPOSITORY https://github.com/uni-algo/uni-algo.git
+            GIT_TAG v1.2.0
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(uni-algo)
+    else()
+        message(FATAL_ERROR
+            "uni-algo was not found. Install uni-algo or enable VINPUT_FETCH_UNI_ALGO.")
+    endif()
+endif()
+if(NOT TARGET uni-algo::uni-algo AND TARGET uni-algo)
+    add_library(uni-algo::uni-algo ALIAS uni-algo)
+endif()
+
+option(VINPUT_FETCH_BASE64 "Fetch cpp-base64 with FetchContent when not found" ON)
+find_package(base64 QUIET)
+if(NOT TARGET base64::base64 AND NOT TARGET base64)
+    if(VINPUT_FETCH_BASE64)
+        include(FetchContent)
+        FetchContent_Declare(
+            base64
+            GIT_REPOSITORY https://github.com/ReneNyffenegger/cpp-base64.git
+            GIT_TAG 951de609dbe27ce8864dfe47323c4ade96bee86e
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_GetProperties(base64)
+        if(NOT base64_POPULATED)
+            if(POLICY CMP0169)
+                cmake_policy(SET CMP0169 OLD)
+            endif()
+            FetchContent_Populate(base64)
+            add_library(base64 STATIC
+                ${base64_SOURCE_DIR}/base64.cpp
+            )
+            set_target_properties(base64 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+            target_include_directories(base64 PUBLIC
+                $<BUILD_INTERFACE:${base64_SOURCE_DIR}>
+            )
+            add_library(base64::base64 ALIAS base64)
+        endif()
+    else()
+        message(FATAL_ERROR
+            "base64 was not found. Install base64 or enable VINPUT_FETCH_BASE64.")
+    endif()
+endif()
+
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit")

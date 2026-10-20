@@ -209,6 +209,7 @@ add_test(NAME test_downloader COMMAND test_downloader)
 
 add_executable(test_string_utils test_string_utils.cpp)
 target_include_directories(test_string_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_string_utils PRIVATE config)
 add_test(NAME test_string_utils COMMAND test_string_utils)
 
 add_executable(test_time_utils test_time_utils.cpp)
