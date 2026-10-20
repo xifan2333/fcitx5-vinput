@@ -95,9 +95,10 @@ constexpr bool IsAsciiWhitespace(char c) noexcept {
 }
 
 inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept {
-  const auto is_ws = [](char c) noexcept { return std::isspace(static_cast<unsigned char>(c)); };
-  const auto not_ws = [&](char c) noexcept { return !is_ws(c); };
-  const auto start = std::ranges::find_if(text, not_ws);
+  const auto not_ws = [](char c) noexcept -> bool {
+    return std::isspace(static_cast<unsigned char>(c)) == 0;
+  };
+  const auto* const start = std::ranges::find_if(text, not_ws);
   if (start == text.end()) {
     return {};
   }
@@ -434,7 +435,7 @@ inline std::string Base64Decode(std::string_view text, bool remove_linebreaks = 
   }
   std::string sanitized;
   sanitized.reserve(text.size());
-  for (char c : text) {
+  for (const char c : text) {
     if (c != '\r' && c != '\n') {
       sanitized.push_back(c);
     }
