@@ -13,9 +13,9 @@ namespace vinput::interpolate {
 /// - `{{env:VAR}}`: raw="{{env:VAR}}", scheme="env", key="VAR"
 /// - `{{asr}}`: raw="{{asr}}", scheme="", key="asr"
 struct Placeholder {
-  std::string_view raw{};
-  std::string_view scheme{};
-  std::string_view key{};
+  std::string_view raw;
+  std::string_view scheme;
+  std::string_view key;
 };
 
 /// Resolver callback for interpolation.

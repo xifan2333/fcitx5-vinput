@@ -8,9 +8,9 @@ namespace vinput::prompt_template {
 
 // Variables exposed to {{...}} interpolation in scene prompts.
 struct Vars {
-  std::string_view asr{};      // ASR recognition result (raw text or voice command)
-  std::string_view selected{}; // Command-mode selected source text; empty otherwise
-  std::string_view context{};  // pre-built recent input history block
+  std::string_view asr;      // ASR recognition result (raw text or voice command)
+  std::string_view selected; // Command-mode selected source text; empty otherwise
+  std::string_view context;  // pre-built recent input history block
 };
 
 // True when `s` begins with the standard `file:///` URI prefix.
