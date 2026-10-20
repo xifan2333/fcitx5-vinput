@@ -31,7 +31,7 @@ std::vector<std::string> SplitResourceId(std::string_view id) {
     return {};
   }
 
-  const auto tokens = vinput::str::SplitByChar(id, '.');
+  const auto tokens = vinput::str::Split(id, '.');
   if (tokens.size() < 3) {
     return {};
   }

@@ -250,7 +250,7 @@ private:
   }
 
   void EmitNotification(std::string_view text) {
-    const std::string notification(vinput::str::TrimAsciiWhitespaceView(text));
+    const std::string notification(vinput::str::Trim(text));
     if (notification.empty()) {
       return;
     }
@@ -261,7 +261,7 @@ private:
     vinput::process::DrainLinesFromBuffer(
         adapter.stderr_buffer,
         [this, &adapter](std::string_view raw_line) {
-          const std::string line(vinput::str::TrimAsciiWhitespaceView(raw_line));
+          const std::string line(vinput::str::Trim(raw_line));
           if (!line.empty()) {
             VLOG_DEBUG("adapter[{}] stderr: {}", adapter.id, line);
             EmitNotification(line);
@@ -300,7 +300,7 @@ private:
       std::string stderr_text = ReadAvailableText(process.stderr_fd);
       close(process.stderr_fd);
       process.stderr_fd = -1;
-      stderr_text = std::string(vinput::str::TrimAsciiWhitespaceView(stderr_text));
+      stderr_text = std::string(vinput::str::Trim(stderr_text));
       if (stderr_text.empty()) {
         stderr_text = "adapter exited immediately";
       }

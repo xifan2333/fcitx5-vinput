@@ -217,7 +217,7 @@ public:
         std::vector<std::string> patterns;
         std::stringstream ss(no_proxy);
         for (std::string item; std::getline(ss, item, ',');) {
-          const std::string trimmed(vinput::str::TrimAsciiWhitespaceView(item));
+          const std::string trimmed(vinput::str::Trim(item));
           if (!trimmed.empty()) {
             patterns.push_back(trimmed);
           }

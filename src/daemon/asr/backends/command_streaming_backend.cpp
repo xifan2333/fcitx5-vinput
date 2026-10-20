@@ -114,7 +114,7 @@ std::vector<char*> BuildEnvp(const std::map<std::string, std::string>& env,
 }
 
 std::string FormatProviderError(std::string detail, std::string_view fallback) {
-  detail = std::string(vinput::str::TrimAsciiWhitespaceView(detail));
+  detail = std::string(vinput::str::Trim(detail));
   if (!detail.empty()) {
     return detail;
   }
@@ -630,7 +630,7 @@ private:
 
   void ConsumeStdoutLines(std::string* error) {
     vinput::process::DrainLinesFromBuffer(stdout_buffer_, [&](std::string_view raw_line) {
-      const std::string line(vinput::str::TrimAsciiWhitespaceView(raw_line));
+      const std::string line(vinput::str::Trim(raw_line));
       if (line.empty()) {
         return true;
       }
@@ -642,7 +642,7 @@ private:
     vinput::process::DrainLinesFromBuffer(
         stderr_buffer_,
         [&](std::string_view raw_line) {
-          const std::string line(vinput::str::TrimAsciiWhitespaceView(raw_line));
+          const std::string line(vinput::str::Trim(raw_line));
           if (line.empty()) {
             return;
           }
@@ -668,8 +668,7 @@ private:
       return true;
     }
     if (type == "partial") {
-      const std::string text =
-          std::string(vinput::str::TrimAsciiWhitespaceView(payload.value("text", std::string{})));
+      const std::string text = std::string(vinput::str::Trim(payload.value("text", std::string{})));
       if (!text.empty() && text != last_partial_text_) {
         last_partial_text_ = text;
         events_.push_back({RecognitionEventKind::PartialText, text, {}});
@@ -677,8 +676,7 @@ private:
       return true;
     }
     if (type == "final" || type == "final_timestamps") {
-      const std::string text =
-          std::string(vinput::str::TrimAsciiWhitespaceView(payload.value("text", std::string{})));
+      const std::string text = std::string(vinput::str::Trim(payload.value("text", std::string{})));
       if (!text.empty()) {
         saw_final_text_ = true;
         last_partial_text_.clear();
@@ -687,8 +685,7 @@ private:
       return true;
     }
     if (type == "error") {
-      QueueError(std::string(
-          vinput::str::TrimAsciiWhitespaceView(payload.value("message", std::string{}))));
+      QueueError(std::string(vinput::str::Trim(payload.value("message", std::string{}))));
       return true;
     }
     if (type == "closed") {

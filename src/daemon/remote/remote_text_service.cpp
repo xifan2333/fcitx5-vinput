@@ -39,7 +39,7 @@ using json = nlohmann::json;
 constexpr std::string_view kRemoteProviderId = "provider.vinput.remote.streaming";
 
 std::optional<int> ParsePort(std::string_view value) {
-  const std::string_view trimmed = vinput::str::TrimAsciiWhitespaceView(value);
+  const std::string_view trimmed = vinput::str::Trim(value);
   if (trimmed.empty()) {
     return std::nullopt;
   }
@@ -54,7 +54,7 @@ std::optional<int> ParsePort(std::string_view value) {
 }
 
 std::optional<int> ParsePositiveInt(std::string_view value) {
-  const std::string_view trimmed = vinput::str::TrimAsciiWhitespaceView(value);
+  const std::string_view trimmed = vinput::str::Trim(value);
   if (trimmed.empty()) {
     return std::nullopt;
   }
@@ -73,11 +73,11 @@ std::string EnvValue(const std::map<std::string, std::string>& env, std::string_
   if (it == env.end()) {
     return {};
   }
-  return std::string(vinput::str::TrimAsciiWhitespaceView(it->second));
+  return std::string(vinput::str::Trim(it->second));
 }
 
 std::optional<int> ParsePortFromWsUrl(std::string_view url) {
-  const std::string_view text = vinput::str::TrimAsciiWhitespaceView(url);
+  const std::string_view text = vinput::str::Trim(url);
   const std::size_t scheme = text.find("://");
   if (scheme == std::string_view::npos) {
     return std::nullopt;
@@ -120,11 +120,11 @@ bool IsLoopbackAddress(std::string_view ip) {
 }
 
 std::string ExtractBearerToken(std::string_view auth_header) {
-  const std::string_view trimmed = vinput::str::TrimAsciiWhitespaceView(auth_header);
+  const std::string_view trimmed = vinput::str::Trim(auth_header);
   if (!vinput::str::StartsWithIgnoreCase(trimmed, "Bearer ")) {
     return {};
   }
-  return std::string(vinput::str::TrimAsciiWhitespaceView(trimmed.substr(7)));
+  return std::string(vinput::str::Trim(trimmed.substr(7)));
 }
 
 } // namespace

@@ -134,7 +134,7 @@ std::string GetTargetVersionConstraint() {
 
 std::optional<vinput::version::SemanticVersion>
 ParseConfigLowerBoundVersion(std::string_view ver_str) {
-  ver_str = vinput::str::TrimAsciiWhitespaceView(ver_str);
+  ver_str = vinput::str::Trim(ver_str);
   if (ver_str.empty()) {
     return std::nullopt;
   }
@@ -496,7 +496,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
         continue;
       }
       if (is_unversioned || config_ver < *rule_ver_opt) {
-        const auto segments = vinput::str::SplitByChar(rule.path, '.');
+        const auto segments = vinput::str::Split(rule.path, '.');
         if (WalkAndApply(config_data, segments, "", rule, report.changes)) {
           config_changed = true;
         }

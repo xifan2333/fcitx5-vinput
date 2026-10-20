@@ -286,9 +286,9 @@ int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std
   }
 
   LlmProvider provider;
-  provider.id = std::string(vinput::str::TrimAsciiWhitespaceView(id));
-  provider.base_url = std::string(vinput::str::TrimAsciiWhitespaceView(baseUrl));
-  provider.api_key = std::string(vinput::str::TrimAsciiWhitespaceView(apiKey));
+  provider.id = std::string(vinput::str::Trim(id));
+  provider.base_url = std::string(vinput::str::Trim(baseUrl));
+  provider.api_key = std::string(vinput::str::Trim(apiKey));
   provider.extra_body = std::move(extra_json);
   config.llm.providers.push_back(std::move(provider));
 
@@ -305,7 +305,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
   (void)ctx;
   std::map<std::string, std::string> overrides;
   for (const auto& item : envOverrides) {
-    const auto pair = vinput::str::SplitPair(item, '=');
+    const auto pair = vinput::str::SplitOnce(item, '=');
     if (!pair || pair->first.empty()) {
       // A malformed value may be a token pasted without its key, so never echo it back.
       fmt.PrintError(_("Invalid --env: expected KEY=VALUE."));
@@ -373,8 +373,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
         continue;
       }
       const auto value = installed->env.find(spec.name);
-      if (value == installed->env.end() ||
-          std::string(vinput::str::TrimAsciiWhitespaceView(value->second)).empty()) {
+      if (value == installed->env.end() || std::string(vinput::str::Trim(value->second)).empty()) {
         fmt.PrintWarning(vinput::str::FmtStr(
             _("Required env '%s' is empty; '%s' cannot start until it is set (re-run with -e "
               "%s=<value>)."),
@@ -759,10 +758,10 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
   }
 
   if (hasBaseUrl) {
-    it->base_url = std::string(vinput::str::TrimAsciiWhitespaceView(baseUrl));
+    it->base_url = std::string(vinput::str::Trim(baseUrl));
   }
   if (hasApiKey) {
-    it->api_key = std::string(vinput::str::TrimAsciiWhitespaceView(apiKey));
+    it->api_key = std::string(vinput::str::Trim(apiKey));
   }
   if (hasExtraBody) {
     nlohmann::json extra_json;

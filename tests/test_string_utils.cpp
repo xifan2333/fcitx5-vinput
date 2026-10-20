@@ -19,27 +19,21 @@ inline void AssertTrue(bool condition, const char* message, const char* file, in
 
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
-void TestTrimAsciiWhitespaceView() {
+void TestTrim() {
   using vinput::str::Trim;
-  using vinput::str::TrimAsciiWhitespaceView;
 
   // Empty string
   TEST_ASSERT(Trim("").empty());
-  TEST_ASSERT(TrimAsciiWhitespaceView("").empty());
 
   // Pure whitespace
   TEST_ASSERT(Trim("   \t\r\n ").empty());
-  TEST_ASSERT(TrimAsciiWhitespaceView("   \t\r\n ").empty());
 
   // Leading and trailing whitespace
   TEST_ASSERT(Trim("  hello world  \n") == "hello world");
-  TEST_ASSERT(TrimAsciiWhitespaceView("  hello world  \n") == "hello world");
   TEST_ASSERT(Trim("\t\tvinput\r") == "vinput");
-  TEST_ASSERT(TrimAsciiWhitespaceView("\t\tvinput\r") == "vinput");
 
   // No whitespace to trim
   TEST_ASSERT(Trim("abc") == "abc");
-  TEST_ASSERT(TrimAsciiWhitespaceView("abc") == "abc");
 
   // Zero-copy check: returned string_view points inside original buffer
   const std::string_view original = "  inner text  ";
@@ -63,20 +57,19 @@ void TestEqualsIgnoreCase() {
   TEST_ASSERT(!EqualsIgnoreCase("hello", "world"));
 }
 
-void TestSplitByChar() {
+void TestSplit() {
   using vinput::str::Split;
-  using vinput::str::SplitByChar;
 
   // Single segment
   const auto res1 = Split("hello", '.');
   TEST_ASSERT(res1.size() == 1 && res1[0] == "hello");
 
   // Multiple segments
-  const auto res2 = SplitByChar("a.b.c", '.');
+  const auto res2 = Split("a.b.c", '.');
   TEST_ASSERT(res2.size() == 3 && res2[0] == "a" && res2[1] == "b" && res2[2] == "c");
 
   // Leading, trailing, consecutive delimiters
-  const auto res3 = SplitByChar("/usr/local/bin/", '/');
+  const auto res3 = Split("/usr/local/bin/", '/');
   TEST_ASSERT(res3.size() == 5);
   TEST_ASSERT(res3[0].empty());
   TEST_ASSERT(res3[1] == "usr");
@@ -85,7 +78,7 @@ void TestSplitByChar() {
   TEST_ASSERT(res3[4].empty());
 
   // Empty string
-  const auto res4 = SplitByChar("", ',');
+  const auto res4 = Split("", ',');
   TEST_ASSERT(res4.size() == 1 && res4[0].empty());
 }
 
@@ -156,9 +149,8 @@ void TestConsumePrefix() {
   TEST_ASSERT(sv4.empty());
 }
 
-void TestSplitPair() {
+void TestSplitOnce() {
   using vinput::str::SplitOnce;
-  using vinput::str::SplitPair;
 
   // Normal char delimiter
   const auto pair1 = SplitOnce("KEY=VALUE", '=');
@@ -167,68 +159,33 @@ void TestSplitPair() {
     TEST_ASSERT(pair1->first == "KEY" && pair1->second == "VALUE");
   }
 
-  // Delimiter with whitespace and trim_whitespace = true
-  const auto pair2 = SplitPair("  host : 127.0.0.1\t", ':', /*trim_whitespace=*/true);
-  TEST_ASSERT(pair2.has_value());
-  if (pair2.has_value()) {
-    TEST_ASSERT(pair2->first == "host" && pair2->second == "127.0.0.1");
-  }
-
-  // Delimiter with whitespace and trim_whitespace = false
-  const auto pair3 = SplitPair("  host : 127.0.0.1\t", ':', /*trim_whitespace=*/false);
-  TEST_ASSERT(pair3.has_value());
-  if (pair3.has_value()) {
-    TEST_ASSERT(pair3->first == "  host " && pair3->second == " 127.0.0.1\t");
-  }
-
   // No delimiter
-  TEST_ASSERT(!SplitPair("NO_DELIM", '=').has_value());
-  TEST_ASSERT(!SplitPair("", '=').has_value());
+  TEST_ASSERT(!SplitOnce("NO_DELIM", '=').has_value());
+  TEST_ASSERT(!SplitOnce("", '=').has_value());
 
   // Leading and trailing delimiter
-  const auto pair4 = SplitPair("=VALUE", '=');
-  TEST_ASSERT(pair4.has_value());
-  if (pair4.has_value()) {
-    TEST_ASSERT(pair4->first.empty() && pair4->second == "VALUE");
+  const auto pair2 = SplitOnce("=VALUE", '=');
+  TEST_ASSERT(pair2.has_value());
+  if (pair2.has_value()) {
+    TEST_ASSERT(pair2->first.empty() && pair2->second == "VALUE");
   }
 
-  const auto pair5 = SplitPair("KEY=", '=');
-  TEST_ASSERT(pair5.has_value());
-  if (pair5.has_value()) {
-    TEST_ASSERT(pair5->first == "KEY" && pair5->second.empty());
+  const auto pair3 = SplitOnce("KEY=", '=');
+  TEST_ASSERT(pair3.has_value());
+  if (pair3.has_value()) {
+    TEST_ASSERT(pair3->first == "KEY" && pair3->second.empty());
   }
 
   // Multiple consecutive delimiters: split on first delimiter only
-  const auto pair6 = SplitPair("a=b=c", '=');
-  TEST_ASSERT(pair6.has_value());
-  if (pair6.has_value()) {
-    TEST_ASSERT(pair6->first == "a" && pair6->second == "b=c");
-  }
-
-  // String_view delimiter
-  const auto pair7 = SplitPair("key::value", "::");
-  TEST_ASSERT(pair7.has_value());
-  if (pair7.has_value()) {
-    TEST_ASSERT(pair7->first == "key" && pair7->second == "value");
-  }
-
-  // Empty string_view delimiter -> nullopt
-  TEST_ASSERT(!SplitPair("key::value", "").has_value());
-
-  // Non-matching string_view delimiter
-  TEST_ASSERT(!SplitPair("key:value", "::").has_value());
-
-  // String_view delimiter with trim
-  const auto pair8 = SplitPair(" key --> value ", "-->", /*trim_whitespace=*/true);
-  TEST_ASSERT(pair8.has_value());
-  if (pair8.has_value()) {
-    TEST_ASSERT(pair8->first == "key" && pair8->second == "value");
+  const auto pair4 = SplitOnce("a=b=c", '=');
+  TEST_ASSERT(pair4.has_value());
+  if (pair4.has_value()) {
+    TEST_ASSERT(pair4->first == "a" && pair4->second == "b=c");
   }
 }
 
-void TestSplitPairRight() {
+void TestRSplitOnce() {
   using vinput::str::RSplitOnce;
-  using vinput::str::SplitPairRight;
 
   // Split on rightmost delimiter
   const auto pair1 = RSplitOnce("a:b:c", ':');
@@ -237,30 +194,9 @@ void TestSplitPairRight() {
     TEST_ASSERT(pair1->first == "a:b" && pair1->second == "c");
   }
 
-  // Hotword score pattern
-  const auto pair2 = SplitPairRight("alpha:beta:3.5", ':');
-  TEST_ASSERT(pair2.has_value());
-  if (pair2.has_value()) {
-    TEST_ASSERT(pair2->first == "alpha:beta" && pair2->second == "3.5");
-  }
-
-  // Trim whitespace
-  const auto pair3 = SplitPairRight("  foo:bar  :  10  ", ':', /*trim_whitespace=*/true);
-  TEST_ASSERT(pair3.has_value());
-  if (pair3.has_value()) {
-    TEST_ASSERT(pair3->first == "foo:bar" && pair3->second == "10");
-  }
-
-  // Without trim whitespace
-  const auto pair4 = SplitPairRight("  foo:bar  :  10  ", ':', /*trim_whitespace=*/false);
-  TEST_ASSERT(pair4.has_value());
-  if (pair4.has_value()) {
-    TEST_ASSERT(pair4->first == "  foo:bar  " && pair4->second == "  10  ");
-  }
-
   // No delimiter present
-  TEST_ASSERT(!SplitPairRight("no_delim", ':').has_value());
-  TEST_ASSERT(!SplitPairRight("", ':').has_value());
+  TEST_ASSERT(!RSplitOnce("no_delim", ':').has_value());
+  TEST_ASSERT(!RSplitOnce("", ':').has_value());
 }
 
 void TestJoin() {
@@ -368,14 +304,14 @@ void TestFmtStr() {
 } // namespace
 
 int main() {
-  TestTrimAsciiWhitespaceView();
+  TestTrim();
   TestEqualsIgnoreCase();
-  TestSplitByChar();
+  TestSplit();
   TestSplitLines();
   TestStripSuffix();
   TestConsumePrefix();
-  TestSplitPair();
-  TestSplitPairRight();
+  TestSplitOnce();
+  TestRSplitOnce();
   TestJoin();
   TestJoinKeyValue();
   TestFmtStr();

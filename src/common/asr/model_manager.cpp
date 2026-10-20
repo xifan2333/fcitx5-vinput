@@ -25,7 +25,7 @@ std::vector<std::string> SplitModelId(std::string_view model_id) {
     return {};
   }
 
-  const auto tokens = vinput::str::SplitByChar(model_id, '.');
+  const auto tokens = vinput::str::Split(model_id, '.');
   if (tokens.size() < 3 || tokens.front() != "model") {
     return {};
   }

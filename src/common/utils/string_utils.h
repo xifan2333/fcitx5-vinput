@@ -86,10 +86,6 @@ template <typename... Args> std::string FmtStr(const char* fmt, const Args&... a
   return text.substr(begin_idx, end_idx - begin_idx);
 }
 
-[[nodiscard]] inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept {
-  return Trim(text);
-}
-
 // =========================================================================
 // 3. Affixes (Prefix & Suffix)
 // =========================================================================
@@ -129,10 +125,6 @@ inline std::vector<std::string_view> Split(std::string_view text, char delim) {
   return tokens;
 }
 
-inline std::vector<std::string_view> SplitByChar(std::string_view text, char delim) {
-  return Split(text, delim);
-}
-
 inline std::vector<std::string_view> SplitLines(std::string_view text) {
   std::vector<std::string_view> lines;
   size_t start = 0;
@@ -162,55 +154,12 @@ SplitOnce(std::string_view text, char delimiter) noexcept {
 }
 
 inline std::optional<std::pair<std::string_view, std::string_view>>
-SplitOnce(std::string_view text, std::string_view delimiter) noexcept {
-  if (delimiter.empty()) {
-    return std::nullopt;
-  }
-  const size_t pos = text.find(delimiter);
-  if (pos == std::string_view::npos) {
-    return std::nullopt;
-  }
-  return std::make_pair(text.substr(0, pos), text.substr(pos + delimiter.size()));
-}
-
-inline std::optional<std::pair<std::string_view, std::string_view>>
 RSplitOnce(std::string_view text, char delimiter) noexcept {
   const size_t pos = text.rfind(delimiter);
   if (pos == std::string_view::npos) {
     return std::nullopt;
   }
   return std::make_pair(text.substr(0, pos), text.substr(pos + 1));
-}
-
-inline std::optional<std::pair<std::string_view, std::string_view>>
-SplitPair(std::string_view text, char delimiter, bool trim_whitespace = false) noexcept {
-  const auto pair = SplitOnce(text, delimiter);
-  if (!pair || !trim_whitespace) {
-    return pair;
-  }
-  return std::make_pair(Trim(pair->first), Trim(pair->second));
-}
-
-inline std::optional<std::pair<std::string_view, std::string_view>>
-SplitPair(std::string_view text, std::string_view delimiter,
-          bool trim_whitespace = false) noexcept {
-  const auto pair = SplitOnce(text, delimiter);
-  if (!pair || !trim_whitespace) {
-    return pair;
-  }
-  return std::make_pair(Trim(pair->first), Trim(pair->second));
-}
-
-inline std::optional<std::pair<std::string_view, std::string_view>>
-SplitPairRight(std::string_view text, char delimiter, bool trim_whitespace = false) noexcept {
-  const auto pair = RSplitOnce(text, delimiter);
-  if (!pair) {
-    return std::nullopt;
-  }
-  if (!trim_whitespace) {
-    return pair;
-  }
-  return std::make_pair(Trim(pair->first), Trim(pair->second));
 }
 
 // =========================================================================

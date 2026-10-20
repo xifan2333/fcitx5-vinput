@@ -188,7 +188,7 @@ bool LooksLikeScore(std::string_view value) {
 }
 
 bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::string* error) {
-  const std::string_view line = vinput::str::TrimAsciiWhitespaceView(raw_line);
+  const std::string_view line = vinput::str::Trim(raw_line);
   if (line.empty()) {
     entry->text.clear();
     entry->score.clear();
@@ -204,7 +204,7 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
     }
   }
 
-  const auto pair = vinput::str::SplitPairRight(line, ':');
+  const auto pair = vinput::str::RSplitOnce(line, ':');
   if (!pair) {
     entry->text = std::string(line);
     entry->score.clear();
@@ -213,8 +213,8 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
 
   const std::string_view raw_text = pair->first;
   const std::string_view raw_score = pair->second;
-  const std::string_view score = vinput::str::TrimAsciiWhitespaceView(raw_score);
-  const std::string_view text = vinput::str::TrimAsciiWhitespaceView(raw_text);
+  const std::string_view score = vinput::str::Trim(raw_score);
+  const std::string_view text = vinput::str::Trim(raw_text);
   if (IsValidScore(score)) {
     const bool whitespace_before = !raw_text.empty() && IsHotwordWhitespace(raw_text.back());
     const bool whitespace_after = raw_score != score;

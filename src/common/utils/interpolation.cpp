@@ -37,8 +37,7 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
         can_close_dollar = false;
       } else {
         const std::string_view raw = text.substr(i, end - i + 1);
-        const std::string_view inner =
-            vinput::str::TrimAsciiWhitespaceView(text.substr(i + 2, end - (i + 2)));
+        const std::string_view inner = vinput::str::Trim(text.substr(i + 2, end - (i + 2)));
         if (!inner.empty()) {
           const Placeholder p{
               .raw = raw,
@@ -62,8 +61,7 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
         can_close_brace = false;
       } else {
         const std::string_view raw = text.substr(i, end - i + 2);
-        const std::string_view inner =
-            vinput::str::TrimAsciiWhitespaceView(text.substr(i + 2, end - (i + 2)));
+        const std::string_view inner = vinput::str::Trim(text.substr(i + 2, end - (i + 2)));
         if (!inner.empty()) {
           std::string_view scheme;
           std::string_view key = inner;
@@ -72,8 +70,8 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
           const size_t sep = inner.find_first_of(".:");
           bool valid = true;
           if (sep != std::string_view::npos) {
-            scheme = vinput::str::TrimAsciiWhitespaceView(inner.substr(0, sep));
-            key = vinput::str::TrimAsciiWhitespaceView(inner.substr(sep + 1));
+            scheme = vinput::str::Trim(inner.substr(0, sep));
+            key = vinput::str::Trim(inner.substr(sep + 1));
             if (scheme.empty()) {
               valid = false;
             }
