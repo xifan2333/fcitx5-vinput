@@ -112,11 +112,10 @@ void AudioCapture::processCallback() {
   }
 
   if (recording_.load(std::memory_order_relaxed)) {
-    auto* raw = static_cast<uint8_t*>(buf->datas[0].data);
+    const auto* raw = static_cast<const uint8_t*>(buf->datas[0].data);
     const uint32_t offset = buf->datas[0].chunk->offset;
     const uint32_t size = buf->datas[0].chunk->size;
     if (size > 0 && offset + size <= buf->datas[0].maxsize) {
-      const auto* samples = static_cast<const int16_t*>(static_cast<const void*>(raw + offset));
       const uint32_t n_samples = size / sizeof(int16_t);
 
       if (n_samples > 0) {
@@ -132,7 +131,8 @@ void AudioCapture::processCallback() {
           const uint32_t to_copy =
               std::min<uint32_t>(n_samples - offset_samples, vinput::audio::kMaxChunkSamples);
           vinput::audio::AudioPcmChunk chunk;
-          std::copy_n(samples + offset_samples, to_copy, chunk.samples.data());
+          std::memcpy(chunk.samples.data(), raw + offset + (offset_samples * sizeof(int16_t)),
+                      to_copy * sizeof(int16_t));
           chunk.size = to_copy;
 
           if (!queue_.try_enqueue(chunk)) {
@@ -445,7 +445,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
 
   // Drain any remaining chunks in the queue under consumer_mutex_
   {
-    std::lock_guard<std::mutex> lock(consumer_mutex_);
+    const std::lock_guard<std::mutex> lock(consumer_mutex_);
     vinput::audio::AudioPcmChunk discard;
     while (queue_.try_dequeue(discard)) {
     }
@@ -576,7 +576,7 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
     DestroyStream();
   }
 
-  std::lock_guard<std::mutex> lock(consumer_mutex_);
+  const std::lock_guard<std::mutex> lock(consumer_mutex_);
   std::vector<int16_t> result;
   vinput::audio::AudioPcmChunk chunk;
   while (queue_.try_dequeue(chunk)) {
@@ -589,7 +589,7 @@ void AudioCapture::Stop() {
   recording_.store(false, std::memory_order_relaxed);
   CancelIdleDestroy();
   DestroyStream();
-  std::lock_guard<std::mutex> lock(consumer_mutex_);
+  const std::lock_guard<std::mutex> lock(consumer_mutex_);
   vinput::audio::AudioPcmChunk chunk;
   while (queue_.try_dequeue(chunk)) {
   }
@@ -600,7 +600,7 @@ bool AudioCapture::IsRecording() const {
 }
 
 bool AudioCapture::TryDequeue(vinput::audio::AudioPcmChunk& chunk) {
-  std::lock_guard<std::mutex> lock(consumer_mutex_);
+  const std::lock_guard<std::mutex> lock(consumer_mutex_);
   return queue_.try_dequeue(chunk);
 }
 

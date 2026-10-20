@@ -555,7 +555,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
 }
 
 void DaemonRuntimeController::DrainIncomingAudio() {
-  if (!capture_ || !accepting_chunks_.load(std::memory_order_relaxed)) {
+  if (capture_ == nullptr || !accepting_chunks_.load(std::memory_order_relaxed)) {
     return;
   }
   vinput::audio::AudioPcmChunk chunk;

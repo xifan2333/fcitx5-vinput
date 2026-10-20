@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <readerwriterqueue.h>
 #include <thread>
 #include <type_traits>
@@ -108,8 +109,11 @@ void TestQueueOverflowAndDropTelemetry() {
   constexpr std::size_t kCapacity = 4;
   moodycamel::ReaderWriterQueue<vinput::audio::AudioPcmChunk> queue(kCapacity);
 
-  vinput::audio::AudioPcmChunk chunk;
-  chunk.size = 256;
+  const vinput::audio::AudioPcmChunk chunk = []() {
+    vinput::audio::AudioPcmChunk c;
+    c.size = 256;
+    return c;
+  }();
 
   std::size_t enqueued_count = 0;
   // Fill the queue's preallocated blocks completely until try_enqueue fails
@@ -130,7 +134,7 @@ void TestQueueOverflowAndDropTelemetry() {
   }
 
   Check(dropped_chunks.load() == 5, "all 5 pushes on saturated queue must be dropped");
-  Check(dropped_samples.load() == 5 * 256,
+  Check(dropped_samples.load() == dropped_chunks.load() * std::size_t{256},
         "dropped samples count must match dropped chunks * size");
 
   // Draining restores space
@@ -165,8 +169,7 @@ void TestAtomicLatencyCalculation() {
 
   first_ns.store(1'050'000'000L, std::memory_order_release);
   const auto latency = calc_latency();
-  Check(latency.has_value(), "latency should be calculated");
-  Check(*latency == 50, "latency should be 50 ms");
+  Check(latency.has_value() && *latency == 50, "latency should be 50 ms");
 
   // Reset
   armed_ns.store(0, std::memory_order_release);
