@@ -57,7 +57,7 @@ template <typename... Args> std::string FmtStr(const char* fmt, const Args&... a
     // No substitution requested (common for plain gettext messages); returning the
     // text verbatim also avoids passing a non-literal format to snprintf
     // (-Wformat-security).
-    return std::string(fmt);
+    return {fmt};
   } else {
     const auto storage = std::make_tuple(detail::PrepareStorage(args)...);
     return std::apply(
