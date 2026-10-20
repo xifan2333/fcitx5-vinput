@@ -22,25 +22,20 @@ inline void AssertTrue(bool condition, const char* message, const char* file, in
 
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
-void TestTrimAsciiWhitespace() {
-  using vinput::str::TrimAsciiWhitespace;
+void TestTrimAsciiWhitespaceView() {
   using vinput::str::TrimAsciiWhitespaceView;
 
   // Empty string
-  TEST_ASSERT(TrimAsciiWhitespace("").empty());
   TEST_ASSERT(TrimAsciiWhitespaceView("").empty());
 
   // Pure whitespace
-  TEST_ASSERT(TrimAsciiWhitespace("   \t\r\n ").empty());
   TEST_ASSERT(TrimAsciiWhitespaceView("   \t\r\n ").empty());
 
   // Leading and trailing whitespace
-  TEST_ASSERT(TrimAsciiWhitespace("  hello world  \n") == "hello world");
   TEST_ASSERT(TrimAsciiWhitespaceView("  hello world  \n") == "hello world");
-  TEST_ASSERT(TrimAsciiWhitespace("\t\tvinput\r") == "vinput");
+  TEST_ASSERT(TrimAsciiWhitespaceView("\t\tvinput\r") == "vinput");
 
   // No whitespace to trim
-  TEST_ASSERT(TrimAsciiWhitespace("abc") == "abc");
   TEST_ASSERT(TrimAsciiWhitespaceView("abc") == "abc");
 
   // Zero-copy check: returned string_view points inside original buffer
@@ -49,8 +44,8 @@ void TestTrimAsciiWhitespace() {
   TEST_ASSERT(trimmed == "inner text");
   TEST_ASSERT(trimmed.data() == original.data() + 2);
 
-  // Return std::string check
-  const std::string string_res = TrimAsciiWhitespace("  to string test  ");
+  // Owning copy is built by the caller
+  const std::string string_res(TrimAsciiWhitespaceView("  to string test  "));
   TEST_ASSERT(string_res == "to string test");
 }
 
@@ -450,7 +445,7 @@ void TestFormatSize() {
 } // namespace
 
 int main() {
-  TestTrimAsciiWhitespace();
+  TestTrimAsciiWhitespaceView();
   TestEqualsIgnoreCase();
   TestSplitByChar();
   TestSplitLines();

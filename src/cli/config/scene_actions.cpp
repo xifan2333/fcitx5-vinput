@@ -60,11 +60,11 @@ int RunSceneConfigAdd(const std::string& id, const std::string& label, const std
   CoreConfig config = LoadCoreConfig();
 
   vinput::scene::Definition def;
-  def.id = vinput::str::TrimAsciiWhitespace(id);
-  def.label = vinput::str::TrimAsciiWhitespace(label);
-  def.prompt = vinput::str::TrimAsciiWhitespace(prompt);
-  def.provider_id = vinput::str::TrimAsciiWhitespace(provider_id);
-  def.model = vinput::str::TrimAsciiWhitespace(model);
+  def.id = std::string(vinput::str::TrimAsciiWhitespaceView(id));
+  def.label = std::string(vinput::str::TrimAsciiWhitespaceView(label));
+  def.prompt = std::string(vinput::str::TrimAsciiWhitespaceView(prompt));
+  def.provider_id = std::string(vinput::str::TrimAsciiWhitespaceView(provider_id));
+  def.model = std::string(vinput::str::TrimAsciiWhitespaceView(model));
   def.llm_max_candidates = llm_max_candidates;
   def.timeout_ms = timeout_ms;
   def.context_lines = context_lines;
@@ -148,16 +148,16 @@ int RunSceneConfigEdit(const std::string& id, const std::string& label, const st
 
   vinput::scene::Definition updated = *existing;
   if (hasLabel) {
-    updated.label = vinput::str::TrimAsciiWhitespace(label);
+    updated.label = std::string(vinput::str::TrimAsciiWhitespaceView(label));
   }
   if (hasPrompt) {
-    updated.prompt = vinput::str::TrimAsciiWhitespace(prompt);
+    updated.prompt = std::string(vinput::str::TrimAsciiWhitespaceView(prompt));
   }
   if (hasProvider) {
-    updated.provider_id = vinput::str::TrimAsciiWhitespace(provider_id);
+    updated.provider_id = std::string(vinput::str::TrimAsciiWhitespaceView(provider_id));
   }
   if (hasModel) {
-    updated.model = vinput::str::TrimAsciiWhitespace(model);
+    updated.model = std::string(vinput::str::TrimAsciiWhitespaceView(model));
   }
   if (hasLlmMaxCandidates) {
     updated.llm_max_candidates = llm_max_candidates;

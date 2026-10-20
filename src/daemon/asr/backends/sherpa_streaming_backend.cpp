@@ -178,7 +178,7 @@ private:
 
     std::string text;
     if (result->text) {
-      text = vinput::str::TrimAsciiWhitespace(result->text);
+      text = std::string(vinput::str::TrimAsciiWhitespaceView(result->text));
     }
     fprintf(stderr, "vinput: streaming current result bytes=%zu token_count=%d\n", text.size(),
             result->count);

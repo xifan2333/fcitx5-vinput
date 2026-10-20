@@ -12,7 +12,7 @@ namespace vinput::daemon::asr {
 namespace {
 
 std::string FormatProviderError(std::string detail, std::string_view fallback) {
-  detail = vinput::str::TrimAsciiWhitespace(detail);
+  detail = std::string(vinput::str::TrimAsciiWhitespaceView(detail));
   if (detail.empty()) {
     detail = std::string(fallback);
   }
@@ -65,7 +65,8 @@ public:
                          {},
                          FormatProviderError(std::move(command_result.stderr_text), "failed.")});
     } else {
-      std::string text = vinput::str::TrimAsciiWhitespace(command_result.stdout_text);
+      std::string text =
+          std::string(vinput::str::TrimAsciiWhitespaceView(command_result.stdout_text));
       if (text.empty()) {
         events_.push_back(
             {RecognitionEventKind::Error, {}, FormatProviderError({}, "returned no text.")});

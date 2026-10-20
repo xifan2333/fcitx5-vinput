@@ -286,9 +286,9 @@ int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std
   }
 
   LlmProvider provider;
-  provider.id = vinput::str::TrimAsciiWhitespace(id);
-  provider.base_url = vinput::str::TrimAsciiWhitespace(baseUrl);
-  provider.api_key = vinput::str::TrimAsciiWhitespace(apiKey);
+  provider.id = std::string(vinput::str::TrimAsciiWhitespaceView(id));
+  provider.base_url = std::string(vinput::str::TrimAsciiWhitespaceView(baseUrl));
+  provider.api_key = std::string(vinput::str::TrimAsciiWhitespaceView(apiKey));
   provider.extra_body = std::move(extra_json);
   config.llm.providers.push_back(std::move(provider));
 
@@ -374,7 +374,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
       }
       const auto value = installed->env.find(spec.name);
       if (value == installed->env.end() ||
-          vinput::str::TrimAsciiWhitespace(value->second).empty()) {
+          std::string(vinput::str::TrimAsciiWhitespaceView(value->second)).empty()) {
         fmt.PrintWarning(vinput::str::FmtStr(
             _("Required env '%s' is empty; '%s' cannot start until it is set (re-run with -e "
               "%s=<value>)."),
@@ -759,10 +759,10 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
   }
 
   if (hasBaseUrl) {
-    it->base_url = vinput::str::TrimAsciiWhitespace(baseUrl);
+    it->base_url = std::string(vinput::str::TrimAsciiWhitespaceView(baseUrl));
   }
   if (hasApiKey) {
-    it->api_key = vinput::str::TrimAsciiWhitespace(apiKey);
+    it->api_key = std::string(vinput::str::TrimAsciiWhitespaceView(apiKey));
   }
   if (hasExtraBody) {
     nlohmann::json extra_json;

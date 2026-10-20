@@ -64,7 +64,7 @@ std::string StripJournalPrefix(std::string_view line) {
   } else if (line.starts_with(kCliPrefix)) {
     line.remove_prefix(kCliPrefix.size());
   }
-  return vinput::str::TrimAsciiWhitespace(line);
+  return std::string(vinput::str::TrimAsciiWhitespaceView(line));
 }
 
 bool IsActionableFailureLine(const std::string& line) {

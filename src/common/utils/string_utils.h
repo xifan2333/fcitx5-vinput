@@ -94,10 +94,6 @@ inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept 
   return text.substr(begin_idx, end_idx - begin_idx);
 }
 
-inline std::string TrimAsciiWhitespace(std::string_view text) {
-  return std::string(TrimAsciiWhitespaceView(text));
-}
-
 [[nodiscard]] constexpr std::string_view StripSuffix(std::string_view text,
                                                      std::string_view suffix) noexcept {
   if (text.ends_with(suffix)) {
