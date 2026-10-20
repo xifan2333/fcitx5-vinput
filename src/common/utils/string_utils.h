@@ -71,11 +71,6 @@ template <typename... Args> std::string FmtStr(const char* fmt, const Args&... a
       storage);
 }
 
-template <typename... Args>
-inline std::string Format(std::format_string<Args...> fmt, Args&&... args) {
-  return std::format(fmt, std::forward<Args>(args)...);
-}
-
 inline std::string FormatSize(uint64_t bytes) {
   if (bytes >= 1024ULL * 1024 * 1024) {
     return std::format("{:.1f} GB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024));
