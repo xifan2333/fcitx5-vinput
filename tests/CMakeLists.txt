@@ -269,6 +269,11 @@ target_include_directories(test_logging PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_logging PRIVATE common pthread)
 add_test(NAME test_logging COMMAND test_logging)
 
+add_executable(test_audio_realtime_queue test_audio_realtime_queue.cpp)
+target_include_directories(test_audio_realtime_queue PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_audio_realtime_queue PRIVATE readerwriterqueue::readerwriterqueue pthread)
+add_test(NAME test_audio_realtime_queue COMMAND test_audio_realtime_queue)
+
 find_package(Qt6 COMPONENTS Core QUIET)
 if(Qt6_FOUND)
     add_executable(test_download_worker
