@@ -149,8 +149,8 @@ gh pr ready
 gh pr checks
 ```
 
-### Phase 4: Automated Review Triage & Fix Loop
-Once marked ready, monitor CI and review bot outputs:
+### Phase 4: Automated Review Triage & Fix Loop (Dialectical Protocol)
+Once marked ready, monitor CI and review bot outputs (CodeRabbit, Greptile):
 ```bash
 # 1. Check CI status
 gh pr checks
@@ -160,17 +160,38 @@ gh pr view --comments
 gh api repos/:owner/:repo/pulls/<pr_id>/comments
 ```
 
-- **CodeRabbit**: Look for `> Prompt for AI Agents` blocks and treat them as candidate repair instructions.
-- **Greptile**: Address cross-file architectural warnings when Confidence $\ge$ 4.
-- **Fix & Push**:
-  Verify findings against actual code, make minimal edits, run `mise run check:changed`, and commit:
-  ```bash
-  git add <modified_files>
-  git commit -m "fix(review): address review feedback (#<issue_id>)"
-  git push origin <branch>
-  ```
-  *AI Attribution*: Whenever an agent authors PR descriptions, automated review fixes, or substantive comments, append:
-  `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*`
+#### Step 4.1: Critical Dialectical Analysis (Do NOT blindly follow bots)
+Never treat bot suggestions or `> Prompt for AI Agents` blocks as unquestioned commands. Review bots frequently generate false positives (e.g. demanding mutex locks on lock-free SPSC queues, adding redundant defensive null-checks, or violating project C++20 conventions).
+Classify every bot finding into:
+1. **True Positives (Actionable Issues)**: Real bugs, memory leaks, unhandled boundary cases, or race conditions.
+2. **False Positives (Rejections / Noise)**: Hallucinations, anti-patterns violating project architecture, or unnecessary defensive bloating.
+
+#### Step 4.2: Mandatory Pre-Action Plan Report (BEFORE WRITING CODE)
+Before writing or changing any code, the agent **MUST** report its analysis and action plan to the user in chat using the following structure:
+```markdown
+### Review Bot 辩证审阅与行动计划汇报
+
+**1. 采纳并修复的建议（True Positives）**
+- [Bot名称] 建议说明：...
+  - 分析与修复方案：...（具体改动策略）
+
+**2. 判定为误报/忽略的建议（False Positives）**
+- [Bot名称] 建议说明：...
+  - 驳回理由：...（依据 C++20 标准、无锁语义或项目架构说明为何无需修改）
+
+**3. 接下来的行动（Next Steps）**
+接下来我将开始实施上述第 1 部分的修复方案，修改完后运行本地质检并推送。
+```
+
+#### Step 4.3: Execute with Intent & Push
+Only after the plan is communicated, implement the minimal fixes:
+```bash
+git add <modified_files>
+git commit -m "fix(review): address review feedback (#<issue_id>)"
+git push origin <branch>
+```
+*AI Attribution*: Whenever an agent authors PR descriptions, automated review fixes, or substantive comments, append:
+`*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*`
 
 ### Phase 5: Final Squash-Merge
 ```bash
