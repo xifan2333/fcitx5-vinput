@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <ios>
@@ -173,15 +174,112 @@ void TestComputeFileSha256() {
   TEST_ASSERT(err.empty());
   TEST_ASSERT(hash_large == "27dd1f61b867b6a0f6e9d8a41c43231de52107e53ae424de8f847b821db4b711");
 
-  // 4. Non-existent file
+  // 4. Large file (1MB of 'A')
+  const fs::path one_mb_file = temp_dir->Path() / "1mb.txt";
+  {
+    std::ofstream out(one_mb_file, std::ios::binary);
+    std::string data(1048576, 'A');
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+  }
+  const std::string hash_1mb = ComputeFileSha256(one_mb_file, &err);
+  TEST_ASSERT(err.empty());
+  TEST_ASSERT(hash_1mb == "4e29ad18ab9f42d7c233500771a39d7c852b200baf328fd00fbbe3fecea1eb56");
+
+  // 5. Non-existent file
   const fs::path missing_file = temp_dir->Path() / "missing.txt";
   const std::string hash_missing = ComputeFileSha256(missing_file, &err);
   TEST_ASSERT(hash_missing.empty());
   TEST_ASSERT(!err.empty());
 
-  // 5. Nullptr error pointer
+  // 6. Directory path error handling
+  err.clear();
+  const std::string hash_dir = ComputeFileSha256(temp_dir->Path(), &err);
+  TEST_ASSERT(hash_dir.empty());
+  TEST_ASSERT(!err.empty());
+
+  // 7. Nullptr error pointer
   const std::string hash_null_err = ComputeFileSha256(missing_file, nullptr);
   TEST_ASSERT(hash_null_err.empty());
+}
+
+void TestReadOnlyFileMapping() {
+  using vinput::file::MapFileReadOnly;
+  using vinput::file::ReadOnlyFileMapping;
+  using vinput::file::ScopedTempDir;
+
+  auto temp_dir = ScopedTempDir::Create("", ".tmp-test-mmap-");
+  TEST_ASSERT(temp_dir != nullptr);
+
+  // 1. Regular file mapping
+  const fs::path sample_file = temp_dir->Path() / "sample.txt";
+  const std::string sample_data = "vinput-mmap-test-data\n";
+  {
+    std::ofstream out(sample_file, std::ios::binary);
+    out << sample_data;
+  }
+  std::string err;
+  auto mapping = ReadOnlyFileMapping::Map(sample_file, &err);
+  TEST_ASSERT(err.empty());
+  TEST_ASSERT(mapping.IsValid());
+  TEST_ASSERT(!mapping.IsEmpty());
+  TEST_ASSERT(mapping.Size() == sample_data.size());
+  TEST_ASSERT(mapping.StringView() == sample_data);
+  TEST_ASSERT(mapping.View() == sample_data);
+  TEST_ASSERT(mapping.Data() != nullptr);
+  TEST_ASSERT(std::memcmp(mapping.Data(), sample_data.data(), sample_data.size()) == 0);
+
+  // Substring zero-copy slice
+  const std::string_view slice = mapping.StringView().substr(0, 6);
+  TEST_ASSERT(slice == "vinput");
+
+  // 2. MapFileReadOnly convenience helper
+  auto mapped_convenience = MapFileReadOnly(sample_file, &err);
+  TEST_ASSERT(err.empty());
+  TEST_ASSERT(mapped_convenience.IsValid());
+  TEST_ASSERT(mapped_convenience.StringView() == sample_data);
+
+  // 3. Move construction and assignment
+  ReadOnlyFileMapping moved = std::move(mapping);
+  TEST_ASSERT(moved.IsValid());
+  TEST_ASSERT(moved.Size() == sample_data.size());
+  TEST_ASSERT(moved.StringView() == sample_data);
+
+  ReadOnlyFileMapping assigned;
+  assigned = std::move(moved);
+  TEST_ASSERT(assigned.IsValid());
+  TEST_ASSERT(assigned.Size() == sample_data.size());
+  TEST_ASSERT(assigned.StringView() == sample_data);
+
+  // 4. Empty file mapping (0 bytes)
+  const fs::path empty_file = temp_dir->Path() / "empty.txt";
+  {
+    std::ofstream out_empty(empty_file, std::ios::binary);
+  }
+  auto mapping_empty = ReadOnlyFileMapping::Map(empty_file, &err);
+  TEST_ASSERT(err.empty());
+  TEST_ASSERT(mapping_empty.IsValid());
+  TEST_ASSERT(mapping_empty.IsEmpty());
+  TEST_ASSERT(mapping_empty.Size() == 0);
+  TEST_ASSERT(mapping_empty.StringView().empty());
+  TEST_ASSERT(mapping_empty.View().empty());
+
+  // 5. Non-existent file mapping
+  const fs::path missing_file = temp_dir->Path() / "missing.txt";
+  auto mapping_missing = ReadOnlyFileMapping::Map(missing_file, &err);
+  TEST_ASSERT(!mapping_missing.IsValid());
+  TEST_ASSERT(mapping_missing.IsEmpty());
+  TEST_ASSERT(mapping_missing.StringView().empty());
+  TEST_ASSERT(!err.empty());
+
+  // 6. Directory mapping failure
+  err.clear();
+  auto mapping_dir = ReadOnlyFileMapping::Map(temp_dir->Path(), &err);
+  TEST_ASSERT(!mapping_dir.IsValid());
+  TEST_ASSERT(!err.empty());
+
+  // 7. Nullptr error pointer
+  auto mapping_null_err = ReadOnlyFileMapping::Map(missing_file, nullptr);
+  TEST_ASSERT(!mapping_null_err.IsValid());
 }
 
 void TestReadTextFile() {
@@ -406,6 +504,7 @@ int main() {
   TestScopedTempDirMove();
   TestScopedTempDirDismiss();
   TestComputeFileSha256();
+  TestReadOnlyFileMapping();
   TestReadTextFile();
   TestAtomicWriteTextFile();
   TestIsDirectoryWritable();
