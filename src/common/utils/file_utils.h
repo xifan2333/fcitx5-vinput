@@ -34,6 +34,40 @@ private:
   bool active_{false};
 };
 
+// RAII wrapper for zero-copy read-only memory-mapped file access.
+// Safely handles 0-byte empty files by providing an empty string_view.
+class ReadOnlyFileMapping {
+public:
+  ReadOnlyFileMapping();
+  ~ReadOnlyFileMapping();
+
+  ReadOnlyFileMapping(const ReadOnlyFileMapping&) = delete;
+  ReadOnlyFileMapping& operator=(const ReadOnlyFileMapping&) = delete;
+
+  ReadOnlyFileMapping(ReadOnlyFileMapping&& other) noexcept;
+  ReadOnlyFileMapping& operator=(ReadOnlyFileMapping&& other) noexcept;
+
+  // Maps the entire file into memory for read-only access.
+  // For empty (0-byte) files, this succeeds and produces an empty StringView().
+  static ReadOnlyFileMapping Map(const std::filesystem::path& path, std::string* error = nullptr);
+
+  [[nodiscard]] bool IsValid() const noexcept;
+  [[nodiscard]] std::string_view StringView() const noexcept;
+  [[nodiscard]] std::string_view View() const noexcept;
+  [[nodiscard]] const char* Data() const noexcept;
+  [[nodiscard]] size_t Size() const noexcept;
+  [[nodiscard]] bool IsEmpty() const noexcept;
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+  bool is_empty_file_{false};
+};
+
+// Convenience wrapper for ReadOnlyFileMapping::Map.
+ReadOnlyFileMapping MapFileReadOnly(const std::filesystem::path& path,
+                                    std::string* error = nullptr);
+
 bool ResolveSymlinkPath(const std::filesystem::path& path, std::filesystem::path* resolved,
                         std::string* error);
 bool EnsureParentDirectory(const std::filesystem::path& path, std::string* error);

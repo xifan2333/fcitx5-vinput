@@ -258,6 +258,107 @@ bool ScopedTempDir::IsValid() const {
   return active_ && !path_.empty();
 }
 
+struct ReadOnlyFileMapping::Impl {
+  mio::mmap_source mmap;
+};
+
+ReadOnlyFileMapping::ReadOnlyFileMapping() = default;
+ReadOnlyFileMapping::~ReadOnlyFileMapping() = default;
+ReadOnlyFileMapping::ReadOnlyFileMapping(ReadOnlyFileMapping&& other) noexcept = default;
+ReadOnlyFileMapping& ReadOnlyFileMapping::operator=(ReadOnlyFileMapping&& other) noexcept = default;
+
+ReadOnlyFileMapping ReadOnlyFileMapping::Map(const std::filesystem::path& path,
+                                             std::string* error) {
+  ReadOnlyFileMapping result;
+  std::error_code fs_ec;
+  const auto status = std::filesystem::status(path, fs_ec);
+  if (fs_ec || !std::filesystem::exists(status)) {
+    if (error != nullptr) {
+      *error = "file does not exist or is inaccessible: " + path.string();
+    }
+    return result;
+  }
+
+  if (std::filesystem::is_directory(status)) {
+    if (error != nullptr) {
+      *error = "cannot map directory: " + path.string();
+    }
+    return result;
+  }
+
+  const auto file_size = std::filesystem::file_size(path, fs_ec);
+  if (!fs_ec && file_size == 0) {
+    std::ifstream probe(path, std::ios::binary);
+    if (!probe.is_open()) {
+      if (error != nullptr) {
+        *error = "failed to open empty file for reading: " + path.string();
+      }
+      return result;
+    }
+    result.is_empty_file_ = true;
+    if (error != nullptr) {
+      error->clear();
+    }
+    return result;
+  }
+
+  std::error_code mmap_ec;
+  auto impl = std::make_unique<Impl>();
+  impl->mmap = mio::make_mmap_source(path.string(), mmap_ec);
+  if (mmap_ec || !impl->mmap.is_open()) {
+    if (error != nullptr) {
+      *error = "failed to map file: " + mmap_ec.message();
+    }
+    return result;
+  }
+
+  result.impl_ = std::move(impl);
+  if (error != nullptr) {
+    error->clear();
+  }
+  return result;
+}
+
+bool ReadOnlyFileMapping::IsValid() const noexcept {
+  return is_empty_file_ || (impl_ != nullptr && impl_->mmap.is_open());
+}
+
+std::string_view ReadOnlyFileMapping::StringView() const noexcept {
+  if (is_empty_file_ || impl_ == nullptr || !impl_->mmap.is_open()) {
+    return {};
+  }
+  return std::string_view(impl_->mmap.data(), impl_->mmap.size());
+}
+
+std::string_view ReadOnlyFileMapping::View() const noexcept {
+  return StringView();
+}
+
+const char* ReadOnlyFileMapping::Data() const noexcept {
+  if (is_empty_file_) {
+    return "";
+  }
+  if (impl_ == nullptr || !impl_->mmap.is_open()) {
+    return nullptr;
+  }
+  return impl_->mmap.data();
+}
+
+size_t ReadOnlyFileMapping::Size() const noexcept {
+  if (is_empty_file_ || impl_ == nullptr || !impl_->mmap.is_open()) {
+    return 0;
+  }
+  return impl_->mmap.size();
+}
+
+bool ReadOnlyFileMapping::IsEmpty() const noexcept {
+  return Size() == 0;
+}
+
+ReadOnlyFileMapping MapFileReadOnly(const std::filesystem::path& path, std::string* error) {
+  return ReadOnlyFileMapping::Map(path, error);
+}
+
 bool ResolveSymlinkPath(const std::filesystem::path& path, std::filesystem::path* resolved,
                         std::string* error) {
   if (!resolved) {
@@ -445,9 +546,8 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
     return std::string(kEmptyFileSha256);
   }
 
-  std::error_code mmap_ec;
-  mio::mmap_source mmap = mio::make_mmap_source(path.string(), mmap_ec);
-  if (!mmap_ec && mmap.is_open()) {
+  auto mapping = ReadOnlyFileMapping::Map(path, nullptr);
+  if (mapping.IsValid()) {
     const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
                                                                       &EVP_MD_CTX_free);
     if (ctx == nullptr) {
@@ -464,8 +564,9 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
       return {};
     }
 
-    if (mmap.size() > 0) {
-      if (EVP_DigestUpdate(ctx.get(), mmap.data(), mmap.size()) != 1) {
+    const auto sv = mapping.StringView();
+    if (!sv.empty()) {
+      if (EVP_DigestUpdate(ctx.get(), sv.data(), sv.size()) != 1) {
         if (error != nullptr) {
           *error = "EVP_DigestUpdate failed";
         }
