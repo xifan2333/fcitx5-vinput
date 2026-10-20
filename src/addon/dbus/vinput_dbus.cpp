@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <fcitx-utils/dbus/matchrule.h>
@@ -78,7 +79,7 @@ std::string LimitPreviewText(std::string_view text, int max_display_width) {
   if (max_display_width <= 0 || text.empty()) {
     return std::string(text);
   }
-  const size_t max_width = static_cast<size_t>(max_display_width);
+  const auto max_width = static_cast<size_t>(max_display_width);
   std::u32string u32;
   unicode::utf8::decode(text.data(), text.size(), u32);
   const size_t total_width =
