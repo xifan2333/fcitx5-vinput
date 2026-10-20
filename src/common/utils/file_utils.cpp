@@ -104,6 +104,10 @@ bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::
                                 depth + 1);
 }
 
+constexpr size_t kStreamBufferSize = 65536;
+constexpr std::string_view kEmptyFileSha256 =
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
 std::string FinalizeHashToHex(EVP_MD_CTX* ctx, std::string* error) {
   unsigned char hash[EVP_MAX_MD_SIZE];
   unsigned int hash_len = 0;
@@ -153,7 +157,7 @@ std::string ComputeFileSha256StreamFallback(const std::filesystem::path& path, s
     return {};
   }
 
-  char buffer[8192];
+  char buffer[kStreamBufferSize];
   while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
     if (EVP_DigestUpdate(ctx.get(), buffer, static_cast<size_t>(file.gcount())) != 1) {
       if (error != nullptr) {
@@ -408,6 +412,39 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
 }
 
 std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error) {
+  std::error_code fs_ec;
+  const auto status = std::filesystem::status(path, fs_ec);
+  if (fs_ec || !std::filesystem::exists(status)) {
+    if (error != nullptr) {
+      *error = "failed to open file for SHA-256 calculation: " + path.string();
+    }
+    return {};
+  }
+
+  if (std::filesystem::is_directory(status)) {
+    if (error != nullptr) {
+      *error = "failed to open file for SHA-256 calculation: " + path.string();
+    }
+    return {};
+  }
+
+  const auto file_size = std::filesystem::file_size(path, fs_ec);
+  if (!fs_ec && file_size == 0) {
+    // Defense in depth: POSIX mmap returns EINVAL on 0-byte mappings.
+    // Verify file readability first.
+    std::ifstream probe(path, std::ios::binary);
+    if (!probe.is_open()) {
+      if (error != nullptr) {
+        *error = "failed to open file for SHA-256 calculation: " + path.string();
+      }
+      return {};
+    }
+    if (error != nullptr) {
+      error->clear();
+    }
+    return std::string(kEmptyFileSha256);
+  }
+
   std::error_code mmap_ec;
   mio::mmap_source mmap = mio::make_mmap_source(path.string(), mmap_ec);
   if (!mmap_ec && mmap.is_open()) {
