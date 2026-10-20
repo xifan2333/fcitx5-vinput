@@ -77,22 +77,30 @@ jobs:
             } else {
               const formatStatus = formatFailed > 0 ? 'Failed' : 'Passed';
               const tidyStatus = tidyFailed > 0 ? 'Failed' : 'Passed';
-              const formatFix = formatFailed > 0 ? '`mise run fix`' : '—';
-              const tidyFix = tidyFailed > 0 ? '`mise run tidy`' : '—';
 
-              body += `| Tool | Scope | Issues | Status | Local Remediation |\n`;
-              body += `| :--- | :--- | :--- | :--- | :--- |\n`;
-              body += `| Clang-Format | Lines changed | ${formatFailed} | ${formatStatus} | ${formatFix} |\n`;
-              body += `| Clang-Tidy | Files changed | ${tidyFailed} | ${tidyStatus} | ${tidyFix} |\n\n`;
+              body += `| Tool | Scope | Issues | Status |\n`;
+              body += `| :--- | :--- | :--- | :--- |\n`;
+              body += `| Clang-Format | Lines changed | ${formatFailed} | ${formatStatus} |\n`;
+              body += `| Clang-Tidy | Files changed | ${tidyFailed} | ${tidyStatus} |\n\n`;
 
-              body += `#### Action Required\n`;
-              if (formatFailed > 0) {
-                body += `- **Clang-Format**: ${formatFailed} style violation(s) detected. Run \`mise run fix\` locally, verify with \`git diff\`, and commit.\n`;
+              const summaryFile = path.join('pr-report', 'summary.md');
+              let hasSummary = false;
+              if (fs.existsSync(summaryFile)) {
+                let summaryText = fs.readFileSync(summaryFile, 'utf8').trim();
+                if (summaryText) {
+                  hasSummary = true;
+                  if (summaryText.length > 55000) {
+                    summaryText = summaryText.slice(0, 55000) + '\n\n... (truncated, view full summary in workflow run)';
+                  }
+                  body += `<details open>\n<summary>Detailed Diagnostics</summary>\n\n${summaryText}\n\n</details>\n\n`;
+                }
               }
-              if (tidyFailed > 0) {
-                body += `- **Clang-Tidy**: ${tidyFailed} diagnostic issue(s) detected. Run \`mise run tidy\` locally to inspect and fix.\n`;
+
+              if (!hasSummary) {
+                body += `Please inspect the [Workflow Run Summary](${runUrl}) for detailed diagnostic logs.\n`;
+              } else {
+                body += `[View Workflow Run Summary](${runUrl})\n`;
               }
-              body += `\nLine-by-line annotations are available in the [Files changed tab](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/pull/${prNumber}/files) and [Workflow Run Summary](${runUrl}).`;
             }
 
             const { data: comments } = await github.rest.issues.listComments({
