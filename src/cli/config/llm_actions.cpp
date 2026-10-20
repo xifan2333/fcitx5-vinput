@@ -6,6 +6,7 @@
 #include <map>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 #include <system_error>
 #include <vector>
@@ -37,7 +38,7 @@ std::string MaskSecret(std::string_view secret, size_t head_keep = 4, size_t tai
     return {};
   }
   if (tail_keep >= secret.size() || head_keep >= secret.size() - tail_keep) {
-    return std::string(secret.size(), mask_char);
+    return {secret.size(), mask_char};
   }
   std::string result;
   result.reserve(secret.size());

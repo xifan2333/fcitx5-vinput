@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -5,6 +6,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unicodelib.h>
+#include <unicodelib_encodings.h>
 #include <utility>
 #include <vector>
 
