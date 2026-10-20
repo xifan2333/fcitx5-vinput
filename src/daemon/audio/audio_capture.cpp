@@ -110,28 +110,41 @@ void AudioCapture::processCallback() {
     const uint32_t offset = buf->datas[0].chunk->offset;
     const uint32_t size = buf->datas[0].chunk->size;
     if (size > 0 && offset + size <= buf->datas[0].maxsize) {
-      auto* samples = reinterpret_cast<int16_t*>(raw + offset);
+      auto* samples = reinterpret_cast<const int16_t*>(raw + offset);
       const uint32_t n_samples = size / sizeof(int16_t);
-      {
-        const std::scoped_lock lock(timing_mutex_);
-        if (recording_armed_at_.has_value() && !first_buffer_at_.has_value()) {
-          first_buffer_at_ = std::chrono::steady_clock::now();
-          VLOG_DEBUG("capture first buffer after {} ms (samples={})",
-                     vinput::time::MillisecondsBetween(*recording_armed_at_, *first_buffer_at_),
-                     n_samples);
+
+      if (n_samples > 0) {
+        int64_t expected_zero = 0;
+        const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                   std::chrono::steady_clock::now().time_since_epoch())
+                                   .count();
+        first_buffer_ns_.compare_exchange_strong(expected_zero, now_ns, std::memory_order_relaxed);
+
+        bool enqueued_any = false;
+        uint32_t offset_samples = 0;
+        while (offset_samples < n_samples) {
+          const uint32_t to_copy =
+              std::min<uint32_t>(n_samples - offset_samples, vinput::audio::kMaxChunkSamples);
+          vinput::audio::AudioPcmChunk chunk;
+          std::copy_n(samples + offset_samples, to_copy, chunk.samples.data());
+          chunk.size = to_copy;
+
+          if (!queue_.try_enqueue(chunk)) {
+            dropped_chunks_.fetch_add(1, std::memory_order_relaxed);
+            dropped_samples_.fetch_add(chunk.size, std::memory_order_relaxed);
+          } else {
+            enqueued_any = true;
+          }
+          offset_samples += to_copy;
         }
-      }
-      {
-        const std::scoped_lock lock(buffer_mutex_);
-        pcm_buffer_.insert(pcm_buffer_.end(), samples, samples + n_samples);
-      }
-      ChunkCallback callback;
-      {
-        const std::scoped_lock lock(callback_mutex_);
-        callback = chunk_callback_;
-      }
-      if (callback && n_samples > 0) {
-        callback(std::span<const int16_t>(samples, n_samples));
+
+        if (enqueued_any) {
+          const int notify_fd = notify_fd_.load(std::memory_order_relaxed);
+          if (notify_fd >= 0) {
+            const uint64_t val = 1;
+            (void)write(notify_fd, &val, sizeof(val));
+          }
+        }
       }
     }
   }
@@ -334,15 +347,15 @@ void AudioCapture::MarkStreamDestroyed() {
   last_stream_destroyed_at_ = std::chrono::steady_clock::now();
   last_stream_deactivated_at_ = last_stream_destroyed_at_;
   idle_destroy_deadline_.reset();
-  recording_armed_at_.reset();
-  first_buffer_at_.reset();
+  recording_armed_ns_.store(0, std::memory_order_release);
+  first_buffer_ns_.store(0, std::memory_order_release);
 }
 
 void AudioCapture::MarkStreamDeactivated() {
   std::lock_guard<std::mutex> lock(timing_mutex_);
   last_stream_deactivated_at_ = std::chrono::steady_clock::now();
-  recording_armed_at_.reset();
-  first_buffer_at_.reset();
+  recording_armed_ns_.store(0, std::memory_order_release);
+  first_buffer_ns_.store(0, std::memory_order_release);
 }
 
 void AudioCapture::ScheduleIdleDestroy() {
@@ -422,14 +435,18 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     if (idle_ref.has_value()) {
       local_timing.idle_gap_ms = vinput::time::MillisecondsBetween(*idle_ref, begin_at);
     }
-    first_buffer_at_.reset();
-    recording_armed_at_.reset();
   }
 
-  {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-    pcm_buffer_.clear();
+  // Drain any remaining chunks in the queue
+  vinput::audio::AudioPcmChunk discard;
+  while (queue_.try_dequeue(discard)) {
   }
+  ResetDropCounters();
+  const int64_t begin_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
+  recording_armed_ns_.store(begin_ns, std::memory_order_release);
+  first_buffer_ns_.store(0, std::memory_order_release);
 
   const bool reuse = local_timing.reuse_policy_enabled && CanReuseStreamLocked();
   if (!reuse) {
@@ -438,10 +455,6 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     local_timing.created_new_stream = true;
 
     recording_.store(true, std::memory_order_relaxed);
-    {
-      std::lock_guard<std::mutex> lock(timing_mutex_);
-      recording_armed_at_ = std::chrono::steady_clock::now();
-    }
 
     const auto create_start = std::chrono::steady_clock::now();
     // When reuse policy is on, create inactive then activate so subsequent
@@ -449,8 +462,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     const bool start_inactive = local_timing.reuse_policy_enabled;
     if (!CreateStream(start_inactive, error)) {
       recording_.store(false, std::memory_order_relaxed);
-      std::lock_guard<std::mutex> lock(timing_mutex_);
-      recording_armed_at_.reset();
+      recording_armed_ns_.store(0, std::memory_order_release);
       return false;
     }
     local_timing.create_stream_ms =
@@ -474,10 +486,6 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     local_timing.create_stream_ms = 0;
 
     recording_.store(true, std::memory_order_relaxed);
-    {
-      std::lock_guard<std::mutex> lock(timing_mutex_);
-      recording_armed_at_ = std::chrono::steady_clock::now();
-    }
 
     const auto active_start = std::chrono::steady_clock::now();
     if (!SetStreamActive(true, error)) {
@@ -490,8 +498,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
       const auto create_start = std::chrono::steady_clock::now();
       if (!CreateStream(true, error)) {
         recording_.store(false, std::memory_order_relaxed);
-        std::lock_guard<std::mutex> lock(timing_mutex_);
-        recording_armed_at_.reset();
+        recording_armed_ns_.store(0, std::memory_order_release);
         return false;
       }
       local_timing.create_stream_ms =
@@ -501,9 +508,6 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
         DestroyStream();
         return false;
       }
-      local_timing.set_active_ms =
-          vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
-    } else {
       local_timing.set_active_ms =
           vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
     }
@@ -553,9 +557,12 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
   } else {
     DestroyStream();
   }
-  std::lock_guard<std::mutex> lock(buffer_mutex_);
-  auto result = std::move(pcm_buffer_);
-  pcm_buffer_.clear();
+
+  std::vector<int16_t> result;
+  vinput::audio::AudioPcmChunk chunk;
+  while (queue_.try_dequeue(chunk)) {
+    result.insert(result.end(), chunk.samples.begin(), chunk.samples.begin() + chunk.size);
+  }
   return result;
 }
 
@@ -563,20 +570,47 @@ void AudioCapture::Stop() {
   recording_.store(false, std::memory_order_relaxed);
   CancelIdleDestroy();
   DestroyStream();
-  std::lock_guard<std::mutex> lock(buffer_mutex_);
-  pcm_buffer_.clear();
+  vinput::audio::AudioPcmChunk chunk;
+  while (queue_.try_dequeue(chunk)) {
+  }
 }
 
 bool AudioCapture::IsRecording() const {
   return recording_.load(std::memory_order_relaxed);
 }
 
+bool AudioCapture::TryDequeue(vinput::audio::AudioPcmChunk& chunk) {
+  return queue_.try_dequeue(chunk);
+}
+
+void AudioCapture::SetNotifyFd(int fd) noexcept {
+  notify_fd_.store(fd, std::memory_order_release);
+}
+
+std::size_t AudioCapture::ApproxQueueSize() const {
+  return queue_.size_approx();
+}
+
+std::size_t AudioCapture::DroppedChunks() const noexcept {
+  return dropped_chunks_.load(std::memory_order_relaxed);
+}
+
+std::size_t AudioCapture::DroppedSamples() const noexcept {
+  return dropped_samples_.load(std::memory_order_relaxed);
+}
+
+void AudioCapture::ResetDropCounters() noexcept {
+  dropped_chunks_.store(0, std::memory_order_relaxed);
+  dropped_samples_.store(0, std::memory_order_relaxed);
+}
+
 std::optional<long> AudioCapture::FirstBufferLatencyMs() const {
-  std::lock_guard<std::mutex> lock(timing_mutex_);
-  if (!recording_armed_at_.has_value() || !first_buffer_at_.has_value()) {
+  const int64_t armed = recording_armed_ns_.load(std::memory_order_acquire);
+  const int64_t first = first_buffer_ns_.load(std::memory_order_acquire);
+  if (armed <= 0 || first <= 0 || first < armed) {
     return std::nullopt;
   }
-  return vinput::time::MillisecondsBetween(*recording_armed_at_, *first_buffer_at_);
+  return static_cast<long>((first - armed) / 1'000'000L);
 }
 
 void AudioCapture::SetTargetObject(std::string target_object) {
