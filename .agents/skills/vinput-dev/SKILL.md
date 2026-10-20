@@ -5,98 +5,85 @@ description: Complete development, fork contribution, code health check, Issue+P
 
 # fcitx5-vinput Unified Development Skill
 
-This skill is the master operational manual for developing, contributing via forks, performing code health checks, and managing workflows across the `fcitx5-vinput` ecosystem.
+Master router and operational manual for developing, contributing via forks, performing code health checks, and managing workflows across the `fcitx5-vinput` ecosystem.
 
 ---
 
-## 1. Quick Repository Routing
+## 1. Ecosystem Repository Routing
 
-Verify target repository before making changes:
+Verify target repository boundaries before making any changes:
 
-| Target | Description | Local Path / Remote |
+| Target Component | Repository & Path | Primary Role |
 | :--- | :--- | :--- |
-| **`fcitx5-vinput` (Core)** | C++20 Addon, Daemon, CLI, PipeWire Audio, Releases | `.` / [xifan2333/fcitx5-vinput](https://github.com/xifan2333/fcitx5-vinput) |
-| **`vinput-registry`** | Cloud ASR provider scripts, LLM scene adapters, Model index | `~/Code/vinput-registry` / [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) |
-| **`aur-auto`** | Arch Linux AUR packaging automation (`fcitx5-vinput-bin`) | `~/Code/aur-auto` / [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) |
-| **`flatpak-auto`** | Flatpak OSTree repository & flatpakref automation | `~/Code/flatpak-auto` / [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) |
-| **`fcitx5`** (Upstream) | Fcitx5 core framework reference, event loop & modifier handling (Context7: `fcitx/fcitx5`) | [fcitx/fcitx5](https://github.com/fcitx/fcitx5) |
-| **`sherpa-onnx`** (Upstream) | Local speech recognition & VAD engine runtime (Context7: `k2-fsa/sherpa-onnx`) | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) |
-| **`pipewire`** (Upstream) | Low-latency audio stream capture & SPA buffers (Context7: `pipewire/pipewire`) | [pipewire/pipewire](https://github.com/pipewire/pipewire) |
-| **`cli11`** (Upstream) | Modern C++ CLI option parser & subcommand routing (Context7: `cliutils/cli11`) | [cliutils/cli11](https://github.com/cliutils/cli11) |
-| **`qt6`** (Upstream) | Desktop GUI widgets, item delegates, layouts (Context7: `websites/doc_qt_io_qt-6`) | [qt/qtbase](https://github.com/qt/qtbase) |
+| **Core Engine** | `.` / [xifan2333/fcitx5-vinput](https://github.com/xifan2333/fcitx5-vinput) | C++20 Fcitx5 addon, background daemon, CLI, PipeWire capture, sherpa-onnx runtime. |
+| **Catalog Registry** | `~/Code/vinput-registry` / [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) | Cloud ASR provider scripts, LLM scene adapters, and offline model catalogs. |
+| **Arch Packaging** | `~/Code/aur-auto` / [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) | Arch User Repository (`fcitx5-vinput-bin`) release tracking and clean chroot builds. |
+| **Flatpak Automation** | `~/Code/flatpak-auto` / [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) | Flatpak bundle builds, OSTree repo importing, and `.flatpakref` generation. |
 
 ---
 
-## 2. Core Architecture
+## 2. Universal Pre-Commit Quality Gate
 
-- `src/addon/`: Fcitx5 addon (Qt/C++, hotkey triggers, floating UI, D-Bus client).
-- `src/daemon/`: Background daemon (`vinput-daemon`, PipeWire audio capture, sherpa-onnx runtime, cloud ASR, LLM post-processing scenes, D-Bus service `org.fcitx.Vinput`).
-- `src/cli/`: Standalone `vinput` CLI utility.
-- `src/common/`: Shared structs, configuration loading (`nlohmann::json`), isolated ConfigMigration (`config/config_migration.cpp`), D-Bus interfaces.
-- `po/` & `i18n/`: Localization catalogs.
-
----
-
-## 3. Universal Code Quality Gate (`hk` / `mise`)
-
-Always run verification before committing or reporting task completion:
+Run local validation before any commit or reporting task completion:
 
 ```bash
-# 1. Preview which steps match edited files
+# Preview matched rules and tools
 mise run check:plan
 
-# 2. Check changed files safely
+# Fast validation on modified files (mandatory before git commit)
 mise run check:changed
 
-# 3. Structured JSONL for automated diagnostic loops (file, line, col)
+# Automated JSONL diagnostics stream
 hk run check --safe --format jsonl
 
-# 4. Automatically fix formatting issues (clang-format, mise, whitespace)
+# Auto-format C++ / JSON / Markdown
 mise run fix
 
-# 5. Validate translations & configs
+# Validate Gettext translations & JSON schema
 python3 scripts/check-i18n.py
 ```
 
 ---
 
-## 4. Progressive Reference Guides (Read as Needed)
+## 3. Task-Driven Progressive Pointers
 
-Follow progressive disclosure: consult specific reference files depending on your current task:
+Agents must progressively load detailed operational manuals according to the current task branch:
 
-### Task: Implementing an Issue / Feature / Bugfix
+### Branch: Developing Features or Bugfixes
 Read **[references/issue-pr-workflow.md](references/issue-pr-workflow.md)**
-- Dual-planning model: Task Planning (Issue breakdown) vs Quality Gate Pre-check (`hk --plan`).
-- The 5-stage Issue + Draft PR lifecycle (`gh pr create --draft`).
-- Single-item local atomic commits, unified push on completion, and updating PR checklist checkboxes (`- [x]`).
-- Post-Ready Review-Fix loop: Ingest CodeRabbit `Prompt for AI Agents` and Greptile alerts (Confidence >= 4); defensively verify and commit atomic fixes.
-- Hard limits: Zero tolerance on suppressing diagnostics (`// NOLINT`, `// NOLINTNEXTLINE`, `-Wno-*`), keep PR micro-slices under 300 lines of functional code.
-- Upstream-first policy: Ground implementation in upstream canonical docs via Context7 (`fcitx/fcitx5`, `k2-fsa/sherpa-onnx`, `pipewire/pipewire`, `cliutils/cli11`, `websites/doc_qt_io_qt-6`).
-- If the change incompatibly renames/removes/splits `config.json` or `vinput.conf` keys, the PR checklist **must** include a ConfigMigration `RegisteredSteps` task. No runtime aliases.
+- **Trigger**: When starting any new feature, bugfix, or refactoring in `fcitx5-vinput`.
+- **Core Standard**: Strict Issue $\to$ Pre-code Draft PR (all `- [ ]` unchecked) $\to$ single-item local atomic commit $\to$ unified push on full checklist completion $\to$ review-fix triage loop.
+- **Micro-slicing**: Keep functional code diffs under 300 lines; break large epics into stacked micro-PRs.
+- **Config Migration**: Breaking config changes require updating `src/common/config/config_migration.cpp` in the same PR.
 
-### Task: Working in a Fork / Reviewing External PRs
-Read **[references/fork-guide.md](references/fork-guide.md)**
-- Setting up `upstream` remote and rebasing on `upstream/main`.
-- The 4-step Pre-PR Code Health Check pipeline and diff audit checklist.
-- Conventional commit rules and upstream PR submission (`gh pr create --repo xifan2333/fcitx5-vinput`).
-- Maintainer collaboration etiquette: Never `git push -f` to external contributors' forks or branches. If a PR has conflicts from an earlier merge, ask the author to rebase or handle integration on upstream branches only.
-
-### Task: Compiling, Building, or Running CI
+### Branch: Compiling, Testing, or Triggering CI
 Read **[references/compilation-ci.md](references/compilation-ci.md)**
-- Hardware-adaptive compilation: CI-first on modest machines; local incremental builds on powerful machines.
-- The two usages of `release.yml`: Remote multi-arch matrix validation (Dry Run) vs official release publishing.
-- GitHub Actions workflow matrix (`ci.yml`, `channels.yml`, `nix-cache.yml`).
-- ConfigMigration is mandatory for breaking config schema changes; GUI notices teach `vinput config migrate` (not field recipes) and are retained for 5 patches.
-- Semantic Versioning (`MAJOR.MINOR.PATCH`): config schema/migration changes REQUIRE a MINOR bump (`x.Y.0`); governed by `vinput-dev` skill guidelines and agent review loops.
+- **Trigger**: When building, testing, verifying packaging matrices, or preparing releases.
+- **Core Standard**: If GitHub user is `xifan2333`, **local compilation is strictly prohibited (never run `mise run build-debug`)**; rely exclusively on `gh workflow run ci.yml` and `release.yml`. Config schema changes strictly require a MINOR version bump and ConfigMigration registration.
 
-### Task: Modifying Cloud ASR, LLM Scenes, AUR, or Flatpak Repos
+### Branch: Working from an External Fork
+Read **[references/fork-guide.md](references/fork-guide.md)**
+- **Trigger**: When contributing from a personal fork or reviewing community contributions.
+- **Core Standard**: Follow the 4-step Pre-PR Code Health Check. Never force-push (`git push -f`) to external contributors' forks or branches.
+
+### Branch: Modifying Cloud ASR Providers, LLM Scenes, or Packaging
 Read **[references/ecosystem.md](references/ecosystem.md)**
-- Adding cloud ASR provider scripts (`entry.py`, `VINPUT_ASR_*` env vars, stdlib only).
-- Adding LLM scene adapters and updating `i18n/*.json`.
-- Tracking upstream releases and PKGBUILD updates in `aur-auto`.
-- Managing Flatpak bundle imports and OSTree repo syncing in `flatpak-auto`.
+- **Trigger**: When adding cloud speech scripts, scene prompts, AUR PKGBUILD updates, or Flatpak manifests.
+- **Core Standard**: Cloud ASR and LLM scripts in `vinput-registry` must use Python standard library only (zero pip dependencies) and standard `VINPUT_ASR_*` environment variables.
 
-### Task: Debugging Audio Capture or Daemon Issues
+### Branch: Diagnosing Audio Streams or Daemon Runtime
 Read **[references/audio-debugging.md](references/audio-debugging.md)**
-- Inspecting live `vinput-daemon.service` journal logs and `VINPUT_DEBUG=1` mode.
-- PipeWire stream capture debugging and common diagnostic commands.
+- **Trigger**: When audio capture fails, PipeWire reports XRuns, D-Bus service crashes, or analyzing daemon logs.
+- **Core Standard**: Inspect systemd user logs via `journalctl --user-unit vinput-daemon -f` and run with `VINPUT_LOG_LEVEL=debug`.
+
+---
+
+## 4. Upstream Pillar Grounding (Context7 Pointers)
+
+Before implementing non-trivial logic across the five core pillars, query the authoritative Context7 library to prevent architectural hallucinations:
+
+- **Fcitx5 Addon (`src/addon/`)**: Fetch canonical API patterns via Context7: `/fcitx/fcitx5`.
+- **Local Speech Runtime (`src/daemon/asr/`)**: Fetch sherpa-onnx recognizer/VAD patterns via Context7: `/k2-fsa/sherpa-onnx`.
+- **PipeWire Capture (`src/daemon/audio/`)**: Fetch low-latency audio capture & SPA formats via Context7: `/pipewire/pipewire`.
+- **CLI Subcommand Tree (`src/cli/`)**: Fetch validator & subcommand architecture via Context7: `/cliutils/cli11`.
+- **Desktop GUI (`src/gui/`)**: Fetch Qt 6 widgets, delegates, and layouts via Context7: `/websites/doc_qt_io_qt-6`.

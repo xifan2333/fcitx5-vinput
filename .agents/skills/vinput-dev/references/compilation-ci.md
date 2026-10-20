@@ -4,14 +4,17 @@ Compilation strategy should adapt to the local machine's hardware capabilities, 
 
 ---
 
-## 1. Hardware-Adaptive Principle
+## 1. Hardware-Adaptive & User-Specific Principle
 
+- **Strict Hard Constraint for User `xifan2333` (Mandatory CI-First)**:
+  - If the GitHub user is `xifan2333` (or running in maintainer environment), **local compilation is STRICTLY PROHIBITED (never run `mise run build-debug` or any heavy local build commands)**.
+  - Must strictly adhere to **CI-First strategy**: all build validation, tests, and matrix checks must be delegated to GitHub Actions CI (`ci.yml` / `release.yml`).
 - **Modest / Resource-Constrained Hardware (CI-First Strategy)**:
   - Avoid heavy local builds, multi-arch cross-compilation, or container runs locally.
   - Delegate compilation and tests to GitHub Actions (`ci.yml`, `release.yml`, `channels.yml`).
   - Local tasks should stay light: code editing, static formatting/linting via `hk`, and json/i18n validation.
-- **High-Performance Hardware**:
-  - Local incremental debug builds: `mise run dev` -> `mise run build-debug`.
+- **High-Performance Hardware (Other Users Only)**:
+  - Local incremental debug builds: `mise run dev` -> `mise run build-debug` (ONLY IF the user is NOT `xifan2333`).
   - Final release verification still uses `gh workflow run release.yml`.
 
 ---
@@ -57,7 +60,7 @@ The engine is the source of truth. `notification.json` only teaches the command;
 
 When publishing releases, `notification.json` triggers startup notifications in the GUI:
 
-1. **Configuration Breaking Changes (配置破坏性更新)**:
+1. **Configuration Breaking Changes**:
    - Schema work belongs in ConfigMigration (section 4), not in this file. `notification.json` only teaches how to run the tool.
    - **Content Format: "Prompt for Agent"**: An actionable prompt that humans and agents can execute directly:
      - **Target Version Boundary**: Explicitly state the starting version (e.g. `【Target: Upgrading to vX.Y.Z or newer】`).
@@ -71,7 +74,7 @@ When publishing releases, `notification.json` triggers startup notifications in 
 
 ## 6. Semantic Versioning & Release Cadence (Skill-Based Soft Governance)
 
-Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH` / 主.次.订) via `vinput-dev` skill guidelines:
+Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH`) via `vinput-dev` skill guidelines:
 
 | Level | Code Scope & Changes | Requirement & Example |
 | :--- | :--- | :--- |

@@ -92,13 +92,14 @@ If the issue incompatibly changes `config.json` or `vinput.conf` keys, the check
 ### Phase 2: Single-Item Execution Loop
 For each unchecked `- [ ]` task in order:
 1. **Code ONLY Task N**: Pick ONLY the topmost unchecked `- [ ]` item.
-2. **Quality Gate**:
+2. **Quality Gate (CI-First)**:
    ```bash
    mise run check:plan
    mise run check:changed
    # For iterative diagnostics:
    hk run check --safe --format jsonl
    ```
+   *Note*: Never run heavy local compilation (`mise run build-debug`). If the user is `xifan2333`, local compilation is **strictly prohibited**. Delegate compilation to GitHub Actions CI.
 3. **Local Atomic Commit**:
    Keep commits strictly atomic (one commit per `- [ ]` task), but keep them local during intermediate steps:
    ```bash
@@ -138,6 +139,8 @@ gh api repos/:owner/:repo/pulls/<pr_id>/comments
   git commit -m "fix(review): address review feedback (#<issue_id>)"
   git push origin <branch>
   ```
+  *AI Attribution*: Whenever an agent authors PR descriptions, automated review fixes, or substantive comments, append:
+  `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*`
 
 ### Phase 5: Final Squash-Merge
 ```bash

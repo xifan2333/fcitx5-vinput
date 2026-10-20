@@ -1,42 +1,36 @@
 # Claude Code Guide
 
-See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilation strategies, Issue+PR workflow, and hard constraints.
+Compact index and operational quick-reference for Claude Code on `fcitx5-vinput`. For complete project architecture and detailed operational standards, see [AGENTS.md](AGENTS.md).
 
-## Quick CLI Reference
+---
 
-- **Dual-Planning Model**:
-  - *Phase A (Task Planning - BEFORE CODING)*:
-    `gh issue view <id>` -> `git checkout -b <type>/issue-<id>-<desc>` -> `git commit --allow-empty -m "chore: init draft pr"` -> `git push -u origin <branch>` -> `gh pr create --draft --body "Closes #<id>\n\n### Tasks\n- [ ] 1. ..."`
-  - *Phase B (Quality Gate Pre-check - AFTER EDIT)*: `mise run check:plan`
-- **Execution Loop (ONE ITEM AT A TIME)**:
-  - Code task N -> `mise run check:changed` (or `hk fix`) -> local atomic commit -> Repeat for all tasks
-  - Structured fix stream: `hk run check --safe --format jsonl`
-  - Finish: `git push origin <branch>` -> `gh pr edit --body` (update tasks to `- [x]`) -> `gh pr ready`
-- **Review-Fix Loop (POST-READY)**:
-  - Check CI & Bots: `gh pr checks`, `gh pr view --comments`, and check line-level review threads via GitHub API (`gh api repos/:owner/:repo/pulls/<pr_id>/comments`) or Web UI
-  - Ingest feedback: Extract `> Prompt for AI Agents` from CodeRabbit, and address Greptile alerts (Confidence >= 4)
-  - Defensive fix & local verify: `mise run check:changed` -> `git commit -m "fix(review): ..."` -> `git push`
-  - Finalize: Once all CI and bot checks are green, `gh pr merge --squash --delete-branch`
-- **Quality Gate Tasks (`mise`)**:
-  - `mise run check:changed`: Run safe check only on modified files
-  - `mise run check:plan`: Preview execution plan without running tools
-  - `mise run check:safe`: Run safe check across the repo
-  - `mise run fix`: Auto-format all files
-  - `mise run check`: Full repository validation
-- **Compilation (Hardware-Adaptive)**:
-  - *Modest Hardware (CI-First)*: `gh workflow run ci.yml && gh run watch`
-  - *Pre-release Matrix Dry Build*: `gh workflow run release.yml --ref <branch_name> && gh run watch`
-  - *Local Incremental (Powerful hardware only)*: `mise run dev` -> `mise run build-debug`
+## 1. Core Commands & Quality Gates
 
-## Hard Constraints (Red Lines)
+```bash
+# Local Quality Gate (Run before every commit and push)
+mise run check:plan       # Preview execution plan and linters
+mise run check:changed    # Validate only touched files (safe, fast)
+mise run fix              # Auto-format all modified files via hk/clang-format
+
+# CI & Remote Validation (Mandatory CI-First)
+gh workflow run ci.yml && gh run watch                         # Standard PR CI
+gh workflow run release.yml --ref <branch> && gh run watch     # Remote multi-arch matrix dry run
+```
+
+---
+
+## 2. Hard Constraints (Red Lines)
+
 - **No Direct Main Commits**: Always develop via feature branches and Draft PRs.
-- **No Force-Push to Contributor Forks**: Never `git push -f` to external contributors' forks or branches. Ask them to rebase or handle conflicts within upstream branches only.
+- **Draft PR Pre-Creation**: Open a Draft PR with ALL checklist items UNCHECKED (`- [ ]`) before writing code.
+- **No Multi-Task Lump Commits**: Every commit must map to exactly one `- [ ]` task in the PR checklist.
 - **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
-- **Hardware-Adaptive Compilation**: Prioritize GitHub Actions CI over heavy local builds on modest hardware.
-- **Breaking Config Changes**: If user-facing keys in `config.json` / `vinput.conf` change incompatibly, add a versioned ConfigMigration step (`src/common/config/config_migration.cpp` `RegisteredSteps`) in the **same PR**. No runtime aliases. Users run `vinput config migrate`.
-- **Zero-Tolerance on Suppressing Diagnostics**: Never add `// NOLINT`, `// NOLINTNEXTLINE`, `#pragma GCC/clang diagnostic ignored`, or `-Wno-*` in CMake. Fix the root cause cleanly.
+- **Hardware-Adaptive Compilation**: If the GitHub user is `xifan2333`, **local compilation is strictly prohibited (never run `mise run build-debug`)**; the CI pipeline must be prioritized (`ci.yml` / `release.yml`).
+- **No Force-Push to Contributor Forks**: Never `git push -f` to external contributors' forks or branches.
+- **Breaking Config Changes**: If user-facing keys in `config.json` / `vinput.conf` change incompatibly, add a versioned ConfigMigration step (`src/common/config/config_migration.cpp` `RegisteredSteps`) in the **same PR**. No runtime aliases.
+- **Zero-Tolerance on Suppressing Diagnostics**: Never add `// NOLINT`, `#pragma GCC/clang diagnostic ignored`, or `-Wno-*` in CMake. Fix the root cause cleanly.
 - **PR Micro-Slicing**: Keep functional code changes <300 lines; break large epics into stacked micro-PRs.
-- **AI Attribution & Disclosure**: Append `*AI-assisted — Tool: <tool>; model: <model>; version: <version>.*` to PR descriptions, automated review fixes, and substantive review comments.
+- **AI Attribution & Disclosure**: Append `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*` to PR descriptions, review fixes, and substantive comments.
 - **Upstream-First API Policy (Context7)**:
   - `src/addon/`: Fcitx5 (`fcitx/fcitx5`)
   - `src/daemon/asr/`: sherpa-onnx (`k2-fsa/sherpa-onnx`)
@@ -44,20 +38,18 @@ See [AGENTS.md](AGENTS.md) for full architecture, dual-planning model, compilati
   - `src/cli/`: CLI11 (`cliutils/cli11`)
   - `src/gui/`: Qt 6 (`websites/doc_qt_io_qt-6`)
   - Query Context7 before modifying these pillars to maintain upstream compatibility.
-- **Notification Specification (`notification.json`)**:
-  - *Breaking Changes*: "Prompt for Agent" with target version, `vinput init -f`, and `vinput config migrate [--dry-run]`. Do not list per-key recipes. Retain across 5 patch releases (or until next minor).
-  - *Standard Releases*: Concise bilingual feature/fix changelog.
 
-## Ecosystem Repositories & Upstream
-- **Core Engine (C++20)**: [xifan2333/fcitx5-vinput](https://github.com/xifan2333/fcitx5-vinput) (`~/Code/fcitx5-vinput`)
-- **Cloud ASR / LLM Scenes Registry**: [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) (`~/Code/vinput-registry`)
-- **Arch AUR Packaging Automation**: [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) (`~/Code/aur-auto`)
-- **Flatpak OSTree Repository Automation**: [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) (`~/Code/flatpak-auto`)
-- **Upstream Fcitx5**: [fcitx/fcitx5](https://github.com/fcitx/fcitx5) (Context7: `fcitx/fcitx5`)
-- **Upstream sherpa-onnx**: [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Context7: `k2-fsa/sherpa-onnx`)
-- **Upstream PipeWire**: [pipewire/pipewire](https://github.com/pipewire/pipewire) (Context7: `pipewire/pipewire`)
-- **Upstream CLI11**: [cliutils/cli11](https://github.com/cliutils/cli11) (Context7: `cliutils/cli11`)
-- **Upstream Qt 6**: [qt/qtbase](https://github.com/qt/qtbase) (Context7: `websites/doc_qt_io_qt-6`)
+---
 
-## Unified Project Skill
-- **`vinput-dev`** (`.agents/skills/vinput-dev/SKILL.md`): Architecture, Dual-planning, Fork contribution, pre-PR code health-check, Issue+PR workflow, PipeWire debugging, ecosystem extension, release packaging.
+## 3. Progressive Disclosure Index (Context Pointers)
+
+Consult detailed manuals on demand when entering specific operational workflows:
+
+| Task Branch / Need | Context Pointer & Target Path | When to Reach |
+| :--- | :--- | :--- |
+| **Issue + Draft PR Workflow** | [.agents/skills/vinput-dev/references/issue-pr-workflow.md](.agents/skills/vinput-dev/references/issue-pr-workflow.md) | Initializing branches, formatting PR checklists (`- [ ]`), single-item execution loops, handling review bots. |
+| **Compilation & Release CI** | [.agents/skills/vinput-dev/references/compilation-ci.md](.agents/skills/vinput-dev/references/compilation-ci.md) | Remote matrix validation, packaging dry runs, SemVer rules, and `notification.json` specifications. |
+| **Multi-Repo Ecosystem** | [.agents/skills/vinput-dev/references/ecosystem.md](.agents/skills/vinput-dev/references/ecosystem.md) | Adding cloud ASR / LLM scenes in `vinput-registry`, AUR updates in `aur-auto`, Flatpak builds in `flatpak-auto`. |
+| **Fork Contribution & Sync** | [.agents/skills/vinput-dev/references/fork-guide.md](.agents/skills/vinput-dev/references/fork-guide.md) | Working from an external fork, setting remotes, syncing with upstream. |
+| **Audio & Daemon Debugging** | [.agents/skills/vinput-dev/references/audio-debugging.md](.agents/skills/vinput-dev/references/audio-debugging.md) | Troubleshooting PipeWire audio capture, XRuns, D-Bus service crashes, reading systemd logs. |
+| **Master Development Skill** | [.agents/skills/vinput-dev/SKILL.md](.agents/skills/vinput-dev/SKILL.md) | Master development manual, Pre-PR code health checks, and cross-repo guides. |
