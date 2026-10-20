@@ -10,7 +10,7 @@ To avoid process overhead on non-functional changes while strictly guarding runt
 
 ### Track A: Functional Code & Build (Strict Issue $\to$ PR Lifecycle)
 - **Scope**: Any modifications touching `src/`, `CMakeLists.txt`, `flake.nix`, CI workflows (`.github/workflows/`), packaging manifests (AUR/Flatpak), or anything affecting compilation, binary artifacts, or daemon/addon runtime behaviors.
-- **Mandatory Lifecycle**: Strict Issue $\to$ Pre-code Draft PR (all `- [ ]` unchecked) $\to$ single-item local atomic commit $\to$ unified push on full checklist completion $\to$ remote CI validation $\to$ review bot triage $\to$ squash-merge.
+- **Mandatory Lifecycle**: Strict Issue $\to$ Pre-code Draft PR (all `- [ ]` unchecked) $\to$ single-item atomic commit & progressive push with PR checklist sync $\to$ `gh pr ready` for full remote CI validation $\to$ review bot triage $\to$ squash-merge.
 - **Micro-slicing**: Keep functional code diffs under 300 lines; break large epics into stacked micro-PRs.
 
 ### Track B: Text-Only, Documentation & Agent Governance (Direct Main Fast-Track)
@@ -48,7 +48,7 @@ To avoid confusing functional planning with toolchain validation:
                                     |
                 +-------------------v-------------------+
                 | 2. Single-Item Focused Development    |
-                |    Only implement the first - [ ]     |
+                |    Only implement topmost - [ ]       |
                 +-------------------+-------------------+
                                     |
                 +-------------------v-------------------+
@@ -59,20 +59,21 @@ To avoid confusing functional planning with toolchain validation:
                 +-------------------+-------------------+
                                     |
                 +-------------------v-------------------+
-                | 4. Local Atomic Commit                |
+                | 4. Atomic Commit & Progressive Sync   |
                 |    git add <files>                    |
-                |    git commit -m "feat(scope): ..."   |
-                |    (Keep commit local)                |
+                |    git commit -m "type(scope): ..."   |
+                |    git push origin <branch>           |
+                |    gh pr edit --body (check task N)   |
+                |    (CI automatically skipped in Draft)|
+                |    (Optional: gh workflow run ci.yml) |
                 +-------------------+-------------------+
                                     | (Remaining tasks?)
                                     +-------- Yes -------+
                                     | No                 |
 +-----------------------------------v-------------------+|
-| 5. Unified Push, Checks & Merge                       ||
-|    git push origin <branch>                           ||
-|    gh pr edit --body (check all - [x])                ||
-|    gh pr checks (verify PR CI passed)                 ||
-|    gh pr ready (mark as ready for review)             ||
+| 5. Mark Ready, Full CI & Merge                        ||
+|    gh pr ready (activates full matrix CI & bots)      ||
+|    gh pr checks (verify all CI checks pass)           ||
 |    gh pr merge --squash --delete-branch               ||
 +-------------------------------------------------------+|
                                     ^                    |
@@ -119,23 +120,33 @@ For each unchecked `- [ ]` task in order:
    hk run check --safe --format jsonl
    ```
    *Note*: Never run heavy local compilation (`mise run build-debug`). If the user is `xifan2333`, local compilation is **strictly prohibited**. Delegate compilation to GitHub Actions CI.
-3. **Local Atomic Commit**:
-   Keep commits strictly atomic (one commit per `- [ ]` task), but keep them local during intermediate steps:
+3. **Atomic Commit & Progressive Push**:
+   Keep commits strictly atomic (one commit per `- [ ]` task) and push immediately:
    ```bash
    git add <modified_files>
    git commit -m "<type>(<scope>): complete task N (#<issue_id>)"
+   git push origin <branch>
+   ```
+4. **Update PR Checklist in Lockstep**:
+   Update the Draft PR body to check off `- [x]` for Task N immediately. This guarantees 100% synchronization between pushed commits and the visible PR checklist dashboard for full real-time traceability:
+   ```bash
+   gh pr edit --body "..."
+   ```
+   *Note on CI cost*: Full matrix CI and review bots are automatically skipped during the Draft phase, incurring **zero unnecessary runner minutes**.
+5. **(Optional) On-Demand Remote Compilation Probe**:
+   If you need to verify intermediate C++ compilation or Nix closure on remote CI before the PR is ready:
+   ```bash
+   gh workflow run ci.yml --ref <branch>
    ```
 
-### Phase 3: Finalize & Unified Push
+### Phase 3: Mark Ready & Automated Review
+Since every task commit was already pushed and checked off during Phase 2, mark the PR ready for full validation:
 ```bash
-# 1. Push all completed atomic commits in one unified push
-git push origin <branch>
-
-# 2. Update Draft PR body to check off all completed tasks (- [x])
-gh pr edit --body "..."
-
-# 3. Mark PR ready for review (activates review bots: CodeRabbit, Greptile)
+# 1. Mark PR ready for review (automatically triggers full matrix CI and review bots)
 gh pr ready
+
+# 2. Monitor CI status
+gh pr checks
 ```
 
 ### Phase 4: Automated Review Triage & Fix Loop
