@@ -18,7 +18,6 @@ namespace {
 
 constexpr char kWpctl[] = "wpctl";
 constexpr char kDefaultSink[] = "@DEFAULT_AUDIO_SINK@";
-constexpr int kWpctlTimeoutMs = 1500;
 
 // Parse the numeric volume out of `wpctl get-volume` output, e.g.
 // "Volume: 1.00" or "Volume: 0.15 [MUTED]".
