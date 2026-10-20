@@ -90,27 +90,21 @@ Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH`) via `vinpu
 The primary CI pipeline (`.github/workflows/ci.yml`) enforces a two-stage gate:
 1. **Stage 1 (`cpp-linter`)**: Runs fast Clang-Format and Clang-Tidy checks (~1.5 min).
 2. **Stage 2 (`build` & `build-nix-lite`)**: Heavy compilation jobs declare `needs: [cpp-linter]`.
-If formatting or static analysis fails, **all downstream compilation jobs are immediately Skipped by GitHub Actions**, completely avoiding the consumption of 3 × 5+ minutes of runner compute.
+If formatting or static analysis fails, **downstream compilation jobs are immediately Skipped**, saving ~15 minutes of runner compute per failed run.
 
 ### 2. Proactive Run Inspection & Cancellation
-Agents and maintainers must actively guard runner quotas. If you discover a problem right after pushing, or need to push a quick amendment:
+Guard runner quotas by canceling obsolete runs when pushing follow-up commits:
 
 ```bash
-# 1. View in-progress runs on the current branch
+# Inspect active runs for current branch
 gh run list --branch $(git branch --show-current) --status in_progress
 
-# 2. Cancel a specific run by ID
+# Cancel specific run
 gh run cancel <run_id>
 
-# 3. Cancel ALL active runs for current branch (one-liner)
+# Cancel all active runs for current branch (one-liner)
 gh run list --branch $(git branch --show-current) --status in_progress --json databaseId -q '.[].databaseId' | xargs -r -n 1 gh run cancel
 ```
-
-### 3. Zero-Modification Iron Rule for `3rdparty/`
-Third-party libraries vendored in `3rdparty/` (such as `mio`, `readerwriterqueue`, `spdlog`, `httplib`) are strictly frozen upstream snapshots:
-- **Never modify, patch, refactor, or reformat vendored 3rdparty files**.
-- All project-specific adaptations or wrappers must be placed under `src/` (e.g. `src/common/` or `src/daemon/`).
-- They are excluded from `clang-tidy` and format checks via CMake `SYSTEM INTERFACE` isolation.
 
 **Governance Approach**:
 - **Soft Constraint via Skill**: Semantic compatibility (D-Bus contract preservation, CLI options/subcommands, and configuration migration) is governed by the `vinput-dev` skill and agent review loops, avoiding brittle shell-based AST regex hooks.

@@ -12,7 +12,7 @@ To avoid process overhead on non-functional changes while strictly guarding runt
 - **Scope**: Any modifications touching `src/`, `CMakeLists.txt`, `flake.nix`, CI workflows (`.github/workflows/`), packaging manifests (AUR/Flatpak), or anything affecting compilation, binary artifacts, or daemon/addon runtime behaviors.
 - **Mandatory Lifecycle**: Strict Issue $\to$ Pre-code Draft PR (all `- [ ]` unchecked) $\to$ single-item atomic commit & progressive push with PR checklist sync $\to$ `gh pr ready` for full remote CI validation $\to$ review bot triage $\to$ squash-merge.
 - **Micro-slicing**: Keep functional code diffs under 300 lines; break large epics into stacked micro-PRs.
-- **3rdparty Zero-Modification Iron Rule**: Strictly forbidden from editing, formatting, or patching any vendored files under `3rdparty/`. All wrappers and glue code belong in `src/`.
+- **Pristine 3rdparty (零篡改铁律)**: Keep `3rdparty/` untouched upstream code. All wrappers and glue belong in `src/`.
 
 ### Track B: Text-Only, Documentation & Agent Governance (Direct Main Fast-Track)
 - **Scope**: Pure documentation (`docs/`, `*.md`, `THIRD_PARTY_NOTICES.md`), agent skills, prompts, and rules (`AGENTS.md`, `CLAUDE.md`, `.agents/skills/`).

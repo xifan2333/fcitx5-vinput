@@ -18,7 +18,7 @@
 
 ## 2. 标杆对齐：优秀开源项目的四大治理铁律
 
-向业界高标准开源项目（Fcitx5 官方体系、KDE、OBS Studio、DuckDB）看齐，确立四大依赖治理铁律：
+向业界高标准开源项目（Fcitx5 官方体系、KDE、OBS Studio、DuckDB）看齐，确立五大依赖治理铁律：
 
 1. **构建系统绝对不充当下载器（Zero Network during Build）**：
    - 编译期严禁执行任何网络拉取。所有源码要么由系统的 dev 包提供，要么自包含在源码发布 Tarball 中，满足全矩阵离线构建要求。
@@ -28,6 +28,9 @@
    - 当主流发行版生态缺失、且为项目必需的轻量/单头文件专用库时，统一内嵌至本地 `3rdparty/`，源码随 Git 仓库与 Release Tarball 一并分发，保证 100% 离线确定性。
 4. **CMake `SYSTEM INTERFACE` 强制隔离**：
    - 所有内嵌库必须在 CMake 中以 `SYSTEM INTERFACE` 声明，通知编译器和静态分析器将其视为系统头文件，天然豁免 `clang-tidy` 诊断与编译告警，零修改外部代码。
+5. **3rdparty 源码绝对零篡改（Zero-Modification Pristine Vendoring）**：
+   - 内嵌至 `3rdparty/` 的源码必须保持 100% 原始上游发布快照。严禁任何人工修改、打补丁、重构或格式化；
+   - 所有接口封装、业务适配与兼容胶水一律放在项目源码目录（`src/common/` 或 `src/daemon/`），严禁侵入第三方目录。
 
 ---
 

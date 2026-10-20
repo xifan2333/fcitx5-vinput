@@ -16,7 +16,7 @@ mise run fix              # Auto-format all modified files via hk/clang-format
 gh workflow run ci.yml && gh run watch                         # Standard PR CI
 gh workflow run release.yml --ref <branch> && gh run watch     # Remote multi-arch matrix dry run
 
-# Proactive CI Quota Management (Cancel stale/redundant runs)
+# Proactive CI Quota Cancellation
 gh run list --branch $(git branch --show-current) --status in_progress
 gh run cancel <run_id>
 gh run list --branch $(git branch --show-current) --status in_progress --json databaseId -q '.[].databaseId' | xargs -r -n 1 gh run cancel
@@ -34,9 +34,8 @@ gh run list --branch $(git branch --show-current) --status in_progress --json da
 - **No Force-Push to Contributor Forks**: Never `git push -f` to external contributors' forks or branches.
 - **Breaking Config Changes**: If user-facing keys in `config.json` / `vinput.conf` change incompatibly, add a versioned ConfigMigration step (`src/common/config/config_migration.cpp` `RegisteredSteps`) in the **same PR**. No runtime aliases.
 - **Zero-Tolerance on Suppressing Diagnostics**: Never add `// NOLINT`, `#pragma GCC/clang diagnostic ignored`, or `-Wno-*` in CMake. Fix the root cause cleanly.
-- **Three-Tier Priority-First Dependency Governance & 3rdparty Zero-Modification**: No network downloads or `FetchContent` during build. Follow Three-Tier Priority Cascade: Tier 1/2 universal libraries via host packages (`find_package REQUIRED`); Tier 3 missing/single-header libraries vendored under `3rdparty/` with CMake `SYSTEM INTERFACE` and registered in `THIRD_PARTY_NOTICES.md`. Hand-crafted infrastructure (Unicode/Base64 tables) is forbidden.
-  - **Zero-Modification Iron Rule (3rdparty 零篡改铁律)**: Code in `3rdparty/` must remain strictly untouched and 100% pristine upstream. Modifying, patching, editing, or reformatting any vendored file in `3rdparty/` is strictly prohibited. All glue/wrappers belong in `src/`.
-- **Proactive CI Quota Protection**: Actively guard runner minutes. When pushing an immediate fix or aborting work, proactively cancel stale in-progress runs via `gh run cancel`.
+- **Three-Tier Dependencies & Pristine 3rdparty**: Host packages first (`find_package REQUIRED`); vendor single-header libraries under `3rdparty/` with CMake `SYSTEM INTERFACE`. Hand-crafted infrastructure forbidden. **Pristine 3rdparty (零篡改铁律)**: Keep `3rdparty/` strictly untouched upstream code. Never patch or reformat vendored files; place all wrappers and glue in `src/`.
+- **Proactive CI Quota Cancellation**: Cancel stale in-progress runs immediately on defects or task switches (`gh run cancel`).
 - **PR Micro-Slicing**: Keep functional code changes <300 lines; break large epics into stacked micro-PRs.
 - **AI Attribution & Disclosure**: Append `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*` to PR descriptions, review fixes, and substantive comments.
 - **Dialectical Review Bot Triage & Pre-Action Reporting**: Never blindly follow CodeRabbit/Greptile suggestions. Critically evaluate findings against C++20 and project architecture. Before writing fix code, the agent MUST explicitly report its analysis (true issues vs. false positives and next actions) to the user in chat.
