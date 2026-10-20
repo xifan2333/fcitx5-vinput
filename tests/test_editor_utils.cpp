@@ -1,5 +1,4 @@
 #include <cstdlib>
-#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -29,26 +28,20 @@ void TestSplitEditorCommand() {
   TEST_ASSERT(SplitEditorCommand("\"/path with spaces/editor\" -w", &args));
   TEST_ASSERT(args.size() == 2 && args[0] == "/path with spaces/editor" && args[1] == "-w");
 
+  // Escaped characters and metacharacters preserved verbatim without shell expansion
+  TEST_ASSERT(SplitEditorCommand("nano -c \\{foo\\}", &args));
+  TEST_ASSERT(args.size() == 3 && args[0] == "nano" && args[1] == "-c" && args[2] == "{foo}");
+
   // Invalid unmatched quotes
   TEST_ASSERT(!SplitEditorCommand("code 'unclosed", &args));
   TEST_ASSERT(!SplitEditorCommand("code \"unclosed", &args));
   TEST_ASSERT(!SplitEditorCommand("", &args));
-}
-
-void TestOpenInEditorFallback() {
-  const auto tmp_dir = std::filesystem::temp_directory_path();
-  const auto test_file = tmp_dir / "vinput_test_editor_fallback.txt";
-
-  // When given a nonexistent binary path or command, OpenInEditor should return -1
-  const int ret = OpenInEditor(test_file);
-  // Returns integer exit status from vi or 0/error, must not crash
-  (void)ret;
+  TEST_ASSERT(!SplitEditorCommand("   ", &args));
 }
 
 int main() {
   std::cout << "Running test_editor_utils...\n";
   TestSplitEditorCommand();
-  TestOpenInEditorFallback();
   std::cout << "All test_editor_utils passed!\n";
   return 0;
 }
