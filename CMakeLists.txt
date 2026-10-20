@@ -30,6 +30,7 @@ set(VINPUT_PACKAGE_DESCRIPTION_SUMMARY
     CACHE STRING "Short description used by generated distro packages")
 
 option(VINPUT_ENABLE_LOCAL_ASR "Build with sherpa-onnx local ASR support" ON)
+option(VINPUT_ENABLE_WERROR "Treat compiler warnings as errors" OFF)
 
 find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Config REQUIRED)
@@ -76,6 +77,10 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         -Wunused
         -Wredundant-decls
     )
+endif()
+
+if(VINPUT_ENABLE_WERROR)
+    add_compile_options(-Werror)
 endif()
 find_package(PkgConfig REQUIRED)
 option(VINPUT_FETCH_NLOHMANN_JSON "Fetch nlohmann_json with FetchContent when not found" ON)
