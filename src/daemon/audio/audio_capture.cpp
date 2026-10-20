@@ -1,6 +1,9 @@
 #include "audio_capture.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -10,12 +13,15 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/audio/raw.h>
 #include <spa/pod/builder.h>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
+
+#include "daemon/audio/audio_types.h"
 
 namespace {
 
@@ -110,7 +116,7 @@ void AudioCapture::processCallback() {
     const uint32_t offset = buf->datas[0].chunk->offset;
     const uint32_t size = buf->datas[0].chunk->size;
     if (size > 0 && offset + size <= buf->datas[0].maxsize) {
-      auto* samples = reinterpret_cast<const int16_t*>(raw + offset);
+      const auto* samples = static_cast<const int16_t*>(static_cast<const void*>(raw + offset));
       const uint32_t n_samples = size / sizeof(int16_t);
 
       if (n_samples > 0) {

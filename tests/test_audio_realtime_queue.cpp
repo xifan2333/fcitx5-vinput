@@ -1,6 +1,5 @@
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -31,19 +30,19 @@ void TestAudioPcmChunkProperties() {
 
   std::array<int16_t, 100> src{};
   for (std::size_t i = 0; i < src.size(); ++i) {
-    src[i] = static_cast<int16_t>(i + 1);
+    src.at(i) = static_cast<int16_t>(i + 1);
   }
 
-  auto created = vinput::audio::AudioPcmChunk::FromSpan(src);
+  const auto created = vinput::audio::AudioPcmChunk::FromSpan(src);
   Check(!created.empty(), "created chunk should not be empty");
   Check(created.size == 100, "created chunk size should be 100");
   Check(created.AsSpan().size() == 100, "span size should be 100");
   for (std::size_t i = 0; i < 100; ++i) {
-    Check(created.samples[i] == static_cast<int16_t>(i + 1), "sample value mismatch");
+    Check(created.samples.at(i) == static_cast<int16_t>(i + 1), "sample value mismatch");
   }
 
   // Truncation at kMaxChunkSamples
-  std::vector<int16_t> oversized(vinput::audio::kMaxChunkSamples + 500, 42);
+  const std::vector<int16_t> oversized(vinput::audio::kMaxChunkSamples + 500, 42);
   auto clamped = vinput::audio::AudioPcmChunk::FromSpan(oversized);
   Check(clamped.size == vinput::audio::kMaxChunkSamples, "chunk size should be clamped to max");
 
@@ -84,7 +83,7 @@ void TestSpscConcurrentThroughput() {
       vinput::audio::AudioPcmChunk chunk;
       chunk.size = kSamplesPerChunk;
       for (std::size_t s = 0; s < kSamplesPerChunk; ++s) {
-        chunk.samples[s] = static_cast<int16_t>((c * kSamplesPerChunk + s) % 32767);
+        chunk.samples.at(s) = static_cast<int16_t>((c * kSamplesPerChunk + s) % 32767);
       }
 
       while (!queue.try_enqueue(chunk)) {
@@ -100,7 +99,7 @@ void TestSpscConcurrentThroughput() {
   Check(consumed_samples.size() == kTotalChunks * kSamplesPerChunk,
         "all samples should be received without loss");
   for (std::size_t i = 0; i < consumed_samples.size(); ++i) {
-    Check(consumed_samples[i] == static_cast<int16_t>(i % 32767),
+    Check(consumed_samples.at(i) == static_cast<int16_t>(i % 32767),
           "sample ordering corrupted in SPSC queue");
   }
 }
@@ -109,25 +108,29 @@ void TestQueueOverflowAndDropTelemetry() {
   constexpr std::size_t kCapacity = 4;
   moodycamel::ReaderWriterQueue<vinput::audio::AudioPcmChunk> queue(kCapacity);
 
-  std::atomic<std::size_t> dropped_chunks{0};
-  std::atomic<std::size_t> dropped_samples{0};
-
   vinput::audio::AudioPcmChunk chunk;
   chunk.size = 256;
 
   std::size_t enqueued_count = 0;
-  for (std::size_t i = 0; i < 10; ++i) {
-    if (queue.try_enqueue(chunk)) {
-      ++enqueued_count;
-    } else {
+  // Fill the queue's preallocated blocks completely until try_enqueue fails
+  while (queue.try_enqueue(chunk)) {
+    ++enqueued_count;
+    Check(enqueued_count < 10000, "queue should eventually saturate preallocated blocks");
+  }
+  Check(enqueued_count > 0, "queue should accept at least one chunk");
+
+  std::atomic<std::size_t> dropped_chunks{0};
+  std::atomic<std::size_t> dropped_samples{0};
+
+  for (std::size_t i = 0; i < 5; ++i) {
+    if (!queue.try_enqueue(chunk)) {
       dropped_chunks.fetch_add(1, std::memory_order_relaxed);
       dropped_samples.fetch_add(chunk.size, std::memory_order_relaxed);
     }
   }
 
-  Check(enqueued_count <= kCapacity + 2, "queue should reject items when full");
-  Check(dropped_chunks.load() > 0, "dropped chunks counter must record overflows");
-  Check(dropped_samples.load() == dropped_chunks.load() * 256,
+  Check(dropped_chunks.load() == 5, "all 5 pushes on saturated queue must be dropped");
+  Check(dropped_samples.load() == 5 * 256,
         "dropped samples count must match dropped chunks * size");
 
   // Draining restores space
@@ -136,7 +139,7 @@ void TestQueueOverflowAndDropTelemetry() {
   while (queue.try_dequeue(drained)) {
     ++drained_count;
   }
-  Check(drained_count == enqueued_count, "drained count should match enqueued");
+  Check(drained_count == enqueued_count, "drained count should match enqueued count");
 
   // Queue can now accept new items
   Check(queue.try_enqueue(chunk), "queue should accept items after being drained");

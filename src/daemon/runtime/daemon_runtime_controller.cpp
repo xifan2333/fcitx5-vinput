@@ -29,6 +29,7 @@
 
 #include "daemon/asr/runtime/async_recognition_session.h"
 #include "daemon/asr/runtime/recognition_contract.h"
+#include "daemon/audio/audio_types.h"
 #include "daemon/audio/audio_utils.h"
 #include "daemon/remote/remote_text_service.h"
 #include "daemon/runtime/dbus_service.h"
