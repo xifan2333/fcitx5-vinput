@@ -21,7 +21,7 @@ gh workflow run release.yml --ref <branch> && gh run watch     # Remote multi-ar
 
 ## 2. Hard Constraints (Red Lines)
 
-- **No Direct Main Commits for Code**: Always develop via feature branches and Draft PRs. Pure documentation, text edits, and agent guidelines/skills (`AGENTS.md`, `CLAUDE.md`, `.agents/`) are exempt and may be committed directly to `main` using `[skip ci]`. CI workflows configure `paths-ignore` for doc paths, guaranteeing zero unnecessary runner consumption.
+- **No Direct Main Commits for Code**: Always develop via feature branches and Draft PRs. Pure documentation, text edits, and agent guidelines/skills (`AGENTS.md`, `CLAUDE.md`, `.agents/`) are exempt and may be committed directly to `main` using `[skip ci]`. CI workflows enforce an explicit source whitelist (`paths`), guaranteeing zero runner consumption for docs, rules, and workflow edits.
 - **Draft PR Pre-Creation**: Open a Draft PR with ALL checklist items UNCHECKED (`- [ ]`) before writing code.
 - **No Multi-Task Lump Commits & Progressive Sync**: For changes developed via Draft PRs, every commit must map to exactly one `- [ ]` task in the PR checklist. Commit atomically, push to the branch, and check off `- [x]` in lockstep. Full matrix CI is automatically skipped in Draft and triggers on `gh pr ready` (or manual `gh workflow run ci.yml --ref <branch>`).
 - **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.

@@ -3,13 +3,13 @@ name: cpp-linter
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - '.agents/**'
-      - 'assets/**'
-      - 'LICENSE'
-      - '.gitignore'
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - '.clang-format'
+      - '.clang-tidy'
   workflow_dispatch:
 
 permissions:
