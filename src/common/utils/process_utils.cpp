@@ -1,30 +1,38 @@
 #include "common/utils/process_utils.h"
 
+#include <algorithm>
+#include <array>
 #include <cerrno>
 #include <chrono>
-#include <condition_variable>
+#include <csignal>
 #include <cstddef>
 #include <cstdio>
-#include <cstring>
 #include <exception>
 #include <fcntl.h>
 #include <map>
-#include <mutex>
+#include <optional>
+#include <poll.h>
 #include <string>
 #include <subprocess.hpp>
 #include <thread>
 #include <unistd.h>
-#include <utility>
 #include <vector>
 
 #include "common/utils/interpolation.h"
 
 extern char** environ;
-extern "C" int fileno(FILE*) noexcept;
 
 namespace vinput::process {
 
 namespace {
+
+bool SetNonBlocking(int fd) {
+  const int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0) {
+    return false;
+  }
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
 
 std::vector<std::string> BuildCmd(const CommandSpec& spec) {
   std::vector<std::string> cmd;
@@ -84,81 +92,207 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
                           subprocess::output{subprocess::PIPE}, subprocess::error{subprocess::PIPE},
                           subprocess::environment{env_map}, subprocess::session_leader{true});
 
-    std::vector<char> in_buf(input.size());
-    for (std::size_t i = 0; i < input.size(); ++i) {
-      in_buf[i] = static_cast<char>(input[i]);
+    int in_fd = proc.input() != nullptr ? fileno(proc.input()) : -1;
+    int out_fd = proc.output() != nullptr ? fileno(proc.output()) : -1;
+    int err_fd = proc.error() != nullptr ? fileno(proc.error()) : -1;
+
+    if (in_fd >= 0) {
+      SetNonBlocking(in_fd);
+    }
+    if (out_fd >= 0) {
+      SetNonBlocking(out_fd);
+    }
+    if (err_fd >= 0) {
+      SetNonBlocking(err_fd);
     }
 
-    std::mutex comm_mutex;
-    std::condition_variable comm_cv;
-    bool done = false;
-    subprocess::Buffer out_buf;
-    subprocess::Buffer err_buf;
-
-    std::thread comm_thread([&] {
-      try {
-        auto res = proc.communicate(in_buf);
-        const std::scoped_lock lock(comm_mutex);
-        out_buf = std::move(res.first);
-        err_buf = std::move(res.second);
-        done = true;
-      } catch (const std::exception&) {
-        const std::scoped_lock lock(comm_mutex);
-        done = true;
-      }
-      comm_cv.notify_one();
-    });
-
     const auto start_time = std::chrono::steady_clock::now();
-    const auto timeout_dur = spec.timeout_ms > 0 ? std::chrono::milliseconds(spec.timeout_ms)
-                                                 : std::chrono::milliseconds::max();
+    const auto deadline = spec.timeout_ms > 0
+                              ? start_time + std::chrono::milliseconds(spec.timeout_ms)
+                              : std::chrono::steady_clock::time_point::max();
+
+    std::size_t input_offset = 0;
+    bool in_open = (in_fd >= 0 && !input.empty());
+    bool out_open = (out_fd >= 0);
+    bool err_open = (err_fd >= 0);
+
+    if (in_fd >= 0 && input.empty()) {
+      proc.close_input();
+      in_open = false;
+      in_fd = -1;
+    }
+
     bool child_exited = false;
     int child_exit_code = -1;
-    auto child_exited_at = std::chrono::steady_clock::now();
+    std::optional<std::chrono::steady_clock::time_point> child_exited_at;
 
-    while (true) {
-      std::unique_lock lock(comm_mutex);
-      if (comm_cv.wait_for(lock, std::chrono::milliseconds(10), [&] { return done; })) {
-        break;
-      }
-      lock.unlock();
+    std::array<char, 4096> drain_buffer{};
 
+    while (in_open || out_open || err_open || !child_exited) {
       if (!child_exited) {
         const int poll_res = proc.poll();
         if (poll_res != -1) {
           child_exited = true;
           child_exit_code = poll_res;
           child_exited_at = std::chrono::steady_clock::now();
+          if (in_open) {
+            proc.close_input();
+            in_open = false;
+            in_fd = -1;
+          }
         }
       }
 
       const auto now = std::chrono::steady_clock::now();
-      if (child_exited) {
-        constexpr auto kPostExitGrace = std::chrono::milliseconds(150);
-        if (now - child_exited_at >= kPostExitGrace) {
-          proc.close_output();
-          proc.close_error();
+      if (spec.timeout_ms > 0 && now >= deadline) {
+        result.timed_out = true;
+        proc.kill();
+        break;
+      }
+
+      if (child_exited && child_exited_at.has_value()) {
+        constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
+        if (now - child_exited_at.value() >= kPostExitGrace) {
           break;
         }
       }
 
-      if (spec.timeout_ms > 0 && (now - start_time) >= timeout_dur) {
-        result.timed_out = true;
-        proc.kill();
-        proc.close_output();
-        proc.close_error();
+      pollfd pfds[3];
+      nfds_t nfds = 0;
+
+      int in_idx = -1;
+      int out_idx = -1;
+      int err_idx = -1;
+
+      if (in_open && in_fd >= 0) {
+        in_idx = static_cast<int>(nfds);
+        pfds[nfds].fd = in_fd;
+        pfds[nfds].events = POLLOUT;
+        pfds[nfds].revents = 0;
+        ++nfds;
+      }
+      if (out_open && out_fd >= 0) {
+        out_idx = static_cast<int>(nfds);
+        pfds[nfds].fd = out_fd;
+        pfds[nfds].events = POLLIN;
+        pfds[nfds].revents = 0;
+        ++nfds;
+      }
+      if (err_open && err_fd >= 0) {
+        err_idx = static_cast<int>(nfds);
+        pfds[nfds].fd = err_fd;
+        pfds[nfds].events = POLLIN;
+        pfds[nfds].revents = 0;
+        ++nfds;
+      }
+
+      if (nfds == 0) {
+        if (!child_exited) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+          continue;
+        }
         break;
+      }
+
+      int wait_ms = 50;
+      if (spec.timeout_ms > 0) {
+        const auto rem =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+        wait_ms = std::clamp<int>(static_cast<int>(rem), 0, 50);
+      }
+
+      const int poll_rc = poll(pfds, nfds, wait_ms);
+      if (poll_rc < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
+      }
+
+      if (in_idx >= 0 && (pfds[in_idx].revents & POLLOUT) != 0) {
+        const std::size_t remaining = input.size() - input_offset;
+        if (remaining == 0) {
+          proc.close_input();
+          in_open = false;
+          in_fd = -1;
+        } else {
+          const auto* bytes = static_cast<const char*>(static_cast<const void*>(input.data()));
+          const ssize_t written = write(in_fd, bytes + input_offset, remaining);
+          if (written > 0) {
+            input_offset += static_cast<std::size_t>(written);
+            if (input_offset >= input.size()) {
+              proc.close_input();
+              in_open = false;
+              in_fd = -1;
+            }
+          } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+            proc.close_input();
+            in_open = false;
+            in_fd = -1;
+          }
+        }
+      }
+
+      if (out_idx >= 0) {
+        if ((pfds[out_idx].revents & POLLIN) != 0) {
+          while (true) {
+            const ssize_t n = read(out_fd, drain_buffer.data(), drain_buffer.size());
+            if (n > 0) {
+              result.stdout_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
+            } else if (n == 0) {
+              out_open = false;
+              break;
+            } else {
+              break;
+            }
+          }
+        } else if ((pfds[out_idx].revents & (POLLHUP | POLLERR)) != 0) {
+          while (true) {
+            const ssize_t n = read(out_fd, drain_buffer.data(), drain_buffer.size());
+            if (n > 0) {
+              result.stdout_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
+            } else {
+              break;
+            }
+          }
+          out_open = false;
+        }
+      }
+
+      if (err_idx >= 0) {
+        if ((pfds[err_idx].revents & POLLIN) != 0) {
+          while (true) {
+            const ssize_t n = read(err_fd, drain_buffer.data(), drain_buffer.size());
+            if (n > 0) {
+              result.stderr_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
+            } else if (n == 0) {
+              err_open = false;
+              break;
+            } else {
+              break;
+            }
+          }
+        } else if ((pfds[err_idx].revents & (POLLHUP | POLLERR)) != 0) {
+          while (true) {
+            const ssize_t n = read(err_fd, drain_buffer.data(), drain_buffer.size());
+            if (n > 0) {
+              result.stderr_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
+            } else {
+              break;
+            }
+          }
+          err_open = false;
+        }
       }
     }
 
-    comm_thread.join();
-    if (child_exited) {
+    if (result.timed_out) {
+      result.exit_code = -1;
+    } else if (child_exited) {
       result.exit_code = child_exit_code;
     } else {
-      result.exit_code = proc.retcode();
+      result.exit_code = proc.wait();
     }
-    result.stdout_text.assign(out_buf.buf.data(), out_buf.length);
-    result.stderr_text.assign(err_buf.buf.data(), err_buf.length);
     return result;
   } catch (const subprocess::OSError& e) {
     result.launch_failed = true;
