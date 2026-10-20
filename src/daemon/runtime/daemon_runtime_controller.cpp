@@ -508,8 +508,8 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       current_sample_count_ = 0;
       current_input_gain_ = static_cast<float>(runtime_settings.asr.inputGain);
       if (UsesBufferedDelivery(active_backend_)) {
-        // Buffered recognition uses the complete AudioCapture buffer on Stop.
-        startup_pcm_buffer_.Clear();
+        current_recording_pcm_ = startup_pcm_buffer_.TakeWithGain(current_input_gain_);
+        current_sample_count_ = current_recording_pcm_.size();
       } else {
         // Replay the initialization prefix first, before live callbacks can
         // acquire state_mutex_ and append their later chunks.
@@ -820,6 +820,12 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
       VLOG_DEBUG("capture first_buffer_ms={} (at stop)", *first_buffer_ms);
     } else {
       VLOG_DEBUG("capture first_buffer_ms=-1 (no buffer before stop)");
+    }
+    const auto dropped_chunks = capture_->DroppedChunks();
+    const auto dropped_samples = capture_->DroppedSamples();
+    if (dropped_chunks > 0 || dropped_samples > 0) {
+      VLOG_WARN("capture audio queue dropped {} chunks ({} samples) due to overflow",
+                dropped_chunks, dropped_samples);
     }
     captured_pcm = capture_->StopAndGetBuffer();
     RestoreOutputIfDucked();

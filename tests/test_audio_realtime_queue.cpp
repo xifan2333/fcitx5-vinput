@@ -145,12 +145,42 @@ void TestQueueOverflowAndDropTelemetry() {
   Check(queue.try_enqueue(chunk), "queue should accept items after being drained");
 }
 
+void TestAtomicLatencyCalculation() {
+  std::atomic<int64_t> armed_ns{0};
+  std::atomic<int64_t> first_ns{0};
+
+  const auto calc_latency = [&]() -> std::optional<long> {
+    const int64_t armed = armed_ns.load(std::memory_order_acquire);
+    const int64_t first = first_ns.load(std::memory_order_acquire);
+    if (armed <= 0 || first <= 0 || first < armed) {
+      return std::nullopt;
+    }
+    return static_cast<long>((first - armed) / 1'000'000L);
+  };
+
+  Check(!calc_latency().has_value(), "unarmed latency should be nullopt");
+
+  armed_ns.store(1'000'000'000L, std::memory_order_release);
+  Check(!calc_latency().has_value(), "armed but no buffer should be nullopt");
+
+  first_ns.store(1'050'000'000L, std::memory_order_release);
+  const auto latency = calc_latency();
+  Check(latency.has_value(), "latency should be calculated");
+  Check(*latency == 50, "latency should be 50 ms");
+
+  // Reset
+  armed_ns.store(0, std::memory_order_release);
+  first_ns.store(0, std::memory_order_release);
+  Check(!calc_latency().has_value(), "reset latency should be nullopt");
+}
+
 } // namespace
 
 int main() {
   TestAudioPcmChunkProperties();
   TestSpscConcurrentThroughput();
   TestQueueOverflowAndDropTelemetry();
+  TestAtomicLatencyCalculation();
   std::cout << "All audio real-time queue tests passed successfully!\n";
   return 0;
 }

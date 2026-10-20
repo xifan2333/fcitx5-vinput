@@ -36,8 +36,6 @@ public:
   AudioCapture();
   ~AudioCapture();
 
-  using ChunkCallback = std::function<void(std::span<const int16_t>)>;
-
   bool Start(std::string* error = nullptr);
   std::vector<int16_t> StopAndGetBuffer();
   void Stop();
@@ -45,7 +43,6 @@ public:
   void EndRecording();
   bool IsRecording() const;
   void SetTargetObject(std::string target_object);
-  void SetChunkCallback(ChunkCallback callback);
 
   // SPSC lock-free dequeue for downstream audio consumers.
   // Returns true if a chunk was dequeued, false if queue is empty.
@@ -99,10 +96,9 @@ private:
   std::atomic<bool> recording_{false};
   mutable std::mutex target_mutex_;
   mutable std::mutex timing_mutex_;
-  std::mutex callback_mutex_;
+  std::mutex consumer_mutex_;
   std::string target_object_;
   std::string connected_target_object_;
-  ChunkCallback chunk_callback_;
   bool stream_active_ = false;
 
   // SPSC Lock-free ringbuffer and real-time safe drop telemetry

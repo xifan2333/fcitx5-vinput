@@ -443,16 +443,22 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     }
   }
 
-  // Drain any remaining chunks in the queue
-  vinput::audio::AudioPcmChunk discard;
-  while (queue_.try_dequeue(discard)) {
+  // Drain any remaining chunks in the queue under consumer_mutex_
+  {
+    std::lock_guard<std::mutex> lock(consumer_mutex_);
+    vinput::audio::AudioPcmChunk discard;
+    while (queue_.try_dequeue(discard)) {
+    }
   }
   ResetDropCounters();
-  const int64_t begin_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                               std::chrono::steady_clock::now().time_since_epoch())
-                               .count();
-  recording_armed_ns_.store(begin_ns, std::memory_order_release);
-  first_buffer_ns_.store(0, std::memory_order_release);
+
+  const auto arm_recording = [this]() {
+    const int64_t begin_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                 std::chrono::steady_clock::now().time_since_epoch())
+                                 .count();
+    first_buffer_ns_.store(0, std::memory_order_release);
+    recording_armed_ns_.store(begin_ns, std::memory_order_release);
+  };
 
   const bool reuse = local_timing.reuse_policy_enabled && CanReuseStreamLocked();
   if (!reuse) {
@@ -460,6 +466,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     local_timing.stream_reused = false;
     local_timing.created_new_stream = true;
 
+    arm_recording();
     recording_.store(true, std::memory_order_relaxed);
 
     const auto create_start = std::chrono::steady_clock::now();
@@ -491,6 +498,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     local_timing.created_new_stream = false;
     local_timing.create_stream_ms = 0;
 
+    arm_recording();
     recording_.store(true, std::memory_order_relaxed);
 
     const auto active_start = std::chrono::steady_clock::now();
@@ -502,6 +510,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
       local_timing.stream_reused = false;
       local_timing.created_new_stream = true;
       const auto create_start = std::chrono::steady_clock::now();
+      arm_recording();
       if (!CreateStream(true, error)) {
         recording_.store(false, std::memory_order_relaxed);
         recording_armed_ns_.store(0, std::memory_order_release);
@@ -514,6 +523,9 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
         DestroyStream();
         return false;
       }
+      local_timing.set_active_ms =
+          vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
+    } else {
       local_timing.set_active_ms =
           vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
     }
@@ -564,6 +576,7 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
     DestroyStream();
   }
 
+  std::lock_guard<std::mutex> lock(consumer_mutex_);
   std::vector<int16_t> result;
   vinput::audio::AudioPcmChunk chunk;
   while (queue_.try_dequeue(chunk)) {
@@ -576,6 +589,7 @@ void AudioCapture::Stop() {
   recording_.store(false, std::memory_order_relaxed);
   CancelIdleDestroy();
   DestroyStream();
+  std::lock_guard<std::mutex> lock(consumer_mutex_);
   vinput::audio::AudioPcmChunk chunk;
   while (queue_.try_dequeue(chunk)) {
   }
@@ -586,6 +600,7 @@ bool AudioCapture::IsRecording() const {
 }
 
 bool AudioCapture::TryDequeue(vinput::audio::AudioPcmChunk& chunk) {
+  std::lock_guard<std::mutex> lock(consumer_mutex_);
   return queue_.try_dequeue(chunk);
 }
 
@@ -638,9 +653,4 @@ void AudioCapture::SetTargetObject(std::string target_object) {
     VLOG_DEBUG("capture target changed; destroying reusable stream for reconnect");
     DestroyStream();
   }
-}
-
-void AudioCapture::SetChunkCallback(ChunkCallback callback) {
-  std::lock_guard<std::mutex> lock(callback_mutex_);
-  chunk_callback_ = std::move(callback);
 }
