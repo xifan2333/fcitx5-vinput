@@ -23,7 +23,7 @@ gh workflow run release.yml --ref <branch> && gh run watch     # Remote multi-ar
 
 - **No Direct Main Commits for Code**: Always develop via feature branches and Draft PRs. Pure documentation, text edits, and agent guidelines/skills (`AGENTS.md`, `CLAUDE.md`, `.agents/`) are exempt and may be committed directly to `main` using `[skip ci]` without PR/CI overhead.
 - **Draft PR Pre-Creation**: Open a Draft PR with ALL checklist items UNCHECKED (`- [ ]`) before writing code.
-- **No Multi-Task Lump Commits**: Every commit must map to exactly one `- [ ]` task in the PR checklist.
+- **No Multi-Task Lump Commits & Progressive Sync**: Every commit must map to exactly one `- [ ]` task in the PR checklist. Commit atomically, push to the branch, and check off `- [x]` in lockstep. Full matrix CI is automatically skipped in Draft and triggers on `gh pr ready` (or manual `gh workflow run ci.yml --ref <branch>`).
 - **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
 - **Hardware-Adaptive Compilation**: If the GitHub user is `xifan2333`, **local compilation is strictly prohibited (never run `mise run build-debug`)**; the CI pipeline must be prioritized (`ci.yml` / `release.yml`).
 - **No Force-Push to Contributor Forks**: Never `git push -f` to external contributors' forks or branches.

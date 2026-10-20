@@ -52,7 +52,7 @@ Agents must progressively load detailed operational manuals according to the cur
 ### Branch: Developing Features or Bugfixes
 Read **[references/issue-pr-workflow.md](references/issue-pr-workflow.md)**
 - **Trigger**: When starting any new feature, bugfix, or functional refactoring in `fcitx5-vinput` (pure documentation and agent skill changes follow the direct-to-main fast-track).
-- **Core Standard**: Strict Issue $\to$ Pre-code Draft PR (all `- [ ]` unchecked) $\to$ single-item local atomic commit $\to$ unified push on full checklist completion $\to$ review-fix triage loop.
+- **Core Standard**: Strict Issue $\to$ Pre-code Draft PR (all `- [ ]` unchecked) $\to$ single-item atomic commit & progressive push with PR checklist sync $\to$ `gh pr ready` for full CI validation $\to$ review-fix triage loop.
 - **Micro-slicing**: Keep functional code diffs under 300 lines; break large epics into stacked micro-PRs.
 - **Config Migration**: Breaking config changes require updating `src/common/config/config_migration.cpp` in the same PR.
 - **Fast-Track Policy**: Non-functional text, documentation, and agent rules bypass the Issue/PR lifecycle and may be committed directly to `main` with `[skip ci]`.

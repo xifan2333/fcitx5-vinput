@@ -22,9 +22,9 @@ Progressive operational guide, hard constraints, and routing index for AI coding
 1. **No Direct Main Commits for Code**: Never push implementation code, build configurations, or tests directly to `main`. Always develop via feature branches and Draft PRs.
    *Fast-track Exception (Doc & Agent Rules)*: Pure documentation, agent guides/skills (`AGENTS.md`, `CLAUDE.md`, `.agents/`), and non-functional textual edits that do not alter binary outputs or require CI validation are exempt from the Issue-PR lifecycle and may be committed directly to `main` with `[skip ci]`.
 2. **Draft PR Pre-Creation**: Open a Draft PR with ALL checklist items UNCHECKED (`- [ ]`) before writing any implementation code.
-3. **No Multi-Task Lump Commits**: Every commit must map to exactly one `- [ ]` task in the PR checklist. Keep commits local until all checklist tasks pass local quality gates.
+3. **No Multi-Task Lump Commits & Progressive Sync**: Every commit must map to exactly one `- [ ]` task in the PR checklist. After passing local quality gates (`mise run check:changed`), commit atomically, push to the branch, and update the PR checklist (`- [x]`) in lockstep for real-time traceability. Full matrix CI is automatically skipped during the Draft phase and triggers on `gh pr ready` (or manually on demand via `gh workflow run ci.yml --ref <branch>`).
 4. **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
-5. **Transparent Progress Tracking**: Always report progress against the PR checklist (e.g., "Completed 2 of 4 tasks; currently implementing task 3").
+5. **Transparent Progress Tracking**: Always report progress against the PR checklist in both chat output and the remote PR description (e.g., "Completed 2 of 4 tasks; currently implementing task 3").
 6. **Hardware-Adaptive & User-Specific Compilation**:
    - If the GitHub user is `xifan2333` (maintainer environment), **local compilation is strictly prohibited (never run `mise run build-debug` or any heavy local build commands)**; the CI pipeline must be prioritized (rely exclusively on `ci.yml` / `release.yml`).
    - For other users on modest hardware, also prioritize GitHub Actions CI over heavy local builds.
