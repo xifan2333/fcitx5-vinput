@@ -59,6 +59,12 @@ This file lists third-party software that this project depends on or bundles, an
    - Upstream: https://github.com/cameron314/readerwriterqueue
    - Version: v1.0.7 (commit 8b21766, imported 2026-10-21, vendored in `3rdparty/readerwriterqueue/`)
 
+6. **mandreyel/mio** (`3rdparty/mio/`)
+   - Description: Cross-platform C++11 header-only memory mapped file I/O library.
+   - License: MIT
+   - Upstream: https://github.com/mandreyel/mio
+   - Version: commit 8b6b7d8 (imported 2026-10-21, vendored in `3rdparty/mio/`)
+
 ## Models / data downloaded by users (not bundled)
 
 1. **sherpa-onnx ASR models**

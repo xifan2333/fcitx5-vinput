@@ -71,6 +71,7 @@ target_link_libraries(config PUBLIC
     subprocess::subprocess
     nonstd::scope
     unicodelib::unicodelib
+    mio::mio
 )
 
 target_link_libraries(common PUBLIC
