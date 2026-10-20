@@ -252,9 +252,7 @@ void TestReadOnlyFileMapping() {
 
   // 4. Empty file mapping (0 bytes)
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
-  {
-    std::ofstream out_empty(empty_file, std::ios::binary);
-  }
+  std::ofstream(empty_file, std::ios::binary).close();
   auto mapping_empty = ReadOnlyFileMapping::Map(empty_file, &err);
   TEST_ASSERT(err.empty());
   TEST_ASSERT(mapping_empty.IsValid());

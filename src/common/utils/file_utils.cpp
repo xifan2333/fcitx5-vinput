@@ -327,7 +327,7 @@ std::string_view ReadOnlyFileMapping::StringView() const noexcept {
   if (is_empty_file_ || impl_ == nullptr || !impl_->mmap.is_open()) {
     return {};
   }
-  return std::string_view(impl_->mmap.data(), impl_->mmap.size());
+  return {impl_->mmap.data(), impl_->mmap.size()};
 }
 
 std::string_view ReadOnlyFileMapping::View() const noexcept {
