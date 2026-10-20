@@ -65,7 +65,7 @@ To avoid confusing functional planning with toolchain validation:
                 |    git push origin <branch>           |
                 |    gh pr edit --body (check task N)   |
                 |    (CI automatically skipped in Draft)|
-                |    (Optional: gh workflow run ci.yml) |
+                |    (Optional: gh workflow run ci.yml --ref <branch>) |
                 +-------------------+-------------------+
                                     | (Remaining tasks?)
                                     +-------- Yes -------+
