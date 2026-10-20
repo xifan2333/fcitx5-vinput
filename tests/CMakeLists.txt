@@ -83,6 +83,7 @@ target_include_directories(test_command_streaming PRIVATE
 
 target_link_libraries(test_command_streaming PRIVATE
     common
+    base64::base64
 )
 
 add_test(NAME test_command_streaming COMMAND test_command_streaming)
