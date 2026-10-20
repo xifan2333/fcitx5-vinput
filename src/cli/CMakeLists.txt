@@ -1,21 +1,3 @@
-option(VINPUT_FETCH_CLI11 "Fetch CLI11 with FetchContent when not found" ON)
-
-find_package(CLI11 QUIET CONFIG)
-if(NOT CLI11_FOUND)
-    if(VINPUT_FETCH_CLI11)
-        include(FetchContent)
-        FetchContent_Declare(
-            CLI11
-            GIT_REPOSITORY https://github.com/CLIUtils/CLI11
-            GIT_TAG v2.4.2
-        )
-        FetchContent_MakeAvailable(CLI11)
-    else()
-        message(FATAL_ERROR
-            "CLI11 was not found. Install CLI11 or enable VINPUT_FETCH_CLI11.")
-    endif()
-endif()
-
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 
 add_library(client_runtime STATIC
