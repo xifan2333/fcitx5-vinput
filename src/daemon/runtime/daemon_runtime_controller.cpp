@@ -229,6 +229,8 @@ DaemonRuntimeController::DaemonRuntimeController(
   notify_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
   if (notify_fd_ < 0) {
     fprintf(stderr, "vinput-daemon: failed to create runtime notify fd: %s\n", strerror(errno));
+  } else if (capture_ != nullptr) {
+    capture_->SetNotifyFd(notify_fd_);
   }
 
   if (remote_text_service_ != nullptr) {
@@ -419,7 +421,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
   // both capture and session are armed below.
   std::string error;
   capture_->SetTargetObject(runtime_settings.global.captureDevice);
-  capture_->SetChunkCallback([this](std::span<const int16_t> pcm) { HandleIncomingAudio(pcm); });
+  capture_->SetNotifyFd(notify_fd_);
   AudioCapture::StartTiming capture_timing;
   if (!capture_->BeginRecording(&error, &capture_timing)) {
     std::string message =
@@ -427,7 +429,6 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     if (!error.empty()) {
       message = std::string(vinput::str::StripSuffix(message, ".")) + ": " + error;
     }
-    capture_->SetChunkCallback({});
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       start_recording_in_progress_ = false;
@@ -448,7 +449,6 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       message += " " + error;
     }
     capture_->EndRecording();
-    capture_->SetChunkCallback({});
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       start_recording_in_progress_ = false;
@@ -526,7 +526,6 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
 
   if (abort_started_capture) {
     capture_->EndRecording();
-    capture_->SetChunkCallback({});
     RestoreOutputIfDucked();
     ScheduleCaptureStopOnMainThread();
     return DbusService::MethodResult::Failure("Daemon is busy.");
@@ -554,6 +553,18 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
   return DbusService::MethodResult::Success();
 }
 
+void DaemonRuntimeController::DrainIncomingAudio() {
+  if (!capture_ || !accepting_chunks_.load(std::memory_order_relaxed)) {
+    return;
+  }
+  vinput::audio::AudioPcmChunk chunk;
+  while (capture_->TryDequeue(chunk)) {
+    if (chunk.size > 0) {
+      HandleIncomingAudio(chunk.AsSpan());
+    }
+  }
+}
+
 void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) {
   if (!accepting_chunks_.load(std::memory_order_relaxed) || pcm.empty()) {
     return;
@@ -575,8 +586,6 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
   std::vector<int16_t> gained_pcm;
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
   std::vector<int16_t> chunk_to_push;
-  std::optional<std::chrono::steady_clock::time_point> recording_started_at;
-  std::optional<std::chrono::steady_clock::time_point> first_non_silent_at;
   bool streaming_mode = false;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -594,13 +603,10 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
     }
 
     if (UsesBufferedDelivery(active_backend_)) {
-      // AudioCapture owns the full PCM until StopAndGetBuffer() overwrites
-      // current_recording_pcm_; only the sample count is needed here.
-      current_sample_count_ += pcm_view.size();
+      current_recording_pcm_.insert(current_recording_pcm_.end(), pcm_view.begin(), pcm_view.end());
+      current_sample_count_ = current_recording_pcm_.size();
     } else {
       streaming_mode = true;
-      recording_started_at = recording_started_at_;
-      first_non_silent_at = first_non_silent_at_;
       pending_chunk_pcm_.insert(pending_chunk_pcm_.end(), pcm_view.begin(), pcm_view.end());
       if (pending_chunk_pcm_.size() >= kStreamingChunkSamples) {
         chunk_to_push.assign(pending_chunk_pcm_.begin(),
@@ -631,48 +637,18 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       if (active_session_ != session) {
-        // This local reference may be the session's last owner; releasing
-        // it here would destroy the async session (Cancel + worker join)
-        // on the capture callback. Transfer it to the deferred main-thread
-        // retirement vector while still under state_mutex_, then wake the
-        // main thread only after the transfer (see RetireCancelledSession).
-        // No Cancel is issued here: whoever replaced active_session_
-        // already owns cancellation of the old session, and the deferred
-        // vector only holds an extra reference if another owner (e.g.
-        // current_order_) still has one, so a newer session is unaffected.
         deferred_cancelled_sessions_.push_back(session);
         session_retired = true;
       } else {
-        // Drain and apply atomically under state_mutex_ (PollActiveSessionEvents
-        // does the same on the main thread): draining here and applying later
-        // could let a newer batch from the main thread be applied first and
-        // then be overwritten by this older batch.
-        std::vector<vinput::daemon::asr::RecognitionEvent> events;
-        if (pushed) {
-          const std::scoped_lock session_lock(session_io_mutex_);
-          events = session->PollEvents();
-        }
-
         current_sample_count_ += chunk_to_push.size();
         pending_chunk_pcm_.erase(pending_chunk_pcm_.begin(),
                                  pending_chunk_pcm_.begin() +
                                      static_cast<std::ptrdiff_t>(chunk_to_push.size()));
-        if (!events.empty()) {
-          ApplyRecognitionEvents(events, RecognitionDispatchContext{
-                                             .latest_final_text = &latest_final_text_,
-                                             .first_partial_logged = &first_partial_logged_,
-                                             .recording_started_at = recording_started_at_,
-                                             .first_non_silent_at = first_non_silent_at_,
-                                             .dbus = dbus_,
-                                         });
-        }
         keep_processing = pending_chunk_pcm_.size() >= kStreamingChunkSamples;
         if (keep_processing) {
           chunk_to_push.assign(pending_chunk_pcm_.begin(),
                                pending_chunk_pcm_.begin() +
                                    static_cast<std::ptrdiff_t>(kStreamingChunkSamples));
-          recording_started_at = recording_started_at_;
-          first_non_silent_at = first_non_silent_at_;
         } else {
           chunk_to_push.clear();
         }
@@ -858,26 +834,22 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
       VLOG_DEBUG("phase -> idle");
       apply_pending_reload = true;
     } else {
+      if (!captured_pcm.empty()) {
+        std::vector<int16_t> gained_pcm;
+        const auto pcm_view =
+            vinput::audio::PrepareGainAdjustedInput(captured_pcm, current_input_gain_, &gained_pcm);
+        if (UsesBufferedDelivery(active_backend_)) {
+          current_recording_pcm_.insert(current_recording_pcm_.end(), pcm_view.begin(),
+                                        pcm_view.end());
+          current_sample_count_ = current_recording_pcm_.size();
+        } else {
+          pending_chunk_pcm_.insert(pending_chunk_pcm_.end(), pcm_view.begin(), pcm_view.end());
+        }
+      }
+
       if (UsesBufferedDelivery(active_backend_)) {
-        // The capture buffer contains raw PCM; callback-side gained PCM is
-        // overwritten here. Apply the session's input gain exactly once before
-        // passing the authoritative captured samples to the buffered backend.
-        vinput::audio::ApplyGainI16(captured_pcm, current_input_gain_);
-        current_recording_pcm_ = std::move(captured_pcm);
         current_sample_count_ = current_recording_pcm_.size();
       } else {
-        const std::size_t raw_tail_offset = current_sample_count_ + pending_chunk_pcm_.size();
-        if (captured_pcm.size() > raw_tail_offset) {
-          // Pending chunks already received gain in HandleIncomingAudio. Only
-          // the raw tail recovered at Stop needs the same treatment.
-          vinput::audio::ApplyGainI16(std::span<int16_t>(captured_pcm).subspan(raw_tail_offset),
-                                      current_input_gain_);
-          pending_chunk_pcm_.insert(pending_chunk_pcm_.end(),
-                                    captured_pcm.begin() +
-                                        static_cast<std::ptrdiff_t>(raw_tail_offset),
-                                    captured_pcm.end());
-        }
-
         if (!pending_chunk_pcm_.empty()) {
           current_sample_count_ += pending_chunk_pcm_.size();
           VLOG_DEBUG(
@@ -1005,6 +977,8 @@ void DaemonRuntimeController::FlushDeferredActions() {
     deferred.clear(); // Joins async workers on this (main) thread.
   }
 
+  DrainIncomingAudio();
+
   // Worker wake-ups write notify_fd_ without setting pending_capture_stop_,
   // so poll the active session before the early return below. This only
   // ever touches active_session_ (still recording); a session handed to
@@ -1059,10 +1033,12 @@ void DaemonRuntimeController::Shutdown() {
   if (remote_text_service_ != nullptr) {
     remote_text_service_->SetSessionControlCallbacks(nullptr, nullptr);
   }
-  capture_->SetChunkCallback({});
   accepting_chunks_.store(false, std::memory_order_relaxed);
   pending_capture_stop_.store(false, std::memory_order_relaxed);
-  capture_->Stop();
+  if (capture_ != nullptr) {
+    capture_->SetNotifyFd(-1);
+    capture_->Stop();
+  }
   RestoreOutputIfDucked();
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {

@@ -61,6 +61,7 @@ private:
                                                    const std::string& selected_text);
   bool SynchronizeAsrBackend(std::string* error = nullptr);
   void MaybeApplyPendingAsrBackendReload();
+  void DrainIncomingAudio();
   void HandleIncomingAudio(std::span<const int16_t> pcm);
   // Main-thread only: poll the still-recording active session after a worker
   // wake-up, and surface a worker-side backend failure via FailActiveSession.
