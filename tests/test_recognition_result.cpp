@@ -19,7 +19,7 @@ void AssertTrue(bool condition, const char* message, const char* file, int line)
 void TestRoundTrip() {
   using namespace vinput::result;
 
-  Payload original{
+  const Payload original{
       .commitText = "Hello world",
       .candidates =
           {
@@ -63,6 +63,10 @@ void TestEmptyAndInvalid() {
   TEST_ASSERT(Parse("[1, 2, 3]").commitText.empty());
   TEST_ASSERT(Parse("null").commitText.empty());
   TEST_ASSERT(Parse("true").commitText.empty());
+
+  // Trailing garbage after valid JSON object (rejected by force_conformance)
+  TEST_ASSERT(Parse(R"({"commit_text":"valid"} trailing)").commitText.empty());
+  TEST_ASSERT(Parse(R"({"commit_text":"valid"} 12345)").commitText.empty());
 }
 
 void TestFallbackCommitTextFromCandidates() {

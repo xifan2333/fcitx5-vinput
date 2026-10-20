@@ -1,8 +1,15 @@
 #include "recognition_result.h"
 
-#include <glaze/glaze.hpp>
+#include <cstdint>
+#include <glaze/core/common.hpp>
+#include <glaze/core/meta.hpp>
+#include <glaze/core/opts.hpp>
+#include <glaze/core/read.hpp>
+#include <glaze/json/read.hpp>
+#include <glaze/json/write.hpp>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -55,7 +62,9 @@ Payload Parse(std::string_view payload_text) {
   }
 
   WirePayload wire;
-  const auto ec = glz::read<glz::opts{.error_on_unknown_keys = false}>(wire, payload_text);
+  const auto ec =
+      glz::read<glz::opts{.error_on_unknown_keys = uint8_t{0}, .force_conformance = uint8_t{1}}>(
+          wire, payload_text);
   if (bool(ec)) {
     return {};
   }
