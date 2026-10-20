@@ -5,11 +5,14 @@
 #include <csignal>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <exception>
 #include <fcntl.h>
 #include <map>
 #include <mutex>
 #include <optional>
+#include <signal.h>
+#include <stdio.h>
 #include <string>
 #include <subprocess.hpp>
 #include <thread>
@@ -112,6 +115,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
     const auto timeout_dur = spec.timeout_ms > 0 ? std::chrono::milliseconds(spec.timeout_ms)
                                                  : std::chrono::milliseconds::max();
     bool child_exited = false;
+    int child_exit_code = -1;
     std::optional<std::chrono::steady_clock::time_point> child_exited_at;
 
     while (true) {
@@ -121,21 +125,21 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       }
       lock.unlock();
 
-      if (!child_exited && proc.poll() != -1) {
-        child_exited = true;
-        child_exited_at = std::chrono::steady_clock::now();
+      if (!child_exited) {
+        const int poll_res = proc.poll();
+        if (poll_res != -1) {
+          child_exited = true;
+          child_exit_code = poll_res;
+          child_exited_at = std::chrono::steady_clock::now();
+        }
       }
 
       const auto now = std::chrono::steady_clock::now();
       if (child_exited && child_exited_at.has_value()) {
         constexpr auto kPostExitGrace = std::chrono::milliseconds(150);
         if (now - *child_exited_at >= kPostExitGrace) {
-          if (proc.output() != nullptr) {
-            ::close(fileno(proc.output()));
-          }
-          if (proc.error() != nullptr) {
-            ::close(fileno(proc.error()));
-          }
+          proc.close_output();
+          proc.close_error();
           break;
         }
       }
@@ -143,18 +147,18 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       if (spec.timeout_ms > 0 && (now - start_time) >= timeout_dur) {
         result.timed_out = true;
         proc.kill(SIGKILL);
-        if (proc.output() != nullptr) {
-          ::close(fileno(proc.output()));
-        }
-        if (proc.error() != nullptr) {
-          ::close(fileno(proc.error()));
-        }
+        proc.close_output();
+        proc.close_error();
         break;
       }
     }
 
     comm_thread.join();
-    result.exit_code = proc.retcode();
+    if (child_exited) {
+      result.exit_code = child_exit_code;
+    } else {
+      result.exit_code = proc.retcode();
+    }
     result.stdout_text.assign(out_buf.buf.data(), out_buf.length);
     result.stderr_text.assign(err_buf.buf.data(), err_buf.length);
     return result;
@@ -195,7 +199,15 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
       process_out->pid = proc.pid();
       FILE* err_fp = proc.error();
       if (err_fp != nullptr) {
-        process_out->stderr_fd = dup(fileno(err_fp));
+        const int dup_fd = fcntl(fileno(err_fp), F_DUPFD_CLOEXEC, 0);
+        if (dup_fd < 0) {
+          if (error != nullptr) {
+            *error = "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));
+          }
+          proc.kill(SIGKILL);
+          return false;
+        }
+        process_out->stderr_fd = dup_fd;
       }
     }
     if (error != nullptr) {

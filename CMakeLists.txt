@@ -157,6 +157,12 @@ if(NOT TARGET subprocess::subprocess AND NOT TARGET subprocess)
     add_library(subprocess::subprocess ALIAS 3rdparty_subprocess)
 endif()
 
+add_library(3rdparty_scope INTERFACE)
+target_include_directories(3rdparty_scope SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/scope
+)
+add_library(nonstd::scope ALIAS 3rdparty_scope)
+
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit")

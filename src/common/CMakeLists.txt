@@ -69,6 +69,7 @@ target_link_libraries(config PUBLIC
     OpenSSL::Crypto
     spdlog::spdlog_header_only
     subprocess::subprocess
+    nonstd::scope
 )
 
 target_link_libraries(common PUBLIC

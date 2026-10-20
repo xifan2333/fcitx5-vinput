@@ -1,7 +1,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <unistd.h>
 
 #include "cli/utils/editor_utils.h"
 
@@ -18,7 +17,8 @@ void TestEditorSuccess() {
   const auto tmp_dir = std::filesystem::temp_directory_path();
   const auto test_file = tmp_dir / "vinput_test_editor_file.txt";
 
-  setenv("VISUAL", "true", 1);
+  static char env_val[] = "VISUAL=true";
+  std::putenv(env_val);
   const int ret = OpenInEditor(test_file);
   TEST_ASSERT(ret == 0);
 }
@@ -27,7 +27,8 @@ void TestEditorFailure() {
   const auto tmp_dir = std::filesystem::temp_directory_path();
   const auto test_file = tmp_dir / "vinput_test_editor_file.txt";
 
-  setenv("VISUAL", "false", 1);
+  static char env_val[] = "VISUAL=false";
+  std::putenv(env_val);
   const int ret = OpenInEditor(test_file);
   TEST_ASSERT(ret == 1);
 }
@@ -36,7 +37,8 @@ void TestEditorNonExistent() {
   const auto tmp_dir = std::filesystem::temp_directory_path();
   const auto test_file = tmp_dir / "vinput_test_editor_file.txt";
 
-  setenv("VISUAL", "/nonexistent/path/to/editor_xyz", 1);
+  static char env_val[] = "VISUAL=/nonexistent/path/to/editor_xyz";
+  std::putenv(env_val);
   const int ret = OpenInEditor(test_file);
   TEST_ASSERT(ret == -1);
 }
@@ -45,7 +47,8 @@ void TestEditorQuotedArguments() {
   const auto tmp_dir = std::filesystem::temp_directory_path();
   const auto test_file = tmp_dir / "vinput_test_editor_file.txt";
 
-  setenv("VISUAL", "sh -c 'exit 0'", 1);
+  static char env_val[] = "VISUAL=sh -c 'exit 0'";
+  std::putenv(env_val);
   const int ret = OpenInEditor(test_file);
   TEST_ASSERT(ret == 0);
 }

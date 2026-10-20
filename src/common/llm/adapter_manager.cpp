@@ -21,11 +21,12 @@ extern "C" {
 #include <signal.h>
 }
 
+#include <nonstd/scope.hpp>
+
 #include "common/config/core_config_types.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/process_utils.h"
-#include "common/utils/scope_guard.h"
 
 namespace vinput::adapter {
 
@@ -402,8 +403,8 @@ bool Stop(std::string_view adapter_id, std::string* error) {
   // this exact instance referenced, so a pid recycled between the check and the
   // signals below can never be reached: verification and delivery act on the same
   // kernel object.
-  const int pidfd_raw = OpenPidFd(record.pid);
-  if (pidfd_raw < 0) {
+  const int pidfd = OpenPidFd(record.pid);
+  if (pidfd < 0) {
     if (errno == ESRCH) {
       RemovePidFile(adapter_id);
       if (error != nullptr) {
@@ -416,8 +417,7 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     // window to the gap between that check and the signal itself.
     return StopByPid(record, adapter_id, error);
   }
-  const vinput::UniqueFd pidfd_guard(pidfd_raw);
-  const int pidfd = pidfd_guard.get();
+  auto pidfd_guard = nonstd::make_scope_exit([pidfd] { close(pidfd); });
 
   if (!RecordMatchesLiveProcess(record)) {
     // The pinned process is not the adapter: either the adapter already exited or

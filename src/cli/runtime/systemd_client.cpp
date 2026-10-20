@@ -172,6 +172,7 @@ int RunCommandCapture(const std::vector<std::string>& args, std::string* output)
     auto [out, err] = proc.communicate();
     if (output != nullptr) {
       output->assign(out.buf.data(), out.length);
+      output->append(err.buf.data(), err.length);
     }
     return proc.retcode();
   } catch (const std::exception&) {

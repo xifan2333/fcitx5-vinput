@@ -135,16 +135,6 @@ target_link_libraries(test_editor_utils PRIVATE
 
 add_test(NAME test_editor_utils COMMAND test_editor_utils)
 
-add_executable(test_scope_guard
-    test_scope_guard.cpp
-)
-
-target_include_directories(test_scope_guard PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-add_test(NAME test_scope_guard COMMAND test_scope_guard)
-
 add_executable(test_config_migration
     test_config_migration.cpp
 )
