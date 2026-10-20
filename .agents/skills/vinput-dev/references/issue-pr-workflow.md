@@ -196,9 +196,9 @@ git push origin <branch>
 ```
 
 **Proactive CI Quota Cancellation**:
-If an agent pushes an intermediate fix or realizes a run is redundant, proactively cancel stale in-progress runs to save Actions quota:
+Before pushing or if an intermediate fix is needed, cancel obsolete runs to protect runner quota (preserving current HEAD):
 ```bash
-gh run list --branch $(git branch --show-current) --status in_progress --json databaseId -q '.[].databaseId' | xargs -r -n 1 gh run cancel
+gh run list --branch $(git branch --show-current) --status in_progress --json databaseId,headSha --jq ".[] | select(.headSha != \"$(git rev-parse HEAD)\") | .databaseId" | xargs -r -n 1 gh run cancel
 ```
 
 *AI Attribution*: Whenever an agent authors PR descriptions, automated review fixes, or substantive comments, append:

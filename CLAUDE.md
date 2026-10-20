@@ -16,10 +16,10 @@ mise run fix              # Auto-format all modified files via hk/clang-format
 gh workflow run ci.yml && gh run watch                         # Standard PR CI
 gh workflow run release.yml --ref <branch> && gh run watch     # Remote multi-arch matrix dry run
 
-# Proactive CI Quota Cancellation
+# Proactive CI Quota Cancellation (cancel stale runs before push, or exclude current HEAD)
 gh run list --branch $(git branch --show-current) --status in_progress
 gh run cancel <run_id>
-gh run list --branch $(git branch --show-current) --status in_progress --json databaseId -q '.[].databaseId' | xargs -r -n 1 gh run cancel
+gh run list --branch $(git branch --show-current) --status in_progress --json databaseId,headSha --jq ".[] | select(.headSha != \"$(git rev-parse HEAD)\") | .databaseId" | xargs -r -n 1 gh run cancel
 ```
 
 ---
@@ -35,7 +35,7 @@ gh run list --branch $(git branch --show-current) --status in_progress --json da
 - **Breaking Config Changes**: If user-facing keys in `config.json` / `vinput.conf` change incompatibly, add a versioned ConfigMigration step (`src/common/config/config_migration.cpp` `RegisteredSteps`) in the **same PR**. No runtime aliases.
 - **Zero-Tolerance on Suppressing Diagnostics**: Never add `// NOLINT`, `#pragma GCC/clang diagnostic ignored`, or `-Wno-*` in CMake. Fix the root cause cleanly.
 - **Three-Tier Dependencies & Pristine 3rdparty**: Host packages first (`find_package REQUIRED`); vendor single-header libraries under `3rdparty/` with CMake `SYSTEM INTERFACE`. Hand-crafted infrastructure forbidden. **Pristine 3rdparty (零篡改铁律)**: Keep `3rdparty/` strictly untouched upstream code. Never patch or reformat vendored files; place all wrappers and glue in `src/`.
-- **Proactive CI Quota Cancellation**: Cancel stale in-progress runs immediately on defects or task switches (`gh run cancel`).
+- **Proactive CI Quota Cancellation**: Cancel stale in-progress runs before pushing fixes or switching branches (`gh run cancel`). Never cancel runs on `main`.
 - **PR Micro-Slicing**: Keep functional code changes <300 lines; break large epics into stacked micro-PRs.
 - **AI Attribution & Disclosure**: Append `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*` to PR descriptions, review fixes, and substantive comments.
 - **Dialectical Review Bot Triage & Pre-Action Reporting**: Never blindly follow CodeRabbit/Greptile suggestions. Critically evaluate findings against C++20 and project architecture. Before writing fix code, the agent MUST explicitly report its analysis (true issues vs. false positives and next actions) to the user in chat.

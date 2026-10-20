@@ -93,17 +93,17 @@ The primary CI pipeline (`.github/workflows/ci.yml`) enforces a two-stage gate:
 If formatting or static analysis fails, **downstream compilation jobs are immediately Skipped**, saving ~15 minutes of runner compute per failed run.
 
 ### 2. Proactive Run Inspection & Cancellation
-Guard runner quotas by canceling obsolete runs when pushing follow-up commits:
+Guard runner quotas by canceling obsolete runs before pushing follow-up commits (never cancel runs on `main`):
 
 ```bash
-# Inspect active runs for current branch
+# 1. Inspect active runs for current feature branch
 gh run list --branch $(git branch --show-current) --status in_progress
 
-# Cancel specific run
+# 2. Cancel a specific run by ID
 gh run cancel <run_id>
 
-# Cancel all active runs for current branch (one-liner)
-gh run list --branch $(git branch --show-current) --status in_progress --json databaseId -q '.[].databaseId' | xargs -r -n 1 gh run cancel
+# 3. Cancel obsolete runs while preserving current HEAD (if run after push)
+gh run list --branch $(git branch --show-current) --status in_progress --json databaseId,headSha --jq ".[] | select(.headSha != \"$(git rev-parse HEAD)\") | .databaseId" | xargs -r -n 1 gh run cancel
 ```
 
 **Governance Approach**:

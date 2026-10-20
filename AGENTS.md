@@ -38,7 +38,7 @@ Progressive operational guide, hard constraints, and routing index for AI coding
 14. **Semantic Versioning Integrity**: Schema changes require a MINOR bump (`x.Y.0`). Never release breaking configuration changes as a PATCH (`x.y.Z`).
 15. **Three-Tier Dependencies & Pristine 3rdparty (零篡改铁律)**: Never download at build time (`FetchContent` prohibited). Enforce Three-Tier Cascade: Tier 1/2 universal libraries via host packages (`find_package REQUIRED`); Tier 3 missing single-header libraries vendored under `3rdparty/` with CMake `SYSTEM INTERFACE` and registered in `THIRD_PARTY_NOTICES.md`. Hand-crafted infrastructure (Unicode/Base64 tables) is prohibited.
     - **Pristine 3rdparty (零篡改)**: Code under `3rdparty/` must remain untouched upstream snapshots. Never patch, reformat, or edit vendored code; all wrappers and adapters belong in `src/`.
-16. **Proactive CI Quota Cancellation**: Guard Actions runner minutes. When pushing immediate fixes, amending commits, or switching tasks, proactively cancel stale in-progress runs (`gh run cancel`) to eliminate redundant compute.
+16. **Proactive CI Quota Cancellation**: Guard Actions runner minutes. Before pushing follow-up fixes, amending commits, or switching tasks, proactively cancel stale in-progress runs (`gh run cancel`) to eliminate redundant compute. Never cancel runs on `main`.
 17. **Dialectical Review Bot Triage & Pre-Action Reporting**: Never treat automated review bot outputs (CodeRabbit, Greptile, etc.) as unquestioned instructions. Agents must critically evaluate every finding against codebase architecture, C++20 standards, and false-positive likelihood. Before writing any fix code, the agent **MUST** report its analysis to the user in chat (what is accepted as a true issue, what is rejected as false positive and why, and what actions will be taken next), and only proceed after communicating the plan.
 18. **Non-Blocking Handover (No CI Polling)**: Agents are strictly prohibited from busy-waiting or executing blocking polling loops (`gh run watch`, sleep loops, repeated `gh pr checks`). CI builds and review bots are asynchronous. Immediately after running `gh pr ready`, the agent must output the PR and Actions run URLs, summarize delivered changes, and yield control to the maintainer. Further actions (bot triage or merge) are event-driven upon user prompt.
 19. **Issue-PR Lifecycle Complete Closure**: After squash-merging a PR, the agent **MUST** switch back to `main`, pull latest changes (`git checkout main && git pull`), and explicitly verify that the originating issue is in the `CLOSED` state (via `gh issue view <issue_id>`). If not automatically closed by GitHub keywords, manually close it (`gh issue close <issue_id>`). Never leave completed issues orphaned in an open state.
@@ -57,10 +57,10 @@ mise run fix              # Auto-format all files via hk/clang-format
 gh workflow run ci.yml && gh run watch                         # Standard PR CI
 gh workflow run release.yml --ref <branch> && gh run watch     # Remote multi-arch matrix dry run
 
-# Proactive CI Quota Cancellation
+# Proactive CI Quota Cancellation (cancel stale runs before push, or exclude current HEAD)
 gh run list --branch $(git branch --show-current) --status in_progress
 gh run cancel <run_id>
-gh run list --branch $(git branch --show-current) --status in_progress --json databaseId -q '.[].databaseId' | xargs -r -n 1 gh run cancel
+gh run list --branch $(git branch --show-current) --status in_progress --json databaseId,headSha --jq ".[] | select(.headSha != \"$(git rev-parse HEAD)\") | .databaseId" | xargs -r -n 1 gh run cancel
 ```
 
 ---
