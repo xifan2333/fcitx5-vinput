@@ -37,11 +37,12 @@ std::string MaskSecret(std::string_view secret, size_t head_keep = 4, size_t tai
   if (secret.empty()) {
     return {};
   }
-  if (tail_keep >= secret.size() || head_keep >= secret.size() - tail_keep) {
-    return {secret.size(), mask_char};
-  }
   std::string result;
   result.reserve(secret.size());
+  if (tail_keep >= secret.size() || head_keep >= secret.size() - tail_keep) {
+    result.assign(secret.size(), mask_char);
+    return result;
+  }
   result.append(secret.substr(0, head_keep));
   result.append(secret.size() - head_keep - tail_keep, mask_char);
   result.append(secret.substr(secret.size() - tail_keep));
