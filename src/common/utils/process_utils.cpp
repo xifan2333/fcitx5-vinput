@@ -4,14 +4,14 @@
 #include <condition_variable>
 #include <csignal>
 #include <cstddef>
+#include <cstdio>
 #include <exception>
 #include <fcntl.h>
 #include <map>
 #include <mutex>
-#include <stdio.h>
+#include <optional>
 #include <string>
 #include <subprocess.hpp>
-#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -88,30 +88,59 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       in_buf[i] = static_cast<char>(input[i]);
     }
 
-    if (spec.timeout_ms > 0) {
-      std::mutex comm_mutex;
-      std::condition_variable comm_cv;
-      bool done = false;
-      subprocess::Buffer out_buf;
-      subprocess::Buffer err_buf;
+    std::mutex comm_mutex;
+    std::condition_variable comm_cv;
+    bool done = false;
+    subprocess::Buffer out_buf;
+    subprocess::Buffer err_buf;
 
-      std::thread comm_thread([&] {
-        try {
-          auto res = proc.communicate(in_buf);
-          const std::scoped_lock lock(comm_mutex);
-          out_buf = std::move(res.first);
-          err_buf = std::move(res.second);
-          done = true;
-        } catch (const std::exception&) {
-          const std::scoped_lock lock(comm_mutex);
-          done = true;
-        }
-        comm_cv.notify_one();
-      });
+    std::thread comm_thread([&] {
+      try {
+        auto res = proc.communicate(in_buf);
+        const std::scoped_lock lock(comm_mutex);
+        out_buf = std::move(res.first);
+        err_buf = std::move(res.second);
+        done = true;
+      } catch (const std::exception&) {
+        const std::scoped_lock lock(comm_mutex);
+        done = true;
+      }
+      comm_cv.notify_one();
+    });
 
+    const auto start_time = std::chrono::steady_clock::now();
+    const auto timeout_dur = spec.timeout_ms > 0 ? std::chrono::milliseconds(spec.timeout_ms)
+                                                 : std::chrono::milliseconds::max();
+    bool child_exited = false;
+    std::optional<std::chrono::steady_clock::time_point> child_exited_at;
+
+    while (true) {
       std::unique_lock lock(comm_mutex);
-      if (!comm_cv.wait_for(lock, std::chrono::milliseconds(spec.timeout_ms),
-                            [&] { return done; })) {
+      if (comm_cv.wait_for(lock, std::chrono::milliseconds(10), [&] { return done; })) {
+        break;
+      }
+      lock.unlock();
+
+      if (!child_exited && proc.poll() != -1) {
+        child_exited = true;
+        child_exited_at = std::chrono::steady_clock::now();
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (child_exited && child_exited_at.has_value()) {
+        constexpr auto kPostExitGrace = std::chrono::milliseconds(150);
+        if (now - *child_exited_at >= kPostExitGrace) {
+          if (proc.output() != nullptr) {
+            ::close(fileno(proc.output()));
+          }
+          if (proc.error() != nullptr) {
+            ::close(fileno(proc.error()));
+          }
+          break;
+        }
+      }
+
+      if (spec.timeout_ms > 0 && (now - start_time) >= timeout_dur) {
         result.timed_out = true;
         proc.kill(SIGKILL);
         if (proc.output() != nullptr) {
@@ -120,20 +149,11 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
         if (proc.error() != nullptr) {
           ::close(fileno(proc.error()));
         }
-        lock.unlock();
-        comm_thread.join();
-        return result;
+        break;
       }
-      lock.unlock();
-      comm_thread.join();
-
-      result.exit_code = proc.retcode();
-      result.stdout_text.assign(out_buf.buf.data(), out_buf.length);
-      result.stderr_text.assign(err_buf.buf.data(), err_buf.length);
-      return result;
     }
 
-    auto [out_buf, err_buf] = proc.communicate(in_buf);
+    comm_thread.join();
     result.exit_code = proc.retcode();
     result.stdout_text.assign(out_buf.buf.data(), out_buf.length);
     result.stderr_text.assign(err_buf.buf.data(), err_buf.length);

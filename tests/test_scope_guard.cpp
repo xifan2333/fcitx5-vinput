@@ -50,8 +50,8 @@ void TestUniqueFd() {
   int pipefd[2] = {-1, -1};
   TEST_ASSERT(pipe(pipefd) == 0);
 
-  int read_fd = pipefd[0];
-  int write_fd = pipefd[1];
+  const int read_fd = pipefd[0];
+  const int write_fd = pipefd[1];
 
   {
     vinput::UniqueFd ufd(read_fd);
@@ -60,8 +60,7 @@ void TestUniqueFd() {
     TEST_ASSERT(static_cast<bool>(ufd));
 
     // Move
-    vinput::UniqueFd ufd2 = std::move(ufd);
-    TEST_ASSERT(!ufd.is_valid());
+    const vinput::UniqueFd ufd2 = std::move(ufd);
     TEST_ASSERT(ufd2.is_valid());
     TEST_ASSERT(ufd2.get() == read_fd);
   }

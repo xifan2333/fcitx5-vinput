@@ -1,7 +1,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <stdlib.h>
+#include <unistd.h>
 
 #include "cli/utils/editor_utils.h"
 
