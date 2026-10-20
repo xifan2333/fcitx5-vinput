@@ -90,6 +90,7 @@ jobs:
           file-annotations: true
           thread-comments: 'false'
           ignore: '3rdparty|build'
+          summary-output-file: 'pr-report/summary.md'
 
       - name: Save PR info and report
         if: always() && github.event_name == 'pull_request'
