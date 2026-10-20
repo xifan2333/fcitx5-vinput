@@ -1,8 +1,8 @@
 #include "common/utils/process_utils.h"
 
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
-#include <csignal>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -10,9 +10,6 @@
 #include <fcntl.h>
 #include <map>
 #include <mutex>
-#include <optional>
-#include <signal.h>
-#include <stdio.h>
 #include <string>
 #include <subprocess.hpp>
 #include <thread>
@@ -23,6 +20,7 @@
 #include "common/utils/interpolation.h"
 
 extern char** environ;
+extern "C" int fileno(FILE*) noexcept;
 
 namespace vinput::process {
 
@@ -116,7 +114,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
                                                  : std::chrono::milliseconds::max();
     bool child_exited = false;
     int child_exit_code = -1;
-    std::optional<std::chrono::steady_clock::time_point> child_exited_at;
+    auto child_exited_at = std::chrono::steady_clock::now();
 
     while (true) {
       std::unique_lock lock(comm_mutex);
@@ -135,9 +133,9 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       }
 
       const auto now = std::chrono::steady_clock::now();
-      if (child_exited && child_exited_at.has_value()) {
+      if (child_exited) {
         constexpr auto kPostExitGrace = std::chrono::milliseconds(150);
-        if (now - *child_exited_at >= kPostExitGrace) {
+        if (now - child_exited_at >= kPostExitGrace) {
           proc.close_output();
           proc.close_error();
           break;
@@ -146,7 +144,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
 
       if (spec.timeout_ms > 0 && (now - start_time) >= timeout_dur) {
         result.timed_out = true;
-        proc.kill(SIGKILL);
+        proc.kill();
         proc.close_output();
         proc.close_error();
         break;
@@ -204,7 +202,7 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
           if (error != nullptr) {
             *error = "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));
           }
-          proc.kill(SIGKILL);
+          proc.kill();
           return false;
         }
         process_out->stderr_fd = dup_fd;
