@@ -35,6 +35,7 @@ private:
 };
 
 // RAII wrapper for zero-copy read-only memory-mapped file access.
+// Expects the target file to remain immutable during the lifetime of the mapping.
 // Safely handles 0-byte empty files by providing an empty string_view.
 class ReadOnlyFileMapping {
 public:
@@ -75,6 +76,9 @@ bool ReadTextFile(const std::filesystem::path& path, std::string* content,
                   std::string* error = nullptr, size_t max_bytes = 0);
 bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view content,
                          std::string* error);
+// Computes the SHA-256 hash of a file.
+// Uses zero-copy memory mapping for performance, falling back to streaming when mmap is
+// unavailable or for pseudo-files. Expects the target file to remain immutable during hashing.
 std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error = nullptr);
 
 // Check if a directory (or its immediate parent if target does not yet exist)

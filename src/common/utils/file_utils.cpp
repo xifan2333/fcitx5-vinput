@@ -264,8 +264,16 @@ struct ReadOnlyFileMapping::Impl {
 
 ReadOnlyFileMapping::ReadOnlyFileMapping() = default;
 ReadOnlyFileMapping::~ReadOnlyFileMapping() = default;
-ReadOnlyFileMapping::ReadOnlyFileMapping(ReadOnlyFileMapping&& other) noexcept = default;
-ReadOnlyFileMapping& ReadOnlyFileMapping::operator=(ReadOnlyFileMapping&& other) noexcept = default;
+ReadOnlyFileMapping::ReadOnlyFileMapping(ReadOnlyFileMapping&& other) noexcept
+    : impl_(std::move(other.impl_)), is_empty_file_(std::exchange(other.is_empty_file_, false)) {}
+
+ReadOnlyFileMapping& ReadOnlyFileMapping::operator=(ReadOnlyFileMapping&& other) noexcept {
+  if (this != &other) {
+    impl_ = std::move(other.impl_);
+    is_empty_file_ = std::exchange(other.is_empty_file_, false);
+  }
+  return *this;
+}
 
 ReadOnlyFileMapping ReadOnlyFileMapping::Map(const std::filesystem::path& path,
                                              std::string* error) {
@@ -295,9 +303,17 @@ ReadOnlyFileMapping ReadOnlyFileMapping::Map(const std::filesystem::path& path,
       }
       return result;
     }
-    result.is_empty_file_ = true;
+    // Verify that the file is genuinely empty rather than a pseudo-file with size 0 (e.g.
+    // /proc/...).
+    if (probe.peek() == std::ifstream::traits_type::eof()) {
+      result.is_empty_file_ = true;
+      if (error != nullptr) {
+        error->clear();
+      }
+      return result;
+    }
     if (error != nullptr) {
-      error->clear();
+      *error = "cannot memory map pseudo-file with dynamic contents: " + path.string();
     }
     return result;
   }
@@ -540,10 +556,15 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
       }
       return {};
     }
-    if (error != nullptr) {
-      error->clear();
+    // Confirm it's truly empty, rather than a virtual pseudo-file with st_size = 0 (e.g. /proc/...)
+    if (probe.peek() == std::ifstream::traits_type::eof()) {
+      if (error != nullptr) {
+        error->clear();
+      }
+      return std::string(kEmptyFileSha256);
     }
-    return std::string(kEmptyFileSha256);
+    // If it yields bytes despite st_size == 0, fallback to streaming read.
+    return ComputeFileSha256StreamFallback(path, error);
   }
 
   auto mapping = ReadOnlyFileMapping::Map(path, nullptr);

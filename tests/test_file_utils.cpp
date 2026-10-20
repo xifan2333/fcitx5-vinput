@@ -197,7 +197,16 @@ void TestComputeFileSha256() {
   TEST_ASSERT(hash_dir.empty());
   TEST_ASSERT(!err.empty());
 
-  // 7. Nullptr error pointer
+  // 7. Virtual pseudo-file with size 0 but dynamic content (e.g. /proc/version)
+  if (fs::exists("/proc/version")) {
+    err.clear();
+    const std::string hash_proc = ComputeFileSha256("/proc/version", &err);
+    TEST_ASSERT(err.empty());
+    TEST_ASSERT(!hash_proc.empty());
+    TEST_ASSERT(hash_proc != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  }
+
+  // 8. Nullptr error pointer
   const std::string hash_null_err = ComputeFileSha256(missing_file, nullptr);
   TEST_ASSERT(hash_null_err.empty());
 }
@@ -261,6 +270,16 @@ void TestReadOnlyFileMapping() {
   TEST_ASSERT(mapping_empty.StringView().empty());
   TEST_ASSERT(mapping_empty.View().empty());
 
+  // Test moving empty mapping resets validity in moved-from instance
+  ReadOnlyFileMapping moved_empty = std::move(mapping_empty);
+  TEST_ASSERT(moved_empty.IsValid());
+  TEST_ASSERT(!mapping_empty.IsValid());
+
+  ReadOnlyFileMapping assigned_empty;
+  assigned_empty = std::move(moved_empty);
+  TEST_ASSERT(assigned_empty.IsValid());
+  TEST_ASSERT(!moved_empty.IsValid());
+
   // 5. Non-existent file mapping
   const fs::path missing_file = temp_dir->Path() / "missing.txt";
   auto mapping_missing = ReadOnlyFileMapping::Map(missing_file, &err);
@@ -275,7 +294,15 @@ void TestReadOnlyFileMapping() {
   TEST_ASSERT(!mapping_dir.IsValid());
   TEST_ASSERT(!err.empty());
 
-  // 7. Nullptr error pointer
+  // 7. Virtual pseudo-file mapping rejection
+  if (fs::exists("/proc/version")) {
+    err.clear();
+    auto mapping_proc = ReadOnlyFileMapping::Map("/proc/version", &err);
+    TEST_ASSERT(!mapping_proc.IsValid());
+    TEST_ASSERT(!err.empty());
+  }
+
+  // 8. Nullptr error pointer
   auto mapping_null_err = ReadOnlyFileMapping::Map(missing_file, nullptr);
   TEST_ASSERT(!mapping_null_err.IsValid());
 }
