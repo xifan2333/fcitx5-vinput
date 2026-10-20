@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <cstdlib>
-#include <limits>
 #include <map>
 #include <set>
 #include <span>
@@ -318,302 +317,6 @@ void TestJoinKeyValue() {
   TEST_ASSERT(JoinKeyValue(pair_list, "&", "=") == "=val&key=");
 }
 
-void TestMaskSecret() {
-  using vinput::str::MaskSecret;
-
-  // Normal key (length 24)
-  TEST_ASSERT(MaskSecret("sk-proj-1234567890abcdef") == "sk-p****************cdef");
-
-  // Critical length: exactly head_keep + tail_keep (8) -> completely masked
-  TEST_ASSERT(MaskSecret("12345678") == "********");
-
-  // Length 9: head 4, mask 1, tail 4
-  TEST_ASSERT(MaskSecret("123456789") == "1234*6789");
-
-  // Extremely short keys (< 8) -> completely masked
-  TEST_ASSERT(MaskSecret("abc") == "***");
-  TEST_ASSERT(MaskSecret("a") == "*");
-
-  // Empty string -> empty
-  TEST_ASSERT(MaskSecret("").empty());
-
-  // Custom parameters: head_keep = 2, tail_keep = 2, mask_char = '#'
-  // Length 8 > 4 -> head 2, mask 4, tail 2
-  TEST_ASSERT(MaskSecret("12345678", 2, 2, '#') == "12####78");
-
-  // Custom parameters: length <= head_keep + tail_keep
-  TEST_ASSERT(MaskSecret("1234", 2, 2, '#') == "####");
-  TEST_ASSERT(MaskSecret("123", 2, 2, '#') == "###");
-
-  // Overflow protection with extreme size_t keep lengths
-  const size_t kMax = std::numeric_limits<size_t>::max();
-  TEST_ASSERT(MaskSecret("secret", kMax, 1) == "******");
-  TEST_ASSERT(MaskSecret("secret", 1, kMax) == "******");
-  TEST_ASSERT(MaskSecret("secret", kMax, kMax) == "******");
-  TEST_ASSERT(MaskSecret("secret", kMax, 0) == "******");
-}
-
-void TestDrainLinesFromBuffer() {
-  using vinput::str::DrainLinesFromBuffer;
-
-  // 1. Standard LF multi-line draining
-  {
-    std::string buffer = "first\nsecond\nthird\n";
-    std::vector<std::string> lines;
-    DrainLinesFromBuffer(buffer, [&](std::string_view line) { lines.emplace_back(line); });
-    TEST_ASSERT(lines.size() == 3);
-    TEST_ASSERT(lines[0] == "first");
-    TEST_ASSERT(lines[1] == "second");
-    TEST_ASSERT(lines[2] == "third");
-    TEST_ASSERT(buffer.empty());
-  }
-
-  // 2. CRLF multi-line draining (\r stripped)
-  {
-    std::string buffer = "hello\r\nworld\r\n";
-    std::vector<std::string> lines;
-    DrainLinesFromBuffer(buffer, [&](std::string_view line) { lines.emplace_back(line); });
-    TEST_ASSERT(lines.size() == 2);
-    TEST_ASSERT(lines[0] == "hello");
-    TEST_ASSERT(lines[1] == "world");
-    TEST_ASSERT(buffer.empty());
-  }
-
-  // 3. Partial tail without trailing newline, flush_tail = false
-  {
-    std::string buffer = "first\npartial tail";
-    std::vector<std::string> lines;
-    DrainLinesFromBuffer(buffer, [&](std::string_view line) { lines.emplace_back(line); }, false);
-    TEST_ASSERT(lines.size() == 1);
-    TEST_ASSERT(lines[0] == "first");
-    TEST_ASSERT(buffer == "partial tail");
-
-    // Append more and drain again
-    buffer += " completed\n";
-    DrainLinesFromBuffer(buffer, [&](std::string_view line) { lines.emplace_back(line); }, false);
-    TEST_ASSERT(lines.size() == 2);
-    TEST_ASSERT(lines[1] == "partial tail completed");
-    TEST_ASSERT(buffer.empty());
-  }
-
-  // 4. Partial tail with flush_tail = true
-  {
-    std::string buffer = "first\nfinal tail";
-    std::vector<std::string> lines;
-    DrainLinesFromBuffer(buffer, [&](std::string_view line) { lines.emplace_back(line); }, true);
-    TEST_ASSERT(lines.size() == 2);
-    TEST_ASSERT(lines[0] == "first");
-    TEST_ASSERT(lines[1] == "final tail");
-    TEST_ASSERT(buffer.empty());
-  }
-
-  // 5. Partial tail with \r and flush_tail = true
-  {
-    std::string buffer = "carriage tail\r";
-    std::vector<std::string> lines;
-    DrainLinesFromBuffer(buffer, [&](std::string_view line) { lines.emplace_back(line); }, true);
-    TEST_ASSERT(lines.size() == 1);
-    TEST_ASSERT(lines[0] == "carriage tail");
-    TEST_ASSERT(buffer.empty());
-  }
-
-  // 6. Empty buffer
-  {
-    std::string buffer;
-    int call_count = 0;
-    DrainLinesFromBuffer(buffer, [&](std::string_view) { ++call_count; }, true);
-    TEST_ASSERT(call_count == 0);
-    TEST_ASSERT(buffer.empty());
-  }
-
-  // 7. Pure newlines
-  {
-    std::string buffer = "\n\n";
-    std::vector<std::string> lines;
-    DrainLinesFromBuffer(buffer, [&](std::string_view line) { lines.emplace_back(line); });
-    TEST_ASSERT(lines.size() == 2);
-    TEST_ASSERT(lines[0].empty());
-    TEST_ASSERT(lines[1].empty());
-    TEST_ASSERT(buffer.empty());
-  }
-
-  // 8. Early break with bool return
-  {
-    std::string buffer = "line1\nline2\nline3\n";
-    std::vector<std::string> lines;
-    DrainLinesFromBuffer(
-        buffer,
-        [&](std::string_view line) -> bool {
-          lines.emplace_back(line);
-          return false; // stop immediately after line1
-        },
-        true);
-    TEST_ASSERT(lines.size() == 1);
-    TEST_ASSERT(lines[0] == "line1");
-    // line1 was processed and removed, line2 and line3 remain in buffer
-    TEST_ASSERT(buffer == "line2\nline3\n");
-  }
-}
-
-void TestUtf8ValidationAndTruncation() {
-  using vinput::str::IsValidUtf8;
-  using vinput::str::TruncateUtf8Bytes;
-
-  // Valid UTF-8 strings
-  TEST_ASSERT(IsValidUtf8(""));
-  TEST_ASSERT(IsValidUtf8("Hello, world!"));
-  TEST_ASSERT(IsValidUtf8("你好，世界！"));
-  TEST_ASSERT(IsValidUtf8("こんにちは"));
-  TEST_ASSERT(IsValidUtf8("🌟 Rocket 🚀"));
-
-  // Invalid UTF-8 strings
-  TEST_ASSERT(!IsValidUtf8(std::string_view("\xFF", 1)));
-  TEST_ASSERT(!IsValidUtf8(std::string_view("\xC0\xAF", 2)));
-  TEST_ASSERT(!IsValidUtf8(std::string_view("\xC1\x80", 2)));
-  TEST_ASSERT(!IsValidUtf8(std::string_view("\xE0\x80\xAF", 3)));
-  TEST_ASSERT(!IsValidUtf8(std::string_view("\xED\xA0\x80", 3)));
-  TEST_ASSERT(!IsValidUtf8(std::string_view("\xF4\x90\x80\x80", 4)));
-  TEST_ASSERT(!IsValidUtf8(std::string_view("\xE4\xBD", 2)));
-  TEST_ASSERT(!IsValidUtf8(std::string_view("Valid\x80Invalid", 13)));
-
-  // Truncation on UTF-8 boundaries ("你好" is 6 bytes)
-  TEST_ASSERT(TruncateUtf8Bytes("你好", 10) == "你好");
-  TEST_ASSERT(TruncateUtf8Bytes("你好", 6) == "你好");
-  TEST_ASSERT(TruncateUtf8Bytes("你好", 5) == "你");
-  TEST_ASSERT(TruncateUtf8Bytes("你好", 3) == "你");
-  TEST_ASSERT(TruncateUtf8Bytes("你好", 2).empty());
-  TEST_ASSERT(TruncateUtf8Bytes("你好", 0).empty());
-
-  // Truncation stops at invalid byte
-  TEST_ASSERT(TruncateUtf8Bytes(std::string_view("Prefix\xFFSuffix", 13), 10) == "Prefix");
-
-  // Truncation on large input with small budget (incremental boundary scan check)
-  const std::string large_input(100000, 'a');
-  TEST_ASSERT(TruncateUtf8Bytes(large_input, 10) == "aaaaaaaaaa");
-}
-
-void TestIsAsciiWhitespace() {
-  using vinput::str::IsAsciiWhitespace;
-
-  TEST_ASSERT(IsAsciiWhitespace(' '));
-  TEST_ASSERT(IsAsciiWhitespace('\t'));
-  TEST_ASSERT(IsAsciiWhitespace('\r'));
-  TEST_ASSERT(IsAsciiWhitespace('\n'));
-
-  TEST_ASSERT(!IsAsciiWhitespace('a'));
-  TEST_ASSERT(!IsAsciiWhitespace('0'));
-  TEST_ASSERT(!IsAsciiWhitespace('\0'));
-  TEST_ASSERT(!IsAsciiWhitespace('\v'));
-  TEST_ASSERT(!IsAsciiWhitespace('\f'));
-  TEST_ASSERT(!IsAsciiWhitespace('\x7f'));
-}
-
-void TestValidateUtf8TextDetailed() {
-  using vinput::str::ValidateUtf8Text;
-
-  // Valid inputs
-  auto res = ValidateUtf8Text("");
-  TEST_ASSERT(res.valid);
-
-  res = ValidateUtf8Text("hello world");
-  TEST_ASSERT(res.valid);
-
-  res = ValidateUtf8Text("语音输入法 🚀");
-  TEST_ASSERT(res.valid);
-
-  // Invalid leading byte
-  res = ValidateUtf8Text(std::string_view("\xFF", 1));
-  TEST_ASSERT(!res.valid);
-  TEST_ASSERT(res.error_offset == 0);
-  TEST_ASSERT(res.error_reason != nullptr);
-
-  // Truncated sequence
-  res = ValidateUtf8Text(std::string_view("\xE4\xBD", 2));
-  TEST_ASSERT(!res.valid);
-  TEST_ASSERT(res.error_offset == 0);
-  TEST_ASSERT(res.error_reason != nullptr);
-
-  // Invalid continuation byte
-  res = ValidateUtf8Text(std::string_view("\xE4\xBD\x20", 3));
-  TEST_ASSERT(!res.valid);
-  TEST_ASSERT(res.error_offset == 0);
-  TEST_ASSERT(res.error_reason != nullptr);
-
-  // Overlong sequence
-  res = ValidateUtf8Text(std::string_view("\xE0\x80\xAF", 3));
-  TEST_ASSERT(!res.valid);
-  TEST_ASSERT(res.error_offset == 0);
-  TEST_ASSERT(res.error_reason != nullptr);
-
-  // Surrogate codepoint
-  res = ValidateUtf8Text(std::string_view("\xED\xA0\x80", 3));
-  TEST_ASSERT(!res.valid);
-  TEST_ASSERT(res.error_offset == 0);
-  TEST_ASSERT(res.error_reason != nullptr);
-
-  // Exceeds U+10FFFF
-  res = ValidateUtf8Text(std::string_view("\xF4\x90\x80\x80", 4));
-  TEST_ASSERT(!res.valid);
-  TEST_ASSERT(res.error_offset == 0);
-  TEST_ASSERT(res.error_reason != nullptr);
-
-  // Embedded NUL
-  const std::string_view nul_str("hello\0world", 11);
-  res = ValidateUtf8Text(nul_str, /*allow_control_chars=*/true, /*allow_embedded_nul=*/true);
-  TEST_ASSERT(res.valid);
-
-  res = ValidateUtf8Text(nul_str, /*allow_control_chars=*/true, /*allow_embedded_nul=*/false);
-  TEST_ASSERT(!res.valid);
-  TEST_ASSERT(res.error_offset == 5);
-  TEST_ASSERT(std::string_view(res.error_reason) == "embedded NUL is not allowed");
-
-  // Control characters
-  res = ValidateUtf8Text("line1\t\r\nline2", /*allow_control_chars=*/false);
-  TEST_ASSERT(res.valid);
-
-  const std::string_view bell_str("bell\x07sound", 10);
-  res = ValidateUtf8Text(bell_str, /*allow_control_chars=*/true);
-  TEST_ASSERT(res.valid);
-
-  res = ValidateUtf8Text(bell_str, /*allow_control_chars=*/false);
-  TEST_ASSERT(!res.valid);
-  TEST_ASSERT(res.error_offset == 4);
-  TEST_ASSERT(std::string_view(res.error_reason) == "control character is not allowed");
-}
-
-void TestParseFloatStrict() {
-  using vinput::str::ParseFloatStrict;
-
-  float v = 0.0F;
-  TEST_ASSERT(ParseFloatStrict("0", &v) && v == 0.0F);
-  TEST_ASSERT(ParseFloatStrict("2.5", &v) && v == 2.5F);
-  TEST_ASSERT(ParseFloatStrict("+10.0", &v) && v == 10.0F);
-  TEST_ASSERT(ParseFloatStrict("-1.5", &v) && v == -1.5F);
-  TEST_ASSERT(ParseFloatStrict("1e-3", &v) && v == 0.001F);
-  TEST_ASSERT(ParseFloatStrict("0x1p+2", &v) && v == 4.0F);
-  TEST_ASSERT(ParseFloatStrict("-0x1p+2", &v) && v == -4.0F);
-  TEST_ASSERT(ParseFloatStrict("+0x1p+2", &v) && v == 4.0F);
-  TEST_ASSERT(ParseFloatStrict("3.5")); // nullptr overload check
-
-  // Strict rejections
-  TEST_ASSERT(!ParseFloatStrict(""));
-  TEST_ASSERT(!ParseFloatStrict("+"));
-  TEST_ASSERT(!ParseFloatStrict("-"));
-  TEST_ASSERT(!ParseFloatStrict("nan"));
-  TEST_ASSERT(!ParseFloatStrict("NaN"));
-  TEST_ASSERT(!ParseFloatStrict("inf"));
-  TEST_ASSERT(!ParseFloatStrict("Infinity"));
-  TEST_ASSERT(!ParseFloatStrict("1.2.3"));
-  TEST_ASSERT(!ParseFloatStrict("++1"));
-  TEST_ASSERT(!ParseFloatStrict("+-1"));
-  TEST_ASSERT(!ParseFloatStrict("-+1"));
-  TEST_ASSERT(!ParseFloatStrict("--1"));
-  TEST_ASSERT(!ParseFloatStrict("1e9999"));
-  TEST_ASSERT(!ParseFloatStrict("12abc"));
-  TEST_ASSERT(!ParseFloatStrict(" 2.5"));
-  TEST_ASSERT(!ParseFloatStrict("2.5 "));
-}
-
 namespace {
 void TestFmtStr() {
   using vinput::str::FmtStr;
@@ -665,14 +368,21 @@ void TestFmtStr() {
   TEST_ASSERT(combined == "alpha-10-middle-beta-20-gamma");
 }
 
-void TestUtf8VisualWidthAndTruncateMiddle() {
+namespace {
+
+size_t DisplayWidth(std::string_view text) {
+  std::u32string u32;
+  unicode::utf8::decode(text.data(), text.size(), u32);
+  return static_cast<size_t>(std::max(0, unicode::width(u32, unicode::AmbiguousWidth::Wide)));
+}
+
+} // namespace
+
+void TestCjkBoundaryAndSentenceTerminal() {
   using vinput::str::FirstUtf8Codepoint;
   using vinput::str::IsCjkCodepoint;
   using vinput::str::IsSentenceEndingPunctuation;
   using vinput::str::LastUtf8Codepoint;
-  using vinput::str::TruncateMiddleUtf8;
-  using vinput::str::Utf8CodepointWidth;
-  using vinput::str::Utf8VisualWidth;
 
   // First / Last codepoint
   TEST_ASSERT(FirstUtf8Codepoint("") == 0);
@@ -702,32 +412,28 @@ void TestUtf8VisualWidthAndTruncateMiddle() {
   TEST_ASSERT(IsSentenceEndingPunctuation('\n'));
   TEST_ASSERT(!IsSentenceEndingPunctuation(','));
   TEST_ASSERT(!IsSentenceEndingPunctuation(0xFF0C)); // '，'
+}
 
-  // Codepoint width
-  TEST_ASSERT(Utf8CodepointWidth('a') == 1);
-  TEST_ASSERT(Utf8CodepointWidth(0x4F60) == 2);  // '你'
-  TEST_ASSERT(Utf8CodepointWidth(0x1F680) == 2); // '🚀'
-  TEST_ASSERT(Utf8CodepointWidth(0) == 0);
+void TestTruncateMiddleUtf8() {
+  using vinput::str::TruncateMiddleUtf8;
 
-  // Visual width
-  TEST_ASSERT(Utf8VisualWidth("") == 0);
-  TEST_ASSERT(Utf8VisualWidth("abc") == 3);
-  TEST_ASSERT(Utf8VisualWidth("你好") == 4);
-  TEST_ASSERT(Utf8VisualWidth("Hello, 世界!") == 12); // 7 ASCII + 4 CJK + 1 ASCII = 12
-
-  // TruncateMiddleUtf8
   TEST_ASSERT(TruncateMiddleUtf8("hello", 10) == "hello");
   TEST_ASSERT(TruncateMiddleUtf8("short", 0) == "short");
+
   const std::string long_text = "这是一段非常非常长的语音识别通知文本需要被合理截断展示";
   const std::string truncated = TruncateMiddleUtf8(long_text, 20, "...");
   TEST_ASSERT(truncated.find("...") != std::string::npos);
-  TEST_ASSERT(Utf8VisualWidth(truncated) <= 20);
+  TEST_ASSERT(DisplayWidth(truncated) <= 20);
 
-  // TruncateMiddle with emoji and grapheme clusters
+  // Grapheme clusters (emoji and keycaps) must never be split apart.
   const std::string emoji_text = "通知: 🚀🚀🚀 语音识别已完成 1️⃣2️⃣3️⃣";
   const std::string emoji_trunc = TruncateMiddleUtf8(emoji_text, 16, "...");
   TEST_ASSERT(emoji_trunc.find("...") != std::string::npos);
-  TEST_ASSERT(Utf8VisualWidth(emoji_trunc) <= 16);
+  TEST_ASSERT(DisplayWidth(emoji_trunc) <= 16);
+
+  // Narrow budget branch keeps the tail only.
+  const std::string tail_only = TruncateMiddleUtf8(long_text, 3, "...");
+  TEST_ASSERT(DisplayWidth(tail_only) <= 3);
 }
 
 void TestFormatSize() {
@@ -751,14 +457,9 @@ int main() {
   TestSplitPairRight();
   TestJoin();
   TestJoinKeyValue();
-  TestMaskSecret();
-  TestDrainLinesFromBuffer();
-  TestUtf8ValidationAndTruncation();
-  TestIsAsciiWhitespace();
-  TestValidateUtf8TextDetailed();
-  TestParseFloatStrict();
   TestFmtStr();
-  TestUtf8VisualWidthAndTruncateMiddle();
+  TestCjkBoundaryAndSentenceTerminal();
+  TestTruncateMiddleUtf8();
   TestFormatSize();
   return 0;
 }

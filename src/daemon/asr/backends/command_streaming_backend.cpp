@@ -629,7 +629,7 @@ private:
   }
 
   void ConsumeStdoutLines(std::string* error) {
-    vinput::str::DrainLinesFromBuffer(stdout_buffer_, [&](std::string_view raw_line) {
+    vinput::process::DrainLinesFromBuffer(stdout_buffer_, [&](std::string_view raw_line) {
       const std::string line = vinput::str::TrimAsciiWhitespace(raw_line);
       if (line.empty()) {
         return true;
@@ -639,7 +639,7 @@ private:
   }
 
   void ConsumeStderrLines(bool flush_tail = false) {
-    vinput::str::DrainLinesFromBuffer(
+    vinput::process::DrainLinesFromBuffer(
         stderr_buffer_,
         [&](std::string_view raw_line) {
           const std::string line = vinput::str::TrimAsciiWhitespace(raw_line);

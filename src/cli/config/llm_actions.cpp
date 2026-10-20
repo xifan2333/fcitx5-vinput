@@ -31,6 +31,22 @@
 
 namespace {
 
+std::string MaskSecret(std::string_view secret, size_t head_keep = 4, size_t tail_keep = 4,
+                       char mask_char = '*') {
+  if (secret.empty()) {
+    return {};
+  }
+  if (tail_keep >= secret.size() || head_keep >= secret.size() - tail_keep) {
+    return std::string(secret.size(), mask_char);
+  }
+  std::string result;
+  result.reserve(secret.size());
+  result.append(secret.substr(0, head_keep));
+  result.append(secret.size() - head_keep - tail_keep, mask_char);
+  result.append(secret.substr(secret.size() - tail_keep));
+  return result;
+}
+
 int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, const CliContext& ctx) {
   CoreConfig config = LoadCoreConfig();
   std::string error;
@@ -112,7 +128,7 @@ int RunLlmConfigList(Formatter& fmt, const CliContext& ctx) {
   std::vector<std::vector<std::string>> rows;
   rows.reserve(config.llm.providers.size());
   for (const auto& provider : config.llm.providers) {
-    rows.push_back({provider.id, provider.base_url, vinput::str::MaskSecret(provider.api_key)});
+    rows.push_back({provider.id, provider.base_url, MaskSecret(provider.api_key)});
   }
   fmt.PrintTable(headers, rows);
   return 0;

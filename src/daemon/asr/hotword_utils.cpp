@@ -1,10 +1,15 @@
 #include "daemon/asr/hotword_utils.h"
 
+#include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <unicodelib.h>
+#include <unicodelib_encodings.h>
 #include <utility>
 #include <vector>
 
@@ -20,6 +25,79 @@ namespace vinput::daemon::asr {
 namespace {
 
 constexpr std::uintmax_t kMaxHotwordFileBytes = 1024ULL * 1024ULL;
+
+// Hotword scores are passed through to sherpa-onnx, so only plain finite
+// decimals are accepted (no NaN/Inf, no locale-dependent parsing).
+bool ParseHotwordScore(std::string_view value, float* out = nullptr) noexcept {
+  if (value.empty()) {
+    return false;
+  }
+  std::string_view digits = value;
+  bool is_negative = false;
+  if (digits.starts_with('+')) {
+    digits.remove_prefix(1);
+    if (digits.empty() || digits.starts_with('+') || digits.starts_with('-')) {
+      return false;
+    }
+  } else if (digits.starts_with('-')) {
+    is_negative = true;
+    digits.remove_prefix(1);
+    if (digits.empty() || digits.starts_with('+') || digits.starts_with('-')) {
+      return false;
+    }
+  }
+  std::chars_format format = std::chars_format::general;
+  if (digits.starts_with("0x") || digits.starts_with("0X")) {
+    digits.remove_prefix(2);
+    format = std::chars_format::hex;
+  }
+  float parsed = 0.0F;
+  const auto [end, ec] =
+      std::from_chars(digits.data(), digits.data() + digits.size(), parsed, format);
+  if (ec != std::errc{} || end != digits.data() + digits.size() || !std::isfinite(parsed)) {
+    return false;
+  }
+  if (is_negative) {
+    parsed = -parsed;
+  }
+  if (out != nullptr) {
+    *out = parsed;
+  }
+  return true;
+}
+
+struct Utf8Validation {
+  bool valid = true;
+  size_t error_offset = 0;
+  const char* error_reason = nullptr;
+};
+
+// Hotword files must be well-formed UTF-8 without embedded NULs or control
+// characters, because the text is forwarded verbatim to the ASR engine.
+Utf8Validation ValidateHotwordText(std::string_view text) noexcept {
+  size_t offset = 0;
+  while (offset < text.size()) {
+    size_t bytes = 0;
+    char32_t cp = 0;
+    if (!unicode::utf8::decode_codepoint(text.data() + offset, text.size() - offset, bytes, cp)) {
+      return {false, offset, "invalid UTF-8 sequence"};
+    }
+    if (cp == 0) {
+      return {false, offset, "embedded NUL is not allowed"};
+    }
+    const bool is_ascii_whitespace = (cp == '\t' || cp == '\n' || cp == '\r');
+    if (!is_ascii_whitespace &&
+        (unicode::general_category(cp) == unicode::GeneralCategory::Cc || cp < 0x20)) {
+      return {false, offset, "control character is not allowed"};
+    }
+    offset += bytes;
+  }
+  return {true, 0, nullptr};
+}
+
+constexpr bool IsHotwordWhitespace(char c) noexcept {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
 
 bool ReadHotwordFile(const std::string& path, std::string* content, std::string* error) {
   if (path.empty()) {
@@ -68,8 +146,7 @@ bool ReadHotwordFile(const std::string& path, std::string* content, std::string*
     }
     return false;
   }
-  const auto utf8_res = vinput::str::ValidateUtf8Text(text, /*allow_control_chars=*/false,
-                                                      /*allow_embedded_nul=*/false);
+  const auto utf8_res = ValidateHotwordText(text);
   if (!utf8_res.valid) {
     if (error != nullptr) {
       *error = "invalid hotwords file at byte " + std::to_string(utf8_res.error_offset) + ": " +
@@ -92,7 +169,7 @@ struct HotwordEntry {
 };
 
 bool IsValidScore(std::string_view value) {
-  return vinput::str::ParseFloatStrict(value);
+  return ParseHotwordScore(value);
 }
 
 bool LooksLikeScore(std::string_view value) {
@@ -119,7 +196,7 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
   }
 
   for (std::size_t i = 1; i < line.size(); ++i) {
-    if (line[i] == ':' && vinput::str::IsAsciiWhitespace(line[i - 1])) {
+    if (line[i] == ':' && IsHotwordWhitespace(line[i - 1])) {
       if (error) {
         *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
       }
@@ -139,8 +216,7 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
   const std::string_view score = vinput::str::TrimAsciiWhitespaceView(raw_score);
   const std::string_view text = vinput::str::TrimAsciiWhitespaceView(raw_text);
   if (IsValidScore(score)) {
-    const bool whitespace_before =
-        !raw_text.empty() && vinput::str::IsAsciiWhitespace(raw_text.back());
+    const bool whitespace_before = !raw_text.empty() && IsHotwordWhitespace(raw_text.back());
     const bool whitespace_after = raw_score != score;
     if (whitespace_before || whitespace_after) {
       if (error) {
@@ -162,8 +238,7 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
   // A separated ':...' token or an attached numeric-looking suffix is an
   // invalid score. Other colon-containing terms (for example URLs) remain
   // literal text.
-  const bool whitespace_before =
-      !raw_text.empty() && vinput::str::IsAsciiWhitespace(raw_text.back());
+  const bool whitespace_before = !raw_text.empty() && IsHotwordWhitespace(raw_text.back());
   const bool whitespace_after = raw_score != score;
   if (whitespace_before || whitespace_after || LooksLikeScore(score)) {
     if (error) {

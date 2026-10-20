@@ -1,8 +1,6 @@
 #pragma once
 #include <algorithm>
 #include <cctype>
-#include <charconv>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -11,10 +9,8 @@
 #include <initializer_list>
 #include <optional>
 #include <ranges>
-#include <span>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <tuple>
 #include <type_traits>
 #include <unicodelib.h>
@@ -82,10 +78,6 @@ inline std::string FormatSize(uint64_t bytes) {
     return std::format("{:.1f} KB", static_cast<double>(bytes) / 1024.0);
   }
   return std::format("{} B", bytes);
-}
-
-constexpr bool IsAsciiWhitespace(char c) noexcept {
-  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
 inline std::string_view TrimAsciiWhitespaceView(std::string_view text) noexcept {
@@ -175,10 +167,6 @@ inline char ToLowerAsciiChar(char ch) noexcept {
   return static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
 }
 
-inline char ToUpperAsciiChar(char ch) noexcept {
-  return static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-}
-
 inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
   return std::ranges::equal(
       a, b, [](char ca, char cb) noexcept { return ToLowerAsciiChar(ca) == ToLowerAsciiChar(cb); });
@@ -221,53 +209,6 @@ inline std::vector<std::string_view> SplitLines(std::string_view text) {
     start = end + 1;
   }
   return lines;
-}
-
-template <typename Callback>
-inline void DrainLinesFromBuffer(std::string& buffer, Callback on_line, bool flush_tail = false) {
-  size_t processed = 0;
-  size_t start = 0;
-  bool should_stop = false;
-
-  while (start < buffer.size()) {
-    const size_t end = buffer.find('\n', start);
-    if (end == std::string::npos) {
-      break;
-    }
-    size_t len = end - start;
-    if (len > 0 && buffer[start + len - 1] == '\r') {
-      --len;
-    }
-    const std::string_view line(buffer.data() + start, len);
-    start = end + 1;
-    processed = start;
-
-    if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
-      on_line(line);
-    } else {
-      if (!static_cast<bool>(on_line(line))) {
-        should_stop = true;
-        break;
-      }
-    }
-  }
-
-  if (processed > 0) {
-    buffer.erase(0, processed);
-  }
-
-  if (flush_tail && !should_stop && !buffer.empty()) {
-    std::string_view tail(buffer);
-    if (!tail.empty() && tail.back() == '\r') {
-      tail.remove_suffix(1);
-    }
-    if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
-      on_line(tail);
-    } else {
-      (void)on_line(tail);
-    }
-    buffer.clear();
-  }
 }
 
 template <typename Container>
@@ -343,23 +284,6 @@ inline std::string JoinKeyValue(const MapContainer& map, std::string_view item_d
   return result;
 }
 
-inline std::string MaskSecret(std::string_view secret, size_t head_keep = 4, size_t tail_keep = 4,
-                              char mask_char = '*') {
-  if (secret.empty()) {
-    return {};
-  }
-  if (tail_keep >= secret.size() || head_keep >= secret.size() - tail_keep) {
-    std::string masked(secret.size(), mask_char);
-    return masked;
-  }
-  std::string result;
-  result.reserve(secret.size());
-  result.append(secret.substr(0, head_keep));
-  result.append(secret.size() - head_keep - tail_keep, mask_char);
-  result.append(secret.substr(secret.size() - tail_keep));
-  return result;
-}
-
 inline bool IsCjkCodepoint(uint32_t cp) noexcept {
   const auto c = static_cast<char32_t>(cp);
   return unicode::is_unified_ideograph(c) || unicode::is_ideographic(c);
@@ -386,22 +310,6 @@ inline uint32_t LastUtf8Codepoint(std::string_view s) noexcept {
 inline bool IsSentenceEndingPunctuation(uint32_t cp) noexcept {
   const auto c = static_cast<char32_t>(cp);
   return unicode::is_sentence_terminal(c) || c == U'…' || c == U'\n';
-}
-
-inline size_t Utf8CodepointWidth(uint32_t codepoint) noexcept {
-  const int w =
-      unicode::codepoint_width(static_cast<char32_t>(codepoint), unicode::AmbiguousWidth::Wide);
-  return w > 0 ? static_cast<size_t>(w) : 0;
-}
-
-inline size_t Utf8VisualWidth(std::string_view text) {
-  if (text.empty()) {
-    return 0;
-  }
-  std::u32string u32;
-  unicode::utf8::decode(text.data(), text.size(), u32);
-  const int w = unicode::width(u32, unicode::AmbiguousWidth::Wide);
-  return w > 0 ? static_cast<size_t>(w) : 0;
 }
 
 inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
@@ -505,94 +413,6 @@ inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
   result.append(ellipsis);
   result.append(tail_str);
   return result;
-}
-
-inline std::string_view TruncateUtf8Bytes(std::string_view text, size_t max_bytes) noexcept {
-  if (text.empty() || max_bytes == 0) {
-    return {};
-  }
-  size_t offset = 0;
-  while (offset < text.size()) {
-    char32_t cp = 0;
-    const size_t len =
-        unicode::utf8::decode_codepoint(text.data() + offset, text.size() - offset, cp);
-    if (len == 0 || !unicode::is_scalar_value(cp) || offset + len > max_bytes) {
-      break;
-    }
-    offset += len;
-  }
-  return text.substr(0, offset);
-}
-
-inline bool ParseFloatStrict(std::string_view value, float* out = nullptr) noexcept {
-  if (value.empty()) {
-    return false;
-  }
-  std::string_view sv = value;
-  bool is_negative = false;
-  if (sv.starts_with('+')) {
-    sv.remove_prefix(1);
-    if (sv.empty() || sv.starts_with('+') || sv.starts_with('-')) {
-      return false;
-    }
-  } else if (sv.starts_with('-')) {
-    is_negative = true;
-    sv.remove_prefix(1);
-    if (sv.empty() || sv.starts_with('+') || sv.starts_with('-')) {
-      return false;
-    }
-  }
-  std::chars_format fmt = std::chars_format::general;
-  if (sv.starts_with("0x") || sv.starts_with("0X")) {
-    sv.remove_prefix(2);
-    fmt = std::chars_format::hex;
-  }
-  float val = 0.0F;
-  const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val, fmt);
-  if (ec != std::errc{} || ptr != sv.data() + sv.size() || !std::isfinite(val)) {
-    return false;
-  }
-  if (is_negative) {
-    val = -val;
-  }
-  if (out != nullptr) {
-    *out = val;
-  }
-  return true;
-}
-
-struct Utf8ValidationResult {
-  bool valid = true;
-  size_t error_offset = 0;
-  const char* error_reason = nullptr;
-};
-
-inline Utf8ValidationResult ValidateUtf8Text(std::string_view text, bool allow_control_chars = true,
-                                             bool allow_embedded_nul = true) noexcept {
-  size_t offset = 0;
-  while (offset < text.size()) {
-    size_t bytes = 0;
-    char32_t cp = 0;
-    if (!unicode::utf8::decode_codepoint(text.data() + offset, text.size() - offset, bytes, cp)) {
-      return {false, offset, "invalid UTF-8 sequence"};
-    }
-    if (!allow_embedded_nul && cp == 0) {
-      return {false, offset, "embedded NUL is not allowed"};
-    }
-    if (!allow_control_chars) {
-      const bool is_ascii_whitespace = (cp == '\t' || cp == '\n' || cp == '\r');
-      if (!is_ascii_whitespace &&
-          (unicode::general_category(cp) == unicode::GeneralCategory::Cc || cp < 0x20)) {
-        return {false, offset, "control character is not allowed"};
-      }
-    }
-    offset += bytes;
-  }
-  return {true, 0, nullptr};
-}
-
-inline bool IsValidUtf8(std::string_view text) noexcept {
-  return ValidateUtf8Text(text).valid;
 }
 
 } // namespace vinput::str

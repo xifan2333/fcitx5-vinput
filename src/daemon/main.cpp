@@ -258,7 +258,7 @@ private:
   }
 
   void FlushAdapterBuffer(ManagedAdapter& adapter, bool flush_partial) {
-    vinput::str::DrainLinesFromBuffer(
+    vinput::process::DrainLinesFromBuffer(
         adapter.stderr_buffer,
         [this, &adapter](std::string_view raw_line) {
           const std::string line = vinput::str::TrimAsciiWhitespace(raw_line);
