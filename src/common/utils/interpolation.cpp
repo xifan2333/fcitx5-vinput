@@ -134,6 +134,14 @@ std::string Interpolate(std::string_view text, const Resolver& resolver) {
 std::string InterpolateEnv(std::string_view text) {
   return Interpolate(text, [](const Placeholder& p) -> std::optional<std::string> {
     if (p.scheme == "env") {
+      constexpr size_t kStackBufSize = 128;
+      if (p.key.size() < kStackBufSize) {
+        char buf[kStackBufSize];
+        std::memcpy(buf, p.key.data(), p.key.size());
+        buf[p.key.size()] = '\0';
+        const char* val = std::getenv(buf);
+        return val != nullptr ? std::string(val) : std::string{};
+      }
       const std::string key(p.key);
       const char* val = std::getenv(key.c_str());
       return val != nullptr ? std::string(val) : std::string{};
