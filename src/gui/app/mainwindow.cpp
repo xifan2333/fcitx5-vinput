@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QLocale>
 #include <QMessageBox>
+#include <QPointer>
 #include <QPushButton>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -185,8 +186,9 @@ QString localizedString(const nlohmann::json& obj) {
 } // namespace
 
 void MainWindow::checkNotification() {
+  QPointer<MainWindow> self(this);
   auto* worker = new vinput::gui::DownloadWorker(this);
-  worker->SetTask([this](std::string* /*error*/, const std::atomic<bool>* cancel_token) -> bool {
+  worker->SetTask([self](std::string* /*error*/, const std::atomic<bool>* cancel_token) -> bool {
     const std::vector<std::string> urls = {
         "https://raw.githubusercontent.com/xifan2333/fcitx5-vinput/main/"
         "notification.json"};
@@ -229,8 +231,17 @@ void MainWindow::checkNotification() {
     const QString url = QString::fromStdString(j.value("url", std::string{}));
     const QString id = QString::number(remote_id);
 
+    if (!self) {
+      return true;
+    }
+
     QMetaObject::invokeMethod(
-        this, [this, id, title, text, url]() { onNotificationReady(id, title, text, url); },
+        self.data(),
+        [self, id, title, text, url]() {
+          if (self) {
+            self->onNotificationReady(id, title, text, url);
+          }
+        },
         Qt::QueuedConnection);
 
     return true;
