@@ -12,6 +12,7 @@
 #include <ios>
 #include <iterator>
 #include <memory>
+#include <mio/mmap.hpp>
 #include <openssl/evp.h>
 #include <openssl/types.h>
 #include <string>
@@ -101,6 +102,68 @@ bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::
 
   return ResolveSymlinkPathImpl(ResolveRelativeSymlinkTarget(path, link_target), resolved, error,
                                 depth + 1);
+}
+
+std::string FinalizeHashToHex(EVP_MD_CTX* ctx, std::string* error) {
+  unsigned char hash[EVP_MAX_MD_SIZE];
+  unsigned int hash_len = 0;
+  if (EVP_DigestFinal_ex(ctx, hash, &hash_len) != 1) {
+    if (error != nullptr) {
+      *error = "EVP_DigestFinal_ex failed";
+    }
+    return {};
+  }
+
+  std::string hex;
+  hex.reserve(static_cast<size_t>(hash_len) * 2);
+  for (size_t i = 0; i < static_cast<size_t>(hash_len); ++i) {
+    char pair[3];
+    std::snprintf(pair, sizeof(pair), "%02x", *(hash + i));
+    hex += pair;
+  }
+
+  if (error != nullptr) {
+    error->clear();
+  }
+  return hex;
+}
+
+std::string ComputeFileSha256StreamFallback(const std::filesystem::path& path, std::string* error) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file.is_open()) {
+    if (error != nullptr) {
+      *error = "failed to open file for SHA-256 calculation: " + path.string();
+    }
+    return {};
+  }
+
+  const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
+                                                                    &EVP_MD_CTX_free);
+  if (ctx == nullptr) {
+    if (error != nullptr) {
+      *error = "failed to allocate EVP_MD_CTX";
+    }
+    return {};
+  }
+
+  if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
+    if (error != nullptr) {
+      *error = "EVP_DigestInit_ex failed";
+    }
+    return {};
+  }
+
+  char buffer[8192];
+  while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
+    if (EVP_DigestUpdate(ctx.get(), buffer, static_cast<size_t>(file.gcount())) != 1) {
+      if (error != nullptr) {
+        *error = "EVP_DigestUpdate failed";
+      }
+      return {};
+    }
+  }
+
+  return FinalizeHashToHex(ctx.get(), error);
 }
 
 } // namespace
@@ -345,61 +408,38 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
 }
 
 std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file.is_open()) {
-    if (error != nullptr) {
-      *error = "failed to open file for SHA-256 calculation: " + path.string();
-    }
-    return {};
-  }
-
-  const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
-                                                                    &EVP_MD_CTX_free);
-  if (ctx == nullptr) {
-    if (error != nullptr) {
-      *error = "failed to allocate EVP_MD_CTX";
-    }
-    return {};
-  }
-
-  if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
-    if (error != nullptr) {
-      *error = "EVP_DigestInit_ex failed";
-    }
-    return {};
-  }
-
-  char buffer[8192];
-  while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
-    if (EVP_DigestUpdate(ctx.get(), buffer, static_cast<size_t>(file.gcount())) != 1) {
+  std::error_code mmap_ec;
+  mio::mmap_source mmap = mio::make_mmap_source(path.string(), mmap_ec);
+  if (!mmap_ec && mmap.is_open()) {
+    const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
+                                                                      &EVP_MD_CTX_free);
+    if (ctx == nullptr) {
       if (error != nullptr) {
-        *error = "EVP_DigestUpdate failed";
+        *error = "failed to allocate EVP_MD_CTX";
       }
       return {};
     }
-  }
 
-  unsigned char hash[EVP_MAX_MD_SIZE];
-  unsigned int hash_len = 0;
-  if (EVP_DigestFinal_ex(ctx.get(), hash, &hash_len) != 1) {
-    if (error != nullptr) {
-      *error = "EVP_DigestFinal_ex failed";
+    if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
+      if (error != nullptr) {
+        *error = "EVP_DigestInit_ex failed";
+      }
+      return {};
     }
-    return {};
+
+    if (mmap.size() > 0) {
+      if (EVP_DigestUpdate(ctx.get(), mmap.data(), mmap.size()) != 1) {
+        if (error != nullptr) {
+          *error = "EVP_DigestUpdate failed";
+        }
+        return {};
+      }
+    }
+
+    return FinalizeHashToHex(ctx.get(), error);
   }
 
-  std::string hex;
-  hex.reserve(static_cast<size_t>(hash_len) * 2);
-  for (size_t i = 0; i < static_cast<size_t>(hash_len); ++i) {
-    char pair[3];
-    std::snprintf(pair, sizeof(pair), "%02x", *(hash + i));
-    hex += pair;
-  }
-
-  if (error != nullptr) {
-    error->clear();
-  }
-  return hex;
+  return ComputeFileSha256StreamFallback(path, error);
 }
 
 bool IsDirectoryWritable(const std::filesystem::path& path) {
