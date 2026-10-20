@@ -1,10 +1,8 @@
 #include "cli/utils/editor_utils.h"
 
-#include <CLI/StringTools.hpp>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
-#include <string>
 #include <subprocess.hpp>
 #include <vector>
 
@@ -17,8 +15,7 @@ int OpenInEditor(const std::filesystem::path& file_path) {
     editor = "vi";
   }
 
-  auto args = CLI::detail::split_up(editor);
-  CLI::detail::remove_quotes(args);
+  auto args = SplitEditorCommand(editor);
   if (args.empty()) {
     return -1;
   }
