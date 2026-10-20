@@ -31,7 +31,6 @@
 namespace {
 
 using json = nlohmann::json;
-constexpr std::size_t kMaxLoggedResponseBytes = 2048;
 constexpr std::size_t kMaxResponseBytes = 1ULL * 1024ULL * 1024ULL; // 1 MB limit
 constexpr long kDefaultConnectTimeoutMs = 5000;
 
