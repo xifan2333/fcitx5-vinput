@@ -25,7 +25,7 @@ void TestAudioPcmChunkProperties() {
   static_assert(sizeof(vinput::audio::AudioPcmChunk) >=
                 vinput::audio::kMaxChunkSamples * sizeof(int16_t));
 
-  vinput::audio::AudioPcmChunk chunk;
+  const vinput::audio::AudioPcmChunk chunk;
   Check(chunk.empty(), "chunk should be empty initially");
   Check(chunk.size == 0, "chunk size should be 0");
 
