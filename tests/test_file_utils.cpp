@@ -271,14 +271,16 @@ void TestReadOnlyFileMapping() {
   TEST_ASSERT(mapping_empty.View().empty());
 
   // Test moving empty mapping resets validity in moved-from instance
-  ReadOnlyFileMapping moved_empty = std::move(mapping_empty);
+  auto empty_source = std::make_unique<ReadOnlyFileMapping>(std::move(mapping_empty));
+  ReadOnlyFileMapping moved_empty = std::move(*empty_source);
   TEST_ASSERT(moved_empty.IsValid());
-  TEST_ASSERT(!mapping_empty.IsValid());
+  TEST_ASSERT(!empty_source->IsValid());
 
+  auto empty_assign_source = std::make_unique<ReadOnlyFileMapping>(std::move(moved_empty));
   ReadOnlyFileMapping assigned_empty;
-  assigned_empty = std::move(moved_empty);
+  assigned_empty = std::move(*empty_assign_source);
   TEST_ASSERT(assigned_empty.IsValid());
-  TEST_ASSERT(!moved_empty.IsValid());
+  TEST_ASSERT(!empty_assign_source->IsValid());
 
   // 5. Non-existent file mapping
   const fs::path missing_file = temp_dir->Path() / "missing.txt";
