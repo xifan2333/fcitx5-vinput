@@ -68,7 +68,7 @@ target_link_libraries(config PUBLIC
     ${GETTEXT_LIBRARIES}
     OpenSSL::Crypto
     spdlog::spdlog_header_only
-    uni-algo::uni-algo
+    unicodelib::unicodelib
     base64::base64
 )
 

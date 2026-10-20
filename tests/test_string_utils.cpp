@@ -558,6 +558,10 @@ void TestUtf8ValidationAndTruncation() {
 
   // Truncation stops at invalid byte
   TEST_ASSERT(TruncateUtf8Bytes(std::string_view("Prefix\xFFSuffix", 13), 10) == "Prefix");
+
+  // Truncation on large input with small budget (incremental boundary scan check)
+  const std::string large_input(100000, 'a');
+  TEST_ASSERT(TruncateUtf8Bytes(large_input, 10) == "aaaaaaaaaa");
 }
 
 void TestIsAsciiWhitespace() {
@@ -735,8 +739,11 @@ void TestFmtStr() {
 
 void TestUtf8VisualWidthAndTruncateMiddle() {
   using vinput::str::FirstUtf8Codepoint;
+  using vinput::str::IsCjkCodepoint;
+  using vinput::str::IsSentenceEndingPunctuation;
   using vinput::str::LastUtf8Codepoint;
   using vinput::str::TruncateMiddleUtf8;
+  using vinput::str::Utf8CodepointWidth;
   using vinput::str::Utf8VisualWidth;
 
   // First / Last codepoint
@@ -746,6 +753,33 @@ void TestUtf8VisualWidthAndTruncateMiddle() {
   TEST_ASSERT(LastUtf8Codepoint("") == 0);
   TEST_ASSERT(LastUtf8Codepoint("hello") == 'o');
   TEST_ASSERT(LastUtf8Codepoint("你好") == 0x597D);
+
+  // CJK Codepoint check
+  TEST_ASSERT(IsCjkCodepoint(0x4F60)); // '你'
+  TEST_ASSERT(IsCjkCodepoint(0x597D)); // '好'
+  TEST_ASSERT(IsCjkCodepoint(0x4E2D)); // '中'
+  TEST_ASSERT(IsCjkCodepoint(0x6587)); // '文'
+  TEST_ASSERT(!IsCjkCodepoint('a'));
+  TEST_ASSERT(!IsCjkCodepoint('1'));
+  TEST_ASSERT(!IsCjkCodepoint(0x1F680));
+
+  // Sentence ending punctuation check
+  TEST_ASSERT(IsSentenceEndingPunctuation(0x3002)); // '。'
+  TEST_ASSERT(IsSentenceEndingPunctuation(0xFF01)); // '！'
+  TEST_ASSERT(IsSentenceEndingPunctuation(0xFF1F)); // '？'
+  TEST_ASSERT(IsSentenceEndingPunctuation(0x2026)); // '…'
+  TEST_ASSERT(IsSentenceEndingPunctuation('.'));
+  TEST_ASSERT(IsSentenceEndingPunctuation('!'));
+  TEST_ASSERT(IsSentenceEndingPunctuation('?'));
+  TEST_ASSERT(IsSentenceEndingPunctuation('\n'));
+  TEST_ASSERT(!IsSentenceEndingPunctuation(','));
+  TEST_ASSERT(!IsSentenceEndingPunctuation(0xFF0C)); // '，'
+
+  // Codepoint width
+  TEST_ASSERT(Utf8CodepointWidth('a') == 1);
+  TEST_ASSERT(Utf8CodepointWidth(0x4F60) == 2);  // '你'
+  TEST_ASSERT(Utf8CodepointWidth(0x1F680) == 2); // '🚀'
+  TEST_ASSERT(Utf8CodepointWidth(0) == 0);
 
   // Visual width
   TEST_ASSERT(Utf8VisualWidth("") == 0);
@@ -760,6 +794,12 @@ void TestUtf8VisualWidthAndTruncateMiddle() {
   const std::string truncated = TruncateMiddleUtf8(long_text, 20, "...");
   TEST_ASSERT(truncated.find("...") != std::string::npos);
   TEST_ASSERT(Utf8VisualWidth(truncated) <= 20);
+
+  // TruncateMiddle with emoji and grapheme clusters
+  const std::string emoji_text = "通知: 🚀🚀🚀 语音识别已完成 1️⃣2️⃣3️⃣";
+  const std::string emoji_trunc = TruncateMiddleUtf8(emoji_text, 16, "...");
+  TEST_ASSERT(emoji_trunc.find("...") != std::string::npos);
+  TEST_ASSERT(Utf8VisualWidth(emoji_trunc) <= 16);
 }
 
 void TestFormat() {

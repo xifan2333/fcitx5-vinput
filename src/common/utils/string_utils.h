@@ -1,6 +1,6 @@
 #pragma once
 #include <algorithm>
-#include <base64.h>
+#include <base64.hpp>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -18,9 +18,8 @@
 #include <system_error>
 #include <tuple>
 #include <type_traits>
-#include <uni_algo/conv.h>
-#include <uni_algo/ranges_conv.h>
-#include <uni_algo/ranges_grapheme.h>
+#include <unicodelib.h>
+#include <unicodelib_encodings.h>
 #include <utility>
 #include <vector>
 
@@ -402,111 +401,99 @@ inline std::string Base64Encode(std::span<const std::byte> data) {
   if (data.empty()) {
     return {};
   }
-  return ::base64_encode(reinterpret_cast<const unsigned char*>(data.data()), data.size());
+  return ::base64::encode_into<std::string>(data.begin(), data.end());
 }
 
 inline std::string Base64Encode(std::string_view text) {
   if (text.empty()) {
     return {};
   }
-  return ::base64_encode(text);
+  return ::base64::to_base64(text);
 }
 
 inline std::string Base64Encode(const char* data, size_t size) {
   if (data == nullptr || size == 0) {
     return {};
   }
-  return ::base64_encode(reinterpret_cast<const unsigned char*>(data), size);
+  return ::base64::to_base64(std::string_view(data, size));
 }
 
 inline std::string Base64Encode(const unsigned char* data, size_t size) {
   if (data == nullptr || size == 0) {
     return {};
   }
-  return ::base64_encode(data, size);
+  return ::base64::encode_into<std::string>(data, data + size);
 }
 
 inline std::string Base64Decode(std::string_view text, bool remove_linebreaks = false) {
   if (text.empty()) {
     return {};
   }
-  return ::base64_decode(text, remove_linebreaks);
+  if (!remove_linebreaks) {
+    return ::base64::from_base64(text);
+  }
+  std::string sanitized;
+  sanitized.reserve(text.size());
+  for (char c : text) {
+    if (c != '\r' && c != '\n') {
+      sanitized.push_back(c);
+    }
+  }
+  return ::base64::from_base64(sanitized);
 }
 
 inline bool IsCjkCodepoint(uint32_t cp) noexcept {
-  return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
-         (cp >= 0x20000 && cp <= 0x2FA1F) || (cp >= 0x30000 && cp <= 0x3134F);
+  const auto c = static_cast<char32_t>(cp);
+  return unicode::is_unified_ideograph(c) || unicode::is_ideographic(c);
 }
 
-inline uint32_t FirstUtf8Codepoint(std::string_view s) {
+inline uint32_t FirstUtf8Codepoint(std::string_view s) noexcept {
   if (s.empty()) {
     return 0;
   }
-  auto view = una::views::utf8(s);
-  auto it = view.begin();
-  if (it != view.end()) {
-    return static_cast<uint32_t>(*it);
-  }
-  return 0;
+  char32_t cp = 0;
+  const size_t len = unicode::utf8::decode_codepoint(s.data(), s.size(), cp);
+  return len > 0 ? static_cast<uint32_t>(cp) : 0;
 }
 
-inline uint32_t LastUtf8Codepoint(std::string_view s) {
+inline uint32_t LastUtf8Codepoint(std::string_view s) noexcept {
   if (s.empty()) {
     return 0;
   }
-  auto view = una::views::utf8(s);
-  auto it = view.end();
-  if (it != view.begin()) {
-    --it;
-    return static_cast<uint32_t>(*it);
+  size_t i = s.size();
+  while (i > 0) {
+    --i;
+    if ((static_cast<unsigned char>(s[i]) & 0xC0) != 0x80) {
+      char32_t cp = 0;
+      const size_t len = unicode::utf8::decode_codepoint(s.data() + i, s.size() - i, cp);
+      if (len > 0) {
+        return static_cast<uint32_t>(cp);
+      }
+      break;
+    }
   }
   return 0;
 }
 
 inline bool IsSentenceEndingPunctuation(uint32_t cp) noexcept {
-  // CJK sentence enders: 。！？…
-  if (cp == 0x3002 || cp == 0xFF01 || cp == 0xFF1F || cp == 0x2026) {
-    return true;
-  }
-  // Latin sentence enders
-  if (cp == '.' || cp == '!' || cp == '?' || cp == '\n') {
-    return true;
-  }
-  return false;
+  const auto c = static_cast<char32_t>(cp);
+  return unicode::is_sentence_terminal(c) || c == U'…' || c == U'\n';
 }
 
 inline size_t Utf8CodepointWidth(uint32_t codepoint) noexcept {
-  if (codepoint == 0) {
-    return 0;
-  }
-  // Control characters & zero-width
-  if (codepoint < 32 || (codepoint >= 0x7F && codepoint < 0xA0) || codepoint == 0x200B ||
-      codepoint == 0x200C || codepoint == 0x200D || codepoint == 0xFEFF) {
-    return 0;
-  }
-  // CJK, Fullwidth forms, Wide symbols, and Emoji ranges
-  if ((codepoint >= 0x1100 && codepoint <= 0x115F) ||   // Hangul Jamo
-      (codepoint >= 0x2E80 && codepoint <= 0x9FFF) ||   // CJK Radicals, Punctuation, Ideographs
-      (codepoint >= 0xAC00 && codepoint <= 0xD7A3) ||   // Hangul Syllables
-      (codepoint >= 0xF900 && codepoint <= 0xFAFF) ||   // CJK Compatibility Ideographs
-      (codepoint >= 0xFE10 && codepoint <= 0xFE19) ||   // Vertical forms
-      (codepoint >= 0xFE30 && codepoint <= 0xFE6F) ||   // CJK Compatibility Forms
-      (codepoint >= 0xFF00 && codepoint <= 0xFF60) ||   // Fullwidth Forms
-      (codepoint >= 0xFFE0 && codepoint <= 0xFFE6) ||   // Fullwidth Symbols
-      (codepoint >= 0x1F000 && codepoint <= 0x1FAFF) || // Miscellaneous Symbols & Emojis
-      (codepoint >= 0x20000 && codepoint <= 0x2FA1F) || // CJK Unified Ideographs Extension
-      (codepoint >= 0x30000 && codepoint <= 0x3134F)) {
-    return 2;
-  }
-  return 1;
+  const int w =
+      unicode::codepoint_width(static_cast<char32_t>(codepoint), unicode::AmbiguousWidth::Wide);
+  return w > 0 ? static_cast<size_t>(w) : 0;
 }
 
 inline size_t Utf8VisualWidth(std::string_view text) {
-  size_t width = 0;
-  for (char32_t cp : una::views::utf8(text)) {
-    width += Utf8CodepointWidth(static_cast<uint32_t>(cp));
+  if (text.empty()) {
+    return 0;
   }
-  return width;
+  std::u32string u32;
+  unicode::utf8::decode(text.data(), text.size(), u32);
+  const int w = unicode::width(u32, unicode::AmbiguousWidth::Wide);
+  return w > 0 ? static_cast<size_t>(w) : 0;
 }
 
 inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
@@ -515,29 +502,52 @@ inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
     return std::string(text);
   }
 
-  const size_t total_width = Utf8VisualWidth(text);
+  std::u32string u32;
+  unicode::utf8::decode(text.data(), text.size(), u32);
+  const size_t total_width =
+      static_cast<size_t>(std::max(0, unicode::width(u32, unicode::AmbiguousWidth::Wide)));
   if (total_width <= max_width) {
     return std::string(text);
   }
 
-  const size_t ellipsis_width = Utf8VisualWidth(ellipsis);
+  std::u32string ellipsis_u32;
+  unicode::utf8::decode(ellipsis.data(), ellipsis.size(), ellipsis_u32);
+  const size_t ellipsis_width =
+      static_cast<size_t>(std::max(0, unicode::width(ellipsis_u32, unicode::AmbiguousWidth::Wide)));
+
+  struct GraphemeInfo {
+    size_t start;
+    size_t length;
+    size_t width;
+  };
+  std::vector<GraphemeInfo> graphemes;
+  size_t i = 0;
+  while (i < u32.size()) {
+    const size_t glen = unicode::grapheme_length(u32.data() + i, u32.size() - i);
+    const size_t gwidth = static_cast<size_t>(
+        std::max(0, unicode::width(u32.data() + i, glen, unicode::AmbiguousWidth::Wide)));
+    graphemes.push_back({i, glen, gwidth});
+    i += glen;
+  }
+
   if (max_width <= ellipsis_width + 4) {
-    const size_t tail_budget = max_width;
-    size_t current_width = 0;
-    auto view = una::views::grapheme::utf8(text);
-    auto it = view.end();
-    const char* tail_start = text.data() + text.size();
-    while (it != view.begin()) {
-      --it;
-      const std::string_view g = *it;
-      const size_t cp_width = Utf8CodepointWidth(FirstUtf8Codepoint(g));
-      if (current_width + cp_width > tail_budget) {
+    size_t cur_width = 0;
+    size_t tail_start_idx = graphemes.size();
+    for (size_t g = graphemes.size(); g > 0; --g) {
+      const auto& gi = graphemes[g - 1];
+      if (cur_width + gi.width > max_width) {
         break;
       }
-      current_width += cp_width;
-      tail_start = it.begin();
+      cur_width += gi.width;
+      tail_start_idx = g - 1;
     }
-    return std::string(tail_start, (text.data() + text.size()) - tail_start);
+    if (tail_start_idx >= graphemes.size()) {
+      return {};
+    }
+    const std::u32string tail_u32 = u32.substr(graphemes[tail_start_idx].start);
+    std::string result;
+    unicode::utf8::encode(tail_u32.data(), tail_u32.size(), result);
+    return result;
   }
 
   const size_t available_content_width = max_width - ellipsis_width;
@@ -547,44 +557,45 @@ inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
   }
   const size_t target_tail_width = available_content_width - target_head_width;
 
-  size_t head_cur_width = 0;
-  const char* head_end = text.data();
-  auto head_view = una::views::grapheme::utf8(text);
-  for (auto it = head_view.begin(); it != head_view.end(); ++it) {
-    const std::string_view g = *it;
-    const size_t cp_width = Utf8CodepointWidth(FirstUtf8Codepoint(g));
-    if (head_cur_width + cp_width > target_head_width) {
+  size_t head_count = 0;
+  size_t cur_head_width = 0;
+  for (const auto& gi : graphemes) {
+    if (cur_head_width + gi.width > target_head_width) {
       break;
     }
-    head_cur_width += cp_width;
-    head_end = it.end();
+    cur_head_width += gi.width;
+    ++head_count;
   }
 
-  size_t tail_cur_width = 0;
-  const char* tail_start = text.data() + text.size();
-  auto tail_view = una::views::grapheme::utf8(text);
-  auto tail_it = tail_view.end();
-  while (tail_it != tail_view.begin()) {
-    --tail_it;
-    if (tail_it.begin() < head_end) {
+  size_t tail_start_idx = graphemes.size();
+  size_t cur_tail_width = 0;
+  for (size_t g = graphemes.size(); g > head_count; --g) {
+    const auto& gi = graphemes[g - 1];
+    if (cur_tail_width + gi.width > target_tail_width) {
       break;
     }
-    const std::string_view g = *tail_it;
-    const size_t cp_width = Utf8CodepointWidth(FirstUtf8Codepoint(g));
-    if (tail_cur_width + cp_width > target_tail_width) {
-      break;
-    }
-    tail_cur_width += cp_width;
-    tail_start = tail_it.begin();
+    cur_tail_width += gi.width;
+    tail_start_idx = g - 1;
   }
+
+  const std::u32string head_u32 =
+      (head_count > 0)
+          ? u32.substr(0, graphemes[head_count - 1].start + graphemes[head_count - 1].length)
+          : std::u32string{};
+  const std::u32string tail_u32 = (tail_start_idx < graphemes.size())
+                                      ? u32.substr(graphemes[tail_start_idx].start)
+                                      : std::u32string{};
+
+  std::string head_str;
+  unicode::utf8::encode(head_u32.data(), head_u32.size(), head_str);
+  std::string tail_str;
+  unicode::utf8::encode(tail_u32.data(), tail_u32.size(), tail_str);
 
   std::string result;
-  const size_t head_bytes = static_cast<size_t>(head_end - text.data());
-  const size_t tail_bytes = static_cast<size_t>((text.data() + text.size()) - tail_start);
-  result.reserve(head_bytes + ellipsis.size() + tail_bytes);
-  result.append(text.substr(0, head_bytes));
+  result.reserve(head_str.size() + ellipsis.size() + tail_str.size());
+  result.append(head_str);
   result.append(ellipsis);
-  result.append(text.substr(static_cast<size_t>(tail_start - text.data())));
+  result.append(tail_str);
   return result;
 }
 
@@ -592,23 +603,17 @@ inline std::string_view TruncateUtf8Bytes(std::string_view text, size_t max_byte
   if (text.empty() || max_bytes == 0) {
     return {};
   }
-  una::error err;
-  const bool valid = una::is_valid_utf8(text, err);
-  const size_t valid_len = valid ? text.size() : err.pos();
-  const std::string_view valid_text = text.substr(0, valid_len);
-  if (valid_text.size() <= max_bytes) {
-    return valid_text;
-  }
-  size_t last_valid = 0;
-  for (auto it = una::views::utf8(valid_text).begin(); it != una::views::utf8(valid_text).end();
-       ++it) {
-    const size_t next_len = static_cast<size_t>(it.end() - valid_text.data());
-    if (next_len > max_bytes) {
+  size_t offset = 0;
+  while (offset < text.size()) {
+    char32_t cp = 0;
+    const size_t len =
+        unicode::utf8::decode_codepoint(text.data() + offset, text.size() - offset, cp);
+    if (len == 0 || !unicode::is_scalar_value(cp) || offset + len > max_bytes) {
       break;
     }
-    last_valid = next_len;
+    offset += len;
   }
-  return valid_text.substr(0, last_valid);
+  return text.substr(0, offset);
 }
 
 inline bool ParseFloatStrict(std::string_view value, float* out = nullptr) noexcept {
@@ -716,7 +721,17 @@ inline Utf8ValidationResult ValidateUtf8Text(std::string_view text, bool allow_c
 }
 
 inline bool IsValidUtf8(std::string_view text) noexcept {
-  return una::is_valid_utf8(text);
+  size_t offset = 0;
+  while (offset < text.size()) {
+    char32_t cp = 0;
+    const size_t len =
+        unicode::utf8::decode_codepoint(text.data() + offset, text.size() - offset, cp);
+    if (len == 0 || !unicode::is_scalar_value(cp)) {
+      return false;
+    }
+    offset += len;
+  }
+  return true;
 }
 
 } // namespace vinput::str
