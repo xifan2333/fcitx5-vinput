@@ -1465,6 +1465,10 @@ public:
   FILE* output() { return stream_.output();}
   FILE* error()  { return stream_.error(); }
 
+  int input_fd() const noexcept { return stream_.write_to_child_; }
+  int output_fd() const noexcept { return stream_.read_from_child_; }
+  int error_fd() const noexcept { return stream_.err_read_; }
+
   /// Stream close APIs
   void close_input()  { stream_.input_.reset();  }
   void close_output() { stream_.output_.reset(); }

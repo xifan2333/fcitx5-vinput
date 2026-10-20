@@ -4,16 +4,15 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstddef>
-#include <cstdio>
+#include <cstring>
 #include <exception>
 #include <fcntl.h>
 #include <map>
 #include <optional>
-#include <poll.h>
 #include <string>
 #include <subprocess.hpp>
+#include <sys/poll.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -92,9 +91,9 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
                           subprocess::output{subprocess::PIPE}, subprocess::error{subprocess::PIPE},
                           subprocess::environment{env_map}, subprocess::session_leader{true});
 
-    int in_fd = proc.input() != nullptr ? fileno(proc.input()) : -1;
-    int out_fd = proc.output() != nullptr ? fileno(proc.output()) : -1;
-    int err_fd = proc.error() != nullptr ? fileno(proc.error()) : -1;
+    const int in_fd = proc.input_fd();
+    const int out_fd = proc.output_fd();
+    const int err_fd = proc.error_fd();
 
     if (in_fd >= 0) {
       SetNonBlocking(in_fd);
@@ -119,7 +118,6 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
     if (in_fd >= 0 && input.empty()) {
       proc.close_input();
       in_open = false;
-      in_fd = -1;
     }
 
     bool child_exited = false;
@@ -138,7 +136,6 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
           if (in_open) {
             proc.close_input();
             in_open = false;
-            in_fd = -1;
           }
         }
       }
@@ -157,36 +154,39 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
         }
       }
 
-      pollfd pfds[3];
-      nfds_t nfds = 0;
+      std::vector<pollfd> pfds;
+      pfds.reserve(3);
 
       int in_idx = -1;
       int out_idx = -1;
       int err_idx = -1;
 
       if (in_open && in_fd >= 0) {
-        in_idx = static_cast<int>(nfds);
-        pfds[nfds].fd = in_fd;
-        pfds[nfds].events = POLLOUT;
-        pfds[nfds].revents = 0;
-        ++nfds;
+        in_idx = static_cast<int>(pfds.size());
+        pollfd pfd{};
+        pfd.fd = in_fd;
+        pfd.events = POLLOUT;
+        pfd.revents = 0;
+        pfds.push_back(pfd);
       }
       if (out_open && out_fd >= 0) {
-        out_idx = static_cast<int>(nfds);
-        pfds[nfds].fd = out_fd;
-        pfds[nfds].events = POLLIN;
-        pfds[nfds].revents = 0;
-        ++nfds;
+        out_idx = static_cast<int>(pfds.size());
+        pollfd pfd{};
+        pfd.fd = out_fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        pfds.push_back(pfd);
       }
       if (err_open && err_fd >= 0) {
-        err_idx = static_cast<int>(nfds);
-        pfds[nfds].fd = err_fd;
-        pfds[nfds].events = POLLIN;
-        pfds[nfds].revents = 0;
-        ++nfds;
+        err_idx = static_cast<int>(pfds.size());
+        pollfd pfd{};
+        pfd.fd = err_fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        pfds.push_back(pfd);
       }
 
-      if (nfds == 0) {
+      if (pfds.empty()) {
         if (!child_exited) {
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
           continue;
@@ -201,7 +201,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
         wait_ms = std::clamp<int>(static_cast<int>(rem), 0, 50);
       }
 
-      const int poll_rc = poll(pfds, nfds, wait_ms);
+      const int poll_rc = poll(pfds.data(), static_cast<nfds_t>(pfds.size()), wait_ms);
       if (poll_rc < 0) {
         if (errno == EINTR) {
           continue;
@@ -209,12 +209,11 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
         break;
       }
 
-      if (in_idx >= 0 && (pfds[in_idx].revents & POLLOUT) != 0) {
+      if (in_idx >= 0 && (pfds[static_cast<std::size_t>(in_idx)].revents & POLLOUT) != 0) {
         const std::size_t remaining = input.size() - input_offset;
         if (remaining == 0) {
           proc.close_input();
           in_open = false;
-          in_fd = -1;
         } else {
           const auto* bytes = static_cast<const char*>(static_cast<const void*>(input.data()));
           const ssize_t written = write(in_fd, bytes + input_offset, remaining);
@@ -223,18 +222,17 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
             if (input_offset >= input.size()) {
               proc.close_input();
               in_open = false;
-              in_fd = -1;
             }
           } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
             proc.close_input();
             in_open = false;
-            in_fd = -1;
           }
         }
       }
 
       if (out_idx >= 0) {
-        if ((pfds[out_idx].revents & POLLIN) != 0) {
+        const auto rev = pfds[static_cast<std::size_t>(out_idx)].revents;
+        if ((rev & POLLIN) != 0) {
           while (true) {
             const ssize_t n = read(out_fd, drain_buffer.data(), drain_buffer.size());
             if (n > 0) {
@@ -246,7 +244,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
               break;
             }
           }
-        } else if ((pfds[out_idx].revents & (POLLHUP | POLLERR)) != 0) {
+        } else if ((rev & (POLLHUP | POLLERR)) != 0) {
           while (true) {
             const ssize_t n = read(out_fd, drain_buffer.data(), drain_buffer.size());
             if (n > 0) {
@@ -260,7 +258,8 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       }
 
       if (err_idx >= 0) {
-        if ((pfds[err_idx].revents & POLLIN) != 0) {
+        const auto rev = pfds[static_cast<std::size_t>(err_idx)].revents;
+        if ((rev & POLLIN) != 0) {
           while (true) {
             const ssize_t n = read(err_fd, drain_buffer.data(), drain_buffer.size());
             if (n > 0) {
@@ -272,7 +271,7 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
               break;
             }
           }
-        } else if ((pfds[err_idx].revents & (POLLHUP | POLLERR)) != 0) {
+        } else if ((rev & (POLLHUP | POLLERR)) != 0) {
           while (true) {
             const ssize_t n = read(err_fd, drain_buffer.data(), drain_buffer.size());
             if (n > 0) {
@@ -329,9 +328,9 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
 
     if (process_out != nullptr) {
       process_out->pid = proc.pid();
-      FILE* err_fp = proc.error();
-      if (err_fp != nullptr) {
-        const int dup_fd = fcntl(fileno(err_fp), F_DUPFD_CLOEXEC, 0);
+      const int err_fd = proc.error_fd();
+      if (err_fd >= 0) {
+        const int dup_fd = fcntl(err_fd, F_DUPFD_CLOEXEC, 0);
         if (dup_fd < 0) {
           if (error != nullptr) {
             *error = "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));

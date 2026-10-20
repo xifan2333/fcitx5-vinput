@@ -4,8 +4,6 @@
 
 #include "cli/utils/editor_utils.h"
 
-extern "C" int setenv(const char* name, const char* value, int overwrite);
-
 inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::cerr << "Assertion failed: " << message << " at " << file << ":" << line << "\n";
