@@ -44,6 +44,7 @@ jobs:
           database: 'build'
           tidy-checks: ''
           version: '18'
+          ignore: '3rdparty|build|.github'
           lines-changed-only: true
           files-changed-only: true
           step-summary: true
