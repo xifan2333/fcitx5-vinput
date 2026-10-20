@@ -10,8 +10,6 @@
 #include <utility>
 #include <vector>
 
-namespace {
-
 bool SplitEditorCommand(std::string_view command, std::vector<std::string>* args) {
   if (args == nullptr) {
     return false;
@@ -58,8 +56,6 @@ bool SplitEditorCommand(std::string_view command, std::vector<std::string>* args
   }
   return !args->empty();
 }
-
-} // namespace
 
 int OpenInEditor(const std::filesystem::path& file_path) {
   const char* editor = std::getenv("VISUAL");

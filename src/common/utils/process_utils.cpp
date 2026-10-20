@@ -93,9 +93,9 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
                           subprocess::output{subprocess::PIPE}, subprocess::error{subprocess::PIPE},
                           subprocess::environment{env_map}, subprocess::session_leader{true});
 
-    const int in_fd = proc.input() != nullptr ? fileno(proc.input()) : -1;
-    const int out_fd = proc.output() != nullptr ? fileno(proc.output()) : -1;
-    const int err_fd = proc.error() != nullptr ? fileno(proc.error()) : -1;
+    const int in_fd = proc.input() != nullptr ? subprocess_fileno(proc.input()) : -1;
+    const int out_fd = proc.output() != nullptr ? subprocess_fileno(proc.output()) : -1;
+    const int err_fd = proc.error() != nullptr ? subprocess_fileno(proc.error()) : -1;
 
     if (in_fd >= 0) {
       SetNonBlocking(in_fd);
@@ -331,7 +331,7 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
       process_out->pid = proc.pid();
       FILE* err_fp = proc.error();
       if (err_fp != nullptr) {
-        const int dup_fd = fcntl(fileno(err_fp), F_DUPFD_CLOEXEC, 0);
+        const int dup_fd = fcntl(subprocess_fileno(err_fp), F_DUPFD_CLOEXEC, 0);
         if (dup_fd < 0) {
           if (error != nullptr) {
             *error = "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));
