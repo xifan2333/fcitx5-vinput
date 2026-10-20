@@ -49,6 +49,7 @@ jobs:
           step-summary: true
           file-annotations: true
           thread-comments: 'false'
+          ignore: '3rdparty|build'
 
       - name: Save PR info and report
         if: always() && github.event_name == 'pull_request'

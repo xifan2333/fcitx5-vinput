@@ -1,7 +1,9 @@
 #include "common/utils/process_utils.h"
 
+#include <chrono>
 #include <exception>
 #include <fcntl.h>
+#include <future>
 #include <map>
 #include <string>
 #include <subprocess.hpp>
@@ -76,6 +78,25 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
     const char* in_ptr = reinterpret_cast<const char*>(input.data());
     const size_t in_size = input.size();
 
+    if (spec.timeout_ms > 0) {
+      auto fut = std::async(std::launch::async,
+                            [&proc, in_ptr, in_size] { return proc.communicate(in_ptr, in_size); });
+      if (fut.wait_for(std::chrono::milliseconds(spec.timeout_ms)) == std::future_status::timeout) {
+        result.timed_out = true;
+        proc.kill(SIGKILL);
+        try {
+          proc.wait();
+        } catch (...) {
+        }
+        return result;
+      }
+      auto [out_buf, err_buf] = fut.get();
+      result.exit_code = proc.retcode();
+      result.stdout_text.assign(out_buf.buf.data(), out_buf.length);
+      result.stderr_text.assign(err_buf.buf.data(), err_buf.length);
+      return result;
+    }
+
     auto [out_buf, err_buf] = proc.communicate(in_ptr, in_size);
     result.exit_code = proc.retcode();
     result.stdout_text.assign(out_buf.buf.data(), out_buf.length);
@@ -141,23 +162,11 @@ bool RunCommandSilent(const CommandSpec& spec, int* exit_code) {
     return false;
   }
 
-  const auto cmd = BuildCmd(spec);
-  const auto env_map = BuildEnvMap(spec);
-
-  try {
-    const int rc =
-        subprocess::call(cmd, subprocess::input{"/dev/null"}, subprocess::output{"/dev/null"},
-                         subprocess::error{"/dev/null"}, subprocess::environment{env_map});
-    if (exit_code != nullptr) {
-      *exit_code = rc;
-    }
-    return rc == 0;
-  } catch (const std::exception&) {
-    if (exit_code != nullptr) {
-      *exit_code = -1;
-    }
-    return false;
+  const auto result = RunCommandWithInput(spec, {});
+  if (exit_code != nullptr) {
+    *exit_code = result.exit_code;
   }
+  return !result.launch_failed && !result.timed_out && result.exit_code == 0;
 }
 
 bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text, int* exit_code) {
@@ -171,29 +180,14 @@ bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text, 
     return false;
   }
 
-  const auto cmd = BuildCmd(spec);
-  const auto env_map = BuildEnvMap(spec);
-
-  try {
-    auto proc =
-        subprocess::Popen(cmd, subprocess::input{"/dev/null"}, subprocess::output{subprocess::PIPE},
-                          subprocess::error{"/dev/null"}, subprocess::environment{env_map});
-
-    auto [out_buf, err_buf] = proc.communicate();
-    if (stdout_text != nullptr) {
-      stdout_text->assign(out_buf.buf.data(), out_buf.length);
-    }
-    const int rc = proc.retcode();
-    if (exit_code != nullptr) {
-      *exit_code = rc;
-    }
-    return rc == 0;
-  } catch (const std::exception&) {
-    if (exit_code != nullptr) {
-      *exit_code = -1;
-    }
-    return false;
+  const auto result = RunCommandWithInput(spec, {});
+  if (stdout_text != nullptr) {
+    *stdout_text = result.stdout_text;
   }
+  if (exit_code != nullptr) {
+    *exit_code = result.exit_code;
+  }
+  return !result.launch_failed && !result.timed_out && result.exit_code == 0;
 }
 
 } // namespace vinput::process
