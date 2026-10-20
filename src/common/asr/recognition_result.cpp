@@ -1,7 +1,18 @@
 #include "recognition_result.h"
 
+#include <glaze/glaze.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
+
+template <> struct glz::meta<vinput::result::Candidate> {
+  using T = vinput::result::Candidate;
+  static constexpr auto value = object("text", &T::text, "source", &T::source);
+};
+
+template <> struct glz::meta<vinput::result::Payload> {
+  using T = vinput::result::Payload;
+  static constexpr auto value = object("commit_text", &T::commitText, "candidates", &T::candidates);
+};
 
 namespace vinput::result {
 namespace {
@@ -19,19 +30,11 @@ std::string JsonString(const json& object, const char* key) {
 } // namespace
 
 std::string Serialize(const Payload& payload) {
-  json root = {
-      {"commit_text", payload.commitText},
-      {"candidates", json::array()},
-  };
-
-  for (const auto& candidate : payload.candidates) {
-    root["candidates"].push_back({
-        {"text", candidate.text},
-        {"source", candidate.source},
-    });
+  std::string out;
+  if (bool(glz::write_json(payload, out))) {
+    return {};
   }
-
-  return root.dump();
+  return out;
 }
 
 Payload Parse(std::string_view payload_text) {
