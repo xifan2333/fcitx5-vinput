@@ -23,10 +23,10 @@ Compilation strategy should adapt to the local machine's hardware capabilities, 
 
 | Workflow | File | Trigger Command | Purpose |
 | :--- | :--- | :--- | :--- |
-| **CI Build & Test** | `.github/workflows/ci.yml` | `gh workflow run ci.yml` | Standard build and test verification on Ubuntu runners. |
+| **CI Build & Test** | `.github/workflows/ci.yml` | `gh workflow run ci.yml` | Integrated pipeline: Stage 1 `cpp-linter` gate, Stage 2 matrix build (`build-linux-*`, `build-nix-lite`). |
 | **Release Pipeline (Dry/Formal)** | `.github/workflows/release.yml` | `gh workflow run release.yml` *(Dry)*<br>`mise run release <ver>` *(Formal tag)* | Full multi-arch (x86_64, aarch64 ARM) and multi-distro (Debian, Fedora RPM, openSUSE, Arch, Flatpak) matrix build. |
 | **Packaging Channels** | `.github/workflows/channels.yml` | `mise run channels` | Builds & publishes across distribution channels (PPA, COPR, Flatpak, Debian). |
-| **C++ Linter** | `.github/workflows/cpp-linter.yml` | `gh workflow run cpp-linter.yml` | PR formatting and review annotations. |
+| **Linter PR Commenter** | `.github/workflows/cpp-linter-comment.yml` | `workflow_run` (automatic) | Posts and updates Clang-Format & Clang-Tidy quality comments on PRs. |
 | **Nix Cache Sync** | `.github/workflows/nix-cache.yml` | `gh workflow run nix-cache.yml` | Rebuilds and pushes binaries to Cachix. |
 
 ---
@@ -81,6 +81,36 @@ Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH`) via `vinpu
 | **MAJOR (X)** | Breaking D-Bus method removals/signature alterations, CLI subcommand/option/alias removals, unmigratable config overhaul, or explicit `BREAKING CHANGE:` / `feat!:` / `fix!:` commits. | Bump `X.0.0` (e.g. `3.0.0`). |
 | **MINOR (Y)** | Configuration schema changes (`core_config_types.h`, `vinput_config.h`, `default-config.json`, or added steps in `config_migration.cpp`), new CLI commands/options/aliases, added D-Bus methods/signals, new features (`feat:` commits), or GUI module expansions. | Bump `x.Y.0` (e.g. `2.4.0`). **Breaking config changes must NEVER be released as a PATCH!** |
 | **PATCH (Z)** | Pure bugfixes (`fix:`), refactoring, doc updates, and CI improvements without schema, CLI, or API contract changes. | Bump `x.y.Z` (e.g. `2.3.27`). |
+
+---
+
+## 7. CI Quota Governance & Proactive Cancellation Protocol
+
+### 1. Stage Gate Auto-Short-Circuiting
+The primary CI pipeline (`.github/workflows/ci.yml`) enforces a two-stage gate:
+1. **Stage 1 (`cpp-linter`)**: Runs fast Clang-Format and Clang-Tidy checks (~1.5 min).
+2. **Stage 2 (`build` & `build-nix-lite`)**: Heavy compilation jobs declare `needs: [cpp-linter]`.
+If formatting or static analysis fails, **all downstream compilation jobs are immediately Skipped by GitHub Actions**, completely avoiding the consumption of 3 × 5+ minutes of runner compute.
+
+### 2. Proactive Run Inspection & Cancellation
+Agents and maintainers must actively guard runner quotas. If you discover a problem right after pushing, or need to push a quick amendment:
+
+```bash
+# 1. View in-progress runs on the current branch
+gh run list --branch $(git branch --show-current) --status in_progress
+
+# 2. Cancel a specific run by ID
+gh run cancel <run_id>
+
+# 3. Cancel ALL active runs for current branch (one-liner)
+gh run list --branch $(git branch --show-current) --status in_progress --json databaseId -q '.[].databaseId' | xargs -r -n 1 gh run cancel
+```
+
+### 3. Zero-Modification Iron Rule for `3rdparty/`
+Third-party libraries vendored in `3rdparty/` (such as `mio`, `readerwriterqueue`, `spdlog`, `httplib`) are strictly frozen upstream snapshots:
+- **Never modify, patch, refactor, or reformat vendored 3rdparty files**.
+- All project-specific adaptations or wrappers must be placed under `src/` (e.g. `src/common/` or `src/daemon/`).
+- They are excluded from `clang-tidy` and format checks via CMake `SYSTEM INTERFACE` isolation.
 
 **Governance Approach**:
 - **Soft Constraint via Skill**: Semantic compatibility (D-Bus contract preservation, CLI options/subcommands, and configuration migration) is governed by the `vinput-dev` skill and agent review loops, avoiding brittle shell-based AST regex hooks.
