@@ -160,6 +160,7 @@ jobs:
       - name: Configure
         run: |
           cmake --preset ci-clang-mold \
+            -DVINPUT_ENABLE_WERROR=ON \
             -DVINPUT_ENABLE_LOCAL_ASR=${{ matrix.enable_local_asr }} \
             -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
             -DVINPUT_RUNTIME_MODE=bundled
