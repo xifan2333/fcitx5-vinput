@@ -16,6 +16,9 @@
 #include <system_error>
 #include <tuple>
 #include <type_traits>
+#include <uni_algo/conv.h>
+#include <uni_algo/ranges_conv.h>
+#include <uni_algo/ranges_grapheme.h>
 #include <utility>
 #include <vector>
 
@@ -426,61 +429,49 @@ inline std::string Base64Decode(std::string_view text, bool remove_linebreaks = 
   return ::base64_decode(text, remove_linebreaks);
 }
 
-inline bool IsCjkCodepoint(uint32_t cp) {
-  return cp >= 0x2E80;
+inline bool IsCjkCodepoint(uint32_t cp) noexcept {
+  return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
+         (cp >= 0x20000 && cp <= 0x2FA1F) || (cp >= 0x30000 && cp <= 0x3134F);
 }
 
 inline uint32_t FirstUtf8Codepoint(std::string_view s) {
-  if (s.empty())
+  if (s.empty()) {
     return 0;
-  auto c = static_cast<unsigned char>(s[0]);
-  if (c < 0x80)
-    return c;
-  uint32_t cp = 0;
-  int len = 0;
-  if ((c & 0xE0) == 0xC0) {
-    cp = c & 0x1F;
-    len = 2;
-  } else if ((c & 0xF0) == 0xE0) {
-    cp = c & 0x0F;
-    len = 3;
-  } else if ((c & 0xF8) == 0xF0) {
-    cp = c & 0x07;
-    len = 4;
-  } else {
-    return c;
   }
-  for (int i = 1; i < len && static_cast<size_t>(i) < s.size(); ++i) {
-    cp = (cp << 6) | (static_cast<unsigned char>(s[i]) & 0x3F);
+  auto view = una::views::utf8(s);
+  auto it = view.begin();
+  if (it != view.end()) {
+    return static_cast<uint32_t>(*it);
   }
-  return cp;
+  return 0;
 }
 
 inline uint32_t LastUtf8Codepoint(std::string_view s) {
-  if (s.empty())
+  if (s.empty()) {
     return 0;
-  auto i = s.size();
-  while (i > 0 && (static_cast<unsigned char>(s[i - 1]) & 0xC0) == 0x80) {
-    --i;
   }
-  if (i == 0)
-    return 0;
-  return FirstUtf8Codepoint(s.substr(i - 1));
+  auto view = una::views::utf8(s);
+  auto it = view.end();
+  if (it != view.begin()) {
+    --it;
+    return static_cast<uint32_t>(*it);
+  }
+  return 0;
 }
 
-inline bool IsSentenceEndingPunctuation(uint32_t cp) {
+inline bool IsSentenceEndingPunctuation(uint32_t cp) noexcept {
   // CJK sentence enders: 。！？…
-  if (cp == 0x3002 || cp == 0xFF01 || cp == 0xFF1F || cp == 0x2026)
+  if (cp == 0x3002 || cp == 0xFF01 || cp == 0xFF1F || cp == 0x2026) {
     return true;
+  }
   // Latin sentence enders
-  if (cp == '.' || cp == '!' || cp == '?')
+  if (cp == '.' || cp == '!' || cp == '?' || cp == '\n') {
     return true;
-  if (cp == '\n')
-    return true;
+  }
   return false;
 }
 
-inline size_t Utf8CodepointWidth(uint32_t codepoint) {
+inline size_t Utf8CodepointWidth(uint32_t codepoint) noexcept {
   if (codepoint == 0) {
     return 0;
   }
@@ -506,42 +497,10 @@ inline size_t Utf8CodepointWidth(uint32_t codepoint) {
   return 1;
 }
 
-inline uint32_t NextUtf8Codepoint(std::string_view text, size_t& offset) {
-  if (offset >= text.size()) {
-    return 0;
-  }
-  const auto c = static_cast<unsigned char>(text[offset]);
-  uint32_t codepoint = 0;
-  size_t len = 1;
-  if (c < 0x80) {
-    codepoint = c;
-    len = 1;
-  } else if ((c & 0xE0) == 0xC0) {
-    codepoint = c & 0x1F;
-    len = 2;
-  } else if ((c & 0xF0) == 0xE0) {
-    codepoint = c & 0x0F;
-    len = 3;
-  } else if ((c & 0xF8) == 0xF0) {
-    codepoint = c & 0x07;
-    len = 4;
-  } else {
-    offset += 1;
-    return c;
-  }
-  for (size_t i = 1; i < len && offset + i < text.size(); ++i) {
-    codepoint = (codepoint << 6) | (static_cast<unsigned char>(text[offset + i]) & 0x3F);
-  }
-  offset += len;
-  return codepoint;
-}
-
 inline size_t Utf8VisualWidth(std::string_view text) {
   size_t width = 0;
-  size_t offset = 0;
-  while (offset < text.size()) {
-    const uint32_t codepoint = NextUtf8Codepoint(text, offset);
-    width += Utf8CodepointWidth(codepoint);
+  for (char32_t cp : una::views::utf8(text)) {
+    width += Utf8CodepointWidth(static_cast<uint32_t>(cp));
   }
   return width;
 }
@@ -560,22 +519,21 @@ inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
   const size_t ellipsis_width = Utf8VisualWidth(ellipsis);
   if (max_width <= ellipsis_width + 4) {
     const size_t tail_budget = max_width;
-    size_t index = text.size();
     size_t current_width = 0;
-    while (index > 0) {
-      size_t prev_index = index - 1;
-      while (prev_index > 0 && (static_cast<unsigned char>(text[prev_index]) & 0xC0) == 0x80) {
-        --prev_index;
-      }
-      const uint32_t codepoint = FirstUtf8Codepoint(text.substr(prev_index));
-      const size_t cp_width = Utf8CodepointWidth(codepoint);
+    auto view = una::views::grapheme::utf8(text);
+    auto it = view.end();
+    const char* tail_start = text.data() + text.size();
+    while (it != view.begin()) {
+      --it;
+      const std::string_view g = *it;
+      const size_t cp_width = Utf8CodepointWidth(FirstUtf8Codepoint(g));
       if (current_width + cp_width > tail_budget) {
         break;
       }
       current_width += cp_width;
-      index = prev_index;
+      tail_start = it.begin();
     }
-    return std::string(text.substr(index));
+    return std::string(tail_start, (text.data() + text.size()) - tail_start);
   }
 
   const size_t available_content_width = max_width - ellipsis_width;
@@ -585,109 +543,68 @@ inline std::string TruncateMiddleUtf8(std::string_view text, size_t max_width,
   }
   const size_t target_tail_width = available_content_width - target_head_width;
 
-  size_t head_byte_len = 0;
   size_t head_cur_width = 0;
-  size_t offset = 0;
-  while (offset < text.size()) {
-    size_t next_offset = offset;
-    const uint32_t codepoint = NextUtf8Codepoint(text, next_offset);
-    const size_t cp_width = Utf8CodepointWidth(codepoint);
+  const char* head_end = text.data();
+  auto head_view = una::views::grapheme::utf8(text);
+  for (auto it = head_view.begin(); it != head_view.end(); ++it) {
+    const std::string_view g = *it;
+    const size_t cp_width = Utf8CodepointWidth(FirstUtf8Codepoint(g));
     if (head_cur_width + cp_width > target_head_width) {
       break;
     }
     head_cur_width += cp_width;
-    offset = next_offset;
-    head_byte_len = offset;
+    head_end = it.end();
   }
 
-  size_t tail_start_offset = text.size();
   size_t tail_cur_width = 0;
-  size_t index = text.size();
-  while (index > head_byte_len) {
-    size_t prev_index = index - 1;
-    while (prev_index > 0 && (static_cast<unsigned char>(text[prev_index]) & 0xC0) == 0x80) {
-      --prev_index;
+  const char* tail_start = text.data() + text.size();
+  auto tail_view = una::views::grapheme::utf8(text);
+  auto tail_it = tail_view.end();
+  while (tail_it != tail_view.begin()) {
+    --tail_it;
+    if (tail_it.begin() < head_end) {
+      break;
     }
-    const uint32_t codepoint = FirstUtf8Codepoint(text.substr(prev_index));
-    const size_t cp_width = Utf8CodepointWidth(codepoint);
+    const std::string_view g = *tail_it;
+    const size_t cp_width = Utf8CodepointWidth(FirstUtf8Codepoint(g));
     if (tail_cur_width + cp_width > target_tail_width) {
       break;
     }
     tail_cur_width += cp_width;
-    index = prev_index;
-    tail_start_offset = index;
+    tail_start = tail_it.begin();
   }
 
   std::string result;
-  result.reserve(head_byte_len + ellipsis.size() + (text.size() - tail_start_offset));
-  result.append(text.substr(0, head_byte_len));
+  const size_t head_bytes = static_cast<size_t>(head_end - text.data());
+  const size_t tail_bytes = static_cast<size_t>((text.data() + text.size()) - tail_start);
+  result.reserve(head_bytes + ellipsis.size() + tail_bytes);
+  result.append(text.substr(0, head_bytes));
   result.append(ellipsis);
-  result.append(text.substr(tail_start_offset));
+  result.append(text.substr(static_cast<size_t>(tail_start - text.data())));
   return result;
 }
 
 inline std::string_view TruncateUtf8Bytes(std::string_view text, size_t max_bytes) noexcept {
-  size_t i = 0;
-  size_t last_valid = 0;
-  const size_t n = text.size();
-  while (i < n) {
-    const auto c0 = static_cast<unsigned char>(text[i]);
-    size_t len = 0;
-    if (c0 <= 0x7F) {
-      len = 1;
-    } else if (c0 >= 0xC2 && c0 <= 0xDF) {
-      if (i + 1 >= n) {
-        break;
-      }
-      const auto c1 = static_cast<unsigned char>(text[i + 1]);
-      if ((c1 & 0xC0) != 0x80) {
-        break;
-      }
-      len = 2;
-    } else if (c0 >= 0xE0 && c0 <= 0xEF) {
-      if (i + 2 >= n) {
-        break;
-      }
-      const auto c1 = static_cast<unsigned char>(text[i + 1]);
-      const auto c2 = static_cast<unsigned char>(text[i + 2]);
-      if ((c1 & 0xC0) != 0x80 || (c2 & 0xC0) != 0x80) {
-        break;
-      }
-      if (c0 == 0xE0 && c1 < 0xA0) {
-        break;
-      }
-      if (c0 == 0xED && c1 >= 0xA0) {
-        break;
-      }
-      len = 3;
-    } else if (c0 >= 0xF0 && c0 <= 0xF4) {
-      if (i + 3 >= n) {
-        break;
-      }
-      const auto c1 = static_cast<unsigned char>(text[i + 1]);
-      const auto c2 = static_cast<unsigned char>(text[i + 2]);
-      const auto c3 = static_cast<unsigned char>(text[i + 3]);
-      if ((c1 & 0xC0) != 0x80 || (c2 & 0xC0) != 0x80 || (c3 & 0xC0) != 0x80) {
-        break;
-      }
-      if (c0 == 0xF0 && c1 < 0x90) {
-        break;
-      }
-      if (c0 == 0xF4 && c1 > 0x8F) {
-        break;
-      }
-      len = 4;
-    } else {
-      break;
-    }
-
-    if (i + len > max_bytes) {
-      break;
-    }
-    i += len;
-    last_valid = i;
+  if (text.empty() || max_bytes == 0) {
+    return {};
   }
-  return text.substr(0, last_valid);
+  una::error err;
+  const bool valid = una::is_valid_utf8(text, err);
+  const size_t valid_len = valid ? text.size() : err.pos();
+  const std::string_view valid_text = text.substr(0, valid_len);
+  if (valid_text.size() <= max_bytes) {
+    return valid_text;
+  }
+  size_t last_valid = 0;
+  for (auto it = una::views::utf8(valid_text).begin(); it != una::views::utf8(valid_text).end();
+       ++it) {
+    const size_t next_len = static_cast<size_t>(it.end() - valid_text.data());
+    if (next_len > max_bytes) {
+      break;
+    }
+    last_valid = next_len;
+  }
+  return valid_text.substr(0, last_valid);
 }
 
 inline bool ParseFloatStrict(std::string_view value, float* out = nullptr) noexcept {
@@ -795,7 +712,7 @@ inline Utf8ValidationResult ValidateUtf8Text(std::string_view text, bool allow_c
 }
 
 inline bool IsValidUtf8(std::string_view text) noexcept {
-  return ValidateUtf8Text(text, /*allow_control_chars=*/true, /*allow_embedded_nul=*/true).valid;
+  return una::is_valid_utf8(text);
 }
 
 } // namespace vinput::str

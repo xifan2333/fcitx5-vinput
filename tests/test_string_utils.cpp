@@ -732,6 +732,35 @@ void TestFmtStr() {
   const std::string combined = FmtStr("%s-%d-%s-%s-%d-%s", p1, 10, mixed_str, p2, 20, p3);
   TEST_ASSERT(combined == "alpha-10-middle-beta-20-gamma");
 }
+
+void TestUtf8VisualWidthAndTruncateMiddle() {
+  using vinput::str::FirstUtf8Codepoint;
+  using vinput::str::LastUtf8Codepoint;
+  using vinput::str::TruncateMiddleUtf8;
+  using vinput::str::Utf8VisualWidth;
+
+  // First / Last codepoint
+  TEST_ASSERT(FirstUtf8Codepoint("") == 0);
+  TEST_ASSERT(FirstUtf8Codepoint("hello") == 'h');
+  TEST_ASSERT(FirstUtf8Codepoint("你好") == 0x4F60);
+  TEST_ASSERT(LastUtf8Codepoint("") == 0);
+  TEST_ASSERT(LastUtf8Codepoint("hello") == 'o');
+  TEST_ASSERT(LastUtf8Codepoint("你好") == 0x597D);
+
+  // Visual width
+  TEST_ASSERT(Utf8VisualWidth("") == 0);
+  TEST_ASSERT(Utf8VisualWidth("abc") == 3);
+  TEST_ASSERT(Utf8VisualWidth("你好") == 4);
+  TEST_ASSERT(Utf8VisualWidth("Hello, 世界!") == 12); // 7 ASCII + 4 CJK + 1 ASCII = 12
+
+  // TruncateMiddleUtf8
+  TEST_ASSERT(TruncateMiddleUtf8("hello", 10) == "hello");
+  TEST_ASSERT(TruncateMiddleUtf8("short", 0) == "short");
+  const std::string long_text = "这是一段非常非常长的语音识别通知文本需要被合理截断展示";
+  const std::string truncated = TruncateMiddleUtf8(long_text, 20, "...");
+  TEST_ASSERT(truncated.find("...") != std::string::npos);
+  TEST_ASSERT(Utf8VisualWidth(truncated) <= 20);
+}
 } // namespace
 
 int main() {
@@ -755,5 +784,6 @@ int main() {
   TestValidateUtf8TextDetailed();
   TestParseFloatStrict();
   TestFmtStr();
+  TestUtf8VisualWidthAndTruncateMiddle();
   return 0;
 }
