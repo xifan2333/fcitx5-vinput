@@ -100,7 +100,7 @@ void MainWindow::onSaveClicked() {
   CoreConfig config = vinput::gui::ConfigManager::Get().Load();
 
   // Save device
-  QString device = controlPage_->currentDevice();
+  const QString device = controlPage_->currentDevice();
   if (!device.isEmpty() && device != "default") {
     config.global.captureDevice = device.toStdString();
   } else {
@@ -118,7 +118,7 @@ void MainWindow::onSaveClicked() {
 
 #if VINPUT_ENABLE_LOCAL_ASR
   // Save hotwords
-  QString hotwordsFile = hotwordPage_->hotwordsFilePath();
+  const QString hotwordsFile = hotwordPage_->hotwordsFilePath();
   for (auto& prov : config.asr.providers) {
     if (auto* local = std::get_if<LocalAsrProvider>(&prov)) {
       if (!hotwordsFile.isEmpty()) {

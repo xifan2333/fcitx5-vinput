@@ -91,7 +91,7 @@ CoreConfig LoadCoreConfig() {
   const std::filesystem::path path = vinput::path::CoreConfigPath();
 
   auto& cache = GetConfigCache();
-  std::lock_guard<std::mutex> lock(cache.mu);
+  const std::scoped_lock lock(cache.mu);
 
   std::filesystem::file_time_type mtime;
   std::uintmax_t size = 0;
@@ -168,7 +168,7 @@ bool SaveCoreConfig(const CoreConfig& config) {
   }
 
   auto& cache = GetConfigCache();
-  std::lock_guard<std::mutex> lock(cache.mu);
+  const std::scoped_lock lock(cache.mu);
 
   std::filesystem::file_time_type mtime;
   std::uintmax_t size = 0;

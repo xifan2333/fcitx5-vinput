@@ -138,7 +138,7 @@ bool RecognitionSessionManager::Initialize(const CoreConfig& settings,
                                            std::string* disabled_reason) {
   std::string disabled_state_reason;
   if (ShouldDisableAsr(settings, &disabled_state_reason)) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     ApplyDisabledStateLocked();
     if (disabled_reason) {
       *disabled_reason = std::move(disabled_state_reason);
@@ -150,7 +150,7 @@ bool RecognitionSessionManager::Initialize(const CoreConfig& settings,
   std::string error;
   if (!CreatePreparedBackend(settings, &prepared, &error)) {
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      const std::scoped_lock lock(state_mutex_);
       ResetEffectiveBackendLocked();
       target_backend_signature_.clear();
       last_reload_error_ = error;
@@ -178,7 +178,7 @@ bool RecognitionSessionManager::Initialize(const CoreConfig& settings,
 bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, std::string* error) {
   std::string disabled_reason;
   if (ShouldDisableAsr(settings, &disabled_reason)) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     ApplyDisabledStateLocked();
     if (error) {
       error->clear();
@@ -190,7 +190,7 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
 
   const std::string signature = BuildRuntimeSignature(settings);
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (effective_backend_ && effective_backend_signature_ == signature && !reload_in_progress_) {
       const AsrProvider* provider = ResolveActiveAsrProvider(settings);
       target_provider_id_ = provider ? AsrProviderId(*provider) : std::string{};
@@ -284,7 +284,7 @@ RecognitionSessionManager::ConsumeEvents(std::unique_ptr<RecognitionSession>* se
 }
 
 RecognitionSessionManager::ReloadSnapshot RecognitionSessionManager::GetReloadSnapshot() const {
-  std::lock_guard<std::mutex> lock(state_mutex_);
+  const std::scoped_lock lock(state_mutex_);
   return ReloadSnapshot{
       .target_provider_id = target_provider_id_,
       .target_model_id = target_model_id_,
@@ -300,13 +300,13 @@ RecognitionSessionManager::ReloadSnapshot RecognitionSessionManager::GetReloadSn
 
 void RecognitionSessionManager::SetReloadResultCallback(
     std::function<void(bool success, const std::string& message)> callback) {
-  std::lock_guard<std::mutex> lock(state_mutex_);
+  const std::scoped_lock lock(state_mutex_);
   reload_result_callback_ = std::move(callback);
 }
 
 void RecognitionSessionManager::Shutdown() {
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     reload_worker_running_ = false;
     reload_requested_ = false;
   }
@@ -315,7 +315,7 @@ void RecognitionSessionManager::Shutdown() {
     reload_worker_.join();
   }
 
-  std::lock_guard<std::mutex> lock(state_mutex_);
+  const std::scoped_lock lock(state_mutex_);
   ResetEffectiveBackendLocked();
   target_provider_id_.clear();
   target_model_id_.clear();
@@ -384,7 +384,7 @@ bool RecognitionSessionManager::ActivatePreparedBackend(PreparedBackend prepared
   }
 
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     effective_backend_ = std::move(prepared.backend);
     effective_descriptor_ = std::move(prepared.descriptor);
     has_effective_descriptor_ = true;
@@ -428,7 +428,7 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
   BackendDescriptor local_descriptor;
   bool have_descriptor = false;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (!effective_backend_) {
       if (error) {
         if (!last_reload_error_.empty()) {
@@ -469,7 +469,7 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
 }
 
 void RecognitionSessionManager::EnsureReloadWorkerStarted() {
-  std::lock_guard<std::mutex> lock(state_mutex_);
+  const std::scoped_lock lock(state_mutex_);
   if (reload_worker_running_) {
     return;
   }
@@ -503,7 +503,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
 
     if (ok) {
       {
-        std::lock_guard<std::mutex> lock(state_mutex_);
+        const std::scoped_lock lock(state_mutex_);
         effective_backend_ = std::move(prepared.backend);
         effective_descriptor_ = std::move(prepared.descriptor);
         has_effective_descriptor_ = true;
@@ -519,7 +519,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
     }
 
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      const std::scoped_lock lock(state_mutex_);
       last_reload_error_ = error;
       reload_in_progress_ = false;
     }
@@ -552,7 +552,7 @@ void RecognitionSessionManager::ApplyDisabledStateLocked() {
 void RecognitionSessionManager::NotifyReloadResult(bool success, const std::string& message) {
   std::function<void(bool, const std::string&)> callback;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     callback = reload_result_callback_;
   }
   if (callback) {

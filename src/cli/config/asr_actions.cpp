@@ -174,7 +174,7 @@ std::filesystem::path ResolveEditableScriptPath(const AsrProvider& provider) {
 } // namespace
 
 int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   const auto display_map =
       vinput::cli::FetchScriptDisplayMap(config, vinput::script::Kind::kAsrProvider);
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -227,8 +227,8 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
     return 0;
   }
 
-  std::vector<std::string> headers = {_("ID"),     _("TITLE"), _("TYPE"),
-                                      _("ACTIVE"), _("MODEL"), _("README")};
+  const std::vector<std::string> headers = {_("ID"),     _("TITLE"), _("TYPE"),
+                                            _("ACTIVE"), _("MODEL"), _("README")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& provider : config.asr.providers) {
 #if !VINPUT_ENABLE_LOCAL_ASR
@@ -402,7 +402,8 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
     return 0;
   }
 
-  std::vector<std::string> headers = {_("ID"), _("TITLE"), _("MODE"), _("STATUS"), _("README")};
+  const std::vector<std::string> headers = {_("ID"), _("TITLE"), _("MODE"), _("STATUS"),
+                                            _("README")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& entry : entries) {
     const bool installed = isInstalled(entry.id);
@@ -601,7 +602,7 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
 
 int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   std::string error;
   const std::string resolved_id =
       vinput::cli::ResolveInstalledAsrProviderSelector(config, id, &error);
@@ -639,8 +640,8 @@ int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ct
 
 #if VINPUT_ENABLE_LOCAL_ASR
 int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
-  ModelManager manager(ResolveModelBaseDir(config).string());
+  const CoreConfig config = LoadCoreConfig();
+  const ModelManager manager(ResolveModelBaseDir(config).string());
   const std::string activeModel = ResolvePreferredLocalModel(config);
   const auto installed_display_map = vinput::cli::FetchModelDisplayMap(config);
 
@@ -652,7 +653,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
       return 1;
     }
 
-    ModelRepository repository(ResolveModelBaseDir(config).string());
+    const ModelRepository repository(ResolveModelBaseDir(config).string());
     std::string error;
     const auto remoteModels = repository.FetchRegistry(config, registryUrls, &error);
     if (!error.empty()) {
@@ -691,8 +692,8 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
       return 0;
     }
 
-    std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
-                                        _("SIZE"), _("HOTWORDS"), _("STATUS")};
+    const std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
+                                              _("SIZE"), _("HOTWORDS"), _("STATUS")};
     std::vector<std::vector<std::string>> rows;
     for (const auto& model : remoteModels) {
       rows.push_back({vinput::cli::HumanizeResourceId(model.id, model.short_id),
@@ -735,8 +736,8 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
     return 0;
   }
 
-  std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
-                                      _("SIZE"), _("HOTWORDS"), _("STATUS")};
+  const std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
+                                            _("SIZE"), _("HOTWORDS"), _("STATUS")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& model : models) {
     std::string status = _("Installed");
@@ -767,7 +768,7 @@ int RunAsrConfigInstallModel(const std::string& selector, Formatter& fmt, const 
     return 1;
   }
 
-  ModelRepository repository(baseDir.string());
+  const ModelRepository repository(baseDir.string());
   std::string error;
   const auto remoteModels = repository.FetchRegistry(config, registryUrls, &error);
   if (!error.empty()) {
@@ -813,7 +814,7 @@ int RunAsrConfigInstallModel(const std::string& selector, Formatter& fmt, const 
 int RunAsrConfigRemoveModel(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  ModelManager manager(ResolveModelBaseDir(config).string());
+  const ModelManager manager(ResolveModelBaseDir(config).string());
   const std::string activeModel = ResolvePreferredLocalModel(config);
   const auto models = manager.ListDetailed(activeModel);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
@@ -843,7 +844,7 @@ int RunAsrConfigRemoveModel(const std::string& selector, Formatter& fmt, const C
 int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  ModelManager manager(ResolveModelBaseDir(config).string());
+  const ModelManager manager(ResolveModelBaseDir(config).string());
   const std::string activeModel = ResolvePreferredLocalModel(config);
   const auto models = manager.ListDetailed(activeModel);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
@@ -872,9 +873,9 @@ int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliC
 }
 
 int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   const std::string baseDir = ResolveModelBaseDir(config).string();
-  ModelManager manager(baseDir);
+  const ModelManager manager(baseDir);
   const std::string activeModel = ResolvePreferredLocalModel(config);
   const auto models = manager.ListDetailed(activeModel);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
@@ -890,7 +891,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
     return 1;
   }
 
-  ModelManager selectedManager(baseDir, id);
+  const ModelManager selectedManager(baseDir, id);
   const ModelInfo info = selectedManager.GetModelInfo(&error);
   if (!error.empty()) {
     fmt.PrintError(error);
@@ -915,7 +916,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
     return 0;
   }
 
-  std::vector<std::string> headers = {_("FIELD"), _("VALUE")};
+  const std::vector<std::string> headers = {_("FIELD"), _("VALUE")};
   std::vector<std::vector<std::string>> rows = {
       {"id", vinput::cli::HumanizeResourceId(display_map, id)},
       {"backend", info.backend},
@@ -935,7 +936,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
 }
 
 int RunAsrConfigGetHotword(Formatter& fmt, const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   const auto* provider = PreferredLocalProvider(config);
   const std::string hotwordPath = provider ? provider->hotwordsFile : "";
 
@@ -986,7 +987,7 @@ int RunAsrConfigClearHotword(Formatter& fmt, const CliContext& ctx) {
 
 int RunAsrConfigEditHotword(Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   const auto* provider = PreferredLocalProvider(config);
   const std::string hotwordPath = provider ? provider->hotwordsFile : "";
   if (hotwordPath.empty()) {

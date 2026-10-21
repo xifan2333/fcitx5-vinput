@@ -111,7 +111,7 @@ bool ParseExtraBody(const std::string& raw, glz::json_t* out, Formatter& fmt) {
 } // namespace
 
 int RunLlmConfigList(Formatter& fmt, const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
 
   if (ctx.json_output) {
     glz::json_t::array_t providers;
@@ -129,7 +129,7 @@ int RunLlmConfigList(Formatter& fmt, const CliContext& ctx) {
     return 0;
   }
 
-  std::vector<std::string> headers = {_("ID"), _("BASE_URL"), _("API_KEY")};
+  const std::vector<std::string> headers = {_("ID"), _("BASE_URL"), _("API_KEY")};
   std::vector<std::vector<std::string>> rows;
   rows.reserve(config.llm.providers.size());
   for (const auto& provider : config.llm.providers) {
@@ -242,7 +242,7 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
     return 0;
   }
 
-  std::vector<std::string> headers = {_("ID"), _("TITLE"), _("STATUS"), _("README")};
+  const std::vector<std::string> headers = {_("ID"), _("TITLE"), _("STATUS"), _("README")};
   std::vector<std::vector<std::string>> rows;
   for (const auto& entry : entries) {
     const bool installed = isInstalled(entry.id);
@@ -559,7 +559,7 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
 
 int RunLlmConfigStartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   std::string error;
   const std::string resolved_id =
       vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
@@ -578,7 +578,7 @@ int RunLlmConfigStartAdapter(const std::string& id, Formatter& fmt, const CliCon
 
 int RunLlmConfigStopAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   std::string error;
   const std::string resolved_id =
       vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
@@ -784,7 +784,7 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
 }
 
 int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ctx) {
-  CoreConfig config = LoadCoreConfig();
+  const CoreConfig config = LoadCoreConfig();
   const auto* provider = ResolveLlmProvider(config, id);
   if (!provider) {
     fmt.PrintError(vinput::str::FmtStr(_("LLM provider '%s' not found."), id));
@@ -797,8 +797,9 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
   }
 
   std::string url = provider->base_url;
-  while (!url.empty() && url.back() == '/')
+  while (!url.empty() && url.back() == '/') {
     url.pop_back();
+  }
   url += vinput::llm::kOpenAiModelsPath;
 
   const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider->api_key);
@@ -864,7 +865,7 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
       vinput::str::FmtStr(_("Connected to '%s'. Found %d model(s)."), id, (int)models.size()));
   if (!models.empty()) {
     std::sort(models.begin(), models.end());
-    std::vector<std::string> headers_row = {_("MODEL")};
+    const std::vector<std::string> headers_row = {_("MODEL")};
     std::vector<std::vector<std::string>> rows;
     for (const auto& m : models) {
       rows.push_back({m});

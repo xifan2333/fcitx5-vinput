@@ -157,7 +157,7 @@ private:
     while (SherpaOnnxIsOnlineStreamReady(recognizer_, stream_)) {
       ++decode_iterations;
       SherpaOnnxDecodeOnlineStream(recognizer_, stream_);
-      std::string text = GetCurrentText();
+      const std::string text = GetCurrentText();
       if (!text.empty() && text != last_partial_text_) {
         last_partial_text_ = text;
         fprintf(stderr, "vinput: streaming partial result bytes=%zu decode_iterations=%d\n",
@@ -212,7 +212,7 @@ public:
       : model_info_(std::move(model_info)), asr_config_(std::move(asr_config)),
         provider_id_(std::move(provider_id)) {}
   ~SherpaStreamingBackend() override {
-    std::lock_guard<std::mutex> lock(recognizer_mutex_);
+    const std::scoped_lock lock(recognizer_mutex_);
     if (recognizer_) {
       SherpaOnnxDestroyOnlineRecognizer(recognizer_);
       recognizer_ = nullptr;
@@ -232,7 +232,7 @@ public:
   }
 
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
-    std::lock_guard<std::mutex> lock(recognizer_mutex_);
+    const std::scoped_lock lock(recognizer_mutex_);
     if (!InitializeRecognizerLocked(error)) {
       return nullptr;
     }
@@ -323,15 +323,15 @@ private:
     config.model_config.provider = provider.c_str();
     config.decoding_method = p_decoding_method.c_str();
     config.max_active_paths = JsonInt(recognizer_cfg, "max_active_paths", 4);
-    config.blank_penalty = JsonFloat(recognizer_cfg, "blank_penalty", 0.0f);
+    config.blank_penalty = JsonFloat(recognizer_cfg, "blank_penalty", 0.0F);
     config.enable_endpoint = JsonBool(recognizer_cfg, "enable_endpoint", true) ? 1 : 0;
     config.rule1_min_trailing_silence =
-        JsonFloat(recognizer_cfg, "rule1_min_trailing_silence", 2.4f);
+        JsonFloat(recognizer_cfg, "rule1_min_trailing_silence", 2.4F);
     config.rule2_min_trailing_silence =
-        JsonFloat(recognizer_cfg, "rule2_min_trailing_silence", 1.2f);
+        JsonFloat(recognizer_cfg, "rule2_min_trailing_silence", 1.2F);
     config.rule3_min_utterance_length =
-        JsonFloat(recognizer_cfg, "rule3_min_utterance_length", 20.0f);
-    config.hotwords_score = JsonFloat(recognizer_cfg, "hotwords_score", 1.5f);
+        JsonFloat(recognizer_cfg, "rule3_min_utterance_length", 20.0F);
+    config.hotwords_score = JsonFloat(recognizer_cfg, "hotwords_score", 1.5F);
     if (!explicit_model_type.empty()) {
       config.model_config.model_type = explicit_model_type.c_str();
     }
@@ -429,7 +429,7 @@ private:
       return;
     }
 
-    std::vector<float> silence(16000 / 5, 0.0f);
+    std::vector<float> silence(16000 / 5, 0.0F);
     SherpaOnnxOnlineStreamAcceptWaveform(stream, 16000, silence.data(),
                                          static_cast<int32_t>(silence.size()));
     while (SherpaOnnxIsOnlineStreamReady(recognizer_, stream)) {

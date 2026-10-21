@@ -48,7 +48,7 @@ I18nMap LoadI18nFile(const std::filesystem::path& path, std::string* error) {
     return {};
   }
 
-  std::string content(std::istreambuf_iterator<char>(ifs), {});
+  const std::string content(std::istreambuf_iterator<char>(ifs), {});
   return ParseI18nJson(content, error);
 }
 

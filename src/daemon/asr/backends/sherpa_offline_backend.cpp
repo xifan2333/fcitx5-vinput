@@ -93,8 +93,8 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
       JsonString(recognizer_cfg, "decoding_method", "greedy_search");
   config.decoding_method = p_decoding_method.c_str();
   config.max_active_paths = JsonInt(recognizer_cfg, "max_active_paths", 4);
-  config.hotwords_score = JsonFloat(recognizer_cfg, "hotwords_score", 1.5f);
-  config.blank_penalty = JsonFloat(recognizer_cfg, "blank_penalty", 0.0f);
+  config.hotwords_score = JsonFloat(recognizer_cfg, "hotwords_score", 1.5F);
+  config.blank_penalty = JsonFloat(recognizer_cfg, "blank_penalty", 0.0F);
 
   const std::string tokens_path = info.File("tokens");
   const std::string f_model = info.File("model");
@@ -179,7 +179,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
 
   if (!f_lm.empty()) {
     config.lm_config.model = f_lm.c_str();
-    config.lm_config.scale = JsonFloat(lm_cfg, "scale", 0.5f);
+    config.lm_config.scale = JsonFloat(lm_cfg, "scale", 0.5F);
   }
 
   const auto& family = info.family;
@@ -197,8 +197,9 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
       {"paraformer",
        [&] {
          config.model_config.paraformer.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "paraformer";
+         }
        }},
       {"sense_voice",
        [&] {
@@ -206,8 +207,9 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
          cfg_language = JsonString(family_cfg, "language", p_language);
          config.model_config.sense_voice.language = cfg_language.c_str();
          config.model_config.sense_voice.use_itn = JsonBool(family_cfg, "use_itn") ? 1 : 0;
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "sense_voice";
+         }
        }},
       {"whisper",
        [&] {
@@ -222,8 +224,9 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
              JsonBool(family_cfg, "enable_token_timestamps") ? 1 : 0;
          config.model_config.whisper.enable_segment_timestamps =
              JsonBool(family_cfg, "enable_segment_timestamps") ? 1 : 0;
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "whisper";
+         }
        }},
       {"moonshine",
        [&] {
@@ -231,81 +234,94 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
          config.model_config.moonshine.encoder = f_encoder.c_str();
          config.model_config.moonshine.uncached_decoder = f_uncached_decoder.c_str();
          config.model_config.moonshine.cached_decoder = f_cached_decoder.c_str();
-         if (!f_merged_decoder.empty())
+         if (!f_merged_decoder.empty()) {
            config.model_config.moonshine.merged_decoder = f_merged_decoder.c_str();
-         if (!config.model_config.model_type)
+         }
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "moonshine";
+         }
        }},
       {"transducer",
        [&] {
          config.model_config.transducer.encoder = f_encoder.c_str();
          config.model_config.transducer.decoder = f_decoder.c_str();
          config.model_config.transducer.joiner = f_joiner.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "transducer";
+         }
        }},
       {"nemo_transducer",
        [&] {
          config.model_config.transducer.encoder = f_encoder.c_str();
          config.model_config.transducer.decoder = f_decoder.c_str();
          config.model_config.transducer.joiner = f_joiner.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "nemo_transducer";
+         }
        }},
       {"zipformer_ctc",
        [&] {
          config.model_config.zipformer_ctc.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "zipformer_ctc";
+         }
        }},
       {"fire_red_asr",
        [&] {
          config.model_config.fire_red_asr.encoder = f_encoder.c_str();
          config.model_config.fire_red_asr.decoder = f_decoder.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "fire_red_asr";
+         }
        }},
       {"fire_red_asr_ctc",
        [&] {
          config.model_config.fire_red_asr_ctc.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "fire_red_asr_ctc";
+         }
        }},
       {"dolphin",
        [&] {
          config.model_config.dolphin.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "dolphin";
+         }
        }},
       {"nemo_ctc",
        [&] {
          config.model_config.nemo_ctc.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "nemo_ctc";
+         }
        }},
       {"wenet_ctc",
        [&] {
          config.model_config.wenet_ctc.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "wenet_ctc";
+         }
        }},
       {"tdnn",
        [&] {
          config.model_config.tdnn.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "tdnn";
+         }
        }},
       {"omnilingual",
        [&] {
          config.model_config.omnilingual.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "omnilingual";
+         }
        }},
       {"medasr",
        [&] {
          config.model_config.medasr.model = f_model.c_str();
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "medasr";
+         }
        }},
       {"canary",
        [&] {
@@ -316,8 +332,9 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
          config.model_config.canary.src_lang = cfg_src_lang.c_str();
          config.model_config.canary.tgt_lang = cfg_tgt_lang.c_str();
          config.model_config.canary.use_pnc = JsonBool(family_cfg, "use_pnc") ? 1 : 0;
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "canary";
+         }
        }},
       {"funasr_nano",
        [&] {
@@ -332,19 +349,23 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
                                                      : JsonString(family_cfg, "hotwords");
          config.model_config.funasr_nano.language = cfg_language.c_str();
          config.model_config.funasr_nano.itn = JsonBool(family_cfg, "itn") ? 1 : 0;
-         if (!cfg_system_prompt.empty())
+         if (!cfg_system_prompt.empty()) {
            config.model_config.funasr_nano.system_prompt = cfg_system_prompt.c_str();
-         if (!cfg_user_prompt.empty())
+         }
+         if (!cfg_user_prompt.empty()) {
            config.model_config.funasr_nano.user_prompt = cfg_user_prompt.c_str();
-         if (!cfg_hotwords.empty())
+         }
+         if (!cfg_hotwords.empty()) {
            config.model_config.funasr_nano.hotwords = cfg_hotwords.c_str();
+         }
          config.model_config.funasr_nano.max_new_tokens =
              JsonInt(family_cfg, "max_new_tokens", 1024);
-         config.model_config.funasr_nano.temperature = JsonFloat(family_cfg, "temperature", 1.0f);
-         config.model_config.funasr_nano.top_p = JsonFloat(family_cfg, "top_p", 0.9f);
+         config.model_config.funasr_nano.temperature = JsonFloat(family_cfg, "temperature", 1.0F);
+         config.model_config.funasr_nano.top_p = JsonFloat(family_cfg, "top_p", 0.9F);
          config.model_config.funasr_nano.seed = JsonInt(family_cfg, "seed", 0);
-         if (!config.model_config.model_type)
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "funasr_nano";
+         }
        }},
       {"qwen3_asr", [&] {
          config.model_config.qwen3_asr.conv_frontend = f_conv_frontend.c_str();
@@ -353,27 +374,31 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
          config.model_config.qwen3_asr.tokenizer = f_tokenizer.c_str();
          config.model_config.qwen3_asr.max_total_len = JsonInt(family_cfg, "max_total_len", 4096);
          config.model_config.qwen3_asr.max_new_tokens = JsonInt(family_cfg, "max_new_tokens", 1024);
-         config.model_config.qwen3_asr.temperature = JsonFloat(family_cfg, "temperature", 1.0f);
-         config.model_config.qwen3_asr.top_p = JsonFloat(family_cfg, "top_p", 0.9f);
+         config.model_config.qwen3_asr.temperature = JsonFloat(family_cfg, "temperature", 1.0F);
+         config.model_config.qwen3_asr.top_p = JsonFloat(family_cfg, "top_p", 0.9F);
          config.model_config.qwen3_asr.seed = JsonInt(family_cfg, "seed", 0);
          cfg_hotwords = provider_hotwords_configured ? provider_prompt_hotwords
                                                      : JsonString(family_cfg, "hotwords");
-         if (!cfg_hotwords.empty())
+         if (!cfg_hotwords.empty()) {
            config.model_config.qwen3_asr.hotwords = cfg_hotwords.c_str();
-         if (!config.model_config.model_type)
+         }
+         if (!config.model_config.model_type) {
            config.model_config.model_type = "qwen3_asr";
+         }
        }}};
 
   if (family == "telespeech_ctc") {
     cfg_telespeech_path = info.File("telespeech_ctc");
     config.model_config.telespeech_ctc = cfg_telespeech_path.c_str();
-    if (!config.model_config.model_type)
+    if (!config.model_config.model_type) {
       config.model_config.model_type = "telespeech_ctc";
+    }
   } else {
     const auto it = handlers.find(family);
     if (it == handlers.end()) {
-      if (error)
+      if (error) {
         *error = "unsupported model family '" + family + "'";
+      }
       return nullptr;
     }
     it->second();
@@ -398,8 +423,9 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
     }
   }
   if (!recognizer) {
-    if (error)
+    if (error) {
       *error = "failed to create sherpa-onnx recognizer for family '" + family + "'";
+    }
     return nullptr;
   }
 
@@ -414,8 +440,9 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
 std::string InferOffline(const SherpaOnnxOfflineRecognizer* recognizer,
                          const std::vector<float>& samples) {
   const SherpaOnnxOfflineStream* stream = SherpaOnnxCreateOfflineStream(recognizer);
-  if (!stream)
+  if (!stream) {
     return {};
+  }
 
   SherpaOnnxAcceptWaveformOffline(stream, 16000, samples.data(),
                                   static_cast<int32_t>(samples.size()));
@@ -423,10 +450,12 @@ std::string InferOffline(const SherpaOnnxOfflineRecognizer* recognizer,
 
   const SherpaOnnxOfflineRecognizerResult* result = SherpaOnnxGetOfflineStreamResult(stream);
   std::string text;
-  if (result && result->text)
+  if (result && result->text) {
     text = result->text;
-  if (result)
+  }
+  if (result) {
     SherpaOnnxDestroyOfflineRecognizerResult(result);
+  }
   SherpaOnnxDestroyOfflineStream(stream);
   return text;
 }
@@ -475,8 +504,9 @@ public:
 
   bool Finish(std::string* error) override {
     if (finished_) {
-      if (error)
+      if (error) {
         error->clear();
+      }
       return true;
     }
     finished_ = true;
@@ -485,8 +515,9 @@ public:
       fprintf(stderr, "vinput: skipping ASR for short audio: %zu samples (%.1f ms)\n",
               samples_.size(), static_cast<double>(samples_.size()) * 1000.0 / 16000.0);
       events_.push_back({RecognitionEventKind::Completed, {}, {}});
-      if (error)
+      if (error) {
         error->clear();
+      }
       return true;
     }
 
@@ -495,18 +526,21 @@ public:
       if (samples_.size() < kMinSamplesForInference) {
         fprintf(stderr, "vinput: audio too short after VAD trim, skipping\n");
         events_.push_back({RecognitionEventKind::Completed, {}, {}});
-        if (error)
+        if (error) {
           error->clear();
+        }
         return true;
       }
     }
 
     std::string text = InferOffline(recognizer_, samples_);
-    if (!text.empty())
+    if (!text.empty()) {
       events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
+    }
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
-    if (error)
+    if (error) {
       error->clear();
+    }
     return true;
   }
 
@@ -542,7 +576,7 @@ public:
         provider_id_(std::move(provider_id)) {}
 
   ~SherpaOfflineBackend() override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     if (recognizer_) {
       SherpaOnnxDestroyOfflineRecognizer(recognizer_);
       recognizer_ = nullptr;
@@ -560,25 +594,29 @@ public:
   }
 
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!InitializeLocked(error))
+    const std::scoped_lock lock(mutex_);
+    if (!InitializeLocked(error)) {
       return nullptr;
-    if (error)
+    }
+    if (error) {
       error->clear();
+    }
     return std::make_unique<SherpaOfflineSession>(recognizer_, vad_.Available(), &vad_);
   }
 
 private:
   bool InitializeLocked(std::string* error) {
     if (recognizer_) {
-      if (error)
+      if (error) {
         error->clear();
+      }
       return true;
     }
 
     recognizer_ = CreateOfflineRecognizer(model_info_, asr_config_, error);
-    if (!recognizer_)
+    if (!recognizer_) {
       return false;
+    }
 
     if (asr_config_.vad_enabled && !asr_config_.vad_model_path.empty()) {
       const std::string vad_provider = JsonString(model_info_.model_config, "provider", "cpu");
@@ -594,8 +632,9 @@ private:
       }
     }
 
-    if (error)
+    if (error) {
       error->clear();
+    }
     return true;
   }
 
@@ -628,9 +667,9 @@ std::unique_ptr<AsrBackend> CreateSherpaOfflineBackend(const CoreConfig& config,
   if (!model_mgr.EnsureModels(&model_error)) {
     if (error) {
       *error = "Local ASR model check failed for provider '" + provider.id + "'";
-      if (!model_error.empty())
+      if (!model_error.empty()) {
         *error += ": " + model_error;
-      else
+      } else
         *error += ".";
     }
     return nullptr;
@@ -647,8 +686,9 @@ std::unique_ptr<AsrBackend> CreateSherpaOfflineBackend(const CoreConfig& config,
   asr_config.vad_min_silence_duration = static_cast<float>(config.asr.vad.minSilenceDuration);
   asr_config.vad_speech_pad_ms = config.asr.vad.speechPadMs;
 
-  if (error)
+  if (error) {
     error->clear();
+  }
   return std::make_unique<SherpaOfflineBackend>(model_info, std::move(asr_config), provider.id);
 }
 

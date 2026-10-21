@@ -247,7 +247,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   if (vinput::prompt_template::HasInterpolation(base_prompt)) {
     // Author owns the layout: `{{asr}}`, `{{selected}}` and `{{context}}`
     // get substituted in-place; no auto-append of context or data text.
-    vinput::prompt_template::Vars vars{
+    const vinput::prompt_template::Vars vars{
         .asr = asr_var.empty() ? std::string_view(text) : asr_var,
         .selected = selected_var,
         .context = context_prefix,

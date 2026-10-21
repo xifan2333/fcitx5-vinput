@@ -85,8 +85,9 @@ bool EndsWithSentenceTerminal(std::string_view text) noexcept {
 
 // Auto-install systemd service when running inside a sandbox.
 void ensureDaemonServiceInstalled() {
-  if (!vinput::sandbox::IsInSandbox())
+  if (!vinput::sandbox::IsInSandbox()) {
     return;
+  }
 
   const auto missing = vinput::sandbox::MissingSandboxPermissions();
   if (!missing.empty()) {
@@ -100,14 +101,15 @@ void ensureDaemonServiceInstalled() {
   }
 
   std::error_code ec_exists;
-  bool destExists = std::filesystem::exists(dest, ec_exists);
+  const bool destExists = std::filesystem::exists(dest, ec_exists);
   if (ec_exists) {
     FCITX_LOG(Error) << "vinput: failed to check existence of " << dest << ": "
                      << ec_exists.message();
     return;
   }
-  if (destExists)
+  if (destExists) {
     return;
+  }
 
   const auto src = vinput::path::DaemonServiceUnitTemplatePath();
   std::ifstream src_f(src);
@@ -134,11 +136,12 @@ void ensureDaemonServiceInstalled() {
   auto reload_cmd = vinput::sandbox::WrapHostCommand({"systemctl", "--user", "daemon-reload"});
   std::string cmd;
   for (const auto& arg : reload_cmd) {
-    if (!cmd.empty())
+    if (!cmd.empty()) {
       cmd += ' ';
+    }
     cmd += arg;
   }
-  int ret = system(cmd.c_str());
+  const int ret = system(cmd.c_str());
   if (ret != 0) {
     FCITX_LOG(Error) << "vinput: failed to reload systemd user daemon, return code: " << ret;
   }

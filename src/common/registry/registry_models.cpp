@@ -41,20 +41,23 @@ std::vector<RemoteModelEntry> ParseRegistryJson(const std::string& content, std:
 
   glz::json_t root;
   if (const auto ec = glz::read_json(root, content); bool(ec)) {
-    if (error)
+    if (error) {
       *error = "failed to parse registry JSON: " + glz::format_error(ec, content);
+    }
     return entries;
   }
   const auto* items = vinput::json::Find(root, "items");
   if (items == nullptr) {
-    if (error)
+    if (error) {
       *error = "registry JSON is not an object or is missing array field 'items'";
+    }
     return entries;
   }
   const auto* item_array = items->get_if<glz::json_t::array_t>();
   if (item_array == nullptr) {
-    if (error)
+    if (error) {
       *error = "registry JSON is missing array field 'items'";
+    }
     return entries;
   }
 
@@ -85,14 +88,16 @@ bool ResolveInstallAssetPath(const fs::path& root, const std::string& raw_path, 
                              std::string* error) {
   const fs::path relative(raw_path);
   if (relative.empty() || relative.is_absolute()) {
-    if (error)
+    if (error) {
       *error = "model asset path must be relative: " + raw_path;
+    }
     return false;
   }
   for (const auto& component : relative) {
     if (component == "..") {
-      if (error)
+      if (error) {
         *error = "model asset path escapes install root: " + raw_path;
+      }
       return false;
     }
   }
@@ -119,8 +124,9 @@ bool LoadEffectiveModelManifest(const fs::path& model_dir, glz::json_t* manifest
     return false;
   }
   if (!manifest->is_object()) {
-    if (error)
+    if (error) {
       *error = "effective vinput-model.json must be a JSON object";
+    }
     return false;
   }
   return true;
@@ -128,46 +134,55 @@ bool LoadEffectiveModelManifest(const fs::path& model_dir, glz::json_t* manifest
 
 bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput_model,
                             std::string* error) {
-  if (!vinput_model.is_object())
+  if (!vinput_model.is_object()) {
     return true;
+  }
   const auto* hotwords_flag = vinput::json::Find(vinput_model, "supports_hotwords");
   if (hotwords_flag != nullptr && !hotwords_flag->is_boolean()) {
-    if (error)
+    if (error) {
       *error = "supports_hotwords must be a boolean";
+    }
     return false;
   }
-  if (!vinput::json::Bool(vinput_model, "supports_hotwords"))
+  if (!vinput::json::Bool(vinput_model, "supports_hotwords")) {
     return true;
+  }
   const auto* family_node = vinput::json::Find(vinput_model, "family");
   if (family_node == nullptr || !family_node->is_string()) {
-    if (error)
+    if (error) {
       *error = "hotword-capable model is missing string field family";
+    }
     return false;
   }
   const std::string family = family_node->get<std::string>();
-  if (family != "transducer" && family != "nemo_transducer")
+  if (family != "transducer" && family != "nemo_transducer") {
     return true;
+  }
   const auto* model_node = vinput::json::Find(vinput_model, "model");
   if (model_node == nullptr || !model_node->is_object()) {
-    if (error)
+    if (error) {
       *error = "hotword-capable transducer is missing object field model";
+    }
     return false;
   }
   const auto& model = *model_node;
   const auto* unit_node = vinput::json::Find(model, "modeling_unit");
   if (unit_node == nullptr || !unit_node->is_string()) {
-    if (error)
+    if (error) {
       *error = "hotword-capable transducer requires model.modeling_unit";
+    }
     return false;
   }
   const std::string unit = unit_node->get<std::string>();
   if (unit != "cjkchar" && unit != "bpe" && unit != "bbpe" && unit != "cjkchar+bpe") {
-    if (error)
+    if (error) {
       *error = "unsupported hotword modeling_unit: " + unit;
+    }
     return false;
   }
-  if (unit == "cjkchar")
+  if (unit == "cjkchar") {
     return true;
+  }
 
   const auto* vocab_node = vinput::json::Find(model, "bpe_vocab");
   if (vocab_node == nullptr || !vocab_node->is_string() || vocab_node->get<std::string>().empty()) {
@@ -217,8 +232,9 @@ std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig* config,
                                                 std::string* resolved_registry_url,
                                                 std::vector<std::string>* warnings) {
   if (registry_urls.empty()) {
-    if (error)
+    if (error) {
       *error = "no registry URLs configured";
+    }
     return {};
   }
 
@@ -548,7 +564,7 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
 
   fs::rename(extracted_dir, dest_dir, ec);
   if (ec) {
-    std::string install_error = "failed to activate new model installation: " + ec.message();
+    const std::string install_error = "failed to activate new model installation: " + ec.message();
     if (had_existing) {
       std::error_code rollback_ec;
       fs::rename(backup_dir, dest_dir, rollback_ec);
@@ -609,8 +625,9 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
   int r = archive_read_open_filename(a, archive.c_str(), 16384);
   if (r != ARCHIVE_OK) {
-    if (error)
+    if (error) {
       *error = std::string("failed to open archive: ") + archive_error_string(a);
+    }
     archive_read_free(a);
     archive_write_free(out);
     return false;
@@ -630,15 +647,16 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
     // Security: reject absolute paths
     if (!entry_path.empty() && entry_path[0] == '/') {
-      if (error)
+      if (error) {
         *error = "archive contains absolute path: " + entry_path;
+      }
       success = false;
       break;
     }
 
     // Security: reject path traversal components
     {
-      fs::path check_path(entry_path);
+      const fs::path check_path(entry_path);
       bool has_dotdot = false;
       for (const auto& component : check_path) {
         if (component == "..") {
@@ -647,8 +665,9 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
         }
       }
       if (has_dotdot) {
-        if (error)
+        if (error) {
           *error = "archive contains path traversal component: " + entry_path;
+        }
         success = false;
         break;
       }
@@ -656,15 +675,17 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
     const fs::path full_dest = dest / entry_path;
     if (archive_entry_symlink(entry) != nullptr || archive_entry_hardlink(entry) != nullptr) {
-      if (error)
+      if (error) {
         *error = "archive contains link entry: " + entry_path;
+      }
       success = false;
       break;
     }
 
     if (entry_type != AE_IFREG && entry_type != AE_IFDIR) {
-      if (error)
+      if (error) {
         *error = "archive contains unsupported entry type: " + entry_path;
+      }
       success = false;
       break;
     }
@@ -678,15 +699,17 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
       check_path = full_dest.parent_path();
     }
     if (create_ec) {
-      if (error)
+      if (error) {
         *error = "failed to prepare extraction path: " + create_ec.message();
+      }
       success = false;
       break;
     }
 
     if (!vinput::path::IsPathWithinRoot(fs::weakly_canonical(check_path), dest_root)) {
-      if (error)
+      if (error) {
         *error = "archive entry escapes extraction root: " + entry_path;
+      }
       success = false;
       break;
     }
@@ -696,8 +719,9 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
     r = archive_write_header(out, entry);
     if (r != ARCHIVE_OK) {
-      if (error)
+      if (error) {
         *error = std::string("failed to write header: ") + archive_error_string(out);
+      }
       success = false;
       break;
     }
@@ -709,17 +733,20 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
       la_int64_t offset;
       while ((r = archive_read_data_block(a, &buff, &size, &offset)) == ARCHIVE_OK) {
         if (archive_write_data_block(out, buff, size, offset) != ARCHIVE_OK) {
-          if (error)
+          if (error) {
             *error = std::string("failed to write data: ") + archive_error_string(out);
+          }
           success = false;
           break;
         }
       }
-      if (!success)
+      if (!success) {
         break;
+      }
       if (r != ARCHIVE_EOF) {
-        if (error)
+        if (error) {
           *error = std::string("archive read error: ") + archive_error_string(a);
+        }
         success = false;
         break;
       }
@@ -729,8 +756,9 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
   }
 
   if (success && r != ARCHIVE_EOF) {
-    if (error)
+    if (error) {
       *error = std::string("archive iteration error: ") + archive_error_string(a);
+    }
     success = false;
   }
 

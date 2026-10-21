@@ -69,12 +69,12 @@ public:
   [[nodiscard]] std::uint16_t Port() const { return port_; }
 
   [[nodiscard]] std::vector<std::string> CapturedBodies() const {
-    const std::lock_guard lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     return captured_bodies_;
   }
 
   [[nodiscard]] std::vector<std::string> CapturedHeaders() const {
-    const std::lock_guard lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     return captured_headers_;
   }
 
@@ -130,7 +130,7 @@ private:
         }
 
         {
-          const std::lock_guard lock(mutex_);
+          const std::scoped_lock lock(mutex_);
           captured_headers_.push_back(request_header);
           captured_bodies_.push_back(request_body);
         }
