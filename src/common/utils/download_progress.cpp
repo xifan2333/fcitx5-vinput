@@ -1,10 +1,13 @@
 #include "common/utils/download_progress.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <indicators/indicators.hpp>
 #include <iostream>
+#include <memory>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -25,8 +28,8 @@ std::string FormatSpeed(double speed_bps) {
 
 } // namespace
 
-ProgressBar::ProgressBar(const std::string& label, uint64_t total, bool is_tty)
-    : label_(label), total_(total), is_tty_(is_tty), last_percent_(-1) {
+ProgressBar::ProgressBar(std::string label, uint64_t total, bool is_tty)
+    : label_(std::move(label)), total_(total), is_tty_(is_tty) {
   if (is_tty_ && total_ > 0) {
     bar_ = std::make_unique<indicators::ProgressBar>(
         indicators::option::BarWidth{30}, indicators::option::PrefixText{label_},
@@ -54,7 +57,10 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
   }
 
   if (is_tty_ && bar_) {
-    std::string speed_str = FormatSpeed(speed_bps);
+    if (bar_->is_completed()) {
+      return;
+    }
+    const std::string speed_str = FormatSpeed(speed_bps);
     if (!speed_str.empty()) {
       bar_->set_option(indicators::option::PostfixText{"(" + speed_str + ")"});
     }
@@ -62,8 +68,8 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
     last_percent_ = percent;
   } else {
     // Non-TTY: 10% bucket line output for CI/log readability
-    int bucket = (percent / 10) * 10;
-    int last_bucket = (last_percent_ < 0) ? -1 : (last_percent_ / 10) * 10;
+    const int bucket = (percent / 10) * 10;
+    const int last_bucket = (last_percent_ < 0) ? -1 : (last_percent_ / 10) * 10;
     if (bucket > last_bucket) {
       fprintf(stderr, "%s: %d%%\n", label_.c_str(), bucket);
       fflush(stderr);
@@ -72,14 +78,14 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
   }
 }
 
-void ProgressBar::Finish() {
+void ProgressBar::Finish(bool success) {
   if (is_tty_ && bar_) {
-    if (!bar_->is_completed()) {
+    if (success && !bar_->is_completed()) {
       bar_->set_progress(100);
-      bar_->mark_as_completed();
     }
-    // indicators prints newline on completion; no extra newline needed
-  } else if (last_percent_ < 100) {
+    // Ensure a newline after the progress line
+    std::cerr << "\n";
+  } else if (success && last_percent_ < 100) {
     fprintf(stderr, "%s: 100%%\n", label_.c_str());
     fflush(stderr);
   }
