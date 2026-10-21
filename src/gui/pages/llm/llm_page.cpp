@@ -30,10 +30,13 @@
 #include <QtWidgets/qcheckbox.h>
 #include <algorithm>
 #include <filesystem>
-#include <nlohmann/json.hpp>
+#include <glaze/core/common.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 #include <system_error>
 #include <vector>
 
+#include "common/json/json_access.h"
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
@@ -69,39 +72,38 @@ void FromSceneConfig(CoreConfig::Scenes& sc, const vinput::scene::Config& c) {
 // Parses the Extra body JSON text from a dialog. Returns true with `out` set
 // on success (or empty-object when text is blank); false after showing a
 // QMessageBox on parse error or non-object payloads.
-bool ParseExtraBodyInput(QWidget* parent, const QString& text, nlohmann::json* out) {
+bool ParseExtraBodyInput(QWidget* parent, const QString& text, glz::json_t* out) {
   const std::string trimmed = text.trimmed().toStdString();
+  *out = glz::json_t(glz::json_t::object_t{});
   if (trimmed.empty()) {
-    *out = nlohmann::json::object();
     return true;
   }
-  try {
-    auto parsed = nlohmann::json::parse(trimmed);
-    if (!parsed.is_object()) {
-      QMessageBox::warning(
-          parent, LlmPage::tr("Error"),
-          LlmPage::tr("Extra body must be a JSON object (e.g. {\"enable_thinking\": false})."));
-      return false;
-    }
-    *out = std::move(parsed);
-    return true;
-  } catch (const std::exception& e) {
-    QMessageBox::warning(
-        parent, LlmPage::tr("Error"),
-        LlmPage::tr("Invalid extra_body JSON: %1").arg(QString::fromUtf8(e.what())));
+  glz::json_t parsed;
+  if (const auto ec = glz::read_json(parsed, trimmed); bool(ec)) {
+    QMessageBox::warning(parent, LlmPage::tr("Error"),
+                         LlmPage::tr("Invalid extra_body JSON: %1")
+                             .arg(QString::fromStdString(glz::format_error(ec))));
     return false;
   }
+  if (!parsed.is_object()) {
+    QMessageBox::warning(
+        parent, LlmPage::tr("Error"),
+        LlmPage::tr("Extra body must be a JSON object (e.g. {\"enable_thinking\": false})."));
+    return false;
+  }
+  *out = std::move(parsed);
+  return true;
 }
 
-QPlainTextEdit* MakeExtraBodyEditor(const nlohmann::json* prefill = nullptr) {
+QPlainTextEdit* MakeExtraBodyEditor(const glz::json_t* prefill = nullptr) {
   auto* edit = new QPlainTextEdit();
   edit->setPlaceholderText(LlmPage::tr("Optional JSON object merged into each request body, e.g. "
                                        "{\"enable_thinking\": false}"));
   edit->setTabChangesFocus(true);
   const QFontMetrics fm(edit->font());
   edit->setFixedHeight(fm.lineSpacing() * 5 + 8);
-  if (prefill && prefill->is_object() && !prefill->empty()) {
-    edit->setPlainText(QString::fromStdString(prefill->dump(2)));
+  if (prefill != nullptr && prefill->is_object() && !prefill->empty()) {
+    edit->setPlainText(QString::fromStdString(vinput::json::ToPrettyText(*prefill)));
   }
   return edit;
 }
@@ -340,7 +342,7 @@ void LlmPage::onLlmAdd() {
     return;
   }
 
-  nlohmann::json extra_body;
+  glz::json_t extra_body;
   if (!ParseExtraBodyInput(this, editExtraBody->toPlainText(), &extra_body)) {
     return;
   }
@@ -416,7 +418,7 @@ void LlmPage::onLlmEdit() {
     return;
   }
 
-  nlohmann::json extra_body;
+  glz::json_t extra_body;
   if (!ParseExtraBodyInput(this, editExtraBody->toPlainText(), &extra_body)) {
     return;
   }

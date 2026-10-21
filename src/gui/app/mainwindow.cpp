@@ -16,7 +16,8 @@
 #include <QtWidgets/qmessagebox.h>
 #include <atomic>
 #include <fstream>
-#include <nlohmann/json.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 
 #include "common/utils/downloader.h"
 #include "common/utils/file_utils.h"
@@ -160,27 +161,41 @@ void MainWindow::onOpenConfigClicked() {
 }
 
 namespace {
-QString localizedString(const nlohmann::json& obj) {
-  if (obj.is_string()) {
-    return QString::fromStdString(obj.get<std::string>());
+QString localizedString(const glz::json_t* node) {
+  if (node == nullptr) {
+    return {};
   }
-  if (!obj.is_object()) {
+  if (const auto* text = node->get_if<std::string>()) {
+    return QString::fromStdString(*text);
+  }
+  if (!node->is_object()) {
     return {};
   }
   const std::string locale =
       vinput::locale::NormalizeLocale(QLocale::system().name().toStdString());
-  if (obj.contains(locale)) {
-    return QString::fromStdString(obj[locale].get<std::string>());
+  if (const auto* entry = vinput::json::Find(*node, locale); entry != nullptr) {
+    if (const auto* text = entry->get_if<std::string>()) {
+      return QString::fromStdString(*text);
+    }
   }
   const auto lang = std::string(vinput::locale::ExtractLanguageCode(locale));
-  if (lang != locale && obj.contains(lang)) {
-    return QString::fromStdString(obj[lang].get<std::string>());
+  if (lang != locale) {
+    if (const auto* entry = vinput::json::Find(*node, lang); entry != nullptr) {
+      if (const auto* text = entry->get_if<std::string>()) {
+        return QString::fromStdString(*text);
+      }
+    }
   }
-  if (obj.contains("en")) {
-    return QString::fromStdString(obj["en"].get<std::string>());
+  if (const auto* english = vinput::json::Find(*node, "en"); english != nullptr) {
+    if (const auto* text = english->get_if<std::string>()) {
+      return QString::fromStdString(*text);
+    }
   }
-  if (!obj.empty()) {
-    return QString::fromStdString(obj.begin().value().get<std::string>());
+  if (const auto* members = node->get_if<glz::json_t::object_t>();
+      members != nullptr && !members->empty()) {
+    if (const auto* text = members->begin()->second.get_if<std::string>()) {
+      return QString::fromStdString(*text);
+    }
   }
   return {};
 }
@@ -205,14 +220,12 @@ void MainWindow::checkNotification() {
       return true;
     }
 
-    nlohmann::json j;
-    try {
-      j = nlohmann::json::parse(content);
-    } catch (...) {
+    glz::json_t j;
+    if (bool(glz::read_json(j, content))) {
       return true;
     }
 
-    const int remote_id = j.value("id", 0);
+    const int remote_id = vinput::json::Int(j, "id");
     if (remote_id <= 0) {
       return true;
     }
@@ -231,9 +244,9 @@ void MainWindow::checkNotification() {
       return true;
     }
 
-    const QString title = localizedString(j.value("title", nlohmann::json{}));
-    const QString text = localizedString(j.value("text", nlohmann::json{}));
-    const QString url = QString::fromStdString(j.value("url", std::string{}));
+    const QString title = localizedString(vinput::json::Find(j, "title"));
+    const QString text = localizedString(vinput::json::Find(j, "text"));
+    const QString url = QString::fromStdString(vinput::json::String(j, "url"));
     const QString id = QString::number(remote_id);
 
     if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {

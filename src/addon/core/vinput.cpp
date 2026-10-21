@@ -8,8 +8,8 @@
 #include <fcitx-utils/log.h>
 #include <fcitx/inputcontext.h>
 #include <fstream>
+#include <glaze/json/json_t.hpp>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
 #include <unicodelib.h>
@@ -19,6 +19,7 @@
 #include "common/dbus/dbus_interface.h"
 #include "common/dbus/error_info.h"
 #include "common/i18n.h"
+#include "common/json/json_access.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -34,6 +35,17 @@ using namespace vinput::dbus;
 namespace {
 
 constexpr const char* kContextSourceUser = "user";
+
+// Re-encodes `text` through the vendored Unicode codec, dropping ill formed byte
+// sequences. Context history is best effort input data that must never break the
+// JSONL cache file.
+std::string SanitizeUtf8(const std::string& text) {
+  if (text.empty()) {
+    return text;
+  }
+  const auto decoded = unicode::utf8::decode(text);
+  return unicode::utf8::encode(decoded);
+}
 constexpr uint64_t kContextFlushDelayUsec = 5 * 1000 * 1000; // 5 seconds
 
 bool IsCjkAtBoundary(std::string_view left, std::string_view right) noexcept {
@@ -345,18 +357,20 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
   if (source && std::string_view(source) != kContextSourceUser && !context_buffer_text_.empty()) {
     flushContextBuffer();
   }
-  nlohmann::json entry;
-  entry["text"] = text;
-  entry["source"] = source ? source : kContextSourceUser;
-  entry["timestamp"] = vinput::time::CurrentUnixTimestampSeconds();
+  // JSONL keeps one object per line. Text coming from ASR may carry ill formed
+  // UTF-8, so it is round tripped through the vendored Unicode codec to keep the
+  // cache file parseable.
+  const glz::json_t entry = {
+      {"text", SanitizeUtf8(text)},
+      {"source", SanitizeUtf8(source ? std::string(source) : std::string(kContextSourceUser))},
+      {"timestamp", static_cast<double>(vinput::time::CurrentUnixTimestampSeconds())},
+  };
 
   if (!context_writer_) {
     context_writer_ =
         std::make_unique<vinput::addon::AsyncContextWriter>(vinput::path::ContextCachePath());
   }
-  if (!context_writer_->Enqueue(
-          entry.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace),
-          max_context_lines_)) {
+  if (!context_writer_->Enqueue(vinput::json::ToText(entry), max_context_lines_)) {
     // The queue is deliberately bounded. Do not silently discard context
     // when the disk cannot keep up with incoming input history.
     FCITX_LOG(Error) << "vinput: context persistence backlog exceeded its capacity";
