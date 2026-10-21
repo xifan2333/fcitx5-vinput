@@ -108,14 +108,11 @@ constexpr size_t kStreamBufferSize = 65536;
 constexpr std::string_view kEmptyFileSha256 =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
-std::string FinalizeHashToHex(EVP_MD_CTX* ctx, std::string* error) {
+Expected<std::string> FinalizeHashToHex(EVP_MD_CTX* ctx) {
   unsigned char hash[EVP_MAX_MD_SIZE];
   unsigned int hash_len = 0;
   if (EVP_DigestFinal_ex(ctx, hash, &hash_len) != 1) {
-    if (error != nullptr) {
-      *error = "EVP_DigestFinal_ex failed";
-    }
-    return {};
+    return UnexpectedError("EVP_DigestFinal_ex failed");
   }
 
   std::string hex;
@@ -126,48 +123,33 @@ std::string FinalizeHashToHex(EVP_MD_CTX* ctx, std::string* error) {
     hex += pair;
   }
 
-  if (error != nullptr) {
-    error->clear();
-  }
   return hex;
 }
 
-std::string ComputeFileSha256StreamFallback(const std::filesystem::path& path, std::string* error) {
+Expected<std::string> ComputeFileSha256StreamFallback(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
-    if (error != nullptr) {
-      *error = "failed to open file for SHA-256 calculation: " + path.string();
-    }
-    return {};
+    return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
   }
 
   const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
                                                                     &EVP_MD_CTX_free);
   if (ctx == nullptr) {
-    if (error != nullptr) {
-      *error = "failed to allocate EVP_MD_CTX";
-    }
-    return {};
+    return UnexpectedError("failed to allocate EVP_MD_CTX");
   }
 
   if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
-    if (error != nullptr) {
-      *error = "EVP_DigestInit_ex failed";
-    }
-    return {};
+    return UnexpectedError("EVP_DigestInit_ex failed");
   }
 
   char buffer[kStreamBufferSize];
   while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
     if (EVP_DigestUpdate(ctx.get(), buffer, static_cast<size_t>(file.gcount())) != 1) {
-      if (error != nullptr) {
-        *error = "EVP_DigestUpdate failed";
-      }
-      return {};
+      return UnexpectedError("EVP_DigestUpdate failed");
     }
   }
 
-  return FinalizeHashToHex(ctx.get(), error);
+  return FinalizeHashToHex(ctx.get());
 }
 
 } // namespace
@@ -506,21 +488,15 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
   return true;
 }
 
-std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error) {
+Expected<std::string> ComputeFileSha256(const std::filesystem::path& path) {
   std::error_code fs_ec;
   const auto status = std::filesystem::status(path, fs_ec);
   if (fs_ec || !std::filesystem::exists(status)) {
-    if (error != nullptr) {
-      *error = "failed to open file for SHA-256 calculation: " + path.string();
-    }
-    return {};
+    return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
   }
 
   if (std::filesystem::is_directory(status)) {
-    if (error != nullptr) {
-      *error = "failed to open file for SHA-256 calculation: " + path.string();
-    }
-    return {};
+    return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
   }
 
   const auto file_size = std::filesystem::file_size(path, fs_ec);
@@ -529,20 +505,14 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
     // Verify file readability first.
     std::ifstream probe(path, std::ios::binary);
     if (!probe.is_open()) {
-      if (error != nullptr) {
-        *error = "failed to open file for SHA-256 calculation: " + path.string();
-      }
-      return {};
+      return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
     }
     // Confirm it's truly empty, rather than a virtual pseudo-file with st_size = 0 (e.g. /proc/...)
     if (probe.peek() == std::ifstream::traits_type::eof()) {
-      if (error != nullptr) {
-        error->clear();
-      }
       return std::string(kEmptyFileSha256);
     }
     // If it yields bytes despite st_size == 0, fallback to streaming read.
-    return ComputeFileSha256StreamFallback(path, error);
+    return ComputeFileSha256StreamFallback(path);
   }
 
   auto mapping = ReadOnlyFileMapping::Map(path);
@@ -550,33 +520,24 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
     const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
                                                                       &EVP_MD_CTX_free);
     if (ctx == nullptr) {
-      if (error != nullptr) {
-        *error = "failed to allocate EVP_MD_CTX";
-      }
-      return {};
+      return UnexpectedError("failed to allocate EVP_MD_CTX");
     }
 
     if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
-      if (error != nullptr) {
-        *error = "EVP_DigestInit_ex failed";
-      }
-      return {};
+      return UnexpectedError("EVP_DigestInit_ex failed");
     }
 
     const auto sv = mapping->StringView();
     if (!sv.empty()) {
       if (EVP_DigestUpdate(ctx.get(), sv.data(), sv.size()) != 1) {
-        if (error != nullptr) {
-          *error = "EVP_DigestUpdate failed";
-        }
-        return {};
+        return UnexpectedError("EVP_DigestUpdate failed");
       }
     }
 
-    return FinalizeHashToHex(ctx.get(), error);
+    return FinalizeHashToHex(ctx.get());
   }
 
-  return ComputeFileSha256StreamFallback(path, error);
+  return ComputeFileSha256StreamFallback(path);
 }
 
 bool IsDirectoryWritable(const std::filesystem::path& path) {

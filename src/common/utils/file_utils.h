@@ -80,7 +80,7 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
 // Computes the SHA-256 hash of a file.
 // Uses zero-copy memory mapping for performance, falling back to streaming when mmap is
 // unavailable or for pseudo-files. Expects the target file to remain immutable during hashing.
-std::string ComputeFileSha256(const std::filesystem::path& path, std::string* error = nullptr);
+Expected<std::string> ComputeFileSha256(const std::filesystem::path& path);
 
 // Check if a directory (or its immediate parent if target does not yet exist)
 // exists, is a valid directory, and has write and search permissions (W_OK | X_OK).
