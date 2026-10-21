@@ -72,6 +72,7 @@ target_link_libraries(config PUBLIC
     unicodelib::unicodelib
     mio::mio
     glaze::glaze
+    tl::expected
 )
 
 target_link_libraries(common PUBLIC

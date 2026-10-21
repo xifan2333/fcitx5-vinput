@@ -79,6 +79,12 @@ This file lists third-party software that this project depends on or bundles, an
    - Upstream: https://github.com/p-ranav/indicators
    - Version: v2.3 (imported 2026-10-21, vendored in `3rdparty/indicators/`)
 
+10. **TartanLlama/expected** (`3rdparty/tl-expected/`)
+    - Description: C++11/14/17/20/23 implementation of `std::expected` with monadic operations and functional extensions.
+    - License: CC0-1.0 (Public Domain Dedication)
+    - Upstream: https://github.com/TartanLlama/expected
+    - Version: v1.3.1 (commit 1770e3559f2f6ea4a5fb4f577ad22aeb30fbd8e4, imported 2026-10-22, vendored in `3rdparty/tl-expected/`)
+
 ## Models / data downloaded by users (not bundled)
 
 1. **sherpa-onnx ASR models**
