@@ -98,7 +98,7 @@ bool ParseExtraBody(const std::string& raw, glz::json_t* out, Formatter& fmt) {
   }
   if (!vinput::json::IsSingleJsonValue(raw)) {
     // Reuse the parse error message so no new translatable string is needed.
-    const glz::error_ctx trailing{glz::error_code::syntax_error, raw.size()};
+    const glz::error_ctx trailing{.ec = glz::error_code::syntax_error, .location = raw.size()};
     fmt.PrintError(vinput::str::FmtStr(_("Invalid --extra-body JSON: %s"),
                                        glz::format_error(trailing).c_str()));
     return false;
@@ -879,6 +879,7 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
     std::ranges::sort(models);
     const std::vector<std::string> headers_row = {_("MODEL")};
     std::vector<std::vector<std::string>> rows;
+    rows.reserve(models.size());
     for (const auto& m : models) {
       rows.push_back({m});
     }

@@ -67,7 +67,7 @@ std::vector<std::string> SplitModelId(std::string_view model_id) {
 // Walk only the install layout produced by ModelRepository::InstallModel:
 //   <base>/<engine>/<name>/vinput-model.json
 // corresponding to id model.<engine>.<name>. Never recurse into model file trees.
-template <typename Fn> void ForEachInstalledModelDir(const std::string& base_dir, Fn&& fn) {
+template <typename Fn> void ForEachInstalledModelDir(const std::string& base_dir, Fn fn) {
   const auto root = fs::path(base_dir);
   std::error_code ec;
   if (!fs::exists(root, ec) || ec || !fs::is_directory(root, ec) || ec) {
@@ -178,10 +178,10 @@ void AddScalarParam(std::map<std::string, std::string>* params, std::string_view
 }
 
 void AddScalarParam(std::map<std::string, std::string>* params, std::string_view key,
-                    const glz::json_t& object, std::string_view field, std::string fallback) {
+                    const glz::json_t& object, std::string_view field, std::string_view fallback) {
   const auto* node = vinput::json::Find(object, field);
   if (node == nullptr) {
-    AddScalarParam(params, key, glz::json_t(std::move(fallback)));
+    AddScalarParam(params, key, glz::json_t(std::string(fallback)));
     return;
   }
   AddScalarParam(params, key, *node);

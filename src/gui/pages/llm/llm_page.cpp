@@ -30,7 +30,6 @@
 #include <QtCore/qbytearray.h>
 #include <QtCore/qjsonarray.h>
 #include <QtCore/qjsondocument.h>
-#include <QtCore/qjsonparseerror.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qobjectdefs.h>
@@ -44,12 +43,12 @@
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qnetworkreply.h>
 #include <QtNetwork/qnetworkrequest.h>
+#include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qcheckbox.h>
 #include <QtWidgets/qcombobox.h>
 #include <QtWidgets/qdialog.h>
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qformlayout.h>
-#include <QtWidgets/qhboxlayout.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qlineedit.h>
 #include <QtWidgets/qlistwidget.h>
@@ -58,7 +57,6 @@
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qspinbox.h>
 #include <QtWidgets/qtextedit.h>
-#include <QtWidgets/qvboxlayout.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <cstddef>

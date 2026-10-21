@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/json/json_access.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 

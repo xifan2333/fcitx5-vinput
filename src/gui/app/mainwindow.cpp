@@ -42,11 +42,10 @@
 #include <QtCore/qthread.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qdesktopservices.h>
-#include <QtWidgets/qhboxlayout.h>
+#include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qmainwindow.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qtabwidget.h>
-#include <QtWidgets/qvboxlayout.h>
 #include <QtWidgets/qwidget.h>
 #include <variant>
 #include <vector>
