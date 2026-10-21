@@ -1,5 +1,6 @@
 #include "core/vinput.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -16,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <time.h>
 #include <unicodelib.h>
 #include <unicodelib_encodings.h>
 
@@ -38,7 +40,6 @@
 #include "fcitx/addonfactory.h"
 #include "fcitx/addoninstance.h"
 #include "fcitx/event.h"
-#include "fcitx/inputcontext.h"
 #include "fcitx/instance.h"
 
 using namespace vinput::dbus;
@@ -163,7 +164,7 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
   vinput::i18n::Init();
   ensureDaemonServiceInstalled();
   initializePaletteRegistry();
-  reloadConfig();
+  VinputEngine::reloadConfig();
   event_dispatcher_.attach(&instance_->eventLoop());
 
   eventHandlers_.emplace_back(instance_->watchEvent(
@@ -173,7 +174,7 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
   eventHandlers_.emplace_back(instance_->watchEvent(
       fcitx::EventType::InputContextCreated, fcitx::EventWatcherPhase::PreInputMethod,
       [this](fcitx::Event& event) {
-        auto& icEvent = static_cast<fcitx::InputContextEvent&>(event);
+        auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
         auto* ic = icEvent.inputContext();
         ic->setCapabilityFlags(ic->capabilityFlags() | fcitx::CapabilityFlag::SurroundingText);
         rememberInputContext(ic);
@@ -182,7 +183,7 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
   eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextDestroyed,
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
-                              auto& icEvent = static_cast<fcitx::InputContextEvent&>(event);
+                              auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
                               auto* ic = icEvent.inputContext();
                               if (session_ && session_->ic == ic) {
                                 if (session_->phase == Session::Phase::PendingStart ||
@@ -240,12 +241,12 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
   eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextCommitString,
                             fcitx::EventWatcherPhase::PostInputMethod, [this](fcitx::Event& event) {
-                              auto& commitEvent = static_cast<fcitx::CommitStringEvent&>(event);
+                              auto& commitEvent = dynamic_cast<fcitx::CommitStringEvent&>(event);
                               onCommitString(commitEvent.text(), commitEvent.inputContext());
                             }));
 
   auto* dbus_addon = instance_->addonManager().addon("dbus");
-  if (dbus_addon) {
+  if (dbus_addon != nullptr) {
     bus_ = dbus_addon->call<fcitx::IDBusModule::bus>();
     const std::weak_ptr<bool> token = lifetime_token_;
     notifier_dbus_ = std::make_unique<VinputNotifierDBusObject>(
@@ -328,9 +329,7 @@ void VinputEngine::reloadSceneConfig() {
 
   int max_cl = 0;
   for (const auto& s : scene_config_.scenes) {
-    if (s.context_lines > max_cl) {
-      max_cl = s.context_lines;
-    }
+    max_cl = std::max(max_cl, s.context_lines);
   }
   max_context_lines_ = max_cl;
   if (max_context_lines_ <= 0) {
@@ -368,7 +367,8 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
     return;
   }
   // Flush user buffer before writing non-user entries to preserve ordering.
-  if (source && std::string_view(source) != kContextSourceUser && !context_buffer_text_.empty()) {
+  if (source != nullptr && std::string_view(source) != kContextSourceUser &&
+      !context_buffer_text_.empty()) {
     flushContextBuffer();
   }
   // JSONL keeps one object per line. Text coming from ASR may carry ill formed
@@ -376,7 +376,8 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
   // cache file parseable.
   const glz::json_t entry = {
       {"text", SanitizeUtf8(text)},
-      {"source", SanitizeUtf8(source ? std::string(source) : std::string(kContextSourceUser))},
+      {"source",
+       SanitizeUtf8(source != nullptr ? std::string(source) : std::string(kContextSourceUser))},
       {"timestamp", static_cast<double>(vinput::time::CurrentUnixTimestampSeconds())},
   };
 
