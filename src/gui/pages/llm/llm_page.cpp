@@ -27,15 +27,50 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QtCore/qbytearray.h>
+#include <QtCore/qjsonarray.h>
+#include <QtCore/qjsondocument.h>
+#include <QtCore/qjsonparseerror.h>
+#include <QtCore/qnamespace.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qobjectdefs.h>
+#include <QtCore/qpointer.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
+#include <QtCore/qthreadpool.h>
+#include <QtCore/qtimer.h>
+#include <QtCore/qurl.h>
+#include <QtGui/qfontmetrics.h>
+#include <QtNetwork/qnetworkaccessmanager.h>
+#include <QtNetwork/qnetworkreply.h>
+#include <QtNetwork/qnetworkrequest.h>
 #include <QtWidgets/qcheckbox.h>
+#include <QtWidgets/qcombobox.h>
+#include <QtWidgets/qdialog.h>
+#include <QtWidgets/qdialogbuttonbox.h>
+#include <QtWidgets/qformlayout.h>
+#include <QtWidgets/qhboxlayout.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qlistwidget.h>
+#include <QtWidgets/qmessagebox.h>
+#include <QtWidgets/qplaintextedit.h>
+#include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qspinbox.h>
+#include <QtWidgets/qtextedit.h>
+#include <QtWidgets/qvboxlayout.h>
+#include <QtWidgets/qwidget.h>
 #include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <system_error>
+#include <utility>
 #include <vector>
 
+#include "common/config/core_config.h"
 #include "common/json/json_access.h"
 #include "common/llm/adapter_manager.h"
 #include "common/llm/defaults.h"
@@ -432,8 +467,8 @@ void LlmPage::onLlmEdit() {
   }
 
   auto& providers = config.llm.providers;
-  auto it = std::find_if(providers.begin(), providers.end(),
-                         [&](const LlmProvider& p) { return p.id == provider_name.toStdString(); });
+  auto it = std::ranges::find_if(
+      providers, [&](const LlmProvider& p) { return p.id == provider_name.toStdString(); });
   if (it != providers.end()) {
     it->base_url = base_url_text.toStdString();
     const QString api_key_text = editApiKey->text().trimmed();
@@ -467,8 +502,8 @@ void LlmPage::onLlmRemove() {
 
   CoreConfig config = ConfigManager::Get().Load();
   auto& providers = config.llm.providers;
-  auto it = std::find_if(providers.begin(), providers.end(),
-                         [&](const LlmProvider& p) { return p.id == provider_name.toStdString(); });
+  auto it = std::ranges::find_if(
+      providers, [&](const LlmProvider& p) { return p.id == provider_name.toStdString(); });
   int cleared_scene_refs = 0;
   if (it != providers.end()) {
     providers.erase(it);
@@ -657,12 +692,12 @@ void LlmPage::onAdapterRemove() {
   }
 
   CoreConfig config = ConfigManager::Get().Load();
-  auto it = std::remove_if(config.llm.adapters.begin(), config.llm.adapters.end(),
-                           [&](const LlmAdapter& a) { return a.id == adapter_id.toStdString(); });
-  if (it == config.llm.adapters.end()) {
+  const auto removed = std::ranges::remove_if(
+      config.llm.adapters, [&](const LlmAdapter& a) { return a.id == adapter_id.toStdString(); });
+  if (removed.empty()) {
     return;
   }
-  config.llm.adapters.erase(it, config.llm.adapters.end());
+  config.llm.adapters.erase(removed.begin(), removed.end());
 
   const auto managed_path = vinput::script::DefaultLocalScriptPath(
       vinput::script::Kind::kLlmAdapter, adapter_id.toStdString());

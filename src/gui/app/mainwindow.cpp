@@ -35,6 +35,26 @@
 #if VINPUT_ENABLE_LOCAL_ASR
 #include "pages/hotwords/hotword_page.h"
 #endif
+#include <QtCore/qnamespace.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qobjectdefs.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qthread.h>
+#include <QtCore/qurl.h>
+#include <QtGui/qdesktopservices.h>
+#include <QtWidgets/qhboxlayout.h>
+#include <QtWidgets/qmainwindow.h>
+#include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qtabwidget.h>
+#include <QtWidgets/qvboxlayout.h>
+#include <QtWidgets/qwidget.h>
+#include <variant>
+#include <vector>
+
+#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
+#include "common/json/json_access.h"
+
 #include "pages/llm/llm_page.h"
 #include "pages/resources/resource_page.h"
 

@@ -20,11 +20,13 @@ struct RemoteModelEntry {
   glz::json_t vinput_model; // pre-built vinput-model.json content
 
   // Convenience accessors reading from vinput_model
-  std::string model_type() const {
+  [[nodiscard]] std::string model_type() const {
     return vinput::json::String(vinput_model, "family",
                                 vinput::json::String(vinput_model, "model_type"));
   }
-  bool supports_hotwords() const { return vinput::json::Bool(vinput_model, "supports_hotwords"); }
+  [[nodiscard]] bool supports_hotwords() const {
+    return vinput::json::Bool(vinput_model, "supports_hotwords");
+  }
 };
 
 struct CoreConfig;

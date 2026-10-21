@@ -155,7 +155,7 @@ void JsonFormatter::PrintTable(const std::vector<std::string>& headers,
     for (size_t i = 0; i < headers.size(); ++i) {
       obj.emplace(headers[i], glz::json_t((i < row.size()) ? row[i] : std::string{}));
     }
-    arr.emplace_back(glz::json_t(std::move(obj)));
+    arr.emplace_back(std::move(obj));
   }
   std::cout << WriteJson<kPrettyOpts>(glz::json_t(std::move(arr))) << "\n";
 }

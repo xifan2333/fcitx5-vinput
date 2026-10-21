@@ -2,20 +2,26 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <ctime>
 #include <dbus_public.h>
 #include <fcitx-config/iniparser.h>
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/log.h>
 #include <fcitx/inputcontext.h>
+#include <filesystem>
 #include <fstream>
 #include <glaze/json/json_t.hpp>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unicodelib.h>
 #include <unicodelib_encodings.h>
 
 #include "common/config/core_config.h"
+#include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/dbus/error_info.h"
 #include "common/i18n.h"
@@ -29,6 +35,12 @@
 
 #include "core/context_writer.h"
 #include "dbus/notifier_dbus_object.h"
+#include "fcitx-config/rawconfig.h"
+#include "fcitx-utils/event.h"
+#include "fcitx/addonfactory.h"
+#include "fcitx/addoninstance.h"
+#include "fcitx/inputcontext.h"
+#include "fcitx/inputcontexthandler.h"
 
 using namespace vinput::dbus;
 

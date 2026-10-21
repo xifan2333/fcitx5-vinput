@@ -3,6 +3,7 @@
 #include <archive.h>
 #include <archive_entry.h>
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -12,7 +13,11 @@
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <glaze/json/write.hpp>
+#include <iterator>
 #include <string>
+#include <sys/types.h>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 #include "common/asr/bpe_vocab_exporter.h"

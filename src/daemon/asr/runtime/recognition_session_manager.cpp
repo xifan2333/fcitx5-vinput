@@ -1,9 +1,17 @@
 #include "daemon/asr/runtime/recognition_session_manager.h"
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <glaze/json/json_t.hpp>
+#include <memory>
+#include <mutex>
+#include <span>
+#include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
@@ -12,6 +20,7 @@
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
 
+#include "daemon/asr/backend.h"
 #include "daemon/asr/runtime/backend_factory.h"
 
 namespace vinput::daemon::asr {

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <glaze/json/json_t.hpp>
+#include <memory>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
 #include <span>
@@ -13,11 +14,14 @@
 #include <vector>
 
 #include "common/asr/model_manager.h"
+#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
+#include "daemon/asr/backend.h"
 #include "daemon/asr/hotword_utils.h"
 #include "daemon/asr/sherpa_json_helpers.h"
 
@@ -170,7 +174,7 @@ private:
     }
   }
 
-  std::string GetCurrentText() const {
+  [[nodiscard]] std::string GetCurrentText() const {
     const SherpaOnnxOnlineRecognizerResult* result =
         SherpaOnnxGetOnlineStreamResult(recognizer_, stream_);
     if (!result) {
@@ -219,7 +223,7 @@ public:
     }
   }
 
-  BackendDescriptor Describe() const override {
+  [[nodiscard]] BackendDescriptor Describe() const override {
     BackendDescriptor descriptor;
     descriptor.provider_id = provider_id_;
     descriptor.provider_type = vinput::asr::kLocalProviderType;

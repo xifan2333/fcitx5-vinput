@@ -12,7 +12,9 @@
 #include "common/i18n.h"
 #include "common/utils/string_utils.h"
 
+#include "cli/utils/cli_context.h"
 #include "cli/utils/editor_utils.h"
+#include "cli/utils/formatter.h"
 
 int RunConfigDomainGet(const std::string& path, Formatter& fmt, const CliContext& ctx) {
   std::string value, error;

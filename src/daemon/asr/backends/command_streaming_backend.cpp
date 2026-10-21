@@ -1,6 +1,7 @@
 #include "daemon/asr/backends/command_streaming_backend.h"
 
 #include <algorithm>
+#include <array>
 #include <base64.hpp>
 #include <cerrno>
 #include <chrono>
@@ -13,23 +14,29 @@
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <map>
+#include <memory>
 #include <optional>
 #include <poll.h>
+#include <signal.h>
 #include <span>
 #include <spawn.h>
 #include <string>
 #include <string_view>
 #include <sys/poll.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
 
+#include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
 #include "common/utils/time_utils.h"
+
+#include "daemon/asr/backend.h"
 
 extern char** environ;
 
@@ -75,7 +82,7 @@ std::vector<char*> BuildArgv(const CommandAsrProvider& provider,
   for (auto& entry : *storage) {
     argv.push_back(entry.data());
   }
-  argv.push_back(nullptr);
+  argv.emplace_back(nullptr);
   return argv;
 }
 
@@ -418,7 +425,7 @@ private:
 
   bool SendControlEvent(std::string_view type, std::string* error) {
     const glz::json_t payload = {
-        {"type", type},
+        {"type", std::string(type)},
     };
     return SendJsonLine(payload, error);
   }
@@ -510,18 +517,18 @@ private:
 
     ReapChild();
 
-    pollfd fds[2];
-    nfds_t nfds = 0;
+    std::array<pollfd, 2> fds{};
+    std::size_t nfds = 0;
     if (child_.stdout_fd >= 0) {
-      fds[nfds].fd = child_.stdout_fd;
-      fds[nfds].events = POLLIN;
-      fds[nfds].revents = 0;
+      fds.at(nfds).fd = child_.stdout_fd;
+      fds.at(nfds).events = POLLIN;
+      fds.at(nfds).revents = 0;
       ++nfds;
     }
     if (child_.stderr_fd >= 0) {
-      fds[nfds].fd = child_.stderr_fd;
-      fds[nfds].events = POLLIN;
-      fds[nfds].revents = 0;
+      fds.at(nfds).fd = child_.stderr_fd;
+      fds.at(nfds).events = POLLIN;
+      fds.at(nfds).revents = 0;
       ++nfds;
     }
 
@@ -539,7 +546,7 @@ private:
       }
     }
     if (nfds > 0) {
-      const int rc = poll(fds, nfds, timeout_ms);
+      const int rc = poll(fds.data(), static_cast<nfds_t>(nfds), timeout_ms);
       if (rc < 0 && errno != EINTR) {
         if (error) {
           *error = std::string("poll failed: ") + std::strerror(errno);
@@ -547,16 +554,16 @@ private:
         return false;
       }
 
-      for (nfds_t i = 0; i < nfds; ++i) {
-        if ((fds[i].revents & POLLIN) == 0 &&
-            (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) == 0) {
+      for (std::size_t i = 0; i < nfds; ++i) {
+        if ((fds.at(i).revents & POLLIN) == 0 &&
+            (fds.at(i).revents & (POLLERR | POLLHUP | POLLNVAL)) == 0) {
           continue;
         }
-        if (fds[i].fd == child_.stdout_fd) {
+        if (fds.at(i).fd == child_.stdout_fd) {
           if (!DrainStdout(error)) {
             return false;
           }
-        } else if (fds[i].fd == child_.stderr_fd) {
+        } else if (fds.at(i).fd == child_.stderr_fd) {
           DrainStderr();
         }
       }
@@ -780,7 +787,7 @@ class CommandStreamingBackend : public AsrBackend {
 public:
   explicit CommandStreamingBackend(CommandAsrProvider provider) : provider_(std::move(provider)) {}
 
-  BackendDescriptor Describe() const override {
+  [[nodiscard]] BackendDescriptor Describe() const override {
     BackendDescriptor descriptor;
     descriptor.provider_id = provider_.id;
     descriptor.provider_type = vinput::asr::kCommandProviderType;

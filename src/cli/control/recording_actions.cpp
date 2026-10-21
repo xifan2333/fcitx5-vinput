@@ -8,7 +8,9 @@
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
+#include "cli/utils/cli_context.h"
 #include "cli/utils/cli_helpers.h"
+#include "cli/utils/formatter.h"
 
 namespace {
 

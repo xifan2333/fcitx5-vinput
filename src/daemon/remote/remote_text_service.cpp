@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <asm-generic/socket.h>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <exception>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <httplib.h>
@@ -23,9 +25,11 @@
 #include <system_error>
 #include <thread>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
@@ -308,8 +312,8 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
   }
   freeifaddrs(ifaddr);
 
-  std::sort(endpoints.begin(), endpoints.end());
-  endpoints.erase(std::unique(endpoints.begin(), endpoints.end()), endpoints.end());
+  std::ranges::sort(endpoints);
+  endpoints.erase(std::ranges::unique(endpoints).begin(), endpoints.end());
   return endpoints;
 }
 
@@ -618,9 +622,9 @@ void RemoteTextService::HandleInputSession(httplib::ws::WebSocket& ws) {
       }
     }
 
-    const std::string type = event.value("type", std::string{});
+    const std::string type = vinput::json::String(event, "type");
     if (type == "text_update") {
-      const std::string text = event.value("text", std::string{});
+      const std::string text = vinput::json::String(event, "text");
       SetText(text);
       if (!text.empty()) {
         MaybeTriggerStart();
@@ -659,7 +663,7 @@ bool RemoteTextService::ValidateApiKey(std::string_view api_key) const {
 void RemoteTextService::NotifyInput(std::string_view type) {
   const std::scoped_lock lock(state_mutex_);
   if (input_ws_ != nullptr && input_ws_->is_open()) {
-    input_ws_->send(vinput::json::ToText(glz::json_t{{"type", type}}));
+    input_ws_->send(vinput::json::ToText(glz::json_t{{"type", std::string(type)}}));
   }
 }
 

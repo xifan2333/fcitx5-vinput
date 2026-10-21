@@ -27,9 +27,19 @@
 #include "common/utils/download_progress.h"
 #endif
 
+#include <cstdint>
+#include <cstdio>
+#include <string>
+#include <variant>
+
+#include "common/config/core_config_types.h"
+#include "common/dbus/dbus_interface.h"
+
 #include "cli/runtime/dbus_client.h"
+#include "cli/utils/cli_context.h"
 #include "cli/utils/cli_helpers.h"
 #include "cli/utils/editor_utils.h"
+#include "cli/utils/formatter.h"
 #include "cli/utils/resource_utils.h"
 
 namespace {
@@ -271,10 +281,9 @@ int RunAsrConfigRemove(const std::string& id, Formatter& fmt, const CliContext& 
     return 1;
   }
   auto& providers = config.asr.providers;
-  auto it =
-      std::find_if(providers.begin(), providers.end(), [&resolved_id](const AsrProvider& provider) {
-        return AsrProviderId(provider) == resolved_id;
-      });
+  auto it = std::ranges::find_if(providers, [&resolved_id](const AsrProvider& provider) {
+    return AsrProviderId(provider) == resolved_id;
+  });
   if (it == providers.end()) {
     fmt.PrintError(vinput::str::FmtStr(_("ASR provider '%s' not found."), id));
     return 1;
@@ -370,7 +379,8 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
     for (const auto& entry : entries) {
       glz::json_t::array_t envs;
       for (const auto& env : entry.envs) {
-        envs.emplace_back(glz::json_t{{"name", env.name}, {"required", env.required}});
+        glz::json_t json_entry = {{"name", env.name}, {"required", env.required}};
+        envs.emplace_back(std::move(json_entry));
       }
       const bool installed = isInstalled(entry.id);
       const auto ver_info = vinput::script::CheckResourceVersion(
@@ -384,7 +394,7 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
                          : "installed";
       }
 
-      arr.emplace_back(glz::json_t{
+      glz::json_t json_entry = {
           {"id", vinput::cli::HumanizeResourceId(entry.id, entry.short_id)},
           {"machine_id", entry.id},
           {"title", display_map.at(entry.id).title},
@@ -396,7 +406,8 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
           {"installed_version", ver_info.installed_version},
           {"remote_version", ver_info.remote_version},
           {"vinput_version", ver_info.vinput_version},
-      });
+      };
+      arr.emplace_back(std::move(json_entry));
     }
     fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;
@@ -465,9 +476,8 @@ int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt,
     return 1;
   }
 
-  const auto it =
-      std::find_if(entries.begin(), entries.end(),
-                   [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
+  const auto it = std::ranges::find_if(
+      entries, [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
   if (it == entries.end()) {
     fmt.PrintError(vinput::str::FmtStr(_("ASR provider '%s' not found in registry."), id));
     return 1;
@@ -557,8 +567,7 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
         continue;
       }
       const std::string id = AsrProviderId(provider);
-      auto it =
-          std::find_if(entries.begin(), entries.end(), [&id](const auto& e) { return e.id == id; });
+      auto it = std::ranges::find_if(entries, [&id](const auto& e) { return e.id == id; });
       if (it != entries.end()) {
         if (updateSingle(*it)) {
           any_updated = true;
@@ -572,8 +581,7 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
       fmt.PrintError(error);
       return 1;
     }
-    auto it =
-        std::find_if(entries.begin(), entries.end(), [&id](const auto& e) { return e.id == id; });
+    auto it = std::ranges::find_if(entries, [&id](const auto& e) { return e.id == id; });
     if (it == entries.end()) {
       fmt.PrintError(vinput::str::FmtStr(_("ASR provider '%s' not found in registry."), selector));
       return 1;
@@ -667,15 +675,15 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
     const auto installedModels = manager.ListDetailed(activeModel);
 
     auto isInstalled = [&installedModels](const std::string& id) {
-      return std::any_of(installedModels.begin(), installedModels.end(),
-                         [&id](const ModelSummary& model) { return model.id == id; });
+      return std::ranges::any_of(installedModels,
+                                 [&id](const ModelSummary& model) { return model.id == id; });
     };
 
     if (ctx.json_output) {
       glz::json_t::array_t arr;
       arr.reserve(remoteModels.size());
       for (const auto& model : remoteModels) {
-        arr.emplace_back(glz::json_t{
+        glz::json_t json_entry = {
             {"id", vinput::cli::HumanizeResourceId(model.id, model.short_id)},
             {"machine_id", model.id},
             {"title", display_map.at(model.id).title},
@@ -686,7 +694,8 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
             {"size_bytes", model.size_bytes},
             {"size", vinput::file::FormatFileSize(model.size_bytes)},
             {"status", isInstalled(model.id) ? "installed" : "available"},
-        });
+        };
+        arr.emplace_back(std::move(json_entry));
       }
       fmt.PrintJson(glz::json_t(std::move(arr)));
       return 0;
@@ -719,7 +728,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
         status = "broken";
       }
       const auto display_it = installed_display_map.find(model.id);
-      arr.emplace_back(glz::json_t{
+      glz::json_t json_entry = {
           {"id", vinput::cli::HumanizeResourceId(installed_display_map, model.id)},
           {"machine_id", model.id},
           {"title",
@@ -730,7 +739,8 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
           {"size_bytes", model.size_bytes},
           {"size", vinput::file::FormatFileSize(model.size_bytes)},
           {"status", status},
-      });
+      };
+      arr.emplace_back(std::move(json_entry));
     }
     fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;

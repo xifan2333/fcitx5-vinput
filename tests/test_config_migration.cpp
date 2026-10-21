@@ -137,10 +137,11 @@ void TestDryRunAndApply() {
   ExpectTrue(!bool(glz::read_json(migrated_cfg, migrated_config_str)),
              "migrated config is valid JSON");
 
-  const auto* definitions = vinput::json::Find(migrated_cfg["scenes"], "definitions");
-  ExpectTrue(definitions != nullptr && definitions->is_array() && !definitions->get_array().empty(),
+  const auto* migrated_definitions = vinput::json::Find(migrated_cfg["scenes"], "definitions");
+  ExpectTrue(migrated_definitions != nullptr && migrated_definitions->is_array() &&
+                 !migrated_definitions->get_array().empty(),
              "definitions array preserved");
-  const auto& sc_def = definitions->get_array().front();
+  const auto& sc_def = migrated_definitions->get_array().front();
   ExpectTrue(sc_def.contains("count") && !sc_def.contains("candidate_count"),
              "candidate_count -> count");
   ExpectEq(std::to_string(vinput::json::Int(sc_def, "count")), "3");

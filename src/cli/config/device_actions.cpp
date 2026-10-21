@@ -1,6 +1,7 @@
 #include "cli/config/device_actions.h"
 
 #include <glaze/json/json_t.hpp>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -9,7 +10,9 @@
 #include "common/i18n.h"
 #include "common/utils/string_utils.h"
 
+#include "cli/utils/cli_context.h"
 #include "cli/utils/cli_helpers.h"
+#include "cli/utils/formatter.h"
 
 int RunDeviceConfigList(Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
@@ -27,8 +30,9 @@ int RunDeviceConfigList(Formatter& fmt, const CliContext& ctx) {
     for (const auto& d : devices) {
       const bool is_active =
           (d.name == active_device) || (active_device == "default" && d.name == "default");
-      arr.emplace_back(glz::json_t{
-          {"id", d.id}, {"name", d.name}, {"description", d.description}, {"active", is_active}});
+      glz::json_t json_entry = {
+          {"id", d.id}, {"name", d.name}, {"description", d.description}, {"active", is_active}};
+      arr.emplace_back(std::move(json_entry));
     }
     fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;

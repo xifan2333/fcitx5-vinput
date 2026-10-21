@@ -187,7 +187,7 @@ void MergeExtraBody(glz::json_t& request, const glz::json_t& extra, const LlmPro
   static constexpr std::array<std::string_view, 3> kProtected = {"messages", "stream",
                                                                  "response_format"};
   for (const auto& [key, value] : extra.get_object()) {
-    if (std::find(kProtected.begin(), kProtected.end(), key) != kProtected.end()) {
+    if (std::ranges::find(kProtected, key) != kProtected.end()) {
       VLOG_DEBUG("LLM extra_body provider={}: ignoring protected key '{}'",
                  provider.id.empty() ? "(unnamed)" : provider.id, key);
       continue;
@@ -276,7 +276,8 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   // TODO(#407): re-enable with modern JSON library: LogLlmInput(provider, url, text);
 
   glz::json_t::array_t messages;
-  messages.emplace_back(glz::json_t{{"role", "user"}, {"content", user_content}});
+  glz::json_t json_entry = {{"role", "user"}, {"content", user_content}};
+  messages.emplace_back(std::move(json_entry));
 
   glz::json_t request = {
       {"model", scene.model},

@@ -1,10 +1,15 @@
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <mutex>
 #include <string>
+#include <system_error>
+#include <utility>
 
 #include "common/config/core_config.h"
+#include "common/scene/postprocess_scene.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 

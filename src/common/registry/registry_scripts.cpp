@@ -3,12 +3,18 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
+#include <map>
 #include <string>
+#include <string_view>
 #include <system_error>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
@@ -418,9 +424,9 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
     return false;
   }
 
-  auto it = std::find_if(
-      config->asr.providers.begin(), config->asr.providers.end(),
-      [&entry](const AsrProvider& provider) { return AsrProviderId(provider) == entry.id; });
+  auto it = std::ranges::find_if(config->asr.providers, [&entry](const AsrProvider& provider) {
+    return AsrProviderId(provider) == entry.id;
+  });
   const fs::path managed_path = DefaultLocalScriptPath(Kind::kAsrProvider, entry.id);
   if (managed_path.empty()) {
     if (error) {
@@ -436,7 +442,7 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
     provider.command = entry.command;
     provider.args = {script_path.string()};
     FillDefaultEnvMap(entry.envs, &provider.env);
-    config->asr.providers.push_back(std::move(provider));
+    config->asr.providers.emplace_back(std::move(provider));
   } else {
     auto* command_provider = GetCommandAsrProvider(&(*it));
     if (!command_provider || !IsManagedScriptPath(managed_path, command_provider->args)) {
@@ -469,8 +475,8 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
     return false;
   }
 
-  auto it = std::find_if(config->llm.adapters.begin(), config->llm.adapters.end(),
-                         [&entry](const LlmAdapter& adapter) { return adapter.id == entry.id; });
+  auto it = std::ranges::find_if(
+      config->llm.adapters, [&entry](const LlmAdapter& adapter) { return adapter.id == entry.id; });
   const fs::path managed_path = DefaultLocalScriptPath(Kind::kLlmAdapter, entry.id);
   if (managed_path.empty()) {
     if (error) {

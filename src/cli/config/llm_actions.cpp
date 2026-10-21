@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cstddef>
 #include <filesystem>
+#include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 #include <map>
 #include <string>
 #include <string_view>
@@ -61,8 +63,8 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
     return 1;
   }
 
-  auto it = std::find_if(config.llm.adapters.begin(), config.llm.adapters.end(),
-                         [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
+  auto it = std::ranges::find_if(
+      config.llm.adapters, [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
   if (it == config.llm.adapters.end()) {
     fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found."), id));
     return 1;
@@ -117,13 +119,14 @@ int RunLlmConfigList(Formatter& fmt, const CliContext& ctx) {
     glz::json_t::array_t providers;
     providers.reserve(config.llm.providers.size());
     for (const auto& provider : config.llm.providers) {
-      providers.emplace_back(glz::json_t{
+      glz::json_t json_entry = {
           {"id", provider.id},
           {"base_url", provider.base_url},
           {"api_key", ""},
           {"extra_body", provider.extra_body.is_object() ? provider.extra_body
                                                          : glz::json_t(glz::json_t::object_t{})},
-      });
+      };
+      providers.emplace_back(std::move(json_entry));
     }
     fmt.PrintJson(glz::json_t(std::move(providers)));
     return 0;
@@ -150,7 +153,7 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
       arr.reserve(config.llm.adapters.size());
       for (const auto& adapter : config.llm.adapters) {
         const auto it = installed_display_map.find(adapter.id);
-        arr.emplace_back(glz::json_t{
+        glz::json_t json_entry = {
             {"id", vinput::cli::HumanizeResourceId(installed_display_map, adapter.id)},
             {"machine_id", adapter.id},
             {"title", it == installed_display_map.end() ? "" : it->second.title},
@@ -159,7 +162,8 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
             {"args", vinput::json::FromStrings(adapter.args)},
             {"env", vinput::json::FromStringMap(adapter.env)},
             {"auto_start", adapter.autoStart},
-        });
+        };
+        arr.emplace_back(std::move(json_entry));
       }
       fmt.PrintJson(glz::json_t(std::move(arr)));
       return 0;
@@ -211,7 +215,8 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
     for (const auto& entry : entries) {
       glz::json_t::array_t envs;
       for (const auto& env : entry.envs) {
-        envs.emplace_back(glz::json_t{{"name", env.name}, {"required", env.required}});
+        glz::json_t json_entry = {{"name", env.name}, {"required", env.required}};
+        envs.emplace_back(std::move(json_entry));
       }
       const bool installed = isInstalled(entry.id);
       const auto ver_info = vinput::script::CheckResourceVersion(
@@ -225,7 +230,7 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
                          : "installed";
       }
 
-      arr.emplace_back(glz::json_t{
+      glz::json_t json_entry = {
           {"id", vinput::cli::HumanizeResourceId(entry.id, entry.short_id)},
           {"machine_id", entry.id},
           {"title", display_map.at(entry.id).title},
@@ -236,7 +241,8 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
           {"installed_version", ver_info.installed_version},
           {"remote_version", ver_info.remote_version},
           {"vinput_version", ver_info.vinput_version},
-      });
+      };
+      arr.emplace_back(std::move(json_entry));
     }
     fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;
@@ -343,9 +349,8 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
     return 1;
   }
 
-  const auto it =
-      std::find_if(entries.begin(), entries.end(),
-                   [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
+  const auto it = std::ranges::find_if(
+      entries, [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
   if (it == entries.end()) {
     fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found in registry."), id));
     return 1;
@@ -410,13 +415,13 @@ int RunLlmConfigRemoveAdapter(const std::string& id, Formatter& fmt, const CliCo
     }
   }
 
-  auto it = std::remove_if(config.llm.adapters.begin(), config.llm.adapters.end(),
-                           [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
-  if (it == config.llm.adapters.end()) {
+  const auto removed = std::ranges::remove_if(
+      config.llm.adapters, [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
+  if (removed.empty()) {
     fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found."), id));
     return 1;
   }
-  config.llm.adapters.erase(it, config.llm.adapters.end());
+  config.llm.adapters.erase(removed.begin(), removed.end());
 
   const auto managed_path =
       vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kLlmAdapter, resolved_id);
@@ -514,8 +519,7 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
   bool any_updated = false;
   if (all) {
     for (const auto& adapter : config.llm.adapters) {
-      auto it = std::find_if(entries.begin(), entries.end(),
-                             [&](const auto& e) { return e.id == adapter.id; });
+      auto it = std::ranges::find_if(entries, [&](const auto& e) { return e.id == adapter.id; });
       if (it != entries.end()) {
         if (updateSingle(*it)) {
           any_updated = true;
@@ -529,8 +533,7 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
       fmt.PrintError(error);
       return 1;
     }
-    auto it =
-        std::find_if(entries.begin(), entries.end(), [&id](const auto& e) { return e.id == id; });
+    auto it = std::ranges::find_if(entries, [&id](const auto& e) { return e.id == id; });
     if (it == entries.end()) {
       fmt.PrintError(vinput::str::FmtStr(_("Adapter '%s' not found in registry."), selector));
       return 1;
@@ -640,7 +643,7 @@ int RunLlmConfigPsAdapters(Formatter& fmt, const CliContext& ctx) {
       const auto it = installed_display_map.find(adapter.id);
       const pid_t pid = vinput::adapter::GetPid(adapter.id);
       const bool running = (pid > 0);
-      arr.emplace_back(glz::json_t{
+      glz::json_t json_entry = {
           {"id", vinput::cli::HumanizeResourceId(installed_display_map, adapter.id)},
           {"machine_id", adapter.id},
           {"title", it == installed_display_map.end() ? "" : it->second.title},
@@ -649,7 +652,8 @@ int RunLlmConfigPsAdapters(Formatter& fmt, const CliContext& ctx) {
           {"pid", running ? glz::json_t(static_cast<double>(pid)) : glz::json_t(nullptr)},
           {"auto_start", adapter.autoStart},
           {"command", adapter.command},
-      });
+      };
+      arr.emplace_back(std::move(json_entry));
     }
     fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;
@@ -864,7 +868,7 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
   fmt.PrintSuccess(
       vinput::str::FmtStr(_("Connected to '%s'. Found %d model(s)."), id, (int)models.size()));
   if (!models.empty()) {
-    std::sort(models.begin(), models.end());
+    std::ranges::sort(models);
     const std::vector<std::string> headers_row = {_("MODEL")};
     std::vector<std::vector<std::string>> rows;
     for (const auto& m : models) {

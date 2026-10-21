@@ -9,6 +9,12 @@
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <iterator>
+#include <map>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
+#include <vector>
 
 #include "common/json/json_access.h"
 #include "common/utils/path_utils.h"
@@ -506,8 +512,8 @@ std::vector<std::string> ModelManager::ListModels() const {
   ForEachInstalledModelDir(base_dir_, [&](const std::string& model_id, const fs::path&,
                                           const fs::path&) { models.push_back(model_id); });
 
-  std::sort(models.begin(), models.end());
-  models.erase(std::unique(models.begin(), models.end()), models.end());
+  std::ranges::sort(models);
+  models.erase(std::ranges::unique(models).begin(), models.end());
   return models;
 }
 
@@ -540,8 +546,8 @@ std::vector<ModelSummary> ModelManager::ListDetailed(const std::string& active_m
         summaries.push_back(std::move(s));
       });
 
-  std::sort(summaries.begin(), summaries.end(),
-            [](const ModelSummary& a, const ModelSummary& b) { return a.id < b.id; });
+  std::ranges::sort(summaries,
+                    [](const ModelSummary& a, const ModelSummary& b) { return a.id < b.id; });
   return summaries;
 }
 

@@ -1,10 +1,14 @@
 #include "common/registry/registry_i18n.h"
 
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
+#include <iterator>
+#include <string>
+#include <utility>
 
 #include "common/utils/locale_utils.h"
 #include "common/utils/path_utils.h"
