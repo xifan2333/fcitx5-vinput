@@ -1,10 +1,11 @@
 #pragma once
 
-#include <QtCore/QObject>
-#include <QtCore/QString>
-#include <QtWidgets/QMainWindow>
-#include <QtWidgets/QTabWidget>
-#include <QtWidgets/QWidget>
+#include <QtCore/qobject.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qtmetamacros.h>
+#include <QtWidgets/qmainwindow.h>
+#include <QtWidgets/qtabwidget.h>
+#include <QtWidgets/qwidget.h>
 
 #include "config.h"
 
