@@ -248,7 +248,7 @@ inline std::string ToText(const glz::json_t& value) {
 // Two space indented JSON text of `value`; empty when serialization fails.
 inline std::string ToPrettyText(const glz::json_t& value) {
   constexpr auto kPrettyOpts =
-      glz::opts{.skip_null_members = false, .prettify = true, .indentation_width = 2};
+      glz::opts{.skip_null_members = uint8_t{0}, .prettify = uint8_t{1}, .indentation_width = 2};
   std::string out;
   if (bool(glz::write<kPrettyOpts>(value, out))) {
     return {};

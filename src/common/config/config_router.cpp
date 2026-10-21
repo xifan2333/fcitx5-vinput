@@ -116,7 +116,7 @@ void ParseSetValue(const std::string& value, glz::json_t* parsed) {
 bool GetConfigValue(const std::string& pointer, std::string* value, std::string* error) {
   glz::json_t root;
   if (!LoadConfigTree(&root)) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Failed to load config.";
     }
     return false;
@@ -124,7 +124,7 @@ bool GetConfigValue(const std::string& pointer, std::string* value, std::string*
 
   const glz::json_t* node = SeekPointer(&root, pointer);
   if (node == nullptr) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Config path not found: " + pointer;
     }
     return false;
@@ -143,7 +143,7 @@ bool GetConfigValue(const std::string& pointer, std::string* value, std::string*
 bool SetConfigValue(const std::string& pointer, const std::string& value, std::string* error) {
   glz::json_t root;
   if (!LoadConfigTree(&root)) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Failed to load config.";
     }
     return false;
@@ -151,7 +151,7 @@ bool SetConfigValue(const std::string& pointer, const std::string& value, std::s
 
   glz::json_t* node = SeekPointer(&root, pointer);
   if (node == nullptr) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Config path not found: " + pointer;
     }
     return false;
@@ -167,7 +167,7 @@ bool SetConfigValue(const std::string& pointer, const std::string& value, std::s
   }
 
   if (!SaveCoreConfig(updated)) {
-    if (error) {
+    if (error != nullptr) {
       std::string validation_error;
       NormalizeCoreConfig(&updated);
       if (ValidateCoreConfig(updated, &validation_error) && validation_error.empty()) {

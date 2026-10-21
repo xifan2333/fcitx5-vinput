@@ -20,14 +20,14 @@ I18nMap ParseI18nJson(const std::string& content, std::string* error) {
 
   glz::json_t root;
   if (const auto ec = glz::read_json(root, content); bool(ec)) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to parse i18n JSON: " + glz::format_error(ec, content);
     }
     return {};
   }
   const auto* entries = root.get_if<glz::json_t::object_t>();
   if (entries == nullptr) {
-    if (error) {
+    if (error != nullptr) {
       *error = "i18n JSON is not an object";
     }
     return map;
@@ -46,7 +46,7 @@ namespace {
 I18nMap LoadI18nFile(const std::filesystem::path& path, std::string* error) {
   std::ifstream ifs(path);
   if (!ifs) {
-    if (error) {
+    if (error != nullptr) {
       *error = "cached i18n unavailable: " + path.string();
     }
     return {};
@@ -74,7 +74,7 @@ std::string DetectPreferredLocale() {
   const char* vars[] = {"LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"};
   for (const char* name : vars) {
     const char* value = std::getenv(name);
-    if (value && *value) {
+    if (value != nullptr && *value) {
       const std::string locale = vinput::locale::CanonicalizeLocale(value);
       if (!locale.empty()) {
         return locale;
@@ -101,7 +101,7 @@ I18nMap LoadMergedCachedI18nMap(const std::string& preferred_locale, std::string
   }
 
   ApplyLocalI18nOverrides(&merged);
-  if (error) {
+  if (error != nullptr) {
     if (!merged.empty()) {
       error->clear();
     } else if (!primary_error.empty()) {

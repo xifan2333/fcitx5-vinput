@@ -92,21 +92,21 @@ bool TypeMatchesKind(std::string_view type, Kind kind) {
 std::vector<RegistryEntry> ParseRegistryJson(const std::string& content, std::string* error) {
   glz::json_t root;
   if (const auto ec = glz::read_json(root, content); bool(ec)) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to parse script registry JSON: " + glz::format_error(ec, content);
     }
     return {};
   }
   const auto* items = vinput::json::Find(root, "items");
   if (items == nullptr) {
-    if (error) {
+    if (error != nullptr) {
       *error = "script registry JSON is not an object or is missing array field 'items'";
     }
     return {};
   }
   const auto* item_array = items->get_if<glz::json_t::array_t>();
   if (item_array == nullptr) {
-    if (error) {
+    if (error != nullptr) {
       *error = "script registry JSON is missing array field 'items'";
     }
     return {};
@@ -146,7 +146,7 @@ std::vector<RegistryEntry> ParseRegistryJson(const std::string& content, std::st
     }
   }
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return entries;
@@ -157,7 +157,7 @@ bool EnsureExecutable(const fs::path& path, std::string* error) {
   fs::permissions(path, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
                   fs::perm_options::add, ec);
   if (ec) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to mark script executable: " + ec.message();
     }
     return false;
@@ -167,7 +167,7 @@ bool EnsureExecutable(const fs::path& path, std::string* error) {
 
 void FillDefaultEnvMap(const std::vector<EnvSpec>& envs,
                        std::map<std::string, std::string>* target) {
-  if (!target) {
+  if (target == nullptr) {
     return;
   }
   for (const auto& env : envs) {
@@ -183,7 +183,7 @@ bool IsManagedScriptPath(const fs::path& expected, const std::vector<std::string
 }
 
 CommandAsrProvider* GetCommandAsrProvider(AsrProvider* provider) {
-  return provider ? std::get_if<CommandAsrProvider>(provider) : nullptr;
+  return provider ? std::get_if<CommandAsrProvider>(provider) : nullptr != nullptr;
 }
 
 std::vector<RegistryEntry> FetchRegistryImpl(const CoreConfig* config, Kind kind,
@@ -191,7 +191,7 @@ std::vector<RegistryEntry> FetchRegistryImpl(const CoreConfig* config, Kind kind
                                              std::string* error, std::string* resolved_registry_url,
                                              std::vector<std::string>* warnings) {
   if (urls.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "no script registry URLs configured";
     }
     return {};
@@ -207,13 +207,13 @@ std::vector<RegistryEntry> FetchRegistryImpl(const CoreConfig* config, Kind kind
                                                ? vinput::registry::cache::AsrProviderRegistryPath()
                                                : vinput::registry::cache::LlmAdapterRegistryPath(),
                                            options, &content, &result, error, warnings)) {
-    if (resolved_registry_url) {
+    if (resolved_registry_url != nullptr) {
       resolved_registry_url->clear();
     }
     return {};
   }
 
-  if (resolved_registry_url) {
+  if (resolved_registry_url != nullptr) {
     *resolved_registry_url = result.resolved_url;
   }
   return ParseRegistryJson(content, error);
@@ -307,7 +307,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
 
   const fs::path path = DefaultLocalScriptPath(kind, entry.id);
   if (path.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "invalid script id: " + entry.id;
     }
     return false;
@@ -316,7 +316,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
   std::error_code ec;
   fs::create_directories(path.parent_path(), ec);
   if (ec) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to create script directory: " + ec.message();
     }
     return false;
@@ -417,8 +417,8 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
 
 bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
                             const fs::path& script_path, std::string* error) {
-  if (!config) {
-    if (error) {
+  if (config == nullptr) {
+    if (error != nullptr) {
       *error = "config is null";
     }
     return false;
@@ -429,7 +429,7 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
   });
   const fs::path managed_path = DefaultLocalScriptPath(Kind::kAsrProvider, entry.id);
   if (managed_path.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "invalid ASR provider id: " + entry.id;
     }
     return false;
@@ -445,8 +445,8 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
     config->asr.providers.emplace_back(std::move(provider));
   } else {
     auto* command_provider = GetCommandAsrProvider(&(*it));
-    if (!command_provider || !IsManagedScriptPath(managed_path, command_provider->args)) {
-      if (error) {
+    if (command_provider == nullptr || !IsManagedScriptPath(managed_path, command_provider->args)) {
+      if (error != nullptr) {
         *error = "refusing to overwrite user-defined ASR provider: " + entry.id;
       }
       return false;
@@ -459,7 +459,7 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
     FillDefaultEnvMap(entry.envs, &command_provider->env);
   }
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -468,8 +468,8 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
 bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
                            const fs::path& script_path, std::string* error,
                            const std::map<std::string, std::string>& env_overrides) {
-  if (!config) {
-    if (error) {
+  if (config == nullptr) {
+    if (error != nullptr) {
       *error = "config is null";
     }
     return false;
@@ -479,7 +479,7 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
       config->llm.adapters, [&entry](const LlmAdapter& adapter) { return adapter.id == entry.id; });
   const fs::path managed_path = DefaultLocalScriptPath(Kind::kLlmAdapter, entry.id);
   if (managed_path.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "invalid adapter id: " + entry.id;
     }
     return false;
@@ -494,7 +494,7 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
     config->llm.adapters.push_back(std::move(adapter));
   } else {
     if (!IsManagedScriptPath(managed_path, it->args)) {
-      if (error) {
+      if (error != nullptr) {
         *error = "refusing to overwrite user-defined adapter: " + entry.id;
       }
       return false;
@@ -518,7 +518,7 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
     break;
   }
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;

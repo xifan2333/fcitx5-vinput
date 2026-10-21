@@ -32,7 +32,7 @@ namespace {
 // version, so unknown keys must not abort the parse.
 constexpr auto kMigrationReadOpts = glz::opts{.error_on_unknown_keys = uint8_t{0}};
 // Migrated `config.json` files keep the historical two space indentation.
-constexpr auto kMigrationWriteOpts = glz::opts{.prettify = true, .indentation_width = 2};
+constexpr auto kMigrationWriteOpts = glz::opts{.prettify = uint8_t{1}, .indentation_width = 2};
 
 std::string FormatJson(const glz::json_t& value) {
   std::string out;

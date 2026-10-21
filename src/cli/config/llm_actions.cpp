@@ -798,7 +798,7 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
 int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   const auto* provider = ResolveLlmProvider(config, id);
-  if (!provider) {
+  if (provider == nullptr) {
     fmt.PrintError(vinput::str::FmtStr(_("LLM provider '%s' not found."), id));
     return 1;
   }

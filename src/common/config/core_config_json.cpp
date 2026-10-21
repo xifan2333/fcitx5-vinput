@@ -23,7 +23,7 @@ namespace {
 // instead of aborting the parse.
 constexpr auto kConfigReadOpts = glz::opts{.error_on_unknown_keys = uint8_t{0}};
 // `config.json` is written with a four space indentation.
-constexpr auto kConfigWriteOpts = glz::opts{.prettify = true, .indentation_width = 4};
+constexpr auto kConfigWriteOpts = glz::opts{.prettify = uint8_t{1}, .indentation_width = 4};
 
 // Optional wire members are omitted when absent, which reproduces the previous
 // "only write meaningful fields" behaviour of the configuration writer.
@@ -543,13 +543,13 @@ template <typename T> bool ReadSection(const glz::json_t& root, std::string_view
 
 bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* error) {
   if (config == nullptr) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Config is null.";
     }
     return false;
   }
   if (text.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Config is empty.";
     }
     return false;
@@ -557,13 +557,13 @@ bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* 
 
   glz::json_t root;
   if (const auto ec = glz::read_json(root, text); bool(ec)) {
-    if (error) {
+    if (error != nullptr) {
       *error = glz::format_error(ec, text);
     }
     return false;
   }
   if (!root.is_object()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Config root is not a JSON object.";
     }
     return false;
@@ -600,7 +600,7 @@ bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* 
   }
 
   *config = std::move(parsed);
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;

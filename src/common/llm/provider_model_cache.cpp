@@ -23,7 +23,7 @@ namespace vinput::llm {
 namespace {
 
 // The cache is keyed by runtime provider ids, so its shape stays dynamic.
-constexpr auto kCacheWriteOpts = glz::opts{.prettify = true, .indentation_width = 2};
+constexpr auto kCacheWriteOpts = glz::opts{.prettify = uint8_t{1}, .indentation_width = 2};
 
 glz::json_t EmptyObject() {
   return glz::json_t(glz::json_t::object_t{});

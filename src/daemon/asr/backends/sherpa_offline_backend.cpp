@@ -44,7 +44,7 @@ bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std:
   std::error_code temp_error;
   const auto temp_dir = std::filesystem::temp_directory_path(temp_error);
   if (temp_error) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to locate temporary directory: " + temp_error.message();
     }
     return false;
@@ -52,7 +52,7 @@ bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std:
   std::string pattern = (temp_dir / "vinput-hotwords-XXXXXX").string();
   const int fd = mkstemp(pattern.data());
   if (fd < 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to create temporary hotwords file: " + std::string(std::strerror(errno));
     }
     return false;
@@ -68,7 +68,7 @@ bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std:
       const std::string write_error = written < 0 ? std::strerror(errno) : "zero-byte write";
       close(fd);
       std::filesystem::remove(pattern);
-      if (error) {
+      if (error != nullptr) {
         *error = "failed to write temporary hotwords file: " + write_error;
       }
       return false;
@@ -79,7 +79,7 @@ bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std:
   if (close(fd) != 0) {
     const std::string close_error = std::strerror(errno);
     std::filesystem::remove(pattern);
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to close temporary hotwords file: " + close_error;
     }
     return false;
@@ -149,7 +149,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
       return nullptr;
     }
   } else if (provider_hotwords_configured && !IsTransducerHotwordFamily(info.family)) {
-    if (error) {
+    if (error != nullptr) {
       *error =
           "model family '" + info.family + "' does not expose an ASR hotword input in sherpa-onnx";
     }
@@ -403,13 +403,13 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
   if (family == "telespeech_ctc") {
     cfg_telespeech_path = info.File("telespeech_ctc");
     config.model_config.telespeech_ctc = cfg_telespeech_path.c_str();
-    if (!config.model_config.model_type) {
+    if (config.model_config.model_type == nullptr) {
       config.model_config.model_type = "telespeech_ctc";
     }
   } else {
     const auto it = handlers.find(family);
     if (it == handlers.end()) {
-      if (error) {
+      if (error != nullptr) {
         *error = "unsupported model family '" + family + "'";
       }
       return nullptr;
@@ -435,8 +435,8 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
               remove_error.message().c_str());
     }
   }
-  if (!recognizer) {
-    if (error) {
+  if (recognizer == nullptr) {
+    if (error != nullptr) {
       *error = "failed to create sherpa-onnx recognizer for family '" + family + "'";
     }
     return nullptr;
@@ -453,7 +453,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
 std::string InferOffline(const SherpaOnnxOfflineRecognizer* recognizer,
                          const std::vector<float>& samples) {
   const SherpaOnnxOfflineStream* stream = SherpaOnnxCreateOfflineStream(recognizer);
-  if (!stream) {
+  if (stream == nullptr) {
     return {};
   }
 
@@ -463,10 +463,10 @@ std::string InferOffline(const SherpaOnnxOfflineRecognizer* recognizer,
 
   const SherpaOnnxOfflineRecognizerResult* result = SherpaOnnxGetOfflineStreamResult(stream);
   std::string text;
-  if (result && result->text) {
+  if (result != nullptr && result->text) {
     text = result->text;
   }
-  if (result) {
+  if (result != nullptr) {
     SherpaOnnxDestroyOfflineRecognizerResult(result);
   }
   SherpaOnnxDestroyOfflineStream(stream);
@@ -517,7 +517,7 @@ public:
 
   bool Finish(std::string* error) override {
     if (finished_) {
-      if (error) {
+      if (error != nullptr) {
         error->clear();
       }
       return true;
@@ -528,18 +528,18 @@ public:
       fprintf(stderr, "vinput: skipping ASR for short audio: %zu samples (%.1f ms)\n",
               samples_.size(), static_cast<double>(samples_.size()) * 1000.0 / 16000.0);
       events_.push_back({RecognitionEventKind::Completed, {}, {}});
-      if (error) {
+      if (error != nullptr) {
         error->clear();
       }
       return true;
     }
 
-    if (vad_available_ && vad_) {
+    if (vad_ != nullptravailable_ && vad_) {
       samples_ = vad_->Trim(samples_, 16000);
       if (samples_.size() < kMinSamplesForInference) {
         fprintf(stderr, "vinput: audio too short after VAD trim, skipping\n");
         events_.push_back({RecognitionEventKind::Completed, {}, {}});
-        if (error) {
+        if (error != nullptr) {
           error->clear();
         }
         return true;
@@ -551,7 +551,7 @@ public:
       events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
     }
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -590,7 +590,7 @@ public:
 
   ~SherpaOfflineBackend() override {
     const std::scoped_lock lock(mutex_);
-    if (recognizer_) {
+    if (recognizer_ != nullptr) {
       SherpaOnnxDestroyOfflineRecognizer(recognizer_);
       recognizer_ = nullptr;
     }
@@ -611,7 +611,7 @@ public:
     if (!InitializeLocked(error)) {
       return nullptr;
     }
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return std::make_unique<SherpaOfflineSession>(recognizer_, vad_.Available(), &vad_);
@@ -619,15 +619,15 @@ public:
 
 private:
   bool InitializeLocked(std::string* error) {
-    if (recognizer_) {
-      if (error) {
+    if (recognizer_ != nullptr) {
+      if (error != nullptr) {
         error->clear();
       }
       return true;
     }
 
     recognizer_ = CreateOfflineRecognizer(model_info_, asr_config_, error);
-    if (!recognizer_) {
+    if (recognizer_ == nullptr) {
       return false;
     }
 
@@ -645,7 +645,7 @@ private:
       }
     }
 
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -668,7 +668,7 @@ std::unique_ptr<AsrBackend> CreateSherpaOfflineBackend(const CoreConfig& config,
                                                        const LocalAsrProvider& provider,
                                                        std::string* error) {
   if (provider.model.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = vinput::str::FmtStr(_("Local ASR model configuration is missing for provider '%s'."),
                                    provider.id);
     }
@@ -678,7 +678,7 @@ std::unique_ptr<AsrBackend> CreateSherpaOfflineBackend(const CoreConfig& config,
   ModelManager model_mgr(ResolveModelBaseDir(config).string(), provider.model);
   std::string model_error;
   if (!model_mgr.EnsureModels(&model_error)) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Local ASR model check failed for provider '" + provider.id + "'";
       if (!model_error.empty()) {
         *error += ": " + model_error;
@@ -699,7 +699,7 @@ std::unique_ptr<AsrBackend> CreateSherpaOfflineBackend(const CoreConfig& config,
   asr_config.vad_min_silence_duration = static_cast<float>(config.asr.vad.minSilenceDuration);
   asr_config.vad_speech_pad_ms = config.asr.vad.speechPadMs;
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return std::make_unique<SherpaOfflineBackend>(model_info, std::move(asr_config), provider.id);

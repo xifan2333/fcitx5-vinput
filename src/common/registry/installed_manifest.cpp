@@ -25,7 +25,7 @@ namespace vinput::registry {
 namespace {
 
 // The manifest keeps `resources` keyed by runtime ids, so its shape is dynamic.
-constexpr auto kManifestWriteOpts = glz::opts{.prettify = true, .indentation_width = 2};
+constexpr auto kManifestWriteOpts = glz::opts{.prettify = uint8_t{1}, .indentation_width = 2};
 
 std::filesystem::path ResolveManifestPath(const std::filesystem::path& path) {
   if (!path.empty()) {

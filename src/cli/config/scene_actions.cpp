@@ -149,7 +149,7 @@ int RunSceneConfigEdit(const std::string& id, const std::string& label, const st
       break;
     }
   }
-  if (!existing) {
+  if (existing == nullptr) {
     fmt.PrintError(vinput::str::FmtStr(_("Scene '%s' not found."), id));
     return 1;
   }

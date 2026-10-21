@@ -42,17 +42,17 @@ bool GetConfigStat(const std::filesystem::path& path, std::filesystem::file_time
   if (ec) {
     return false;
   }
-  if (mtime) {
+  if (mtime != nullptr) {
     *mtime = t;
   }
-  if (size) {
+  if (size != nullptr) {
     *size = s;
   }
   return true;
 }
 
 void MaterializeBuiltinSceneLabels(CoreConfig* config) {
-  if (!config) {
+  if (config == nullptr) {
     return;
   }
   for (auto& scene : config->scenes.definitions) {
@@ -142,12 +142,12 @@ bool InitializeCoreConfig(std::string* error) {
     return false;
   }
   if (!SaveCoreConfig(config)) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Failed to save default config.";
     }
     return false;
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;

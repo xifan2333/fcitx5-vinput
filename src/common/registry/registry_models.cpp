@@ -33,7 +33,7 @@ namespace fs = std::filesystem;
 
 // The registry and the emitted model manifest are keyed by runtime ids, so
 // their shape stays dynamic.
-constexpr auto kManifestWriteOpts = glz::opts{.prettify = true, .indentation_width = 2};
+constexpr auto kManifestWriteOpts = glz::opts{.prettify = uint8_t{1}, .indentation_width = 2};
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -46,21 +46,21 @@ std::vector<RemoteModelEntry> ParseRegistryJson(const std::string& content, std:
 
   glz::json_t root;
   if (const auto ec = glz::read_json(root, content); bool(ec)) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to parse registry JSON: " + glz::format_error(ec, content);
     }
     return entries;
   }
   const auto* items = vinput::json::Find(root, "items");
   if (items == nullptr) {
-    if (error) {
+    if (error != nullptr) {
       *error = "registry JSON is not an object or is missing array field 'items'";
     }
     return entries;
   }
   const auto* item_array = items->get_if<glz::json_t::array_t>();
   if (item_array == nullptr) {
-    if (error) {
+    if (error != nullptr) {
       *error = "registry JSON is missing array field 'items'";
     }
     return entries;
@@ -93,14 +93,14 @@ bool ResolveInstallAssetPath(const fs::path& root, const std::string& raw_path, 
                              std::string* error) {
   const fs::path relative(raw_path);
   if (relative.empty() || relative.is_absolute()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "model asset path must be relative: " + raw_path;
     }
     return false;
   }
   for (const auto& component : relative) {
     if (component == "..") {
-      if (error) {
+      if (error != nullptr) {
         *error = "model asset path escapes install root: " + raw_path;
       }
       return false;
@@ -122,14 +122,14 @@ bool LoadEffectiveModelManifest(const fs::path& model_dir, glz::json_t* manifest
   const std::string content{std::istreambuf_iterator<char>(input),
                             std::istreambuf_iterator<char>()};
   if (const auto parse_ec = glz::read_json(*manifest, content); bool(parse_ec)) {
-    if (error) {
+    if (error != nullptr) {
       *error =
           "failed to parse effective vinput-model.json: " + glz::format_error(parse_ec, content);
     }
     return false;
   }
   if (!manifest->is_object()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "effective vinput-model.json must be a JSON object";
     }
     return false;
@@ -144,7 +144,7 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
   }
   const auto* hotwords_flag = vinput::json::Find(vinput_model, "supports_hotwords");
   if (hotwords_flag != nullptr && !hotwords_flag->is_boolean()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "supports_hotwords must be a boolean";
     }
     return false;
@@ -154,7 +154,7 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
   }
   const auto* family_node = vinput::json::Find(vinput_model, "family");
   if (family_node == nullptr || !family_node->is_string()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "hotword-capable model is missing string field family";
     }
     return false;
@@ -165,7 +165,7 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
   }
   const auto* model_node = vinput::json::Find(vinput_model, "model");
   if (model_node == nullptr || !model_node->is_object()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "hotword-capable transducer is missing object field model";
     }
     return false;
@@ -173,14 +173,14 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
   const auto& model = *model_node;
   const auto* unit_node = vinput::json::Find(model, "modeling_unit");
   if (unit_node == nullptr || !unit_node->is_string()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "hotword-capable transducer requires model.modeling_unit";
     }
     return false;
   }
   const std::string unit = unit_node->get<std::string>();
   if (unit != "cjkchar" && unit != "bpe" && unit != "bbpe" && unit != "cjkchar+bpe") {
-    if (error) {
+    if (error != nullptr) {
       *error = "unsupported hotword modeling_unit: " + unit;
     }
     return false;
@@ -191,7 +191,7 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
 
   const auto* vocab_node = vinput::json::Find(model, "bpe_vocab");
   if (vocab_node == nullptr || !vocab_node->is_string() || vocab_node->get<std::string>().empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "hotword modeling_unit '" + unit + "' requires model.bpe_vocab";
     }
     return false;
@@ -209,7 +209,7 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
   const auto* bpe_model_node = vinput::json::Find(model, "bpe_model");
   if (bpe_model_node == nullptr || !bpe_model_node->is_string() ||
       bpe_model_node->get<std::string>().empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "BPE vocabulary is missing and model.bpe_model is not declared";
     }
     return false;
@@ -220,7 +220,7 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
     return false;
   }
   if (!fs::is_regular_file(bpe_model_path, ec) || ec) {
-    if (error) {
+    if (error != nullptr) {
       *error = "SentencePiece model not found: " + bpe_model_path.string();
     }
     return false;
@@ -237,7 +237,7 @@ std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig* config,
                                                 std::string* resolved_registry_url,
                                                 std::vector<std::string>* warnings) {
   if (registry_urls.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "no registry URLs configured";
     }
     return {};
@@ -252,13 +252,13 @@ std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig* config,
   if (!vinput::registry::FetchRegistryText(config, registry_urls,
                                            vinput::registry::cache::ModelRegistryPath(), options,
                                            &content, &download_result, error, warnings)) {
-    if (resolved_registry_url) {
+    if (resolved_registry_url != nullptr) {
       resolved_registry_url->clear();
     }
     return {};
   }
 
-  if (resolved_registry_url) {
+  if (resolved_registry_url != nullptr) {
     *resolved_registry_url = download_result.resolved_url;
   }
   return ParseRegistryJson(content, error);
@@ -319,7 +319,7 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
       break;
     }
   }
-  if (!found) {
+  if (found == nullptr) {
     if (error != nullptr) {
       *error = "model not found in registry: " + model_id;
     }
@@ -359,7 +359,7 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
       break;
     }
   }
-  if (!found) {
+  if (found == nullptr) {
     if (error != nullptr) {
       *error = "model not found in registry: " + model_id;
     }
@@ -630,7 +630,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
   int r = archive_read_open_filename(a, archive.c_str(), 16384);
   if (r != ARCHIVE_OK) {
-    if (error) {
+    if (error != nullptr) {
       *error = std::string("failed to open archive: ") + archive_error_string(a);
     }
     archive_read_free(a);
@@ -643,7 +643,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
   struct archive_entry* entry;
   while ((r = archive_read_next_header(a, &entry)) == ARCHIVE_OK) {
     const char* raw_path = archive_entry_pathname(entry);
-    if (!raw_path) {
+    if (raw_path == nullptr) {
       continue;
     }
 
@@ -652,7 +652,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
     // Security: reject absolute paths
     if (!entry_path.empty() && entry_path[0] == '/') {
-      if (error) {
+      if (error != nullptr) {
         *error = "archive contains absolute path: " + entry_path;
       }
       success = false;
@@ -670,7 +670,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
         }
       }
       if (has_dotdot) {
-        if (error) {
+        if (error != nullptr) {
           *error = "archive contains path traversal component: " + entry_path;
         }
         success = false;
@@ -680,7 +680,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
     const fs::path full_dest = dest / entry_path;
     if (archive_entry_symlink(entry) != nullptr || archive_entry_hardlink(entry) != nullptr) {
-      if (error) {
+      if (error != nullptr) {
         *error = "archive contains link entry: " + entry_path;
       }
       success = false;
@@ -688,7 +688,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
     }
 
     if (entry_type != AE_IFREG && entry_type != AE_IFDIR) {
-      if (error) {
+      if (error != nullptr) {
         *error = "archive contains unsupported entry type: " + entry_path;
       }
       success = false;
@@ -704,7 +704,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
       check_path = full_dest.parent_path();
     }
     if (create_ec) {
-      if (error) {
+      if (error != nullptr) {
         *error = "failed to prepare extraction path: " + create_ec.message();
       }
       success = false;
@@ -712,7 +712,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
     }
 
     if (!vinput::path::IsPathWithinRoot(fs::weakly_canonical(check_path), dest_root)) {
-      if (error) {
+      if (error != nullptr) {
         *error = "archive entry escapes extraction root: " + entry_path;
       }
       success = false;
@@ -724,7 +724,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
     r = archive_write_header(out, entry);
     if (r != ARCHIVE_OK) {
-      if (error) {
+      if (error != nullptr) {
         *error = std::string("failed to write header: ") + archive_error_string(out);
       }
       success = false;
@@ -738,7 +738,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
       la_int64_t offset;
       while ((r = archive_read_data_block(a, &buff, &size, &offset)) == ARCHIVE_OK) {
         if (archive_write_data_block(out, buff, size, offset) != ARCHIVE_OK) {
-          if (error) {
+          if (error != nullptr) {
             *error = std::string("failed to write data: ") + archive_error_string(out);
           }
           success = false;
@@ -749,7 +749,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
         break;
       }
       if (r != ARCHIVE_EOF) {
-        if (error) {
+        if (error != nullptr) {
           *error = std::string("archive read error: ") + archive_error_string(a);
         }
         success = false;
@@ -761,7 +761,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
   }
 
   if (success && r != ARCHIVE_EOF) {
-    if (error) {
+    if (error != nullptr) {
       *error = std::string("archive iteration error: ") + archive_error_string(a);
     }
     success = false;

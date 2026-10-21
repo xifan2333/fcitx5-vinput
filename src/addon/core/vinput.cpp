@@ -344,7 +344,7 @@ void VinputEngine::reloadSceneConfig() {
 }
 
 void VinputEngine::rememberInputContext(fcitx::InputContext* ic) {
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
   last_active_ic_ = ic;
@@ -355,10 +355,10 @@ VinputEngine::resolveFrontendInputContext(fcitx::InputContext* fallback_ic) cons
   if (session_) {
     return session_->ic;
   }
-  if (status_ic_) {
+  if (status_ic_ != nullptr) {
     return status_ic_;
   }
-  if (fallback_ic) {
+  if (fallback_ic != nullptr) {
     return fallback_ic;
   }
   return last_active_ic_;
@@ -377,7 +377,8 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
   // cache file parseable.
   const glz::json_t entry = {
       {"text", SanitizeUtf8(text)},
-      {"source", SanitizeUtf8(source ? std::string(source) : std::string(kContextSourceUser))},
+      {"source",
+       SanitizeUtf8(source ? std::string(source) : std::string(kContextSourceUser) != nullptr)},
       {"timestamp", static_cast<double>(vinput::time::CurrentUnixTimestampSeconds())},
   };
 

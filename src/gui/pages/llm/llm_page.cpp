@@ -414,7 +414,7 @@ void LlmPage::onLlmAdd() {
 
 void LlmPage::onLlmEdit() {
   auto* item = listProviders_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 
@@ -422,7 +422,7 @@ void LlmPage::onLlmEdit() {
 
   CoreConfig config = ConfigManager::Get().Load();
   const LlmProvider* prov = ResolveLlmProvider(config, provider_name.toStdString());
-  if (!prov) {
+  if (prov == nullptr) {
     return;
   }
 
@@ -492,7 +492,7 @@ void LlmPage::onLlmEdit() {
 
 void LlmPage::onLlmRemove() {
   auto* item = listProviders_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 
@@ -536,14 +536,14 @@ void LlmPage::onLlmRemove() {
 
 void LlmPage::onLlmTest() {
   auto* item = listProviders_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 
   const QString provider_id = item->data(Qt::UserRole).toString();
   const CoreConfig config = ConfigManager::Get().Load();
   const LlmProvider* provider = ResolveLlmProvider(config, provider_id.toStdString());
-  if (!provider) {
+  if (provider == nullptr) {
     QMessageBox::warning(this, tr("Error"), tr("Provider '%1' not found.").arg(provider_id));
     return;
   }
@@ -629,7 +629,7 @@ void LlmPage::onLlmTest() {
 
 void LlmPage::onAdapterEdit() {
   auto* item = listAdapters_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 
@@ -737,7 +737,7 @@ void LlmPage::updateAdapterButtons() {
 
 void LlmPage::onAdapterStart() {
   auto* item = listAdapters_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 
@@ -764,7 +764,7 @@ void LlmPage::onAdapterStart() {
 
 void LlmPage::onAdapterStop() {
   auto* item = listAdapters_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 
@@ -887,7 +887,7 @@ void LlmPage::onSceneAdd() {
 
 void LlmPage::onSceneEdit() {
   auto* item = listScenes_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 
@@ -896,7 +896,7 @@ void LlmPage::onSceneEdit() {
   CoreConfig config = ConfigManager::Get().Load();
   vinput::scene::Config sc = ToSceneConfig(config.scenes);
   const vinput::scene::Definition* found = vinput::scene::Find(sc, scene_id.toStdString());
-  if (!found) {
+  if (found == nullptr) {
     return;
   }
 
@@ -989,7 +989,7 @@ void LlmPage::onSceneEdit() {
 
 void LlmPage::onSceneRemove() {
   auto* item = listScenes_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 
@@ -1022,7 +1022,7 @@ void LlmPage::onSceneRemove() {
 
 void LlmPage::onSceneSetActive() {
   auto* item = listScenes_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     return;
   }
 

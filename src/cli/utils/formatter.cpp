@@ -19,8 +19,8 @@ namespace {
 // are meaningful, and `PrintJson` writes two space indented output while the
 // single value helpers stay compact.
 constexpr auto kPrettyOpts =
-    glz::opts{.skip_null_members = false, .prettify = true, .indentation_width = 2};
-constexpr auto kCompactOpts = glz::opts{.skip_null_members = false};
+    glz::opts{.skip_null_members = uint8_t{0}, .prettify = uint8_t{1}, .indentation_width = 2};
+constexpr auto kCompactOpts = glz::opts{.skip_null_members = uint8_t{0}};
 
 template <auto Opts> std::string WriteJson(const glz::json_t& value) {
   std::string out;

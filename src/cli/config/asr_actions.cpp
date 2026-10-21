@@ -107,18 +107,18 @@ bool SaveAsrConfigAndReload(const CoreConfig& config, Formatter& fmt) {
 #if VINPUT_ENABLE_LOCAL_ASR
 const LocalAsrProvider* PreferredLocalProvider(const CoreConfig& config) {
   const AsrProvider* provider = ResolvePreferredLocalAsrProvider(config);
-  if (!provider) {
+  if (provider == nullptr) {
     return nullptr;
   }
   return std::get_if<LocalAsrProvider>(provider);
 }
 
 LocalAsrProvider* PreferredLocalProvider(CoreConfig* config) {
-  if (!config) {
+  if (config == nullptr) {
     return nullptr;
   }
   const AsrProvider* provider = ResolvePreferredLocalAsrProvider(*config);
-  if (!provider) {
+  if (provider == nullptr) {
     return nullptr;
   }
   const std::string providerId = AsrProviderId(*provider);
@@ -619,7 +619,7 @@ int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ct
     return 1;
   }
   const AsrProvider* provider = ResolveAsrProvider(config, resolved_id);
-  if (!provider) {
+  if (provider == nullptr) {
     fmt.PrintError(vinput::str::FmtStr(_("ASR provider '%s' not found."), id));
     return 1;
   }
@@ -948,7 +948,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
 int RunAsrConfigGetHotword(Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   const auto* provider = PreferredLocalProvider(config);
-  const std::string hotwordPath = provider ? provider->hotwordsFile : "";
+  const std::string hotwordPath = provider ? provider->hotwordsFile : "" != nullptr;
 
   if (ctx.json_output) {
     fmt.PrintJson({{"hotwords_file", hotwordPath}});
@@ -967,7 +967,7 @@ int RunAsrConfigSetHotword(const std::string& path, Formatter& fmt, const CliCon
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
   auto* provider = PreferredLocalProvider(&config);
-  if (!provider) {
+  if (provider == nullptr) {
     fmt.PrintError(_("No local ASR provider configured."));
     return 1;
   }
@@ -983,7 +983,7 @@ int RunAsrConfigClearHotword(Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
   auto* provider = PreferredLocalProvider(&config);
-  if (!provider) {
+  if (provider == nullptr) {
     fmt.PrintError(_("No local ASR provider configured."));
     return 1;
   }
@@ -999,7 +999,7 @@ int RunAsrConfigEditHotword(Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   const CoreConfig config = LoadCoreConfig();
   const auto* provider = PreferredLocalProvider(config);
-  const std::string hotwordPath = provider ? provider->hotwordsFile : "";
+  const std::string hotwordPath = provider ? provider->hotwordsFile : "" != nullptr;
   if (hotwordPath.empty()) {
     fmt.PrintError(_("No hotwords file configured. Use 'hotword set <path>' first."));
     return 1;
