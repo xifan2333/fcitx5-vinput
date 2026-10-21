@@ -126,13 +126,13 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
   const std::string f_rule_fars = info.File("rule_fars");
   const std::string p_language = asr_config.language;
   const std::string p_modeling_unit = JsonString(model_cfg, "modeling_unit", "cjkchar");
-  const std::string cfg_language;
-  const std::string cfg_task;
-  const std::string cfg_src_lang;
-  const std::string cfg_tgt_lang;
-  const std::string cfg_system_prompt;
-  const std::string cfg_user_prompt;
-  const std::string cfg_hotwords;
+  std::string cfg_language;
+  std::string cfg_task;
+  std::string cfg_src_lang;
+  std::string cfg_tgt_lang;
+  std::string cfg_system_prompt;
+  std::string cfg_user_prompt;
+  std::string cfg_hotwords;
   std::string selected_hotwords_file;
   std::string normalized_transducer_hotwords;
   std::string provider_prompt_hotwords;
@@ -424,7 +424,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
 
   auto* recognizer = SherpaOnnxCreateOfflineRecognizer(&config);
   if (!temporary_hotwords_file.empty()) {
-    const std::error_code remove_error;
+    std::error_code remove_error;
     std::filesystem::remove(temporary_hotwords_file, remove_error);
     if (remove_error) {
       fprintf(stderr, "vinput: failed to remove temporary hotwords file: %s\n",
@@ -530,7 +530,7 @@ public:
       return true;
     }
 
-    if (vad_ != nullptravailable_ && vad_) {
+    if (vad_available_ && vad_ != nullptr) {
       samples_ = vad_->Trim(samples_, 16000);
       if (samples_.size() < kMinSamplesForInference) {
         fprintf(stderr, "vinput: audio too short after VAD trim, skipping\n");

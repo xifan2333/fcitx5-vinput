@@ -27,6 +27,7 @@
 
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
+#include "common/utils/interpolation.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
 #include "common/utils/time_utils.h"
@@ -85,7 +86,7 @@ std::vector<char*> BuildEnvp(const std::map<std::string, std::string>& env,
                              std::vector<std::string>* storage) {
   storage->clear();
 
-  for (char** entry != nullptr = environ; entry && *entry; ++entry) {
+  for (char** entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
     storage->push_back(*entry);
   }
 
@@ -661,10 +662,10 @@ private:
   }
 
   bool HandleOutputLine(const std::string& line, std::string* error) {
-    const glz::json_t payload;
+    glz::json_t payload;
     if (const auto ec = glz::read_json(payload, line); bool(ec)) {
       if (error != nullptr) {
-        *error = std::string("invalid streaming provider JSON: ") + glz::format_error(ec);
+        *error = std::string("invalid streaming provider JSON: ") + glz::format_error(ec, line);
       }
       return false;
     }

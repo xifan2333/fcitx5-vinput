@@ -146,7 +146,7 @@ void ensureDaemonServiceInstalled() {
   FCITX_LOG(Info) << "vinput: installed vinput-daemon.service to " << dest;
 
   auto reload_cmd = vinput::sandbox::WrapHostCommand({"systemctl", "--user", "daemon-reload"});
-  const std::string cmd;
+  std::string cmd;
   for (const auto& arg : reload_cmd) {
     if (!cmd.empty()) {
       cmd += ' ';
@@ -327,7 +327,7 @@ void VinputEngine::reloadSceneConfig() {
   scene_config_.scenes = core_config.scenes.definitions;
   active_scene_id_ = scene_config_.activeSceneId;
 
-  const int max_cl = 0;
+  int max_cl = 0;
   for (const auto& s : scene_config_.scenes) {
     if (s.context_lines > max_cl) {
       max_cl = s.context_lines;

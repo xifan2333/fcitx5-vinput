@@ -364,7 +364,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   glz::json_t response;
   if (const auto ec = glz::read_json(response, res.body); bool(ec)) {
     fprintf(stderr, "vinput-daemon: failed to parse LLM response JSON from %s: %s\n", url.c_str(),
-            glz::format_error(ec).c_str());
+            glz::format_error(ec, res.body).c_str());
     return std::nullopt;
   }
 

@@ -340,7 +340,7 @@ bool RecognitionSessionManager::CreatePreparedBackend(const CoreConfig& settings
 
   LogActiveBackend(settings);
   const auto prepare_started_at = std::chrono::steady_clock::now();
-  const std::string create_error;
+  std::string create_error;
   auto backend = std::shared_ptr<AsrBackend>(CreateBackend(settings, &create_error).release());
   if (!backend) {
     if (error != nullptr) {
@@ -487,7 +487,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
     CoreConfig settings;
     std::string signature;
     {
-      const std::unique_lock<std::mutex> lock(state_mutex_);
+      std::unique_lock<std::mutex> lock(state_mutex_);
       reload_cv_.wait(lock, [&]() { return reload_requested_ || !reload_worker_running_; });
       if (!reload_worker_running_) {
         break;

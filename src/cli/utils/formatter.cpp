@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <glaze/core/opts.hpp>
+#include <glaze/core/write.hpp>
 #include <glaze/json/json_t.hpp>
 #include <iostream>
 #include <memory>
