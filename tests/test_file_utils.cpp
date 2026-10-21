@@ -14,7 +14,9 @@
 
 namespace fs = std::filesystem;
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -150,18 +152,17 @@ void TestComputeFileSha256() {
     std::ofstream out(file1, std::ios::binary);
     out << "hello world\n";
   }
-  std::string err;
-  const std::string hash1 = ComputeFileSha256(file1, &err);
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(hash1 == "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447");
+  const auto hash1 = ComputeFileSha256(file1);
+  TEST_ASSERT(hash1.has_value());
+  TEST_ASSERT(*hash1 == "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447");
 
   // 2. Empty file
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
   std::ofstream out_empty(empty_file, std::ios::binary);
   out_empty.close();
-  const std::string hash_empty = ComputeFileSha256(empty_file, &err);
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(hash_empty == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  const auto hash_empty = ComputeFileSha256(empty_file);
+  TEST_ASSERT(hash_empty.has_value());
+  TEST_ASSERT(*hash_empty == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 
   // 3. Multi-chunk file (> 8192 bytes buffer, e.g. 10000 bytes of 'a')
   const fs::path large_file = temp_dir->Path() / "large.txt";
@@ -170,9 +171,9 @@ void TestComputeFileSha256() {
     std::string data(10000, 'a');
     out.write(data.data(), static_cast<std::streamsize>(data.size()));
   }
-  const std::string hash_large = ComputeFileSha256(large_file, &err);
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(hash_large == "27dd1f61b867b6a0f6e9d8a41c43231de52107e53ae424de8f847b821db4b711");
+  const auto hash_large = ComputeFileSha256(large_file);
+  TEST_ASSERT(hash_large.has_value());
+  TEST_ASSERT(*hash_large == "27dd1f61b867b6a0f6e9d8a41c43231de52107e53ae424de8f847b821db4b711");
 
   // 4. Large file (1MB of 'A')
   const fs::path one_mb_file = temp_dir->Path() / "1mb.txt";
@@ -181,34 +182,28 @@ void TestComputeFileSha256() {
     std::string data(1048576, 'A');
     out.write(data.data(), static_cast<std::streamsize>(data.size()));
   }
-  const std::string hash_1mb = ComputeFileSha256(one_mb_file, &err);
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(hash_1mb == "4e29ad18ab9f42d7c233500771a39d7c852b200baf328fd00fbbe3fecea1eb56");
+  const auto hash_1mb = ComputeFileSha256(one_mb_file);
+  TEST_ASSERT(hash_1mb.has_value());
+  TEST_ASSERT(*hash_1mb == "4e29ad18ab9f42d7c233500771a39d7c852b200baf328fd00fbbe3fecea1eb56");
 
   // 5. Non-existent file
   const fs::path missing_file = temp_dir->Path() / "missing.txt";
-  const std::string hash_missing = ComputeFileSha256(missing_file, &err);
-  TEST_ASSERT(hash_missing.empty());
-  TEST_ASSERT(!err.empty());
+  const auto hash_missing = ComputeFileSha256(missing_file);
+  TEST_ASSERT(!hash_missing.has_value());
+  TEST_ASSERT(!hash_missing.error().empty());
 
   // 6. Directory path error handling
-  err.clear();
-  const std::string hash_dir = ComputeFileSha256(temp_dir->Path(), &err);
-  TEST_ASSERT(hash_dir.empty());
-  TEST_ASSERT(!err.empty());
+  const auto hash_dir = ComputeFileSha256(temp_dir->Path());
+  TEST_ASSERT(!hash_dir.has_value());
+  TEST_ASSERT(!hash_dir.error().empty());
 
   // 7. Virtual pseudo-file with size 0 but dynamic content (e.g. /proc/version)
   if (fs::exists("/proc/version")) {
-    err.clear();
-    const std::string hash_proc = ComputeFileSha256("/proc/version", &err);
-    TEST_ASSERT(err.empty());
-    TEST_ASSERT(!hash_proc.empty());
-    TEST_ASSERT(hash_proc != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    const auto hash_proc = ComputeFileSha256("/proc/version");
+    TEST_ASSERT(hash_proc.has_value());
+    TEST_ASSERT(!hash_proc->empty());
+    TEST_ASSERT(*hash_proc != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   }
-
-  // 8. Nullptr error pointer
-  const std::string hash_null_err = ComputeFileSha256(missing_file, nullptr);
-  TEST_ASSERT(hash_null_err.empty());
 }
 
 void TestReadOnlyFileMapping() {
@@ -226,9 +221,9 @@ void TestReadOnlyFileMapping() {
     std::ofstream out(sample_file, std::ios::binary);
     out << sample_data;
   }
-  std::string err;
-  auto mapping = ReadOnlyFileMapping::Map(sample_file, &err);
-  TEST_ASSERT(err.empty());
+  auto mapping_res = ReadOnlyFileMapping::Map(sample_file);
+  TEST_ASSERT(mapping_res.has_value());
+  auto mapping = std::move(*mapping_res);
   TEST_ASSERT(mapping.IsValid());
   TEST_ASSERT(!mapping.IsEmpty());
   TEST_ASSERT(mapping.Size() == sample_data.size());
@@ -242,10 +237,10 @@ void TestReadOnlyFileMapping() {
   TEST_ASSERT(slice == "vinput");
 
   // 2. MapFileReadOnly convenience helper
-  auto mapped_convenience = MapFileReadOnly(sample_file, &err);
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(mapped_convenience.IsValid());
-  TEST_ASSERT(mapped_convenience.StringView() == sample_data);
+  auto mapped_convenience = MapFileReadOnly(sample_file);
+  TEST_ASSERT(mapped_convenience.has_value());
+  TEST_ASSERT(mapped_convenience->IsValid());
+  TEST_ASSERT(mapped_convenience->StringView() == sample_data);
 
   // 3. Move construction and assignment
   ReadOnlyFileMapping moved = std::move(mapping);
@@ -262,16 +257,16 @@ void TestReadOnlyFileMapping() {
   // 4. Empty file mapping (0 bytes)
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
   std::ofstream(empty_file, std::ios::binary).close();
-  auto mapping_empty = ReadOnlyFileMapping::Map(empty_file, &err);
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(mapping_empty.IsValid());
-  TEST_ASSERT(mapping_empty.IsEmpty());
-  TEST_ASSERT(mapping_empty.Size() == 0);
-  TEST_ASSERT(mapping_empty.StringView().empty());
-  TEST_ASSERT(mapping_empty.View().empty());
+  auto mapping_empty = ReadOnlyFileMapping::Map(empty_file);
+  TEST_ASSERT(mapping_empty.has_value());
+  TEST_ASSERT(mapping_empty->IsValid());
+  TEST_ASSERT(mapping_empty->IsEmpty());
+  TEST_ASSERT(mapping_empty->Size() == 0);
+  TEST_ASSERT(mapping_empty->StringView().empty());
+  TEST_ASSERT(mapping_empty->View().empty());
 
   // Test moving empty mapping resets validity in moved-from instance
-  auto empty_source = std::make_unique<ReadOnlyFileMapping>(std::move(mapping_empty));
+  auto empty_source = std::make_unique<ReadOnlyFileMapping>(std::move(*mapping_empty));
   ReadOnlyFileMapping moved_empty = std::move(*empty_source);
   TEST_ASSERT(moved_empty.IsValid());
   TEST_ASSERT(!empty_source->IsValid());
@@ -284,29 +279,21 @@ void TestReadOnlyFileMapping() {
 
   // 5. Non-existent file mapping
   const fs::path missing_file = temp_dir->Path() / "missing.txt";
-  auto mapping_missing = ReadOnlyFileMapping::Map(missing_file, &err);
-  TEST_ASSERT(!mapping_missing.IsValid());
-  TEST_ASSERT(mapping_missing.IsEmpty());
-  TEST_ASSERT(mapping_missing.StringView().empty());
-  TEST_ASSERT(!err.empty());
+  auto mapping_missing = ReadOnlyFileMapping::Map(missing_file);
+  TEST_ASSERT(!mapping_missing.has_value());
+  TEST_ASSERT(!mapping_missing.error().empty());
 
   // 6. Directory mapping failure
-  err.clear();
-  auto mapping_dir = ReadOnlyFileMapping::Map(temp_dir->Path(), &err);
-  TEST_ASSERT(!mapping_dir.IsValid());
-  TEST_ASSERT(!err.empty());
+  auto mapping_dir = ReadOnlyFileMapping::Map(temp_dir->Path());
+  TEST_ASSERT(!mapping_dir.has_value());
+  TEST_ASSERT(!mapping_dir.error().empty());
 
   // 7. Virtual pseudo-file mapping rejection
   if (fs::exists("/proc/version")) {
-    err.clear();
-    auto mapping_proc = ReadOnlyFileMapping::Map("/proc/version", &err);
-    TEST_ASSERT(!mapping_proc.IsValid());
-    TEST_ASSERT(!err.empty());
+    auto mapping_proc = ReadOnlyFileMapping::Map("/proc/version");
+    TEST_ASSERT(!mapping_proc.has_value());
+    TEST_ASSERT(!mapping_proc.error().empty());
   }
-
-  // 8. Nullptr error pointer
-  auto mapping_null_err = ReadOnlyFileMapping::Map(missing_file, nullptr);
-  TEST_ASSERT(!mapping_null_err.IsValid());
 }
 
 void TestReadTextFile() {
@@ -323,32 +310,27 @@ void TestReadTextFile() {
   }
 
   // 1. Unlimited read (max_bytes = 0)
-  std::string content;
-  std::string err;
-  TEST_ASSERT(ReadTextFile(test_file, &content, &err, 0));
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(content == "hello world");
+  auto r1 = ReadTextFile(test_file, 0);
+  TEST_ASSERT(r1.has_value());
+  TEST_ASSERT(*r1 == "hello world");
 
   // 2. Defensive truncated read (max_bytes = 5)
-  content.clear();
-  TEST_ASSERT(ReadTextFile(test_file, &content, &err, 5));
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(content == "hello");
+  auto r2 = ReadTextFile(test_file, 5);
+  TEST_ASSERT(r2.has_value());
+  TEST_ASSERT(*r2 == "hello");
 
   // 3. Max bytes exceeds file size (max_bytes = 100)
-  content.clear();
-  TEST_ASSERT(ReadTextFile(test_file, &content, &err, 100));
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(content == "hello world");
+  auto r3 = ReadTextFile(test_file, 100);
+  TEST_ASSERT(r3.has_value());
+  TEST_ASSERT(*r3 == "hello world");
 
   // 4. Empty file with max_bytes limit
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
   std::ofstream out_empty(empty_file, std::ios::binary);
   out_empty.close();
-  content.clear();
-  TEST_ASSERT(ReadTextFile(empty_file, &content, &err, 10));
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(content.empty());
+  auto r4 = ReadTextFile(empty_file, 10);
+  TEST_ASSERT(r4.has_value());
+  TEST_ASSERT(r4->empty());
 
   // 5. Multi-chunk read with max_bytes limit (12000 of 20000 bytes)
   const fs::path large_file = temp_dir->Path() / "large.txt";
@@ -357,21 +339,16 @@ void TestReadTextFile() {
     std::string data(20000, 'x');
     out.write(data.data(), static_cast<std::streamsize>(data.size()));
   }
-  content.clear();
-  TEST_ASSERT(ReadTextFile(large_file, &content, &err, 12000));
-  TEST_ASSERT(err.empty());
-  TEST_ASSERT(content.size() == 12000);
-  TEST_ASSERT(content == std::string(12000, 'x'));
+  auto r5 = ReadTextFile(large_file, 12000);
+  TEST_ASSERT(r5.has_value());
+  TEST_ASSERT(r5->size() == 12000);
+  TEST_ASSERT(*r5 == std::string(12000, 'x'));
 
   // 6. Non-existent file
   const fs::path missing_file = temp_dir->Path() / "missing.txt";
-  content.clear();
-  TEST_ASSERT(!ReadTextFile(missing_file, &content, &err));
-  TEST_ASSERT(!err.empty());
-
-  // 7. Null content buffer
-  TEST_ASSERT(!ReadTextFile(test_file, nullptr, &err));
-  TEST_ASSERT(err == "ReadTextFile requires a destination buffer.");
+  auto r6 = ReadTextFile(missing_file);
+  TEST_ASSERT(!r6.has_value());
+  TEST_ASSERT(!r6.error().empty());
 }
 
 void TestAtomicWriteTextFile() {
@@ -384,75 +361,66 @@ void TestAtomicWriteTextFile() {
 
   // 1. Basic write and read back
   const fs::path file1 = temp_dir->Path() / "atomic.txt";
-  std::string err = "initial";
-  TEST_ASSERT(AtomicWriteTextFile(file1, "hello atomic world", &err));
-  TEST_ASSERT(err.empty());
-  std::string read_back;
-  TEST_ASSERT(ReadTextFile(file1, &read_back, &err));
-  TEST_ASSERT(read_back == "hello atomic world");
+  TEST_ASSERT(AtomicWriteTextFile(file1, "hello atomic world").has_value());
+  auto read1 = ReadTextFile(file1);
+  TEST_ASSERT(read1.has_value());
+  TEST_ASSERT(*read1 == "hello atomic world");
 
   // 2. Overwrite existing file
-  TEST_ASSERT(AtomicWriteTextFile(file1, "updated content", &err));
-  TEST_ASSERT(err.empty());
-  read_back.clear();
-  TEST_ASSERT(ReadTextFile(file1, &read_back, &err));
-  TEST_ASSERT(read_back == "updated content");
+  TEST_ASSERT(AtomicWriteTextFile(file1, "updated content").has_value());
+  auto read2 = ReadTextFile(file1);
+  TEST_ASSERT(read2.has_value());
+  TEST_ASSERT(*read2 == "updated content");
 
   // Verify permissions preserved on overwrite
   const fs::path perm_file = temp_dir->Path() / "perm.txt";
-  TEST_ASSERT(AtomicWriteTextFile(perm_file, "initial", &err));
+  TEST_ASSERT(AtomicWriteTextFile(perm_file, "initial").has_value());
   fs::permissions(perm_file, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read,
                   fs::perm_options::replace);
   const auto original_perms = fs::status(perm_file).permissions();
-  TEST_ASSERT(AtomicWriteTextFile(perm_file, "updated with perm", &err));
+  TEST_ASSERT(AtomicWriteTextFile(perm_file, "updated with perm").has_value());
   const auto updated_perms = fs::status(perm_file).permissions();
   TEST_ASSERT(updated_perms == original_perms);
 
   // 3. Empty content write
   const fs::path empty_file = temp_dir->Path() / "empty.txt";
-  TEST_ASSERT(AtomicWriteTextFile(empty_file, "", &err));
-  TEST_ASSERT(err.empty());
-  read_back.clear();
-  TEST_ASSERT(ReadTextFile(empty_file, &read_back, &err));
-  TEST_ASSERT(read_back.empty());
+  TEST_ASSERT(AtomicWriteTextFile(empty_file, "").has_value());
+  auto read_empty = ReadTextFile(empty_file);
+  TEST_ASSERT(read_empty.has_value());
+  TEST_ASSERT(read_empty->empty());
   TEST_ASSERT(fs::file_size(empty_file) == 0);
 
   // 4. Auto-create nested parent directories
   const fs::path nested_file = temp_dir->Path() / "nested" / "sub" / "deep" / "doc.txt";
   TEST_ASSERT(!fs::exists(nested_file.parent_path()));
-  TEST_ASSERT(AtomicWriteTextFile(nested_file, "nested data", &err));
-  TEST_ASSERT(err.empty());
-  read_back.clear();
-  TEST_ASSERT(ReadTextFile(nested_file, &read_back, &err));
-  TEST_ASSERT(read_back == "nested data");
+  TEST_ASSERT(AtomicWriteTextFile(nested_file, "nested data").has_value());
+  auto read_nested = ReadTextFile(nested_file);
+  TEST_ASSERT(read_nested.has_value());
+  TEST_ASSERT(*read_nested == "nested data");
 
   // 5. Large content write (buffer loop)
   const fs::path large_file = temp_dir->Path() / "large.txt";
   const std::string large_data(100000, 'Z');
-  TEST_ASSERT(AtomicWriteTextFile(large_file, large_data, &err));
-  TEST_ASSERT(err.empty());
-  read_back.clear();
-  TEST_ASSERT(ReadTextFile(large_file, &read_back, &err));
-  TEST_ASSERT(read_back.size() == 100000);
-  TEST_ASSERT(read_back == large_data);
+  TEST_ASSERT(AtomicWriteTextFile(large_file, large_data).has_value());
+  auto read_large = ReadTextFile(large_file);
+  TEST_ASSERT(read_large.has_value());
+  TEST_ASSERT(read_large->size() == 100000);
+  TEST_ASSERT(*read_large == large_data);
 
   // 6. Symlink handling: write through symlink to existing file
   const fs::path real_file = temp_dir->Path() / "real.txt";
-  TEST_ASSERT(AtomicWriteTextFile(real_file, "original real", &err));
+  TEST_ASSERT(AtomicWriteTextFile(real_file, "original real").has_value());
   const fs::path symlink_file = temp_dir->Path() / "symlink.txt";
   std::error_code ec;
   fs::create_symlink(real_file, symlink_file, ec);
   TEST_ASSERT(!ec);
   TEST_ASSERT(fs::is_symlink(symlink_file));
 
-  TEST_ASSERT(AtomicWriteTextFile(symlink_file, "modified via symlink", &err));
-  TEST_ASSERT(err.empty());
-  // The symlink must still be a symlink
+  TEST_ASSERT(AtomicWriteTextFile(symlink_file, "modified via symlink").has_value());
   TEST_ASSERT(fs::is_symlink(symlink_file));
-  // The content of the real target must be updated
-  read_back.clear();
-  TEST_ASSERT(ReadTextFile(real_file, &read_back, &err));
-  TEST_ASSERT(read_back == "modified via symlink");
+  auto read_real = ReadTextFile(real_file);
+  TEST_ASSERT(read_real.has_value());
+  TEST_ASSERT(*read_real == "modified via symlink");
 
   // 7. Symlink handling: write through dangling symlink
   const fs::path dangling_target = temp_dir->Path() / "dangling_target.txt";
@@ -462,25 +430,20 @@ void TestAtomicWriteTextFile() {
   TEST_ASSERT(fs::is_symlink(dangling_symlink));
   TEST_ASSERT(!fs::exists(dangling_target));
 
-  TEST_ASSERT(AtomicWriteTextFile(dangling_symlink, "created target", &err));
-  TEST_ASSERT(err.empty());
+  TEST_ASSERT(AtomicWriteTextFile(dangling_symlink, "created target").has_value());
   TEST_ASSERT(fs::is_symlink(dangling_symlink));
   TEST_ASSERT(fs::exists(dangling_target));
-  read_back.clear();
-  TEST_ASSERT(ReadTextFile(dangling_target, &read_back, &err));
-  TEST_ASSERT(read_back == "created target");
+  auto read_dangling = ReadTextFile(dangling_target);
+  TEST_ASSERT(read_dangling.has_value());
+  TEST_ASSERT(*read_dangling == "created target");
 
   // 8. Error handling: invalid directory component (parent is a regular file)
   const fs::path blocker_file = temp_dir->Path() / "blocker";
-  TEST_ASSERT(AtomicWriteTextFile(blocker_file, "blocking file", &err));
+  TEST_ASSERT(AtomicWriteTextFile(blocker_file, "blocking file").has_value());
   const fs::path impossible_file = blocker_file / "child.txt";
-  err.clear();
-  TEST_ASSERT(!AtomicWriteTextFile(impossible_file, "should fail", &err));
-  TEST_ASSERT(!err.empty());
-
-  // 9. Nullptr error pointer on success and failure
-  TEST_ASSERT(AtomicWriteTextFile(file1, "null err success", nullptr));
-  TEST_ASSERT(!AtomicWriteTextFile(impossible_file, "null err failure", nullptr));
+  auto write_imp = AtomicWriteTextFile(impossible_file, "should fail");
+  TEST_ASSERT(!write_imp.has_value());
+  TEST_ASSERT(!write_imp.error().empty());
 }
 
 void TestIsDirectoryWritable() {
@@ -524,6 +487,8 @@ void TestFormatFileSize() {
   TEST_ASSERT(FormatFileSize(1048576ULL * 2) == "2.0 MB");
   TEST_ASSERT(FormatFileSize(1024ULL * 1024 * 1024 * 3) == "3.0 GB");
 }
+
+} // namespace
 
 int main() {
   TestIsPathWithinRoot();

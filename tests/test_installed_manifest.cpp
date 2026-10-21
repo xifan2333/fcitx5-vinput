@@ -74,12 +74,11 @@ void TestComputeFileSha256() {
     out << "hello world\n";
   }
 
-  std::string err;
-  const std::string hex = vinput::file::ComputeFileSha256(tmp_file, &err);
-  ExpectTrue(err.empty());
+  const auto hex = vinput::file::ComputeFileSha256(tmp_file);
+  ExpectTrue(hex.has_value());
   // printf "hello world\n" | sha256sum ->
   // a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447
-  ExpectEq(hex, "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447");
+  ExpectEq(*hex, "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447");
 
   std::error_code ec;
   std::filesystem::remove(tmp_file, ec);

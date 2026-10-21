@@ -76,8 +76,7 @@ void TestEmptyAndNonexistentFiles() {
 
   // Empty regular file
   const auto empty_file = temp_dir->Path() / "empty.txt";
-  std::string write_err;
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(empty_file, "", &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(empty_file, "").has_value());
 
   TEST_ASSERT(LoadTransducerHotwords(empty_file.string(), &hotwords, &error));
   TEST_ASSERT(hotwords.empty());
@@ -96,9 +95,8 @@ void TestValidHotwordsParsing() {
 
   // Simple hotwords without weights
   const auto simple_file = temp_dir->Path() / "simple.txt";
-  std::string write_err;
   TEST_ASSERT(
-      vinput::file::AtomicWriteTextFile(simple_file, "apple\nbanana\ncherry\n", &write_err));
+      vinput::file::AtomicWriteTextFile(simple_file, "apple\nbanana\ncherry\n").has_value());
 
   std::string hotwords;
   std::string error;
@@ -113,7 +111,7 @@ void TestValidHotwordsParsing() {
   // Weighted hotwords with float scores (including hex floats)
   const auto weighted_file = temp_dir->Path() / "weighted.txt";
   const std::string content = "alpha:2.5\nbeta:+10.0\ngamma:-1.5\ndelta:0\nhex:0x1p+2\n";
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(weighted_file, content, &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(weighted_file, content).has_value());
 
   TEST_ASSERT(LoadTransducerHotwords(weighted_file.string(), &hotwords, &error));
   TEST_ASSERT(hotwords == "alpha :2.5\nbeta :+10.0\ngamma :-1.5\ndelta :0\nhex :0x1p+2\n");
@@ -132,7 +130,7 @@ void TestValidHotwordsParsing() {
                                     "\n"
                                     "gamma:3.0\n"
                                     "   \n";
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(mixed_file, mixed_content, &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(mixed_file, mixed_content).has_value());
 
   TEST_ASSERT(LoadTransducerHotwords(mixed_file.string(), &hotwords, &error));
   TEST_ASSERT(hotwords == "alpha :2.5\nbeta\ngamma :3.0\n");
@@ -143,7 +141,7 @@ void TestValidHotwordsParsing() {
   // UTF-8 / CJK phrases
   const auto cjk_file = temp_dir->Path() / "cjk.txt";
   const std::string cjk_content = "语音输入:5.0\n开源项目:2.0\n自然语言\n";
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(cjk_file, cjk_content, &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(cjk_file, cjk_content).has_value());
 
   TEST_ASSERT(LoadTransducerHotwords(cjk_file.string(), &hotwords, &error));
   TEST_ASSERT(hotwords == "语音输入 :5.0\n开源项目 :2.0\n自然语言\n");
@@ -162,7 +160,7 @@ void TestColonHandling() {
   const auto literal_file = temp_dir->Path() / "literal.txt";
   const std::string literal_content = "https://example.com/api\nstd::vector\nprefix:suffix\n";
   std::string write_err;
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(literal_file, literal_content, &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(literal_file, literal_content).has_value());
 
   std::string hotwords;
   std::string error;
@@ -174,28 +172,28 @@ void TestColonHandling() {
 
   // Invalid: space before colon ("word :2.5")
   const auto space_before_file = temp_dir->Path() / "space_before.txt";
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(space_before_file, "word :2.5\n", &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(space_before_file, "word :2.5\n").has_value());
   TEST_ASSERT(!LoadTransducerHotwords(space_before_file.string(), &hotwords, &error));
   TEST_ASSERT(error.find("invalid hotword score; use 'word:3.5' without spaces") !=
               std::string::npos);
 
   // Invalid: space after colon ("word: 2.5")
   const auto space_after_file = temp_dir->Path() / "space_after.txt";
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(space_after_file, "word: 2.5\n", &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(space_after_file, "word: 2.5\n").has_value());
   TEST_ASSERT(!LoadTransducerHotwords(space_after_file.string(), &hotwords, &error));
   TEST_ASSERT(error.find("invalid hotword score; use 'word:3.5' without spaces") !=
               std::string::npos);
 
   // Invalid: trailing colon with no score ("word:")
   const auto trailing_colon_file = temp_dir->Path() / "trailing_colon.txt";
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(trailing_colon_file, "word:\n", &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(trailing_colon_file, "word:\n").has_value());
   TEST_ASSERT(!LoadTransducerHotwords(trailing_colon_file.string(), &hotwords, &error));
   TEST_ASSERT(error.find("invalid hotword score; use 'word:3.5' without spaces") !=
               std::string::npos);
 
   // Invalid: score with no word (":2.5")
   const auto no_word_file = temp_dir->Path() / "no_word.txt";
-  TEST_ASSERT(vinput::file::AtomicWriteTextFile(no_word_file, ":2.5\n", &write_err));
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(no_word_file, ":2.5\n").has_value());
   TEST_ASSERT(!LoadTransducerHotwords(no_word_file.string(), &hotwords, &error));
   TEST_ASSERT(error.find("hotword score has no preceding word or phrase") != std::string::npos);
 }
@@ -208,8 +206,7 @@ void TestInvalidScores() {
 
   auto check_invalid = [&](const std::string& line) {
     const auto test_file = temp_dir->Path() / "invalid_score.txt";
-    std::string write_err;
-    TEST_ASSERT(vinput::file::AtomicWriteTextFile(test_file, line + "\n", &write_err));
+    TEST_ASSERT(vinput::file::AtomicWriteTextFile(test_file, line + "\n").has_value());
     std::string hotwords;
     std::string error;
     TEST_ASSERT(!LoadTransducerHotwords(test_file.string(), &hotwords, &error));
@@ -350,9 +347,8 @@ void TestValidateTransducerHotwordAssets() {
 
   // BPE unit with valid bpe_vocab file
   const auto vocab_file = temp_dir->Path() / "bpe.vocab";
-  std::string write_err;
   TEST_ASSERT(
-      vinput::file::AtomicWriteTextFile(vocab_file, "hello\t-1.0\nworld\t-2.0\n", &write_err));
+      vinput::file::AtomicWriteTextFile(vocab_file, "hello\t-1.0\nworld\t-2.0\n").has_value());
   info.files["bpe_vocab"] = vocab_file.string();
   error.clear();
   TEST_ASSERT(ValidateTransducerHotwordAssets(info, &error));

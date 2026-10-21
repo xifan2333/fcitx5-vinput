@@ -38,12 +38,11 @@ void TestFastPath() {
   glz::json_t valid_cfg = glz::json_t(glz::json_t::object_t{});
   valid_cfg["version"] = ">=2.4.0";
   valid_cfg["asr"]["vad"]["threshold"] = 0.35;
-  std::string err;
-  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(valid_cfg), &err),
-             err);
+  ExpectTrue(
+      vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(valid_cfg)).has_value());
 
   const std::string valid_conf = "[Trigger]\nMenuKey=Alt_R\n";
-  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, valid_conf, &err), err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, valid_conf).has_value());
 
   const auto report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
   ExpectTrue(report.error.empty(), report.error);
@@ -100,9 +99,8 @@ void TestDryRunAndApply() {
   const std::string legacy_conf_str =
       "[Trigger]\nSceneMenuKey=Alt+Shift+V\nAsrMenuKey=Control+Shift+V\nHoldActivationDelay=200\n";
 
-  std::string err;
-  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, legacy_config_str, &err), err);
-  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, legacy_conf_str, &err), err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, legacy_config_str).has_value());
+  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, legacy_conf_str).has_value());
 
   // 1. Dry run
   const auto dry_report = vinput::migration::RunConfigMigration(true, config_path, conf_path);
@@ -112,8 +110,9 @@ void TestDryRunAndApply() {
   ExpectTrue(dry_report.changes.size() >= 6, "Dry-run should contain at least 6 changes");
 
   // Verify files were NOT modified on disk during dry-run
-  std::string read_back;
-  ExpectTrue(vinput::file::ReadTextFile(config_path, &read_back, &err), err);
+  auto r_back = vinput::file::ReadTextFile(config_path);
+  ExpectTrue(r_back.has_value(), r_back ? "" : r_back.error());
+  std::string read_back = *r_back;
   glz::json_t unchanged_cfg;
   ExpectTrue(!bool(glz::read_json(unchanged_cfg, read_back)), "dry-run config stays valid JSON");
   const auto* definitions = vinput::json::Find(unchanged_cfg["scenes"], "definitions");
@@ -131,8 +130,9 @@ void TestDryRunAndApply() {
   ExpectTrue(std::filesystem::exists(apply_report.conf_backup), "Conf backup should exist");
 
   // 3. Verify in-place modified content
-  std::string migrated_config_str;
-  ExpectTrue(vinput::file::ReadTextFile(config_path, &migrated_config_str, &err), err);
+  auto r_cfg = vinput::file::ReadTextFile(config_path);
+  ExpectTrue(r_cfg.has_value(), r_cfg ? "" : r_cfg.error());
+  std::string migrated_config_str = *r_cfg;
   glz::json_t migrated_cfg;
   ExpectTrue(!bool(glz::read_json(migrated_cfg, migrated_config_str)),
              "migrated config is valid JSON");
@@ -165,7 +165,9 @@ void TestDryRunAndApply() {
            "version stamped with >=2.4.0");
 
   std::string migrated_conf_str;
-  ExpectTrue(vinput::file::ReadTextFile(conf_path, &migrated_conf_str, &err), err);
+  auto r_conf = vinput::file::ReadTextFile(conf_path);
+  ExpectTrue(r_conf.has_value(), r_conf ? "" : r_conf.error());
+  migrated_conf_str = *r_conf;
   ExpectTrue(migrated_conf_str.find("MenuKey=Alt+Shift+V") != std::string::npos, "MenuKey updated");
   ExpectTrue(migrated_conf_str.find("SceneMenuKey") == std::string::npos, "SceneMenuKey removed");
   ExpectTrue(migrated_conf_str.find("AsrMenuKey") == std::string::npos, "AsrMenuKey removed");
@@ -194,8 +196,7 @@ void TestSymlinkPreservation() {
 
   const auto real_config = real_dir / "config.json";
   const std::string legacy_cfg = R"({"version": 1, "llm": {"adaptors": [{"id": "foo"}]}})";
-  std::string err;
-  ExpectTrue(vinput::file::AtomicWriteTextFile(real_config, legacy_cfg, &err), err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(real_config, legacy_cfg).has_value());
 
   const auto sym_config = sym_dir / "config.json";
   std::filesystem::create_symlink(real_config, sym_config);
@@ -217,8 +218,9 @@ void TestSymlinkPreservation() {
   ExpectTrue(std::filesystem::is_directory(real_dir / "backups"),
              "Backup directory should be under real target");
 
-  std::string updated_raw;
-  ExpectTrue(vinput::file::ReadTextFile(real_config, &updated_raw, &err), err);
+  auto r_updated = vinput::file::ReadTextFile(real_config);
+  ExpectTrue(r_updated.has_value(), r_updated ? "" : r_updated.error());
+  std::string updated_raw = *r_updated;
   glz::json_t updated;
   ExpectTrue(!bool(glz::read_json(updated, updated_raw)), "symlink target is valid JSON");
   ExpectTrue(updated["llm"].contains("adapters") && !updated["llm"].contains("adaptors"),
@@ -256,13 +258,12 @@ void TestVersionConstraintAndCustomizationPreserved() {
           {"min_silence_duration", 1.2},
           {"speech_pad_ms", 500}}}}},
   };
-  std::string err;
-  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(cfg) + "\n", &err),
-             err);
+  ExpectTrue(
+      vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(cfg) + "\n").has_value());
 
   // vinput.conf has obsolete HoldActivationDelay
   const std::string initial_conf = "TriggerKey=Alt_R\nHoldActivationDelay=200\n";
-  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, initial_conf, &err), err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, initial_conf).has_value());
 
   const auto report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
   ExpectTrue(report.error.empty(), report.error);
@@ -270,16 +271,18 @@ void TestVersionConstraintAndCustomizationPreserved() {
   ExpectTrue(report.applied, "Migration should be applied");
 
   // config.json threshold 0.45 must NOT be overwritten by migration rules
-  std::string read_cfg_str;
-  ExpectTrue(vinput::file::ReadTextFile(config_path, &read_cfg_str, &err), err);
+  auto r_cfg2 = vinput::file::ReadTextFile(config_path);
+  ExpectTrue(r_cfg2.has_value(), r_cfg2 ? "" : r_cfg2.error());
+  std::string read_cfg_str = *r_cfg2;
   glz::json_t migrated_cfg;
   ExpectTrue(!bool(glz::read_json(migrated_cfg, read_cfg_str)), "config stays valid JSON");
   ExpectTrue(std::abs(vinput::json::Number(migrated_cfg["asr"]["vad"], "threshold") - 0.45) < 1e-4,
              "Custom threshold 0.45 must be preserved");
 
   // vinput.conf must have HoldActivationDelay removed
-  std::string read_conf_str;
-  ExpectTrue(vinput::file::ReadTextFile(conf_path, &read_conf_str, &err), err);
+  auto r_conf2 = vinput::file::ReadTextFile(conf_path);
+  ExpectTrue(r_conf2.has_value(), r_conf2 ? "" : r_conf2.error());
+  std::string read_conf_str = *r_conf2;
   ExpectTrue(read_conf_str.find("HoldActivationDelay") == std::string::npos,
              "HoldActivationDelay must be removed from vinput.conf");
 
@@ -298,10 +301,8 @@ void TestUndefinedFieldsAndIntegrityPreserved() {
   const glz::json_t valid_cfg = {
       {"version", ">=2.4.0"},
   };
-  std::string err;
-  ExpectTrue(
-      vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(valid_cfg) + "\n", &err),
-      err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(valid_cfg) + "\n")
+                 .has_value());
 
   const std::string conf_with_custom = "[Trigger]\n"
                                        "TriggerKey=Alt_R\n"
@@ -312,15 +313,16 @@ void TestUndefinedFieldsAndIntegrityPreserved() {
                                        "[CustomSection]\n"
                                        "CustomKey=CustomVal\n"
                                        "AnotherKey=AnotherVal\n";
-  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, conf_with_custom, &err), err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, conf_with_custom).has_value());
 
   const auto report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
   ExpectTrue(report.error.empty(), report.error);
   ExpectTrue(report.needed, "Migration should be needed");
   ExpectTrue(report.applied, "Migration should be applied");
 
-  std::string read_conf_str;
-  ExpectTrue(vinput::file::ReadTextFile(conf_path, &read_conf_str, &err), err);
+  auto r_conf3 = vinput::file::ReadTextFile(conf_path);
+  ExpectTrue(r_conf3.has_value(), r_conf3 ? "" : r_conf3.error());
+  std::string read_conf_str = *r_conf3;
 
   // Replaced / removed keys
   ExpectTrue(read_conf_str.find("MenuKey=Alt+Shift+V") != std::string::npos,
