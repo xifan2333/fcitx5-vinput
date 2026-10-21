@@ -71,6 +71,18 @@ This file lists third-party software that this project depends on or bundles, an
    - Upstream: https://github.com/stephenberry/glaze
    - Version: v2.9.5 (commit 7c298ef6c403c505cf6291b686e32d943f1fb102, imported 2026-10-21, vendored in `3rdparty/glaze/`)
 
+8. **p-ranav/tabulate** (`3rdparty/tabulate/`)
+   - Description: Header-only C++17 library for pretty-printing tables in the terminal, with native CJK wide-character alignment and ANSI escape awareness.
+   - License: MIT
+   - Upstream: https://github.com/p-ranav/tabulate
+   - Version: v2.2 (imported 2026-10-21, vendored in `3rdparty/tabulate/`)
+
+9. **p-ranav/indicators** (`3rdparty/indicators/`)
+   - Description: Header-only C++17 library for dynamic terminal progress bars and spinners.
+   - License: MIT
+   - Upstream: https://github.com/p-ranav/indicators
+   - Version: v2.3 (imported 2026-10-21, vendored in `3rdparty/indicators/`)
+
 ## Models / data downloaded by users (not bundled)
 
 1. **sherpa-onnx ASR models**

@@ -216,6 +216,18 @@ target_include_directories(3rdparty_glaze SYSTEM INTERFACE
 )
 add_library(glaze::glaze ALIAS 3rdparty_glaze)
 
+add_library(3rdparty_tabulate INTERFACE)
+target_include_directories(3rdparty_tabulate SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/tabulate/include
+)
+add_library(tabulate::tabulate ALIAS 3rdparty_tabulate)
+
+add_library(3rdparty_indicators INTERFACE)
+target_include_directories(3rdparty_indicators SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/indicators/include
+)
+add_library(indicators::indicators ALIAS 3rdparty_indicators)
+
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit")
