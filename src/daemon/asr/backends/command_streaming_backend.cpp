@@ -22,7 +22,6 @@
 #include <string_view>
 #include <sys/poll.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -127,7 +126,7 @@ std::string FormatProviderError(std::string detail, std::string_view fallback) {
 }
 
 struct ChildProcess {
-  pid_t pid = -1;
+  int pid = -1;
   int stdin_fd = -1;
   int stdout_fd = -1;
   int stderr_fd = -1;

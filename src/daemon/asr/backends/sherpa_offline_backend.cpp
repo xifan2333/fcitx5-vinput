@@ -25,6 +25,7 @@
 #include "common/config/core_config_types.h"
 #include "common/i18n.h"
 #include "common/json/json_access.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
@@ -32,8 +33,6 @@
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/sherpa_json_helpers.h"
 #include "daemon/asr/vad_trimmer.h"
-
-extern "C" int mkstemp(char* template_name);
 
 namespace vinput::daemon::asr {
 
@@ -50,42 +49,14 @@ bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std:
     }
     return false;
   }
-  std::string pattern = (temp_dir / "vinput-hotwords-XXXXXX").string();
-  const int fd = mkstemp(pattern.data());
-  if (fd < 0) {
-    if (error != nullptr) {
-      *error = "failed to create temporary hotwords file: " + std::string(std::strerror(errno));
-    }
+  const auto temp_file =
+      temp_dir /
+      ("vinput-hotwords-" +
+       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
+  if (!vinput::file::AtomicWriteTextFile(temp_file, content, error)) {
     return false;
   }
-  const char* data = content.data();
-  std::size_t remaining = content.size();
-  while (remaining > 0) {
-    const ssize_t written = write(fd, data, remaining);
-    if (written <= 0) {
-      if (written < 0 && errno == EINTR) {
-        continue;
-      }
-      const std::string write_error = written < 0 ? std::strerror(errno) : "zero-byte write";
-      close(fd);
-      std::filesystem::remove(pattern);
-      if (error != nullptr) {
-        *error = "failed to write temporary hotwords file: " + write_error;
-      }
-      return false;
-    }
-    data += written;
-    remaining -= static_cast<std::size_t>(written);
-  }
-  if (close(fd) != 0) {
-    const std::string close_error = std::strerror(errno);
-    std::filesystem::remove(pattern);
-    if (error != nullptr) {
-      *error = "failed to close temporary hotwords file: " + close_error;
-    }
-    return false;
-  }
-  *path = std::move(pattern);
+  *path = temp_file.string();
   return true;
 }
 

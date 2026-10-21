@@ -25,8 +25,6 @@
 
 #include "common/utils/interpolation.h"
 
-extern "C" int kill(pid_t pid, int sig) noexcept;
-
 namespace vinput::process {
 
 namespace {

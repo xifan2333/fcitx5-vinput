@@ -24,7 +24,6 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QStringList>
 #include <QTextEdit>
 #include <QThreadPool>
 #include <QTimer>
@@ -343,11 +342,16 @@ void LlmPage::refreshAdapterList() {
       tooltip += "\n" + tr("Args: %1").arg(QString::fromStdString(joined_args));
     }
     if (!adapter.env.empty()) {
-      QStringList envList;
+      std::string joined_env;
       for (const auto& [k, v] : adapter.env) {
-        envList << QString::fromStdString(k) + "=" + QString::fromStdString(v);
+        if (!joined_env.empty()) {
+          joined_env += ' ';
+        }
+        joined_env += k;
+        joined_env += '=';
+        joined_env += v;
       }
-      tooltip += "\n" + tr("Env: %1").arg(envList.join(" "));
+      tooltip += "\n" + tr("Env: %1").arg(QString::fromStdString(joined_env));
     }
     item->setToolTip(tooltip.trimmed());
   }
@@ -492,7 +496,7 @@ void LlmPage::onLlmEdit() {
   }
 
   refreshLlmList();
-  emit configChanged();
+  configChanged();
 }
 
 void LlmPage::onLlmRemove() {
@@ -530,7 +534,7 @@ void LlmPage::onLlmRemove() {
 
   refreshLlmList();
   refreshSceneList();
-  emit configChanged();
+  configChanged();
   if (cleared_scene_refs > 0) {
     QMessageBox::information(this, tr("Scenes Updated"),
                              tr("Removed provider '%1' and cleared it from %2 scene(s).")
@@ -672,7 +676,7 @@ void LlmPage::onAdapterEdit() {
   }
 
   refreshAdapterList();
-  emit configChanged();
+  configChanged();
 }
 
 void LlmPage::onAdapterRemove() {
@@ -721,7 +725,7 @@ void LlmPage::onAdapterRemove() {
   }
 
   refreshAdapterList();
-  emit configChanged();
+  configChanged();
 }
 
 void LlmPage::updateAdapterButtons() {
@@ -887,7 +891,7 @@ void LlmPage::onSceneAdd() {
     return;
   }
   refreshSceneList();
-  emit configChanged();
+  configChanged();
 }
 
 void LlmPage::onSceneEdit() {
@@ -989,7 +993,7 @@ void LlmPage::onSceneEdit() {
     return;
   }
   refreshSceneList();
-  emit configChanged();
+  configChanged();
 }
 
 void LlmPage::onSceneRemove() {
@@ -1022,7 +1026,7 @@ void LlmPage::onSceneRemove() {
     return;
   }
   refreshSceneList();
-  emit configChanged();
+  configChanged();
 }
 
 void LlmPage::onSceneSetActive() {
@@ -1049,7 +1053,7 @@ void LlmPage::onSceneSetActive() {
   }
 
   refreshSceneList();
-  emit configChanged();
+  configChanged();
 }
 
 } // namespace vinput::gui
