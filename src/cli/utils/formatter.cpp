@@ -2,9 +2,13 @@
 
 #include <cstddef>
 #include <iostream>
+#include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <tabulate/tabulate.hpp>
 #include <vector>
+
+#include "cli/utils/cli_context.h"
 
 // ---- TextFormatter ----
 
@@ -134,22 +138,22 @@ void JsonFormatter::PrintTable(const std::vector<std::string>& headers,
 }
 
 void JsonFormatter::PrintKeyValue(const std::string& key, const std::string& value) {
-  nlohmann::json obj = {{"key", key}, {"value", value}};
+  const nlohmann::json obj = {{"key", key}, {"value", value}};
   std::cout << obj.dump() << "\n";
 }
 
 void JsonFormatter::PrintSuccess(const std::string& msg) {
-  nlohmann::json obj = {{"status", "success"}, {"message", msg}};
+  const nlohmann::json obj = {{"status", "success"}, {"message", msg}};
   std::cout << obj.dump() << "\n";
 }
 
 void JsonFormatter::PrintError(const std::string& msg) {
-  nlohmann::json obj = {{"status", "error"}, {"message", msg}};
+  const nlohmann::json obj = {{"status", "error"}, {"message", msg}};
   std::cerr << obj.dump() << "\n";
 }
 
 void JsonFormatter::PrintWarning(const std::string& msg) {
-  nlohmann::json obj = {{"status", "warning"}, {"message", msg}};
+  const nlohmann::json obj = {{"status", "warning"}, {"message", msg}};
   std::cout << obj.dump() << "\n";
 }
 
@@ -158,7 +162,7 @@ void JsonFormatter::PrintJson(const nlohmann::json& j) {
 }
 
 void JsonFormatter::PrintInfo(const std::string& msg) {
-  nlohmann::json obj = {{"status", "info"}, {"message", msg}};
+  const nlohmann::json obj = {{"status", "info"}, {"message", msg}};
   std::cout << obj.dump() << "\n";
 }
 

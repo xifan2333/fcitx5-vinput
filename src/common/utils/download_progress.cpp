@@ -6,7 +6,9 @@
 #include <iostream>
 #include <string>
 
-static std::string FormatSpeed(double speed_bps) {
+namespace {
+
+std::string FormatSpeed(double speed_bps) {
   if (speed_bps <= 0) {
     return "";
   }
@@ -20,6 +22,8 @@ static std::string FormatSpeed(double speed_bps) {
   }
   return buf;
 }
+
+} // namespace
 
 ProgressBar::ProgressBar(const std::string& label, uint64_t total, bool is_tty)
     : label_(label), total_(total), is_tty_(is_tty), last_percent_(-1) {
