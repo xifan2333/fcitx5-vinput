@@ -1,77 +1,9 @@
 #include "cli/utils/formatter.h"
 
-#include <algorithm>
-#include <cwchar>
 #include <iostream>
 #include <string>
+#include <tabulate/tabulate.hpp>
 #include <vector>
-
-namespace {
-
-std::string StripTerminalEscapes(const std::string& s) {
-  std::string out;
-  out.reserve(s.size());
-  for (size_t i = 0; i < s.size();) {
-    if (s[i] == '\033') {
-      if (i + 1 < s.size() && s[i + 1] == ']') {
-        i += 2;
-        while (i < s.size()) {
-          if (s[i] == '\a') {
-            ++i;
-            break;
-          }
-          if (s[i] == '\033' && i + 1 < s.size() && s[i + 1] == '\\') {
-            i += 2;
-            break;
-          }
-          ++i;
-        }
-        continue;
-      }
-      if (i + 1 < s.size() && s[i + 1] == '[') {
-        i += 2;
-        while (i < s.size()) {
-          const unsigned char ch = static_cast<unsigned char>(s[i]);
-          if (ch >= 0x40 && ch <= 0x7e) {
-            ++i;
-            break;
-          }
-          ++i;
-        }
-        continue;
-      }
-    }
-    out.push_back(s[i]);
-    ++i;
-  }
-  return out;
-}
-
-// Returns the display column width of a UTF-8 string (handles CJK wide chars)
-int DisplayWidth(const std::string& s) {
-  const std::string plain = StripTerminalEscapes(s);
-  // Convert UTF-8 to wchar_t and use wcswidth
-  const size_t len = plain.size() + 1;
-  std::vector<wchar_t> wbuf(len);
-  const size_t n = mbstowcs(wbuf.data(), plain.c_str(), len);
-  if (n == static_cast<size_t>(-1)) {
-    return static_cast<int>(plain.size()); // fallback
-  }
-  const int w = wcswidth(wbuf.data(), n);
-  return w < 0 ? static_cast<int>(n) : w;
-}
-
-// Pad a UTF-8 string to target display width with spaces
-std::string PadTo(const std::string& s, int target) {
-  const int w = DisplayWidth(s);
-  const int pad = target - w;
-  if (pad <= 0) {
-    return s;
-  }
-  return s + std::string(static_cast<size_t>(pad), ' ');
-}
-
-} // namespace
 
 // ---- TextFormatter ----
 
@@ -112,40 +44,47 @@ void TextFormatter::PrintTable(const std::vector<std::string>& headers,
   if (headers.empty())
     return;
 
-  std::vector<int> widths(headers.size(), 0);
-  for (size_t i = 0; i < headers.size(); ++i) {
-    widths[i] = DisplayWidth(headers[i]);
+  using namespace tabulate;
+
+  Table table;
+
+  // Add header row
+  Table::Row_t header_row;
+  header_row.reserve(headers.size());
+  for (const auto& h : headers) {
+    header_row.push_back(h);
   }
-  for (const auto& row : rows) {
-    for (size_t i = 0; i < row.size() && i < widths.size(); ++i) {
-      widths[i] = std::max(widths[i], DisplayWidth(row[i]));
+  table.add_row(header_row);
+
+  // Style header: bold, no color override
+  for (size_t i = 0; i < headers.size(); ++i) {
+    if (use_color_) {
+      table[0][i].format().font_style({FontStyle::bold});
     }
   }
 
-  // Print header
-  for (size_t i = 0; i < headers.size(); ++i) {
-    if (i > 0)
-      std::cout << "  ";
-    if (i + 1 < headers.size())
-      std::cout << Bold(PadTo(headers[i], widths[i]));
-    else
-      std::cout << Bold(headers[i]);
-  }
-  std::cout << "\n";
-
-  // Print rows
+  // Add data rows
   for (const auto& row : rows) {
+    Table::Row_t table_row;
+    table_row.reserve(headers.size());
     for (size_t i = 0; i < headers.size(); ++i) {
-      if (i > 0)
-        std::cout << "  ";
-      std::string cell = (i < row.size()) ? row[i] : "";
-      if (i + 1 < headers.size())
-        std::cout << PadTo(cell, widths[i]);
-      else
-        std::cout << cell;
+      table_row.push_back(i < row.size() ? row[i] : "");
     }
-    std::cout << "\n";
+    table.add_row(table_row);
   }
+
+  // Borderless style: no borders, no corners, two-space column separator,
+  // zero vertical padding to match original compact output
+  table.format()
+      .border("")
+      .corner("")
+      .column_separator("  ")
+      .padding_top(0)
+      .padding_bottom(0)
+      .padding_left(0)
+      .padding_right(0);
+
+  std::cout << table << "\n";
 }
 
 void TextFormatter::PrintKeyValue(const std::string& key, const std::string& value) {

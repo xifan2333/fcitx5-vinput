@@ -58,6 +58,7 @@ target_link_libraries(cli PRIVATE
     pipewire_device
     client_runtime
     CLI11::CLI11
+    tabulate::tabulate
     ${PIPEWIRE_LIBRARIES}
     ${SDBUS_LIBRARIES}
 )
