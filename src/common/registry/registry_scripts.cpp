@@ -4,11 +4,14 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
-#include <nlohmann/json.hpp>
+#include <glaze/core/common.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 #include <string>
 #include <system_error>
 
 #include "common/config/core_config_types.h"
+#include "common/json/json_access.h"
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_cache.h"
 #include "common/registry/registry_fetch.h"
@@ -22,7 +25,6 @@ namespace vinput::script {
 
 namespace {
 
-using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 std::vector<std::string> SplitResourceId(std::string_view id) {
@@ -82,64 +84,60 @@ bool TypeMatchesKind(std::string_view type, Kind kind) {
 }
 
 std::vector<RegistryEntry> ParseRegistryJson(const std::string& content, std::string* error) {
-  std::vector<RegistryEntry> entries;
-  try {
-    const json j = json::parse(content);
-    if (!j.is_object()) {
-      if (error) {
-        *error = "script registry JSON is not an object";
-      }
-      return {};
-    }
-    if (!j.contains("items") || !j.at("items").is_array()) {
-      if (error) {
-        *error = "script registry JSON is missing array field 'items'";
-      }
-      return {};
-    }
-
-    for (const auto& item : j.at("items")) {
-      RegistryEntry entry;
-      entry.id = item.value("id", "");
-      entry.short_id = item.value("short_id", "");
-      entry.version = item.value("version", "");
-      entry.sha256 = item.value("sha256", "");
-      entry.vinput_version = item.value("vinput_version", "");
-      entry.stream = item.value("stream", false);
-      entry.command = item.value("command", "");
-      entry.readme_url = item.value("readme_url", "");
-      if (item.contains("script_urls") && item.at("script_urls").is_array()) {
-        for (const auto& value : item.at("script_urls")) {
-          if (value.is_string()) {
-            const auto url = value.get<std::string>();
-            if (!url.empty()) {
-              entry.script_urls.push_back(url);
-            }
-          }
-        }
-      }
-      if (item.contains("envs") && item.at("envs").is_array()) {
-        for (const auto& value : item.at("envs")) {
-          if (!value.is_object()) {
-            continue;
-          }
-          EnvSpec env;
-          env.name = value.value("name", "");
-          env.required = value.value("required", false);
-          if (!env.name.empty()) {
-            entry.envs.push_back(std::move(env));
-          }
-        }
-      }
-      if (!entry.id.empty() && !entry.command.empty() && !entry.script_urls.empty()) {
-        entries.push_back(std::move(entry));
-      }
-    }
-  } catch (const std::exception& ex) {
+  glz::json_t root;
+  if (const auto ec = glz::read_json(root, content); bool(ec)) {
     if (error) {
-      *error = std::string("failed to parse script registry JSON: ") + ex.what();
+      *error = "failed to parse script registry JSON: " + glz::format_error(ec, content);
     }
     return {};
+  }
+  const auto* items = vinput::json::Find(root, "items");
+  if (items == nullptr) {
+    if (error) {
+      *error = "script registry JSON is not an object or is missing array field 'items'";
+    }
+    return {};
+  }
+  const auto* item_array = items->get_if<glz::json_t::array_t>();
+  if (item_array == nullptr) {
+    if (error) {
+      *error = "script registry JSON is missing array field 'items'";
+    }
+    return {};
+  }
+
+  std::vector<RegistryEntry> entries;
+  for (const auto& item : *item_array) {
+    RegistryEntry entry;
+    entry.id = vinput::json::String(item, "id");
+    entry.short_id = vinput::json::String(item, "short_id");
+    entry.version = vinput::json::String(item, "version");
+    entry.sha256 = vinput::json::String(item, "sha256");
+    entry.vinput_version = vinput::json::String(item, "vinput_version");
+    entry.stream = vinput::json::Bool(item, "stream");
+    entry.command = vinput::json::String(item, "command");
+    entry.readme_url = vinput::json::String(item, "readme_url");
+    for (auto& url : vinput::json::Strings(item, "script_urls")) {
+      if (!url.empty()) {
+        entry.script_urls.push_back(std::move(url));
+      }
+    }
+    if (const auto* envs = vinput::json::Find(item, "envs"); envs != nullptr && envs->is_array()) {
+      for (const auto& value : envs->get_array()) {
+        if (!value.is_object()) {
+          continue;
+        }
+        EnvSpec env;
+        env.name = vinput::json::String(value, "name");
+        env.required = vinput::json::Bool(value, "required");
+        if (!env.name.empty()) {
+          entry.envs.push_back(std::move(env));
+        }
+      }
+    }
+    if (!entry.id.empty() && !entry.command.empty() && !entry.script_urls.empty()) {
+      entries.push_back(std::move(entry));
+    }
   }
 
   if (error) {

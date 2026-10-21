@@ -14,6 +14,7 @@
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/json/json_access.h"
 #include "common/scene/postprocess_scene.h"
 
 namespace {
@@ -112,54 +113,6 @@ struct CoreConfigWire {
   std::optional<ScenesWire> scenes;
 };
 
-// Extracts the JSON array of strings, ignoring non-string entries. Keeps the
-// tolerant parsing of the previous implementation for user-edited files.
-std::vector<std::string> StringsFrom(const glz::json_t& value) {
-  std::vector<std::string> out;
-  const auto* array = value.get_if<glz::json_t::array_t>();
-  if (array == nullptr) {
-    return out;
-  }
-  out.reserve(array->size());
-  for (const auto& item : *array) {
-    if (const auto* text = item.get_if<std::string>()) {
-      out.push_back(*text);
-    }
-  }
-  return out;
-}
-
-std::map<std::string, std::string> StringMapFrom(const glz::json_t& value) {
-  std::map<std::string, std::string> out;
-  const auto* object = value.get_if<glz::json_t::object_t>();
-  if (object == nullptr) {
-    return out;
-  }
-  for (const auto& [key, item] : *object) {
-    if (const auto* text = item.get_if<std::string>()) {
-      out.emplace(key, *text);
-    }
-  }
-  return out;
-}
-
-glz::json_t FromStrings(const std::vector<std::string>& values) {
-  glz::json_t::array_t array;
-  array.reserve(values.size());
-  for (const auto& value : values) {
-    array.emplace_back(value);
-  }
-  return glz::json_t(std::move(array));
-}
-
-glz::json_t FromStringMap(const std::map<std::string, std::string>& values) {
-  glz::json_t::object_t object;
-  for (const auto& [key, value] : values) {
-    object.emplace(key, glz::json_t(value));
-  }
-  return glz::json_t(std::move(object));
-}
-
 // ---------------------------------------------------------------------------
 // Wire -> domain
 // ---------------------------------------------------------------------------
@@ -179,10 +132,10 @@ void FromWire(const LlmAdapterWire& wire, LlmAdapter* adapter) {
   adapter->id = wire.id;
   adapter->command = wire.command;
   if (wire.args.has_value()) {
-    adapter->args = StringsFrom(*wire.args);
+    adapter->args = vinput::json::Strings(*wire.args);
   }
   if (wire.env.has_value()) {
-    adapter->env = StringMapFrom(*wire.env);
+    adapter->env = vinput::json::StringMap(*wire.env);
   }
   adapter->autoStart = wire.auto_start.value_or(adapter->autoStart);
 }
@@ -202,10 +155,10 @@ void FromWire(const AsrProviderWire& wire, AsrProvider* provider) {
     command.id = wire.id;
     command.command = wire.command.value_or(command.command);
     if (wire.args.has_value()) {
-      command.args = StringsFrom(*wire.args);
+      command.args = vinput::json::Strings(*wire.args);
     }
     if (wire.env.has_value()) {
-      command.env = StringMapFrom(*wire.env);
+      command.env = vinput::json::StringMap(*wire.env);
     }
     command.timeoutMs = wire.timeout_ms.value_or(command.timeoutMs);
     *provider = std::move(command);
@@ -232,7 +185,7 @@ void FromWire(const RegistryWire& wire, CoreConfig::Registry* registry) {
   if (!wire.base_urls.has_value()) {
     return;
   }
-  for (auto& url : StringsFrom(*wire.base_urls)) {
+  for (auto& url : vinput::json::Strings(*wire.base_urls)) {
     if (!url.empty()) {
       registry->baseUrls.push_back(std::move(url));
     }
@@ -328,10 +281,10 @@ LlmAdapterWire ToWire(const LlmAdapter& adapter) {
   wire.id = adapter.id;
   wire.command = adapter.command;
   if (!adapter.args.empty()) {
-    wire.args = FromStrings(adapter.args);
+    wire.args = vinput::json::FromStrings(adapter.args);
   }
   if (!adapter.env.empty()) {
-    wire.env = FromStringMap(adapter.env);
+    wire.env = vinput::json::FromStringMap(adapter.env);
   }
   if (adapter.autoStart) {
     wire.auto_start = true;
@@ -365,10 +318,10 @@ AsrProviderWire ToWire(const AsrProvider& provider) {
     wire.command = command->command;
   }
   if (!command->args.empty()) {
-    wire.args = FromStrings(command->args);
+    wire.args = vinput::json::FromStrings(command->args);
   }
   if (!command->env.empty()) {
-    wire.env = FromStringMap(command->env);
+    wire.env = vinput::json::FromStringMap(command->env);
   }
   if (command->timeoutMs > 0) {
     wire.timeout_ms = command->timeoutMs;
@@ -397,7 +350,7 @@ VadWire ToWire(const CoreConfig::Asr::Vad& vad) {
 RegistryWire ToWire(const CoreConfig::Registry& registry) {
   RegistryWire wire;
   if (!registry.baseUrls.empty()) {
-    wire.base_urls = FromStrings(registry.baseUrls);
+    wire.base_urls = vinput::json::FromStrings(registry.baseUrls);
   }
   return wire;
 }

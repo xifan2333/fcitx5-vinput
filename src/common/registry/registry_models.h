@@ -4,9 +4,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
-#include <nlohmann/json.hpp>
+#include <glaze/json/json_t.hpp>
 #include <string>
 #include <vector>
+
+#include "common/json/json_access.h"
 
 struct RemoteModelEntry {
   std::string id;
@@ -15,13 +17,14 @@ struct RemoteModelEntry {
   std::string sha256;
   uint64_t size_bytes = 0;
   std::string language;
-  nlohmann::json vinput_model; // pre-built vinput-model.json content
+  glz::json_t vinput_model; // pre-built vinput-model.json content
 
   // Convenience accessors reading from vinput_model
   std::string model_type() const {
-    return vinput_model.value("family", vinput_model.value("model_type", ""));
+    return vinput::json::String(vinput_model, "family",
+                                vinput::json::String(vinput_model, "model_type"));
   }
-  bool supports_hotwords() const { return vinput_model.value("supports_hotwords", false); }
+  bool supports_hotwords() const { return vinput::json::Bool(vinput_model, "supports_hotwords"); }
 };
 
 struct CoreConfig;

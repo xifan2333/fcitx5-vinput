@@ -2,14 +2,17 @@
 
 #include <ctime>
 #include <filesystem>
-#include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
+#include <glaze/core/opts.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
+#include <glaze/json/write.hpp>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/json/json_access.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -18,30 +21,41 @@ namespace vinput::llm {
 
 namespace {
 
-bool ReadCacheFile(nlohmann::json* out) {
+// The cache is keyed by runtime provider ids, so its shape stays dynamic.
+constexpr auto kCacheWriteOpts = glz::opts{.prettify = true, .indentation_width = 2};
+
+glz::json_t EmptyObject() {
+  return glz::json_t(glz::json_t::object_t{});
+}
+
+bool ReadCacheFile(glz::json_t* out) {
   if (out == nullptr) {
     return false;
   }
-  *out = nlohmann::json::object();
+  *out = EmptyObject();
 
   const auto path = vinput::path::ProviderModelCachePath();
   std::string content;
   if (!vinput::file::ReadTextFile(path, &content, nullptr)) {
     return false;
   }
-
-  try {
-    *out = nlohmann::json::parse(content);
-    return out->is_object();
-  } catch (...) {
-    *out = nlohmann::json::object();
+  if (bool(glz::read_json(*out, content)) || !out->is_object()) {
+    *out = EmptyObject();
     return false;
   }
+  return true;
 }
 
-bool WriteCacheFile(const nlohmann::json& data, std::string* error) {
+bool WriteCacheFile(const glz::json_t& data, std::string* error) {
   const auto path = vinput::path::ProviderModelCachePath();
-  return vinput::file::AtomicWriteTextFile(path, data.dump(2), error);
+  std::string content;
+  if (bool(glz::write<kCacheWriteOpts>(data, content))) {
+    if (error != nullptr) {
+      *error = "failed to serialize provider model cache";
+    }
+    return false;
+  }
+  return vinput::file::AtomicWriteTextFile(path, content, error);
 }
 
 } // namespace
@@ -55,18 +69,24 @@ bool SaveProviderModels(const std::string& provider_id, const std::vector<std::s
     return false;
   }
 
-  nlohmann::json cache;
+  glz::json_t cache;
   ReadCacheFile(&cache);
 
-  if (!cache.contains("providers") || !cache["providers"].is_object()) {
-    cache["providers"] = nlohmann::json::object();
+  auto* providers = vinput::json::Find(cache, "providers");
+  if (providers == nullptr || !providers->is_object()) {
+    cache["providers"] = EmptyObject();
+    providers = vinput::json::Find(cache, "providers");
   }
-
-  nlohmann::json prov_entry = nlohmann::json::object();
-  prov_entry["models"] = models;
-  prov_entry["updated_at"] = static_cast<long long>(std::time(nullptr));
-
-  cache["providers"][provider_id] = std::move(prov_entry);
+  if (providers == nullptr) {
+    if (error != nullptr) {
+      *error = "failed to prepare provider model cache";
+    }
+    return false;
+  }
+  (*providers)[provider_id] = glz::json_t(glz::json_t::object_t{
+      {"models", vinput::json::FromStrings(models)},
+      {"updated_at", glz::json_t(static_cast<double>(std::time(nullptr)))},
+  });
   return WriteCacheFile(cache, error);
 }
 
@@ -75,14 +95,14 @@ bool RemoveProviderModels(const std::string& provider_id, std::string* error) {
     return true;
   }
 
-  nlohmann::json cache;
+  glz::json_t cache;
   if (!ReadCacheFile(&cache)) {
     return true;
   }
 
-  if (cache.contains("providers") && cache["providers"].is_object() &&
-      cache["providers"].contains(provider_id)) {
-    cache["providers"].erase(provider_id);
+  auto* providers = vinput::json::Find(cache, "providers");
+  if (providers != nullptr && providers->is_object() && providers->contains(provider_id)) {
+    providers->get_object().erase(provider_id);
     return WriteCacheFile(cache, error);
   }
   return true;
@@ -96,19 +116,20 @@ std::vector<ModelEntry> LoadActiveModels(const CoreConfig& config) {
     }
   }
 
-  nlohmann::json cache;
+  glz::json_t cache;
   const bool has_cache = ReadCacheFile(&cache);
   bool cache_modified = false;
 
-  if (has_cache && cache.contains("providers") && cache["providers"].is_object()) {
+  auto* cache_providers = has_cache ? vinput::json::Find(cache, "providers") : nullptr;
+  if (cache_providers != nullptr && cache_providers->is_object()) {
     std::vector<std::string> orphaned_ids;
-    for (auto it = cache["providers"].begin(); it != cache["providers"].end(); ++it) {
-      if (active_provider_ids.find(it.key()) == active_provider_ids.end()) {
-        orphaned_ids.push_back(it.key());
+    for (const auto& [cached_id, cached_value] : cache_providers->get_object()) {
+      if (active_provider_ids.find(cached_id) == active_provider_ids.end()) {
+        orphaned_ids.push_back(cached_id);
       }
     }
     for (const auto& orphan : orphaned_ids) {
-      cache["providers"].erase(orphan);
+      cache_providers->get_object().erase(orphan);
       cache_modified = true;
     }
     if (cache_modified) {
@@ -148,15 +169,14 @@ std::vector<ModelEntry> LoadActiveModels(const CoreConfig& config) {
   };
 
   // 1. Models from active cached providers
-  if (has_cache && cache.contains("providers") && cache["providers"].is_object()) {
+  if (cache_providers != nullptr && cache_providers->is_object()) {
     for (const auto& pid : active_provider_ids) {
-      if (cache["providers"].contains(pid) && cache["providers"][pid].contains("models") &&
-          cache["providers"][pid]["models"].is_array()) {
-        for (const auto& m_val : cache["providers"][pid]["models"]) {
-          if (m_val.is_string()) {
-            add_entry(pid, m_val.get<std::string>());
-          }
-        }
+      const auto* entry = vinput::json::Find(*cache_providers, pid);
+      if (entry == nullptr) {
+        continue;
+      }
+      for (const auto& model : vinput::json::Strings(*entry, "models")) {
+        add_entry(pid, model);
       }
     }
   }

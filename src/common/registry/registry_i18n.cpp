@@ -2,40 +2,36 @@
 
 #include <cstdlib>
 #include <fstream>
-#include <nlohmann/json.hpp>
+#include <glaze/core/common.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 
 #include "common/utils/locale_utils.h"
 #include "common/utils/path_utils.h"
 
 namespace vinput::registry {
 
-namespace {
-
-using json = nlohmann::json;
-
-} // namespace
-
 I18nMap ParseI18nJson(const std::string& content, std::string* error) {
   I18nMap map;
 
-  try {
-    json j = json::parse(content);
-    if (!j.is_object()) {
-      if (error) {
-        *error = "i18n JSON is not an object";
-      }
-      return map;
-    }
-    for (auto it = j.begin(); it != j.end(); ++it) {
-      if (it.value().is_string()) {
-        map[it.key()] = it.value().get<std::string>();
-      }
-    }
-  } catch (const std::exception& ex) {
+  glz::json_t root;
+  if (const auto ec = glz::read_json(root, content); bool(ec)) {
     if (error) {
-      *error = std::string("failed to parse i18n JSON: ") + ex.what();
+      *error = "failed to parse i18n JSON: " + glz::format_error(ec, content);
     }
     return {};
+  }
+  const auto* entries = root.get_if<glz::json_t::object_t>();
+  if (entries == nullptr) {
+    if (error) {
+      *error = "i18n JSON is not an object";
+    }
+    return map;
+  }
+  for (const auto& [key, value] : *entries) {
+    if (const auto* text = value.get_if<std::string>()) {
+      map[key] = *text;
+    }
   }
 
   return map;

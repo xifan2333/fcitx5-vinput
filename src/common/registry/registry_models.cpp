@@ -7,12 +7,17 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <nlohmann/json.hpp>
+#include <glaze/core/common.hpp>
+#include <glaze/core/opts.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
+#include <glaze/json/write.hpp>
 #include <string>
 #include <vector>
 
 #include "common/asr/bpe_vocab_exporter.h"
 #include "common/asr/model_manager.h"
+#include "common/json/json_access.h"
 #include "common/registry/registry_cache.h"
 #include "common/registry/registry_fetch.h"
 #include "common/utils/downloader.h"
@@ -20,7 +25,10 @@
 #include "common/utils/path_utils.h"
 
 namespace fs = std::filesystem;
-using json = nlohmann::json;
+
+// The registry and the emitted model manifest are keyed by runtime ids, so
+// their shape stays dynamic.
+constexpr auto kManifestWriteOpts = glz::opts{.prettify = true, .indentation_width = 2};
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -31,43 +39,43 @@ namespace {
 std::vector<RemoteModelEntry> ParseRegistryJson(const std::string& content, std::string* error) {
   std::vector<RemoteModelEntry> entries;
 
-  try {
-    json j = json::parse(content);
-    if (!j.is_object()) {
-      if (error)
-        *error = "registry JSON is not an object";
-      return entries;
-    }
-    if (!j.contains("items") || !j.at("items").is_array()) {
-      if (error)
-        *error = "registry JSON is missing array field 'items'";
-      return entries;
-    }
-    for (const auto& item : j.at("items")) {
-      RemoteModelEntry e;
-      e.id = item.value("id", "");
-      e.short_id = item.value("short_id", "");
-      e.size_bytes = item.value("size_bytes", uint64_t{0});
-      e.language = item.value("language", "");
-      if (item.contains("urls") && item.at("urls").is_array()) {
-        for (const auto& elem : item.at("urls")) {
-          if (elem.is_string() && !elem.get<std::string>().empty()) {
-            e.urls.push_back(elem.get<std::string>());
-          }
-        }
-      }
-      e.sha256 = item.value("sha256", "");
-      if (item.contains("vinput_model")) {
-        e.vinput_model = item["vinput_model"];
-      }
-      if (!e.id.empty() && !e.urls.empty()) {
-        entries.push_back(std::move(e));
-      }
-    }
-  } catch (const std::exception& ex) {
+  glz::json_t root;
+  if (const auto ec = glz::read_json(root, content); bool(ec)) {
     if (error)
-      *error = std::string("failed to parse registry JSON: ") + ex.what();
+      *error = "failed to parse registry JSON: " + glz::format_error(ec, content);
     return entries;
+  }
+  const auto* items = vinput::json::Find(root, "items");
+  if (items == nullptr) {
+    if (error)
+      *error = "registry JSON is not an object or is missing array field 'items'";
+    return entries;
+  }
+  const auto* item_array = items->get_if<glz::json_t::array_t>();
+  if (item_array == nullptr) {
+    if (error)
+      *error = "registry JSON is missing array field 'items'";
+    return entries;
+  }
+
+  for (const auto& item : *item_array) {
+    RemoteModelEntry e;
+    e.id = vinput::json::String(item, "id");
+    e.short_id = vinput::json::String(item, "short_id");
+    e.size_bytes = static_cast<uint64_t>(vinput::json::Int64(item, "size_bytes", 0));
+    e.language = vinput::json::String(item, "language");
+    for (auto& url : vinput::json::Strings(item, "urls")) {
+      if (!url.empty()) {
+        e.urls.push_back(std::move(url));
+      }
+    }
+    e.sha256 = vinput::json::String(item, "sha256");
+    if (const auto* model = vinput::json::Find(item, "vinput_model")) {
+      e.vinput_model = *model;
+    }
+    if (!e.id.empty() && !e.urls.empty()) {
+      entries.push_back(std::move(e));
+    }
   }
 
   return entries;
@@ -92,19 +100,21 @@ bool ResolveInstallAssetPath(const fs::path& root, const std::string& raw_path, 
   return true;
 }
 
-bool LoadEffectiveModelManifest(const fs::path& model_dir, json* manifest, std::string* error) {
+bool LoadEffectiveModelManifest(const fs::path& model_dir, glz::json_t* manifest,
+                                std::string* error) {
   const fs::path manifest_path = model_dir / "vinput-model.json";
   std::error_code ec;
   if (!fs::is_regular_file(manifest_path, ec) || ec) {
-    *manifest = json();
+    *manifest = glz::json_t();
     return true;
   }
-  try {
-    std::ifstream input(manifest_path);
-    input >> *manifest;
-  } catch (const std::exception& ex) {
+  std::ifstream input(manifest_path);
+  const std::string content{std::istreambuf_iterator<char>(input),
+                            std::istreambuf_iterator<char>()};
+  if (const auto parse_ec = glz::read_json(*manifest, content); bool(parse_ec)) {
     if (error) {
-      *error = "failed to parse effective vinput-model.json: " + std::string(ex.what());
+      *error =
+          "failed to parse effective vinput-model.json: " + glz::format_error(parse_ec, content);
     }
     return false;
   }
@@ -116,38 +126,41 @@ bool LoadEffectiveModelManifest(const fs::path& model_dir, json* manifest, std::
   return true;
 }
 
-bool ProvisionBpeVocabulary(const fs::path& model_dir, const json& vinput_model,
+bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput_model,
                             std::string* error) {
   if (!vinput_model.is_object())
     return true;
-  if (vinput_model.contains("supports_hotwords") &&
-      !vinput_model["supports_hotwords"].is_boolean()) {
+  const auto* hotwords_flag = vinput::json::Find(vinput_model, "supports_hotwords");
+  if (hotwords_flag != nullptr && !hotwords_flag->is_boolean()) {
     if (error)
       *error = "supports_hotwords must be a boolean";
     return false;
   }
-  if (!vinput_model.value("supports_hotwords", false))
+  if (!vinput::json::Bool(vinput_model, "supports_hotwords"))
     return true;
-  if (!vinput_model.contains("family") || !vinput_model["family"].is_string()) {
+  const auto* family_node = vinput::json::Find(vinput_model, "family");
+  if (family_node == nullptr || !family_node->is_string()) {
     if (error)
       *error = "hotword-capable model is missing string field family";
     return false;
   }
-  const std::string family = vinput_model["family"].get<std::string>();
+  const std::string family = family_node->get<std::string>();
   if (family != "transducer" && family != "nemo_transducer")
     return true;
-  if (!vinput_model.contains("model") || !vinput_model["model"].is_object()) {
+  const auto* model_node = vinput::json::Find(vinput_model, "model");
+  if (model_node == nullptr || !model_node->is_object()) {
     if (error)
       *error = "hotword-capable transducer is missing object field model";
     return false;
   }
-  const auto& model = vinput_model["model"];
-  if (!model.contains("modeling_unit") || !model["modeling_unit"].is_string()) {
+  const auto& model = *model_node;
+  const auto* unit_node = vinput::json::Find(model, "modeling_unit");
+  if (unit_node == nullptr || !unit_node->is_string()) {
     if (error)
       *error = "hotword-capable transducer requires model.modeling_unit";
     return false;
   }
-  const std::string unit = model["modeling_unit"].get<std::string>();
+  const std::string unit = unit_node->get<std::string>();
   if (unit != "cjkchar" && unit != "bpe" && unit != "bbpe" && unit != "cjkchar+bpe") {
     if (error)
       *error = "unsupported hotword modeling_unit: " + unit;
@@ -156,14 +169,14 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const json& vinput_model,
   if (unit == "cjkchar")
     return true;
 
-  if (!model.contains("bpe_vocab") || !model["bpe_vocab"].is_string() ||
-      model["bpe_vocab"].get<std::string>().empty()) {
+  const auto* vocab_node = vinput::json::Find(model, "bpe_vocab");
+  if (vocab_node == nullptr || !vocab_node->is_string() || vocab_node->get<std::string>().empty()) {
     if (error) {
       *error = "hotword modeling_unit '" + unit + "' requires model.bpe_vocab";
     }
     return false;
   }
-  const std::string vocab_field = model["bpe_vocab"].get<std::string>();
+  const std::string vocab_field = vocab_node->get<std::string>();
   fs::path vocab_path;
   if (!ResolveInstallAssetPath(model_dir, vocab_field, &vocab_path, error)) {
     return false;
@@ -173,14 +186,15 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const json& vinput_model,
     return ValidateBpeVocabulary(vocab_path, error);
   }
 
-  if (!model.contains("bpe_model") || !model["bpe_model"].is_string() ||
-      model["bpe_model"].get<std::string>().empty()) {
+  const auto* bpe_model_node = vinput::json::Find(model, "bpe_model");
+  if (bpe_model_node == nullptr || !bpe_model_node->is_string() ||
+      bpe_model_node->get<std::string>().empty()) {
     if (error) {
       *error = "BPE vocabulary is missing and model.bpe_model is not declared";
     }
     return false;
   }
-  const std::string bpe_model_field = model["bpe_model"].get<std::string>();
+  const std::string bpe_model_field = bpe_model_node->get<std::string>();
   fs::path bpe_model_path;
   if (!ResolveInstallAssetPath(model_dir, bpe_model_field, &bpe_model_path, error)) {
     return false;
@@ -447,7 +461,14 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
       }
       return false;
     }
-    const std::string json_content = found.vinput_model.dump(2) + "\n";
+    std::string json_content;
+    if (bool(glz::write<kManifestWriteOpts>(found.vinput_model, json_content))) {
+      if (error != nullptr) {
+        *error = "failed to serialize registry model metadata";
+      }
+      return false;
+    }
+    json_content += "\n";
     std::string write_err;
     if (!vinput::file::AtomicWriteTextFile(json_path, json_content, &write_err)) {
       if (error != nullptr) {
@@ -457,7 +478,7 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
     }
   }
 
-  json effective_manifest;
+  glz::json_t effective_manifest;
   std::string provision_error;
   if (!LoadEffectiveModelManifest(extracted_dir, &effective_manifest, &provision_error) ||
       !ProvisionBpeVocabulary(extracted_dir, effective_manifest, &provision_error)) {

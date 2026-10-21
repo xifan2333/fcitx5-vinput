@@ -1,8 +1,8 @@
 #pragma once
 
 #include <filesystem>
+#include <glaze/json/json_t.hpp>
 #include <map>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,8 +23,9 @@ struct ModelInfo {
   std::map<std::string, std::string> rejected_files;
   // Flattened scalar parameters for compatibility with old callers.
   std::map<std::string, std::string> params;
-  nlohmann::json recognizer_config;
-  nlohmann::json model_config;
+  // Engine specific knobs discovered at runtime from vinput-model.json.
+  glz::json_t recognizer_config = glz::json_t(glz::json_t::object_t{});
+  glz::json_t model_config = glz::json_t(glz::json_t::object_t{});
 
   // Convenience accessors
   std::string File(const std::string& key) const {

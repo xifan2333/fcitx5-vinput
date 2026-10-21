@@ -4,13 +4,16 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <nlohmann/json.hpp>
+#include <glaze/core/common.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
+#include <iterator>
 
+#include "common/json/json_access.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/string_utils.h"
 
 namespace fs = std::filesystem;
-using json = nlohmann::json;
 
 // ---------------------------------------------------------------------------
 // Helpers: parse vinput-model.json into ModelInfo
@@ -134,28 +137,61 @@ bool ResolveModelMetadataPath(const fs::path& model_dir, const fs::path& model_r
   return true;
 }
 
+// Integral JSON numbers are rendered without a fractional part so that the
+// string parameter map keeps the exact spelling of the model metadata.
+std::string FormatNumber(double value) {
+  if (value == static_cast<double>(static_cast<std::int64_t>(value))) {
+    return std::to_string(static_cast<std::int64_t>(value));
+  }
+  return std::to_string(value);
+}
+
 void AddScalarParam(std::map<std::string, std::string>* params, std::string_view key,
-                    const json& value) {
+                    const glz::json_t& value) {
   if (!params || key.empty()) {
     return;
   }
-  if (value.is_string()) {
-    (*params)[std::string(key)] = value.get<std::string>();
-  } else if (value.is_boolean()) {
-    (*params)[std::string(key)] = value.get<bool>() ? "true" : "false";
-  } else if (value.is_number_integer()) {
-    (*params)[std::string(key)] = std::to_string(value.get<int64_t>());
-  } else if (value.is_number_float()) {
-    (*params)[std::string(key)] = std::to_string(value.get<double>());
+  if (const auto* text = value.get_if<std::string>()) {
+    (*params)[std::string(key)] = *text;
+  } else if (const auto* flag = value.get_if<bool>()) {
+    (*params)[std::string(key)] = *flag ? "true" : "false";
+  } else if (const auto* number = value.get_if<double>()) {
+    (*params)[std::string(key)] = FormatNumber(*number);
   }
 }
 
-void ResolveModelFileField(const fs::path& dir, const fs::path& model_root, const json& obj,
-                           std::string_view field, std::string_view file_key, ModelInfo* info) {
-  if (!info || !obj.is_object() || !obj.contains(field) || !obj[field].is_string()) {
+void AddScalarParam(std::map<std::string, std::string>* params, std::string_view key,
+                    const glz::json_t& object, std::string_view field, double fallback) {
+  const auto* node = vinput::json::Find(object, field);
+  if (node == nullptr) {
+    AddScalarParam(params, key, glz::json_t(fallback));
     return;
   }
-  const std::string raw_path = obj[field].get<std::string>();
+  AddScalarParam(params, key, *node);
+}
+
+void AddScalarParam(std::map<std::string, std::string>* params, std::string_view key,
+                    const glz::json_t& object, std::string_view field, std::string fallback) {
+  const auto* node = vinput::json::Find(object, field);
+  if (node == nullptr) {
+    AddScalarParam(params, key, glz::json_t(std::move(fallback)));
+    return;
+  }
+  AddScalarParam(params, key, *node);
+}
+
+void AddScalarParam(std::map<std::string, std::string>* params, std::string_view key,
+                    const glz::json_t& object, std::string_view field, int fallback) {
+  AddScalarParam(params, key, object, field, static_cast<double>(fallback));
+}
+
+void ResolveModelFileField(const fs::path& dir, const fs::path& model_root, const glz::json_t& obj,
+                           std::string_view field, std::string_view file_key, ModelInfo* info) {
+  const auto* node = vinput::json::Find(obj, field);
+  if (!info || node == nullptr || !node->is_string()) {
+    return;
+  }
+  const std::string raw_path = node->get<std::string>();
   if (raw_path.empty()) {
     return;
   }
@@ -174,97 +210,93 @@ bool FamilyUsesTokenizerAsset(std::string_view family) {
 
 ModelInfo ParseModelJson(const fs::path& dir, const fs::path& json_path, std::string* error) {
   ModelInfo info;
-  try {
-    std::ifstream file(json_path);
-    json j;
-    file >> j;
-    std::error_code root_ec;
-    const fs::path model_root = fs::weakly_canonical(dir, root_ec);
-    if (root_ec) {
-      if (error) {
-        *error = "failed to resolve model root '" + dir.string() + "': " + root_ec.message();
-      }
-      return info;
-    }
+  std::ifstream file(json_path);
+  const std::string content{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 
-    info.backend = j.value("backend", "");
-    info.runtime = j.value("runtime", "");
-    info.family = j.value("family", "");
-    info.model_type = info.family;
-    info.language = j.value("language", "auto");
-    info.supports_hotwords = j.value("supports_hotwords", false);
-    info.size_bytes = j.value("size_bytes", uint64_t{0});
-    info.recognizer_config =
-        j.contains("recognizer") && j["recognizer"].is_object() ? j["recognizer"] : json::object();
-    info.model_config = j.contains("model") && j["model"].is_object() ? j["model"] : json::object();
-
-    ResolveModelFileField(dir, model_root, info.model_config, "tokens", "tokens", &info);
-    ResolveModelFileField(dir, model_root, info.model_config, "bpe_vocab", "bpe_vocab", &info);
-    ResolveModelFileField(dir, model_root, info.model_config, "bpe_model", "bpe_model", &info);
-    ResolveModelFileField(dir, model_root, info.model_config, "telespeech_ctc", "telespeech_ctc",
-                          &info);
-
-    if (info.recognizer_config.contains("lm_config") &&
-        info.recognizer_config["lm_config"].is_object()) {
-      ResolveModelFileField(dir, model_root, info.recognizer_config["lm_config"], "model", "lm",
-                            &info);
-      AddScalarParam(&info.params, "lm_scale",
-                     info.recognizer_config["lm_config"].value("scale", 0.0));
-    }
-    ResolveModelFileField(dir, model_root, info.recognizer_config, "hotwords_file", "hotwords_file",
-                          &info);
-    ResolveModelFileField(dir, model_root, info.recognizer_config, "rule_fsts", "rule_fsts", &info);
-    ResolveModelFileField(dir, model_root, info.recognizer_config, "rule_fars", "rule_fars", &info);
-    if (info.recognizer_config.contains("ctc_fst_decoder_config") &&
-        info.recognizer_config["ctc_fst_decoder_config"].is_object()) {
-      ResolveModelFileField(dir, model_root, info.recognizer_config["ctc_fst_decoder_config"],
-                            "graph", "graph", &info);
-      AddScalarParam(&info.params, "ctc_fst_max_active",
-                     info.recognizer_config["ctc_fst_decoder_config"].value("max_active", 0));
-    }
-    if (info.recognizer_config.contains("hr") && info.recognizer_config["hr"].is_object()) {
-      ResolveModelFileField(dir, model_root, info.recognizer_config["hr"], "lexicon", "hr_lexicon",
-                            &info);
-      ResolveModelFileField(dir, model_root, info.recognizer_config["hr"], "rule_fsts",
-                            "hr_rule_fsts", &info);
-    }
-
-    AddScalarParam(&info.params, "decoding_method",
-                   info.recognizer_config.value("decoding_method", ""));
-    AddScalarParam(&info.params, "max_active_paths",
-                   info.recognizer_config.value("max_active_paths", 0));
-    AddScalarParam(&info.params, "enable_endpoint",
-                   info.recognizer_config.value("enable_endpoint", 0));
-    AddScalarParam(&info.params, "rule1_min_trailing_silence",
-                   info.recognizer_config.value("rule1_min_trailing_silence", 0.0));
-    AddScalarParam(&info.params, "rule2_min_trailing_silence",
-                   info.recognizer_config.value("rule2_min_trailing_silence", 0.0));
-    AddScalarParam(&info.params, "rule3_min_utterance_length",
-                   info.recognizer_config.value("rule3_min_utterance_length", 0.0));
-    AddScalarParam(&info.params, "hotwords_score",
-                   info.recognizer_config.value("hotwords_score", 0.0));
-    AddScalarParam(&info.params, "blank_penalty",
-                   info.recognizer_config.value("blank_penalty", 0.0));
-
-    AddScalarParam(&info.params, "num_threads", info.model_config.value("num_threads", 0));
-    AddScalarParam(&info.params, "debug", info.model_config.value("debug", 0));
-    AddScalarParam(&info.params, "provider", info.model_config.value("provider", ""));
-    AddScalarParam(&info.params, "model_type", info.model_config.value("model_type", ""));
-    AddScalarParam(&info.params, "modeling_unit", info.model_config.value("modeling_unit", ""));
-
-    if (info.model_config.contains(info.family) && info.model_config[info.family].is_object()) {
-      const auto& family_config = info.model_config[info.family];
-      for (const auto& [key, val] : family_config.items()) {
-        if (val.is_string()) {
-          ResolveModelFileField(dir, model_root, family_config, key, key, &info);
-        }
-        AddScalarParam(&info.params, key, val);
-      }
-    }
-
-  } catch (const std::exception& e) {
+  glz::json_t j;
+  if (const auto ec = glz::read_json(j, content); bool(ec)) {
     if (error) {
-      *error = "failed to parse '" + json_path.string() + "': " + e.what();
+      *error = "failed to parse '" + json_path.string() + "': " + glz::format_error(ec, content);
+    }
+    return info;
+  }
+
+  std::error_code root_ec;
+  const fs::path model_root = fs::weakly_canonical(dir, root_ec);
+  if (root_ec) {
+    if (error) {
+      *error = "failed to resolve model root '" + dir.string() + "': " + root_ec.message();
+    }
+    return info;
+  }
+
+  info.backend = vinput::json::String(j, "backend");
+  info.runtime = vinput::json::String(j, "runtime");
+  info.family = vinput::json::String(j, "family");
+  info.model_type = info.family;
+  info.language = vinput::json::String(j, "language", "auto");
+  info.supports_hotwords = vinput::json::Bool(j, "supports_hotwords");
+  info.size_bytes = static_cast<uint64_t>(vinput::json::Int64(j, "size_bytes", 0));
+  if (const auto* recognizer = vinput::json::Find(j, "recognizer");
+      recognizer != nullptr && recognizer->is_object()) {
+    info.recognizer_config = *recognizer;
+  }
+  if (const auto* model = vinput::json::Find(j, "model"); model != nullptr && model->is_object()) {
+    info.model_config = *model;
+  }
+
+  ResolveModelFileField(dir, model_root, info.model_config, "tokens", "tokens", &info);
+  ResolveModelFileField(dir, model_root, info.model_config, "bpe_vocab", "bpe_vocab", &info);
+  ResolveModelFileField(dir, model_root, info.model_config, "bpe_model", "bpe_model", &info);
+  ResolveModelFileField(dir, model_root, info.model_config, "telespeech_ctc", "telespeech_ctc",
+                        &info);
+
+  if (const auto* lm_config = vinput::json::Find(info.recognizer_config, "lm_config");
+      lm_config != nullptr && lm_config->is_object()) {
+    ResolveModelFileField(dir, model_root, *lm_config, "model", "lm", &info);
+    AddScalarParam(&info.params, "lm_scale", *lm_config, "scale", 0.0);
+  }
+  ResolveModelFileField(dir, model_root, info.recognizer_config, "hotwords_file", "hotwords_file",
+                        &info);
+  ResolveModelFileField(dir, model_root, info.recognizer_config, "rule_fsts", "rule_fsts", &info);
+  ResolveModelFileField(dir, model_root, info.recognizer_config, "rule_fars", "rule_fars", &info);
+  if (const auto* ctc_config = vinput::json::Find(info.recognizer_config, "ctc_fst_decoder_config");
+      ctc_config != nullptr && ctc_config->is_object()) {
+    ResolveModelFileField(dir, model_root, *ctc_config, "graph", "graph", &info);
+    AddScalarParam(&info.params, "ctc_fst_max_active", *ctc_config, "max_active", 0);
+  }
+  if (const auto* hr_config = vinput::json::Find(info.recognizer_config, "hr");
+      hr_config != nullptr && hr_config->is_object()) {
+    ResolveModelFileField(dir, model_root, *hr_config, "lexicon", "hr_lexicon", &info);
+    ResolveModelFileField(dir, model_root, *hr_config, "rule_fsts", "hr_rule_fsts", &info);
+  }
+
+  AddScalarParam(&info.params, "decoding_method", info.recognizer_config, "decoding_method",
+                 std::string{});
+  AddScalarParam(&info.params, "max_active_paths", info.recognizer_config, "max_active_paths", 0);
+  AddScalarParam(&info.params, "enable_endpoint", info.recognizer_config, "enable_endpoint", 0);
+  AddScalarParam(&info.params, "rule1_min_trailing_silence", info.recognizer_config,
+                 "rule1_min_trailing_silence", 0.0);
+  AddScalarParam(&info.params, "rule2_min_trailing_silence", info.recognizer_config,
+                 "rule2_min_trailing_silence", 0.0);
+  AddScalarParam(&info.params, "rule3_min_utterance_length", info.recognizer_config,
+                 "rule3_min_utterance_length", 0.0);
+  AddScalarParam(&info.params, "hotwords_score", info.recognizer_config, "hotwords_score", 0.0);
+  AddScalarParam(&info.params, "blank_penalty", info.recognizer_config, "blank_penalty", 0.0);
+
+  AddScalarParam(&info.params, "num_threads", info.model_config, "num_threads", 0);
+  AddScalarParam(&info.params, "debug", info.model_config, "debug", 0);
+  AddScalarParam(&info.params, "provider", info.model_config, "provider", std::string{});
+  AddScalarParam(&info.params, "model_type", info.model_config, "model_type", std::string{});
+  AddScalarParam(&info.params, "modeling_unit", info.model_config, "modeling_unit", std::string{});
+
+  if (const auto* family_config = vinput::json::Find(info.model_config, info.family);
+      family_config != nullptr && family_config->is_object()) {
+    for (const auto& [key, value] : family_config->get_object()) {
+      if (value.is_string()) {
+        ResolveModelFileField(dir, model_root, *family_config, key, key, &info);
+      }
+      AddScalarParam(&info.params, key, value);
     }
   }
 
@@ -489,19 +521,19 @@ std::vector<ModelSummary> ModelManager::ListDetailed(const std::string& active_m
       base_dir_, [&](const std::string& model_id, const fs::path&, const fs::path& json_path) {
         ModelSummary s;
         s.id = model_id;
-        try {
-          std::ifstream file(json_path);
-          json j;
-          file >> j;
-          s.model_type = j.value("family", "");
-          s.language = j.value("language", "auto");
-          s.supports_hotwords = j.value("supports_hotwords", false);
-          s.size_bytes = j.value("size_bytes", uint64_t{0});
-        } catch (...) {
+        std::ifstream file(json_path);
+        const std::string content{std::istreambuf_iterator<char>(file),
+                                  std::istreambuf_iterator<char>()};
+        glz::json_t j;
+        if (bool(glz::read_json(j, content))) {
           s.state = ModelState::Broken;
           summaries.push_back(std::move(s));
           return;
         }
+        s.model_type = vinput::json::String(j, "family");
+        s.language = vinput::json::String(j, "language", "auto");
+        s.supports_hotwords = vinput::json::Bool(j, "supports_hotwords");
+        s.size_bytes = static_cast<uint64_t>(vinput::json::Int64(j, "size_bytes", 0));
 
         s.state = (model_id == active_model) ? ModelState::Active : ModelState::Installed;
         summaries.push_back(std::move(s));
