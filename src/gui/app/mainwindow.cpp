@@ -176,7 +176,6 @@ void MainWindow::onSaveClicked() {
 void MainWindow::onOpenConfigClicked() {
   const auto configPath = vinput::path::CoreConfigPath();
   QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(configPath.string())));
-  this->setFocus();
 }
 
 namespace {
@@ -293,11 +292,11 @@ void MainWindow::checkNotification() {
   worker->start();
 }
 
-void MainWindow::onNotificationReady(QString id, QString title, QString text, QString url) {
+void MainWindow::onNotificationReady(const QString& id, const QString& title, const QString& text,
+                                     const QString& url) {
   QMessageBox msgBox(this);
-  msgBox.setWindowTitle(std::move(title));
-  const QString notification_text = std::move(text);
-  msgBox.setText(notification_text);
+  msgBox.setWindowTitle(title);
+  msgBox.setText(text);
   msgBox.setIcon(QMessageBox::Information);
   auto* copyBtn = msgBox.addButton(tr("Copy"), QMessageBox::ActionRole);
   auto* detailBtn =
@@ -306,12 +305,12 @@ void MainWindow::onNotificationReady(QString id, QString title, QString text, QS
   msgBox.exec();
 
   if (copyBtn != nullptr && msgBox.clickedButton() == copyBtn) {
-    QGuiApplication::clipboard()->setText(notification_text);
+    QGuiApplication::clipboard()->setText(text);
   } else if (detailBtn != nullptr && msgBox.clickedButton() == detailBtn) {
-    QDesktopServices::openUrl(QUrl(std::move(url)));
+    QDesktopServices::openUrl(QUrl(url));
   }
 
   // Mark as read
   const auto read_path = vinput::path::ReadNotificationsPath();
-  vinput::file::AtomicWriteTextFile(read_path, std::move(id).toStdString(), nullptr);
+  vinput::file::AtomicWriteTextFile(read_path, id.toStdString(), nullptr);
 }
