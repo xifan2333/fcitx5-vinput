@@ -12,7 +12,7 @@
 namespace {
 
 std::filesystem::path BundledDefaultCoreConfigPath() {
-  const std::filesystem::path source = VINPUT_DEFAULT_CORE_CONFIG_SOURCE_PATH;
+  std::filesystem::path source = VINPUT_DEFAULT_CORE_CONFIG_SOURCE_PATH;
   std::error_code ec;
   if (std::filesystem::exists(source, ec) && !ec) {
     return source;

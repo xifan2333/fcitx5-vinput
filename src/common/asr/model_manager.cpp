@@ -333,17 +333,15 @@ std::string RequiredTextAssetPathKey(const ModelInfo& info) {
 
 // Check that at least one model/encoder file exists
 bool HasModelFiles(const ModelInfo& info) {
-  for (const auto& [key, path] : info.files) {
+  return std::ranges::any_of(info.files, [](const auto& pair) {
+    const auto& [key, path] = pair;
     if (key == "tokens" || key == "tokenizer" || key == "bpe_vocab" || key == "bpe_model" ||
         key == "hotwords_file" || key == "lm" || key == "rule_fsts" || key == "rule_fars" ||
         key == "graph" || key == "hr_lexicon" || key == "hr_rule_fsts") {
-      continue;
+      return false;
     }
-    if (!path.empty() && fs::exists(path)) {
-      return true;
-    }
-  }
-  return false;
+    return !path.empty() && fs::exists(path);
+  });
 }
 
 } // namespace
@@ -437,10 +435,8 @@ fs::path ModelManager::ModelDir(std::string_view model_id) const {
   return fs::path(base_dir_) / relative_path;
 }
 
-ModelManager::ModelManager(const std::string& base_dir, const std::string& model_id) {
-  base_dir_ = NormalizeBaseDir(base_dir).string();
-  model_id_ = model_id;
-}
+ModelManager::ModelManager(const std::string& base_dir, const std::string& model_id)
+    : base_dir_(NormalizeBaseDir(base_dir).string()), model_id_(model_id) {}
 
 bool ModelManager::EnsureModels(std::string* error) {
   auto dir = ModelDir(model_id_);

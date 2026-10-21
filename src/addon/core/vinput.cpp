@@ -17,7 +17,6 @@
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <time.h>
 #include <unicodelib.h>
 #include <unicodelib_encodings.h>
 
@@ -46,6 +45,7 @@ using namespace vinput::dbus;
 
 namespace {
 
+constexpr clockid_t kContextClock = 1; // POSIX CLOCK_MONOTONIC
 constexpr const char* kContextSourceUser = "user";
 
 // Re-encodes `text` through the vendored Unicode codec, dropping ill formed byte
@@ -434,11 +434,11 @@ void VinputEngine::accumulateContextBuffer(const std::string& text, fcitx::Input
   }
 
   // Reset 5s inactivity timer.
-  const auto fire_at = fcitx::now(CLOCK_MONOTONIC) + kContextFlushDelayUsec;
+  const auto fire_at = fcitx::now(kContextClock) + kContextFlushDelayUsec;
   if (!context_flush_timer_) {
     const std::weak_ptr<bool> token = lifetime_token_;
     context_flush_timer_ = instance_->eventLoop().addTimeEvent(
-        CLOCK_MONOTONIC, fire_at, 0, [this, token](fcitx::EventSourceTime*, uint64_t) {
+        kContextClock, fire_at, 0, [this, token](fcitx::EventSourceTime*, uint64_t) {
           if (token.expired()) {
             return false;
           }

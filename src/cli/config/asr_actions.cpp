@@ -702,6 +702,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
     const std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
                                               _("SIZE"), _("HOTWORDS"), _("STATUS")};
     std::vector<std::vector<std::string>> rows;
+    rows.reserve(remoteModels.size());
     for (const auto& model : remoteModels) {
       rows.push_back({vinput::cli::HumanizeResourceId(model.id, model.short_id),
                       display_map.at(model.id).title, model.model_type(), model.language,
@@ -946,7 +947,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
 int RunAsrConfigGetHotword(Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   const auto* provider = PreferredLocalProvider(config);
-  const std::string hotwordPath = provider ? provider->hotwordsFile : "";
+  const std::string hotwordPath = provider != nullptr ? provider->hotwordsFile : "";
 
   if (ctx.json_output) {
     fmt.PrintJson({{"hotwords_file", hotwordPath}});
@@ -997,7 +998,7 @@ int RunAsrConfigEditHotword(Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   const CoreConfig config = LoadCoreConfig();
   const auto* provider = PreferredLocalProvider(config);
-  const std::string hotwordPath = provider ? provider->hotwordsFile : "";
+  const std::string hotwordPath = provider != nullptr ? provider->hotwordsFile : "";
   if (hotwordPath.empty()) {
     fmt.PrintError(_("No hotwords file configured. Use 'hotword set <path>' first."));
     return 1;
