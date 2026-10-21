@@ -1,15 +1,12 @@
 #include "common/registry/installed_manifest.h"
 
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
-#include <fstream>
 #include <glaze/core/opts.hpp>
+#include <glaze/core/write.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
-#include <glaze/json/write.hpp>
-#include <ios>
 #include <string>
 #include <string_view>
 #include <utility>

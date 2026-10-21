@@ -17,7 +17,8 @@
 #include "cli/utils/formatter.h"
 
 int RunConfigDomainGet(const std::string& path, Formatter& fmt, const CliContext& ctx) {
-  std::string value, error;
+  std::string value;
+  std::string error;
   if (!vinput::config::GetConfigValue(path, &value, &error)) {
     fmt.PrintError(error);
     return 1;
@@ -35,10 +36,12 @@ int RunConfigDomainSet(const std::string& path, const std::string& value_arg, bo
   (void)ctx;
   std::string value = value_arg;
   if (from_stdin) {
-    std::string line, all;
+    std::string line;
+    std::string all;
     while (std::getline(std::cin, line)) {
-      if (!all.empty())
+      if (!all.empty()) {
         all += '\n';
+      }
       all += line;
     }
     value = all;

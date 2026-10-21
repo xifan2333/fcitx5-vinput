@@ -8,8 +8,9 @@
 #include <fcitx-config/rawconfig.h>
 #include <filesystem>
 #include <glaze/core/opts.hpp>
+#include <glaze/core/read.hpp>
+#include <glaze/core/write.hpp>
 #include <glaze/json/json_t.hpp>
-#include <glaze/json/read.hpp>
 #include <glaze/json/write.hpp>
 #include <optional>
 #include <span>

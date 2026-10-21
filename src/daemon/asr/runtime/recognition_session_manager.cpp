@@ -1,17 +1,13 @@
 #include "daemon/asr/runtime/recognition_session_manager.h"
 
 #include <chrono>
-#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
-#include <span>
 #include <string>
 #include <utility>
-#include <variant>
-#include <vector>
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
@@ -20,8 +16,8 @@
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
 
-#include "daemon/asr/backend.h"
 #include "daemon/asr/runtime/backend_factory.h"
+#include "daemon/asr/runtime/recognition_contract.h"
 
 namespace vinput::daemon::asr {
 
@@ -80,7 +76,7 @@ public:
 
 private:
   std::shared_ptr<AsrBackend> backend_;
-  std::unique_ptr<RecognitionSession> session_;
+  std::unique_ptr<RecognitionSession> session_{};
 };
 
 bool ShouldDisableAsr(const CoreConfig& config, std::string* reason) {
@@ -202,7 +198,7 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
     const std::scoped_lock lock(state_mutex_);
     if (effective_backend_ && effective_backend_signature_ == signature && !reload_in_progress_) {
       const AsrProvider* provider = ResolveActiveAsrProvider(settings);
-      target_provider_id_ = provider ? AsrProviderId(*provider) : std::string{} != nullptr;
+      target_provider_id_ = provider ? AsrProviderId(*provider) : std::string{};
       target_model_id_ = ResolvePreferredLocalModel(settings);
       target_backend_signature_ = signature;
       last_reload_error_.clear();
@@ -214,7 +210,7 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
 
     pending_settings_ = settings;
     const AsrProvider* provider = ResolveActiveAsrProvider(settings);
-    target_provider_id_ = provider ? AsrProviderId(*provider) : std::string{} != nullptr;
+    target_provider_id_ = provider ? AsrProviderId(*provider) : std::string{};
     target_model_id_ = ResolvePreferredLocalModel(settings);
     target_backend_signature_ = signature;
     reload_requested_ = true;
@@ -344,7 +340,7 @@ bool RecognitionSessionManager::CreatePreparedBackend(const CoreConfig& settings
 
   LogActiveBackend(settings);
   const auto prepare_started_at = std::chrono::steady_clock::now();
-  std::string create_error;
+  const std::string create_error;
   auto backend = std::shared_ptr<AsrBackend>(CreateBackend(settings, &create_error).release());
   if (!backend) {
     if (error != nullptr) {
@@ -491,7 +487,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
     CoreConfig settings;
     std::string signature;
     {
-      std::unique_lock<std::mutex> lock(state_mutex_);
+      const std::unique_lock<std::mutex> lock(state_mutex_);
       reload_cv_.wait(lock, [&]() { return reload_requested_ || !reload_worker_running_; });
       if (!reload_worker_running_) {
         break;

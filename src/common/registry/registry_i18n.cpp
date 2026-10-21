@@ -71,7 +71,7 @@ void ApplyLocalI18nOverrides(I18nMap* map) {
 }
 
 std::string DetectPreferredLocale() {
-  const char* vars[] = {"LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"};
+  const char* const vars[] = {"LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"};
   for (const char* name : vars) {
     const char* value = std::getenv(name);
     if (value != nullptr && *value) {

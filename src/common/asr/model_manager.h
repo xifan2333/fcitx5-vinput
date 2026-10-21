@@ -40,14 +40,15 @@ struct ModelInfo {
   }
   [[nodiscard]] bool ParamBool(const std::string& key, bool default_val = false) const {
     auto it = params.find(key);
-    if (it == params.end())
+    if (it == params.end()) {
       return default_val;
+    }
     return it->second == "true" || it->second == "1";
   }
   [[nodiscard]] std::string RuntimeLanguageHint() const;
 };
 
-enum class ModelState { Installed, Active, Broken };
+enum class ModelState : std::uint8_t { Installed, Active, Broken };
 
 struct ModelSummary {
   std::string id;

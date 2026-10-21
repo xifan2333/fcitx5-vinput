@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/i18n.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/string_utils.h"

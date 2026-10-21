@@ -5,20 +5,16 @@
 #include <base64.hpp>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstddef>
-#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
-#include <map>
 #include <memory>
-#include <optional>
 #include <poll.h>
-#include <signal.h>
-#include <span>
 #include <spawn.h>
 #include <string>
 #include <string_view>
@@ -31,12 +27,11 @@
 
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
-#include "common/utils/interpolation.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
 #include "common/utils/time_utils.h"
 
-#include "daemon/asr/backend.h"
+#include "daemon/asr/runtime/recognition_contract.h"
 
 extern char** environ;
 
@@ -240,8 +235,12 @@ int RemainingMs(Clock::time_point deadline, int fallback_ms) {
 class CommandStreamingSession : public RecognitionSession {
 public:
   CommandStreamingSession(const CommandAsrProvider& provider, std::string provider_id)
-      : provider_(provider), provider_id_(std::move(provider_id)),
-        deadline_(Clock::time_point::max()) {}
+      : provider_(provider), provider_id_(std::move(provider_id)) {}
+
+  CommandStreamingSession(const CommandStreamingSession&) = delete;
+  CommandStreamingSession& operator=(const CommandStreamingSession&) = delete;
+  CommandStreamingSession(CommandStreamingSession&&) = delete;
+  CommandStreamingSession& operator=(CommandStreamingSession&&) = delete;
 
   ~CommandStreamingSession() override { Terminate(); }
 
@@ -662,7 +661,7 @@ private:
   }
 
   bool HandleOutputLine(const std::string& line, std::string* error) {
-    glz::json_t payload;
+    const glz::json_t payload;
     if (const auto ec = glz::read_json(payload, line); bool(ec)) {
       if (error != nullptr) {
         *error = std::string("invalid streaming provider JSON: ") + glz::format_error(ec);
@@ -765,7 +764,7 @@ private:
 
   CommandAsrProvider provider_;
   std::string provider_id_;
-  Clock::time_point deadline_{};
+  Clock::time_point deadline_ = Clock::time_point::max();
   ChildProcess child_;
   bool started_ = false;
   bool finished_ = false;
@@ -779,8 +778,8 @@ private:
   std::string stderr_buffer_;
   std::string stderr_tail_;
   std::string last_partial_text_;
-  std::vector<std::byte> pending_chunk_;
-  std::vector<RecognitionEvent> events_;
+  std::vector<std::byte> pending_chunk_{};
+  std::vector<RecognitionEvent> events_{};
 };
 
 class CommandStreamingBackend : public AsrBackend {

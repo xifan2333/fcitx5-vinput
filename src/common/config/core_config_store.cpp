@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"

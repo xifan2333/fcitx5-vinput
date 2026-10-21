@@ -1,6 +1,5 @@
 #include "core/vinput.h"
 
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -12,11 +11,11 @@
 #include <filesystem>
 #include <fstream>
 #include <glaze/json/json_t.hpp>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <time.h>
 #include <unicodelib.h>
 #include <unicodelib_encodings.h>
 
@@ -30,17 +29,18 @@
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/sandbox.h"
-#include "common/utils/string_utils.h"
 #include "common/utils/time_utils.h"
 
 #include "core/context_writer.h"
 #include "dbus/notifier_dbus_object.h"
 #include "fcitx-config/rawconfig.h"
+#include "fcitx-utils/capabilityflags.h"
 #include "fcitx-utils/event.h"
 #include "fcitx/addonfactory.h"
 #include "fcitx/addoninstance.h"
+#include "fcitx/event.h"
 #include "fcitx/inputcontext.h"
-#include "fcitx/inputcontexthandler.h"
+#include "fcitx/instance.h"
 
 using namespace vinput::dbus;
 
@@ -58,7 +58,7 @@ std::string SanitizeUtf8(const std::string& text) {
   const auto decoded = unicode::utf8::decode(text);
   return unicode::utf8::encode(decoded);
 }
-constexpr uint64_t kContextFlushDelayUsec = 5 * 1000 * 1000; // 5 seconds
+constexpr uint64_t kContextFlushDelayUsec = 5ULL * 1000ULL * 1000ULL; // 5 seconds
 
 bool IsCjkAtBoundary(std::string_view left, std::string_view right) noexcept {
   auto decode_first = [](std::string_view s) -> char32_t {
@@ -146,7 +146,7 @@ void ensureDaemonServiceInstalled() {
   FCITX_LOG(Info) << "vinput: installed vinput-daemon.service to " << dest;
 
   auto reload_cmd = vinput::sandbox::WrapHostCommand({"systemctl", "--user", "daemon-reload"});
-  std::string cmd;
+  const std::string cmd;
   for (const auto& arg : reload_cmd) {
     if (!cmd.empty()) {
       cmd += ' ';
@@ -327,7 +327,7 @@ void VinputEngine::reloadSceneConfig() {
   scene_config_.scenes = core_config.scenes.definitions;
   active_scene_id_ = scene_config_.activeSceneId;
 
-  int max_cl = 0;
+  const int max_cl = 0;
   for (const auto& s : scene_config_.scenes) {
     if (s.context_lines > max_cl) {
       max_cl = s.context_lines;
@@ -377,8 +377,7 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
   // cache file parseable.
   const glz::json_t entry = {
       {"text", SanitizeUtf8(text)},
-      {"source",
-       SanitizeUtf8(source ? std::string(source) : std::string(kContextSourceUser) != nullptr)},
+      {"source", SanitizeUtf8(source ? std::string(source) : std::string(kContextSourceUser))},
       {"timestamp", static_cast<double>(vinput::time::CurrentUnixTimestampSeconds())},
   };
 

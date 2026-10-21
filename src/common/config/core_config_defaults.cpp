@@ -5,6 +5,7 @@
 #include <system_error>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 
 #include "config.h"
 
@@ -16,7 +17,7 @@ std::filesystem::path BundledDefaultCoreConfigPath() {
   if (std::filesystem::exists(source, ec) && !ec) {
     return source;
   }
-  return std::filesystem::path(VINPUT_DEFAULT_CORE_CONFIG_INSTALL_PATH);
+  return {VINPUT_DEFAULT_CORE_CONFIG_INSTALL_PATH};
 }
 
 } // namespace

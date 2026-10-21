@@ -6,20 +6,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <functional>
-#include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
-#include <span>
+#include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
 #include <system_error>
 #include <unistd.h>
-#include <unordered_map>
 #include <utility>
-#include <vector>
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config.h"
@@ -29,8 +25,8 @@
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
-#include "daemon/asr/backend.h"
 #include "daemon/asr/hotword_utils.h"
+#include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/sherpa_json_helpers.h"
 #include "daemon/asr/vad_trimmer.h"
 
@@ -130,13 +126,13 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
   const std::string f_rule_fars = info.File("rule_fars");
   const std::string p_language = asr_config.language;
   const std::string p_modeling_unit = JsonString(model_cfg, "modeling_unit", "cjkchar");
-  std::string cfg_language;
-  std::string cfg_task;
-  std::string cfg_src_lang;
-  std::string cfg_tgt_lang;
-  std::string cfg_system_prompt;
-  std::string cfg_user_prompt;
-  std::string cfg_hotwords;
+  const std::string cfg_language;
+  const std::string cfg_task;
+  const std::string cfg_src_lang;
+  const std::string cfg_tgt_lang;
+  const std::string cfg_system_prompt;
+  const std::string cfg_user_prompt;
+  const std::string cfg_hotwords;
   std::string selected_hotwords_file;
   std::string normalized_transducer_hotwords;
   std::string provider_prompt_hotwords;
@@ -428,7 +424,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
 
   auto* recognizer = SherpaOnnxCreateOfflineRecognizer(&config);
   if (!temporary_hotwords_file.empty()) {
-    std::error_code remove_error;
+    const std::error_code remove_error;
     std::filesystem::remove(temporary_hotwords_file, remove_error);
     if (remove_error) {
       fprintf(stderr, "vinput: failed to remove temporary hotwords file: %s\n",
@@ -575,8 +571,8 @@ private:
   bool vad_available_;
   VadTrimmer* vad_;
   bool finished_ = false;
-  std::vector<float> samples_;
-  std::vector<RecognitionEvent> events_;
+  std::vector<float> samples_{};
+  std::vector<RecognitionEvent> events_{};
 };
 
 // ---------------------------------------------------------------------------

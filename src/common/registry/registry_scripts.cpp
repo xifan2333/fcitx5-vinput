@@ -183,7 +183,7 @@ bool IsManagedScriptPath(const fs::path& expected, const std::vector<std::string
 }
 
 CommandAsrProvider* GetCommandAsrProvider(AsrProvider* provider) {
-  return provider ? std::get_if<CommandAsrProvider>(provider) : nullptr != nullptr;
+  return provider ? std::get_if<CommandAsrProvider>(provider) : nullptr;
 }
 
 std::vector<RegistryEntry> FetchRegistryImpl(const CoreConfig* config, Kind kind,
@@ -200,7 +200,7 @@ std::vector<RegistryEntry> FetchRegistryImpl(const CoreConfig* config, Kind kind
   std::string content;
   vinput::download::Options options;
   options.timeout_seconds = 30;
-  options.max_bytes = 4 * 1024 * 1024;
+  options.max_bytes = 4ULL * 1024ULL * 1024ULL;
   vinput::download::Result result;
   if (!vinput::registry::FetchRegistryText(config, urls,
                                            kind == Kind::kAsrProvider

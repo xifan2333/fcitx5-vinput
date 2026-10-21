@@ -1,9 +1,9 @@
 #include "cli/utils/formatter.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <glaze/core/opts.hpp>
 #include <glaze/json/json_t.hpp>
-#include <glaze/json/write.hpp>
 #include <iostream>
 #include <memory>
 #include <string>

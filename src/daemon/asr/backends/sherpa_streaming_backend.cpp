@@ -8,10 +8,8 @@
 #include <memory>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
-#include <span>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config.h"
@@ -21,8 +19,8 @@
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
-#include "daemon/asr/backend.h"
 #include "daemon/asr/hotword_utils.h"
+#include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/sherpa_json_helpers.h"
 
 namespace vinput::daemon::asr {
@@ -107,7 +105,7 @@ public:
     SherpaOnnxOnlineStreamInputFinished(stream_);
     DecodeAvailable();
 
-    std::string text = GetCurrentText();
+    const std::string text = GetCurrentText();
     fprintf(stderr, "vinput: streaming finish current result bytes=%zu\n", text.size());
     if (!text.empty()) {
       if (text != last_partial_text_) {
@@ -207,7 +205,7 @@ private:
   double peak_abs_ = 0.0;
   double sum_squares_ = 0.0;
   std::string last_partial_text_;
-  std::vector<RecognitionEvent> events_;
+  std::vector<RecognitionEvent> events_{};
 };
 
 class SherpaStreamingBackend : public AsrBackend {

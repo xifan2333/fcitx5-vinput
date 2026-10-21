@@ -10,9 +10,9 @@
 #include <fstream>
 #include <glaze/core/common.hpp>
 #include <glaze/core/opts.hpp>
+#include <glaze/core/write.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
-#include <glaze/json/write.hpp>
 #include <iterator>
 #include <string>
 #include <sys/types.h>
@@ -246,7 +246,7 @@ std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig* config,
   std::string content;
   vinput::download::Options options;
   options.timeout_seconds = 30;
-  options.max_bytes = 4 * 1024 * 1024;
+  options.max_bytes = 4ULL * 1024ULL * 1024ULL;
 
   vinput::download::Result download_result;
   if (!vinput::registry::FetchRegistryText(config, registry_urls,
@@ -460,7 +460,7 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
       top_entries.push_back(entry.path());
     }
     if (top_entries.size() == 1 && fs::is_directory(top_entries[0])) {
-      const fs::path single_dir = top_entries[0];
+      const fs::path& single_dir = top_entries[0];
       const fs::path flatten_tmp = tmp_dir / "flatten";
       fs::rename(single_dir, flatten_tmp, ec);
       if (!ec) {
@@ -640,7 +640,7 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
   const fs::path dest_root = fs::weakly_canonical(dest);
   bool success = true;
-  struct archive_entry* entry;
+  struct archive_entry* entry = nullptr;
   while ((r = archive_read_next_header(a, &entry)) == ARCHIVE_OK) {
     const char* raw_path = archive_entry_pathname(entry);
     if (raw_path == nullptr) {
@@ -733,9 +733,9 @@ bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& de
 
     if (archive_entry_size(entry) > 0) {
       // Copy data blocks
-      const void* buff;
-      size_t size;
-      la_int64_t offset;
+      const void* buff = nullptr;
+      size_t size = 0;
+      la_int64_t offset = 0;
       while ((r = archive_read_data_block(a, &buff, &size, &offset)) == ARCHIVE_OK) {
         if (archive_write_data_block(out, buff, size, offset) != ARCHIVE_OK) {
           if (error != nullptr) {

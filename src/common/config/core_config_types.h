@@ -59,8 +59,9 @@ inline int AsrProviderTimeoutMs(const AsrProvider& p) {
 }
 
 inline std::string_view AsrProviderType(const AsrProvider& p) {
-  if (std::holds_alternative<LocalAsrProvider>(p))
+  if (std::holds_alternative<LocalAsrProvider>(p)) {
     return vinput::asr::kLocalProviderType;
+  }
   return vinput::asr::kCommandProviderType;
 }
 

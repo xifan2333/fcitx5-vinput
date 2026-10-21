@@ -2,11 +2,10 @@
 
 #include <cstdint>
 #include <ctime>
-#include <filesystem>
 #include <glaze/core/opts.hpp>
+#include <glaze/core/write.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
-#include <glaze/json/write.hpp>
 #include <set>
 #include <string>
 #include <utility>
@@ -26,7 +25,7 @@ namespace {
 constexpr auto kCacheWriteOpts = glz::opts{.prettify = uint8_t{1}, .indentation_width = 2};
 
 glz::json_t EmptyObject() {
-  return glz::json_t(glz::json_t::object_t{});
+  return {glz::json_t::object_t{}};
 }
 
 bool ReadCacheFile(glz::json_t* out) {
@@ -102,7 +101,8 @@ bool RemoveProviderModels(const std::string& provider_id, std::string* error) {
   }
 
   auto* providers = vinput::json::Find(cache, "providers");
-  if (providers != nullptr && providers->is_object() && providers->contains(provider_id)) {
+  if (providers != nullptr && providers->is_object() &&
+      providers->get_object().contains(provider_id)) {
     providers->get_object().erase(provider_id);
     return WriteCacheFile(cache, error);
   }

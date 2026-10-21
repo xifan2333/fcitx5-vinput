@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <glaze/core/opts.hpp>
+#include <glaze/core/write.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/write.hpp>
 #include <limits>
@@ -46,7 +47,7 @@ inline std::string String(const glz::json_t& object, std::string_view key,
     return fallback;
   }
   const auto* text = node->get_if<std::string>();
-  return text == nullptr ? std::move(fallback) : *text;
+  return text == nullptr ? fallback : *text;
 }
 
 inline double Number(const glz::json_t& object, std::string_view key, double fallback = 0.0) {
@@ -142,7 +143,7 @@ template <typename Container> glz::json_t FromStrings(const Container& values) {
   for (const auto& value : values) {
     array.emplace_back(value);
   }
-  return glz::json_t(std::move(array));
+  return {std::move(array)};
 }
 
 // Builds a JSON object out of a string map.
@@ -151,7 +152,7 @@ inline glz::json_t FromStringMap(const std::map<std::string, std::string>& value
   for (const auto& [key, value] : values) {
     object.emplace(key, glz::json_t(value));
   }
-  return glz::json_t(std::move(object));
+  return {std::move(object)};
 }
 
 // Shared empty object, used as the fallback of Object().
@@ -160,13 +161,12 @@ inline const glz::json_t& EmptyObject() {
   return value;
 }
 
-// Returns the object stored under `key`, or `fallback` when the key is missing
-// or holds a non-object value.
-inline const glz::json_t& Object(const glz::json_t& object, std::string_view key,
-                                 const glz::json_t& fallback = EmptyObject()) {
+// Returns the object stored under `key`, or the shared empty object when the key
+// is missing or holds a non-object value.
+inline const glz::json_t& Object(const glz::json_t& object, std::string_view key) {
   const auto* node = Find(object, key);
   if (node == nullptr || !node->is_object()) {
-    return fallback;
+    return EmptyObject();
   }
   return *node;
 }

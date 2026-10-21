@@ -339,8 +339,9 @@ bool HasModelFiles(const ModelInfo& info) {
         key == "graph" || key == "hr_lexicon" || key == "hr_rule_fsts") {
       continue;
     }
-    if (!path.empty() && fs::exists(path))
+    if (!path.empty() && fs::exists(path)) {
       return true;
+    }
   }
   return false;
 }
@@ -352,7 +353,7 @@ std::string ModelInfo::RuntimeLanguageHint() const {
     if (value.empty()) {
       return false;
     }
-    for (char c : value) {
+    for (const char c : value) {
       const bool ok = (c >= 'a' && c <= 'z') || c == '-' || c == '_';
       if (!ok) {
         return false;
@@ -564,21 +565,24 @@ std::vector<ModelSummary> ModelManager::ListDetailed(const std::string& active_m
 bool ModelManager::Validate(const std::string& model_id, std::string* error) const {
   const auto dir = ModelDir(model_id);
   if (dir.empty()) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "invalid model id: " + model_id;
+    }
     return false;
   }
 
   if (!fs::exists(dir) || !fs::is_directory(dir)) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "model directory does not exist: " + dir.string();
+    }
     return false;
   }
 
   const auto json_path = dir / "vinput-model.json";
   if (!fs::exists(json_path) || !fs::is_regular_file(json_path)) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "vinput-model.json not found in " + dir.string();
+    }
     return false;
   }
 
@@ -608,18 +612,21 @@ bool ModelManager::Validate(const std::string& model_id, std::string* error) con
     const auto path_key = RequiredTextAssetPathKey(info);
     auto asset_path = info.File(path_key);
     if (asset_path.empty()) {
-      if (error != nullptr)
+      if (error != nullptr) {
         *error = "vinput-model.json missing required field: " + RequiredTextAssetField(info);
+      }
     } else {
-      if (error != nullptr)
+      if (error != nullptr) {
         *error = path_key + " file not found: " + asset_path;
+      }
     }
     return false;
   }
 
   if (!HasModelFiles(info)) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "no model/encoder files found in model directory";
+    }
     return false;
   }
 
@@ -629,41 +636,47 @@ bool ModelManager::Validate(const std::string& model_id, std::string* error) con
 bool ModelManager::Remove(const std::string& model_id, std::string* error) const {
   const fs::path requested_dir = ModelDir(model_id);
   if (requested_dir.empty()) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "invalid model id: " + model_id;
+    }
     return false;
   }
 
   std::error_code ec;
   const auto dir = fs::weakly_canonical(requested_dir, ec);
   if (ec) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "failed to resolve model directory: " + ec.message();
+    }
     return false;
   }
   const auto base = fs::weakly_canonical(fs::path(base_dir_), ec);
   if (ec) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "failed to resolve model base directory: " + ec.message();
+    }
     return false;
   }
 
   if (!vinput::path::IsPathWithinRoot(dir, base)) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "invalid model id: " + model_id;
+    }
     return false;
   }
 
   if (!fs::exists(dir)) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "model directory does not exist: " + dir.string();
+    }
     return false;
   }
 
   fs::remove_all(dir, ec);
   if (ec) {
-    if (error != nullptr)
+    if (error != nullptr) {
       *error = "failed to remove model directory: " + ec.message();
+    }
     return false;
   }
 

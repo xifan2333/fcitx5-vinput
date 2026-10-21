@@ -5,7 +5,6 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
-#include <cstdint>
 #include <cstdio>
 #include <exception>
 #include <glaze/json/json_t.hpp>
@@ -15,7 +14,6 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <optional>
@@ -157,7 +155,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
   }
 
   const AsrProvider* provider = ResolveActiveAsrProvider(config);
-  const auto* command = provider ? std::get_if<CommandAsrProvider>(provider) : nullptr != nullptr;
+  const auto* command = provider ? std::get_if<CommandAsrProvider>(provider) : nullptr;
   if (command == nullptr) {
     if (error != nullptr) {
       error->clear();
@@ -295,7 +293,7 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
   }
 
   std::vector<std::string> endpoints;
-  for (ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+  for (const ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
     if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET) {
       continue;
     }

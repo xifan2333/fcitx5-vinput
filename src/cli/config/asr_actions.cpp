@@ -2,9 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
 #include <glaze/json/json_t.hpp>
-#include <optional>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -948,7 +946,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
 int RunAsrConfigGetHotword(Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   const auto* provider = PreferredLocalProvider(config);
-  const std::string hotwordPath = provider ? provider->hotwordsFile : "" != nullptr;
+  const std::string hotwordPath = provider ? provider->hotwordsFile : "";
 
   if (ctx.json_output) {
     fmt.PrintJson({{"hotwords_file", hotwordPath}});
@@ -999,7 +997,7 @@ int RunAsrConfigEditHotword(Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   const CoreConfig config = LoadCoreConfig();
   const auto* provider = PreferredLocalProvider(config);
-  const std::string hotwordPath = provider ? provider->hotwordsFile : "" != nullptr;
+  const std::string hotwordPath = provider ? provider->hotwordsFile : "";
   if (hotwordPath.empty()) {
     fmt.PrintError(_("No hotwords file configured. Use 'hotword set <path>' first."));
     return 1;
