@@ -61,9 +61,9 @@ bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std:
 
 // ---------------------------------------------------------------------------
 // Build a sherpa_onnx::cxx::OfflineRecognizer from ModelInfo + AsrConfig.
-// Returns an empty recognizer on failure (sets *error).
+// Returns std::nullopt on failure (sets *error).
 // ---------------------------------------------------------------------------
-sherpa_onnx::cxx::OfflineRecognizer
+std::optional<sherpa_onnx::cxx::OfflineRecognizer>
 CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std::string* error) {
   sherpa_onnx::cxx::OfflineRecognizerConfig config;
   const auto& recognizer_cfg = info.recognizer_config;
@@ -108,14 +108,14 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
       info.supports_hotwords && !asr_config.hotwords_file.empty();
   if (provider_hotwords_configured && IsPromptHotwordFamily(info.family)) {
     if (!LoadPromptHotwordsCsv(asr_config.hotwords_file, &provider_prompt_hotwords, error)) {
-      return {};
+      return std::nullopt;
     }
   } else if (provider_hotwords_configured && !IsTransducerHotwordFamily(info.family)) {
     if (error != nullptr) {
       *error =
           "model family '" + info.family + "' does not expose an ASR hotword input in sherpa-onnx";
     }
-    return {};
+    return std::nullopt;
   }
 
   if (info.supports_hotwords && IsTransducerHotwordFamily(info.family)) {
@@ -123,11 +123,11 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
         !asr_config.hotwords_file.empty() ? asr_config.hotwords_file : f_hotwords_file;
     if (!selected_hotwords_file.empty()) {
       if (!LoadTransducerHotwords(selected_hotwords_file, &normalized_transducer_hotwords, error)) {
-        return {};
+        return std::nullopt;
       }
       if (!normalized_transducer_hotwords.empty()) {
         if (!ValidateTransducerHotwordAssets(info, error)) {
-          return {};
+          return std::nullopt;
         }
         config.decoding_method = "modified_beam_search";
       }
@@ -369,7 +369,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
       if (error != nullptr) {
         *error = "unsupported model family '" + family + "'";
       }
-      return {};
+      return std::nullopt;
     }
     it->second();
   }
@@ -378,7 +378,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
   if (!normalized_transducer_hotwords.empty()) {
     if (!WriteTemporaryHotwordFile(normalized_transducer_hotwords, &temporary_hotwords_file,
                                    error)) {
-      return {};
+      return std::nullopt;
     }
     config.hotwords_file = temporary_hotwords_file;
   }
@@ -396,7 +396,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
     if (error != nullptr) {
       *error = "failed to create sherpa-onnx recognizer for family '" + family + "'";
     }
-    return {};
+    return std::nullopt;
   }
 
   fprintf(stderr, "vinput: sherpa-onnx offline ASR initialized (family: %s, lang: %s)\n",
@@ -578,7 +578,7 @@ private:
     }
 
     auto recognizer = CreateOfflineRecognizer(model_info_, asr_config_, error);
-    if (recognizer.Get() == nullptr) {
+    if (!recognizer.has_value() || recognizer->Get() == nullptr) {
       return false;
     }
     recognizer_ = std::move(recognizer);
