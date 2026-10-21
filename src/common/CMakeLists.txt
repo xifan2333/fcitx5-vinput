@@ -80,6 +80,7 @@ target_link_libraries(common PUBLIC
     httplib::httplib
     LibArchive::LibArchive
     OpenSSL::Crypto
+    indicators::indicators
 )
 
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)

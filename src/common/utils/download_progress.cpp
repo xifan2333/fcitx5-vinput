@@ -1,6 +1,8 @@
 #include "common/utils/download_progress.h"
 
 #include <cstdio>
+#include <indicators/indicators.hpp>
+#include <iostream>
 
 static std::string FormatSpeed(double speed_bps) {
   if (speed_bps <= 0)
@@ -17,7 +19,22 @@ static std::string FormatSpeed(double speed_bps) {
 }
 
 ProgressBar::ProgressBar(const std::string& label, uint64_t total, bool is_tty)
-    : label_(label), total_(total), is_tty_(is_tty), last_percent_(-1) {}
+    : label_(label), total_(total), is_tty_(is_tty), last_percent_(-1) {
+  if (is_tty_ && total_ > 0) {
+    bar_ = std::make_unique<indicators::ProgressBar>(
+        indicators::option::BarWidth{30}, indicators::option::PrefixText{label_},
+        indicators::option::ShowPercentage{true}, indicators::option::ShowElapsedTime{false},
+        indicators::option::ShowRemainingTime{false}, indicators::option::Fill{"█"},
+        indicators::option::Lead{"█"}, indicators::option::Remainder{"░"},
+        indicators::option::ForegroundColor{indicators::Color::green},
+        indicators::option::MaxProgress{100}, indicators::option::Stream{std::cerr});
+  }
+}
+
+// Move/destructor must be defined in the .cpp where indicators::ProgressBar is complete
+ProgressBar::ProgressBar(ProgressBar&&) noexcept = default;
+ProgressBar& ProgressBar::operator=(ProgressBar&&) noexcept = default;
+ProgressBar::~ProgressBar() = default;
 
 void ProgressBar::Update(uint64_t current, double speed_bps) {
   if (total_ == 0)
@@ -27,29 +44,15 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
   if (percent > 100)
     percent = 100;
 
-  if (is_tty_) {
-    constexpr int bar_width = 20;
-    int filled = (percent * bar_width) / 100;
-    char bar[bar_width + 1];
-    for (int i = 0; i < bar_width; ++i) {
-      if (i < filled - 1)
-        bar[i] = '=';
-      else if (i == filled - 1 && filled > 0)
-        bar[i] = '>';
-      else
-        bar[i] = ' ';
-    }
-    bar[bar_width] = '\0';
-
+  if (is_tty_ && bar_) {
     std::string speed_str = FormatSpeed(speed_bps);
     if (!speed_str.empty()) {
-      fprintf(stderr, "\r%s [%s] %d%% (%s)   ", label_.c_str(), bar, percent, speed_str.c_str());
-    } else {
-      fprintf(stderr, "\r%s [%s] %d%%   ", label_.c_str(), bar, percent);
+      bar_->set_option(indicators::option::PostfixText{"(" + speed_str + ")"});
     }
-    fflush(stderr);
+    bar_->set_progress(static_cast<size_t>(percent));
     last_percent_ = percent;
   } else {
+    // Non-TTY: 10% bucket line output for CI/log readability
     int bucket = (percent / 10) * 10;
     int last_bucket = (last_percent_ < 0) ? -1 : (last_percent_ / 10) * 10;
     if (bucket > last_bucket) {
@@ -61,12 +64,14 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
 }
 
 void ProgressBar::Finish() {
-  if (is_tty_) {
-    fprintf(stderr, "\n");
+  if (is_tty_ && bar_) {
+    if (!bar_->is_completed()) {
+      bar_->set_progress(100);
+      bar_->mark_as_completed();
+    }
+    // indicators prints newline on completion; no extra newline needed
   } else if (last_percent_ < 100) {
     fprintf(stderr, "%s: 100%%\n", label_.c_str());
-  } else {
-    fprintf(stderr, "\n");
+    fflush(stderr);
   }
-  fflush(stderr);
 }
