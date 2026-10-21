@@ -1,12 +1,15 @@
 #include "common/utils/download_progress.h"
 
+#include <cstddef>
 #include <cstdio>
 #include <indicators/indicators.hpp>
 #include <iostream>
+#include <string>
 
 static std::string FormatSpeed(double speed_bps) {
-  if (speed_bps <= 0)
+  if (speed_bps <= 0) {
     return "";
+  }
   char buf[32];
   if (speed_bps >= 1024.0 * 1024.0) {
     snprintf(buf, sizeof(buf), "%.1fMB/s", speed_bps / (1024.0 * 1024.0));
@@ -37,12 +40,14 @@ ProgressBar& ProgressBar::operator=(ProgressBar&&) noexcept = default;
 ProgressBar::~ProgressBar() = default;
 
 void ProgressBar::Update(uint64_t current, double speed_bps) {
-  if (total_ == 0)
+  if (total_ == 0) {
     return;
+  }
 
   int percent = static_cast<int>((current * 100) / total_);
-  if (percent > 100)
+  if (percent > 100) {
     percent = 100;
+  }
 
   if (is_tty_ && bar_) {
     std::string speed_str = FormatSpeed(speed_bps);

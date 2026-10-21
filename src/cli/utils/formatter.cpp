@@ -1,6 +1,8 @@
 #include "cli/utils/formatter.h"
 
+#include <cstddef>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <tabulate/tabulate.hpp>
 #include <vector>
@@ -10,39 +12,45 @@
 TextFormatter::TextFormatter(bool use_color) : use_color_(use_color) {}
 
 std::string TextFormatter::Green(const std::string& s) const {
-  if (!use_color_)
+  if (!use_color_) {
     return s;
+  }
   return "\033[32m" + s + "\033[0m";
 }
 
 std::string TextFormatter::Red(const std::string& s) const {
-  if (!use_color_)
+  if (!use_color_) {
     return s;
+  }
   return "\033[31m" + s + "\033[0m";
 }
 
 std::string TextFormatter::Yellow(const std::string& s) const {
-  if (!use_color_)
+  if (!use_color_) {
     return s;
+  }
   return "\033[33m" + s + "\033[0m";
 }
 
 std::string TextFormatter::Gray(const std::string& s) const {
-  if (!use_color_)
+  if (!use_color_) {
     return s;
+  }
   return "\033[90m" + s + "\033[0m";
 }
 
 std::string TextFormatter::Bold(const std::string& s) const {
-  if (!use_color_)
+  if (!use_color_) {
     return s;
+  }
   return "\033[1m" + s + "\033[0m";
 }
 
 void TextFormatter::PrintTable(const std::vector<std::string>& headers,
                                const std::vector<std::vector<std::string>>& rows) {
-  if (headers.empty())
+  if (headers.empty()) {
     return;
+  }
 
   using namespace tabulate;
 
@@ -52,7 +60,7 @@ void TextFormatter::PrintTable(const std::vector<std::string>& headers,
   Table::Row_t header_row;
   header_row.reserve(headers.size());
   for (const auto& h : headers) {
-    header_row.push_back(h);
+    header_row.emplace_back(h);
   }
   table.add_row(header_row);
 
@@ -68,7 +76,7 @@ void TextFormatter::PrintTable(const std::vector<std::string>& headers,
     Table::Row_t table_row;
     table_row.reserve(headers.size());
     for (size_t i = 0; i < headers.size(); ++i) {
-      table_row.push_back(i < row.size() ? row[i] : "");
+      table_row.emplace_back(i < row.size() ? row[i] : "");
     }
     table.add_row(table_row);
   }
