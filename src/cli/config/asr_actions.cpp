@@ -795,7 +795,7 @@ int RunAsrConfigInstallModel(const std::string& selector, Formatter& fmt, const 
         bar.Update(progress.downloaded_bytes, progress.speed_bps);
       },
       &error);
-  bar.Finish(ok);
+  bar.Finish();
 
   if (!ok) {
     fmt.PrintError(error);

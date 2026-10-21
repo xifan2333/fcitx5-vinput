@@ -3,13 +3,12 @@
 #include <cstddef>
 #include <iostream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <tabulate/tabulate.hpp>
 #include <vector>
 
 #include "cli/utils/cli_context.h"
-
-using vinput::cli::JsonValue;
 
 // ---- TextFormatter ----
 
@@ -115,7 +114,7 @@ void TextFormatter::PrintWarning(const std::string& msg) {
   std::cout << Yellow(msg) << "\n";
 }
 
-void TextFormatter::PrintJson(const JsonValue& j) {
+void TextFormatter::PrintJson(const nlohmann::json& j) {
   std::cout << j.dump(2) << "\n";
 }
 
@@ -127,9 +126,9 @@ void TextFormatter::PrintInfo(const std::string& msg) {
 
 void JsonFormatter::PrintTable(const std::vector<std::string>& headers,
                                const std::vector<std::vector<std::string>>& rows) {
-  JsonValue arr = JsonValue::array();
+  nlohmann::json arr = nlohmann::json::array();
   for (const auto& row : rows) {
-    JsonValue obj = JsonValue::object();
+    nlohmann::json obj = nlohmann::json::object();
     for (size_t i = 0; i < headers.size(); ++i) {
       obj[headers[i]] = (i < row.size()) ? row[i] : "";
     }
@@ -139,31 +138,31 @@ void JsonFormatter::PrintTable(const std::vector<std::string>& headers,
 }
 
 void JsonFormatter::PrintKeyValue(const std::string& key, const std::string& value) {
-  const JsonValue obj = {{"key", key}, {"value", value}};
+  const nlohmann::json obj = {{"key", key}, {"value", value}};
   std::cout << obj.dump() << "\n";
 }
 
 void JsonFormatter::PrintSuccess(const std::string& msg) {
-  const JsonValue obj = {{"status", "success"}, {"message", msg}};
+  const nlohmann::json obj = {{"status", "success"}, {"message", msg}};
   std::cout << obj.dump() << "\n";
 }
 
 void JsonFormatter::PrintError(const std::string& msg) {
-  const JsonValue obj = {{"status", "error"}, {"message", msg}};
+  const nlohmann::json obj = {{"status", "error"}, {"message", msg}};
   std::cerr << obj.dump() << "\n";
 }
 
 void JsonFormatter::PrintWarning(const std::string& msg) {
-  const JsonValue obj = {{"status", "warning"}, {"message", msg}};
+  const nlohmann::json obj = {{"status", "warning"}, {"message", msg}};
   std::cout << obj.dump() << "\n";
 }
 
-void JsonFormatter::PrintJson(const JsonValue& j) {
+void JsonFormatter::PrintJson(const nlohmann::json& j) {
   std::cout << j.dump(2) << "\n";
 }
 
 void JsonFormatter::PrintInfo(const std::string& msg) {
-  const JsonValue obj = {{"status", "info"}, {"message", msg}};
+  const nlohmann::json obj = {{"status", "info"}, {"message", msg}};
   std::cout << obj.dump() << "\n";
 }
 
