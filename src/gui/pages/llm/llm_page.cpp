@@ -609,14 +609,14 @@ void LlmPage::onLlmTest() {
                                  tr("Invalid response from '%1'.").arg(provider_id));
           } else {
             const QJsonArray data = doc.object().value("data").toArray();
-            QStringList models;
+            std::vector<QString> models;
             for (const auto& v : data) {
               const QString id = v.toObject().value("id").toString();
               if (!id.isEmpty()) {
-                models.append(id);
+                models.push_back(id);
               }
             }
-            models.sort();
+            std::sort(models.begin(), models.end());
             std::vector<std::string> models_vec;
             models_vec.reserve(models.size());
             for (const auto& m : models) {
@@ -625,8 +625,15 @@ void LlmPage::onLlmTest() {
             vinput::llm::SaveProviderModels(provider_id.toStdString(), models_vec);
             QString msg =
                 tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(models.size());
-            if (!models.isEmpty()) {
-              msg += "\n\n" + models.join("\n");
+            if (!models.empty()) {
+              QString joined_models;
+              for (const auto& m : models) {
+                if (!joined_models.isEmpty()) {
+                  joined_models += '\n';
+                }
+                joined_models += m;
+              }
+              msg += "\n\n" + joined_models;
             }
             QMessageBox::information(this, tr("Test Succeeded"), msg);
           }

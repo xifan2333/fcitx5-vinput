@@ -1,11 +1,7 @@
 #pragma once
 
-#include <QtCore/qobject.h>
-#include <QtCore/qobjectdefs.h>
-#include <QtCore/qstring.h>
-#include <QtWidgets/qmainwindow.h>
-#include <QtWidgets/qtabwidget.h>
-#include <QtWidgets/qwidget.h>
+#include <QMainWindow>
+#include <QTabWidget>
 
 #include "config.h"
 
@@ -25,18 +21,13 @@ public:
   explicit MainWindow(QWidget* parent = nullptr);
   ~MainWindow() override;
 
-  MainWindow(const MainWindow&) = delete;
-  MainWindow& operator=(const MainWindow&) = delete;
-  MainWindow(MainWindow&&) = delete;
-  MainWindow& operator=(MainWindow&&) = delete;
-
 private slots:
   void onSaveClicked();
-  static void onOpenConfigClicked();
+  void onOpenConfigClicked();
   void reloadAll();
-  void onNotificationReady(const QString& id, const QString& title, const QString& text,
-                           const QString& url);
+  void onNotificationReady(QString id, QString title, QString text, QString url);
 
+private:
   void checkNotification();
 
   QTabWidget* tabWidget_;

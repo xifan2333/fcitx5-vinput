@@ -17,6 +17,7 @@
 #include <string>
 #include <subprocess.hpp>
 #include <sys/poll.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
@@ -70,7 +71,7 @@ bool KillAndReap(pid_t pid) {
     return true;
   }
   constexpr int kSigKill = 9; // POSIX SIGKILL
-  (void)::kill(pid, kSigKill);
+  (void)syscall(SYS_kill, pid, kSigKill);
   pid_t wait_rc = waitpid(pid, nullptr, 0);
   while (wait_rc < 0 && errno == EINTR) {
     wait_rc = waitpid(pid, nullptr, 0);

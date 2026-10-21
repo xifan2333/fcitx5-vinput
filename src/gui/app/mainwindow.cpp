@@ -292,8 +292,7 @@ void MainWindow::checkNotification() {
   worker->start();
 }
 
-void MainWindow::onNotificationReady(const QString& id, const QString& title, const QString& text,
-                                     const QString& url) {
+void MainWindow::onNotificationReady(QString id, QString title, QString text, QString url) {
   QMessageBox msgBox(this);
   msgBox.setWindowTitle(title);
   msgBox.setText(text);

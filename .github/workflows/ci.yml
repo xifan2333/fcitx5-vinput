@@ -113,6 +113,10 @@ jobs:
         if: steps.linter.outputs.clang-format-checks-failed > 0 || steps.linter.outputs.clang-tidy-checks-failed > 0
         run: |
           echo "cpp-linter checks failed! Please inspect clang-format and clang-tidy annotations."
+          if [ -f pr-report/summary.md ]; then
+            echo "=== CPP-LINTER FULL DIAGNOSTIC REPORT ==="
+            cat pr-report/summary.md
+          fi
           exit 1
 
   build:

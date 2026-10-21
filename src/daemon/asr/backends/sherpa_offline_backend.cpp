@@ -1,6 +1,6 @@
 #include "daemon/asr/backends/sherpa_offline_backend.h"
 
-#include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -13,9 +13,7 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <sys/types.h>
 #include <system_error>
-#include <unistd.h>
 #include <unordered_map>
 #include <utility>
 #include <vector>

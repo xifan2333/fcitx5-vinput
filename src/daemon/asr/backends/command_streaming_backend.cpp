@@ -182,7 +182,7 @@ bool SpawnChild(const CommandAsrProvider& provider, ChildProcess* child, std::st
   std::vector<std::string> env_storage;
   std::vector<char*> envp = BuildEnvp(provider.env, &env_storage);
 
-  pid_t pid = -1;
+  int pid = -1;
   const int rc =
       posix_spawnp(&pid, provider.command.c_str(), &actions, nullptr, argv.data(), envp.data());
   posix_spawn_file_actions_destroy(&actions);
