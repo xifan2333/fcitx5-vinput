@@ -27,4 +27,8 @@ template <typename E> [[nodiscard]] inline auto MakeUnexpected(E&& error) {
   return tl::make_unexpected(std::string(message));
 }
 
+[[nodiscard]] inline auto UnexpectedError(const char* message) {
+  return tl::make_unexpected(std::string(message));
+}
+
 } // namespace vinput

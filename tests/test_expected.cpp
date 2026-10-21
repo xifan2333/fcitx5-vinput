@@ -5,7 +5,9 @@
 
 #include "common/utils/expected.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -73,7 +75,7 @@ void TestMonadicAndThen() {
 }
 
 void TestVoidExpected() {
-  vinput::Expected<void> ok{};
+  const vinput::Expected<void> ok{};
   TEST_ASSERT(ok.has_value());
   TEST_ASSERT(bool(ok));
 
@@ -81,6 +83,8 @@ void TestVoidExpected() {
   TEST_ASSERT(!err.has_value());
   TEST_ASSERT(err.error() == "operation failed");
 }
+
+} // namespace
 
 int main() {
   TestBasicValueAndError();
