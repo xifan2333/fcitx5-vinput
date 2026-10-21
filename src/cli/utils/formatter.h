@@ -7,6 +7,13 @@
 
 #include "cli/utils/cli_context.h"
 
+namespace vinput::cli {
+// JSON value type used by Formatter. Keeping the alias here lets the
+// implementation file refer to the type through this header instead of
+// re-including the provider header directly.
+using JsonValue = nlohmann::json;
+} // namespace vinput::cli
+
 class Formatter {
 public:
   Formatter() = default;

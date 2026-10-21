@@ -78,15 +78,14 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
   }
 }
 
-void ProgressBar::Finish(bool success) {
-  if (is_tty_ && bar_) {
-    if (success && !bar_->is_completed()) {
-      bar_->set_progress(100);
-    }
-    // Ensure a newline after the progress line
-    std::cerr << "\n";
-  } else if (success && last_percent_ < 100) {
-    fprintf(stderr, "%s: 100%%\n", label_.c_str());
-    fflush(stderr);
+void ProgressBar::Finish() {
+  if (!is_tty_ || !bar_) {
+    // Non-TTY output is line-bucketed by Update(); nothing to terminate.
+    return;
   }
+  if (last_percent_ >= 100 && !bar_->is_completed()) {
+    bar_->set_progress(100);
+  }
+  // Terminate the single-line progress bar before subsequent output.
+  std::cerr << "\n";
 }

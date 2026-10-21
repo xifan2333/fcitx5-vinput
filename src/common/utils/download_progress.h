@@ -19,8 +19,10 @@ public:
   ProgressBar& operator=(const ProgressBar&) = delete;
 
   void Update(uint64_t current, double speed_bps = 0);
-  /// @param success If false (download failed), do not force bar to 100%.
-  void Finish(bool success = true);
+  /// Finalizes the progress display. If the transfer never reported 100%, the
+  /// bar is left at its last reported percentage instead of being forced to
+  /// look complete (e.g. after an aborted download).
+  void Finish();
 
 private:
   std::string label_;
