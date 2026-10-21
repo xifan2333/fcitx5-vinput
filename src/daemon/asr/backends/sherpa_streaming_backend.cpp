@@ -1,5 +1,6 @@
 #include "daemon/asr/backends/sherpa_streaming_backend.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>

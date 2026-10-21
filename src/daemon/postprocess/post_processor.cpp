@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdio>
 #include <fstream>
 #include <glaze/core/common.hpp>

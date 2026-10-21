@@ -97,7 +97,7 @@ private:
   std::condition_variable debounce_cv_;
   bool debounce_pending_ = false;
   bool debounce_stop_ = false;
-  std::chrono::steady_clock::time_point debounce_deadline_{};
+  std::chrono::steady_clock::time_point debounce_deadline_;
 };
 
 } // namespace vinput::daemon::remote

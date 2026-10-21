@@ -33,6 +33,8 @@
 #include "daemon/asr/sherpa_json_helpers.h"
 #include "daemon/asr/vad_trimmer.h"
 
+extern "C" int mkstemp(char* template_name);
+
 namespace vinput::daemon::asr {
 
 namespace {

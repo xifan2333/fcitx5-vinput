@@ -22,6 +22,7 @@
 #include <string_view>
 #include <sys/poll.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>

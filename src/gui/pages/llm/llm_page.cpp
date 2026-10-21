@@ -333,11 +333,14 @@ void LlmPage::refreshAdapterList() {
       tooltip += "\n" + tr("Command: %1").arg(command);
     }
     if (!adapter.args.empty()) {
-      QStringList argsList;
+      std::string joined_args;
       for (const auto& a : adapter.args) {
-        argsList << QString::fromStdString(a);
+        if (!joined_args.empty()) {
+          joined_args += ' ';
+        }
+        joined_args += a;
       }
-      tooltip += "\n" + tr("Args: %1").arg(argsList.join(" "));
+      tooltip += "\n" + tr("Args: %1").arg(QString::fromStdString(joined_args));
     }
     if (!adapter.env.empty()) {
       QStringList envList;
@@ -411,7 +414,7 @@ void LlmPage::onLlmAdd() {
     return;
   }
   refreshLlmList();
-  emit configChanged();
+  configChanged();
 }
 
 void LlmPage::onLlmEdit() {

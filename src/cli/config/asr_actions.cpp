@@ -661,7 +661,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
 
     const ModelRepository repository(ResolveModelBaseDir(config).string());
     std::string error;
-    const auto remoteModels = repository.FetchRegistry(config, registryUrls, &error);
+    const auto remoteModels = ModelRepository::FetchRegistry(config, registryUrls, &error);
     if (!error.empty()) {
       fmt.PrintError(error);
       return 1;
@@ -779,7 +779,7 @@ int RunAsrConfigInstallModel(const std::string& selector, Formatter& fmt, const 
 
   const ModelRepository repository(baseDir.string());
   std::string error;
-  const auto remoteModels = repository.FetchRegistry(config, registryUrls, &error);
+  const auto remoteModels = ModelRepository::FetchRegistry(config, registryUrls, &error);
   if (!error.empty()) {
     fmt.PrintError(error);
     return 1;

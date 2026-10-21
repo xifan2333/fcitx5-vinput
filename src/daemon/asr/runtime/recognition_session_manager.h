@@ -1,15 +1,13 @@
 #pragma once
 
 #include <condition_variable>
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
-#include <vector>
 
-#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 
@@ -39,6 +37,11 @@ public:
   RecognitionSessionManager();
   ~RecognitionSessionManager();
 
+  RecognitionSessionManager(const RecognitionSessionManager&) = delete;
+  RecognitionSessionManager& operator=(const RecognitionSessionManager&) = delete;
+  RecognitionSessionManager(RecognitionSessionManager&&) = delete;
+  RecognitionSessionManager& operator=(RecognitionSessionManager&&) = delete;
+
   bool Initialize(const CoreConfig& settings, std::string* disabled_reason);
   bool SynchronizeBackend(const CoreConfig& settings, std::string* error);
   std::unique_ptr<RecognitionSession>
@@ -62,8 +65,9 @@ private:
   static bool CreatePreparedBackend(const CoreConfig& settings, PreparedBackend* prepared,
                                     std::string* error);
   bool ActivatePreparedBackend(PreparedBackend prepared, std::string* error);
-  bool CreatePreparedBackendForReload(const CoreConfig& settings, const std::string& signature,
-                                      PreparedBackend* prepared, std::string* error);
+  static bool CreatePreparedBackendForReload(const CoreConfig& settings,
+                                             const std::string& signature,
+                                             PreparedBackend* prepared, std::string* error);
   bool CreateSessionFromEffectiveBackend(BackendDescriptor* descriptor,
                                          std::unique_ptr<RecognitionSession>* session,
                                          std::string* error);

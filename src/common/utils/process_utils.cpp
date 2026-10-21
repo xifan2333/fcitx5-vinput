@@ -25,6 +25,8 @@
 
 #include "common/utils/interpolation.h"
 
+extern "C" int kill(pid_t pid, int sig) noexcept;
+
 namespace vinput::process {
 
 namespace {
@@ -69,7 +71,8 @@ bool KillAndReap(pid_t pid) {
   if (pid <= 0) {
     return true;
   }
-  (void)kill(pid, SIGKILL);
+  constexpr int kSigKill = 9; // POSIX SIGKILL
+  (void)::kill(pid, kSigKill);
   pid_t wait_rc = waitpid(pid, nullptr, 0);
   while (wait_rc < 0 && errno == EINTR) {
     wait_rc = waitpid(pid, nullptr, 0);
@@ -82,17 +85,17 @@ bool TryReapProcess(pid_t pid, int* exit_code) {
     return false;
   }
   int status = 0;
-  const pid_t rc = waitpid(pid, &status, WNOHANG);
+  constexpr int kNoHang = 1; // POSIX WNOHANG
+  const pid_t rc = waitpid(pid, &status, kNoHang);
   if (rc != pid) {
     return false;
   }
   if (exit_code != nullptr) {
-    if (WIFEXITED(status)) {
-      *exit_code = WEXITSTATUS(status);
-    } else if (WIFSIGNALED(status)) {
-      *exit_code = 128 + WTERMSIG(status);
+    const int term_sig = status & 0x7f;
+    if (term_sig == 0) {
+      *exit_code = (status >> 8) & 0xff; // WEXITSTATUS
     } else {
-      *exit_code = -1;
+      *exit_code = 128 + term_sig; // WTERMSIG
     }
   }
   return true;
