@@ -8,7 +8,8 @@
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
-#include <sherpa-onnx/c-api/c-api.h>
+#include <optional>
+#include <sherpa-onnx/c-api/cxx-api.h>
 #include <span>
 #include <string>
 #include <utility>
@@ -39,9 +40,9 @@ int ChooseNumThreads(const glz::json_t& model_cfg, int runtime_default) {
 
 class SherpaStreamingSession : public RecognitionSession {
 public:
-  SherpaStreamingSession(const SherpaOnnxOnlineRecognizer* recognizer,
-                         const SherpaOnnxOnlineStream* stream)
-      : recognizer_(recognizer), stream_(stream) {}
+  SherpaStreamingSession(const sherpa_onnx::cxx::OnlineRecognizer* recognizer,
+                         sherpa_onnx::cxx::OnlineStream stream)
+      : recognizer_(recognizer), stream_(std::move(stream)) {}
 
   SherpaStreamingSession(const SherpaStreamingSession&) = delete;
   SherpaStreamingSession& operator=(const SherpaStreamingSession&) = delete;
@@ -60,7 +61,8 @@ public:
       return false;
     }
 
-    if (recognizer_ == nullptr || stream_ == nullptr) {
+    if (!stream_.has_value() || stream_->Get() == nullptr || recognizer_ == nullptr ||
+        recognizer_->Get() == nullptr) {
       if (error != nullptr) {
         *error = "Streaming recognizer is not initialized.";
       }
@@ -76,8 +78,7 @@ public:
 
     UpdateAudioStats(samples);
 
-    SherpaOnnxOnlineStreamAcceptWaveform(stream_, 16000, samples.data(),
-                                         static_cast<int32_t>(samples.size()));
+    stream_->AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
     DecodeAvailable();
 
     if (error != nullptr) {
@@ -102,7 +103,8 @@ public:
       return true;
     }
 
-    if (recognizer_ == nullptr || stream_ == nullptr) {
+    if (!stream_.has_value() || stream_->Get() == nullptr || recognizer_ == nullptr ||
+        recognizer_->Get() == nullptr) {
       if (error != nullptr) {
         *error = "Streaming recognizer is not initialized.";
       }
@@ -110,7 +112,7 @@ public:
     }
 
     finished_ = true;
-    SherpaOnnxOnlineStreamInputFinished(stream_);
+    stream_->InputFinished();
     DecodeAvailable();
 
     std::string text = GetCurrentText();
@@ -162,10 +164,16 @@ private:
   }
 
   void DecodeAvailable() {
+    if (!stream_.has_value() || stream_->Get() == nullptr || recognizer_ == nullptr ||
+        recognizer_->Get() == nullptr) {
+      return;
+    }
+
+    auto& stream = *stream_;
     int decode_iterations = 0;
-    while (SherpaOnnxIsOnlineStreamReady(recognizer_, stream_) != 0) {
+    while (recognizer_->IsReady(&stream)) {
       ++decode_iterations;
-      SherpaOnnxDecodeOnlineStream(recognizer_, stream_);
+      recognizer_->Decode(&stream);
       const std::string text = GetCurrentText();
       if (!text.empty() && text != last_partial_text_) {
         last_partial_text_ = text;
@@ -180,33 +188,25 @@ private:
   }
 
   [[nodiscard]] std::string GetCurrentText() const {
-    const SherpaOnnxOnlineRecognizerResult* result =
-        SherpaOnnxGetOnlineStreamResult(recognizer_, stream_);
-    if (result == nullptr) {
-      fprintf(stderr, "vinput: streaming result unavailable\n");
+    if (!stream_.has_value() || stream_->Get() == nullptr || recognizer_ == nullptr ||
+        recognizer_->Get() == nullptr) {
       return {};
     }
 
-    std::string text;
-    if (result->text != nullptr) {
-      text = std::string(vinput::str::Trim(result->text));
-    }
-    fprintf(stderr, "vinput: streaming current result bytes=%zu token_count=%d\n", text.size(),
-            result->count);
-    SherpaOnnxDestroyOnlineRecognizerResult(result);
+    const auto result = recognizer_->GetResult(&*stream_);
+    std::string text = std::string(vinput::str::Trim(result.text));
+    fprintf(stderr, "vinput: streaming current result bytes=%zu token_count=%zu\n", text.size(),
+            result.tokens.size());
     return text;
   }
 
   void Reset() {
-    if (stream_ != nullptr) {
-      SherpaOnnxDestroyOnlineStream(stream_);
-      stream_ = nullptr;
-    }
+    stream_.reset();
     recognizer_ = nullptr;
   }
 
-  const SherpaOnnxOnlineRecognizer* recognizer_ = nullptr;
-  const SherpaOnnxOnlineStream* stream_ = nullptr;
+  const sherpa_onnx::cxx::OnlineRecognizer* recognizer_ = nullptr;
+  std::optional<sherpa_onnx::cxx::OnlineStream> stream_;
   bool finished_ = false;
   std::size_t total_samples_ = 0;
   double peak_abs_ = 0.0;
@@ -226,13 +226,7 @@ public:
   SherpaStreamingBackend(SherpaStreamingBackend&&) = delete;
   SherpaStreamingBackend& operator=(SherpaStreamingBackend&&) = delete;
 
-  ~SherpaStreamingBackend() override {
-    const std::scoped_lock lock(recognizer_mutex_);
-    if (recognizer_ != nullptr) {
-      SherpaOnnxDestroyOnlineRecognizer(recognizer_);
-      recognizer_ = nullptr;
-    }
-  }
+  ~SherpaStreamingBackend() override = default;
 
   [[nodiscard]] BackendDescriptor Describe() const override {
     BackendDescriptor descriptor;
@@ -248,12 +242,13 @@ public:
 
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
     const std::scoped_lock lock(recognizer_mutex_);
-    if (!InitializeRecognizerLocked(error)) {
+    if (!InitializeRecognizerLocked(error) || !recognizer_.has_value() ||
+        recognizer_->Get() == nullptr) {
       return nullptr;
     }
 
-    const SherpaOnnxOnlineStream* stream = SherpaOnnxCreateOnlineStream(recognizer_);
-    if (stream == nullptr) {
+    auto stream = recognizer_->CreateStream();
+    if (stream.Get() == nullptr) {
       if (error != nullptr) {
         *error = "failed to create sherpa-streaming stream";
       }
@@ -263,19 +258,19 @@ public:
     if (error != nullptr) {
       error->clear();
     }
-    return std::make_unique<SherpaStreamingSession>(recognizer_, stream);
+    return std::make_unique<SherpaStreamingSession>(&*recognizer_, std::move(stream));
   }
 
 private:
   bool InitializeRecognizerLocked(std::string* error) {
-    if (recognizer_ != nullptr) {
+    if (recognizer_.has_value() && recognizer_->Get() != nullptr) {
       if (error != nullptr) {
         error->clear();
       }
       return true;
     }
 
-    SherpaOnnxOnlineRecognizerConfig config = {};
+    sherpa_onnx::cxx::OnlineRecognizerConfig config;
     const auto& recognizer_cfg = model_info_.recognizer_config;
     const auto& model_cfg = model_info_.model_config;
     const auto& feat_cfg = vinput::json::Object(recognizer_cfg, "feat_config");
@@ -294,9 +289,6 @@ private:
     const std::string f_graph = model_info_.File("graph");
     const std::string f_hr_lexicon = model_info_.File("hr_lexicon");
     const std::string f_hr_rule_fsts = model_info_.File("hr_rule_fsts");
-    const std::string p_decoding_method =
-        JsonString(recognizer_cfg, "decoding_method", "greedy_search");
-    const std::string provider = JsonString(model_cfg, "provider", "cpu");
     const std::string explicit_model_type = JsonString(model_cfg, "model_type");
     const std::string modeling_unit = JsonString(model_cfg, "modeling_unit");
     const std::string tokens_buf = JsonString(model_cfg, "tokens_buf");
@@ -333,13 +325,13 @@ private:
       }
     }
 
-    config.model_config.tokens = tokens_path.c_str();
+    config.model_config.tokens = tokens_path;
     config.model_config.num_threads = ChooseNumThreads(model_cfg, asr_config_.thread_num);
-    config.model_config.provider = provider.c_str();
-    config.decoding_method = p_decoding_method.c_str();
+    config.model_config.provider = JsonString(model_cfg, "provider", "cpu");
+    config.decoding_method = JsonString(recognizer_cfg, "decoding_method", "greedy_search");
     config.max_active_paths = JsonInt(recognizer_cfg, "max_active_paths", 4);
     config.blank_penalty = JsonFloat(recognizer_cfg, "blank_penalty", 0.0F);
-    config.enable_endpoint = JsonBool(recognizer_cfg, "enable_endpoint", true) ? 1 : 0;
+    config.enable_endpoint = JsonBool(recognizer_cfg, "enable_endpoint", true);
     config.rule1_min_trailing_silence =
         JsonFloat(recognizer_cfg, "rule1_min_trailing_silence", 2.4F);
     config.rule2_min_trailing_silence =
@@ -348,59 +340,55 @@ private:
         JsonFloat(recognizer_cfg, "rule3_min_utterance_length", 20.0F);
     config.hotwords_score = JsonFloat(recognizer_cfg, "hotwords_score", 1.5F);
     if (!explicit_model_type.empty()) {
-      config.model_config.model_type = explicit_model_type.c_str();
+      config.model_config.model_type = explicit_model_type;
     }
     if (!modeling_unit.empty()) {
-      config.model_config.modeling_unit = modeling_unit.c_str();
+      config.model_config.modeling_unit = modeling_unit;
     }
     if (!f_bpe_vocab.empty()) {
-      config.model_config.bpe_vocab = f_bpe_vocab.c_str();
+      config.model_config.bpe_vocab = f_bpe_vocab;
     }
     if (!tokens_buf.empty()) {
-      config.model_config.tokens_buf = tokens_buf.c_str();
-      config.model_config.tokens_buf_size =
-          JsonInt(model_cfg, "tokens_buf_size", static_cast<int>(tokens_buf.size()));
+      config.model_config.tokens_buf = tokens_buf;
     }
     if (!f_rule_fsts.empty()) {
-      config.rule_fsts = f_rule_fsts.c_str();
+      config.rule_fsts = f_rule_fsts;
     }
     if (!f_rule_fars.empty()) {
-      config.rule_fars = f_rule_fars.c_str();
+      config.rule_fars = f_rule_fars;
     }
     if (!f_graph.empty()) {
-      config.ctc_fst_decoder_config.graph = f_graph.c_str();
+      config.ctc_fst_decoder_config.graph = f_graph;
       config.ctc_fst_decoder_config.max_active = JsonInt(
           vinput::json::Object(recognizer_cfg, "ctc_fst_decoder_config"), "max_active", 3000);
     }
     if (!normalized_transducer_hotwords.empty()) {
-      config.hotwords_buf = normalized_transducer_hotwords.c_str();
-      config.hotwords_buf_size = static_cast<int32_t>(normalized_transducer_hotwords.size());
+      config.hotwords_buf = normalized_transducer_hotwords;
       config.decoding_method = "modified_beam_search";
     } else if (use_hotwords_buf) {
-      config.hotwords_buf = hotwords_buf.c_str();
-      config.hotwords_buf_size = static_cast<int32_t>(hotwords_buf.size());
+      config.hotwords_buf = hotwords_buf;
       config.decoding_method = "modified_beam_search";
     }
     if (!f_hr_lexicon.empty()) {
-      config.hr.lexicon = f_hr_lexicon.c_str();
+      config.hr.lexicon = f_hr_lexicon;
     }
     if (!f_hr_rule_fsts.empty()) {
-      config.hr.rule_fsts = f_hr_rule_fsts.c_str();
+      config.hr.rule_fsts = f_hr_rule_fsts;
     }
 
     if (model_info_.family == "transducer") {
-      config.model_config.transducer.encoder = f_encoder.c_str();
-      config.model_config.transducer.decoder = f_decoder.c_str();
-      config.model_config.transducer.joiner = f_joiner.c_str();
+      config.model_config.transducer.encoder = f_encoder;
+      config.model_config.transducer.decoder = f_decoder;
+      config.model_config.transducer.joiner = f_joiner;
     } else if (model_info_.family == "zipformer2_ctc") {
-      config.model_config.zipformer2_ctc.model = f_model.c_str();
+      config.model_config.zipformer2_ctc.model = f_model;
     } else if (model_info_.family == "paraformer") {
-      config.model_config.paraformer.encoder = f_encoder.c_str();
-      config.model_config.paraformer.decoder = f_decoder.c_str();
+      config.model_config.paraformer.encoder = f_encoder;
+      config.model_config.paraformer.decoder = f_decoder;
     } else if (model_info_.family == "nemo_ctc") {
-      config.model_config.nemo_ctc.model = f_model.c_str();
+      config.model_config.nemo_ctc.model = f_model;
     } else if (model_info_.family == "t_one_ctc") {
-      config.model_config.t_one_ctc.model = f_model.c_str();
+      config.model_config.t_one_ctc.model = f_model;
     } else {
       if (error != nullptr) {
         *error = "Unsupported sherpa-streaming model family '" + model_info_.family + "'";
@@ -408,8 +396,8 @@ private:
       return false;
     }
 
-    const SherpaOnnxOnlineRecognizer* recognizer = SherpaOnnxCreateOnlineRecognizer(&config);
-    if (recognizer == nullptr) {
+    auto recognizer = sherpa_onnx::cxx::OnlineRecognizer::Create(config);
+    if (recognizer.Get() == nullptr) {
       if (error != nullptr) {
         *error =
             "failed to create sherpa-streaming recognizer for family '" + model_info_.family + "'";
@@ -417,7 +405,7 @@ private:
       return false;
     }
 
-    recognizer_ = recognizer;
+    recognizer_ = std::move(recognizer);
 
     fprintf(stderr,
             "vinput: sherpa-onnx streaming ASR initialized successfully "
@@ -434,33 +422,26 @@ private:
   }
 
   void WarmupRecognizerLocked() {
-    if (recognizer_ == nullptr) {
+    if (!recognizer_.has_value() || recognizer_->Get() == nullptr) {
       return;
     }
 
-    const SherpaOnnxOnlineStream* stream = SherpaOnnxCreateOnlineStream(recognizer_);
-    if (stream == nullptr) {
+    auto stream = recognizer_->CreateStream();
+    if (stream.Get() == nullptr) {
       fprintf(stderr, "vinput: streaming warmup skipped (stream create failed)\n");
       return;
     }
 
     std::vector<float> silence(16000 / 5, 0.0F);
-    SherpaOnnxOnlineStreamAcceptWaveform(stream, 16000, silence.data(),
-                                         static_cast<int32_t>(silence.size()));
-    while (SherpaOnnxIsOnlineStreamReady(recognizer_, stream) != 0) {
-      SherpaOnnxDecodeOnlineStream(recognizer_, stream);
+    stream.AcceptWaveform(16000, silence.data(), static_cast<int32_t>(silence.size()));
+    while (recognizer_->IsReady(&stream)) {
+      recognizer_->Decode(&stream);
     }
-    SherpaOnnxOnlineStreamInputFinished(stream);
-    while (SherpaOnnxIsOnlineStreamReady(recognizer_, stream) != 0) {
-      SherpaOnnxDecodeOnlineStream(recognizer_, stream);
+    stream.InputFinished();
+    while (recognizer_->IsReady(&stream)) {
+      recognizer_->Decode(&stream);
     }
 
-    const SherpaOnnxOnlineRecognizerResult* result =
-        SherpaOnnxGetOnlineStreamResult(recognizer_, stream);
-    if (result != nullptr) {
-      SherpaOnnxDestroyOnlineRecognizerResult(result);
-    }
-    SherpaOnnxDestroyOnlineStream(stream);
     fprintf(stderr, "vinput: streaming recognizer warmup completed\n");
   }
 
@@ -468,7 +449,7 @@ private:
   AsrConfig asr_config_;
   std::string provider_id_;
   std::mutex recognizer_mutex_;
-  const SherpaOnnxOnlineRecognizer* recognizer_ = nullptr;
+  std::optional<sherpa_onnx::cxx::OnlineRecognizer> recognizer_;
 };
 
 } // namespace
