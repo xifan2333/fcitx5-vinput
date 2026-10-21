@@ -1,10 +1,10 @@
+#include <cstdint>
 #include <glaze/core/common.hpp>
 #include <glaze/core/meta.hpp>
 #include <glaze/core/opts.hpp>
 #include <glaze/core/read.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/write.hpp>
-#include <map>
 #include <optional>
 #include <string>
 #include <string_view>

@@ -1,6 +1,7 @@
 #include "common/asr/model_manager.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>

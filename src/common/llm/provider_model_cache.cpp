@@ -1,5 +1,6 @@
 #include "common/llm/provider_model_cache.h"
 
+#include <cstdint>
 #include <ctime>
 #include <filesystem>
 #include <glaze/core/opts.hpp>

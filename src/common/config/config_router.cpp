@@ -1,6 +1,8 @@
 #include "common/config/config_router.h"
 
 #include <charconv>
+#include <cstddef>
+#include <cstdint>
 #include <glaze/core/opts.hpp>
 #include <glaze/core/read.hpp>
 #include <glaze/json/json_t.hpp>
