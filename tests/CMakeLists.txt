@@ -230,6 +230,11 @@ target_include_directories(test_string_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_string_utils PRIVATE config)
 add_test(NAME test_string_utils COMMAND test_string_utils)
 
+add_executable(test_expected test_expected.cpp)
+target_include_directories(test_expected PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_expected PRIVATE config)
+add_test(NAME test_expected COMMAND test_expected)
+
 add_executable(test_recognition_result test_recognition_result.cpp)
 target_include_directories(test_recognition_result PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_recognition_result PRIVATE config)
