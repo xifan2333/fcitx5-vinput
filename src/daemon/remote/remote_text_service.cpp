@@ -143,7 +143,7 @@ int RemoteTextService::Port() const {
 }
 
 bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* settings,
-                                        bool* should_run, std::string* error) const {
+                                        bool* should_run, std::string* error) {
   if (settings == nullptr) {
     if (error != nullptr) {
       *error = "settings output is null";
@@ -155,7 +155,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
   }
 
   const AsrProvider* provider = ResolveActiveAsrProvider(config);
-  const auto* command = provider ? std::get_if<CommandAsrProvider>(provider) : nullptr;
+  const auto* command = provider != nullptr ? std::get_if<CommandAsrProvider>(provider) : nullptr;
   if (command == nullptr) {
     if (error != nullptr) {
       error->clear();

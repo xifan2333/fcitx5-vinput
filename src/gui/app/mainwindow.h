@@ -23,9 +23,10 @@ public:
 
 private slots:
   void onSaveClicked();
-  void onOpenConfigClicked();
+  static void onOpenConfigClicked();
   void reloadAll();
-  void onNotificationReady(QString id, QString title, QString text, QString url);
+  void onNotificationReady(const QString& id, const QString& title, const QString& text,
+                           const QString& url);
 
 private:
   void checkNotification();

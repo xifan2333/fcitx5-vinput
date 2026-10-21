@@ -59,8 +59,8 @@ private:
     std::string signature;
   };
 
-  bool CreatePreparedBackend(const CoreConfig& settings, PreparedBackend* prepared,
-                             std::string* error);
+  static bool CreatePreparedBackend(const CoreConfig& settings, PreparedBackend* prepared,
+                                    std::string* error);
   bool ActivatePreparedBackend(PreparedBackend prepared, std::string* error);
   bool CreatePreparedBackendForReload(const CoreConfig& settings, const std::string& signature,
                                       PreparedBackend* prepared, std::string* error);

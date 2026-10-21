@@ -80,7 +80,7 @@ public:
 
 private:
   std::shared_ptr<AsrBackend> backend_;
-  std::unique_ptr<RecognitionSession> session_{};
+  std::unique_ptr<RecognitionSession> session_;
 };
 
 bool ShouldDisableAsr(const CoreConfig& config, std::string* reason) {
@@ -202,7 +202,7 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
     const std::scoped_lock lock(state_mutex_);
     if (effective_backend_ && effective_backend_signature_ == signature && !reload_in_progress_) {
       const AsrProvider* provider = ResolveActiveAsrProvider(settings);
-      target_provider_id_ = provider ? AsrProviderId(*provider) : std::string{};
+      target_provider_id_ = provider != nullptr ? AsrProviderId(*provider) : std::string{};
       target_model_id_ = ResolvePreferredLocalModel(settings);
       target_backend_signature_ = signature;
       last_reload_error_.clear();
@@ -214,7 +214,7 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
 
     pending_settings_ = settings;
     const AsrProvider* provider = ResolveActiveAsrProvider(settings);
-    target_provider_id_ = provider ? AsrProviderId(*provider) : std::string{};
+    target_provider_id_ = provider != nullptr ? AsrProviderId(*provider) : std::string{};
     target_model_id_ = ResolvePreferredLocalModel(settings);
     target_backend_signature_ = signature;
     reload_requested_ = true;
@@ -251,12 +251,12 @@ RecognitionRunResult
 RecognitionSessionManager::ConsumeEvents(std::unique_ptr<RecognitionSession>* session, bool cancel,
                                          std::string* error) {
   RecognitionRunResult result;
-  if (!session || !*session) {
+  if (session == nullptr || *session == nullptr) {
     if (error != nullptr) {
       *error = "Recognition session is not initialized.";
     }
     result.ok = false;
-    result.error = error ? *error : "Recognition session is not initialized.";
+    result.error = error != nullptr ? *error : "Recognition session is not initialized.";
     return result;
   }
 
@@ -426,7 +426,7 @@ bool RecognitionSessionManager::CreatePreparedBackendForReload(const CoreConfig&
 bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
     BackendDescriptor* descriptor, std::unique_ptr<RecognitionSession>* session,
     std::string* error) {
-  if (!session) {
+  if (session == nullptr) {
     if (error != nullptr) {
       *error = "Recognition session output is not available.";
     }

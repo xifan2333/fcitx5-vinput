@@ -42,6 +42,11 @@ public:
                          const SherpaOnnxOnlineStream* stream)
       : recognizer_(recognizer), stream_(stream) {}
 
+  SherpaStreamingSession(const SherpaStreamingSession&) = delete;
+  SherpaStreamingSession& operator=(const SherpaStreamingSession&) = delete;
+  SherpaStreamingSession(SherpaStreamingSession&&) = delete;
+  SherpaStreamingSession& operator=(SherpaStreamingSession&&) = delete;
+
   ~SherpaStreamingSession() override { Reset(); }
 
   using RecognitionSession::PushAudio;
@@ -107,7 +112,7 @@ public:
     SherpaOnnxOnlineStreamInputFinished(stream_);
     DecodeAvailable();
 
-    const std::string text = GetCurrentText();
+    std::string text = GetCurrentText();
     fprintf(stderr, "vinput: streaming finish current result bytes=%zu\n", text.size());
     if (!text.empty()) {
       if (text != last_partial_text_) {
@@ -117,7 +122,8 @@ public:
       events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
       fprintf(stderr, "vinput: streaming queued final result\n");
     } else {
-      const double rms = total_samples_ > 0 ? std::sqrt(sum_squares_ / total_samples_) : 0.0;
+      const double rms =
+          total_samples_ > 0 ? std::sqrt(sum_squares_ / static_cast<double>(total_samples_)) : 0.0;
       fprintf(stderr,
               "vinput: streaming finish produced empty text samples=%zu "
               "peak=%.4f rms=%.4f\n",
@@ -147,11 +153,9 @@ public:
 private:
   void UpdateAudioStats(std::span<const float> samples) {
     total_samples_ += samples.size();
-    for (float sample : samples) {
+    for (const float sample : samples) {
       const double amplitude = std::fabs(static_cast<double>(sample));
-      if (amplitude > peak_abs_) {
-        peak_abs_ = amplitude;
-      }
+      peak_abs_ = std::max(peak_abs_, amplitude);
       sum_squares_ += amplitude * amplitude;
     }
   }
@@ -207,7 +211,7 @@ private:
   double peak_abs_ = 0.0;
   double sum_squares_ = 0.0;
   std::string last_partial_text_;
-  std::vector<RecognitionEvent> events_{};
+  std::vector<RecognitionEvent> events_;
 };
 
 class SherpaStreamingBackend : public AsrBackend {
@@ -215,6 +219,12 @@ public:
   SherpaStreamingBackend(ModelInfo model_info, AsrConfig asr_config, std::string provider_id)
       : model_info_(std::move(model_info)), asr_config_(std::move(asr_config)),
         provider_id_(std::move(provider_id)) {}
+
+  SherpaStreamingBackend(const SherpaStreamingBackend&) = delete;
+  SherpaStreamingBackend& operator=(const SherpaStreamingBackend&) = delete;
+  SherpaStreamingBackend(SherpaStreamingBackend&&) = delete;
+  SherpaStreamingBackend& operator=(SherpaStreamingBackend&&) = delete;
+
   ~SherpaStreamingBackend() override {
     const std::scoped_lock lock(recognizer_mutex_);
     if (recognizer_ != nullptr) {

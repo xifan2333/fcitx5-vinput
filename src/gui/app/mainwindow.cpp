@@ -56,25 +56,25 @@
 #include "pages/llm/llm_page.h"
 #include "pages/resources/resource_page.h"
 
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
+MainWindow::MainWindow(QWidget* parent)
+    : QMainWindow(parent), tabWidget_(new QTabWidget(this)),
+      controlPage_(new vinput::gui::ControlPage(this)),
+      resourcePage_(new vinput::gui::ResourcePage(this)), llmPage_(new vinput::gui::LlmPage(this))
+#if VINPUT_ENABLE_LOCAL_ASR
+      ,
+      hotwordPage_(new vinput::gui::HotwordPage(this))
+#endif
+{
   setWindowTitle(tr("Vinput Configuration"));
 
   auto* centralWidget = new QWidget(this);
   setCentralWidget(centralWidget);
   auto* mainLayout = new QVBoxLayout(centralWidget);
 
-  tabWidget_ = new QTabWidget(this);
   mainLayout->addWidget(tabWidget_);
 
   // Sync disk-only i18n preload before pages paint titles; no network here.
   vinput::gui::I18nCache::Get().LoadFromDiskSync();
-
-  controlPage_ = new vinput::gui::ControlPage(this);
-  resourcePage_ = new vinput::gui::ResourcePage(this);
-  llmPage_ = new vinput::gui::LlmPage(this);
-#if VINPUT_ENABLE_LOCAL_ASR
-  hotwordPage_ = new vinput::gui::HotwordPage(this);
-#endif
 
   tabWidget_->addTab(controlPage_, tr("Control"));
   tabWidget_->addTab(resourcePage_, tr("Resources"));
@@ -292,7 +292,8 @@ void MainWindow::checkNotification() {
   worker->start();
 }
 
-void MainWindow::onNotificationReady(QString id, QString title, QString text, QString url) {
+void MainWindow::onNotificationReady(const QString& id, const QString& title, const QString& text,
+                                     const QString& url) {
   QMessageBox msgBox(this);
   msgBox.setWindowTitle(title);
   msgBox.setText(text);

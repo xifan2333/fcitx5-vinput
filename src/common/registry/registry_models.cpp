@@ -593,7 +593,7 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
 }
 
 bool ModelRepository::VerifySha256(const fs::path& file, const std::string& expected,
-                                   std::string* error) const {
+                                   std::string* error) {
   if (expected.empty()) {
     return true;
   }
@@ -618,7 +618,7 @@ bool ModelRepository::VerifySha256(const fs::path& file, const std::string& expe
 }
 
 bool ModelRepository::ExtractArchive(const fs::path& archive, const fs::path& dest,
-                                     std::string* error) const {
+                                     std::string* error) {
   struct archive* a = archive_read_new();
   archive_read_support_filter_all(a);
   archive_read_support_format_all(a);

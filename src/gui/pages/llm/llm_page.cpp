@@ -19,10 +19,12 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QObject>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTextEdit>
 #include <QThreadPool>
 #include <QTimer>
@@ -140,7 +142,7 @@ QPlainTextEdit* MakeExtraBodyEditor(const glz::json_t* prefill = nullptr) {
                                        "{\"enable_thinking\": false}"));
   edit->setTabChangesFocus(true);
   const QFontMetrics fm(edit->font());
-  edit->setFixedHeight(fm.lineSpacing() * 5 + 8);
+  edit->setFixedHeight((fm.lineSpacing() * 5) + 8);
   if (prefill != nullptr && prefill->is_object() && !prefill->empty()) {
     edit->setPlainText(QString::fromStdString(vinput::json::ToPrettyText(*prefill)));
   }
@@ -155,8 +157,9 @@ QString SceneLabelForGui(const vinput::scene::Definition& scene) {
     return LlmPage::tr("Raw");
   }
   if (scene.id == vinput::scene::kCommandSceneId ||
-      scene.label == vinput::scene::kCommandSceneLabelKey)
+      scene.label == vinput::scene::kCommandSceneLabelKey) {
     return LlmPage::tr("Command");
+  }
   if (!scene.label.empty()) {
     return QString::fromStdString(scene.label);
   }
@@ -173,11 +176,11 @@ QString AdapterTitleForGui(const std::string& adapter_id) {
 
 // Convert between AdapterData (GUI dialog) and LlmAdapter (config).
 AdapterData AdapterDataFromConfig(const LlmAdapter& a) {
-  return {a.id, a.command, a.args, a.env, a.autoStart};
+  return {.id = a.id, .command = a.command, .args = a.args, .env = a.env, .autoStart = a.autoStart};
 }
 
 LlmAdapter LlmAdapterFromDialog(const AdapterData& d) {
-  return {d.id, d.command, d.args, d.env, d.autoStart};
+  return {.id = d.id, .command = d.command, .args = d.args, .env = d.env, .autoStart = d.autoStart};
 }
 
 template <typename Callback>
@@ -200,12 +203,13 @@ void RunAdapterControlAsync(LlmPage* page, std::string adapter_id, bool start, C
 
 } // namespace
 
-LlmPage::LlmPage(QWidget* parent) : QWidget(parent) {
+LlmPage::LlmPage(QWidget* parent)
+    : QWidget(parent), listProviders_(new QListWidget()), listAdapters_(new QListWidget()),
+      listScenes_(new QListWidget()) {
   auto* layout = new QVBoxLayout(this);
 
   layout->addWidget(new QLabel(tr("<b>Providers</b>")));
   auto* listLayout = new QHBoxLayout();
-  listProviders_ = new QListWidget();
   listLayout->addWidget(listProviders_);
 
   auto* btnLayout = new QVBoxLayout();
@@ -222,7 +226,6 @@ LlmPage::LlmPage(QWidget* parent) : QWidget(parent) {
   layout->addLayout(listLayout);
 
   auto* adapterLayout = new QHBoxLayout();
-  listAdapters_ = new QListWidget();
   adapterLayout->addWidget(listAdapters_);
 
   auto* adapterBtnLayout = new QVBoxLayout();
@@ -245,7 +248,6 @@ LlmPage::LlmPage(QWidget* parent) : QWidget(parent) {
   // Scenes section
   layout->addWidget(new QLabel(tr("<b>Scenes</b>")));
   auto* sceneLayout = new QHBoxLayout();
-  listScenes_ = new QListWidget();
   sceneLayout->addWidget(listScenes_);
 
   auto* sceneBtnLayout = new QVBoxLayout();

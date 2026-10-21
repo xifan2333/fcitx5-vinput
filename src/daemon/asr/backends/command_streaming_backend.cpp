@@ -22,7 +22,6 @@
 #include <string_view>
 #include <sys/poll.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -86,8 +85,8 @@ std::vector<char*> BuildEnvp(const std::map<std::string, std::string>& env,
                              std::vector<std::string>* storage) {
   storage->clear();
 
-  for (char** entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
-    storage->push_back(*entry);
+  for (char* const* entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
+    storage->emplace_back(*entry);
   }
 
   for (const auto& [key, value] : env) {
@@ -98,7 +97,7 @@ std::vector<char*> BuildEnvp(const std::map<std::string, std::string>& env,
     const std::string resolved_value = vinput::interpolate::InterpolateEnv(value);
     const std::string prefix = key + "=";
     for (auto& item : *storage) {
-      if (item.rfind(prefix, 0) == 0) {
+      if (item.starts_with(prefix)) {
         item = prefix + resolved_value;
         replaced = true;
         break;
@@ -234,8 +233,8 @@ int RemainingMs(Clock::time_point deadline, int fallback_ms) {
 
 class CommandStreamingSession : public RecognitionSession {
 public:
-  CommandStreamingSession(const CommandAsrProvider& provider, std::string provider_id)
-      : provider_(provider), provider_id_(std::move(provider_id)) {}
+  CommandStreamingSession(CommandAsrProvider provider, std::string provider_id)
+      : provider_(std::move(provider)), provider_id_(std::move(provider_id)) {}
 
   CommandStreamingSession(const CommandStreamingSession&) = delete;
   CommandStreamingSession& operator=(const CommandStreamingSession&) = delete;
@@ -261,8 +260,8 @@ public:
     }
 
     if (!pcm.empty()) {
-      const auto* bytes = reinterpret_cast<const std::byte*>(pcm.data());
-      pending_chunk_.assign(bytes, bytes + pcm.size() * sizeof(int16_t));
+      const auto byte_span = std::as_bytes(pcm);
+      pending_chunk_.assign(byte_span.begin(), byte_span.end());
     }
 
     if (!PumpIo(0, error)) {
@@ -396,7 +395,7 @@ private:
       return false;
     }
     if (!SpawnChild(provider_, &child_, error)) {
-      QueueError(error ? *error : "failed to start.");
+      QueueError(error != nullptr ? *error : "failed to start.");
       QueueCompleted();
       return false;
     }
@@ -722,19 +721,12 @@ private:
     if (child_.pid <= 0 || child_.child_exited) {
       return;
     }
-    int status = 0;
-    const pid_t rc = waitpid(child_.pid, &status, WNOHANG);
-    if (rc != child_.pid) {
+    int exit_code = -1;
+    if (!vinput::process::TryReapProcess(child_.pid, &exit_code)) {
       return;
     }
     child_.child_exited = true;
-    if (WIFEXITED(status)) {
-      child_.exit_code = WEXITSTATUS(status);
-    } else if (WIFSIGNALED(status)) {
-      child_.exit_code = 128 + WTERMSIG(status);
-    } else {
-      child_.exit_code = -1;
-    }
+    child_.exit_code = exit_code;
     ConsumeStderrLines(true);
   }
 
@@ -773,8 +765,8 @@ private:
   std::string stderr_buffer_;
   std::string stderr_tail_;
   std::string last_partial_text_;
-  std::vector<std::byte> pending_chunk_{};
-  std::vector<RecognitionEvent> events_{};
+  std::vector<std::byte> pending_chunk_;
+  std::vector<RecognitionEvent> events_;
 };
 
 class CommandStreamingBackend : public AsrBackend {

@@ -425,7 +425,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
     config.hotwords_file = temporary_hotwords_file.c_str();
   }
 
-  auto* recognizer = SherpaOnnxCreateOfflineRecognizer(&config);
+  const auto* recognizer = SherpaOnnxCreateOfflineRecognizer(&config);
   if (!temporary_hotwords_file.empty()) {
     std::error_code remove_error;
     std::filesystem::remove(temporary_hotwords_file, remove_error);
@@ -462,7 +462,7 @@ std::string InferOffline(const SherpaOnnxOfflineRecognizer* recognizer,
 
   const SherpaOnnxOfflineRecognizerResult* result = SherpaOnnxGetOfflineStreamResult(stream);
   std::string text;
-  if (result != nullptr && result->text) {
+  if (result != nullptr && result->text != nullptr) {
     text = result->text;
   }
   if (result != nullptr) {
@@ -574,8 +574,8 @@ private:
   bool vad_available_;
   VadTrimmer* vad_;
   bool finished_ = false;
-  std::vector<float> samples_{};
-  std::vector<RecognitionEvent> events_{};
+  std::vector<float> samples_;
+  std::vector<RecognitionEvent> events_;
 };
 
 // ---------------------------------------------------------------------------
@@ -586,6 +586,11 @@ public:
   SherpaOfflineBackend(ModelInfo model_info, AsrConfig asr_config, std::string provider_id)
       : model_info_(std::move(model_info)), asr_config_(std::move(asr_config)),
         provider_id_(std::move(provider_id)) {}
+
+  SherpaOfflineBackend(const SherpaOfflineBackend&) = delete;
+  SherpaOfflineBackend& operator=(const SherpaOfflineBackend&) = delete;
+  SherpaOfflineBackend(SherpaOfflineBackend&&) = delete;
+  SherpaOfflineBackend& operator=(SherpaOfflineBackend&&) = delete;
 
   ~SherpaOfflineBackend() override {
     const std::scoped_lock lock(mutex_);
@@ -681,8 +686,9 @@ std::unique_ptr<AsrBackend> CreateSherpaOfflineBackend(const CoreConfig& config,
       *error = "Local ASR model check failed for provider '" + provider.id + "'";
       if (!model_error.empty()) {
         *error += ": " + model_error;
-      } else
+      } else {
         *error += ".";
+      }
     }
     return nullptr;
   }

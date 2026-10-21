@@ -4,14 +4,16 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <exception>
 #include <fcntl.h>
+#include <filesystem>
 #include <map>
 #include <optional>
-#include <signal.h>
+#include <span>
 #include <string>
 #include <subprocess.hpp>
 #include <sys/poll.h>
@@ -22,8 +24,6 @@
 #include <vector>
 
 #include "common/utils/interpolation.h"
-
-extern char** environ;
 
 namespace vinput::process {
 
@@ -49,7 +49,7 @@ std::vector<std::string> BuildCmd(const CommandSpec& spec) {
 
 std::map<std::string, std::string> BuildEnvMap(const CommandSpec& spec) {
   std::map<std::string, std::string> env_map;
-  for (char** env = environ; env && *env; ++env) {
+  for (char* const* env = environ; env != nullptr && *env != nullptr; ++env) {
     const std::string entry(*env);
     const auto eq_pos = entry.find('=');
     if (eq_pos != std::string::npos) {
@@ -75,6 +75,27 @@ bool KillAndReap(pid_t pid) {
     wait_rc = waitpid(pid, nullptr, 0);
   }
   return wait_rc == pid || (wait_rc < 0 && errno == ECHILD);
+}
+
+bool TryReapProcess(pid_t pid, int* exit_code) {
+  if (pid <= 0) {
+    return false;
+  }
+  int status = 0;
+  const pid_t rc = waitpid(pid, &status, WNOHANG);
+  if (rc != pid) {
+    return false;
+  }
+  if (exit_code != nullptr) {
+    if (WIFEXITED(status)) {
+      *exit_code = WEXITSTATUS(status);
+    } else if (WIFSIGNALED(status)) {
+      *exit_code = 128 + WTERMSIG(status);
+    } else {
+      *exit_code = -1;
+    }
+  }
+  return true;
 }
 
 bool CreateCloexecPipe(int pipefd[2]) {

@@ -183,7 +183,7 @@ bool IsManagedScriptPath(const fs::path& expected, const std::vector<std::string
 }
 
 CommandAsrProvider* GetCommandAsrProvider(AsrProvider* provider) {
-  return provider ? std::get_if<CommandAsrProvider>(provider) : nullptr;
+  return provider != nullptr ? std::get_if<CommandAsrProvider>(provider) : nullptr;
 }
 
 std::vector<RegistryEntry> FetchRegistryImpl(const CoreConfig* config, Kind kind,

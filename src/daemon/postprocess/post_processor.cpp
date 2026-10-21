@@ -95,7 +95,7 @@ std::vector<std::string> ExtractCandidates(const glz::json_t& response) {
     if (!value.is_string()) {
       continue;
     }
-    const auto candidate_text = value.get<std::string>();
+    const auto& candidate_text = value.get_string();
     const auto trimmed_candidate = vinput::str::Trim(candidate_text);
     if (!trimmed_candidate.empty()) {
       candidates.emplace_back(trimmed_candidate);
@@ -111,7 +111,7 @@ constexpr std::string_view kXmlTagContext = "vinput-context";
 
 std::string WrapXmlBlock(std::string_view tag, std::string_view text) {
   std::string out;
-  out.reserve(tag.size() * 2 + text.size() + 12);
+  out.reserve((tag.size() * 2) + text.size() + 12);
   out.push_back('<');
   out.append(tag);
   out.append(">\n");
@@ -144,8 +144,9 @@ std::string BuildContextPrefix(int max_lines) {
   if (lines.empty()) {
     return {};
   }
-  const auto start =
-      (static_cast<int>(lines.size()) > max_lines) ? lines.end() - max_lines : lines.begin();
+  const auto start = (std::cmp_greater(lines.size(), max_lines))
+                         ? lines.end() - static_cast<std::ptrdiff_t>(max_lines)
+                         : lines.begin();
   std::string result = "Recent input history (use to fix ASR errors):\n";
   for (auto it = start; it != lines.end(); ++it) {
     result += *it;

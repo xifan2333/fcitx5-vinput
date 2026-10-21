@@ -51,8 +51,8 @@ private:
     std::string api_key;
   };
 
-  bool ExtractSettings(const CoreConfig& config, Settings* settings, bool* should_run,
-                       std::string* error) const;
+  static bool ExtractSettings(const CoreConfig& config, Settings* settings, bool* should_run,
+                              std::string* error);
   bool Start(const Settings& settings, std::string* error);
   void SetupRoutes(httplib::Server* server);
 
