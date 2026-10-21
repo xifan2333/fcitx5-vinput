@@ -490,10 +490,9 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
       return false;
     }
     json_content += "\n";
-    std::string write_err;
-    if (!vinput::file::AtomicWriteTextFile(json_path, json_content, &write_err)) {
+    if (auto res = vinput::file::AtomicWriteTextFile(json_path, json_content); !res) {
       if (error != nullptr) {
-        *error = "failed to write vinput-model.json: " + write_err;
+        *error = "failed to write vinput-model.json: " + res.error();
       }
       return false;
     }

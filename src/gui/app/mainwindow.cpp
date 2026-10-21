@@ -148,10 +148,8 @@ void MainWindow::onSaveClicked() {
   }
   if (!hotwordsFile.isEmpty()) {
     // Write hotwords content to file
-    std::string write_err;
     if (!vinput::file::AtomicWriteTextFile(hotwordsFile.toStdString(),
-                                           hotwordPage_->hotwordsContent().toStdString(),
-                                           &write_err)) {
+                                           hotwordPage_->hotwordsContent().toStdString())) {
       QMessageBox::critical(this, tr("Error"), tr("Failed to save hotwords file."));
       return;
     }
@@ -312,5 +310,5 @@ void MainWindow::onNotificationReady(const QString& id, const QString& title, co
 
   // Mark as read
   const auto read_path = vinput::path::ReadNotificationsPath();
-  vinput::file::AtomicWriteTextFile(read_path, id.toStdString(), nullptr);
+  (void)vinput::file::AtomicWriteTextFile(read_path, id.toStdString());
 }

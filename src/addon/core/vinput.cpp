@@ -138,9 +138,9 @@ void ensureDaemonServiceInstalled() {
     FCITX_LOG(Error) << "vinput: failed to prepare systemd user dir: " << file_error;
     return;
   }
-  if (!vinput::file::AtomicWriteTextFile(dest, content, &file_error)) {
+  if (auto res = vinput::file::AtomicWriteTextFile(dest, content); !res) {
     FCITX_LOG(Error) << "vinput: failed to write service file to " << dest;
-    FCITX_LOG(Error) << "vinput: write error: " << file_error;
+    FCITX_LOG(Error) << "vinput: write error: " << res.error();
     return;
   }
   FCITX_LOG(Info) << "vinput: installed vinput-daemon.service to " << dest;

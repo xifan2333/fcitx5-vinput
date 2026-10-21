@@ -400,15 +400,15 @@ Expected<std::string> ReadTextFile(const std::filesystem::path& path, size_t max
   return content;
 }
 
-bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view content,
-                         std::string* error) {
+Expected<void> AtomicWriteTextFile(const std::filesystem::path& target, std::string_view content) {
   std::filesystem::path resolved_target;
-  if (!ResolveSymlinkPath(target, &resolved_target, error)) {
-    return false;
+  std::string error;
+  if (!ResolveSymlinkPath(target, &resolved_target, &error)) {
+    return UnexpectedError(error);
   }
 
-  if (!EnsureParentDirectory(resolved_target, error)) {
-    return false;
+  if (!EnsureParentDirectory(resolved_target, &error)) {
+    return UnexpectedError(error);
   }
 
   auto tmp_path =
@@ -417,9 +417,7 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
 
   int fd = mkstemp(tmp_str.data());
   if (fd < 0) {
-    if (error)
-      *error = std::string("mkstemp failed: ") + std::strerror(errno);
-    return false;
+    return UnexpectedError(std::string("mkstemp failed: ") + std::strerror(errno));
   }
 
   std::error_code status_ec;
@@ -436,22 +434,20 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
     if (written < 0) {
       if (errno == EINTR)
         continue;
-      if (error)
-        *error = std::string("write failed: ") + std::strerror(errno);
+      std::string err = std::string("write failed: ") + std::strerror(errno);
       close(fd);
       unlink(tmp_str.c_str());
-      return false;
+      return UnexpectedError(err);
     }
     data += written;
     remaining -= static_cast<size_t>(written);
   }
 
   if (fsync(fd) != 0) {
-    if (error)
-      *error = std::string("fsync failed: ") + std::strerror(errno);
+    std::string err = std::string("fsync failed: ") + std::strerror(errno);
     close(fd);
     unlink(tmp_str.c_str());
-    return false;
+    return UnexpectedError(err);
   }
 
   close(fd);
@@ -459,16 +455,11 @@ bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view c
   std::error_code ec;
   std::filesystem::rename(tmp_str, resolved_target, ec);
   if (ec) {
-    if (error)
-      *error = "rename failed: " + ec.message();
     unlink(tmp_str.c_str());
-    return false;
+    return UnexpectedError("rename failed: " + ec.message());
   }
 
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
+  return {};
 }
 
 Expected<std::string> ComputeFileSha256(const std::filesystem::path& path) {

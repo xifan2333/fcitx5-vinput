@@ -317,7 +317,14 @@ bool WritePidFile(std::string_view adapter_id, pid_t pid, std::string* error) {
   }
 
   const std::string content = std::to_string(pid) + ' ' + std::to_string(start_time);
-  return vinput::file::AtomicWriteTextFile(PidPath(adapter_id), content, error);
+  auto res = vinput::file::AtomicWriteTextFile(PidPath(adapter_id), content);
+  if (!res) {
+    if (error != nullptr) {
+      *error = res.error();
+    }
+    return false;
+  }
+  return true;
 }
 
 void RemovePidFile(std::string_view adapter_id) {

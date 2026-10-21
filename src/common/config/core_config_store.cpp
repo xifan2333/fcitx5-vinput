@@ -175,7 +175,8 @@ bool SaveCoreConfig(const CoreConfig& config) {
     std::cerr << "Failed to serialize vinput config\n";
     return false;
   }
-  if (!vinput::file::AtomicWriteTextFile(path, serialized + "\n", &error)) {
+  if (auto res = vinput::file::AtomicWriteTextFile(path, serialized + "\n"); !res) {
+    error = res.error();
     std::cerr << "Failed to write config: " << error << "\n";
     return false;
   }

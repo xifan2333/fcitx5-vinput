@@ -55,7 +55,14 @@ bool WriteCacheFile(const glz::json_t& data, std::string* error) {
     }
     return false;
   }
-  return vinput::file::AtomicWriteTextFile(path, content, error);
+  auto res = vinput::file::AtomicWriteTextFile(path, content);
+  if (!res) {
+    if (error != nullptr) {
+      *error = res.error();
+    }
+    return false;
+  }
+  return true;
 }
 
 } // namespace

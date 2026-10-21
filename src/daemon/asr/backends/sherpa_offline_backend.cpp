@@ -52,7 +52,10 @@ bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std:
       temp_dir /
       ("vinput-hotwords-" +
        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
-  if (!vinput::file::AtomicWriteTextFile(temp_file, content, error)) {
+  if (auto res = vinput::file::AtomicWriteTextFile(temp_file, content); !res) {
+    if (error != nullptr) {
+      *error = res.error();
+    }
     return false;
   }
   *path = temp_file.string();

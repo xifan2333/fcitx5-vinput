@@ -593,15 +593,16 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     std::filesystem::create_directories(backup_dir, ec);
     const auto backup_file = backup_dir / (real_config_path.filename().string() + ".bak." + ts);
     std::string err;
-    if (!vinput::file::AtomicWriteTextFile(backup_file, raw_config, &err)) {
-      report.error = "Failed to create backup for " + real_config_path.string() + ": " + err;
+    if (auto res = vinput::file::AtomicWriteTextFile(backup_file, raw_config); !res) {
+      report.error =
+          "Failed to create backup for " + real_config_path.string() + ": " + res.error();
       return report;
     }
     report.config_backup = backup_file;
 
     const std::string new_json_str = FormatPrettyJson(config_data) + "\n";
-    if (!vinput::file::AtomicWriteTextFile(real_config_path, new_json_str, &err)) {
-      report.error = "Failed to write migrated " + real_config_path.string() + ": " + err;
+    if (auto res = vinput::file::AtomicWriteTextFile(real_config_path, new_json_str); !res) {
+      report.error = "Failed to write migrated " + real_config_path.string() + ": " + res.error();
       return report;
     }
   }
@@ -611,8 +612,8 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     std::filesystem::create_directories(backup_dir, ec);
     const auto backup_file = backup_dir / (real_conf_path.filename().string() + ".bak." + ts);
     std::string err;
-    if (!vinput::file::AtomicWriteTextFile(backup_file, raw_conf, &err)) {
-      report.error = "Failed to create backup for " + real_conf_path.string() + ": " + err;
+    if (auto res = vinput::file::AtomicWriteTextFile(backup_file, raw_conf); !res) {
+      report.error = "Failed to create backup for " + real_conf_path.string() + ": " + res.error();
       return report;
     }
     report.conf_backup = backup_file;

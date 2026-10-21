@@ -196,10 +196,9 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
     return false;
   }
 
-  std::string write_error;
-  if (!vinput::file::AtomicWriteTextFile(vocab_path, output.str(), &write_error)) {
+  if (auto res = vinput::file::AtomicWriteTextFile(vocab_path, output.str()); !res) {
     if (error) {
-      *error = "failed to write BPE vocabulary: " + write_error;
+      *error = "failed to write BPE vocabulary: " + res.error();
     }
     return false;
   }

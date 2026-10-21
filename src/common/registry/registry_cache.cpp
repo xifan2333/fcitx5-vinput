@@ -35,7 +35,14 @@ bool LoadCachedText(const std::filesystem::path& cache_path, std::string* conten
 
 bool SaveCachedText(const std::filesystem::path& cache_path, const std::string& content,
                     std::string* error) {
-  return vinput::file::AtomicWriteTextFile(cache_path, content, error);
+  auto res = vinput::file::AtomicWriteTextFile(cache_path, content);
+  if (!res) {
+    if (error) {
+      *error = res.error();
+    }
+    return false;
+  }
+  return true;
 }
 
 std::filesystem::path CachePath(std::string_view name) {

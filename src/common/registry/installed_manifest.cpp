@@ -98,7 +98,14 @@ bool InstalledManifest::Save(const std::filesystem::path& path, std::string* err
     return false;
   }
 
-  return vinput::file::AtomicWriteTextFile(actual_path, content, error);
+  auto res = vinput::file::AtomicWriteTextFile(actual_path, content);
+  if (!res) {
+    if (error != nullptr) {
+      *error = res.error();
+    }
+    return false;
+  }
+  return true;
 }
 
 const InstalledRecord* InstalledManifest::Get(std::string_view id) const {

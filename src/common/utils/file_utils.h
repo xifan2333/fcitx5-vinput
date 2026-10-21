@@ -74,8 +74,7 @@ bool ResolveSymlinkPath(const std::filesystem::path& path, std::filesystem::path
                         std::string* error);
 bool EnsureParentDirectory(const std::filesystem::path& path, std::string* error);
 Expected<std::string> ReadTextFile(const std::filesystem::path& path, size_t max_bytes = 0);
-bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view content,
-                         std::string* error);
+Expected<void> AtomicWriteTextFile(const std::filesystem::path& target, std::string_view content);
 // Computes the SHA-256 hash of a file.
 // Uses zero-copy memory mapping for performance, falling back to streaming when mmap is
 // unavailable or for pseudo-files. Expects the target file to remain immutable during hashing.
