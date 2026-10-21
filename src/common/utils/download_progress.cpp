@@ -1,5 +1,6 @@
 #include "common/utils/download_progress.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -51,10 +52,7 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
     return;
   }
 
-  int percent = static_cast<int>((current * 100) / total_);
-  if (percent > 100) {
-    percent = 100;
-  }
+  const int percent = std::min(static_cast<int>((current * 100) / total_), 100);
 
   if (is_tty_ && bar_) {
     if (bar_->is_completed()) {
