@@ -7,8 +7,10 @@
 #include <fcitx-config/iniparser.h>
 #include <fcitx-config/rawconfig.h>
 #include <filesystem>
-#include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
+#include <glaze/core/opts.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
+#include <glaze/json/write.hpp>
 #include <optional>
 #include <span>
 #include <string>
@@ -26,6 +28,28 @@ namespace vinput::migration {
 
 namespace {
 
+// Migration rewrites user-edited trees, which may carry keys unknown to this
+// version, so unknown keys must not abort the parse.
+constexpr auto kMigrationReadOpts = glz::opts{.error_on_unknown_keys = uint8_t{0}};
+// Migrated `config.json` files keep the historical two space indentation.
+constexpr auto kMigrationWriteOpts = glz::opts{.prettify = true, .indentation_width = 2};
+
+std::string FormatJson(const glz::json_t& value) {
+  std::string out;
+  if (bool(glz::write_json(value, out))) {
+    return {};
+  }
+  return out;
+}
+
+std::string FormatPrettyJson(const glz::json_t& value) {
+  std::string out;
+  if (bool(glz::write<kMigrationWriteOpts>(value, out))) {
+    return {};
+  }
+  return out;
+}
+
 enum class ActionType : std::uint8_t {
   Rename,
   Remove,
@@ -41,13 +65,13 @@ struct MigrationRule {
   ActionType action;
   std::string_view path;
   std::string_view new_key;
-  nlohmann::json default_value;
-  nlohmann::json expected_value;
-  nlohmann::json to_value;
+  glz::json_t default_value;
+  glz::json_t expected_value;
+  glz::json_t to_value;
 
   MigrationRule(std::string_view v, std::string_view tf, ActionType act, std::string_view p,
-                std::string_view nk = {}, nlohmann::json def = {}, nlohmann::json exp = {},
-                nlohmann::json to = {})
+                std::string_view nk = {}, glz::json_t def = {}, glz::json_t exp = {},
+                glz::json_t to = {})
       : version(v), target_file(tf), action(act), path(p), new_key(nk),
         default_value(std::move(def)), expected_value(std::move(exp)), to_value(std::move(to)) {}
 };
@@ -159,17 +183,31 @@ std::string GenerateTimestamp() {
   return {buf};
 }
 
-bool ValueMatches(const nlohmann::json& actual, const nlohmann::json& expected) {
+// Deep equality for the scalar values migration rules ever compare. Container
+// values are never compared, so they report "not equal".
+bool JsonEquals(const glz::json_t& actual, const glz::json_t& expected) {
   if (expected.is_number() && actual.is_number()) {
-    if (expected.is_number_float() || actual.is_number_float()) {
-      return std::abs(actual.get<double>() - expected.get<double>()) < 1e-4;
-    }
-    return actual.get<std::int64_t>() == expected.get<std::int64_t>();
+    return std::abs(*actual.get_if<double>() - *expected.get_if<double>()) < 1e-4;
   }
-  return actual == expected;
+  if (const auto* lhs = actual.get_if<bool>()) {
+    const auto* rhs = expected.get_if<bool>();
+    return rhs != nullptr && *lhs == *rhs;
+  }
+  if (const auto* lhs = actual.get_if<std::string>()) {
+    const auto* rhs = expected.get_if<std::string>();
+    return rhs != nullptr && *lhs == *rhs;
+  }
+  return actual.is_null() && expected.is_null();
 }
 
-bool ApplyActionToTarget(nlohmann::json& parent, const std::string& key, std::string_view desc,
+void EraseMember(glz::json_t& node, const std::string& key) {
+  auto* object = node.get_if<glz::json_t::object_t>();
+  if (object != nullptr) {
+    object->erase(key);
+  }
+}
+
+bool ApplyActionToTarget(glz::json_t& parent, const std::string& key, std::string_view desc,
                          const MigrationRule& rule, std::vector<MigrationChange>& changes) {
   const std::string desc_prefix = desc.empty() ? key : std::string(desc) + "." + key;
 
@@ -177,15 +215,16 @@ bool ApplyActionToTarget(nlohmann::json& parent, const std::string& key, std::st
   case ActionType::Rename: {
     if (parent.is_object() && parent.contains(key)) {
       const std::string new_key(rule.new_key);
+      auto& object = parent.get_object();
       if (!parent.contains(new_key)) {
-        parent[new_key] = std::move(parent[key]);
-        parent.erase(key);
+        object.emplace(new_key, std::move(object[key]));
+        object.erase(key);
         changes.push_back({
             .file = "config.json",
             .description = desc_prefix + ": renamed '" + key + "' to '" + new_key + "'",
         });
       } else {
-        parent.erase(key);
+        EraseMember(parent, key);
         changes.push_back({
             .file = "config.json",
             .description = desc_prefix + ": removed obsolete duplicate key '" + key + "'",
@@ -197,7 +236,7 @@ bool ApplyActionToTarget(nlohmann::json& parent, const std::string& key, std::st
   }
   case ActionType::Remove: {
     if (parent.is_object() && parent.contains(key)) {
-      parent.erase(key);
+      EraseMember(parent, key);
       changes.push_back({
           .file = "config.json",
           .description =
@@ -221,12 +260,12 @@ bool ApplyActionToTarget(nlohmann::json& parent, const std::string& key, std::st
   case ActionType::ReplaceIfDefault: {
     if (parent.is_object() && parent.contains(key)) {
       const auto& val = parent[key];
-      if (ValueMatches(val, rule.expected_value)) {
+      if (JsonEquals(val, rule.expected_value)) {
         parent[key] = rule.to_value;
         changes.push_back({
             .file = "config.json",
-            .description = desc_prefix + ": upgraded legacy default " + rule.expected_value.dump() +
-                           " to " + rule.to_value.dump(),
+            .description = desc_prefix + ": upgraded legacy default " +
+                           FormatJson(rule.expected_value) + " to " + FormatJson(rule.to_value),
         });
         return true;
       }
@@ -238,7 +277,7 @@ bool ApplyActionToTarget(nlohmann::json& parent, const std::string& key, std::st
   }
 }
 
-bool WalkAndApply(nlohmann::json& node, std::span<const std::string_view> segments,
+bool WalkAndApply(glz::json_t& node, std::span<const std::string_view> segments,
                   std::string_view desc, const MigrationRule& rule,
                   std::vector<MigrationChange>& changes) {
   if (segments.empty()) {
@@ -260,16 +299,17 @@ bool WalkAndApply(nlohmann::json& node, std::span<const std::string_view> segmen
 
   if (seg == "*") {
     if (node.is_object()) {
-      for (const auto& item : node.items()) {
+      for (auto& [child_key, child_value] : node.get_object()) {
         const std::string child_desc =
-            desc.empty() ? item.key() : std::string(desc) + "." + item.key();
-        if (WalkAndApply(item.value(), sub_segments, child_desc, rule, changes)) {
+            desc.empty() ? child_key : std::string(desc) + "." + child_key;
+        if (WalkAndApply(child_value, sub_segments, child_desc, rule, changes)) {
           any_changed = true;
         }
       }
     } else if (node.is_array()) {
-      for (size_t idx = 0; idx < node.size(); ++idx) {
-        auto& child = node[idx];
+      auto& array = node.get_array();
+      for (std::size_t idx = 0; idx < array.size(); ++idx) {
+        auto& child = array[idx];
         std::string child_id;
         if (child.is_object() && child.contains("id") && child["id"].is_string()) {
           child_id = child["id"].get<std::string>();
@@ -283,10 +323,10 @@ bool WalkAndApply(nlohmann::json& node, std::span<const std::string_view> segmen
         }
       }
     }
-  } else if (node.is_object() && node.contains(std::string(seg))) {
+  } else if (node.is_object() && node.contains(seg)) {
     const std::string child_desc =
         desc.empty() ? std::string(seg) : std::string(desc) + "." + std::string(seg);
-    if (WalkAndApply(node[std::string(seg)], sub_segments, child_desc, rule, changes)) {
+    if (WalkAndApply(node[seg], sub_segments, child_desc, rule, changes)) {
       any_changed = true;
     }
   }
@@ -423,13 +463,12 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
   }
 
   std::string raw_config;
-  nlohmann::json config_data;
+  glz::json_t config_data;
   if (config_exists) {
     if (!vinput::file::ReadTextFile(real_config_path, &raw_config, &report.error)) {
       return report;
     }
-    config_data = nlohmann::json::parse(raw_config, nullptr, false);
-    if (config_data.is_discarded()) {
+    if (bool(glz::read<kMigrationReadOpts>(config_data, raw_config))) {
       report.error = "Failed to parse " + real_config_path.string() + ": invalid JSON";
       return report;
     }
@@ -504,7 +543,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     }
 
     if (config_data.contains("vinput_version")) {
-      config_data.erase("vinput_version");
+      EraseMember(config_data, "vinput_version");
       config_changed = true;
       report.changes.push_back({
           .file = "config.json",
@@ -515,7 +554,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     const std::string target_ver = GetTargetVersionConstraint();
     if (!config_data.contains("version") || !config_data["version"].is_string() ||
         config_data["version"].get<std::string>() != target_ver) {
-      config_data["version"] = target_ver;
+      config_data["version"] = glz::json_t(target_ver);
       config_changed = true;
       report.changes.push_back({
           .file = "config.json",
@@ -553,7 +592,7 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     }
     report.config_backup = backup_file;
 
-    const std::string new_json_str = config_data.dump(2) + "\n";
+    const std::string new_json_str = FormatPrettyJson(config_data) + "\n";
     if (!vinput::file::AtomicWriteTextFile(real_config_path, new_json_str, &err)) {
       report.error = "Failed to write migrated " + real_config_path.string() + ": " + err;
       return report;

@@ -1,8 +1,9 @@
 #pragma once
 
+#include <glaze/json/json_t.hpp>
 #include <map>
-#include <nlohmann/json.hpp>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -19,7 +20,7 @@ struct LlmProvider {
   std::string id;
   std::string base_url;
   std::string api_key;
-  nlohmann::json extra_body = nlohmann::json::object();
+  glz::json_t extra_body = glz::json_t(glz::json_t::object_t{});
 };
 
 struct LlmAdapter {

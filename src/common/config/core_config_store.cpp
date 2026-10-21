@@ -1,13 +1,12 @@
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <mutex>
-#include <nlohmann/json.hpp>
+#include <string>
 
 #include "common/config/core_config.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
-
-using json = nlohmann::ordered_json;
 
 namespace {
 
@@ -68,12 +67,11 @@ CoreConfig LoadCoreConfigFromFile(const std::filesystem::path& path) {
     return config;
   }
 
-  try {
-    json root;
-    file >> root;
-    from_json(root, config);
-  } catch (const json::exception& e) {
-    std::cerr << "Failed to parse vinput config: " << e.what() << "\n";
+  const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+  std::string parse_error;
+  if (!CoreConfigFromJson(text, &config, &parse_error)) {
+    std::cerr << "Failed to parse vinput config: " << parse_error << "\n";
+    return CoreConfig{};
   }
   return config;
 }
@@ -156,37 +154,31 @@ bool SaveCoreConfig(const CoreConfig& config) {
     return false;
   }
 
-  try {
-    CoreConfig normalized = config;
-    NormalizeCoreConfig(&normalized);
-    if (!ValidateCoreConfig(normalized, &error)) {
-      return false;
-    }
-    MaterializeBuiltinSceneLabels(&normalized);
-
-    json root;
-    to_json(root, normalized);
-    if (!vinput::file::AtomicWriteTextFile(path, root.dump(4) + "\n", &error)) {
-      std::cerr << "Failed to write config: " << error << "\n";
-      return false;
-    }
-
-    auto& cache = GetConfigCache();
-    std::lock_guard<std::mutex> lock(cache.mu);
-
-    std::filesystem::file_time_type mtime;
-    std::uintmax_t size = 0;
-    if (GetConfigStat(path, &mtime, &size)) {
-      cache.cached = std::move(normalized);
-      cache.mtime = mtime;
-      cache.size = size;
-      cache.hasCache = true;
-    } else {
-      cache.hasCache = false;
-    }
-    return true;
-  } catch (const json::exception& e) {
-    std::cerr << "Failed to serialize vinput config: " << e.what() << "\n";
+  CoreConfig normalized = config;
+  NormalizeCoreConfig(&normalized);
+  if (!ValidateCoreConfig(normalized, &error)) {
     return false;
   }
+  MaterializeBuiltinSceneLabels(&normalized);
+
+  const std::string text = CoreConfigToJson(normalized) + "\n";
+  if (!vinput::file::AtomicWriteTextFile(path, text, &error)) {
+    std::cerr << "Failed to write config: " << error << "\n";
+    return false;
+  }
+
+  auto& cache = GetConfigCache();
+  std::lock_guard<std::mutex> lock(cache.mu);
+
+  std::filesystem::file_time_type mtime;
+  std::uintmax_t size = 0;
+  if (GetConfigStat(path, &mtime, &size)) {
+    cache.cached = std::move(normalized);
+    cache.mtime = mtime;
+    cache.size = size;
+    cache.hasCache = true;
+  } else {
+    cache.hasCache = false;
+  }
+  return true;
 }

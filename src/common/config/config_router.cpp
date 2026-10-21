@@ -1,6 +1,15 @@
 #include "common/config/config_router.h"
 
-#include <nlohmann/json.hpp>
+#include <charconv>
+#include <glaze/core/opts.hpp>
+#include <glaze/core/read.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/write.hpp>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
+#include <vector>
 
 #include "common/config/core_config.h"
 #include "common/utils/file_utils.h"
@@ -8,69 +17,156 @@
 
 namespace vinput::config {
 
-using json = nlohmann::ordered_json;
+namespace {
 
-bool GetConfigValue(const std::string& pointer, std::string* value, std::string* error) {
+// User-edited trees may carry unknown keys, which must not abort the read.
+constexpr auto kTreeReadOpts = glz::opts{.error_on_unknown_keys = uint8_t{0}};
+
+bool LoadConfigTree(glz::json_t* root) {
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
-  json j = config;
+  const std::string text = CoreConfigToJson(config);
+  return !bool(glz::read<kTreeReadOpts>(*root, text));
+}
 
-  try {
-    const json& node = j.at(json::json_pointer(pointer));
-    if (value) {
-      *value = node.is_string() ? node.get<std::string>() : node.dump();
+glz::json_t* ChildAt(glz::json_t* node, const std::string& segment) {
+  if (auto* object = node->get_if<glz::json_t::object_t>()) {
+    const auto it = object->find(segment);
+    return it == object->end() ? nullptr : &it->second;
+  }
+  auto* array = node->get_if<glz::json_t::array_t>();
+  if (array == nullptr) {
+    return nullptr;
+  }
+  std::size_t index = 0;
+  const char* begin = segment.data();
+  const char* end = begin + segment.size();
+  const auto [parse_end, parse_error] = std::from_chars(begin, end, index);
+  if (parse_error != std::errc{} || parse_end != end || index >= array->size()) {
+    return nullptr;
+  }
+  return &(*array)[index];
+}
+
+// Resolves an RFC 6901 JSON pointer against a dynamic JSON tree. Returns nullptr
+// when any segment is missing.
+glz::json_t* SeekPointer(glz::json_t* root, std::string_view pointer) {
+  glz::json_t* node = root;
+  std::size_t pos = 0;
+  while (pos < pointer.size()) {
+    if (pointer[pos] != '/') {
+      return nullptr;
     }
-    return true;
-  } catch (const std::exception& e) {
+    ++pos;
+
+    std::string segment;
+    bool escaped = false;
+    while (pos < pointer.size() && pointer[pos] != '/') {
+      const char current = pointer[pos];
+      ++pos;
+      if (!escaped && current == '~') {
+        escaped = true;
+        continue;
+      }
+      segment.push_back(escaped && current == '1' ? '/' : current);
+      escaped = false;
+    }
+    if (escaped) {
+      return nullptr;
+    }
+
+    node = ChildAt(node, segment);
+    if (node == nullptr) {
+      return nullptr;
+    }
+  }
+  return node;
+}
+
+std::string FormatNode(const glz::json_t& node) {
+  std::string out;
+  if (bool(glz::write_json(node, out))) {
+    return {};
+  }
+  return out;
+}
+
+void ParseSetValue(const std::string& value, glz::json_t* parsed) {
+  if (!bool(glz::read_json(*parsed, value))) {
+    return;
+  }
+  // Not valid JSON: treat the argument as a bare string value.
+  *parsed = glz::json_t(value);
+}
+
+} // namespace
+
+bool GetConfigValue(const std::string& pointer, std::string* value, std::string* error) {
+  glz::json_t root;
+  if (!LoadConfigTree(&root)) {
     if (error) {
-      *error = std::string("Config path not found: ") + e.what();
+      *error = "Failed to load config.";
     }
     return false;
   }
+
+  const glz::json_t* node = SeekPointer(&root, pointer);
+  if (node == nullptr) {
+    if (error) {
+      *error = "Config path not found: " + pointer;
+    }
+    return false;
+  }
+
+  if (value != nullptr) {
+    if (const auto* text = node->get_if<std::string>()) {
+      *value = *text;
+    } else {
+      *value = FormatNode(*node);
+    }
+  }
+  return true;
 }
 
 bool SetConfigValue(const std::string& pointer, const std::string& value, std::string* error) {
-  CoreConfig config = LoadCoreConfig();
-  NormalizeCoreConfig(&config);
-  json j = config;
-
-  json parsed_value;
-  try {
-    parsed_value = json::parse(value);
-  } catch (const json::parse_error&) {
-    parsed_value = value;
-  }
-
-  try {
-    j.at(json::json_pointer(pointer)) = std::move(parsed_value);
-  } catch (const std::exception& e) {
+  glz::json_t root;
+  if (!LoadConfigTree(&root)) {
     if (error) {
-      *error = std::string("Config path not found: ") + e.what();
+      *error = "Failed to load config.";
     }
     return false;
   }
 
-  try {
-    CoreConfig updated = j.get<CoreConfig>();
-    if (!SaveCoreConfig(updated)) {
-      if (error) {
-        std::string validation_error;
-        NormalizeCoreConfig(&updated);
-        if (ValidateCoreConfig(updated, &validation_error) && validation_error.empty()) {
-          *error = "Failed to save config.";
-        } else {
-          *error = validation_error;
-        }
+  glz::json_t* node = SeekPointer(&root, pointer);
+  if (node == nullptr) {
+    if (error) {
+      *error = "Config path not found: " + pointer;
+    }
+    return false;
+  }
+
+  glz::json_t parsed;
+  ParseSetValue(value, &parsed);
+  *node = std::move(parsed);
+
+  CoreConfig updated;
+  if (!CoreConfigFromJson(FormatNode(root), &updated, error)) {
+    return false;
+  }
+
+  if (!SaveCoreConfig(updated)) {
+    if (error) {
+      std::string validation_error;
+      NormalizeCoreConfig(&updated);
+      if (ValidateCoreConfig(updated, &validation_error) && validation_error.empty()) {
+        *error = "Failed to save config.";
+      } else {
+        *error = validation_error;
       }
-      return false;
-    }
-    return true;
-  } catch (const std::exception& e) {
-    if (error) {
-      *error = std::string("Invalid value: ") + e.what();
     }
     return false;
   }
+  return true;
 }
 
 std::filesystem::path GetEditTarget(const std::string& target) {

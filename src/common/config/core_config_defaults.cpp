@@ -1,12 +1,11 @@
+#include <filesystem>
 #include <fstream>
-#include <nlohmann/json.hpp>
+#include <iterator>
 #include <string>
 
 #include "common/config/core_config.h"
 
 #include "config.h"
-
-using json = nlohmann::ordered_json;
 
 namespace {
 
@@ -38,18 +37,15 @@ bool LoadBundledDefaultCoreConfig(CoreConfig* config, std::string* error) {
     return false;
   }
 
-  try {
-    json bundled_json;
-    file >> bundled_json;
-    from_json(bundled_json, *config);
+  const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+  if (!CoreConfigFromJson(text, config, error)) {
     if (error) {
-      error->clear();
-    }
-    return true;
-  } catch (const std::exception& e) {
-    if (error) {
-      *error = "Failed to parse bundled default config: " + std::string(e.what());
+      *error = "Failed to parse bundled default config: " + *error;
     }
     return false;
   }
+  if (error) {
+    error->clear();
+  }
+  return true;
 }
