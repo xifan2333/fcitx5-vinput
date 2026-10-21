@@ -273,31 +273,31 @@ std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig* config,
 ModelRepository::ModelRepository(const std::string& base_dir) : base_dir_(base_dir) {}
 
 std::vector<RemoteModelEntry> ModelRepository::FetchRegistry(const std::string& registry_url,
-                                                             std::string* error) const {
+                                                             std::string* error) {
   return FetchRegistry(std::vector<std::string>{registry_url}, error, nullptr);
 }
 
 std::vector<RemoteModelEntry>
 ModelRepository::FetchRegistry(const std::vector<std::string>& registry_urls, std::string* error,
-                               std::string* resolved_registry_url) const {
+                               std::string* resolved_registry_url) {
   return FetchRegistryImpl(nullptr, registry_urls, error, resolved_registry_url, nullptr);
 }
 
 std::vector<RemoteModelEntry> ModelRepository::FetchRegistry(
     const CoreConfig& config, const std::vector<std::string>& registry_urls, std::string* error,
-    std::string* resolved_registry_url, std::vector<std::string>* warnings) const {
+    std::string* resolved_registry_url, std::vector<std::string>* warnings) {
   return FetchRegistryImpl(&config, registry_urls, error, resolved_registry_url, warnings);
 }
 
 bool ModelRepository::InstallModel(const std::string& registry_url, const std::string& model_id,
-                                   ProgressCallback progress_cb, std::string* error,
+                                   const ProgressCallback& progress_cb, std::string* error,
                                    const std::atomic<bool>* cancel_token) const {
-  return InstallModel(std::vector<std::string>{registry_url}, model_id, std::move(progress_cb),
-                      error, nullptr, cancel_token);
+  return InstallModel(std::vector<std::string>{registry_url}, model_id, progress_cb, error, nullptr,
+                      cancel_token);
 }
 
 bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls,
-                                   const std::string& model_id, ProgressCallback progress_cb,
+                                   const std::string& model_id, const ProgressCallback& progress_cb,
                                    std::string* error, std::string* resolved_registry_url,
                                    const std::atomic<bool>* cancel_token) const {
   // Fetch registry without i18n refresh when config context is unavailable.
@@ -338,7 +338,7 @@ bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls
 
 bool ModelRepository::InstallModel(const CoreConfig& config,
                                    const std::vector<std::string>& registry_urls,
-                                   const std::string& model_id, ProgressCallback progress_cb,
+                                   const std::string& model_id, const ProgressCallback& progress_cb,
                                    std::string* error, std::string* resolved_registry_url,
                                    const std::atomic<bool>* cancel_token) const {
   // Fetch registry

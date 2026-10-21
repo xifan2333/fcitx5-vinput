@@ -74,7 +74,7 @@ std::string DetectPreferredLocale() {
   const char* const vars[] = {"LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"};
   for (const char* name : vars) {
     const char* value = std::getenv(name);
-    if (value != nullptr && *value) {
+    if (value != nullptr && *value != '\0') {
       const std::string locale = vinput::locale::CanonicalizeLocale(value);
       if (!locale.empty()) {
         return locale;

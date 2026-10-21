@@ -125,7 +125,7 @@ std::vector<ModelEntry> LoadActiveModels(const CoreConfig& config) {
   if (cache_providers != nullptr && cache_providers->is_object()) {
     std::vector<std::string> orphaned_ids;
     for (const auto& [cached_id, cached_value] : cache_providers->get_object()) {
-      if (active_provider_ids.find(cached_id) == active_provider_ids.end()) {
+      if (!active_provider_ids.contains(cached_id)) {
         orphaned_ids.push_back(cached_id);
       }
     }
@@ -185,7 +185,7 @@ std::vector<ModelEntry> LoadActiveModels(const CoreConfig& config) {
   // 2. Statically configured models from scenes (e.g. __command__ or custom scenes)
   for (const auto& scene : config.scenes.definitions) {
     if (!scene.provider_id.empty() && !scene.model.empty() &&
-        active_provider_ids.find(scene.provider_id) != active_provider_ids.end()) {
+        active_provider_ids.contains(scene.provider_id)) {
       add_entry(scene.provider_id, scene.model);
     }
   }

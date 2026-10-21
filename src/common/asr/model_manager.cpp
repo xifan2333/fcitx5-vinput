@@ -435,8 +435,8 @@ fs::path ModelManager::ModelDir(std::string_view model_id) const {
   return fs::path(base_dir_) / relative_path;
 }
 
-ModelManager::ModelManager(const std::string& base_dir, const std::string& model_id)
-    : base_dir_(NormalizeBaseDir(base_dir).string()), model_id_(model_id) {}
+ModelManager::ModelManager(std::string base_dir, std::string model_id)
+    : base_dir_(NormalizeBaseDir(base_dir).string()), model_id_(std::move(model_id)) {}
 
 bool ModelManager::EnsureModels(std::string* error) {
   auto dir = ModelDir(model_id_);

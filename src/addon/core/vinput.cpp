@@ -45,7 +45,7 @@ using namespace vinput::dbus;
 
 namespace {
 
-constexpr clockid_t kContextClock = 1; // POSIX CLOCK_MONOTONIC
+constexpr auto kContextClock = 1; // POSIX CLOCK_MONOTONIC
 constexpr const char* kContextSourceUser = "user";
 
 // Re-encodes `text` through the vendored Unicode codec, dropping ill formed byte

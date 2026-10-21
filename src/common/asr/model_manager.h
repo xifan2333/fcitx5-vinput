@@ -61,7 +61,7 @@ struct ModelSummary {
 
 class ModelManager {
 public:
-  explicit ModelManager(const std::string& base_dir = "", const std::string& model_id = "");
+  explicit ModelManager(std::string base_dir = "", std::string model_id = "");
 
   bool EnsureModels(std::string* error = nullptr);
   ModelInfo GetModelInfo(std::string* error = nullptr) const;

@@ -85,8 +85,10 @@ int RunConfigMigrate(bool dry_run, Formatter& fmt, const CliContext& ctx) {
     glz::json_t changes = glz::json_t(glz::json_t::array_t{});
     changes.get_array().reserve(report.changes.size());
     for (const auto& ch : report.changes) {
-      changes.get_array().push_back(
-          glz::json_t{{"file", ch.file}, {"description", ch.description}});
+      glz::json_t entry;
+      entry["file"] = ch.file;
+      entry["description"] = ch.description;
+      changes.get_array().push_back(std::move(entry));
     }
     j["changes"] = std::move(changes);
     fmt.PrintJson(j);
