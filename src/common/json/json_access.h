@@ -140,6 +140,23 @@ inline glz::json_t FromStringMap(const std::map<std::string, std::string>& value
   return glz::json_t(std::move(object));
 }
 
+// Shared empty object, used as the fallback of Object().
+inline const glz::json_t& EmptyObject() {
+  static const glz::json_t value = glz::json_t(glz::json_t::object_t{});
+  return value;
+}
+
+// Returns the object stored under `key`, or `fallback` when the key is missing
+// or holds a non-object value.
+inline const glz::json_t& Object(const glz::json_t& object, std::string_view key,
+                                 const glz::json_t& fallback = EmptyObject()) {
+  const auto* node = Find(object, key);
+  if (node == nullptr || !node->is_object()) {
+    return fallback;
+  }
+  return *node;
+}
+
 // Compact JSON text of `value`; empty when serialization fails.
 inline std::string ToText(const glz::json_t& value) {
   std::string out;

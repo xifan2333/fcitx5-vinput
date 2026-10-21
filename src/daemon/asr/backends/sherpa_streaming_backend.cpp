@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <glaze/json/json_t.hpp>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
 #include <span>
@@ -13,6 +14,7 @@
 
 #include "common/asr/model_manager.h"
 #include "common/i18n.h"
+#include "common/json/json_access.h"
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
@@ -23,7 +25,7 @@ namespace vinput::daemon::asr {
 
 namespace {
 
-int ChooseNumThreads(const nlohmann::json& model_cfg, int runtime_default) {
+int ChooseNumThreads(const glz::json_t& model_cfg, int runtime_default) {
   if (runtime_default > 0) {
     return runtime_default;
   }
@@ -261,10 +263,7 @@ private:
     SherpaOnnxOnlineRecognizerConfig config = {};
     const auto& recognizer_cfg = model_info_.recognizer_config;
     const auto& model_cfg = model_info_.model_config;
-    const auto feat_cfg =
-        recognizer_cfg.contains("feat_config") && recognizer_cfg["feat_config"].is_object()
-            ? recognizer_cfg["feat_config"]
-            : nlohmann::json::object();
+    const auto& feat_cfg = vinput::json::Object(recognizer_cfg, "feat_config");
     config.feat_config.sample_rate = JsonInt(feat_cfg, "sample_rate", 16000);
     config.feat_config.feature_dim = JsonInt(feat_cfg, "feature_dim", 80);
 
@@ -355,9 +354,8 @@ private:
     }
     if (!f_graph.empty()) {
       config.ctc_fst_decoder_config.graph = f_graph.c_str();
-      config.ctc_fst_decoder_config.max_active =
-          JsonInt(recognizer_cfg.value("ctc_fst_decoder_config", nlohmann::json::object()),
-                  "max_active", 3000);
+      config.ctc_fst_decoder_config.max_active = JsonInt(
+          vinput::json::Object(recognizer_cfg, "ctc_fst_decoder_config"), "max_active", 3000);
     }
     if (!normalized_transducer_hotwords.empty()) {
       config.hotwords_buf = normalized_transducer_hotwords.c_str();

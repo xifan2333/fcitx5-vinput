@@ -1,8 +1,10 @@
 #pragma once
 
-#include <nlohmann/json.hpp>
+#include <glaze/json/json_t.hpp>
 #include <string>
 #include <string_view>
+
+#include "common/json/json_access.h"
 
 namespace vinput::daemon::asr {
 
@@ -22,59 +24,64 @@ inline int SafeStoi(const std::string& s, int default_val) {
   }
 }
 
-inline std::string JsonString(const nlohmann::json& obj, std::string_view key,
+inline std::string JsonString(const glz::json_t& obj, std::string_view key,
                               const std::string& default_val = {}) {
-  if (!obj.is_object() || !obj.contains(key) || !obj[key].is_string()) {
+  const auto* node = vinput::json::Find(obj, key);
+  if (node == nullptr) {
     return default_val;
   }
-  return obj[key].get<std::string>();
-}
-
-inline int JsonInt(const nlohmann::json& obj, std::string_view key, int default_val) {
-  if (!obj.is_object() || !obj.contains(key)) {
-    return default_val;
-  }
-  const auto& value = obj[key];
-  if (value.is_number_integer()) {
-    return value.get<int>();
-  }
-  if (value.is_boolean()) {
-    return value.get<bool>() ? 1 : 0;
-  }
-  if (value.is_string()) {
-    return SafeStoi(value.get<std::string>(), default_val);
+  if (const auto* text = node->get_if<std::string>()) {
+    return *text;
   }
   return default_val;
 }
 
-inline float JsonFloat(const nlohmann::json& obj, std::string_view key, float default_val) {
-  if (!obj.is_object() || !obj.contains(key)) {
+// Model metadata mixes numbers, booleans and numeric strings for the same knob,
+// so every JSON kind that can carry a magnitude is accepted.
+inline int JsonInt(const glz::json_t& obj, std::string_view key, int default_val) {
+  const auto* node = vinput::json::Find(obj, key);
+  if (node == nullptr) {
     return default_val;
   }
-  const auto& value = obj[key];
-  if (value.is_number()) {
-    return value.get<float>();
+  if (const auto* number = node->get_if<double>()) {
+    return static_cast<int>(*number);
   }
-  if (value.is_string()) {
-    return SafeStof(value.get<std::string>(), default_val);
+  if (const auto* flag = node->get_if<bool>()) {
+    return *flag ? 1 : 0;
+  }
+  if (const auto* text = node->get_if<std::string>()) {
+    return SafeStoi(*text, default_val);
   }
   return default_val;
 }
 
-inline bool JsonBool(const nlohmann::json& obj, std::string_view key, bool default_val = false) {
-  if (!obj.is_object() || !obj.contains(key)) {
+inline float JsonFloat(const glz::json_t& obj, std::string_view key, float default_val) {
+  const auto* node = vinput::json::Find(obj, key);
+  if (node == nullptr) {
     return default_val;
   }
-  const auto& value = obj[key];
-  if (value.is_boolean()) {
-    return value.get<bool>();
+  if (const auto* number = node->get_if<double>()) {
+    return static_cast<float>(*number);
   }
-  if (value.is_number_integer()) {
-    return value.get<int>() != 0;
+  if (const auto* text = node->get_if<std::string>()) {
+    return SafeStof(*text, default_val);
   }
-  if (value.is_string()) {
-    const auto raw = value.get<std::string>();
-    return raw == "true" || raw == "1";
+  return default_val;
+}
+
+inline bool JsonBool(const glz::json_t& obj, std::string_view key, bool default_val = false) {
+  const auto* node = vinput::json::Find(obj, key);
+  if (node == nullptr) {
+    return default_val;
+  }
+  if (const auto* flag = node->get_if<bool>()) {
+    return *flag;
+  }
+  if (const auto* number = node->get_if<double>()) {
+    return *number != 0.0;
+  }
+  if (const auto* text = node->get_if<std::string>()) {
+    return *text == "true" || *text == "1";
   }
   return default_val;
 }

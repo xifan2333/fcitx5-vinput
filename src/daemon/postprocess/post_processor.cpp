@@ -5,7 +5,9 @@
 #include <atomic>
 #include <cstdio>
 #include <fstream>
-#include <nlohmann/json.hpp>
+#include <glaze/core/common.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 #include <optional>
 #include <set>
 #include <string>
@@ -16,6 +18,7 @@
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/json/json_access.h"
 #include "common/llm/defaults.h"
 #include "common/net/http_client.h"
 #include "common/net/http_types.h"
@@ -30,11 +33,10 @@
 
 namespace {
 
-using json = nlohmann::json;
 constexpr std::size_t kMaxResponseBytes = 1ULL * 1024ULL * 1024ULL; // 1 MB limit
 constexpr long kDefaultConnectTimeoutMs = 5000;
 
-json BuildCandidatesResponseFormat() {
+glz::json_t BuildCandidatesResponseFormat() {
   return {
       {"type", "json_object"},
   };
@@ -62,37 +64,34 @@ void LogResponseSummary(const LlmProvider& provider, const std::string& url, lon
              provider.id.empty() ? "(unnamed)" : provider.id, url, status_code, total_time_ms);
 }
 
-std::vector<std::string> ExtractCandidates(const json& response) {
-  const auto choices_it = response.find("choices");
-  if (choices_it == response.end() || !choices_it->is_array() || choices_it->empty()) {
+std::vector<std::string> ExtractCandidates(const glz::json_t& response) {
+  const auto* choices = vinput::json::Find(response, "choices");
+  if (choices == nullptr || !choices->is_array() || choices->get_array().empty()) {
     return {};
   }
 
-  const auto& choice = (*choices_it)[0];
-  const auto message_it = choice.find("message");
-  if (message_it == choice.end() || !message_it->is_object()) {
+  const auto* message = vinput::json::Find(choices->get_array().front(), "message");
+  if (message == nullptr || !message->is_object()) {
     return {};
   }
 
-  const auto content_it = message_it->find("content");
-  if (content_it == message_it->end() || !content_it->is_string()) {
+  const auto* content = vinput::json::Find(*message, "content");
+  if (content == nullptr || !content->is_string()) {
     return {};
   }
 
-  json content_json;
-  try {
-    content_json = json::parse(content_it->get<std::string>());
-  } catch (const std::exception&) {
+  glz::json_t content_json;
+  if (bool(glz::read_json(content_json, content->get<std::string>()))) {
     return {};
   }
 
-  const auto candidates_it = content_json.find("candidates");
-  if (candidates_it == content_json.end() || !candidates_it->is_array()) {
+  const auto* candidate_array = vinput::json::Find(content_json, "candidates");
+  if (candidate_array == nullptr || !candidate_array->is_array()) {
     return {};
   }
 
   std::vector<std::string> candidates;
-  for (const auto& value : *candidates_it) {
+  for (const auto& value : candidate_array->get_array()) {
     if (!value.is_string()) {
       continue;
     }
@@ -181,20 +180,19 @@ std::string BuildConstraintsSuffix(int max_llm_candidates) {
 // to prevent the merge from breaking response parsing. Everything else passes
 // through so provider-specific knobs like enable_thinking / reasoning /
 // thinking / top_p work without a whitelist.
-void MergeExtraBody(json& request, const nlohmann::json& extra, const LlmProvider& provider) {
+void MergeExtraBody(glz::json_t& request, const glz::json_t& extra, const LlmProvider& provider) {
   if (!extra.is_object() || extra.empty()) {
     return;
   }
   static constexpr std::array<std::string_view, 3> kProtected = {"messages", "stream",
                                                                  "response_format"};
-  for (auto it = extra.begin(); it != extra.end(); ++it) {
-    const std::string& key = it.key();
+  for (const auto& [key, value] : extra.get_object()) {
     if (std::find(kProtected.begin(), kProtected.end(), key) != kProtected.end()) {
       VLOG_DEBUG("LLM extra_body provider={}: ignoring protected key '{}'",
                  provider.id.empty() ? "(unnamed)" : provider.id, key);
       continue;
     }
-    request[key] = it.value();
+    request[key] = value;
   }
 }
 
@@ -277,18 +275,18 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
   // TODO(#407): re-enable with modern JSON library: LogLlmInput(provider, url, text);
 
-  std::vector<json> messages;
-  messages.push_back({{"role", "user"}, {"content", user_content}});
+  glz::json_t::array_t messages;
+  messages.emplace_back(glz::json_t{{"role", "user"}, {"content", user_content}});
 
-  json request = {
+  glz::json_t request = {
       {"model", scene.model},
       {"stream", false},
       {"temperature", 0.2},
       {"response_format", BuildCandidatesResponseFormat()},
-      {"messages", std::move(messages)},
+      {"messages", glz::json_t(std::move(messages))},
   };
   MergeExtraBody(request, provider.extra_body, provider);
-  const std::string request_body = request.dump();
+  const std::string request_body = vinput::json::ToText(request);
 
   const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider.api_key);
   if (vinput::interpolate::HasInterpolation(provider.api_key) && resolved_api_key.empty()) {
@@ -362,17 +360,14 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
   // TODO(#407): LogResponseBody("LLM raw response from", url, res.body);
 
-  json response;
-  try {
-    response = json::parse(res.body);
-  } catch (const std::exception& e) {
+  glz::json_t response;
+  if (const auto ec = glz::read_json(response, res.body); bool(ec)) {
     fprintf(stderr, "vinput-daemon: failed to parse LLM response JSON from %s: %s\n", url.c_str(),
-            e.what());
+            glz::format_error(ec).c_str());
     return std::nullopt;
   }
 
-  const auto error_it = response.find("error");
-  if (error_it != response.end()) {
+  if (vinput::json::Find(response, "error") != nullptr) {
     fprintf(stderr, "vinput-daemon: LLM response from %s contains error\n", url.c_str());
     // TODO(#407): LogResponseBody("LLM parsed error payload from", url, error_it->dump());
     return std::nullopt;

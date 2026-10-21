@@ -2,11 +2,13 @@
 
 #include <chrono>
 #include <cstdio>
+#include <glaze/json/json_t.hpp>
 #include <utility>
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/i18n.h"
+#include "common/json/json_access.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
 
@@ -85,15 +87,15 @@ bool ShouldDisableAsr(const CoreConfig& config, std::string* reason) {
 }
 
 std::string BuildRuntimeSignature(const CoreConfig& config) {
-  nlohmann::ordered_json j;
+  glz::json_t j = glz::json_t(glz::json_t::object_t{});
   j["active_provider"] = config.asr.activeProvider;
 
   const AsrProvider* provider = ResolveActiveAsrProvider(config);
-  if (!provider) {
-    return j.dump();
+  if (provider == nullptr) {
+    return vinput::json::ToText(j);
   }
 
-  nlohmann::ordered_json provider_json;
+  glz::json_t provider_json = glz::json_t(glz::json_t::object_t{});
   provider_json["id"] = AsrProviderId(*provider);
   provider_json["type"] = std::string(AsrProviderType(*provider));
   provider_json["timeout_ms"] = AsrProviderTimeoutMs(*provider);
@@ -104,12 +106,12 @@ std::string BuildRuntimeSignature(const CoreConfig& config) {
     provider_json["vad_enabled"] = config.asr.vad.enabled;
   } else if (const auto* command = std::get_if<CommandAsrProvider>(provider)) {
     provider_json["command"] = command->command;
-    provider_json["args"] = command->args;
-    provider_json["env"] = command->env;
+    provider_json["args"] = vinput::json::FromStrings(command->args);
+    provider_json["env"] = vinput::json::FromStringMap(command->env);
   }
 
   j["provider"] = std::move(provider_json);
-  return j.dump();
+  return vinput::json::ToText(j);
 }
 
 void LogActiveBackend(const CoreConfig& config) {

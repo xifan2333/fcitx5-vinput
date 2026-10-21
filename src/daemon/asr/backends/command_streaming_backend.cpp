@@ -9,8 +9,10 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <glaze/core/common.hpp>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 #include <map>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <poll.h>
 #include <span>
@@ -23,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/json/json_access.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
@@ -34,7 +37,6 @@ namespace vinput::daemon::asr {
 
 namespace {
 
-using json = nlohmann::json;
 using Clock = std::chrono::steady_clock;
 
 constexpr int kPollSliceMs = 50;
@@ -404,7 +406,7 @@ private:
       return true;
     }
 
-    json payload = {
+    const glz::json_t payload = {
         {"type", "audio"},
         {"audio_base64",
          base64::encode_into<std::string>(pending_chunk_.begin(), pending_chunk_.end())},
@@ -415,13 +417,13 @@ private:
   }
 
   bool SendControlEvent(std::string_view type, std::string* error) {
-    json payload = {
+    const glz::json_t payload = {
         {"type", type},
     };
     return SendJsonLine(payload, error);
   }
 
-  bool SendJsonLine(const json& payload, std::string* error) {
+  bool SendJsonLine(const glz::json_t& payload, std::string* error) {
     if (child_.stdin_closed || child_.stdin_fd < 0) {
       if (error) {
         *error = "provider stdin is already closed.";
@@ -429,7 +431,7 @@ private:
       return false;
     }
 
-    std::string line = payload.dump();
+    std::string line = vinput::json::ToText(payload);
     line.push_back('\n');
     std::size_t offset = 0;
     // Each outbound message has its own deadline. A prolonged recording
@@ -653,22 +655,21 @@ private:
   }
 
   bool HandleOutputLine(const std::string& line, std::string* error) {
-    json payload;
-    try {
-      payload = json::parse(line);
-    } catch (const std::exception& ex) {
+    glz::json_t payload;
+    if (const auto ec = glz::read_json(payload, line); bool(ec)) {
       if (error) {
-        *error = std::string("invalid streaming provider JSON: ") + ex.what();
+        *error = std::string("invalid streaming provider JSON: ") + glz::format_error(ec);
       }
       return false;
     }
 
-    const std::string type = payload.value("type", std::string{});
+    const std::string type = vinput::json::String(payload, "type");
     if (type == "session_started" || type.empty()) {
       return true;
     }
     if (type == "partial") {
-      const std::string text = std::string(vinput::str::Trim(payload.value("text", std::string{})));
+      const std::string text =
+          std::string(vinput::str::Trim(vinput::json::String(payload, "text")));
       if (!text.empty() && text != last_partial_text_) {
         last_partial_text_ = text;
         events_.push_back({RecognitionEventKind::PartialText, text, {}});
@@ -676,7 +677,8 @@ private:
       return true;
     }
     if (type == "final" || type == "final_timestamps") {
-      const std::string text = std::string(vinput::str::Trim(payload.value("text", std::string{})));
+      const std::string text =
+          std::string(vinput::str::Trim(vinput::json::String(payload, "text")));
       if (!text.empty()) {
         saw_final_text_ = true;
         last_partial_text_.clear();
@@ -685,7 +687,7 @@ private:
       return true;
     }
     if (type == "error") {
-      QueueError(std::string(vinput::str::Trim(payload.value("message", std::string{}))));
+      QueueError(std::string(vinput::str::Trim(vinput::json::String(payload, "message"))));
       return true;
     }
     if (type == "closed") {

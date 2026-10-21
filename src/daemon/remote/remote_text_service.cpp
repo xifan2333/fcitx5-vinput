@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 #include <httplib.h>
 #include <ifaddrs.h>
 #include <map>
@@ -14,7 +16,6 @@
 #include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -25,6 +26,7 @@
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/json/json_access.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
 
@@ -33,8 +35,6 @@
 namespace vinput::daemon::remote {
 
 namespace {
-
-using json = nlohmann::json;
 
 constexpr std::string_view kRemoteProviderId = "provider.vinput.remote.streaming";
 
@@ -470,10 +470,11 @@ void RemoteTextService::HandleOutputSession(httplib::ws::WebSocket& ws) {
   {
     const std::lock_guard<std::mutex> lock(state_mutex_);
     if (output_ws_ != nullptr && output_ws_->is_open()) {
-      ws.send(json{{"event_id", NewEventId("event")},
-                   {"type", "error"},
-                   {"error", json{{"message", "Output client already connected."}}}}
-                  .dump());
+      ws.send(vinput::json::ToText(
+          glz::json_t{{"event_id", NewEventId("event")},
+                      {"type", "error"},
+                      {"error", glz::json_t{{"message", "Output client already "
+                                                        "connected."}}}}));
       ws.close(httplib::ws::CloseStatus::PolicyViolation, "Output client already connected.");
       return;
     }
@@ -492,23 +493,20 @@ void RemoteTextService::HandleOutputSession(httplib::ws::WebSocket& ws) {
       continue;
     }
 
-    json event;
-    try {
-      event = json::parse(payload);
-    } catch (const std::exception&) {
+    glz::json_t event;
+    if (bool(glz::read_json(event, payload))) {
       continue;
     }
 
-    const std::string type = event.value("type", std::string{});
+    const std::string type = vinput::json::String(event, "type");
     if (type == "session.update") {
-      json session_data = json::object();
-      if (event.contains("session")) {
-        session_data = event["session"];
+      glz::json_t session_data = glz::json_t(glz::json_t::object_t{});
+      if (const auto* session = vinput::json::Find(event, "session")) {
+        session_data = *session;
       }
-      ws.send(json{{"event_id", NewEventId("event")},
-                   {"type", "session.updated"},
-                   {"session", std::move(session_data)}}
-                  .dump());
+      ws.send(vinput::json::ToText(glz::json_t{{"event_id", NewEventId("event")},
+                                               {"type", "session.updated"},
+                                               {"session", std::move(session_data)}}));
     } else if (type == "input_audio_buffer.append") {
       // Audio frames are ignored as input comes via /ws
     } else if (type == "input_audio_buffer.commit") {
@@ -549,12 +547,10 @@ void RemoteTextService::HandleInputSession(httplib::ws::WebSocket& ws) {
       continue;
     }
 
-    json event;
-    try {
-      event = json::parse(payload);
-    } catch (const std::exception&) {
+    glz::json_t event;
+    if (bool(glz::read_json(event, payload))) {
       if (!authenticated) {
-        ws.send(json{{"type", "error"}, {"message", "Invalid JSON."}}.dump());
+        ws.send(vinput::json::ToText(glz::json_t{{"type", "error"}, {"message", "Invalid JSON."}}));
         ws.close(httplib::ws::CloseStatus::PolicyViolation, "Invalid JSON.");
         return;
       }
@@ -562,10 +558,10 @@ void RemoteTextService::HandleInputSession(httplib::ws::WebSocket& ws) {
     }
 
     if (!authenticated) {
-      const std::string type = event.value("type", std::string{});
-      const std::string api_key = event.value("api_key", std::string{});
+      const std::string type = vinput::json::String(event, "type");
+      const std::string api_key = vinput::json::String(event, "api_key");
       if (type != "auth" || !ValidateApiKey(api_key)) {
-        ws.send(json{{"type", "error"}, {"message", "Unauthorized."}}.dump());
+        ws.send(vinput::json::ToText(glz::json_t{{"type", "error"}, {"message", "Unauthorized."}}));
         ws.close(httplib::ws::CloseStatus::PolicyViolation, "Unauthorized.");
         return;
       }
@@ -594,14 +590,13 @@ void RemoteTextService::HandleInputSession(httplib::ws::WebSocket& ws) {
           start_in_progress_.store(false);
         }
         if (old_ws->is_open()) {
-          old_ws->send(
-              json{{"type", "displaced"}, {"message", "Replaced by new authenticated session."}}
-                  .dump());
+          old_ws->send(vinput::json::ToText(glz::json_t{
+              {"type", "displaced"}, {"message", "Replaced by new authenticated session."}}));
           old_ws->close(httplib::ws::CloseStatus::Normal, "Replaced by new authenticated session.");
         }
       }
 
-      ws.send(json{{"type", "auth_ok"}}.dump());
+      ws.send(vinput::json::ToText(glz::json_t{{"type", "auth_ok"}}));
       authenticated = true;
 
       std::string output_status = "disconnected";
@@ -611,7 +606,8 @@ void RemoteTextService::HandleInputSession(httplib::ws::WebSocket& ws) {
           output_status = "connected";
         }
       }
-      ws.send(json{{"type", "init"}, {"output_status", output_status}}.dump());
+      ws.send(
+          vinput::json::ToText(glz::json_t{{"type", "init"}, {"output_status", output_status}}));
       continue;
     }
 
@@ -663,7 +659,7 @@ bool RemoteTextService::ValidateApiKey(std::string_view api_key) const {
 void RemoteTextService::NotifyInput(std::string_view type) {
   const std::lock_guard<std::mutex> lock(state_mutex_);
   if (input_ws_ != nullptr && input_ws_->is_open()) {
-    input_ws_->send(json{{"type", type}}.dump());
+    input_ws_->send(vinput::json::ToText(glz::json_t{{"type", type}}));
   }
 }
 
@@ -726,10 +722,9 @@ void RemoteTextService::DebounceLoop() {
 
 void RemoteTextService::SendEmptyCommit(httplib::ws::WebSocket& ws) {
   if (ws.is_open()) {
-    ws.send(json{{"event_id", NewEventId("event")},
-                 {"type", "input_audio_buffer.committed"},
-                 {"item_id", NewEventId("item")}}
-                .dump());
+    ws.send(vinput::json::ToText(glz::json_t{{"event_id", NewEventId("event")},
+                                             {"type", "input_audio_buffer.committed"},
+                                             {"item_id", NewEventId("item")}}));
   }
 }
 
@@ -754,22 +749,19 @@ void RemoteTextService::SendFinalResult() {
     const std::lock_guard<std::mutex> lock(state_mutex_);
     if (output_ws_ != nullptr && output_ws_->is_open()) {
       const std::string item_id = NewEventId("item");
-      output_ws_->send(json{
-          {"event_id", NewEventId("event")},
-          {"type", "input_audio_buffer.committed"},
-          {"item_id",
-           item_id}}.dump());
-      output_ws_->send(json{
-          {"event_id", NewEventId("event")},
-          {"type", "conversation.item.input_audio_transcription.delta"},
-          {"item_id", item_id},
-          {"delta", text}}.dump());
-      output_ws_->send(json{
-          {"event_id", NewEventId("event")},
-          {"type", "conversation.item.input_audio_transcription.completed"},
-          {"item_id", item_id},
-          {"transcript",
-           text}}.dump());
+      output_ws_->send(vinput::json::ToText(glz::json_t{{"event_id", NewEventId("event")},
+                                                        {"type", "input_audio_buffer.committed"},
+                                                        {"item_id", item_id}}));
+      output_ws_->send(vinput::json::ToText(
+          glz::json_t{{"event_id", NewEventId("event")},
+                      {"type", "conversation.item.input_audio_transcription.delta"},
+                      {"item_id", item_id},
+                      {"delta", text}}));
+      output_ws_->send(vinput::json::ToText(
+          glz::json_t{{"event_id", NewEventId("event")},
+                      {"type", "conversation.item.input_audio_transcription.completed"},
+                      {"item_id", item_id},
+                      {"transcript", text}}));
     }
   }
 

@@ -5,6 +5,7 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <glaze/json/json_t.hpp>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
 #include <span>
@@ -13,6 +14,7 @@
 #include <utility>
 
 #include "common/i18n.h"
+#include "common/json/json_access.h"
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/hotword_utils.h"
@@ -82,14 +84,8 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
   SherpaOnnxOfflineRecognizerConfig config = {};
   const auto& recognizer_cfg = info.recognizer_config;
   const auto& model_cfg = info.model_config;
-  const auto feat_cfg =
-      recognizer_cfg.contains("feat_config") && recognizer_cfg["feat_config"].is_object()
-          ? recognizer_cfg["feat_config"]
-          : nlohmann::json::object();
-  const auto lm_cfg =
-      recognizer_cfg.contains("lm_config") && recognizer_cfg["lm_config"].is_object()
-          ? recognizer_cfg["lm_config"]
-          : nlohmann::json::object();
+  const auto& feat_cfg = vinput::json::Object(recognizer_cfg, "feat_config");
+  const auto& lm_cfg = vinput::json::Object(recognizer_cfg, "lm_config");
   config.feat_config.sample_rate = JsonInt(feat_cfg, "sample_rate", 16000);
   config.feat_config.feature_dim = JsonInt(feat_cfg, "feature_dim", 80);
 
@@ -195,9 +191,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
     config.rule_fars = f_rule_fars.c_str();
   }
 
-  const auto& family_cfg = model_cfg.contains(family) && model_cfg[family].is_object()
-                               ? model_cfg[family]
-                               : nlohmann::json::object();
+  const auto& family_cfg = vinput::json::Object(model_cfg, family);
 
   const auto handlers = std::unordered_map<std::string, std::function<void()>>{
       {"paraformer",
