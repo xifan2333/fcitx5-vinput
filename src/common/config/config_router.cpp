@@ -64,19 +64,26 @@ glz::json_t* SeekPointer(glz::json_t* root, std::string_view pointer) {
     ++pos;
 
     std::string segment;
-    bool escaped = false;
     while (pos < pointer.size() && pointer[pos] != '/') {
       const char current = pointer[pos];
       ++pos;
-      if (!escaped && current == '~') {
-        escaped = true;
+      if (current != '~') {
+        segment.push_back(current);
         continue;
       }
-      segment.push_back(escaped && current == '1' ? '/' : current);
-      escaped = false;
-    }
-    if (escaped) {
-      return nullptr;
+      // RFC 6901 escapes: `~1` is '/', `~0` is '~'. Anything else is invalid.
+      if (pos >= pointer.size()) {
+        return nullptr;
+      }
+      const char escaped = pointer[pos];
+      ++pos;
+      if (escaped == '1') {
+        segment.push_back('/');
+      } else if (escaped == '0') {
+        segment.push_back('~');
+      } else {
+        return nullptr;
+      }
     }
 
     node = ChildAt(node, segment);
@@ -96,10 +103,10 @@ std::string FormatNode(const glz::json_t& node) {
 }
 
 void ParseSetValue(const std::string& value, glz::json_t* parsed) {
-  if (!bool(glz::read_json(*parsed, value))) {
+  if (vinput::json::IsSingleJsonValue(value) && !bool(glz::read_json(*parsed, value))) {
     return;
   }
-  // Not valid JSON: treat the argument as a bare string value.
+  // Not a single standalone JSON value: treat the argument as a bare string.
   *parsed = glz::json_t(value);
 }
 

@@ -65,20 +65,21 @@ void MaterializeBuiltinSceneLabels(CoreConfig* config) {
   }
 }
 
-CoreConfig LoadCoreConfigFromFile(const std::filesystem::path& path) {
-  CoreConfig config;
+// Returns false when the file exists but could not be parsed, so the caller can
+// avoid caching defaults over the user's unreadable configuration.
+bool LoadCoreConfigFromFile(const std::filesystem::path& path, CoreConfig* config) {
   std::ifstream file(path);
   if (!file.is_open()) {
-    return config;
+    return false;
   }
 
   const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
   std::string parse_error;
-  if (!CoreConfigFromJson(text, &config, &parse_error)) {
+  if (!CoreConfigFromJson(text, config, &parse_error)) {
     std::cerr << "Failed to parse vinput config: " << parse_error << "\n";
-    return CoreConfig{};
+    return false;
   }
-  return config;
+  return true;
 }
 
 } // namespace
@@ -118,7 +119,9 @@ CoreConfig LoadCoreConfig() {
     NormalizeCoreConfig(&config);
     cacheable = false;
   } else {
-    config = LoadCoreConfigFromFile(path);
+    if (!LoadCoreConfigFromFile(path, &config)) {
+      cacheable = false;
+    }
     NormalizeCoreConfig(&config);
   }
 
@@ -166,8 +169,12 @@ bool SaveCoreConfig(const CoreConfig& config) {
   }
   MaterializeBuiltinSceneLabels(&normalized);
 
-  const std::string text = CoreConfigToJson(normalized) + "\n";
-  if (!vinput::file::AtomicWriteTextFile(path, text, &error)) {
+  const std::string serialized = CoreConfigToJson(normalized);
+  if (serialized.empty()) {
+    std::cerr << "Failed to serialize vinput config\n";
+    return false;
+  }
+  if (!vinput::file::AtomicWriteTextFile(path, serialized + "\n", &error)) {
     std::cerr << "Failed to write config: " << error << "\n";
     return false;
   }

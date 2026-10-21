@@ -60,6 +60,9 @@ InstalledManifest InstalledManifest::Load(const std::filesystem::path& path) {
   }
 
   for (const auto& [id, item] : *items) {
+    if (!item.is_object()) {
+      continue;
+    }
     InstalledRecord record;
     record.id = id;
     record.kind = vinput::json::String(item, "kind");

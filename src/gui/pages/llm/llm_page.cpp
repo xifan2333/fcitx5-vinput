@@ -114,10 +114,16 @@ bool ParseExtraBodyInput(QWidget* parent, const QString& text, glz::json_t* out)
     return true;
   }
   glz::json_t parsed;
+  if (!vinput::json::IsSingleJsonValue(trimmed)) {
+    QMessageBox::warning(
+        parent, LlmPage::tr("Error"),
+        LlmPage::tr("Extra body must be a JSON object (e.g. {\"enable_thinking\": false})."));
+    return false;
+  }
   if (const auto ec = glz::read_json(parsed, trimmed); bool(ec)) {
     QMessageBox::warning(parent, LlmPage::tr("Error"),
                          LlmPage::tr("Invalid extra_body JSON: %1")
-                             .arg(QString::fromStdString(glz::format_error(ec))));
+                             .arg(QString::fromStdString(glz::format_error(ec, trimmed))));
     return false;
   }
   if (!parsed.is_object()) {

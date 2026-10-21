@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <glaze/core/common.hpp>
+#include <glaze/core/context.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <map>
@@ -95,10 +96,17 @@ bool ParseExtraBody(const std::string& raw, glz::json_t* out, Formatter& fmt) {
   if (raw.empty()) {
     return true;
   }
+  if (!vinput::json::IsSingleJsonValue(raw)) {
+    // Reuse the parse error message so no new translatable string is needed.
+    const glz::error_ctx trailing{glz::error_code::syntax_error, raw.size()};
+    fmt.PrintError(vinput::str::FmtStr(_("Invalid --extra-body JSON: %s"),
+                                       glz::format_error(trailing).c_str()));
+    return false;
+  }
   glz::json_t parsed;
   if (const auto ec = glz::read_json(parsed, raw); bool(ec)) {
-    fmt.PrintError(
-        vinput::str::FmtStr(_("Invalid --extra-body JSON: %s"), glz::format_error(ec).c_str()));
+    fmt.PrintError(vinput::str::FmtStr(_("Invalid --extra-body JSON: %s"),
+                                       glz::format_error(ec, raw).c_str()));
     return false;
   }
   if (!parsed.is_object()) {
@@ -837,8 +845,8 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
 
   glz::json_t response;
   if (const auto ec = glz::read_json(response, res.body); bool(ec)) {
-    fmt.PrintError(
-        vinput::str::FmtStr(_("Invalid JSON response: %s"), glz::format_error(ec).c_str()));
+    fmt.PrintError(vinput::str::FmtStr(_("Invalid JSON response: %s"),
+                                       glz::format_error(ec, res.body).c_str()));
     return 1;
   }
 

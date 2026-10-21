@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cmath>
 #include <glaze/json/json_t.hpp>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -44,6 +46,11 @@ inline int JsonInt(const glz::json_t& obj, std::string_view key, int default_val
     return default_val;
   }
   if (const auto* number = node->get_if<double>()) {
+    if (!std::isfinite(*number) || std::trunc(*number) != *number ||
+        *number < static_cast<double>(std::numeric_limits<int>::min()) ||
+        *number > static_cast<double>(std::numeric_limits<int>::max())) {
+      return default_val;
+    }
     return static_cast<int>(*number);
   }
   if (const auto* flag = node->get_if<bool>()) {

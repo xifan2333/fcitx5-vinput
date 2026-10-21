@@ -532,7 +532,17 @@ std::vector<ModelSummary> ModelManager::ListDetailed(const std::string& active_m
         const std::string content{std::istreambuf_iterator<char>(file),
                                   std::istreambuf_iterator<char>()};
         glz::json_t j;
-        if (bool(glz::read_json(j, content))) {
+        const bool typed_ok = !bool(glz::read_json(j, content)) && j.is_object() && [&j] {
+          const auto* family = vinput::json::Find(j, "family");
+          const auto* language = vinput::json::Find(j, "language");
+          const auto* hotwords = vinput::json::Find(j, "supports_hotwords");
+          const auto* size = vinput::json::Find(j, "size_bytes");
+          return (family == nullptr || family->is_string()) &&
+                 (language == nullptr || language->is_string()) &&
+                 (hotwords == nullptr || hotwords->is_boolean()) &&
+                 (size == nullptr || size->is_number());
+        }();
+        if (!typed_ok) {
           s.state = ModelState::Broken;
           summaries.push_back(std::move(s));
           return;

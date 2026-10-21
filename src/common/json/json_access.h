@@ -1,9 +1,13 @@
 #pragma once
 
+#include <cctype>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <glaze/core/opts.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/write.hpp>
+#include <limits>
 #include <map>
 #include <string>
 #include <string_view>
@@ -61,7 +65,17 @@ inline std::int64_t Int64(const glz::json_t& object, std::string_view key,
     return fallback;
   }
   const auto* number = node->get_if<double>();
-  return number == nullptr ? fallback : static_cast<std::int64_t>(*number);
+  if (number == nullptr) {
+    return fallback;
+  }
+  // External documents can carry any magnitude, and converting a
+  // non-representable double to an integer is undefined behaviour.
+  if (!std::isfinite(*number) || std::trunc(*number) != *number ||
+      *number < static_cast<double>(std::numeric_limits<std::int64_t>::min()) ||
+      *number > static_cast<double>(std::numeric_limits<std::int64_t>::max())) {
+    return fallback;
+  }
+  return static_cast<std::int64_t>(*number);
 }
 
 inline int Int(const glz::json_t& object, std::string_view key, int fallback = 0) {
@@ -155,6 +169,71 @@ inline const glz::json_t& Object(const glz::json_t& object, std::string_view key
     return fallback;
   }
   return *node;
+}
+
+// Glaze's reader stops after the first complete JSON value, so a document such
+// as `{"a":1} junk` would otherwise parse successfully. User supplied JSON is
+// validated to hold exactly one value before it reaches the reader.
+inline bool IsSingleJsonValue(std::string_view text) {
+  std::size_t pos = 0;
+  while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos])) != 0) {
+    ++pos;
+  }
+  if (pos >= text.size()) {
+    return false;
+  }
+
+  const char first = text[pos];
+  if (first == '{' || first == '[') {
+    int depth = 0;
+    bool in_string = false;
+    for (; pos < text.size(); ++pos) {
+      const char c = text[pos];
+      if (in_string) {
+        if (c == '\\') {
+          ++pos;
+        } else if (c == '"') {
+          in_string = false;
+        }
+        continue;
+      }
+      if (c == '"') {
+        in_string = true;
+      } else if (c == '{' || c == '[') {
+        ++depth;
+      } else if (c == '}' || c == ']') {
+        --depth;
+        if (depth == 0) {
+          ++pos;
+          break;
+        }
+        if (depth < 0) {
+          return false;
+        }
+      }
+    }
+    if (depth != 0 || in_string) {
+      return false;
+    }
+  } else if (first == '"') {
+    for (++pos; pos < text.size(); ++pos) {
+      if (text[pos] == '\\') {
+        ++pos;
+      } else if (text[pos] == '"') {
+        ++pos;
+        break;
+      }
+    }
+  } else {
+    while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos])) == 0) {
+      ++pos;
+    }
+  }
+
+  while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos])) != 0) {
+    ++pos;
+  }
+  return pos == text.size();
 }
 
 // Compact JSON text of `value`; empty when serialization fails.

@@ -211,10 +211,12 @@ QString localizedString(const glz::json_t* node) {
       return QString::fromStdString(*text);
     }
   }
-  if (const auto* members = node->get_if<glz::json_t::object_t>();
-      members != nullptr && !members->empty()) {
-    if (const auto* text = members->begin()->second.get_if<std::string>()) {
-      return QString::fromStdString(*text);
+  if (const auto* members = node->get_if<glz::json_t::object_t>()) {
+    for (const auto& [key, value] : *members) {
+      (void)key;
+      if (const auto* text = value.get_if<std::string>()) {
+        return QString::fromStdString(*text);
+      }
     }
   }
   return {};

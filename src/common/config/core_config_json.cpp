@@ -522,6 +522,25 @@ std::string CoreConfigToJson(const CoreConfig& config) {
   return out;
 }
 
+namespace {
+
+// Reads one top level section into its wire representation. A section that is
+// missing or carries a mistyped field is skipped instead of discarding the whole
+// configuration, so one bad value never resets unrelated user settings.
+template <typename T> bool ReadSection(const glz::json_t& root, std::string_view key, T* out) {
+  const auto* node = vinput::json::Find(root, key);
+  if (node == nullptr) {
+    return false;
+  }
+  std::string section_text;
+  if (bool(glz::write_json(*node, section_text))) {
+    return false;
+  }
+  return !bool(glz::read<kConfigReadOpts>(*out, section_text));
+}
+
+} // namespace
+
 bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* error) {
   if (config == nullptr) {
     if (error) {
@@ -536,37 +555,48 @@ bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* 
     return false;
   }
 
-  CoreConfigWire wire;
-  const auto ec = glz::read<kConfigReadOpts>(wire, text);
-  if (bool(ec)) {
+  glz::json_t root;
+  if (const auto ec = glz::read_json(root, text); bool(ec)) {
     if (error) {
       *error = glz::format_error(ec, text);
     }
     return false;
   }
+  if (!root.is_object()) {
+    if (error) {
+      *error = "Config root is not a JSON object.";
+    }
+    return false;
+  }
 
   CoreConfig parsed;
-  if (wire.version.has_value()) {
-    if (const auto* version = wire.version->get_if<std::string>()) {
-      parsed.version = *version;
-    } else if (const auto* numeric = wire.version->get_if<double>()) {
+  if (const auto* version = vinput::json::Find(root, "version"); version != nullptr) {
+    if (const auto* version_text = version->get_if<std::string>()) {
+      parsed.version = *version_text;
+    } else if (const auto* numeric = version->get_if<double>()) {
       parsed.version = std::to_string(static_cast<int>(*numeric));
     }
   }
-  if (wire.registry.has_value()) {
-    FromWire(*wire.registry, &parsed.registry);
+
+  RegistryWire registry;
+  if (ReadSection(root, "registry", &registry)) {
+    FromWire(registry, &parsed.registry);
   }
-  if (wire.global.has_value()) {
-    FromWire(*wire.global, &parsed.global);
+  GlobalWire global;
+  if (ReadSection(root, "global", &global)) {
+    FromWire(global, &parsed.global);
   }
-  if (wire.llm.has_value()) {
-    FromWire(*wire.llm, &parsed.llm);
+  LlmWire llm;
+  if (ReadSection(root, "llm", &llm)) {
+    FromWire(llm, &parsed.llm);
   }
-  if (wire.scenes.has_value()) {
-    FromWire(*wire.scenes, &parsed.scenes);
+  ScenesWire scenes;
+  if (ReadSection(root, "scenes", &scenes)) {
+    FromWire(scenes, &parsed.scenes);
   }
-  if (wire.asr.has_value()) {
-    FromWire(*wire.asr, &parsed.asr);
+  AsrWire asr;
+  if (ReadSection(root, "asr", &asr)) {
+    FromWire(asr, &parsed.asr);
   }
 
   *config = std::move(parsed);
