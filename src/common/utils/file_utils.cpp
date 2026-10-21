@@ -275,63 +275,41 @@ ReadOnlyFileMapping& ReadOnlyFileMapping::operator=(ReadOnlyFileMapping&& other)
   return *this;
 }
 
-ReadOnlyFileMapping ReadOnlyFileMapping::Map(const std::filesystem::path& path,
-                                             std::string* error) {
-  ReadOnlyFileMapping result;
+Expected<ReadOnlyFileMapping> ReadOnlyFileMapping::Map(const std::filesystem::path& path) {
   std::error_code fs_ec;
   const auto status = std::filesystem::status(path, fs_ec);
   if (fs_ec || !std::filesystem::exists(status)) {
-    if (error != nullptr) {
-      *error = "file does not exist or is inaccessible: " + path.string();
-    }
-    return result;
+    return UnexpectedError("file does not exist or is inaccessible: " + path.string());
   }
 
   if (std::filesystem::is_directory(status)) {
-    if (error != nullptr) {
-      *error = "cannot map directory: " + path.string();
-    }
-    return result;
+    return UnexpectedError("cannot map directory: " + path.string());
   }
 
+  ReadOnlyFileMapping result;
   const auto file_size = std::filesystem::file_size(path, fs_ec);
   if (!fs_ec && file_size == 0) {
     std::ifstream probe(path, std::ios::binary);
     if (!probe.is_open()) {
-      if (error != nullptr) {
-        *error = "failed to open empty file for reading: " + path.string();
-      }
-      return result;
+      return UnexpectedError("failed to open empty file for reading: " + path.string());
     }
     // Verify that the file is genuinely empty rather than a pseudo-file with size 0 (e.g.
     // /proc/...).
     if (probe.peek() == std::ifstream::traits_type::eof()) {
       result.is_empty_file_ = true;
-      if (error != nullptr) {
-        error->clear();
-      }
       return result;
     }
-    if (error != nullptr) {
-      *error = "cannot memory map pseudo-file with dynamic contents: " + path.string();
-    }
-    return result;
+    return UnexpectedError("cannot memory map pseudo-file with dynamic contents: " + path.string());
   }
 
   std::error_code mmap_ec;
   auto impl = std::make_unique<Impl>();
   impl->mmap = mio::make_mmap_source(path.string(), mmap_ec);
   if (mmap_ec || !impl->mmap.is_open()) {
-    if (error != nullptr) {
-      *error = "failed to map file: " + mmap_ec.message();
-    }
-    return result;
+    return UnexpectedError("failed to map file: " + mmap_ec.message());
   }
 
   result.impl_ = std::move(impl);
-  if (error != nullptr) {
-    error->clear();
-  }
   return result;
 }
 
@@ -371,8 +349,8 @@ bool ReadOnlyFileMapping::IsEmpty() const noexcept {
   return Size() == 0;
 }
 
-ReadOnlyFileMapping MapFileReadOnly(const std::filesystem::path& path, std::string* error) {
-  return ReadOnlyFileMapping::Map(path, error);
+Expected<ReadOnlyFileMapping> MapFileReadOnly(const std::filesystem::path& path) {
+  return ReadOnlyFileMapping::Map(path);
 }
 
 bool ResolveSymlinkPath(const std::filesystem::path& path, std::filesystem::path* resolved,
@@ -567,8 +545,8 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
     return ComputeFileSha256StreamFallback(path, error);
   }
 
-  auto mapping = ReadOnlyFileMapping::Map(path, nullptr);
-  if (mapping.IsValid()) {
+  auto mapping = ReadOnlyFileMapping::Map(path);
+  if (mapping) {
     const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
                                                                       &EVP_MD_CTX_free);
     if (ctx == nullptr) {
@@ -585,7 +563,7 @@ std::string ComputeFileSha256(const std::filesystem::path& path, std::string* er
       return {};
     }
 
-    const auto sv = mapping.StringView();
+    const auto sv = mapping->StringView();
     if (!sv.empty()) {
       if (EVP_DigestUpdate(ctx.get(), sv.data(), sv.size()) != 1) {
         if (error != nullptr) {

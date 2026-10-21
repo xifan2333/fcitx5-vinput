@@ -6,6 +6,8 @@
 #include <string>
 #include <string_view>
 
+#include "common/utils/expected.h"
+
 namespace vinput::file {
 
 class ScopedTempDir {
@@ -50,7 +52,7 @@ public:
 
   // Maps the entire file into memory for read-only access.
   // For empty (0-byte) files, this succeeds and produces an empty StringView().
-  static ReadOnlyFileMapping Map(const std::filesystem::path& path, std::string* error = nullptr);
+  static Expected<ReadOnlyFileMapping> Map(const std::filesystem::path& path);
 
   [[nodiscard]] bool IsValid() const noexcept;
   [[nodiscard]] std::string_view StringView() const noexcept;
@@ -66,8 +68,7 @@ private:
 };
 
 // Convenience wrapper for ReadOnlyFileMapping::Map.
-ReadOnlyFileMapping MapFileReadOnly(const std::filesystem::path& path,
-                                    std::string* error = nullptr);
+Expected<ReadOnlyFileMapping> MapFileReadOnly(const std::filesystem::path& path);
 
 bool ResolveSymlinkPath(const std::filesystem::path& path, std::filesystem::path* resolved,
                         std::string* error);
