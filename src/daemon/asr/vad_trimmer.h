@@ -1,9 +1,9 @@
 #pragma once
 
+#include <optional>
+#include <sherpa-onnx/c-api/cxx-api.h>
 #include <string>
 #include <vector>
-
-struct SherpaOnnxVoiceActivityDetector;
 
 struct VadTrimParams {
   float threshold = 0.35F;
@@ -20,6 +20,9 @@ public:
   VadTrimmer(const VadTrimmer&) = delete;
   VadTrimmer& operator=(const VadTrimmer&) = delete;
 
+  VadTrimmer(VadTrimmer&&) noexcept;
+  VadTrimmer& operator=(VadTrimmer&&) noexcept;
+
   // Load silero_vad.onnx from `model_path`. Returns true on success.
   bool Init(const std::string& model_path, int sample_rate = 16000,
             const std::string& provider = "cpu", const VadTrimParams& params = {},
@@ -33,7 +36,7 @@ public:
   void Shutdown();
 
 private:
-  const SherpaOnnxVoiceActivityDetector* vad_ = nullptr;
+  std::optional<sherpa_onnx::cxx::VoiceActivityDetector> vad_;
   int sample_rate_ = 16000;
   VadTrimParams params_{};
 };
