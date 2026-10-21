@@ -1,7 +1,8 @@
 #include "cli/config/scene_actions.h"
 
-#include <nlohmann/json.hpp>
+#include <glaze/json/json_t.hpp>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "common/config/core_config.h"
@@ -16,23 +17,24 @@ int RunSceneConfigList(Formatter& fmt, const CliContext& ctx) {
   const auto& scenes = config.scenes.definitions;
 
   if (ctx.json_output) {
-    nlohmann::json arr = nlohmann::json::array();
+    glz::json_t::array_t arr;
+    arr.reserve(scenes.size());
     for (const auto& scene : scenes) {
-      bool active = (scene.id == config.scenes.activeScene);
-      arr.push_back({{"id", scene.id},
-                     {"label", vinput::scene::DisplayLabel(scene)},
-                     {"prompt", scene.prompt},
-                     {"provider_id", scene.provider_id},
-                     {"model", scene.model},
-                     {"count", scene.llm_max_candidates},
-                     {"timeout_ms", scene.timeout_ms},
-                     {"context_lines", scene.context_lines},
-                     {"raw_cand", scene.raw_cand},
-                     {"raw_prev", scene.raw_prev},
-                     {"builtin", scene.builtin},
-                     {"active", active}});
+      const bool active = (scene.id == config.scenes.activeScene);
+      arr.emplace_back(glz::json_t{{"id", scene.id},
+                                   {"label", vinput::scene::DisplayLabel(scene)},
+                                   {"prompt", scene.prompt},
+                                   {"provider_id", scene.provider_id},
+                                   {"model", scene.model},
+                                   {"count", scene.llm_max_candidates},
+                                   {"timeout_ms", scene.timeout_ms},
+                                   {"context_lines", scene.context_lines},
+                                   {"raw_cand", scene.raw_cand},
+                                   {"raw_prev", scene.raw_prev},
+                                   {"builtin", scene.builtin},
+                                   {"active", active}});
     }
-    fmt.PrintJson(arr);
+    fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;
   }
 

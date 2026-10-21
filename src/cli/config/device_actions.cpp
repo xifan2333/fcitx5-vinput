@@ -1,6 +1,7 @@
 #include "cli/config/device_actions.h"
 
-#include <nlohmann/json.hpp>
+#include <glaze/json/json_t.hpp>
+#include <utility>
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
@@ -21,14 +22,15 @@ int RunDeviceConfigList(Formatter& fmt, const CliContext& ctx) {
   }
 
   if (ctx.json_output) {
-    nlohmann::json arr = nlohmann::json::array();
+    glz::json_t::array_t arr;
+    arr.reserve(devices.size());
     for (const auto& d : devices) {
-      bool is_active =
+      const bool is_active =
           (d.name == active_device) || (active_device == "default" && d.name == "default");
-      arr.push_back(
-          {{"id", d.id}, {"name", d.name}, {"description", d.description}, {"active", is_active}});
+      arr.emplace_back(glz::json_t{
+          {"id", d.id}, {"name", d.name}, {"description", d.description}, {"active", is_active}});
     }
-    fmt.PrintJson(arr);
+    fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;
   }
 

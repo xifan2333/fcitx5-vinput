@@ -1,7 +1,7 @@
 #pragma once
 
+#include <glaze/json/json_t.hpp>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -22,7 +22,7 @@ public:
   virtual void PrintSuccess(const std::string& msg) = 0;
   virtual void PrintError(const std::string& msg) = 0;
   virtual void PrintWarning(const std::string& msg) = 0;
-  virtual void PrintJson(const nlohmann::json& j) = 0;
+  virtual void PrintJson(const glz::json_t& j) = 0;
   virtual void PrintInfo(const std::string& msg) = 0;
 };
 
@@ -35,7 +35,7 @@ public:
   void PrintSuccess(const std::string& msg) override;
   void PrintError(const std::string& msg) override;
   void PrintWarning(const std::string& msg) override;
-  void PrintJson(const nlohmann::json& j) override;
+  void PrintJson(const glz::json_t& j) override;
   void PrintInfo(const std::string& msg) override;
 
 private:
@@ -55,7 +55,7 @@ public:
   void PrintSuccess(const std::string& msg) override;
   void PrintError(const std::string& msg) override;
   void PrintWarning(const std::string& msg) override;
-  void PrintJson(const nlohmann::json& j) override;
+  void PrintJson(const glz::json_t& j) override;
   void PrintInfo(const std::string& msg) override;
 };
 

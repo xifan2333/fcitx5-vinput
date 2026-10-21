@@ -3,14 +3,16 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include <nlohmann/json.hpp>
+#include <glaze/json/json_t.hpp>
 #include <optional>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "common/config/core_config.h"
 #include "common/dbus/asr_backend_state_utils.h"
 #include "common/i18n.h"
+#include "common/json/json_access.h"
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
@@ -180,7 +182,7 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
 #endif
 
   if (ctx.json_output) {
-    nlohmann::json providers = nlohmann::json::array();
+    glz::json_t::array_t providers;
     for (const auto& provider : config.asr.providers) {
 #if !VINPUT_ENABLE_LOCAL_ASR
       if (std::holds_alternative<LocalAsrProvider>(provider)) {
@@ -188,7 +190,7 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
       }
 #endif
       const std::string machine_id = AsrProviderId(provider);
-      nlohmann::json entry = {
+      glz::json_t entry = {
           {"id", vinput::cli::HumanizeResourceId(display_map, machine_id)},
           {"machine_id", machine_id},
           {"type", std::string(AsrProviderType(provider))},
@@ -216,12 +218,12 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
 #endif
           if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
         entry["command"] = command->command;
-        entry["args"] = command->args;
-        entry["env"] = command->env;
+        entry["args"] = vinput::json::FromStrings(command->args);
+        entry["env"] = vinput::json::FromStringMap(command->env);
       }
-      providers.push_back(std::move(entry));
+      providers.emplace_back(std::move(entry));
     }
-    fmt.PrintJson(providers);
+    fmt.PrintJson(glz::json_t(std::move(providers)));
     return 0;
   }
 
@@ -364,11 +366,11 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
   };
 
   if (ctx.json_output) {
-    nlohmann::json arr = nlohmann::json::array();
+    glz::json_t::array_t arr;
     for (const auto& entry : entries) {
-      nlohmann::json envs = nlohmann::json::array();
+      glz::json_t::array_t envs;
       for (const auto& env : entry.envs) {
-        envs.push_back({{"name", env.name}, {"required", env.required}});
+        envs.emplace_back(glz::json_t{{"name", env.name}, {"required", env.required}});
       }
       const bool installed = isInstalled(entry.id);
       const auto ver_info = vinput::script::CheckResourceVersion(
@@ -382,21 +384,21 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
                          : "installed";
       }
 
-      arr.push_back({
+      arr.emplace_back(glz::json_t{
           {"id", vinput::cli::HumanizeResourceId(entry.id, entry.short_id)},
           {"machine_id", entry.id},
           {"title", display_map.at(entry.id).title},
           {"description", display_map.at(entry.id).description},
           {"readme_url", entry.readme_url},
           {"stream", entry.stream},
-          {"envs", envs},
+          {"envs", glz::json_t(std::move(envs))},
           {"status", status_str},
           {"installed_version", ver_info.installed_version},
           {"remote_version", ver_info.remote_version},
           {"vinput_version", ver_info.vinput_version},
       });
     }
-    fmt.PrintJson(arr);
+    fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;
   }
 
@@ -669,9 +671,10 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
     };
 
     if (ctx.json_output) {
-      nlohmann::json arr = nlohmann::json::array();
+      glz::json_t::array_t arr;
+      arr.reserve(remoteModels.size());
       for (const auto& model : remoteModels) {
-        arr.push_back({
+        arr.emplace_back(glz::json_t{
             {"id", vinput::cli::HumanizeResourceId(model.id, model.short_id)},
             {"machine_id", model.id},
             {"title", display_map.at(model.id).title},
@@ -684,7 +687,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
             {"status", isInstalled(model.id) ? "installed" : "available"},
         });
       }
-      fmt.PrintJson(arr);
+      fmt.PrintJson(glz::json_t(std::move(arr)));
       return 0;
     }
 
@@ -705,7 +708,8 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
   const auto models = manager.ListDetailed(activeModel);
 
   if (ctx.json_output) {
-    nlohmann::json arr = nlohmann::json::array();
+    glz::json_t::array_t arr;
+    arr.reserve(models.size());
     for (const auto& model : models) {
       std::string status = "installed";
       if (model.state == ModelState::Active) {
@@ -714,7 +718,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
         status = "broken";
       }
       const auto display_it = installed_display_map.find(model.id);
-      arr.push_back({
+      arr.emplace_back(glz::json_t{
           {"id", vinput::cli::HumanizeResourceId(installed_display_map, model.id)},
           {"machine_id", model.id},
           {"title",
@@ -727,7 +731,7 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
           {"status", status},
       });
     }
-    fmt.PrintJson(arr);
+    fmt.PrintJson(glz::json_t(std::move(arr)));
     return 0;
   }
 
@@ -893,7 +897,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
     return 1;
   }
 
-  nlohmann::json obj;
+  glz::json_t obj = glz::json_t(glz::json_t::object_t{});
   obj["id"] = vinput::cli::HumanizeResourceId(display_map, id);
   obj["machine_id"] = id;
   obj["backend"] = info.backend;
@@ -904,7 +908,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
   obj["size_bytes"] = info.size_bytes;
   obj["recognizer"] = info.recognizer_config;
   obj["model"] = info.model_config;
-  obj["resolved_files"] = info.files;
+  obj["resolved_files"] = vinput::json::FromStringMap(info.files);
 
   if (ctx.json_output) {
     fmt.PrintJson(obj);
@@ -924,8 +928,8 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
   for (const auto& [key, value] : info.files) {
     rows.push_back({std::string("file.") + key, value});
   }
-  rows.push_back({"recognizer", info.recognizer_config.dump()});
-  rows.push_back({"model", info.model_config.dump()});
+  rows.push_back({"recognizer", vinput::json::ToText(info.recognizer_config)});
+  rows.push_back({"model", vinput::json::ToText(info.model_config)});
   fmt.PrintTable(headers, rows);
   return 0;
 }

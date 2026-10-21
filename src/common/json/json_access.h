@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <glaze/core/opts.hpp>
 #include <glaze/json/json_t.hpp>
+#include <glaze/json/write.hpp>
 #include <map>
 #include <string>
 #include <string_view>
@@ -136,6 +138,26 @@ inline glz::json_t FromStringMap(const std::map<std::string, std::string>& value
     object.emplace(key, glz::json_t(value));
   }
   return glz::json_t(std::move(object));
+}
+
+// Compact JSON text of `value`; empty when serialization fails.
+inline std::string ToText(const glz::json_t& value) {
+  std::string out;
+  if (bool(glz::write_json(value, out))) {
+    return {};
+  }
+  return out;
+}
+
+// Two space indented JSON text of `value`; empty when serialization fails.
+inline std::string ToPrettyText(const glz::json_t& value) {
+  constexpr auto kPrettyOpts =
+      glz::opts{.skip_null_members = false, .prettify = true, .indentation_width = 2};
+  std::string out;
+  if (bool(glz::write<kPrettyOpts>(value, out))) {
+    return {};
+  }
+  return out;
 }
 
 } // namespace vinput::json

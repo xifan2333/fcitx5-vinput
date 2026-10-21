@@ -1,6 +1,6 @@
 #include "cli/control/recording_actions.h"
 
-#include <nlohmann/json.hpp>
+#include <glaze/json/json_t.hpp>
 #include <string>
 
 #include "common/dbus/dbus_interface.h"
@@ -69,7 +69,7 @@ int RunRecordingControlStop(const std::string& scene_id, Formatter& fmt, const C
   }
 
   if (ctx.json_output) {
-    nlohmann::json j = {{"ok", true}, {"action", "stop"}};
+    glz::json_t j = {{"ok", true}, {"action", "stop"}};
     if (!resolved.empty())
       j["scene"] = resolved;
     fmt.PrintJson(j);
@@ -111,7 +111,7 @@ int RunRecordingControlToggle(const std::string& scene_id, Formatter& fmt, const
     }
 
     if (ctx.json_output) {
-      nlohmann::json j = {{"ok", true}, {"action", "stop"}};
+      glz::json_t j = {{"ok", true}, {"action", "stop"}};
       if (!resolved.empty())
         j["scene"] = resolved;
       fmt.PrintJson(j);

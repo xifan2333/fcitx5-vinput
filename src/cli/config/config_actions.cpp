@@ -1,8 +1,10 @@
 #include "cli/config/config_actions.h"
 
 #include <cstdio>
+#include <glaze/json/json_t.hpp>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "common/config/config_migration.h"
@@ -67,7 +69,7 @@ int RunConfigMigrate(bool dry_run, Formatter& fmt, const CliContext& ctx) {
   }
 
   if (ctx.json_output) {
-    nlohmann::json j;
+    glz::json_t j = glz::json_t(glz::json_t::object_t{});
     j["needed"] = report.needed;
     j["applied"] = report.applied;
     j["dry_run"] = dry_run;
@@ -75,12 +77,13 @@ int RunConfigMigrate(bool dry_run, Formatter& fmt, const CliContext& ctx) {
     j["conf_file"] = report.conf_file.string();
     j["config_backup"] = report.config_backup.string();
     j["conf_backup"] = report.conf_backup.string();
-    nlohmann::json changes = nlohmann::json::array();
-    changes.get_ptr<nlohmann::json::array_t*>()->reserve(report.changes.size());
+    glz::json_t changes = glz::json_t(glz::json_t::array_t{});
+    changes.get_array().reserve(report.changes.size());
     for (const auto& ch : report.changes) {
-      changes.push_back({{"file", ch.file}, {"description", ch.description}});
+      changes.get_array().emplace_back(
+          glz::json_t{{"file", ch.file}, {"description", ch.description}});
     }
-    j["changes"] = changes;
+    j["changes"] = std::move(changes);
     fmt.PrintJson(j);
     return 0;
   }
