@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <tabulate/tabulate.hpp>
 #include <vector>
