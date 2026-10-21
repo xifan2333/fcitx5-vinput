@@ -8,8 +8,10 @@
 #include <memory>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
+#include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config.h"

@@ -1,9 +1,6 @@
 #include "cli/utils/formatter.h"
 
 #include <cstddef>
-#include <cstdint>
-#include <glaze/core/opts.hpp>
-#include <glaze/core/write.hpp>
 #include <glaze/json/json_t.hpp>
 #include <iostream>
 #include <memory>
@@ -12,26 +9,13 @@
 #include <utility>
 #include <vector>
 
+#include "common/json/json_access.h"
+
 #include "cli/utils/cli_context.h"
 
-namespace {
-
-// Machine readable output keeps the JSON contract of the CLI: explicit nulls
-// are meaningful, and `PrintJson` writes two space indented output while the
-// single value helpers stay compact.
-constexpr auto kPrettyOpts =
-    glz::opts{.skip_null_members = uint8_t{0}, .prettify = uint8_t{1}, .indentation_width = 2};
-constexpr auto kCompactOpts = glz::opts{.skip_null_members = uint8_t{0}};
-
-template <auto Opts> std::string WriteJson(const glz::json_t& value) {
-  std::string out;
-  if (bool(glz::write<Opts>(value, out))) {
-    return {};
-  }
-  return out;
-}
-
-} // namespace
+// Machine readable output keeps the JSON contract of the CLI: `PrintJson` writes
+// two space indented output with explicit nulls, while the single value helpers
+// stay compact.
 
 // ---- TextFormatter ----
 
@@ -138,7 +122,7 @@ void TextFormatter::PrintWarning(const std::string& msg) {
 }
 
 void TextFormatter::PrintJson(const glz::json_t& j) {
-  std::cout << WriteJson<kPrettyOpts>(j) << "\n";
+  std::cout << vinput::json::ToPrettyText(j) << "\n";
 }
 
 void TextFormatter::PrintInfo(const std::string& msg) {
@@ -158,36 +142,36 @@ void JsonFormatter::PrintTable(const std::vector<std::string>& headers,
     }
     arr.emplace_back(std::move(obj));
   }
-  std::cout << WriteJson<kPrettyOpts>(glz::json_t(std::move(arr))) << "\n";
+  std::cout << vinput::json::ToPrettyText(glz::json_t(std::move(arr))) << "\n";
 }
 
 void JsonFormatter::PrintKeyValue(const std::string& key, const std::string& value) {
   const glz::json_t obj = {{"key", key}, {"value", value}};
-  std::cout << WriteJson<kCompactOpts>(obj) << "\n";
+  std::cout << vinput::json::ToText(obj) << "\n";
 }
 
 void JsonFormatter::PrintSuccess(const std::string& msg) {
   const glz::json_t obj = {{"status", "success"}, {"message", msg}};
-  std::cout << WriteJson<kCompactOpts>(obj) << "\n";
+  std::cout << vinput::json::ToText(obj) << "\n";
 }
 
 void JsonFormatter::PrintError(const std::string& msg) {
   const glz::json_t obj = {{"status", "error"}, {"message", msg}};
-  std::cerr << WriteJson<kCompactOpts>(obj) << "\n";
+  std::cerr << vinput::json::ToText(obj) << "\n";
 }
 
 void JsonFormatter::PrintWarning(const std::string& msg) {
   const glz::json_t obj = {{"status", "warning"}, {"message", msg}};
-  std::cout << WriteJson<kCompactOpts>(obj) << "\n";
+  std::cout << vinput::json::ToText(obj) << "\n";
 }
 
 void JsonFormatter::PrintJson(const glz::json_t& j) {
-  std::cout << WriteJson<kPrettyOpts>(j) << "\n";
+  std::cout << vinput::json::ToPrettyText(j) << "\n";
 }
 
 void JsonFormatter::PrintInfo(const std::string& msg) {
   const glz::json_t obj = {{"status", "info"}, {"message", msg}};
-  std::cout << WriteJson<kCompactOpts>(obj) << "\n";
+  std::cout << vinput::json::ToText(obj) << "\n";
 }
 
 // ---- Factory ----

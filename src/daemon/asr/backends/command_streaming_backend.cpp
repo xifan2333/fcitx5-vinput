@@ -5,16 +5,18 @@
 #include <base64.hpp>
 #include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
+#include <map>
 #include <memory>
 #include <poll.h>
+#include <span>
 #include <spawn.h>
 #include <string>
 #include <string_view>
@@ -33,8 +35,6 @@
 #include "common/utils/time_utils.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
-
-extern char** environ;
 
 namespace vinput::daemon::asr {
 
@@ -204,8 +204,7 @@ bool SpawnChild(const CommandAsrProvider& provider, ChildProcess* child, std::st
 
   if (!SetNonBlocking(stdin_pipe[1]) || !SetNonBlocking(stdout_pipe[0]) ||
       !SetNonBlocking(stderr_pipe[0])) {
-    kill(pid, SIGKILL);
-    waitpid(pid, nullptr, 0);
+    (void)vinput::process::KillAndReap(pid);
     CloseIfOpen(&stdin_pipe[1]);
     CloseIfOpen(&stdout_pipe[0]);
     CloseIfOpen(&stderr_pipe[0]);
@@ -751,12 +750,7 @@ private:
 
     ReapChild();
     if (child_.pid > 0 && !child_.child_exited) {
-      kill(child_.pid, SIGKILL);
-      pid_t wait_rc = waitpid(child_.pid, nullptr, 0);
-      while (wait_rc < 0 && errno == EINTR) {
-        wait_rc = waitpid(child_.pid, nullptr, 0);
-      }
-      if (wait_rc == child_.pid || (wait_rc < 0 && errno == ECHILD)) {
+      if (vinput::process::KillAndReap(child_.pid)) {
         child_.child_exited = true;
         child_.exit_code = -1;
       }

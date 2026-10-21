@@ -6,16 +6,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
-#include <stdlib.h>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
 #include <system_error>
 #include <unistd.h>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config.h"

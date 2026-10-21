@@ -11,11 +11,11 @@
 #include <filesystem>
 #include <fstream>
 #include <glaze/json/json_t.hpp>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <time.h>
 #include <unicodelib.h>
 #include <unicodelib_encodings.h>
 
@@ -35,7 +35,6 @@
 #include "dbus/notifier_dbus_object.h"
 #include "fcitx-config/rawconfig.h"
 #include "fcitx-utils/capabilityflags.h"
-#include "fcitx-utils/event.h"
 #include "fcitx/addonfactory.h"
 #include "fcitx/addoninstance.h"
 #include "fcitx/event.h"

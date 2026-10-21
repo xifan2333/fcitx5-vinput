@@ -11,10 +11,12 @@
 #include <fcntl.h>
 #include <map>
 #include <optional>
+#include <signal.h>
 #include <string>
 #include <subprocess.hpp>
 #include <sys/poll.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -62,6 +64,18 @@ std::map<std::string, std::string> BuildEnvMap(const CommandSpec& spec) {
 }
 
 } // namespace
+
+bool KillAndReap(pid_t pid) {
+  if (pid <= 0) {
+    return true;
+  }
+  (void)kill(pid, SIGKILL);
+  pid_t wait_rc = waitpid(pid, nullptr, 0);
+  while (wait_rc < 0 && errno == EINTR) {
+    wait_rc = waitpid(pid, nullptr, 0);
+  }
+  return wait_rc == pid || (wait_rc < 0 && errno == ECHILD);
+}
 
 bool CreateCloexecPipe(int pipefd[2]) {
 #if defined(__linux__)

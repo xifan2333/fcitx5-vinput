@@ -1,13 +1,17 @@
 #include "daemon/asr/runtime/recognition_session_manager.h"
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
