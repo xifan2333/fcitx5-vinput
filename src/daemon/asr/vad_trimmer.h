@@ -32,7 +32,7 @@ public:
   // Returns empty if no speech found.
   std::vector<float> Trim(const std::vector<float>& samples, int sample_rate);
 
-  bool Available() const;
+  [[nodiscard]] bool Available() const;
   void Shutdown();
 
 private:

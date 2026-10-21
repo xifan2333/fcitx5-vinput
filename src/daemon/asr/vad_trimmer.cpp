@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <sherpa-onnx/c-api/cxx-api.h>
+#include <string>
 #include <utility>
+#include <vector>
 
 VadTrimmer::VadTrimmer() = default;
 VadTrimmer::~VadTrimmer() = default;
@@ -47,18 +50,19 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
 }
 
 std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sample_rate*/) {
-  if (!Available() || samples.empty()) {
+  if (!vad_.has_value() || vad_->Get() == nullptr || samples.empty()) {
     return samples;
   }
 
+  auto& vad = *vad_;
   const int n = static_cast<int>(samples.size());
-  vad_->Reset();
+  vad.Reset();
 
   // Feed audio in window_size chunks
   constexpr int kWindowSize = 512;
   int offset = 0;
   for (; offset + kWindowSize <= n; offset += kWindowSize) {
-    vad_->AcceptWaveform(samples.data() + offset, kWindowSize);
+    vad.AcceptWaveform(samples.data() + offset, kWindowSize);
   }
   if (offset < n) {
     std::vector<float> padded_tail(kWindowSize, 0.0F);
@@ -66,9 +70,9 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
     for (int i = 0; i < remaining; ++i) {
       padded_tail[i] = samples[offset + i];
     }
-    vad_->AcceptWaveform(padded_tail.data(), kWindowSize);
+    vad.AcceptWaveform(padded_tail.data(), kWindowSize);
   }
-  vad_->Flush();
+  vad.Flush();
 
   // Determine global speech bounds across all detected segments.
   // We trim only leading and trailing silence outside the outer speech bounds;
@@ -76,19 +80,17 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
   int earliest_speech_start = -1;
   int latest_speech_end = -1;
 
-  while (!vad_->IsEmpty()) {
-    auto seg = vad_->Front();
+  while (!vad.IsEmpty()) {
+    auto seg = vad.Front();
     if (!seg.samples.empty()) {
       const int seg_start = seg.start;
       const int seg_end = seg_start + static_cast<int>(seg.samples.size());
       if (earliest_speech_start < 0 || seg_start < earliest_speech_start) {
         earliest_speech_start = seg_start;
       }
-      if (seg_end > latest_speech_end) {
-        latest_speech_end = seg_end;
-      }
+      latest_speech_end = std::max(latest_speech_end, seg_end);
     }
-    vad_->Pop();
+    vad.Pop();
   }
 
   if (earliest_speech_start < 0) {
