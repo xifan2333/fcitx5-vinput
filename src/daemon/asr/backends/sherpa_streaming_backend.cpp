@@ -76,9 +76,10 @@ public:
       return true;
     }
 
+    auto& stream = *stream_;
     UpdateAudioStats(samples);
 
-    stream_->AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
+    stream.AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
     DecodeAvailable();
 
     if (error != nullptr) {
@@ -111,8 +112,9 @@ public:
       return false;
     }
 
+    auto& stream = *stream_;
     finished_ = true;
-    stream_->InputFinished();
+    stream.InputFinished();
     DecodeAvailable();
 
     std::string text = GetCurrentText();
@@ -193,7 +195,8 @@ private:
       return {};
     }
 
-    const auto result = recognizer_->GetResult(&*stream_);
+    const auto& stream = *stream_;
+    const auto result = recognizer_->GetResult(&stream);
     std::string text = std::string(vinput::str::Trim(result.text));
     fprintf(stderr, "vinput: streaming current result bytes=%zu token_count=%zu\n", text.size(),
             result.tokens.size());
