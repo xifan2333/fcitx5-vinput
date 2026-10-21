@@ -616,7 +616,7 @@ void LlmPage::onLlmTest() {
                 models.push_back(id);
               }
             }
-            std::sort(models.begin(), models.end());
+            std::ranges::sort(models);
             std::vector<std::string> models_vec;
             models_vec.reserve(models.size());
             for (const auto& m : models) {

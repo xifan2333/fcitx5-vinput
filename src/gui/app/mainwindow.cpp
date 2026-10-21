@@ -176,6 +176,7 @@ void MainWindow::onSaveClicked() {
 void MainWindow::onOpenConfigClicked() {
   const auto configPath = vinput::path::CoreConfigPath();
   QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(configPath.string())));
+  this->setFocus();
 }
 
 namespace {
@@ -294,8 +295,9 @@ void MainWindow::checkNotification() {
 
 void MainWindow::onNotificationReady(QString id, QString title, QString text, QString url) {
   QMessageBox msgBox(this);
-  msgBox.setWindowTitle(title);
-  msgBox.setText(text);
+  msgBox.setWindowTitle(std::move(title));
+  const QString notification_text = std::move(text);
+  msgBox.setText(notification_text);
   msgBox.setIcon(QMessageBox::Information);
   auto* copyBtn = msgBox.addButton(tr("Copy"), QMessageBox::ActionRole);
   auto* detailBtn =
@@ -304,12 +306,12 @@ void MainWindow::onNotificationReady(QString id, QString title, QString text, QS
   msgBox.exec();
 
   if (copyBtn != nullptr && msgBox.clickedButton() == copyBtn) {
-    QGuiApplication::clipboard()->setText(text);
+    QGuiApplication::clipboard()->setText(notification_text);
   } else if (detailBtn != nullptr && msgBox.clickedButton() == detailBtn) {
-    QDesktopServices::openUrl(QUrl(url));
+    QDesktopServices::openUrl(QUrl(std::move(url)));
   }
 
   // Mark as read
   const auto read_path = vinput::path::ReadNotificationsPath();
-  vinput::file::AtomicWriteTextFile(read_path, id.toStdString(), nullptr);
+  vinput::file::AtomicWriteTextFile(read_path, std::move(id).toStdString(), nullptr);
 }
