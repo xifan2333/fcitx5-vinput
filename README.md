@@ -140,7 +140,7 @@ Download the package for your system from [GitHub Releases](https://github.com/x
 
 ### Build from source
 
-**Dependencies:** cmake, fcitx5, pipewire, libcurl, nlohmann-json, CLI11, Qt6
+**Dependencies:** cmake, fcitx5, pipewire, libcurl, CLI11, Qt6
 
 ```bash
 # Full version (with local sherpa-onnx ASR runtime)

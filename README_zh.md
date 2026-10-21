@@ -140,7 +140,7 @@ flatpak kill org.fcitx.Fcitx5
 
 ### 源码构建
 
-**依赖：** cmake、fcitx5、pipewire、libcurl、nlohmann-json、CLI11、Qt6
+**依赖：** cmake、fcitx5、pipewire、libcurl、CLI11、Qt6
 
 ```bash
 # 完整版（带本地 sherpa-onnx 离线推理引擎）

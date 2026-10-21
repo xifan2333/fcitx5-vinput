@@ -27,10 +27,6 @@ This file lists third-party software that this project depends on or bundles, an
    - License: curl license (MIT/X derivative, SPDX identifier: `curl`)
    - Upstream: https://curl.se/
 
-5. **nlohmann/json**
-   - License: MIT
-   - Upstream: https://github.com/nlohmann/json
-
 ## Bundled third-party libraries (in `3rdparty/`)
 
 1. **cpp-subprocess** (cross-platform subprocess library for modern C++)

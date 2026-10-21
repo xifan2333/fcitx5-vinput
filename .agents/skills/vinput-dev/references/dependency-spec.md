@@ -26,7 +26,7 @@ Select dependency tiers sequentially from Tier 1 to Tier 3:
 | Tier | Policy & Role | Scope & Examples | Build & Packaging Standard |
 | :--- | :--- | :--- | :--- |
 | **Tier 1: Core System Services** | Host-only; never vendor. | `fcitx5`, `pipewire`, `libsystemd`, `qt6`, `openssl` | CMake single-line `find_package(... REQUIRED)` or `pkg_check_modules`. |
-| **Tier 2: Universal Modern Libraries** | Universally packaged across all target distros. | `spdlog`, `nlohmann_json`, `CLI11`, `reproc` | 1. Declare distro package in `scripts/ci-install-build-deps.sh`;<br>2. Declare package in `flake.nix` `buildInputs`;<br>3. CMake single-line `find_package(... REQUIRED)`. |
+| **Tier 2: Universal Modern Libraries** | Universally packaged across all target distros. | `spdlog`, `CLI11`, `reproc` | 1. Declare distro package in `scripts/ci-install-build-deps.sh`;<br>2. Declare package in `flake.nix` `buildInputs`;<br>3. CMake single-line `find_package(... REQUIRED)`. |
 | **Tier 3: Specialized / Missing Libraries** | Missing or inconsistent across distros; lightweight header-only. | `httplib`, `base64`, `unicodelib`, `readerwriterqueue`, `mio` | Vendor under `3rdparty/`, managed via `3rdparty/CMakeLists.txt` with `SYSTEM INTERFACE`. |
 
 ### Admission Decision Tree

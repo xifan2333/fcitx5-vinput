@@ -69,7 +69,6 @@
                   pipewire
                   qt6.qtbase
                   cli11
-                  nlohmann_json
                   httplib
                   spdlog
                   clang
@@ -156,7 +155,6 @@
               qt6.wrapQtAppsHook
               cli11
               sherpa-deps.sherpa-onnx
-              nlohmann_json
               httplib
               spdlog
             ];

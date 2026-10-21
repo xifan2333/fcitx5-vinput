@@ -8,7 +8,7 @@ Full documentation is available at the [project site](https://xifan2333.github.i
 
 ## Build from Source
 
-**Dependencies:** cmake, fcitx5, pipewire, libcurl, nlohmann-json, CLI11, Qt6
+**Dependencies:** cmake, fcitx5, pipewire, libcurl, CLI11, Qt6
 
 ```bash
 sudo bash scripts/build-sherpa-onnx.sh

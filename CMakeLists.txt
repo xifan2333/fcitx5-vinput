@@ -83,21 +83,6 @@ if(VINPUT_ENABLE_WERROR)
     add_compile_options(-Werror)
 endif()
 find_package(PkgConfig REQUIRED)
-option(VINPUT_FETCH_NLOHMANN_JSON "Fetch nlohmann_json with FetchContent when not found" ON)
-find_package(nlohmann_json 3.2.0 QUIET)
-if(NOT nlohmann_json_FOUND)
-    if(VINPUT_FETCH_NLOHMANN_JSON)
-        include(FetchContent)
-        FetchContent_Declare(
-            nlohmann_json
-            URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-        )
-        FetchContent_MakeAvailable(nlohmann_json)
-    else()
-        message(FATAL_ERROR
-            "nlohmann_json was not found. Install nlohmann_json or enable VINPUT_FETCH_NLOHMANN_JSON.")
-    endif()
-endif()
 
 option(VINPUT_FETCH_SPDLOG "Fetch spdlog with FetchContent when not found" ON)
 find_package(spdlog QUIET)

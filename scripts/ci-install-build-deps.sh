@@ -70,8 +70,7 @@ ubuntu24.04)
     libfcitx5utils-dev \
     fcitx5-modules-dev \
     libcli11-dev \
-    libspdlog-dev \
-    nlohmann-json3-dev
+    libspdlog-dev
   install_qt_apt
   ;;
 debian12)
@@ -106,8 +105,7 @@ debian12)
     libfcitx5utils-dev \
     fcitx5-modules-dev \
     libcli11-dev \
-    libspdlog-dev \
-    nlohmann-json3-dev
+    libspdlog-dev
   install_qt_apt
   ;;
 fedora43)
@@ -129,7 +127,6 @@ fedora43)
     pipewire-devel \
     systemd-devel \
     fcitx5-devel \
-    nlohmann-json-devel \
     cli11-devel \
     spdlog-devel
   install_qt_dnf
@@ -164,7 +161,6 @@ opensuse-leap)
     zstd \
     fcitx5-devel \
     cli11-devel \
-    nlohmann_json-devel \
     spdlog-devel
   install_qt_zypper
   ;;
@@ -179,7 +175,6 @@ archlinux)
     libarchive \
     mold \
     ninja \
-    nlohmann-json \
     openssl \
     pipewire \
     pkgconf \

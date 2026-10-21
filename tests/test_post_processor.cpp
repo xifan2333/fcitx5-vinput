@@ -3,10 +3,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 #include <iostream>
 #include <mutex>
 #include <netinet/in.h>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <sys/poll.h>
 #include <sys/socket.h>
@@ -16,6 +17,7 @@
 
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config_types.h"
+#include "common/json/json_access.h"
 #include "common/scene/postprocess_scene.h"
 
 #include "daemon/postprocess/post_processor.h"
@@ -232,11 +234,16 @@ void TestProcessSuccess() {
 
   const auto bodies = server.CapturedBodies();
   AssertTrue(!bodies.empty(), "server should receive request body");
-  const auto req_json = nlohmann::json::parse(bodies[0]);
-  AssertTrue(req_json["model"] == "gpt-test-model", "model passed in request json");
-  AssertTrue(req_json["custom_knob"] == 42, "extra_body passed in request json");
+  glz::json_t req_json;
+  AssertTrue(!bool(glz::read_json(req_json, bodies[0])), "request body is valid json");
+  AssertTrue(vinput::json::String(req_json, "model") == "gpt-test-model",
+             "model passed in request json");
+  AssertTrue(vinput::json::Int(req_json, "custom_knob") == 42, "extra_body passed in request json");
 
-  const auto prompt_content = req_json["messages"][0]["content"].get<std::string>();
+  const auto* message = vinput::json::Find(req_json, "messages");
+  AssertTrue(message != nullptr && message->is_array() && !message->get_array().empty(),
+             "messages array present");
+  const auto prompt_content = vinput::json::String(message->get_array().front(), "content");
   AssertTrue(prompt_content.find("<vinput-asr>\nhello world\n</vinput-asr>") != std::string::npos,
              "ASR text wrapped in XML tags in prompt");
 }
@@ -269,8 +276,12 @@ void TestProcessCommandSuccess() {
 
   const auto bodies = server.CapturedBodies();
   AssertTrue(!bodies.empty(), "server should receive command request body");
-  const auto req_json = nlohmann::json::parse(bodies[0]);
-  const auto prompt_content = req_json["messages"][0]["content"].get<std::string>();
+  glz::json_t req_json;
+  AssertTrue(!bool(glz::read_json(req_json, bodies[0])), "command request body is valid json");
+  const auto* message = vinput::json::Find(req_json, "messages");
+  AssertTrue(message != nullptr && message->is_array() && !message->get_array().empty(),
+             "messages array present");
+  const auto prompt_content = vinput::json::String(message->get_array().front(), "content");
   AssertTrue(prompt_content.find("Translate to English from 你好") != std::string::npos,
              "template interpolation applied for command prompt");
 }

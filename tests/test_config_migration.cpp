@@ -1,12 +1,14 @@
 #include <cstdlib>
 #include <filesystem>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
+#include <glaze/json/write.hpp>
 #include <iostream>
-#include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
 #include <string>
 #include <system_error>
 
 #include "common/config/config_migration.h"
+#include "common/json/json_access.h"
 #include "common/utils/file_utils.h"
 
 namespace {
@@ -34,11 +36,12 @@ void TestFastPath() {
   const auto config_path = tmp_dir / "config.json";
   const auto conf_path = tmp_dir / "vinput.conf";
 
-  nlohmann::json valid_cfg;
+  glz::json_t valid_cfg = glz::json_t(glz::json_t::object_t{});
   valid_cfg["version"] = ">=2.4.0";
   valid_cfg["asr"]["vad"]["threshold"] = 0.35;
   std::string err;
-  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, valid_cfg.dump(2), &err), err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(valid_cfg), &err),
+             err);
 
   const std::string valid_conf = "[Trigger]\nMenuKey=Alt_R\n";
   ExpectTrue(vinput::file::AtomicWriteTextFile(conf_path, valid_conf, &err), err);
@@ -112,8 +115,13 @@ void TestDryRunAndApply() {
   // Verify files were NOT modified on disk during dry-run
   std::string read_back;
   ExpectTrue(vinput::file::ReadTextFile(config_path, &read_back, &err), err);
-  const auto unchanged_cfg = nlohmann::json::parse(read_back);
-  ExpectTrue(unchanged_cfg["scenes"]["definitions"][0].contains("candidate_count"));
+  glz::json_t unchanged_cfg;
+  ExpectTrue(!bool(glz::read_json(unchanged_cfg, read_back)), "dry-run config stays valid JSON");
+  const auto* definitions = vinput::json::Find(unchanged_cfg["scenes"], "definitions");
+  ExpectTrue(definitions != nullptr && definitions->is_array() &&
+                 !definitions->get_array().empty() &&
+                 definitions->get_array().front().contains("candidate_count"),
+             "dry-run must not rename candidate_count");
 
   // 2. Apply migration
   const auto apply_report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
@@ -126,27 +134,35 @@ void TestDryRunAndApply() {
   // 3. Verify in-place modified content
   std::string migrated_config_str;
   ExpectTrue(vinput::file::ReadTextFile(config_path, &migrated_config_str, &err), err);
-  const auto migrated_cfg = nlohmann::json::parse(migrated_config_str);
+  glz::json_t migrated_cfg;
+  ExpectTrue(!bool(glz::read_json(migrated_cfg, migrated_config_str)),
+             "migrated config is valid JSON");
 
-  const auto& sc_def = migrated_cfg["scenes"]["definitions"][0];
+  const auto* definitions = vinput::json::Find(migrated_cfg["scenes"], "definitions");
+  ExpectTrue(definitions != nullptr && definitions->is_array() && !definitions->get_array().empty(),
+             "definitions array preserved");
+  const auto& sc_def = definitions->get_array().front();
   ExpectTrue(sc_def.contains("count") && !sc_def.contains("candidate_count"),
              "candidate_count -> count");
-  ExpectEq(std::to_string(sc_def["count"].get<int>()), "3");
+  ExpectEq(std::to_string(vinput::json::Int(sc_def, "count")), "3");
   ExpectTrue(sc_def.contains("raw_cand") && !sc_def.contains("show_raw"), "show_raw -> raw_cand");
-  ExpectTrue(sc_def.value("raw_prev", false), "raw_prev should be ensured true");
+  ExpectTrue(vinput::json::Bool(sc_def, "raw_prev"), "raw_prev should be ensured true");
 
   ExpectTrue(migrated_cfg["llm"].contains("adapters") && !migrated_cfg["llm"].contains("adaptors"),
              "adaptors -> adapters");
   ExpectTrue(!migrated_cfg["global"].contains("default_language"), "default_language removed");
 
   const auto& vad = migrated_cfg["asr"]["vad"];
-  ExpectTrue(std::abs(vad["threshold"].get<double>() - 0.35) < 1e-4, "threshold upgraded to 0.35");
-  ExpectTrue(std::abs(vad["min_speech_duration"].get<double>() - 0.10) < 1e-4,
+  ExpectTrue(std::abs(vinput::json::Number(vad, "threshold") - 0.35) < 1e-4,
+             "threshold upgraded to 0.35");
+  ExpectTrue(std::abs(vinput::json::Number(vad, "min_speech_duration") - 0.10) < 1e-4,
              "min_speech_duration upgraded to 0.10");
-  ExpectTrue(std::abs(vad["min_silence_duration"].get<double>() - 1.2) < 1e-4,
+  ExpectTrue(std::abs(vinput::json::Number(vad, "min_silence_duration") - 1.2) < 1e-4,
              "min_silence_duration upgraded to 1.2");
-  ExpectEq(std::to_string(vad["speech_pad_ms"].get<int>()), "500", "speech_pad_ms upgraded to 500");
-  ExpectEq(migrated_cfg.value("version", ""), ">=2.4.0", "version stamped with >=2.4.0");
+  ExpectEq(std::to_string(vinput::json::Int(vad, "speech_pad_ms")), "500",
+           "speech_pad_ms upgraded to 500");
+  ExpectEq(vinput::json::String(migrated_cfg, "version"), ">=2.4.0",
+           "version stamped with >=2.4.0");
 
   std::string migrated_conf_str;
   ExpectTrue(vinput::file::ReadTextFile(conf_path, &migrated_conf_str, &err), err);
@@ -203,7 +219,8 @@ void TestSymlinkPreservation() {
 
   std::string updated_raw;
   ExpectTrue(vinput::file::ReadTextFile(real_config, &updated_raw, &err), err);
-  const auto updated = nlohmann::json::parse(updated_raw);
+  glz::json_t updated;
+  ExpectTrue(!bool(glz::read_json(updated, updated_raw)), "symlink target is valid JSON");
   ExpectTrue(updated["llm"].contains("adapters") && !updated["llm"].contains("adaptors"),
              "Real config was migrated");
 
@@ -230,7 +247,7 @@ void TestVersionConstraintAndCustomizationPreserved() {
   const auto conf_path = tmp_dir / "vinput.conf";
 
   // config.json already has version >=2.4.0 and intentionally custom threshold 0.45
-  const nlohmann::json cfg = {
+  const glz::json_t cfg = {
       {"version", ">=2.4.0"},
       {"asr",
        {{"vad",
@@ -240,7 +257,8 @@ void TestVersionConstraintAndCustomizationPreserved() {
           {"speech_pad_ms", 500}}}}},
   };
   std::string err;
-  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, cfg.dump(4) + "\n", &err), err);
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(cfg) + "\n", &err),
+             err);
 
   // vinput.conf has obsolete HoldActivationDelay
   const std::string initial_conf = "TriggerKey=Alt_R\nHoldActivationDelay=200\n";
@@ -254,8 +272,9 @@ void TestVersionConstraintAndCustomizationPreserved() {
   // config.json threshold 0.45 must NOT be overwritten by migration rules
   std::string read_cfg_str;
   ExpectTrue(vinput::file::ReadTextFile(config_path, &read_cfg_str, &err), err);
-  const auto migrated_cfg = nlohmann::json::parse(read_cfg_str);
-  ExpectTrue(std::abs(migrated_cfg["asr"]["vad"]["threshold"].get<double>() - 0.45) < 1e-4,
+  glz::json_t migrated_cfg;
+  ExpectTrue(!bool(glz::read_json(migrated_cfg, read_cfg_str)), "config stays valid JSON");
+  ExpectTrue(std::abs(vinput::json::Number(migrated_cfg["asr"]["vad"], "threshold") - 0.45) < 1e-4,
              "Custom threshold 0.45 must be preserved");
 
   // vinput.conf must have HoldActivationDelay removed
@@ -276,11 +295,13 @@ void TestUndefinedFieldsAndIntegrityPreserved() {
   const auto config_path = tmp_dir / "config.json";
   const auto conf_path = tmp_dir / "vinput.conf";
 
-  const nlohmann::json valid_cfg = {
+  const glz::json_t valid_cfg = {
       {"version", ">=2.4.0"},
   };
   std::string err;
-  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, valid_cfg.dump(2) + "\n", &err), err);
+  ExpectTrue(
+      vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(valid_cfg) + "\n", &err),
+      err);
 
   const std::string conf_with_custom = "[Trigger]\n"
                                        "TriggerKey=Alt_R\n"

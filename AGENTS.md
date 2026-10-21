@@ -11,7 +11,7 @@ Progressive operational guide, hard constraints, and routing index for AI coding
 - `src/addon/`: Fcitx5 input method addon (Qt/C++, hotkey triggers like `Alt_R` / `Shift_R`, push-to-talk, D-Bus client).
 - `src/daemon/`: Core daemon (`vinput-daemon`, PipeWire audio capture, sherpa-onnx inference, cloud ASR engines, LLM scene transformations, D-Bus service `org.fcitx.Vinput`).
 - `src/cli/`: Standalone `vinput` CLI for manual recording, profile switching, and status inspection.
-- `src/common/`: Shared types, configuration structs (`nlohmann-json`), isolated ConfigMigration engine (`config/config_migration.cpp`), D-Bus XML interfaces.
+- `src/common/`: Shared types, configuration structs (`glaze`), isolated ConfigMigration engine (`config/config_migration.cpp`), D-Bus XML interfaces.
 - `src/gui/`: Standalone Qt 6 configuration GUI (`vinput-gui`).
 - `po/` & `i18n/`: Translations (Gettext and Qt `.ts` / `.qm`).
 
