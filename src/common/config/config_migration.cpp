@@ -466,9 +466,12 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
   std::string raw_config;
   glz::json_t config_data;
   if (config_exists) {
-    if (!vinput::file::ReadTextFile(real_config_path, &raw_config, &report.error)) {
+    auto read_res = vinput::file::ReadTextFile(real_config_path);
+    if (!read_res) {
+      report.error = read_res.error();
       return report;
     }
+    raw_config = std::move(*read_res);
     if (bool(glz::read<kMigrationReadOpts>(config_data, raw_config))) {
       report.error = "Failed to parse " + real_config_path.string() + ": invalid JSON";
       return report;
@@ -478,9 +481,12 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
   std::string raw_conf;
   fcitx::RawConfig conf_raw_config;
   if (conf_exists) {
-    if (!vinput::file::ReadTextFile(real_conf_path, &raw_conf, &report.error)) {
+    auto read_res = vinput::file::ReadTextFile(real_conf_path);
+    if (!read_res) {
+      report.error = read_res.error();
       return report;
     }
+    raw_conf = std::move(*read_res);
     fcitx::readAsIni(conf_raw_config, real_conf_path.string());
   }
 

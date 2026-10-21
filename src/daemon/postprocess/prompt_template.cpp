@@ -59,14 +59,14 @@ std::optional<std::string> LoadFromFileUri(std::string_view uri, std::string* er
     return fail("not a regular file");
   }
 
-  std::string content;
-  std::string read_error;
-  if (!vinput::file::ReadTextFile(path, &content, &read_error, kMaxPromptFileBytes)) {
+  auto read_res = vinput::file::ReadTextFile(path, kMaxPromptFileBytes);
+  if (!read_res) {
     if (error != nullptr) {
-      *error = read_error;
+      *error = read_res.error();
     }
     return std::nullopt;
   }
+  std::string content = std::move(*read_res);
 
   const auto fsize = std::filesystem::file_size(path, ec);
   if (!ec && fsize > kMaxPromptFileBytes) {

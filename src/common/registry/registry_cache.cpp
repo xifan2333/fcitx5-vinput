@@ -9,12 +9,15 @@ namespace {
 
 bool LoadCachedText(const std::filesystem::path& cache_path, std::string* content,
                     vinput::download::Result* result, std::string* error) {
-  std::string read_error;
-  if (!vinput::file::ReadTextFile(cache_path, content, &read_error)) {
+  auto read_res = vinput::file::ReadTextFile(cache_path);
+  if (!read_res) {
     if (error) {
-      *error = read_error;
+      *error = read_res.error();
     }
     return false;
+  }
+  if (content) {
+    *content = std::move(*read_res);
   }
 
   if (result) {

@@ -361,24 +361,13 @@ bool EnsureParentDirectory(const std::filesystem::path& path, std::string* error
   return true;
 }
 
-bool ReadTextFile(const std::filesystem::path& path, std::string* content, std::string* error,
-                  size_t max_bytes) {
-  if (content == nullptr) {
-    if (error != nullptr) {
-      *error = "ReadTextFile requires a destination buffer.";
-    }
-    return false;
-  }
-
+Expected<std::string> ReadTextFile(const std::filesystem::path& path, size_t max_bytes) {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
-    if (error != nullptr) {
-      *error = "Failed to open file " + path.string();
-    }
-    return false;
+    return UnexpectedError("Failed to open file " + path.string());
   }
 
-  content->clear();
+  std::string content;
   if (max_bytes > 0) {
     std::error_code ec;
     const auto sz = std::filesystem::file_size(path, ec);
@@ -386,7 +375,7 @@ bool ReadTextFile(const std::filesystem::path& path, std::string* content, std::
     if (!ec && sz > 0) {
       initial_cap = std::min(max_bytes, static_cast<size_t>(sz));
     }
-    content->reserve(initial_cap);
+    content.reserve(initial_cap);
 
     char chunk[8192];
     size_t total_read = 0;
@@ -397,24 +386,18 @@ bool ReadTextFile(const std::filesystem::path& path, std::string* content, std::
       if (bytes_read <= 0) {
         break;
       }
-      content->append(chunk, static_cast<size_t>(bytes_read));
+      content.append(chunk, static_cast<size_t>(bytes_read));
       total_read += static_cast<size_t>(bytes_read);
     }
   } else {
-    content->assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    content.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
   }
 
   if (!file.good() && !file.eof()) {
-    if (error != nullptr) {
-      *error = "Failed to read file " + path.string();
-    }
-    return false;
+    return UnexpectedError("Failed to read file " + path.string());
   }
 
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
+  return content;
 }
 
 bool AtomicWriteTextFile(const std::filesystem::path& target, std::string_view content,

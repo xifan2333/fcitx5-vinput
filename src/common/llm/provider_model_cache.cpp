@@ -35,11 +35,11 @@ bool ReadCacheFile(glz::json_t* out) {
   *out = EmptyObject();
 
   const auto path = vinput::path::ProviderModelCachePath();
-  std::string content;
-  if (!vinput::file::ReadTextFile(path, &content, nullptr)) {
+  const auto content = vinput::file::ReadTextFile(path);
+  if (!content) {
     return false;
   }
-  if (bool(glz::read_json(*out, content)) || !out->is_object()) {
+  if (bool(glz::read_json(*out, *content)) || !out->is_object()) {
     *out = EmptyObject();
     return false;
   }

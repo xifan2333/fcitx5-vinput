@@ -116,11 +116,13 @@ public:
           return resp;
         }
       } else {
-        if (!vinput::file::ReadTextFile(file_path, &resp.body, &resp.error_message,
-                                        request.max_response_bytes)) {
+        auto read_res = vinput::file::ReadTextFile(file_path, request.max_response_bytes);
+        if (!read_res) {
           resp.status_code = 404;
+          resp.error_message = read_res.error();
           return resp;
         }
+        resp.body = std::move(*read_res);
       }
       resp.status_code = 200;
       resp.effective_url = request.url;
