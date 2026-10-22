@@ -10,6 +10,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "common/utils/expected.h"
+
 namespace vinput::process {
 
 struct CommandSpec {
@@ -34,8 +36,7 @@ struct SpawnedProcess {
 
 CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input);
 bool RunCommandSilent(const CommandSpec& spec, int* exit_code = nullptr);
-bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text,
-                             int* exit_code = nullptr);
+Expected<std::string> RunCommandCaptureStdout(const CommandSpec& spec);
 bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& working_dir,
                         SpawnedProcess* process_out, std::string* error);
 bool CreateCloexecPipe(int pipefd[2]);

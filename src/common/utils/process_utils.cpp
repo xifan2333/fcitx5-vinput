@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "common/utils/expected.h"
 #include "common/utils/interpolation.h"
 
 namespace vinput::process {
@@ -406,25 +407,26 @@ bool RunCommandSilent(const CommandSpec& spec, int* exit_code) {
   return !result.launch_failed && !result.timed_out && result.exit_code == 0;
 }
 
-bool RunCommandCaptureStdout(const CommandSpec& spec, std::string* stdout_text, int* exit_code) {
-  if (stdout_text != nullptr) {
-    stdout_text->clear();
-  }
+Expected<std::string> RunCommandCaptureStdout(const CommandSpec& spec) {
   if (spec.command.empty()) {
-    if (exit_code != nullptr) {
-      *exit_code = -1;
-    }
-    return false;
+    return UnexpectedError("Command is empty.");
   }
 
   const auto result = RunCommandWithInput(spec, {});
-  if (stdout_text != nullptr) {
-    *stdout_text = result.stdout_text;
+  if (result.launch_failed) {
+    return UnexpectedError(!result.stderr_text.empty() ? result.stderr_text
+                                                       : "Failed to launch process.");
   }
-  if (exit_code != nullptr) {
-    *exit_code = result.exit_code;
+  if (result.timed_out) {
+    return UnexpectedError("Process timed out.");
   }
-  return !result.launch_failed && !result.timed_out && result.exit_code == 0;
+  if (result.exit_code != 0) {
+    const std::string err = !result.stderr_text.empty()
+                                ? result.stderr_text
+                                : "Process exited with code " + std::to_string(result.exit_code);
+    return UnexpectedError(err);
+  }
+  return result.stdout_text;
 }
 
 } // namespace vinput::process
