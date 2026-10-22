@@ -3,6 +3,7 @@
 #include <bit>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -247,7 +248,7 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
       return false;
     }
     const std::string score_text = line.substr(tab + 1);
-    float score = 0.0f;
+    float score = 0.0F;
     const auto [ptr, ec] =
         std::from_chars(score_text.data(), score_text.data() + score_text.size(), score);
     if (ec != std::errc{} || ptr != score_text.data() + score_text.size() ||
