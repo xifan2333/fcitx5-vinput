@@ -9,16 +9,20 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <signal.h>
 #include <string>
 #include <string_view>
 #include <sys/eventfd.h>
 #include <sys/poll.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
 #include <vector>
+
+extern "C" {
+#include <signal.h>
+}
 
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
