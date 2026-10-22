@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <map>
@@ -49,6 +50,11 @@ bool KillAndReap(pid_t pid);
 // Non-blocking wait for child process exit. Returns true if the child has exited,
 // populating `exit_code` with its normalized return code if non-null.
 bool TryReapProcess(pid_t pid, int* exit_code = nullptr);
+
+// Requests graceful termination, waits for a bounded interval, then escalates
+// to a forced kill and performs a final bounded reap.
+void TerminateProcessBounded(pid_t pid, std::chrono::milliseconds graceful_timeout,
+                             std::chrono::milliseconds force_timeout);
 
 // Drains complete newline-terminated lines out of an incrementally filled
 // process output buffer, leaving any unterminated tail in place. A trailing

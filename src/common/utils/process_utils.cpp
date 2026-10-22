@@ -101,6 +101,36 @@ bool TryReapProcess(pid_t pid, int* exit_code) {
   return true;
 }
 
+void TerminateProcessBounded(pid_t pid, std::chrono::milliseconds graceful_timeout,
+                             std::chrono::milliseconds force_timeout) {
+  if (pid <= 0) {
+    return;
+  }
+
+  constexpr auto kPollInterval = std::chrono::milliseconds(100);
+  // Reaps the child within `timeout`. ECHILD means it was already reaped
+  // elsewhere (or is not our child), so there is nothing left to wait for.
+  const auto wait_for_exit = [pid](std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      errno = 0;
+      if (TryReapProcess(pid) || errno == ECHILD) {
+        return true;
+      }
+      std::this_thread::sleep_for(kPollInterval);
+    }
+    return TryReapProcess(pid);
+  };
+
+  (void)syscall(SYS_kill, pid, SIGTERM);
+  if (wait_for_exit(graceful_timeout)) {
+    return;
+  }
+
+  (void)syscall(SYS_kill, pid, SIGKILL);
+  (void)wait_for_exit(force_timeout);
+}
+
 bool CreateCloexecPipe(int pipefd[2]) {
 #if defined(__linux__)
   return pipe2(pipefd, O_CLOEXEC) == 0;
