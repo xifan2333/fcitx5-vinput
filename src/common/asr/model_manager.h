@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include "common/utils/expected.h"
+
 struct ModelInfo {
   std::string backend;    // e.g. "sherpa-offline", "sherpa-streaming"
   std::string runtime;    // "online" or "offline"
@@ -63,8 +65,8 @@ class ModelManager {
 public:
   explicit ModelManager(const std::string& base_dir = "", std::string model_id = "");
 
-  bool EnsureModels(std::string* error = nullptr);
-  ModelInfo GetModelInfo(std::string* error = nullptr) const;
+  [[nodiscard]] vinput::Expected<void> EnsureModels() const;
+  [[nodiscard]] vinput::Expected<ModelInfo> GetModelInfo() const;
   [[nodiscard]] std::vector<std::string> ListModels() const;
   [[nodiscard]] std::string GetBaseDir() const;
   [[nodiscard]] std::string GetModelId() const;
@@ -72,9 +74,9 @@ public:
   // List all local models with their states
   [[nodiscard]] std::vector<ModelSummary> ListDetailed(const std::string& active_model) const;
   // Validate model directory integrity
-  bool Validate(const std::string& model_id, std::string* error) const;
+  [[nodiscard]] vinput::Expected<void> Validate(const std::string& model_id) const;
   // Remove a model directory
-  bool Remove(const std::string& model_id, std::string* error) const;
+  [[nodiscard]] vinput::Expected<void> Remove(const std::string& model_id) const;
   // Normalize base_dir (expand ~)
   static std::filesystem::path NormalizeBaseDir(const std::string& raw_path);
   static std::filesystem::path RelativePathForId(std::string_view model_id);

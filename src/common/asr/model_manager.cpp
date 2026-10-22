@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <glaze/core/common.hpp>
@@ -122,26 +121,18 @@ template <typename Fn> void ForEachInstalledModelDir(const std::string& base_dir
   }
 }
 
-bool ResolveModelMetadataPath(const fs::path& model_dir, const fs::path& model_root,
-                              const std::string& raw_path, fs::path* resolved, std::string* error) {
+vinput::Expected<fs::path> ResolveModelMetadataPath(const fs::path& model_dir,
+                                                    const fs::path& model_root,
+                                                    const std::string& raw_path) {
   std::error_code ec;
   fs::path candidate = fs::weakly_canonical(model_dir / fs::path(raw_path), ec);
   if (ec) {
-    if (error != nullptr) {
-      *error = "failed to resolve path '" + raw_path + "': " + ec.message();
-    }
-    return false;
+    return vinput::UnexpectedError("failed to resolve path '" + raw_path + "': " + ec.message());
   }
   if (!vinput::path::IsPathWithinRoot(candidate, model_root)) {
-    if (error != nullptr) {
-      *error = "path escapes model directory: " + raw_path;
-    }
-    return false;
+    return vinput::UnexpectedError("path escapes model directory: " + raw_path);
   }
-  if (resolved != nullptr) {
-    *resolved = std::move(candidate);
-  }
-  return true;
+  return candidate;
 }
 
 // Integral JSON numbers are rendered without a fractional part so that the
@@ -202,39 +193,34 @@ void ResolveModelFileField(const fs::path& dir, const fs::path& model_root, cons
   if (raw_path.empty()) {
     return;
   }
-  fs::path resolved_path;
-  std::string path_error;
-  if (!ResolveModelMetadataPath(dir, model_root, raw_path, &resolved_path, &path_error)) {
+  const auto resolved_path = ResolveModelMetadataPath(dir, model_root, raw_path);
+  if (!resolved_path) {
     info->rejected_files[std::string(file_key)] = raw_path;
     return;
   }
-  info->files[std::string(file_key)] = resolved_path.string();
+  info->files[std::string(file_key)] = resolved_path->string();
 }
 
 bool FamilyUsesTokenizerAsset(std::string_view family) {
   return family == "funasr_nano" || family == "qwen3_asr";
 }
 
-ModelInfo ParseModelJson(const fs::path& dir, const fs::path& json_path, std::string* error) {
+vinput::Expected<ModelInfo> ParseModelJson(const fs::path& dir, const fs::path& json_path) {
   ModelInfo info;
   std::ifstream file(json_path);
   const std::string content{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 
   glz::json_t j;
   if (const auto ec = glz::read_json(j, content); bool(ec)) {
-    if (error != nullptr) {
-      *error = "failed to parse '" + json_path.string() + "': " + glz::format_error(ec, content);
-    }
-    return info;
+    return vinput::UnexpectedError("failed to parse '" + json_path.string() +
+                                   "': " + glz::format_error(ec, content));
   }
 
   std::error_code root_ec;
   const fs::path model_root = fs::weakly_canonical(dir, root_ec);
   if (root_ec) {
-    if (error != nullptr) {
-      *error = "failed to resolve model root '" + dir.string() + "': " + root_ec.message();
-    }
-    return info;
+    return vinput::UnexpectedError("failed to resolve model root '" + dir.string() +
+                                   "': " + root_ec.message());
   }
 
   info.backend = vinput::json::String(j, "backend");
@@ -438,64 +424,52 @@ fs::path ModelManager::ModelDir(std::string_view model_id) const {
 ModelManager::ModelManager(const std::string& base_dir, std::string model_id)
     : base_dir_(NormalizeBaseDir(base_dir).string()), model_id_(std::move(model_id)) {}
 
-bool ModelManager::EnsureModels(std::string* error) {
-  auto dir = ModelDir(model_id_);
-  auto json_path = dir / "vinput-model.json";
+vinput::Expected<void> ModelManager::EnsureModels() const {
+  const auto dir = ModelDir(model_id_);
+  const auto json_path = dir / "vinput-model.json";
 
   if (!fs::exists(json_path)) {
-    if (error != nullptr) {
-      *error = "missing 'vinput-model.json' in " + dir.string();
-    }
-    return false;
+    return vinput::UnexpectedError("missing 'vinput-model.json' in " + dir.string());
   }
 
-  std::string parse_error;
-  auto info = GetModelInfo(&parse_error);
+  auto info_result = GetModelInfo();
+  if (!info_result) {
+    return vinput::UnexpectedError(std::move(info_result).error());
+  }
+  const auto& info = *info_result;
+
   if (info.family.empty()) {
-    if (error != nullptr) {
-      if (!parse_error.empty()) {
-        *error = std::move(parse_error);
-      } else {
-        *error = "'vinput-model.json' is missing family for model '" + model_id_ + "'";
-      }
-    }
-    return false;
+    return vinput::UnexpectedError("'vinput-model.json' is missing family for model '" + model_id_ +
+                                   "'");
   }
 
   if (!info.rejected_files.empty()) {
     const auto& [key, raw_path] = *info.rejected_files.begin();
-    if (error != nullptr) {
-      *error = "'vinput-model.json' contains invalid path for '" + key + "': " + raw_path;
-    }
-    return false;
+    return vinput::UnexpectedError("'vinput-model.json' contains invalid path for '" + key +
+                                   "': " + raw_path);
   }
 
   if (!HasRequiredTextAsset(info)) {
-    if (error != nullptr) {
-      *error = RequiredTextAssetPathKey(info) + " file not found for model '" + model_id_ + "'";
-    }
-    return false;
+    return vinput::UnexpectedError(RequiredTextAssetPathKey(info) + " file not found for model '" +
+                                   model_id_ + "'");
   }
 
   if (!HasModelFiles(info)) {
-    if (error != nullptr) {
-      *error = "no model files found for model '" + model_id_ + "'";
-    }
-    return false;
+    return vinput::UnexpectedError("no model files found for model '" + model_id_ + "'");
   }
 
-  return true;
+  return {};
 }
 
-ModelInfo ModelManager::GetModelInfo(std::string* error) const {
-  auto dir = ModelDir(model_id_);
-  auto json_path = dir / "vinput-model.json";
+vinput::Expected<ModelInfo> ModelManager::GetModelInfo() const {
+  const auto dir = ModelDir(model_id_);
+  const auto json_path = dir / "vinput-model.json";
 
   if (!fs::exists(json_path)) {
-    return {};
+    return vinput::UnexpectedError("missing 'vinput-model.json' in " + dir.string());
   }
 
-  return ParseModelJson(dir, json_path, error);
+  return ParseModelJson(dir, json_path);
 }
 
 std::string ModelManager::GetBaseDir() const {
@@ -558,123 +532,82 @@ std::vector<ModelSummary> ModelManager::ListDetailed(const std::string& active_m
   return summaries;
 }
 
-bool ModelManager::Validate(const std::string& model_id, std::string* error) const {
+vinput::Expected<void> ModelManager::Validate(const std::string& model_id) const {
   const auto dir = ModelDir(model_id);
   if (dir.empty()) {
-    if (error != nullptr) {
-      *error = "invalid model id: " + model_id;
-    }
-    return false;
+    return vinput::UnexpectedError("invalid model id: " + model_id);
   }
 
   if (!fs::exists(dir) || !fs::is_directory(dir)) {
-    if (error != nullptr) {
-      *error = "model directory does not exist: " + dir.string();
-    }
-    return false;
+    return vinput::UnexpectedError("model directory does not exist: " + dir.string());
   }
 
   const auto json_path = dir / "vinput-model.json";
   if (!fs::exists(json_path) || !fs::is_regular_file(json_path)) {
-    if (error != nullptr) {
-      *error = "vinput-model.json not found in " + dir.string();
-    }
-    return false;
+    return vinput::UnexpectedError("vinput-model.json not found in " + dir.string());
   }
 
-  std::string parse_error;
-  auto info = ParseModelJson(dir, json_path, &parse_error);
+  auto info_result = ParseModelJson(dir, json_path);
+  if (!info_result) {
+    return vinput::UnexpectedError(std::move(info_result).error());
+  }
+  const auto& info = *info_result;
 
   if (info.family.empty()) {
-    if (error != nullptr) {
-      if (!parse_error.empty()) {
-        *error = std::move(parse_error);
-      } else {
-        *error = "vinput-model.json missing required field: family";
-      }
-    }
-    return false;
+    return vinput::UnexpectedError("vinput-model.json missing required field: family");
   }
 
   if (!info.rejected_files.empty()) {
     const auto& [key, raw_path] = *info.rejected_files.begin();
-    if (error != nullptr) {
-      *error = "vinput-model.json contains out-of-bounds file path for '" + key + "': " + raw_path;
-    }
-    return false;
+    return vinput::UnexpectedError("vinput-model.json contains out-of-bounds file path for '" +
+                                   key + "': " + raw_path);
   }
 
   if (!HasRequiredTextAsset(info)) {
     const auto path_key = RequiredTextAssetPathKey(info);
     auto asset_path = info.File(path_key);
     if (asset_path.empty()) {
-      if (error != nullptr) {
-        *error = "vinput-model.json missing required field: " + RequiredTextAssetField(info);
-      }
-    } else {
-      if (error != nullptr) {
-        *error = path_key + " file not found: " + asset_path;
-      }
+      return vinput::UnexpectedError("vinput-model.json missing required field: " +
+                                     RequiredTextAssetField(info));
     }
-    return false;
+    return vinput::UnexpectedError(path_key + " file not found: " + asset_path);
   }
 
   if (!HasModelFiles(info)) {
-    if (error != nullptr) {
-      *error = "no model/encoder files found in model directory";
-    }
-    return false;
+    return vinput::UnexpectedError("no model/encoder files found in model directory");
   }
 
-  return true;
+  return {};
 }
 
-bool ModelManager::Remove(const std::string& model_id, std::string* error) const {
+vinput::Expected<void> ModelManager::Remove(const std::string& model_id) const {
   const fs::path requested_dir = ModelDir(model_id);
   if (requested_dir.empty()) {
-    if (error != nullptr) {
-      *error = "invalid model id: " + model_id;
-    }
-    return false;
+    return vinput::UnexpectedError("invalid model id: " + model_id);
   }
 
   std::error_code ec;
   const auto dir = fs::weakly_canonical(requested_dir, ec);
   if (ec) {
-    if (error != nullptr) {
-      *error = "failed to resolve model directory: " + ec.message();
-    }
-    return false;
+    return vinput::UnexpectedError("failed to resolve model directory: " + ec.message());
   }
   const auto base = fs::weakly_canonical(fs::path(base_dir_), ec);
   if (ec) {
-    if (error != nullptr) {
-      *error = "failed to resolve model base directory: " + ec.message();
-    }
-    return false;
+    return vinput::UnexpectedError("failed to resolve model base directory: " + ec.message());
   }
 
   if (!vinput::path::IsPathWithinRoot(dir, base)) {
-    if (error != nullptr) {
-      *error = "invalid model id: " + model_id;
-    }
-    return false;
+    return vinput::UnexpectedError("invalid model id: " + model_id);
   }
 
   if (!fs::exists(dir)) {
-    if (error != nullptr) {
-      *error = "model directory does not exist: " + dir.string();
-    }
-    return false;
+    return vinput::UnexpectedError("model directory does not exist: " + dir.string());
   }
 
   fs::remove_all(dir, ec);
   if (ec) {
-    if (error != nullptr) {
-      *error = "failed to remove model directory: " + ec.message();
-    }
-    return false;
+    return vinput::UnexpectedError("failed to remove model directory: " + ec.message());
   }
 
-  return true;
+  return {};
 }
