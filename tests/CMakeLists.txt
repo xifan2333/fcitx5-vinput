@@ -262,6 +262,11 @@ target_include_directories(test_hotword_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_hotword_utils PRIVATE common pthread)
 add_test(NAME test_hotword_utils COMMAND test_hotword_utils)
 
+add_executable(test_model_manager test_model_manager.cpp)
+target_include_directories(test_model_manager PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_model_manager PRIVATE common pthread)
+add_test(NAME test_model_manager COMMAND test_model_manager)
+
 add_executable(test_output_ducker
     test_output_ducker.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/audio/output_ducker.cpp
