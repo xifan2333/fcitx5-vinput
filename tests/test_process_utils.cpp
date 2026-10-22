@@ -143,10 +143,10 @@ void TestSpawnForMonitoring() {
   spec.args = {"-c", "echo test_var=$VINPUT_TEST_ENV >&2; exit 0"};
   spec.env["VINPUT_TEST_ENV"] = "safe_spawn_ok";
 
-  vinput::process::SpawnedProcess process;
-  std::string error;
-  const bool spawned = vinput::process::SpawnForMonitoring(spec, "", &process, &error);
-  ExpectTrue(spawned, "SpawnForMonitoring should succeed: " + error);
+  auto process_res = vinput::process::SpawnForMonitoring(spec, "");
+  ExpectTrue(process_res.has_value(),
+             "SpawnForMonitoring should succeed: " + (process_res ? "" : process_res.error()));
+  const auto process = *process_res;
   ExpectTrue(process.pid > 0, "Spawned process PID should be > 0");
   ExpectTrue(process.stderr_fd >= 0, "Spawned process stderr_fd should be >= 0");
 
@@ -212,26 +212,19 @@ void TestRunCommandCaptureStdout() {
   spec.args = {"-c", "echo 'Volume: 0.75'"};
   spec.timeout_ms = 1000;
 
-  std::string stdout_text;
-  int rc = -1;
-  ExpectTrue(vinput::process::RunCommandCaptureStdout(spec, &stdout_text, &rc),
-             "Capture stdout should succeed");
-  ExpectTrue(rc == 0, "Exit code should be 0");
-  ExpectTrue(stdout_text == "Volume: 0.75\n", "Captured stdout mismatch: " + stdout_text);
+  auto stdout_res = vinput::process::RunCommandCaptureStdout(spec);
+  ExpectTrue(stdout_res.has_value(), "Capture stdout should succeed");
+  ExpectTrue(*stdout_res == "Volume: 0.75\n", "Captured stdout mismatch: " + *stdout_res);
 
   spec.args = {"-c", "echo 'error message' >&2; exit 2"};
-  stdout_text.clear();
-  rc = -1;
-  ExpectTrue(!vinput::process::RunCommandCaptureStdout(spec, &stdout_text, &rc),
-             "Failure command should return false");
-  ExpectTrue(rc == 2, "Exit code should be 2");
-  ExpectTrue(stdout_text.empty(), "Stdout should be empty");
+  auto fail_res = vinput::process::RunCommandCaptureStdout(spec);
+  ExpectTrue(!fail_res.has_value(), "Failure command should return unexpected");
 
   spec.command = "sh";
   spec.args = {"-c", "sleep 5"};
   spec.timeout_ms = 50;
-  ExpectTrue(!vinput::process::RunCommandCaptureStdout(spec, &stdout_text, &rc),
-             "Timed out command should return false");
+  auto timeout_res = vinput::process::RunCommandCaptureStdout(spec);
+  ExpectTrue(!timeout_res.has_value(), "Timed out command should return unexpected");
 }
 
 } // namespace
