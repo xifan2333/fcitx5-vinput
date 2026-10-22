@@ -2,7 +2,6 @@
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
-#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -10,14 +9,15 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <signal.h>
 #include <string>
 #include <string_view>
 #include <sys/eventfd.h>
 #include <sys/poll.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "common/config/core_config.h"
@@ -39,11 +39,16 @@
 
 namespace {
 
-std::atomic<bool> g_running{true};
+constexpr int kWaitNoHang = 1; // POSIX WNOHANG
+
+std::atomic<bool>& RunningFlag() {
+  static std::atomic<bool> running{true};
+  return running;
+}
 
 void signal_handler(int sig) {
   (void)sig;
-  g_running = false;
+  RunningFlag() = false;
 }
 
 std::string ReadAvailableText(int fd) {
@@ -78,7 +83,7 @@ bool WaitForProcessExit(pid_t pid, std::chrono::milliseconds timeout, int* statu
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
     int status = 0;
-    const pid_t rc = waitpid(pid, &status, WNOHANG);
+    const pid_t rc = waitpid(pid, &status, kWaitNoHang);
     if (rc == pid) {
       if (status_out != nullptr) {
         *status_out = status;
@@ -304,7 +309,7 @@ private:
 
     usleep(250000);
     int status = 0;
-    if (waitpid(process.pid, &status, WNOHANG) == process.pid) {
+    if (waitpid(process.pid, &status, kWaitNoHang) == process.pid) {
       std::string stderr_text = ReadAvailableText(process.stderr_fd);
       close(process.stderr_fd);
       process.stderr_fd = -1;
@@ -396,7 +401,7 @@ private:
     std::vector<std::string> exited_ids;
     for (auto& [id, adapter] : adapters_) {
       int status = 0;
-      if (waitpid(adapter.pid, &status, WNOHANG) != adapter.pid) {
+      if (waitpid(adapter.pid, &status, kWaitNoHang) != adapter.pid) {
         continue;
       }
 
@@ -623,7 +628,7 @@ int main(int argc, char* argv[]) {
   const int dbus_fd = dbus.GetFd();
   const int notify_fd = dbus.GetNotifyFd();
   const int runtime_notify_fd = runtime_controller.GetNotifyFd();
-  while (g_running) {
+  while (RunningFlag()) {
     pollfd fds[3] = {
         {.fd = dbus_fd, .events = POLLIN, .revents = 0},
         {.fd = notify_fd, .events = POLLIN, .revents = 0},
