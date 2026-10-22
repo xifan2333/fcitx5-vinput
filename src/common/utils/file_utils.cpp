@@ -23,6 +23,8 @@
 #include <unistd.h>
 #include <utility>
 
+#include "common/utils/expected.h"
+
 extern "C" {
 #include <stdlib.h>
 }

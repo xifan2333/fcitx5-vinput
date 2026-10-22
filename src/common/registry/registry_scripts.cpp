@@ -388,6 +388,20 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
     return false;
   }
 
+  std::string final_sha = actual_sha;
+  if (final_sha.empty()) {
+    auto sha_res = vinput::file::ComputeFileSha256(tmp_path);
+    if (!sha_res) {
+      std::error_code rm_ec;
+      fs::remove(tmp_path, rm_ec);
+      if (error != nullptr) {
+        *error = "failed to compute sha256 for " + tmp_path.string() + ": " + sha_res.error();
+      }
+      return false;
+    }
+    final_sha = std::move(*sha_res);
+  }
+
   fs::rename(tmp_path, path, ec);
   if (ec) {
     std::error_code rm_ec;
@@ -398,17 +412,6 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
     return false;
   }
 
-  std::string final_sha = actual_sha;
-  if (final_sha.empty()) {
-    auto sha_res = vinput::file::ComputeFileSha256(path);
-    if (!sha_res) {
-      if (error != nullptr) {
-        *error = "failed to compute sha256 for " + path.string() + ": " + sha_res.error();
-      }
-      return false;
-    }
-    final_sha = std::move(*sha_res);
-  }
   auto manifest = vinput::registry::InstalledManifest::Load();
   manifest.RecordInstalled(entry.id, kind == Kind::kAsrProvider ? "provider" : "adapter",
                            entry.version, final_sha);

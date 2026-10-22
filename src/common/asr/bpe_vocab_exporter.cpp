@@ -16,7 +16,6 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
-#include <vector>
 
 #include "common/utils/file_utils.h"
 
@@ -247,7 +246,7 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
       return false;
     }
     const std::string score_text = line.substr(tab + 1);
-    char* end = nullptr;
+    const char* end = nullptr;
     const float score = std::strtof(score_text.c_str(), &end);
     if (end != score_text.c_str() + score_text.size() || !std::isfinite(score)) {
       if (error != nullptr) {
