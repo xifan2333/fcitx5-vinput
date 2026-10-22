@@ -18,6 +18,7 @@
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
+#include "common/utils/expected.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
 
@@ -114,48 +115,32 @@ void ParseSetValue(const std::string& value, glz::json_t* parsed) {
 
 } // namespace
 
-bool GetConfigValue(const std::string& pointer, std::string* value, std::string* error) {
+Expected<std::string> GetConfigValue(const std::string& pointer) {
   glz::json_t root;
   if (!LoadConfigTree(&root)) {
-    if (error != nullptr) {
-      *error = "Failed to load config.";
-    }
-    return false;
+    return UnexpectedError("Failed to load config.");
   }
 
   const glz::json_t* node = SeekPointer(&root, pointer);
   if (node == nullptr) {
-    if (error != nullptr) {
-      *error = "Config path not found: " + pointer;
-    }
-    return false;
+    return UnexpectedError("Config path not found: " + pointer);
   }
 
-  if (value != nullptr) {
-    if (const auto* text = node->get_if<std::string>()) {
-      *value = *text;
-    } else {
-      *value = FormatNode(*node);
-    }
+  if (const auto* text = node->get_if<std::string>()) {
+    return *text;
   }
-  return true;
+  return FormatNode(*node);
 }
 
-bool SetConfigValue(const std::string& pointer, const std::string& value, std::string* error) {
+Expected<void> SetConfigValue(const std::string& pointer, const std::string& value) {
   glz::json_t root;
   if (!LoadConfigTree(&root)) {
-    if (error != nullptr) {
-      *error = "Failed to load config.";
-    }
-    return false;
+    return UnexpectedError("Failed to load config.");
   }
 
   glz::json_t* node = SeekPointer(&root, pointer);
   if (node == nullptr) {
-    if (error != nullptr) {
-      *error = "Config path not found: " + pointer;
-    }
-    return false;
+    return UnexpectedError("Config path not found: " + pointer);
   }
 
   glz::json_t parsed;
@@ -163,23 +148,20 @@ bool SetConfigValue(const std::string& pointer, const std::string& value, std::s
   *node = std::move(parsed);
 
   CoreConfig updated;
-  if (!CoreConfigFromJson(FormatNode(root), &updated, error)) {
-    return false;
+  std::string parse_error;
+  if (!CoreConfigFromJson(FormatNode(root), &updated, &parse_error)) {
+    return UnexpectedError(!parse_error.empty() ? parse_error : "Failed to parse updated config.");
   }
 
   if (!SaveCoreConfig(updated)) {
-    if (error != nullptr) {
-      std::string validation_error;
-      NormalizeCoreConfig(&updated);
-      if (ValidateCoreConfig(updated, &validation_error) && validation_error.empty()) {
-        *error = "Failed to save config.";
-      } else {
-        *error = validation_error;
-      }
+    std::string validation_error;
+    NormalizeCoreConfig(&updated);
+    if (ValidateCoreConfig(updated, &validation_error) && !validation_error.empty()) {
+      return UnexpectedError(validation_error);
     }
-    return false;
+    return UnexpectedError("Failed to save config.");
   }
-  return true;
+  return {};
 }
 
 std::filesystem::path GetEditTarget(const std::string& target) {
