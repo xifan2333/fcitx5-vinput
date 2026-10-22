@@ -42,6 +42,7 @@ set(VINPUT_VAD_MODEL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/fcitx
 
 add_executable(daemon
     main.cpp
+    asr/local_asr_model_loader.cpp
     asr/runtime/backend_factory.cpp
     asr/runtime/recognition_session_manager.cpp
     asr/runtime/async_recognition_session.cpp

@@ -22,13 +22,12 @@
 #include "common/asr/model_manager.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
-#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/utils/file_utils.h"
-#include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
 #include "daemon/asr/hotword_utils.h"
+#include "daemon/asr/local_asr_model_loader.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/sherpa_json_helpers.h"
 #include "daemon/asr/vad_trimmer.h"
@@ -621,48 +620,21 @@ private:
 // ---------------------------------------------------------------------------
 std::unique_ptr<AsrBackend> CreateSherpaOfflineBackend(const CoreConfig& config,
                                                        const LocalAsrProvider& provider,
+                                                       LocalAsrModelContext context,
                                                        std::string* error) {
-  if (provider.model.empty()) {
-    if (error != nullptr) {
-      *error = vinput::str::FmtStr(_("Local ASR model configuration is missing for provider '%s'."),
-                                   provider.id);
-    }
-    return nullptr;
-  }
-
-  ModelManager model_mgr(ResolveModelBaseDir(config).string(), provider.model);
-  if (auto ensure_result = model_mgr.EnsureModels(); !ensure_result) {
-    if (error != nullptr) {
-      *error = "Local ASR model check failed for provider '" + provider.id +
-               "': " + std::move(ensure_result).error();
-    }
-    return nullptr;
-  }
-
-  auto model_info_result = model_mgr.GetModelInfo();
-  if (!model_info_result) {
-    if (error != nullptr) {
-      *error = "Failed to read local ASR model metadata for provider '" + provider.id +
-               "': " + std::move(model_info_result).error();
-    }
-    return nullptr;
-  }
-
-  AsrConfig asr_config;
-  const ModelInfo model_info = std::move(*model_info_result);
-  asr_config.language = model_info.RuntimeLanguageHint();
-  asr_config.hotwords_file = provider.hotwordsFile;
-  asr_config.vad_enabled = config.asr.vad.enabled;
-  asr_config.vad_model_path = VINPUT_VAD_MODEL_PATH;
-  asr_config.vad_threshold = static_cast<float>(config.asr.vad.threshold);
-  asr_config.vad_min_speech_duration = static_cast<float>(config.asr.vad.minSpeechDuration);
-  asr_config.vad_min_silence_duration = static_cast<float>(config.asr.vad.minSilenceDuration);
-  asr_config.vad_speech_pad_ms = config.asr.vad.speechPadMs;
+  context.asr_config.vad_enabled = config.asr.vad.enabled;
+  context.asr_config.vad_model_path = VINPUT_VAD_MODEL_PATH;
+  context.asr_config.vad_threshold = static_cast<float>(config.asr.vad.threshold);
+  context.asr_config.vad_min_speech_duration = static_cast<float>(config.asr.vad.minSpeechDuration);
+  context.asr_config.vad_min_silence_duration =
+      static_cast<float>(config.asr.vad.minSilenceDuration);
+  context.asr_config.vad_speech_pad_ms = config.asr.vad.speechPadMs;
 
   if (error != nullptr) {
     error->clear();
   }
-  return std::make_unique<SherpaOfflineBackend>(model_info, std::move(asr_config), provider.id);
+  return std::make_unique<SherpaOfflineBackend>(context.info, std::move(context.asr_config),
+                                                provider.id);
 }
 
 } // namespace vinput::daemon::asr

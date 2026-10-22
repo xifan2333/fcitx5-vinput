@@ -1,9 +1,12 @@
 #include "daemon/asr/runtime/backend_factory.h"
 
-#include "common/asr/model_manager.h"
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "daemon/asr/backends/command_batch_backend.h"
 #include "daemon/asr/backends/command_streaming_backend.h"
+#include "daemon/asr/local_asr_model_loader.h"
 
 #include "config.h"
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -30,39 +33,22 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
   }
   return nullptr;
 #else
-  if (provider.model.empty()) {
+  auto context_result = LoadLocalAsrModelContext(config, provider);
+  if (!context_result) {
     if (error) {
-      *error = "Local ASR provider model is not configured.";
-    }
-    return nullptr;
-  }
-
-  ModelManager model_mgr(ResolveModelBaseDir(config).string(), provider.model);
-  if (auto ensure_result = model_mgr.EnsureModels(); !ensure_result) {
-    if (error) {
-      *error = "Local ASR model check failed for provider '" + provider.id +
-               "': " + std::move(ensure_result).error();
-    }
-    return nullptr;
-  }
-
-  auto model_info_result = model_mgr.GetModelInfo();
-  if (!model_info_result) {
-    if (error) {
-      *error = "Failed to read local ASR model metadata for provider '" + provider.id +
-               "': " + std::move(model_info_result).error();
+      *error = std::move(context_result).error();
     }
     return nullptr;
   }
 
   const std::string backend_id =
-      model_info_result->backend.empty() ? "sherpa-offline" : model_info_result->backend;
+      context_result->info.backend.empty() ? "sherpa-offline" : context_result->info.backend;
   if (backend_id == "sherpa-offline") {
-    return CreateSherpaOfflineBackend(config, provider, error);
+    return CreateSherpaOfflineBackend(config, provider, std::move(*context_result), error);
   }
 
   if (backend_id == "sherpa-streaming") {
-    return CreateSherpaStreamingBackend(config, provider, error);
+    return CreateSherpaStreamingBackend(config, provider, std::move(*context_result), error);
   }
 
   if (error) {
