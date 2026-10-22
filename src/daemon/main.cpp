@@ -1,14 +1,20 @@
 #include <atomic>
+#include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <poll.h>
 #include <string>
+#include <string_view>
 #include <sys/eventfd.h>
+#include <sys/poll.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -16,6 +22,7 @@
 
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
+#include "common/dbus/error_info.h"
 #include "common/i18n.h"
 #include "common/llm/adapter_manager.h"
 #include "common/utils/debug_log.h"
@@ -73,7 +80,7 @@ bool WaitForProcessExit(pid_t pid, std::chrono::milliseconds timeout, int* statu
     int status = 0;
     const pid_t rc = waitpid(pid, &status, WNOHANG);
     if (rc == pid) {
-      if (status_out) {
+      if (status_out != nullptr) {
         *status_out = status;
       }
       return true;
@@ -122,14 +129,14 @@ public:
   bool Start(std::string* error) {
     wake_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (wake_fd_ < 0) {
-      if (error) {
+      if (error != nullptr) {
         *error = std::string("failed to create adapter wake fd: ") + strerror(errno);
       }
       return false;
     }
 
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      const std::scoped_lock lock(mutex_);
       running_ = true;
       stop_requested_ = false;
     }
@@ -138,11 +145,11 @@ public:
       thread_ = std::thread([this]() { Run(); });
     } catch (const std::exception& e) {
       {
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         running_ = false;
         stop_requested_ = true;
       }
-      if (error) {
+      if (error != nullptr) {
         *error = std::string("failed to start adapter supervisor thread: ") + e.what();
       }
       close(wake_fd_);
@@ -150,7 +157,7 @@ public:
       return false;
     }
 
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -158,7 +165,7 @@ public:
 
   void Shutdown() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      const std::scoped_lock lock(mutex_);
       if (!running_) {
         return;
       }
@@ -203,7 +210,7 @@ private:
   };
 
   struct Request {
-    enum class Type { Start, Stop };
+    enum class Type : std::uint8_t { Start, Stop };
 
     Type type = Type::Start;
     std::string adapter_id;
@@ -218,7 +225,7 @@ private:
     request->adapter_id = adapter_id;
 
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      const std::scoped_lock lock(mutex_);
       if (!running_ || stop_requested_) {
         return DbusService::MethodResult::Failure("adapter supervisor is not running");
       }
@@ -232,7 +239,7 @@ private:
     return request->result;
   }
 
-  void Wake() {
+  void Wake() const {
     if (wake_fd_ < 0) {
       return;
     }
@@ -240,7 +247,7 @@ private:
     (void)write(wake_fd_, &value, sizeof(value));
   }
 
-  void DrainWakeFd() {
+  void DrainWakeFd() const {
     if (wake_fd_ < 0) {
       return;
     }
@@ -274,11 +281,11 @@ private:
     auto runtime_settings = LoadCoreConfig();
     NormalizeCoreConfig(&runtime_settings);
     const auto* adapter = ResolveLlmAdapter(runtime_settings, adapter_id);
-    if (!adapter) {
+    if (adapter == nullptr) {
       return DbusService::MethodResult::Failure("adapter not found");
     }
 
-    if (adapters_.find(adapter_id) != adapters_.end() || vinput::adapter::IsRunning(adapter_id)) {
+    if (adapters_.contains(adapter_id) || vinput::adapter::IsRunning(adapter_id)) {
       return DbusService::MethodResult::Failure("adapter is already running");
     }
 
@@ -308,6 +315,7 @@ private:
       return DbusService::MethodResult::Failure(stderr_text);
     }
 
+    std::string error;
     if (!vinput::adapter::WritePidFile(adapter_id, process.pid, &error)) {
       TerminateProcessBounded(process.pid);
       close(process.stderr_fd);
@@ -329,7 +337,7 @@ private:
   DbusService::MethodResult HandleStopRequest(const std::string& adapter_id) {
     auto runtime_settings = LoadCoreConfig();
     NormalizeCoreConfig(&runtime_settings);
-    if (!ResolveLlmAdapter(runtime_settings, adapter_id)) {
+    if (ResolveLlmAdapter(runtime_settings, adapter_id) == nullptr) {
       return DbusService::MethodResult::Failure("adapter not found");
     }
 
@@ -363,7 +371,7 @@ private:
   void ProcessPendingRequests() {
     std::vector<std::shared_ptr<Request>> requests;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      const std::scoped_lock lock(mutex_);
       requests.swap(pending_requests_);
     }
 
@@ -376,7 +384,7 @@ private:
       }
 
       {
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         request->result = std::move(result);
         request->done = true;
       }
@@ -438,7 +446,7 @@ private:
       return;
     }
 
-    if (ret > 0 && (fds[0].revents & POLLIN)) {
+    if (ret > 0 && ((fds[0].revents & POLLIN) != 0)) {
       DrainWakeFd();
       ProcessPendingRequests();
     }
@@ -485,7 +493,7 @@ private:
     while (true) {
       ProcessPendingRequests();
       {
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         if (stop_requested_) {
           break;
         }
@@ -612,9 +620,9 @@ int main(int argc, char* argv[]) {
 
   fprintf(stderr, "vinput-daemon: running\n");
 
-  int dbus_fd = dbus.GetFd();
-  int notify_fd = dbus.GetNotifyFd();
-  int runtime_notify_fd = runtime_controller.GetNotifyFd();
+  const int dbus_fd = dbus.GetFd();
+  const int notify_fd = dbus.GetNotifyFd();
+  const int runtime_notify_fd = runtime_controller.GetNotifyFd();
   while (g_running) {
     pollfd fds[3] = {
         {.fd = dbus_fd, .events = POLLIN, .revents = 0},
@@ -622,10 +630,11 @@ int main(int argc, char* argv[]) {
         {.fd = runtime_notify_fd, .events = POLLIN, .revents = 0},
     };
 
-    int ret = poll(fds, 3, 1000);
+    const int ret = poll(fds, 3, 1000);
     if (ret < 0) {
-      if (errno == EINTR)
+      if (errno == EINTR) {
         continue;
+      }
       fprintf(stderr, "vinput-daemon: poll error: %s\n", strerror(errno));
       break;
     }
@@ -634,13 +643,13 @@ int main(int argc, char* argv[]) {
     capture.MaybeDestroyExpiredStream();
 
     if (ret > 0) {
-      if (fds[1].revents & POLLIN) {
+      if ((fds[1].revents & POLLIN) != 0) {
         dbus.FlushEmitQueue();
       }
-      if (fds[2].revents & POLLIN) {
+      if ((fds[2].revents & POLLIN) != 0) {
         runtime_controller.FlushDeferredActions();
       }
-      if (fds[0].revents & POLLIN) {
+      if ((fds[0].revents & POLLIN) != 0) {
         while (dbus.ProcessOnce()) {
           // process all pending messages
         }

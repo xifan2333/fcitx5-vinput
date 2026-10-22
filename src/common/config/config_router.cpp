@@ -156,7 +156,7 @@ Expected<void> SetConfigValue(const std::string& pointer, const std::string& val
   if (!SaveCoreConfig(updated)) {
     std::string validation_error;
     NormalizeCoreConfig(&updated);
-    if (ValidateCoreConfig(updated, &validation_error) && !validation_error.empty()) {
+    if (!ValidateCoreConfig(updated, &validation_error) && !validation_error.empty()) {
       return UnexpectedError(validation_error);
     }
     return UnexpectedError("Failed to save config.");
