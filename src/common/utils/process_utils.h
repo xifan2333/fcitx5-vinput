@@ -7,9 +7,12 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <sys/types.h>
 #include <type_traits>
 #include <vector>
+
+extern "C" {
+#include <time.h> // pid_t: <chrono> pulls <time.h> in first, so <sys/types.h> would be a no-op
+}
 
 #include "common/utils/expected.h"
 
@@ -63,6 +66,16 @@ void TerminateProcessBounded(pid_t pid, std::chrono::milliseconds graceful_timeo
 // buffer is cleared. A callback returning `false` stops draining immediately.
 template <typename Callback>
 void DrainLinesFromBuffer(std::string& buffer, Callback on_line, bool flush_tail = false) {
+  // 归一化回调结果：返回 void 的回调视为“继续”，返回 bool 的回调按其值决定
+  const auto deliver = [&on_line](std::string_view line) -> bool {
+    if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
+      on_line(line);
+      return true;
+    } else {
+      return static_cast<bool>(on_line(line));
+    }
+  };
+
   size_t processed = 0;
   size_t start = 0;
   bool should_stop = false;
@@ -80,13 +93,9 @@ void DrainLinesFromBuffer(std::string& buffer, Callback on_line, bool flush_tail
     start = end + 1;
     processed = start;
 
-    if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
-      on_line(line);
-    } else {
-      if (!static_cast<bool>(on_line(line))) {
-        should_stop = true;
-        break;
-      }
+    if (!deliver(line)) {
+      should_stop = true;
+      break;
     }
   }
 
@@ -99,11 +108,7 @@ void DrainLinesFromBuffer(std::string& buffer, Callback on_line, bool flush_tail
     if (tail.back() == '\r') {
       tail.remove_suffix(1);
     }
-    if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
-      on_line(tail);
-    } else {
-      (void)on_line(tail);
-    }
+    (void)deliver(tail);
     buffer.clear();
   }
 }

@@ -10,10 +10,12 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <sched.h> // pid_t (include-cleaner provider in this translation unit)
 #include <string>
 #include <string_view>
 #include <sys/eventfd.h>
 #include <sys/poll.h>
+#include <sys/types.h> // ssize_t
 #include <thread>
 #include <unistd.h>
 #include <utility>

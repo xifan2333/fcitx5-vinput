@@ -4,7 +4,6 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -23,6 +22,11 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+
+extern "C" {
+#include <signal.h> // SIGKILL
+#include <time.h>   // pid_t
+}
 
 #include "common/utils/expected.h"
 #include "common/utils/interpolation.h"
@@ -107,10 +111,10 @@ void TerminateProcessBounded(pid_t pid, std::chrono::milliseconds graceful_timeo
     return;
   }
 
-  constexpr auto kPollInterval = std::chrono::milliseconds(100);
   // Reaps the child within `timeout`. ECHILD means it was already reaped
   // elsewhere (or is not our child), so there is nothing left to wait for.
   const auto wait_for_exit = [pid](std::chrono::milliseconds timeout) {
+    constexpr auto kPollInterval = std::chrono::milliseconds(100);
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
       errno = 0;
