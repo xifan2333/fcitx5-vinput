@@ -179,8 +179,9 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
       }
       output << piece << '\t' << score << '\n';
       ++piece_count;
-      if (piece_count > kMaxPieceCount ||
-          std::cmp_greater(output.tellp(), kMaxBpeVocabularyBytes)) {
+      const auto tell_pos = static_cast<std::streamoff>(output.tellp());
+      if (piece_count > kMaxPieceCount || tell_pos < 0 ||
+          std::cmp_greater(tell_pos, kMaxBpeVocabularyBytes)) {
         if (error != nullptr) {
           *error = "SentencePiece vocabulary exceeds safety limits: " + model_path.string();
         }
