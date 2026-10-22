@@ -4,22 +4,28 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <ios>
+#include <iterator>
 #include <limits>
 #include <locale>
 #include <sstream>
+#include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 #include "common/utils/file_utils.h"
 
 namespace {
 
-constexpr std::uintmax_t kMaxSentencePieceModelBytes = 64 * 1024 * 1024;
-constexpr std::uintmax_t kMaxBpeVocabularyBytes = 256 * 1024 * 1024;
+constexpr std::uintmax_t kMaxSentencePieceModelBytes = 64ULL * 1024 * 1024;
+constexpr std::uintmax_t kMaxBpeVocabularyBytes = 256ULL * 1024 * 1024;
 constexpr std::size_t kMaxPieceCount = 1000000;
-constexpr std::size_t kMaxPieceBytes = 1024 * 1024;
+constexpr std::size_t kMaxPieceBytes = 1024ULL * 1024;
 
 bool ReadVarint(std::string_view data, std::size_t* offset, std::uint64_t* value) {
   std::uint64_t result = 0;
@@ -27,7 +33,7 @@ bool ReadVarint(std::string_view data, std::size_t* offset, std::uint64_t* value
     if (*offset >= data.size()) {
       return false;
     }
-    const std::uint8_t byte = static_cast<std::uint8_t>(data[(*offset)++]);
+    const auto byte = static_cast<std::uint8_t>(data[(*offset)++]);
     result |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
     if ((byte & 0x80) == 0) {
       *value = result;
@@ -82,8 +88,8 @@ bool ParseSentencePiece(std::string_view message, std::string* piece, float* sco
     if (!ReadVarint(message, &offset, &key)) {
       return false;
     }
-    const std::uint32_t field = static_cast<std::uint32_t>(key >> 3);
-    const std::uint32_t wire = static_cast<std::uint32_t>(key & 7);
+    const auto field = static_cast<std::uint32_t>(key >> 3);
+    const auto wire = static_cast<std::uint32_t>(key & 7);
     if (field == 1 && wire == 2) {
       std::string_view value;
       if (!ReadLengthDelimited(message, &offset, &value)) {
@@ -116,7 +122,7 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
   std::error_code size_error;
   const auto model_size = std::filesystem::file_size(model_path, size_error);
   if (size_error || model_size > kMaxSentencePieceModelBytes) {
-    if (error) {
+    if (error != nullptr) {
       *error = size_error ? "failed to inspect SentencePiece model: " + size_error.message()
                           : "SentencePiece model exceeds 64 MiB limit: " + model_path.string();
     }
@@ -125,14 +131,14 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
 
   std::ifstream input(model_path, std::ios::binary);
   if (!input) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to open SentencePiece model: " + model_path.string();
     }
     return false;
   }
-  std::string data((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  const std::string data((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
   if (!input.good() && !input.eof()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to read SentencePiece model: " + model_path.string();
     }
     return false;
@@ -147,17 +153,17 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
   while (offset < data.size()) {
     std::uint64_t key = 0;
     if (!ReadVarint(data, &offset, &key)) {
-      if (error) {
+      if (error != nullptr) {
         *error = "invalid SentencePiece ModelProto: " + model_path.string();
       }
       return false;
     }
-    const std::uint32_t field = static_cast<std::uint32_t>(key >> 3);
-    const std::uint32_t wire = static_cast<std::uint32_t>(key & 7);
+    const auto field = static_cast<std::uint32_t>(key >> 3);
+    const auto wire = static_cast<std::uint32_t>(key & 7);
     if (field == 1 && wire == 2) {
       std::string_view message;
       if (!ReadLengthDelimited(data, &offset, &message)) {
-        if (error) {
+        if (error != nullptr) {
           *error = "invalid SentencePiece piece record: " + model_path.string();
         }
         return false;
@@ -167,7 +173,7 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
       if (!ParseSentencePiece(message, &piece, &score) || piece.empty() ||
           piece.size() > kMaxPieceBytes || !std::isfinite(score) ||
           piece.find_first_of("\t\r\n") != std::string::npos) {
-        if (error) {
+        if (error != nullptr) {
           *error = "unsupported SentencePiece piece record in: " + model_path.string();
         }
         return false;
@@ -175,14 +181,14 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
       output << piece << '\t' << score << '\n';
       ++piece_count;
       if (piece_count > kMaxPieceCount ||
-          output.tellp() > static_cast<std::streamoff>(kMaxBpeVocabularyBytes)) {
-        if (error) {
+          std::cmp_greater(output.tellp(), kMaxBpeVocabularyBytes)) {
+        if (error != nullptr) {
           *error = "SentencePiece vocabulary exceeds safety limits: " + model_path.string();
         }
         return false;
       }
     } else if (!SkipField(data, &offset, wire)) {
-      if (error) {
+      if (error != nullptr) {
         *error = "unsupported SentencePiece ModelProto field in: " + model_path.string();
       }
       return false;
@@ -190,19 +196,19 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
   }
 
   if (piece_count == 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = "SentencePiece model contains no vocabulary pieces: " + model_path.string();
     }
     return false;
   }
 
   if (auto res = vinput::file::AtomicWriteTextFile(vocab_path, output.str()); !res) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to write BPE vocabulary: " + res.error();
     }
     return false;
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -212,7 +218,7 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
   std::error_code size_error;
   const auto vocab_size = std::filesystem::file_size(vocab_path, size_error);
   if (size_error || vocab_size == 0 || vocab_size > kMaxBpeVocabularyBytes) {
-    if (error) {
+    if (error != nullptr) {
       *error = size_error ? "failed to inspect BPE vocabulary: " + size_error.message()
                           : "BPE vocabulary is empty or exceeds 256 MiB: " + vocab_path.string();
     }
@@ -221,7 +227,7 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
 
   std::ifstream input(vocab_path, std::ios::binary);
   if (!input) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to open BPE vocabulary: " + vocab_path.string();
     }
     return false;
@@ -235,7 +241,7 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
     }
     const auto tab = line.find('\t');
     if (tab == std::string::npos || tab == 0 || tab + 1 >= line.size() || tab > kMaxPieceBytes) {
-      if (error) {
+      if (error != nullptr) {
         *error = "invalid BPE vocabulary line in: " + vocab_path.string();
       }
       return false;
@@ -244,25 +250,25 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
     char* end = nullptr;
     const float score = std::strtof(score_text.c_str(), &end);
     if (end != score_text.c_str() + score_text.size() || !std::isfinite(score)) {
-      if (error) {
+      if (error != nullptr) {
         *error = "invalid BPE vocabulary score in: " + vocab_path.string();
       }
       return false;
     }
     if (++piece_count > kMaxPieceCount) {
-      if (error) {
+      if (error != nullptr) {
         *error = "BPE vocabulary has too many pieces: " + vocab_path.string();
       }
       return false;
     }
   }
   if ((!input.good() && !input.eof()) || piece_count == 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to read BPE vocabulary: " + vocab_path.string();
     }
     return false;
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;

@@ -592,7 +592,6 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     const auto backup_dir = real_config_path.parent_path() / "backups";
     std::filesystem::create_directories(backup_dir, ec);
     const auto backup_file = backup_dir / (real_config_path.filename().string() + ".bak." + ts);
-    std::string err;
     if (auto res = vinput::file::AtomicWriteTextFile(backup_file, raw_config); !res) {
       report.error =
           "Failed to create backup for " + real_config_path.string() + ": " + res.error();
@@ -611,7 +610,6 @@ MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& co
     const auto backup_dir = real_conf_path.parent_path() / "backups";
     std::filesystem::create_directories(backup_dir, ec);
     const auto backup_file = backup_dir / (real_conf_path.filename().string() + ".bak." + ts);
-    std::string err;
     if (auto res = vinput::file::AtomicWriteTextFile(backup_file, raw_conf); !res) {
       report.error = "Failed to create backup for " + real_conf_path.string() + ": " + res.error();
       return report;

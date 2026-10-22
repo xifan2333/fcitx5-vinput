@@ -12,7 +12,9 @@
 
 #include "daemon/asr/hotword_utils.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -20,8 +22,6 @@ inline void AssertTrue(bool condition, const char* message, const char* file, in
 }
 
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
-
-namespace {
 
 void TestFamilyCheckers() {
   using namespace vinput::daemon::asr;
@@ -159,7 +159,6 @@ void TestColonHandling() {
   // Literal colons in terms that don't look like scores (e.g. URLs, C++ symbols)
   const auto literal_file = temp_dir->Path() / "literal.txt";
   const std::string literal_content = "https://example.com/api\nstd::vector\nprefix:suffix\n";
-  std::string write_err;
   TEST_ASSERT(vinput::file::AtomicWriteTextFile(literal_file, literal_content).has_value());
 
   std::string hotwords;

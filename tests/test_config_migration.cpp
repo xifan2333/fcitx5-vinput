@@ -282,7 +282,7 @@ void TestVersionConstraintAndCustomizationPreserved() {
   // vinput.conf must have HoldActivationDelay removed
   auto r_conf2 = vinput::file::ReadTextFile(conf_path);
   ExpectTrue(r_conf2.has_value(), r_conf2 ? "" : r_conf2.error());
-  std::string read_conf_str = *r_conf2;
+  const std::string read_conf_str = *r_conf2;
   ExpectTrue(read_conf_str.find("HoldActivationDelay") == std::string::npos,
              "HoldActivationDelay must be removed from vinput.conf");
 
@@ -322,7 +322,7 @@ void TestUndefinedFieldsAndIntegrityPreserved() {
 
   auto r_conf3 = vinput::file::ReadTextFile(conf_path);
   ExpectTrue(r_conf3.has_value(), r_conf3 ? "" : r_conf3.error());
-  std::string read_conf_str = *r_conf3;
+  const std::string read_conf_str = *r_conf3;
 
   // Replaced / removed keys
   ExpectTrue(read_conf_str.find("MenuKey=Alt+Shift+V") != std::string::npos,

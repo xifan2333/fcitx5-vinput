@@ -29,6 +29,9 @@ extern "C" {
 
 namespace {
 
+using vinput::Expected;
+using vinput::UnexpectedError;
+
 constexpr int kMaxSymlinkDepth = 32;
 
 std::filesystem::path ResolveRelativeSymlinkTarget(const std::filesystem::path& symlink_path,
@@ -53,7 +56,7 @@ std::filesystem::path ResolveRelativeSymlinkTarget(const std::filesystem::path& 
 bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::path* resolved,
                             std::string* error, int depth) {
   if (depth >= kMaxSymlinkDepth) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Too many symlink levels while resolving " + path.string();
     }
     return false;
@@ -82,7 +85,7 @@ bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::
     return true;
   }
   if (ec) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Failed to inspect path " + path.string() + ": " + ec.message();
     }
     return false;
@@ -94,7 +97,7 @@ bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::
 
   const auto link_target = std::filesystem::read_symlink(path, ec);
   if (ec) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Failed to read symlink " + path.string() + ": " + ec.message();
     }
     return false;
@@ -209,7 +212,7 @@ std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path
     tmpl = (dir / (std::string(prefix) + "XXXXXX")).string();
   }
 
-  char* result = ::mkdtemp(tmpl.data());
+  const char* result = ::mkdtemp(tmpl.data());
   if (result == nullptr) {
     if (error != nullptr) {
       *error = "Failed to create temporary directory: " + std::string(std::strerror(errno));
@@ -337,8 +340,8 @@ Expected<ReadOnlyFileMapping> MapFileReadOnly(const std::filesystem::path& path)
 
 bool ResolveSymlinkPath(const std::filesystem::path& path, std::filesystem::path* resolved,
                         std::string* error) {
-  if (!resolved) {
-    if (error) {
+  if (resolved == nullptr) {
+    if (error != nullptr) {
       *error = "ResolveSymlinkPath requires a destination path.";
     }
     return false;
@@ -354,8 +357,9 @@ bool EnsureParentDirectory(const std::filesystem::path& path, std::string* error
   std::error_code ec;
   std::filesystem::create_directories(parent, ec);
   if (ec) {
-    if (error)
+    if (error != nullptr) {
       *error = "Failed to create directory " + parent.string() + ": " + ec.message();
+    }
     return false;
   }
   return true;
@@ -415,7 +419,7 @@ Expected<void> AtomicWriteTextFile(const std::filesystem::path& target, std::str
       resolved_target.parent_path() / (resolved_target.filename().string() + ".tmp.XXXXXX");
   std::string tmp_str = tmp_path.string();
 
-  int fd = mkstemp(tmp_str.data());
+  const int fd = mkstemp(tmp_str.data());
   if (fd < 0) {
     return UnexpectedError(std::string("mkstemp failed: ") + std::strerror(errno));
   }
@@ -430,11 +434,12 @@ Expected<void> AtomicWriteTextFile(const std::filesystem::path& target, std::str
   const char* data = content.data();
   size_t remaining = content.size();
   while (remaining > 0) {
-    ssize_t written = write(fd, data, remaining);
+    const ssize_t written = write(fd, data, remaining);
     if (written < 0) {
-      if (errno == EINTR)
+      if (errno == EINTR) {
         continue;
-      std::string err = std::string("write failed: ") + std::strerror(errno);
+      }
+      const std::string err = std::string("write failed: ") + std::strerror(errno);
       close(fd);
       unlink(tmp_str.c_str());
       return UnexpectedError(err);
@@ -444,7 +449,7 @@ Expected<void> AtomicWriteTextFile(const std::filesystem::path& target, std::str
   }
 
   if (fsync(fd) != 0) {
-    std::string err = std::string("fsync failed: ") + std::strerror(errno);
+    const std::string err = std::string("fsync failed: ") + std::strerror(errno);
     close(fd);
     unlink(tmp_str.c_str());
     return UnexpectedError(err);

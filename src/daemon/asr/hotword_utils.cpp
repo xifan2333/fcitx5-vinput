@@ -80,19 +80,22 @@ Utf8Validation ValidateHotwordText(std::string_view text) noexcept {
     size_t bytes = 0;
     char32_t cp = 0;
     if (!unicode::utf8::decode_codepoint(text.data() + offset, text.size() - offset, bytes, cp)) {
-      return {false, offset, "invalid UTF-8 sequence"};
+      return {.valid = false, .error_offset = offset, .error_reason = "invalid UTF-8 sequence"};
     }
     if (cp == 0) {
-      return {false, offset, "embedded NUL is not allowed"};
+      return {
+          .valid = false, .error_offset = offset, .error_reason = "embedded NUL is not allowed"};
     }
     const bool is_ascii_whitespace = (cp == '\t' || cp == '\n' || cp == '\r');
     if (!is_ascii_whitespace &&
         (unicode::general_category(cp) == unicode::GeneralCategory::Cc || cp < 0x20)) {
-      return {false, offset, "control character is not allowed"};
+      return {.valid = false,
+              .error_offset = offset,
+              .error_reason = "control character is not allowed"};
     }
     offset += bytes;
   }
-  return {true, 0, nullptr};
+  return {.valid = true, .error_offset = 0, .error_reason = nullptr};
 }
 
 constexpr bool IsHotwordWhitespace(char c) noexcept {
@@ -101,10 +104,10 @@ constexpr bool IsHotwordWhitespace(char c) noexcept {
 
 bool ReadHotwordFile(const std::string& path, std::string* content, std::string* error) {
   if (path.empty()) {
-    if (content) {
+    if (content != nullptr) {
       content->clear();
     }
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -113,36 +116,35 @@ bool ReadHotwordFile(const std::string& path, std::string* content, std::string*
   std::error_code ec;
   const std::filesystem::path file_path(path);
   if (!std::filesystem::is_regular_file(file_path, ec) || ec) {
-    if (error) {
+    if (error != nullptr) {
       *error = "hotwords file is not a regular file: " + path;
     }
     return false;
   }
   const auto size = std::filesystem::file_size(file_path, ec);
   if (ec) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to inspect hotwords file '" + path + "': " + ec.message();
     }
     return false;
   }
   if (size > kMaxHotwordFileBytes) {
-    if (error) {
+    if (error != nullptr) {
       *error = "hotwords file exceeds 1 MiB limit: " + path;
     }
     return false;
   }
 
-  std::string read_error;
   auto read_res = vinput::file::ReadTextFile(file_path, kMaxHotwordFileBytes + 1);
   if (!read_res) {
-    if (error) {
+    if (error != nullptr) {
       *error = "failed to read hotwords file: " + path;
     }
     return false;
   }
   std::string text = std::move(*read_res);
   if (text.size() > kMaxHotwordFileBytes) {
-    if (error) {
+    if (error != nullptr) {
       *error = "hotwords file exceeds 1 MiB limit: " + path;
     }
     return false;
@@ -155,10 +157,10 @@ bool ReadHotwordFile(const std::string& path, std::string* content, std::string*
     }
     return false;
   }
-  if (content) {
+  if (content != nullptr) {
     *content = std::move(text);
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -177,7 +179,7 @@ bool LooksLikeScore(std::string_view value) {
   if (value.empty()) {
     return true;
   }
-  const unsigned char first = static_cast<unsigned char>(value.front());
+  const auto first = static_cast<unsigned char>(value.front());
   if ((first >= '0' && first <= '9') || first == '+' || first == '-' || first == '.') {
     return true;
   }
@@ -198,7 +200,7 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
 
   for (std::size_t i = 1; i < line.size(); ++i) {
     if (line[i] == ':' && IsHotwordWhitespace(line[i - 1])) {
-      if (error) {
+      if (error != nullptr) {
         *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
       }
       return false;
@@ -220,13 +222,13 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
     const bool whitespace_before = !raw_text.empty() && IsHotwordWhitespace(raw_text.back());
     const bool whitespace_after = raw_score != score;
     if (whitespace_before || whitespace_after) {
-      if (error) {
+      if (error != nullptr) {
         *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
       }
       return false;
     }
     if (text.empty()) {
-      if (error) {
+      if (error != nullptr) {
         *error = "hotword score has no preceding word or phrase: " + std::string(line);
       }
       return false;
@@ -242,7 +244,7 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
   const bool whitespace_before = !raw_text.empty() && IsHotwordWhitespace(raw_text.back());
   const bool whitespace_after = raw_score != score;
   if (whitespace_before || whitespace_after || LooksLikeScore(score)) {
-    if (error) {
+    if (error != nullptr) {
       *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
     }
     return false;
@@ -272,7 +274,7 @@ bool LoadHotwordEntries(const std::string& path, std::vector<HotwordEntry>* entr
       entries->push_back(std::move(entry));
     }
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -333,7 +335,7 @@ bool LoadPromptHotwordsCsv(const std::string& path, std::string* hotwords, std::
 bool ValidateTransducerHotwordAssets(const ModelInfo& info, std::string* error) {
   const std::string modeling_unit = JsonString(info.model_config, "modeling_unit");
   if (modeling_unit.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "hotword-capable transducer is missing model.modeling_unit; "
                "reinstall or update the model";
     }
@@ -341,7 +343,7 @@ bool ValidateTransducerHotwordAssets(const ModelInfo& info, std::string* error) 
   }
   if (modeling_unit != "cjkchar" && modeling_unit != "bpe" && modeling_unit != "bbpe" &&
       modeling_unit != "cjkchar+bpe") {
-    if (error) {
+    if (error != nullptr) {
       *error = "unsupported sherpa-onnx hotword modeling_unit '" + modeling_unit + "'";
     }
     return false;
@@ -350,7 +352,7 @@ bool ValidateTransducerHotwordAssets(const ModelInfo& info, std::string* error) 
   if (modeling_unit == "bpe" || modeling_unit == "bbpe" || modeling_unit == "cjkchar+bpe") {
     const std::string bpe_vocab = info.File("bpe_vocab");
     if (bpe_vocab.empty() || !std::filesystem::is_regular_file(bpe_vocab)) {
-      if (error) {
+      if (error != nullptr) {
         *error = "modeling_unit '" + modeling_unit + "' requires model.bpe_vocab";
       }
       return false;
@@ -360,7 +362,7 @@ bool ValidateTransducerHotwordAssets(const ModelInfo& info, std::string* error) 
     }
   }
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
