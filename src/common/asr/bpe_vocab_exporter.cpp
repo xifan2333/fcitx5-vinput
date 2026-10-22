@@ -1,9 +1,9 @@
 #include "common/asr/bpe_vocab_exporter.h"
 
 #include <bit>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -247,9 +247,11 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
       return false;
     }
     const std::string score_text = line.substr(tab + 1);
-    const char* end = nullptr;
-    const float score = std::strtof(score_text.c_str(), &end);
-    if (end != score_text.c_str() + score_text.size() || !std::isfinite(score)) {
+    float score = 0.0f;
+    const auto [ptr, ec] =
+        std::from_chars(score_text.data(), score_text.data() + score_text.size(), score);
+    if (ec != std::errc{} || ptr != score_text.data() + score_text.size() ||
+        !std::isfinite(score)) {
       if (error != nullptr) {
         *error = "invalid BPE vocabulary score in: " + vocab_path.string();
       }
