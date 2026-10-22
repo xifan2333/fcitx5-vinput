@@ -3,9 +3,8 @@
 #include <memory>
 #include <string>
 
-#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 
-#include "daemon/asr/asr_config.h"
 #include "daemon/asr/local_asr_model_loader.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 

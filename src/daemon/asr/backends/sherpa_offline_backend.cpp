@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "common/asr/model_manager.h"
-#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
 #include "common/utils/file_utils.h"

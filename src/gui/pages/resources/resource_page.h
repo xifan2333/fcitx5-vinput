@@ -44,8 +44,8 @@ private slots:
   void onRemoveAdapterClicked();
   void updateProviderButtons();
   void updateAdapterButtons();
-  void onDownloadProgress(int percent, QString speed);
-  void onDownloadError(QString msg);
+  void onDownloadProgress(int percent, const QString& speed);
+  void onDownloadError(const QString& msg);
   void onDownloadFinished(DownloadWorker* originating_worker = nullptr);
 
 private:
@@ -53,7 +53,7 @@ private:
   void populateRemoteModels(const std::vector<RemoteModelEntry>& models);
   void populateRemoteProviders(const std::vector<vinput::script::RegistryEntry>& providers);
   void populateRemoteAdapters(const std::vector<vinput::script::RegistryEntry>& adapters);
-  void applyTableFilter(QTableWidget* table, const QString& filter_text);
+  static void applyTableFilter(QTableWidget* table, const QString& filter_text);
   void refreshLocalizedTables();
   void finishRefreshAfterI18n(const QString& error = {}, quint64 generation = 0);
 

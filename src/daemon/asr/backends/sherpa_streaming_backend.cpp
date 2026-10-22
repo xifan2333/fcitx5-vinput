@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "common/asr/model_manager.h"
-#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
 #include "common/utils/string_utils.h"
@@ -457,8 +456,7 @@ private:
 
 } // namespace
 
-std::unique_ptr<AsrBackend> CreateSherpaStreamingBackend(const CoreConfig& config,
-                                                         const LocalAsrProvider& provider,
+std::unique_ptr<AsrBackend> CreateSherpaStreamingBackend(const LocalAsrProvider& provider,
                                                          LocalAsrModelContext context,
                                                          std::string* error) {
   context.asr_config.vad_enabled = false;

@@ -3,8 +3,11 @@
 #include <string>
 #include <utility>
 
+#include "common/asr/model_manager.h"
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/i18n.h"
+#include "common/utils/expected.h"
 #include "common/utils/string_utils.h"
 
 namespace vinput::daemon::asr {

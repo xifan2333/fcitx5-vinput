@@ -17,33 +17,54 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qcontainerfwd.h>
 #include <QtCore/qcoreevent.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qpointer.h>
-#include <QtCore/qstringliteral.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
 #include <QtCore/qthread.h>
+#include <QtCore/qthreadpool.h>
+#include <QtCore/qtimer.h>
+#include <QtCore/qtmetamacros.h>
+#include <QtCore/qtypes.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qdesktopservices.h>
 #include <QtGui/qevent.h>
 #include <QtGui/qpainter.h>
-#include <QtWidgets/qstyle.h>
+#include <QtWidgets/qabstractitemview.h>
+#include <QtWidgets/qboxlayout.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qmessagebox.h>
+#include <QtWidgets/qprogressbar.h>
+#include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qstyleditemdelegate.h>
 #include <QtWidgets/qstyleoption.h>
+#include <QtWidgets/qtablewidget.h>
+#include <QtWidgets/qtabwidget.h>
+#include <QtWidgets/qtextedit.h>
+#include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <system_error>
+#include <utility>
 #include <variant>
+#include <vector>
 
+#include "common/asr/model_manager.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/llm/adapter_manager.h"
 #include "common/registry/installed_manifest.h"
+#include "common/registry/registry_i18n.h"
 #include "common/registry/registry_models.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/file_utils.h"
-#include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
 
@@ -89,7 +110,7 @@ public:
 };
 
 void SetupTable(QTableWidget* t, const QStringList& headers) {
-  t->setColumnCount(headers.size());
+  t->setColumnCount(static_cast<int>(headers.size()));
   t->setHorizontalHeaderLabels(headers);
   t->setSelectionBehavior(QAbstractItemView::SelectRows);
   t->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -111,7 +132,7 @@ bool ReloadAsrBackend(std::string* error = nullptr) {
   vinput::cli::DbusClient dbus;
   std::string daemon_error;
   if (!dbus.IsDaemonRunning(&daemon_error)) {
-    if (error) {
+    if (error != nullptr) {
       *error = daemon_error;
     }
     return daemon_error.empty();
@@ -120,7 +141,7 @@ bool ReloadAsrBackend(std::string* error = nullptr) {
 }
 
 template <typename Callback> void RunReloadAsrBackendAsync(ResourcePage* page, Callback callback) {
-  QPointer<ResourcePage> self(page);
+  const QPointer<ResourcePage> self(page);
   QThreadPool::globalInstance()->start([self, callback = std::move(callback)]() mutable {
     std::string err;
     const bool ok = ReloadAsrBackend(&err);
@@ -135,9 +156,17 @@ template <typename Callback> void RunReloadAsrBackendAsync(ResourcePage* page, C
 
 } // namespace
 
-ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
+ResourcePage::ResourcePage(QWidget* parent)
+    : QWidget(parent), resourceTabs_(new QTabWidget(this)),
+#if VINPUT_ENABLE_LOCAL_ASR
+      tableInstalledModels_(new QTableWidget()), tableAvailableModels_(new QTableWidget()),
+#else
+      tableInstalledModels_(nullptr), tableAvailableModels_(nullptr),
+#endif
+      tableAvailableProviders_(new QTableWidget()), tableAvailableAdapters_(new QTableWidget()),
+      downloadStatusLabel_(new QLabel()), downloadProgressBar_(new QProgressBar()),
+      textLog_(new QTextEdit()) {
   auto* layout = new QVBoxLayout(this);
-  resourceTabs_ = new QTabWidget(this);
   layout->addWidget(resourceTabs_, 1);
 
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -150,7 +179,6 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
   modelsLayout->addWidget(filterInstalledModels_);
 
   auto* topLayout = new QHBoxLayout();
-  tableInstalledModels_ = new QTableWidget();
   SetupTable(tableInstalledModels_,
              {tr("Name"), tr("Type"), tr("Language"), tr("Size"), tr("Hotwords"), tr("Status")});
   topLayout->addWidget(tableInstalledModels_, 1);
@@ -172,7 +200,6 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
   modelsLayout->addWidget(filterAvailableModels_);
 
   auto* remoteLayout = new QHBoxLayout();
-  tableAvailableModels_ = new QTableWidget();
   SetupTable(tableAvailableModels_, {tr("Title"), tr("Description"), tr("Type"), tr("Language"),
                                      tr("Size"), tr("Hotwords"), tr("Status")});
   remoteLayout->addWidget(tableAvailableModels_, 1);
@@ -187,8 +214,6 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
 #else
   filterInstalledModels_ = nullptr;
   filterAvailableModels_ = nullptr;
-  tableInstalledModels_ = nullptr;
-  tableAvailableModels_ = nullptr;
   btnUseModel_ = nullptr;
   btnRemoveModel_ = nullptr;
   btnDownloadModel_ = nullptr;
@@ -204,7 +229,6 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
   providersLayout->addWidget(filterAvailableProviders_);
 
   auto* providerLayout = new QHBoxLayout();
-  tableAvailableProviders_ = new QTableWidget();
   SetupTable(tableAvailableProviders_,
              {tr("Title"), tr("Description"), tr("Mode"), tr("Status"), tr("README")});
   tableAvailableProviders_->setItemDelegateForColumn(4, new LinkDelegate(tableAvailableProviders_));
@@ -233,7 +257,6 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
   adaptersLayout->addWidget(filterAvailableAdapters_);
 
   auto* adapterLayout = new QHBoxLayout();
-  tableAvailableAdapters_ = new QTableWidget();
   SetupTable(tableAvailableAdapters_, {tr("Title"), tr("Description"), tr("Status"), tr("README")});
   tableAvailableAdapters_->setItemDelegateForColumn(3, new LinkDelegate(tableAvailableAdapters_));
   adapterLayout->addWidget(tableAvailableAdapters_, 1);
@@ -250,15 +273,12 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
   adaptersLayout->addLayout(adapterLayout, 1);
   resourceTabs_->addTab(adaptersTab, tr("LLM Adapters"));
 
-  textLog_ = new QTextEdit();
   textLog_->setReadOnly(true);
   textLog_->setMaximumHeight(100);
 
-  downloadStatusLabel_ = new QLabel();
   downloadStatusLabel_->setVisible(false);
   layout->addWidget(downloadStatusLabel_);
 
-  downloadProgressBar_ = new QProgressBar();
   downloadProgressBar_->setRange(0, 100);
   downloadProgressBar_->setValue(0);
   downloadProgressBar_->setVisible(false);
@@ -329,8 +349,8 @@ ResourcePage::ResourcePage(QWidget* parent) : QWidget(parent) {
 #if VINPUT_ENABLE_LOCAL_ASR
   // Show installed models immediately; remote lists fill after refreshAll.
   {
-    CoreConfig config = ConfigManager::Get().Load();
-    ModelManager manager(ResolveModelBaseDir(config).string());
+    const CoreConfig config = ConfigManager::Get().Load();
+    const ModelManager manager(ResolveModelBaseDir(config).string());
     populateLocalModels(manager.ListDetailed(ResolvePreferredLocalModel(config)));
   }
 #endif
@@ -354,8 +374,8 @@ void ResourcePage::reload() {
 
 void ResourcePage::refreshLocalizedTables() {
 #if VINPUT_ENABLE_LOCAL_ASR
-  CoreConfig config = ConfigManager::Get().Load();
-  ModelManager manager(ResolveModelBaseDir(config).string());
+  const CoreConfig config = ConfigManager::Get().Load();
+  const ModelManager manager(ResolveModelBaseDir(config).string());
   populateLocalModels(manager.ListDetailed(ResolvePreferredLocalModel(config)));
   populateRemoteModels(remoteModels_);
 #endif
@@ -388,7 +408,7 @@ void ResourcePage::finishRefreshAfterI18n(const QString& error, quint64 generati
 // ---------------------------------------------------------------------------
 
 void ResourcePage::applyTableFilter(QTableWidget* table, const QString& filter_text) {
-  if (!table) {
+  if (table == nullptr) {
     return;
   }
 
@@ -398,7 +418,7 @@ void ResourcePage::applyTableFilter(QTableWidget* table, const QString& filter_t
     if (!matches) {
       for (int col = 0; col < table->columnCount(); ++col) {
         const auto* item = table->item(row, col);
-        if (!item) {
+        if (item == nullptr) {
           continue;
         }
         const QString haystack = item->text() + '\n' + item->data(Qt::UserRole).toString();
@@ -425,12 +445,12 @@ void ResourcePage::populateLocalModels(const std::vector<ModelSummary>& models) 
   auto i18n_map = I18nCache::Get().GetMap();
 
   for (const auto& model : models) {
-    QString id = QString::fromStdString(model.id);
-    QString titleStr =
+    const QString id = QString::fromStdString(model.id);
+    const QString titleStr =
         QString::fromStdString(vinput::registry::LookupI18n(i18n_map, model.id + ".title", ""));
-    QString title = titleStr.isEmpty() ? id : titleStr;
+    const QString title = titleStr.isEmpty() ? id : titleStr;
 
-    int row = tableInstalledModels_->rowCount();
+    const int row = tableInstalledModels_->rowCount();
     tableInstalledModels_->insertRow(row);
     tableInstalledModels_->setItem(row, 0, MakeCell(title, id));
     tableInstalledModels_->setItem(row, 1, MakeCell(QString::fromStdString(model.model_type)));
@@ -444,12 +464,13 @@ void ResourcePage::populateLocalModels(const std::vector<ModelSummary>& models) 
                                    MakeCell(model.supports_hotwords ? tr("yes") : tr("no")));
 
     QString status;
-    if (model.state == ModelState::Active)
+    if (model.state == ModelState::Active) {
       status = tr("active");
-    else if (model.state == ModelState::Broken)
+    } else if (model.state == ModelState::Broken) {
       status = tr("broken");
-    else
+    } else {
       status = tr("installed");
+    }
 
     auto* stCell = MakeCell(status);
     if (model.state == ModelState::Active) {
@@ -474,21 +495,21 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
   }
   tableAvailableModels_->setRowCount(0);
 
-  CoreConfig config = ConfigManager::Get().Load();
-  ModelManager manager(ResolveModelBaseDir(config).string());
+  const CoreConfig config = ConfigManager::Get().Load();
+  const ModelManager manager(ResolveModelBaseDir(config).string());
   auto localModels = manager.ListDetailed("");
   auto i18n_map = I18nCache::Get().GetMap();
 
   for (const auto& model : models) {
-    QString id = QString::fromStdString(model.id);
+    const QString id = QString::fromStdString(model.id);
 
-    QString titleStr =
+    const QString titleStr =
         QString::fromStdString(vinput::registry::LookupI18n(i18n_map, model.id + ".title", ""));
-    QString title = titleStr.isEmpty() ? id : titleStr;
-    QString desc = QString::fromStdString(
+    const QString title = titleStr.isEmpty() ? id : titleStr;
+    const QString desc = QString::fromStdString(
         vinput::registry::LookupI18n(i18n_map, model.id + ".description", ""));
 
-    int row = tableAvailableModels_->rowCount();
+    const int row = tableAvailableModels_->rowCount();
     tableAvailableModels_->insertRow(row);
     tableAvailableModels_->setItem(row, 0, MakeCell(title, id));
     tableAvailableModels_->setItem(row, 1, MakeCell(desc));
@@ -502,15 +523,16 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
     tableAvailableModels_->setItem(row, 5,
                                    MakeCell(model.supports_hotwords() ? tr("yes") : tr("no")));
 
-    bool installed = std::any_of(localModels.begin(), localModels.end(),
-                                 [&](const ModelSummary& m) { return m.id == model.id; });
-    QString status = installed ? tr("installed") : tr("available");
+    const bool installed =
+        std::ranges::any_of(localModels, [&](const ModelSummary& m) { return m.id == model.id; });
+    const QString status = installed ? tr("installed") : tr("available");
 
     auto* stCell = MakeCell(status);
     if (installed) {
       for (int c = 0; c < tableAvailableModels_->columnCount(); ++c) {
-        if (auto* ci = tableAvailableModels_->item(row, c))
+        if (auto* ci = tableAvailableModels_->item(row, c)) {
           ci->setFlags(ci->flags() & ~Qt::ItemIsEnabled);
+        }
       }
     }
     tableAvailableModels_->setItem(row, 6, stCell);
@@ -523,20 +545,20 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
 void ResourcePage::populateRemoteProviders(
     const std::vector<vinput::script::RegistryEntry>& providers) {
   tableAvailableProviders_->setRowCount(0);
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
   auto i18n_map = I18nCache::Get().GetMap();
   const auto manifest = vinput::registry::InstalledManifest::Load();
 
   for (const auto& entry : providers) {
-    QString id = QString::fromStdString(entry.id);
+    const QString id = QString::fromStdString(entry.id);
 
-    QString titleStr =
+    const QString titleStr =
         QString::fromStdString(vinput::registry::LookupI18n(i18n_map, entry.id + ".title", ""));
-    QString title = titleStr.isEmpty() ? id : titleStr;
-    QString desc = QString::fromStdString(
+    const QString title = titleStr.isEmpty() ? id : titleStr;
+    const QString desc = QString::fromStdString(
         vinput::registry::LookupI18n(i18n_map, entry.id + ".description", ""));
 
-    int row = tableAvailableProviders_->rowCount();
+    const int row = tableAvailableProviders_->rowCount();
     tableAvailableProviders_->insertRow(row);
     tableAvailableProviders_->setItem(row, 0, MakeCell(title, id));
     tableAvailableProviders_->setItem(row, 1, MakeCell(desc));
@@ -590,20 +612,20 @@ void ResourcePage::populateRemoteProviders(
 void ResourcePage::populateRemoteAdapters(
     const std::vector<vinput::script::RegistryEntry>& adapters) {
   tableAvailableAdapters_->setRowCount(0);
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
   auto i18n_map = I18nCache::Get().GetMap();
   const auto manifest = vinput::registry::InstalledManifest::Load();
 
   for (const auto& entry : adapters) {
-    QString id = QString::fromStdString(entry.id);
+    const QString id = QString::fromStdString(entry.id);
 
-    QString titleStr =
+    const QString titleStr =
         QString::fromStdString(vinput::registry::LookupI18n(i18n_map, entry.id + ".title", ""));
-    QString title = titleStr.isEmpty() ? id : titleStr;
-    QString desc = QString::fromStdString(
+    const QString title = titleStr.isEmpty() ? id : titleStr;
+    const QString desc = QString::fromStdString(
         vinput::registry::LookupI18n(i18n_map, entry.id + ".description", ""));
 
-    int row = tableAvailableAdapters_->rowCount();
+    const int row = tableAvailableAdapters_->rowCount();
     tableAvailableAdapters_->insertRow(row);
     tableAvailableAdapters_->setItem(row, 0, MakeCell(title, id));
     tableAvailableAdapters_->setItem(row, 1, MakeCell(desc));
@@ -653,23 +675,25 @@ void ResourcePage::populateRemoteAdapters(
 }
 
 void ResourcePage::refreshAll() {
-  CoreConfig config = ConfigManager::Get().Load();
-  QString baseDir = QString::fromStdString(ResolveModelBaseDir(config).string());
-  QPointer<ResourcePage> self(this);
+  const CoreConfig config = ConfigManager::Get().Load();
+#if VINPUT_ENABLE_LOCAL_ASR
+  const QString baseDir = QString::fromStdString(ResolveModelBaseDir(config).string());
+#endif
+  const QPointer<ResourcePage> self(this);
   const uint64_t generation = ++refreshGeneration_;
   refreshWaitingForI18n_ = false;
   i18nWaitGeneration_ = 0;
 
   // Keep installed models visible during the network round-trip.
 #if VINPUT_ENABLE_LOCAL_ASR
-  ModelManager local_manager(baseDir.toStdString());
+  const ModelManager local_manager(baseDir.toStdString());
   populateLocalModels(local_manager.ListDetailed(ResolvePreferredLocalModel(config)));
 #endif
 
   btnRefreshResources_->setEnabled(false);
   textLog_->append(tr("Fetching remote registry..."));
 
-  QThreadPool::globalInstance()->start([self, config, baseDir, generation]() {
+  QThreadPool::globalInstance()->start([self, config, generation]() {
     if (!self) {
       return;
     }
@@ -680,9 +704,8 @@ void ResourcePage::refreshAll() {
     std::string adapters_error;
 
 #if VINPUT_ENABLE_LOCAL_ASR
-    const ModelRepository repo(baseDir.toStdString());
-    auto remote_models = repo.FetchRegistry(config, ResolveModelRegistryUrls(config), &models_error,
-                                            nullptr, &warnings);
+    auto remote_models = ModelRepository::FetchRegistry(config, ResolveModelRegistryUrls(config),
+                                                        &models_error, nullptr, &warnings);
 #else
     std::vector<RemoteModelEntry> remote_models;
 #endif
@@ -693,8 +716,8 @@ void ResourcePage::refreshAll() {
                                                          ResolveLlmAdapterRegistryUrls(config),
                                                          &adapters_error, nullptr, &warnings);
 
-    std::sort(warnings.begin(), warnings.end());
-    warnings.erase(std::unique(warnings.begin(), warnings.end()), warnings.end());
+    std::ranges::sort(warnings);
+    warnings.erase(std::ranges::unique(warnings).begin(), warnings.end());
 
     QMetaObject::invokeMethod(
         self,
@@ -767,10 +790,11 @@ void ResourcePage::onUseModelClicked() {
     return;
   }
   auto items = tableInstalledModels_->selectedItems();
-  if (items.isEmpty())
+  if (items.isEmpty()) {
     return;
+  }
   auto* name_item = tableInstalledModels_->item(tableInstalledModels_->currentRow(), 0);
-  QString model_id = name_item->data(Qt::UserRole).toString();
+  const QString model_id = name_item->data(Qt::UserRole).toString();
   QString model_title = name_item->text();
   if (model_title.isEmpty()) {
     model_title = model_id;
@@ -810,10 +834,11 @@ void ResourcePage::onRemoveModelClicked() {
     return;
   }
   auto items = tableInstalledModels_->selectedItems();
-  if (items.isEmpty())
+  if (items.isEmpty()) {
     return;
+  }
   auto* name_item = tableInstalledModels_->item(tableInstalledModels_->currentRow(), 0);
-  QString model_id = name_item->data(Qt::UserRole).toString();
+  const QString model_id = name_item->data(Qt::UserRole).toString();
   QString model_title = name_item->text();
   if (model_title.isEmpty()) {
     model_title = model_id;
@@ -824,7 +849,7 @@ void ResourcePage::onRemoveModelClicked() {
   if (response == QMessageBox::Yes) {
     CoreConfig config = ConfigManager::Get().Load();
     const bool reload_backend = ResolvePreferredLocalModel(config) == model_id.toStdString();
-    ModelManager manager(ResolveModelBaseDir(config).string());
+    const ModelManager manager(ResolveModelBaseDir(config).string());
     std::string err;
     if (auto remove_result = manager.Remove(model_id.toStdString()); !remove_result) {
       QMessageBox::warning(this, tr("Error"),
@@ -856,14 +881,14 @@ void ResourcePage::onRemoveModelClicked() {
 #endif
 }
 
-void ResourcePage::onDownloadProgress(int percent, QString speed) {
+void ResourcePage::onDownloadProgress(int percent, const QString& speed) {
   downloadStatusLabel_->setText(tr("Downloading... %1% at %2").arg(percent).arg(speed));
   downloadStatusLabel_->setVisible(true);
   downloadProgressBar_->setValue(percent);
   downloadProgressBar_->setVisible(true);
 }
 
-void ResourcePage::onDownloadError(QString msg) {
+void ResourcePage::onDownloadError(const QString& msg) {
   QMessageBox::critical(this, tr("Download Error"), msg);
   onDownloadFinished();
 }
@@ -906,10 +931,11 @@ void ResourcePage::onDownloadModelClicked() {
     return;
   }
   auto items = tableAvailableModels_->selectedItems();
-  if (items.isEmpty())
+  if (items.isEmpty()) {
     return;
+  }
   auto* name_item = tableAvailableModels_->item(tableAvailableModels_->currentRow(), 0);
-  QString model_id = name_item->data(Qt::UserRole).toString();
+  const QString model_id = name_item->data(Qt::UserRole).toString();
   QString model_title = name_item->text();
   if (model_title.isEmpty()) {
     model_title = model_id;
@@ -934,16 +960,16 @@ void ResourcePage::onDownloadModelClicked() {
 
   downloadWorker_->SetTask([config, model_id, worker = downloadWorker_](
                                std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    ModelRepository repo(ResolveModelBaseDir(config).string());
+    const ModelRepository repo(ResolveModelBaseDir(config).string());
     auto urls = ResolveModelRegistryUrls(config);
     return repo.InstallModel(
         config, urls, model_id.toStdString(),
         [worker](const InstallProgress& p) {
           if (worker != nullptr && p.total_bytes > 0) {
-            int percent = static_cast<int>((p.downloaded_bytes * 100) / p.total_bytes);
-            QString speed = QString::fromStdString(
-                                vinput::file::FormatFileSize(static_cast<uint64_t>(p.speed_bps))) +
-                            "/s";
+            const int percent = static_cast<int>((p.downloaded_bytes * 100) / p.total_bytes);
+            const QString speed = QString::fromStdString(vinput::file::FormatFileSize(
+                                      static_cast<uint64_t>(p.speed_bps))) +
+                                  "/s";
             worker->ReportProgress(percent, speed);
           }
         },
@@ -956,8 +982,9 @@ void ResourcePage::onDownloadModelClicked() {
 
 void ResourcePage::onAddProviderClicked() {
   auto items = tableAvailableProviders_->selectedItems();
-  if (items.isEmpty())
+  if (items.isEmpty()) {
     return;
+  }
   auto* name_item = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 0);
   QString id = name_item->data(Qt::UserRole).toString();
   QString title = name_item->text();
@@ -986,8 +1013,8 @@ void ResourcePage::onAddProviderClicked() {
       return false;
     }
 
-    auto it = std::find_if(entries.begin(), entries.end(),
-                           [&](const auto& e) { return e.id == id.toStdString(); });
+    auto it =
+        std::ranges::find_if(entries, [&](const auto& e) { return e.id == id.toStdString(); });
     if (it == entries.end()) {
       *err = "Provider not found in registry.";
       return false;
@@ -1070,8 +1097,8 @@ void ResourcePage::onUpdateProviderClicked() {
           return false;
         }
 
-        auto it = std::find_if(entries.begin(), entries.end(),
-                               [&](const auto& e) { return e.id == id.toStdString(); });
+        auto it =
+            std::ranges::find_if(entries, [&](const auto& e) { return e.id == id.toStdString(); });
         if (it == entries.end()) {
           *err = "Provider not found in registry.";
           return false;
@@ -1137,8 +1164,8 @@ void ResourcePage::onAddAdapterClicked() {
       return false;
     }
 
-    auto it = std::find_if(entries.begin(), entries.end(),
-                           [&](const auto& e) { return e.id == id.toStdString(); });
+    auto it =
+        std::ranges::find_if(entries, [&](const auto& e) { return e.id == id.toStdString(); });
     if (it == entries.end()) {
       *err = "Adapter not found in registry.";
       return false;
@@ -1205,8 +1232,8 @@ void ResourcePage::onUpdateAdapterClicked() {
       return false;
     }
 
-    auto it = std::find_if(entries.begin(), entries.end(),
-                           [&](const auto& e) { return e.id == id.toStdString(); });
+    auto it =
+        std::ranges::find_if(entries, [&](const auto& e) { return e.id == id.toStdString(); });
     if (it == entries.end()) {
       *err = "Adapter not found in registry.";
       return false;
@@ -1351,17 +1378,17 @@ void ResourcePage::onRemoveProviderClicked() {
   }
 
   CoreConfig config = ConfigManager::Get().Load();
-  auto it =
-      std::remove_if(config.asr.providers.begin(), config.asr.providers.end(),
-                     [&](const AsrProvider& p) { return AsrProviderId(p) == id.toStdString(); });
-  if (it == config.asr.providers.end()) {
+  auto it = std::ranges::remove_if(config.asr.providers, [&](const AsrProvider& p) {
+    return AsrProviderId(p) == id.toStdString();
+  });
+  if (it.begin() == config.asr.providers.end()) {
     return;
   }
-  if (std::holds_alternative<LocalAsrProvider>(*it)) {
+  if (std::holds_alternative<LocalAsrProvider>(*it.begin())) {
     QMessageBox::warning(this, tr("Error"), tr("The local ASR provider cannot be removed."));
     return;
   }
-  config.asr.providers.erase(it, config.asr.providers.end());
+  config.asr.providers.erase(it.begin(), config.asr.providers.end());
   const bool was_active = (config.asr.activeProvider == id.toStdString());
   if (was_active) {
     config.asr.activeProvider.clear();
@@ -1421,12 +1448,12 @@ void ResourcePage::onRemoveAdapterClicked() {
   }
 
   CoreConfig config = ConfigManager::Get().Load();
-  auto it = std::remove_if(config.llm.adapters.begin(), config.llm.adapters.end(),
-                           [&](const LlmAdapter& a) { return a.id == id.toStdString(); });
-  if (it == config.llm.adapters.end()) {
+  auto it = std::ranges::remove_if(config.llm.adapters,
+                                   [&](const LlmAdapter& a) { return a.id == id.toStdString(); });
+  if (it.begin() == config.llm.adapters.end()) {
     return;
   }
-  config.llm.adapters.erase(it, config.llm.adapters.end());
+  config.llm.adapters.erase(it.begin(), config.llm.adapters.end());
 
   if (!ConfigManager::Get().Save(config)) {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));

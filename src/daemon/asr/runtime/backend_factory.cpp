@@ -1,17 +1,24 @@
 #include "daemon/asr/runtime/backend_factory.h"
 
+#include <memory>
 #include <string>
 #include <string_view>
-#include <utility>
+#include <variant>
+
+#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 
 #include "daemon/asr/backends/command_batch_backend.h"
 #include "daemon/asr/backends/command_streaming_backend.h"
-#include "daemon/asr/local_asr_model_loader.h"
+#include "daemon/asr/runtime/recognition_contract.h"
 
 #include "config.h"
 #if VINPUT_ENABLE_LOCAL_ASR
+#include <utility>
+
 #include "daemon/asr/backends/sherpa_offline_backend.h"
 #include "daemon/asr/backends/sherpa_streaming_backend.h"
+#include "daemon/asr/local_asr_model_loader.h"
 #endif
 
 namespace vinput::daemon::asr {
@@ -28,14 +35,14 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
 #if !VINPUT_ENABLE_LOCAL_ASR
   (void)config;
   (void)provider;
-  if (error) {
+  if (error != nullptr) {
     *error = "Local ASR support is disabled in this Lite build.";
   }
   return nullptr;
 #else
   auto context_result = LoadLocalAsrModelContext(config, provider);
   if (!context_result) {
-    if (error) {
+    if (error != nullptr) {
       *error = std::move(context_result).error();
     }
     return nullptr;
@@ -48,10 +55,10 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
   }
 
   if (backend_id == "sherpa-streaming") {
-    return CreateSherpaStreamingBackend(config, provider, std::move(*context_result), error);
+    return CreateSherpaStreamingBackend(provider, std::move(*context_result), error);
   }
 
-  if (error) {
+  if (error != nullptr) {
     *error =
         "Unsupported local ASR backend '" + backend_id + "' for provider '" + provider.id + "'.";
   }
@@ -63,8 +70,8 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
 
 std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string* error) {
   const AsrProvider* provider = ResolveActiveAsrProvider(config);
-  if (!provider) {
-    if (error) {
+  if (provider == nullptr) {
+    if (error != nullptr) {
       *error = "Active ASR provider not found.";
     }
     return nullptr;
@@ -80,7 +87,7 @@ std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string*
     return CreateCommandBatchBackend(*command, error);
   }
 
-  if (error) {
+  if (error != nullptr) {
     *error = "Unsupported ASR provider type: " + std::string(AsrProviderType(*provider));
   }
   return nullptr;
@@ -92,10 +99,10 @@ bool DescribeActiveBackend(const CoreConfig& config, BackendDescriptor* descript
   if (!backend) {
     return false;
   }
-  if (descriptor) {
+  if (descriptor != nullptr) {
     *descriptor = backend->Describe();
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;

@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <memory>
 #include <string>
 
@@ -37,8 +38,12 @@ struct TempBaseDir {
     path = fs::weakly_canonical(holder->Path());
   }
 
+  ~TempBaseDir() = default;
+
   TempBaseDir(const TempBaseDir&) = delete;
   TempBaseDir& operator=(const TempBaseDir&) = delete;
+  TempBaseDir(TempBaseDir&&) = delete;
+  TempBaseDir& operator=(TempBaseDir&&) = delete;
 };
 
 void WriteFile(const fs::path& path, const std::string& content) {

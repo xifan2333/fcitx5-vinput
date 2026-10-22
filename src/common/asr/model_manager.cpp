@@ -1,6 +1,7 @@
 #include "common/asr/model_manager.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +17,7 @@
 #include <vector>
 
 #include "common/json/json_access.h"
+#include "common/utils/expected.h"
 #include "common/utils/path_utils.h"
 #include "common/utils/string_utils.h"
 
