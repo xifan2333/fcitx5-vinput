@@ -37,8 +37,8 @@ struct SpawnedProcess {
 CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input);
 bool RunCommandSilent(const CommandSpec& spec, int* exit_code = nullptr);
 Expected<std::string> RunCommandCaptureStdout(const CommandSpec& spec);
-bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& working_dir,
-                        SpawnedProcess* process_out, std::string* error);
+Expected<SpawnedProcess> SpawnForMonitoring(const CommandSpec& spec,
+                                            const std::filesystem::path& working_dir);
 bool CreateCloexecPipe(int pipefd[2]);
 
 // Forcefully terminates `pid` with SIGKILL and reaps it, tolerating children that

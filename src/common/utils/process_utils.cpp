@@ -343,17 +343,10 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
   }
 }
 
-bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& working_dir,
-                        SpawnedProcess* process_out, std::string* error) {
-  if (process_out != nullptr) {
-    process_out->pid = -1;
-    process_out->stderr_fd = -1;
-  }
+Expected<SpawnedProcess> SpawnForMonitoring(const CommandSpec& spec,
+                                            const std::filesystem::path& working_dir) {
   if (spec.command.empty()) {
-    if (error != nullptr) {
-      *error = "Command is empty.";
-    }
-    return false;
+    return UnexpectedError("Command is empty.");
   }
 
   const auto cmd = BuildCmd(spec);
@@ -365,30 +358,21 @@ bool SpawnForMonitoring(const CommandSpec& spec, const std::filesystem::path& wo
         subprocess::error{subprocess::PIPE}, subprocess::cwd{working_dir.string()},
         subprocess::environment{env_map}, subprocess::session_leader{true});
 
-    if (process_out != nullptr) {
-      process_out->pid = proc.pid();
-      FILE* err_fp = proc.error();
-      if (err_fp != nullptr) {
-        const int dup_fd = fcntl(subprocess_fileno(err_fp), F_DUPFD_CLOEXEC, 0);
-        if (dup_fd < 0) {
-          if (error != nullptr) {
-            *error = "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));
-          }
-          proc.kill();
-          return false;
-        }
-        process_out->stderr_fd = dup_fd;
+    SpawnedProcess process_out{.pid = proc.pid(), .stderr_fd = -1};
+    FILE* err_fp = proc.error();
+    if (err_fp != nullptr) {
+      const int dup_fd = fcntl(subprocess_fileno(err_fp), F_DUPFD_CLOEXEC, 0);
+      if (dup_fd < 0) {
+        const std::string err =
+            "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));
+        proc.kill();
+        return UnexpectedError(err);
       }
+      process_out.stderr_fd = dup_fd;
     }
-    if (error != nullptr) {
-      error->clear();
-    }
-    return true;
+    return process_out;
   } catch (const std::exception& e) {
-    if (error != nullptr) {
-      *error = e.what();
-    }
-    return false;
+    return UnexpectedError(e.what());
   }
 }
 

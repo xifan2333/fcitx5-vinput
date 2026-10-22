@@ -286,13 +286,14 @@ private:
       return DbusService::MethodResult::Failure("adapter command is not configured");
     }
 
-    std::string error;
     const auto spec = vinput::adapter::BuildCommandSpec(*adapter);
     const auto working_dir = vinput::adapter::ResolveWorkingDir(*adapter);
-    vinput::process::SpawnedProcess process;
-    if (!vinput::process::SpawnForMonitoring(spec, working_dir, &process, &error)) {
-      return DbusService::MethodResult::Failure(error.empty() ? "failed to start adapter" : error);
+    auto process_res = vinput::process::SpawnForMonitoring(spec, working_dir);
+    if (!process_res) {
+      return DbusService::MethodResult::Failure(
+          process_res.error().empty() ? "failed to start adapter" : process_res.error());
     }
+    vinput::process::SpawnedProcess process = *process_res;
 
     usleep(250000);
     int status = 0;
