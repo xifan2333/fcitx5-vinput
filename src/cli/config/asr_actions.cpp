@@ -835,8 +835,8 @@ int RunAsrConfigRemoveModel(const std::string& selector, Formatter& fmt, const C
     fmt.PrintError(error);
     return 1;
   }
-  if (!manager.Remove(id, &error)) {
-    fmt.PrintError(error);
+  if (auto remove_result = manager.Remove(id); !remove_result) {
+    fmt.PrintError(std::move(remove_result).error());
     return 1;
   }
   if (activeModel == id) {
@@ -865,8 +865,9 @@ int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliC
     fmt.PrintError(error);
     return 1;
   }
-  if (!manager.Validate(id, &error)) {
-    fmt.PrintError(vinput::str::FmtStr(_("Model '%s' is not valid: %s"), id, error));
+  if (auto validate_result = manager.Validate(id); !validate_result) {
+    fmt.PrintError(vinput::str::FmtStr(_("Model '%s' is not valid: %s"), id,
+                                       std::move(validate_result).error()));
     return 1;
   }
   if (!SetPreferredLocalModel(&config, id, &error)) {
@@ -895,17 +896,19 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
     fmt.PrintError(error);
     return 1;
   }
-  if (!manager.Validate(id, &error)) {
-    fmt.PrintError(vinput::str::FmtStr(_("Model '%s' is not valid: %s"), id, error));
+  if (auto validate_result = manager.Validate(id); !validate_result) {
+    fmt.PrintError(vinput::str::FmtStr(_("Model '%s' is not valid: %s"), id,
+                                       std::move(validate_result).error()));
     return 1;
   }
 
   const ModelManager selectedManager(baseDir, id);
-  const ModelInfo info = selectedManager.GetModelInfo(&error);
-  if (!error.empty()) {
-    fmt.PrintError(error);
+  auto info_result = selectedManager.GetModelInfo();
+  if (!info_result) {
+    fmt.PrintError(std::move(info_result).error());
     return 1;
   }
+  const ModelInfo info = std::move(*info_result);
 
   glz::json_t obj = glz::json_t(glz::json_t::object_t{});
   obj["id"] = vinput::cli::HumanizeResourceId(display_map, id);

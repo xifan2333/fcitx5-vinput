@@ -826,8 +826,9 @@ void ResourcePage::onRemoveModelClicked() {
     const bool reload_backend = ResolvePreferredLocalModel(config) == model_id.toStdString();
     ModelManager manager(ResolveModelBaseDir(config).string());
     std::string err;
-    if (!manager.Remove(model_id.toStdString(), &err)) {
-      QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
+    if (auto remove_result = manager.Remove(model_id.toStdString()); !remove_result) {
+      QMessageBox::warning(this, tr("Error"),
+                           QString::fromStdString(std::move(remove_result).error()));
       return;
     }
 

@@ -38,29 +38,25 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
   }
 
   ModelManager model_mgr(ResolveModelBaseDir(config).string(), provider.model);
-  std::string model_error;
-  if (!model_mgr.EnsureModels(&model_error)) {
+  if (auto ensure_result = model_mgr.EnsureModels(); !ensure_result) {
     if (error) {
-      *error = "Local ASR model check failed for provider '" + provider.id + "'";
-      if (!model_error.empty()) {
-        *error += ": " + model_error;
-      } else {
-        *error += ".";
-      }
+      *error = "Local ASR model check failed for provider '" + provider.id +
+               "': " + std::move(ensure_result).error();
     }
     return nullptr;
   }
 
-  ModelInfo model_info = model_mgr.GetModelInfo(&model_error);
-  if (!model_error.empty()) {
+  auto model_info_result = model_mgr.GetModelInfo();
+  if (!model_info_result) {
     if (error) {
       *error = "Failed to read local ASR model metadata for provider '" + provider.id +
-               "': " + model_error;
+               "': " + std::move(model_info_result).error();
     }
     return nullptr;
   }
 
-  const std::string backend_id = model_info.backend.empty() ? "sherpa-offline" : model_info.backend;
+  const std::string backend_id =
+      model_info_result->backend.empty() ? "sherpa-offline" : model_info_result->backend;
   if (backend_id == "sherpa-offline") {
     return CreateSherpaOfflineBackend(config, provider, error);
   }

@@ -631,21 +631,25 @@ std::unique_ptr<AsrBackend> CreateSherpaOfflineBackend(const CoreConfig& config,
   }
 
   ModelManager model_mgr(ResolveModelBaseDir(config).string(), provider.model);
-  std::string model_error;
-  if (!model_mgr.EnsureModels(&model_error)) {
+  if (auto ensure_result = model_mgr.EnsureModels(); !ensure_result) {
     if (error != nullptr) {
-      *error = "Local ASR model check failed for provider '" + provider.id + "'";
-      if (!model_error.empty()) {
-        *error += ": " + model_error;
-      } else {
-        *error += ".";
-      }
+      *error = "Local ASR model check failed for provider '" + provider.id +
+               "': " + std::move(ensure_result).error();
+    }
+    return nullptr;
+  }
+
+  auto model_info_result = model_mgr.GetModelInfo();
+  if (!model_info_result) {
+    if (error != nullptr) {
+      *error = "Failed to read local ASR model metadata for provider '" + provider.id +
+               "': " + std::move(model_info_result).error();
     }
     return nullptr;
   }
 
   AsrConfig asr_config;
-  const ModelInfo model_info = model_mgr.GetModelInfo();
+  const ModelInfo model_info = std::move(*model_info_result);
   asr_config.language = model_info.RuntimeLanguageHint();
   asr_config.hotwords_file = provider.hotwordsFile;
   asr_config.vad_enabled = config.asr.vad.enabled;
