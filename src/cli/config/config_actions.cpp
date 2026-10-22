@@ -17,16 +17,15 @@
 #include "cli/utils/formatter.h"
 
 int RunConfigDomainGet(const std::string& path, Formatter& fmt, const CliContext& ctx) {
-  std::string value;
-  std::string error;
-  if (!vinput::config::GetConfigValue(path, &value, &error)) {
-    fmt.PrintError(error);
+  auto value_res = vinput::config::GetConfigValue(path);
+  if (!value_res) {
+    fmt.PrintError(value_res.error());
     return 1;
   }
   if (ctx.json_output) {
-    fmt.PrintJson({{"path", path}, {"value", value}});
+    fmt.PrintJson({{"path", path}, {"value", *value_res}});
   } else {
-    std::puts(value.c_str());
+    std::puts(value_res->c_str());
   }
   return 0;
 }
@@ -46,9 +45,8 @@ int RunConfigDomainSet(const std::string& path, const std::string& value_arg, bo
     }
     value = all;
   }
-  std::string error;
-  if (!vinput::config::SetConfigValue(path, value, &error)) {
-    fmt.PrintError(error);
+  if (auto res = vinput::config::SetConfigValue(path, value); !res) {
+    fmt.PrintError(res.error());
     return 1;
   }
   fmt.PrintSuccess(_("Config value set."));
