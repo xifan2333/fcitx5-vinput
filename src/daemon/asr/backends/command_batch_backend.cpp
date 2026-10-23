@@ -1,11 +1,18 @@
 #include "daemon/asr/backends/command_batch_backend.h"
 
-#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <span>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
+#include "common/config/core_config_types.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
+
+#include "daemon/asr/runtime/recognition_contract.h"
 
 namespace vinput::daemon::asr {
 
@@ -26,13 +33,13 @@ public:
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (finished_) {
-      if (error) {
+      if (error != nullptr) {
         *error = "Recognition session already finished.";
       }
       return false;
     }
     pcm_.insert(pcm_.end(), pcm.begin(), pcm.end());
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return true;
@@ -40,16 +47,15 @@ public:
 
   bool Finish(std::string* error) override {
     if (finished_) {
-      if (error) {
+      if (error != nullptr) {
         error->clear();
       }
       return true;
     }
 
     finished_ = true;
-    const auto* bytes = reinterpret_cast<const std::byte*>(pcm_.data());
-    auto command_result = vinput::process::RunOnce(
-        command_, std::span<const std::byte>(bytes, pcm_.size() * sizeof(int16_t)));
+    const auto audio = std::as_bytes(std::span<const int16_t>(pcm_));
+    auto command_result = vinput::process::RunOnce(command_, audio);
 
     if (command_result.launch_failed) {
       events_.push_back(
@@ -75,7 +81,7 @@ public:
     }
 
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
-    if (error) {
+    if (error != nullptr) {
       if (!events_.empty() && events_.front().kind == RecognitionEventKind::Error) {
         *error = events_.front().error;
       } else {
@@ -111,7 +117,7 @@ public:
   CommandBatchBackend(vinput::process::CommandSpec command, std::string provider_id)
       : command_(std::move(command)), provider_id_(std::move(provider_id)) {}
 
-  BackendDescriptor Describe() const override {
+  [[nodiscard]] BackendDescriptor Describe() const override {
     BackendDescriptor descriptor;
     descriptor.provider_id = provider_id_;
     descriptor.provider_type = vinput::asr::kCommandProviderType;
@@ -121,7 +127,7 @@ public:
   }
 
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
-    if (error) {
+    if (error != nullptr) {
       error->clear();
     }
     return std::make_unique<CommandBatchSession>(command_, provider_id_);
@@ -137,7 +143,7 @@ private:
 std::unique_ptr<AsrBackend> CreateCommandBatchBackend(const CommandAsrProvider& provider,
                                                       std::string* error) {
   if (provider.command.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Command ASR provider has empty command.";
     }
     return nullptr;
@@ -149,7 +155,7 @@ std::unique_ptr<AsrBackend> CreateCommandBatchBackend(const CommandAsrProvider& 
   command.env = provider.env;
   command.timeout_ms = provider.timeoutMs;
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return std::make_unique<CommandBatchBackend>(std::move(command), provider.id);

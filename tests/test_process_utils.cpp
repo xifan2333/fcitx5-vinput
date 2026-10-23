@@ -415,7 +415,7 @@ void TestRunOnceTimesOutWhenChildClosesEveryDescriptor() {
  * done.
  */
 void TestPumpIoReservesBudgetPerChannel() {
-  constexpr std::size_t kFloodBytes = 32 * 1024;
+  constexpr std::size_t kFloodBytes = std::size_t{32} * 1024;
 
   int out_pipe[2] = {-1, -1};
   int err_pipe[2] = {-1, -1};
