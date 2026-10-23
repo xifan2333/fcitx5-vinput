@@ -210,11 +210,23 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
   const int out_fd = child.channels.stdout_fd;
   const int err_fd = child.channels.stderr_fd;
 
+  // poll() only announces readiness, so every read and write below must be non-blocking: a blocking
+  // descriptor would let a single call overshoot the deadline. Force the flag here so the deadline
+  // is a property of the pump instead of a precondition every caller has to remember. A descriptor
+  // that cannot be switched is unusable, and its channel is reported closed.
+  const auto unusable = [](int fd) { return fd >= 0 && !SetNonBlocking(fd); };
+  const bool in_broken = unusable(in_fd);
+  const bool out_broken = unusable(out_fd);
+  const bool err_broken = unusable(err_fd);
+
   std::size_t input_offset = 0;
-  bool in_open = (in_fd >= 0 && !input.empty());
-  bool out_open = (out_fd >= 0);
-  bool err_open = (err_fd >= 0);
+  bool in_open = (in_fd >= 0 && !in_broken && !input.empty());
+  bool out_open = (out_fd >= 0 && !out_broken);
+  bool err_open = (err_fd >= 0 && !err_broken);
   bool input_closed = false;
+  result.input_incomplete = in_broken;
+  result.stdout_closed = out_broken;
+  result.stderr_closed = err_broken;
 
   // Marks the input channel done and lets the owner release its own handle exactly once.
   const auto finish_input = [&]() {
@@ -404,16 +416,6 @@ CommandResult RunOnce(const CommandSpec& spec, std::span<const std::byte> input)
     const int in_fd = proc.input() != nullptr ? subprocess_fileno(proc.input()) : -1;
     const int out_fd = proc.output() != nullptr ? subprocess_fileno(proc.output()) : -1;
     const int err_fd = proc.error() != nullptr ? subprocess_fileno(proc.error()) : -1;
-
-    if (in_fd >= 0) {
-      SetNonBlocking(in_fd);
-    }
-    if (out_fd >= 0) {
-      SetNonBlocking(out_fd);
-    }
-    if (err_fd >= 0) {
-      SetNonBlocking(err_fd);
-    }
 
     PumpChild child;
     child.channels = PumpChannels{.input_fd = in_fd, .stdout_fd = out_fd, .stderr_fd = err_fd};

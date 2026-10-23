@@ -100,6 +100,11 @@ struct PumpResult {
 // Drives one spawned child until its channels close and it exits, or until the deadline expires.
 // This is the single implementation of deadline-bounded, non-blocking, bidirectional draining that
 // every child-process call site shares.
+//
+// The pump switches every non-negative borrowed descriptor to `O_NONBLOCK` and leaves it that way:
+// its deadline can only hold if no read or write may block, so the mode is the pump's own contract
+// rather than a caller precondition. It still never closes or reclaims a descriptor, and a channel
+// whose descriptor cannot be switched is reported closed instead of being read.
 PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
                   const PumpOptions& options, PumpSink& sink);
 

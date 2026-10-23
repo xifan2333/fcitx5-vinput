@@ -470,6 +470,93 @@ void TestPumpIoReservesBudgetPerChannel() {
   close(err_pipe[0]);
 }
 
+/**
+ * The pump's deadline can only hold if nothing it issues may block, so PumpIo switches every
+ * borrowed descriptor to O_NONBLOCK itself instead of trusting callers to have done it.
+ */
+void TestPumpIoForcesNonBlockingDescriptors() {
+  int out_pipe[2] = {-1, -1};
+  int in_pipe[2] = {-1, -1};
+  ExpectTrue(vinput::process::CreateCloexecPipe(out_pipe), "CreateCloexecPipe should succeed");
+  ExpectTrue(vinput::process::CreateCloexecPipe(in_pipe), "CreateCloexecPipe should succeed");
+
+  // Fresh pipes are blocking, and nothing below sets O_NONBLOCK before the pump runs.
+  ExpectTrue((fcntl(out_pipe[0], F_GETFL) & O_NONBLOCK) == 0, "Pipe should start blocking");
+  ExpectTrue((fcntl(in_pipe[1], F_GETFL) & O_NONBLOCK) == 0, "Pipe should start blocking");
+
+  const std::string payload = "written by the pump";
+  CollectSink sink;
+  vinput::process::PumpChild child;
+  child.channels.input_fd = in_pipe[1];
+  child.channels.stdout_fd = out_pipe[0];
+
+  // Closing the write end up front makes the stdout channel finish immediately, so the pump ends
+  // with the input descriptor still owned by this test.
+  close(out_pipe[1]);
+  out_pipe[1] = -1;
+
+  vinput::process::PumpOptions options;
+  options.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  // Keep the input descriptor open so the flag can still be inspected after the pump returns.
+  options.close_input_after_write = false;
+
+  const auto bytes = std::as_bytes(std::span(payload.data(), payload.size()));
+  const auto result = vinput::process::PumpIo(child, bytes, options, sink);
+
+  ExpectTrue(!result.timed_out, "Writing a small payload must not time out");
+  ExpectTrue(!result.input_incomplete, "Small payload should be fully accepted");
+  ExpectTrue(result.stdout_closed, "Closed stdout channel must be reported");
+  ExpectTrue((fcntl(out_pipe[0], F_GETFL) & O_NONBLOCK) != 0,
+             "Pump must make the borrowed output descriptor non-blocking");
+  ExpectTrue((fcntl(in_pipe[1], F_GETFL) & O_NONBLOCK) != 0,
+             "Pump must make the borrowed input descriptor non-blocking");
+
+  close(out_pipe[0]);
+  close(in_pipe[0]);
+  close(in_pipe[1]);
+}
+
+/**
+ * A blocking input descriptor whose reader never drains must still not pierce the deadline: without
+ * O_NONBLOCK the write() inside the pump would block on the full pipe and return long after the
+ * caller's timeout promised to be over.
+ */
+void TestPumpIoDeadlineHoldsOnBlockingInputPipe() {
+  int in_pipe[2] = {-1, -1};
+  ExpectTrue(vinput::process::CreateCloexecPipe(in_pipe), "CreateCloexecPipe should succeed");
+
+  // Far more than a pipe buffer can absorb, and nobody reads the other end.
+  const std::string payload(std::size_t{256} * 1024, 'i');
+  CollectSink sink;
+  vinput::process::PumpChild child;
+  child.channels.input_fd = in_pipe[1];
+  child.exited = [](int* exit_code) {
+    if (exit_code != nullptr) {
+      *exit_code = 0;
+    }
+    return false;
+  };
+
+  vinput::process::PumpOptions options;
+  options.poll_slice = std::chrono::milliseconds(10);
+  options.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+
+  const auto bytes = std::as_bytes(std::span(payload.data(), payload.size()));
+  const auto start = std::chrono::steady_clock::now();
+  const auto result = vinput::process::PumpIo(child, bytes, options, sink);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+
+  ExpectTrue(result.timed_out, "A full pipe must make the pump wait for the deadline");
+  ExpectTrue(result.input_incomplete, "The stalled input must be reported as incomplete");
+  ExpectTrue(elapsed < 1000, "Blocking descriptors must not overshoot the deadline (elapsed=" +
+                                 std::to_string(elapsed) + "ms)");
+
+  close(in_pipe[0]);
+  close(in_pipe[1]);
+}
+
 } // namespace
 
 int main() {
@@ -486,6 +573,8 @@ int main() {
   TestPumpIoHonoursDeadlineWithoutExitProbe();
   TestPumpIoWritesInputAndClosesHandle();
   TestPumpIoReservesBudgetPerChannel();
+  TestPumpIoForcesNonBlockingDescriptors();
+  TestPumpIoDeadlineHoldsOnBlockingInputPipe();
   TestRunOnceFeedsStdin();
   TestRunOnceDrainsLargeOutput();
   TestRunOnceTimesOutWhenChildClosesEveryDescriptor();
