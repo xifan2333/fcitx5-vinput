@@ -124,7 +124,7 @@ Static analysis is **not** a heavy build (parse-only, no binaries), so running i
 | :--- | :--- | :--- |
 | **Qt 6** (qt6-base, qt6-tools) | GUI code lint | `pacman -S qt6-base qt6-tools` |
 | **PipeWire** (libpipewire) | Audio code lint | `pacman -S libpipewire` |
-| **sherpa-onnx** (optional) | Full-mode lint (ASR backend) | `yay -S sherpa-onnx-bin` (Arch, auto-latest)<br>`mise run sherpa` (other distros, auto-latest via `sync-sherpa-onnx.yml`) |
+| **sherpa-onnx** (optional) | Full-mode lint (ASR backend) | `yay -S sherpa-onnx-bin` (Arch, auto-latest)<br>`mise run sherpa "" ~/.local` (other distros, user prefix; default `/usr` needs sudo) |
 
 ### Commands
 
@@ -134,13 +134,19 @@ Static analysis is **not** a heavy build (parse-only, no binaries), so running i
 # build cache from a previous full configure also overrides the intent.
 mise run configure Release /usr -DVINPUT_ENABLE_LOCAL_ASR=OFF
 mise run check:tidy                # lint .cpp files changed vs origin/main + working tree
-mise run check:tidy --full         # also analyze VINPUT_ENABLE_LOCAL_ASR paths (trap-restores build/config.h)
 mise run check:tidy --all          # lint everything under src/ and tests/
 mise run check:tidy <file> [...]   # lint specific files
+
+# Full mode (also lints sherpa-onnx ASR backend files):
+# 1. install sherpa-onnx (Arch: yay -S sherpa-onnx-bin; other: mise run sherpa "" ~/.local)
+# 2. re-configure so the compile DB gains the sherpa TUs
+#    (user prefix installs need VINPUT_CMAKE_PREFIX_PATH=~/.local)
+mise run configure
+mise run check:tidy --full
 ```
 
 ### Notes
 
 - **clang-tidy version**: pinned to `21.x` via `mise.toml [tools]` (`pipx:clang-tidy = "21.1.6"`; CI runs 21.1.8). Do not upgrade past 21.x without checking CI first.
-- **Full vs Lite**: CI lints the full build. `check:tidy --full` flips `build/config.h` locally and always restores it on exit. The two sherpa backend `.cpp` files are absent from the local Lite compile DB (no sherpa-onnx headers locally) and remain CI-only unless you install sherpa-onnx first (`yay -S sherpa-onnx-bin` on Arch, or `mise run sherpa` elsewhere).
+- **Full vs Lite**: CI lints the full build. `--full` requires sherpa-onnx installed AND a full-mode `mise run configure` afterwards (the compile DB must contain the sherpa TUs). In Lite mode the sherpa backend files are skipped with a hint.
 - **Qt version skew**: local Qt (e.g. 6.12 on Arch) may be newer than CI's Qt 6.4. A clean local result can still fail CI when version-sensitive constructs are used. Rules of thumb: prefer `uint64_t` over `quint64`, `QString::fromLatin1` over `QStringLiteral`, and never include Qt headers introduced after Qt 6.4 (e.g. `<QtCore/qtypes.h>`).
