@@ -4,6 +4,9 @@ hk = "2"
 node = "latest"
 ruff = "latest"
 shfmt = "latest"
+# Pinned to CI's cpp-linter major version (clang-tidy 21, ubuntu-24.04).
+# Do not upgrade past 21.x without checking .github/workflows/ci.yml first.
+"pipx:clang-tidy" = "21.1.6"
 
 [env]
 _.file = ".env"
@@ -72,25 +75,9 @@ python3 -m json.tool notification.json >/dev/null
 description = "Generate roff man pages from markdown using pandoc"
 run = "bash scripts/gen-man.sh"
 
-[tasks.tidy]
-description = "Run clang-tidy on C++ source files"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if [ ! -f "build/compile_commands.json" ]; then
-  echo "compile_commands.json not found in build. Run 'mise run configure' first." >&2
-  exit 1
-fi
-if [ -n "${1:-}" ]; then
-  clang-tidy -p build "$1"
-else
-  if command -v run-clang-tidy >/dev/null 2>&1; then
-    run-clang-tidy -p build -header-filter='src/.*' 'src/.*'
-  else
-    find src -name '*.cpp' | xargs -n 1 -P $(nproc) clang-tidy -p build
-  fi
-fi
-"""
+[tasks."check:tidy"]
+description = "Run clang-tidy on C++ files (default: changed vs origin/main; --all; --full for VINPUT_ENABLE_LOCAL_ASR paths)"
+run = "bash scripts/check-tidy.sh \"$@\""
 
 [tasks.configure]
 description = "Configure CMake build directory (Release by default, or: mise run configure Debug /usr)"

@@ -84,6 +84,8 @@ Releases strictly adhere to Semantic Versioning (`MAJOR.MINOR.PATCH`) via `vinpu
 
 ---
 
+---
+
 ## 7. CI Quota Governance & Proactive Cancellation Protocol
 
 ### 1. Stage Gate Auto-Short-Circuiting
@@ -109,3 +111,23 @@ gh run list --branch $(git branch --show-current) --status in_progress --json da
 **Governance Approach**:
 - **Soft Constraint via Skill**: Semantic compatibility (D-Bus contract preservation, CLI options/subcommands, and configuration migration) is governed by the `vinput-dev` skill and agent review loops, avoiding brittle shell-based AST regex hooks.
 - **Cadence Discipline**: Accumulate verified fixes on `main` and run CI dry builds (`release.yml`) before cutting tags. Avoid hasty releases for isolated micro-fixes.
+
+---
+
+## 8. Local clang-tidy Reproduction (check:tidy)
+
+Static analysis is **not** a heavy build (parse-only, no binaries), so running it locally is allowed even on the maintainer machine. Use it BEFORE pushing to avoid cpp-linter round-trips:
+
+```bash
+mise run configure                 # one-time: Lite-mode compile DB (fast, no sherpa-onnx needed)
+mise run check:tidy                # lint .cpp files changed vs origin/main + working tree
+mise run check:tidy --full         # also analyze VINPUT_ENABLE_LOCAL_ASR paths (trap-restores build/config.h)
+mise run check:tidy --all          # lint everything under src/ and tests/
+mise run check:tidy <file> [...]   # lint specific files
+```
+
+Alignment contract with CI (`.github/workflows/ci.yml` job `cpp-linter`):
+
+- **clang-tidy version**: pinned to `21.x` via `mise.toml [tools]` (`pipx:clang-tidy = "21.1.6"`; CI runs 21.1.8). Do not upgrade past 21.x without checking CI first.
+- **Full vs Lite**: CI lints the full build. `check:tidy --full` flips `build/config.h` locally and always restores it on exit. The two sherpa backend `.cpp` files are absent from the local Lite compile DB (no sherpa-onnx headers locally) and remain CI-only.
+- **Qt version skew**: local Qt (e.g. 6.12 on Arch) may be newer than CI's Qt 6.4. A clean local result can still fail CI when version-sensitive constructs are used. Rules of thumb: prefer `uint64_t` over `quint64`, `QString::fromLatin1` over `QStringLiteral`, and never include Qt headers introduced after Qt 6.4 (e.g. `<QtCore/qtypes.h>`).
