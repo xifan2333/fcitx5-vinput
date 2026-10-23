@@ -955,7 +955,7 @@ void ResourcePage::onDownloadModelClicked() {
   connect(downloadWorker_, &QThread::finished, this,
           [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
 
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
 
   downloadWorker_->SetTask([config, model_id, worker = downloadWorker_](
                                std::string* err, const std::atomic<bool>* cancel_token) -> bool {
