@@ -132,7 +132,7 @@ Static analysis is **not** a heavy build (parse-only, no binaries), so running i
 # one-time Lite-mode compile DB (fast, no sherpa-onnx needed).
 # IMPORTANT: pass the flag explicitly — the CMake default is ON, and a stale
 # build cache from a previous full configure also overrides the intent.
-mise run configure -- -DVINPUT_ENABLE_LOCAL_ASR=OFF
+mise run configure Release /usr -DVINPUT_ENABLE_LOCAL_ASR=OFF
 mise run check:tidy                # lint .cpp files changed vs origin/main + working tree
 mise run check:tidy --full         # also analyze VINPUT_ENABLE_LOCAL_ASR paths (trap-restores build/config.h)
 mise run check:tidy --all          # lint everything under src/ and tests/

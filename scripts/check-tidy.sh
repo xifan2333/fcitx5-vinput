@@ -41,6 +41,10 @@ fi
 if [ "$ALL" -eq 1 ]; then
   mapfile -t FILES < <(find src tests -name '*.cpp' | sort)
 elif [ "${#FILES[@]}" -eq 0 ]; then
+  if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+    echo "error: origin/main not found; pass explicit files or run --all instead." >&2
+    exit 1
+  fi
   mapfile -t changed_all < <({
     git diff --name-only origin/main...HEAD
     git diff --name-only
@@ -62,14 +66,28 @@ if [ "${#FILES[@]}" -eq 0 ]; then
 fi
 
 # Keep only TUs present in the local compilation database; report skips.
+# Known CI-only TUs (need sherpa-onnx headers unavailable in the Lite DB):
+CI_ONLY_TUS="daemon/asr/backends/sherpa_offline_backend.cpp daemon/asr/backends/sherpa_streaming_backend.cpp daemon/asr/hotword_utils.cpp daemon/asr/vad_trimmer.cpp"
 lintable=()
+missing_new=()
 for f in "${FILES[@]}"; do
   if grep -qF "\"$(pwd)/$f\"" "$BUILD_DIR/compile_commands.json"; then
     lintable+=("$f")
+  elif echo " $CI_ONLY_TUS " | grep -qF " ${f#src/} "; then
+    echo "skip (sherpa-onnx TU, CI-only unless sherpa-onnx is installed): $f" >&2
   else
-    echo "skip (absent from local Lite compile DB, CI-only): $f" >&2
+    echo "skip (not in compile DB — run 'mise run configure' to refresh): $f" >&2
+    missing_new+=("$f")
   fi
 done
+
+if [ "${#lintable[@]}" -eq 0 ]; then
+  echo "error: no lintable translation units found (compile DB may be stale; run 'mise run configure')." >&2
+  exit 1
+fi
+if [ "${#missing_new[@]}" -gt 0 ]; then
+  echo "warning: ${#missing_new[@]} changed file(s) skipped due to stale compile DB." >&2
+fi
 
 if [ "$FULL" -eq 1 ]; then
   cp "$BUILD_DIR/config.h" "$BUILD_DIR/.config.h.tidy-bak"
