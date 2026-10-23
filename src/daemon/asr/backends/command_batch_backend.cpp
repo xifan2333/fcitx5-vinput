@@ -48,7 +48,7 @@ public:
 
     finished_ = true;
     const auto* bytes = reinterpret_cast<const std::byte*>(pcm_.data());
-    auto command_result = vinput::process::RunCommandWithInput(
+    auto command_result = vinput::process::RunOnce(
         command_, std::span<const std::byte>(bytes, pcm_.size() * sizeof(int16_t)));
 
     if (command_result.launch_failed) {

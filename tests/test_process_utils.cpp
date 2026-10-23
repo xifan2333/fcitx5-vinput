@@ -44,7 +44,7 @@ void TestNormalExecution() {
   spec.args = {"-c", "echo hello_process_utils"};
   spec.timeout_ms = 2000;
 
-  const auto result = vinput::process::RunCommandWithInput(spec, {});
+  const auto result = vinput::process::RunOnce(spec, {});
   ExpectTrue(!result.launch_failed, "Launch should succeed");
   ExpectTrue(!result.timed_out, "Command should not time out");
   ExpectTrue(result.exit_code == 0, "Exit code should be 0");
@@ -59,7 +59,7 @@ void TestCommandTimeout() {
   spec.timeout_ms = 100;
 
   const auto start = std::chrono::steady_clock::now();
-  const auto result = vinput::process::RunCommandWithInput(spec, {});
+  const auto result = vinput::process::RunOnce(spec, {});
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - start)
                            .count();
@@ -73,7 +73,7 @@ void TestCommandTimeout() {
 /**
  * Regression test for Issue #270:
  * Child process exits immediately, but a background grandchild / background process
- * holds the stdout/stderr pipe open. RunCommandWithInput must not hang or spin indefinitely.
+ * holds the stdout/stderr pipe open. RunOnce must not hang or spin indefinitely.
  */
 void TestChildExitWithLeakedPipeDoesNotHang() {
   vinput::process::CommandSpec spec;
@@ -83,7 +83,7 @@ void TestChildExitWithLeakedPipeDoesNotHang() {
   spec.timeout_ms = 1000;
 
   const auto start = std::chrono::steady_clock::now();
-  const auto result = vinput::process::RunCommandWithInput(spec, {});
+  const auto result = vinput::process::RunOnce(spec, {});
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - start)
                            .count();
@@ -98,7 +98,7 @@ void TestChildExitWithLeakedPipeDoesNotHang() {
 /**
  * Regression test for Issue #270:
  * Command closes all fds (stdin, stdout, stderr) immediately and sleeps.
- * RunCommandWithInput must not busy-spin at 100% CPU when nfds == 0.
+ * RunOnce must not busy-spin at 100% CPU when nfds == 0.
  */
 void TestClosedFdsDoesNotBusySpin() {
   vinput::process::CommandSpec spec;
@@ -107,7 +107,7 @@ void TestClosedFdsDoesNotBusySpin() {
   spec.timeout_ms = 1000;
 
   const auto start = std::chrono::steady_clock::now();
-  const auto result = vinput::process::RunCommandWithInput(spec, {});
+  const auto result = vinput::process::RunOnce(spec, {});
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - start)
                            .count();
@@ -140,7 +140,7 @@ void TestPipeCloexecBehavior() {
   spec.args = {"-c", "test -e /proc/self/fd/" + std::to_string(pipefd[0]) +
                          " || test -e /proc/self/fd/" + std::to_string(pipefd[1])};
   spec.timeout_ms = 1000;
-  const auto result = vinput::process::RunCommandWithInput(spec, {});
+  const auto result = vinput::process::RunOnce(spec, {});
   ExpectTrue(!result.launch_failed, "Launch should succeed");
   // The child process does not have these fds, so test returns 1 (false).
   ExpectTrue(
