@@ -294,11 +294,13 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
     }
 
     if (pfd_count == 0) {
-      // Every channel is closed but the child still runs. Keep the deadline in force instead of
-      // waiting for the exit without a bound, and sleep rather than spin while doing it.
-      if (!child.exited && options.deadline == Clock::time_point::max()) {
+      // Every channel is closed. Without an exit probe nothing else can be observed, so stop: an
+      // fd-only pump has no further state to wait for.
+      if (!child.exited) {
         break;
       }
+      // With a probe the child still runs: keep the deadline in force instead of handing the caller
+      // an unbounded wait, and sleep rather than spin while doing it.
       std::this_thread::sleep_for(std::chrono::milliseconds(std::max(wait_ms, 1)));
       continue;
     }
