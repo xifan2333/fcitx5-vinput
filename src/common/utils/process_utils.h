@@ -101,7 +101,14 @@ struct PumpResult {
 PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
                   const PumpOptions& options, PumpSink& sink);
 
-CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input);
+// One-shot synchronous run with a deadline: buffered output, no incremental callbacks.
+CommandResult RunOnce(const CommandSpec& spec, std::span<const std::byte> input = {});
+
+// Compatibility alias kept so call sites that predate RunOnce stay readable.
+inline CommandResult RunCommandWithInput(const CommandSpec& spec,
+                                         std::span<const std::byte> input) {
+  return RunOnce(spec, input);
+}
 bool RunCommandSilent(const CommandSpec& spec, int* exit_code = nullptr);
 Expected<std::string> RunCommandCaptureStdout(const CommandSpec& spec);
 Expected<SpawnedProcess> SpawnForMonitoring(const CommandSpec& spec,

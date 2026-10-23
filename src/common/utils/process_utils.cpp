@@ -21,6 +21,7 @@
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 extern "C" {
@@ -107,6 +108,17 @@ struct DrainFdBudgeted {
 
     return outcome;
   }
+};
+
+// Buffers everything a one-shot child writes, which is what RunOnce needs and what a streaming
+// caller does not: streaming callers consume chunks incrementally through their own sink.
+class RunSink final : public PumpSink {
+public:
+  void OnStdout(std::string_view chunk) override { stdout_text.append(chunk); }
+  void OnStderr(std::string_view chunk) override { stderr_text.append(chunk); }
+
+  std::string stdout_text;
+  std::string stderr_text;
 };
 
 } // namespace
@@ -356,7 +368,7 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
   return result;
 }
 
-CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input) {
+CommandResult RunOnce(const CommandSpec& spec, std::span<const std::byte> input) {
   CommandResult result;
   if (spec.command.empty()) {
     result.launch_failed = true;
@@ -387,190 +399,40 @@ CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::
       SetNonBlocking(err_fd);
     }
 
-    const auto start_time = std::chrono::steady_clock::now();
-    const auto deadline = spec.timeout_ms > 0
-                              ? start_time + std::chrono::milliseconds(spec.timeout_ms)
-                              : std::chrono::steady_clock::time_point::max();
+    PumpChild child;
+    child.channels = PumpChannels{.input_fd = in_fd, .stdout_fd = out_fd, .stderr_fd = err_fd};
+    child.exited = [&proc](int* exit_code) {
+      const int poll_rc = proc.poll();
+      if (poll_rc == -1) {
+        return false;
+      }
+      if (exit_code != nullptr) {
+        *exit_code = poll_rc;
+      }
+      return true;
+    };
+    child.close_input = [&proc] { proc.close_input(); };
 
-    std::size_t input_offset = 0;
-    bool in_open = (in_fd >= 0 && !input.empty());
-    bool out_open = (out_fd >= 0);
-    bool err_open = (err_fd >= 0);
-
-    if (in_fd >= 0 && input.empty()) {
-      proc.close_input();
-      in_open = false;
+    PumpOptions options;
+    if (spec.timeout_ms > 0) {
+      options.deadline =
+          std::chrono::steady_clock::now() + std::chrono::milliseconds(spec.timeout_ms);
     }
 
-    bool child_exited = false;
-    int child_exit_code = -1;
-    std::optional<std::chrono::steady_clock::time_point> child_exited_at;
+    RunSink sink;
+    const PumpResult pump = PumpIo(child, input, options, sink);
 
-    std::array<char, 4096> drain_buffer{};
+    result.timed_out = pump.timed_out;
+    result.stdout_text = std::move(sink.stdout_text);
+    result.stderr_text = std::move(sink.stderr_text);
 
-    while (in_open || out_open || err_open || !child_exited) {
-      if (!child_exited) {
-        const int poll_res = proc.poll();
-        if (poll_res != -1) {
-          child_exited = true;
-          child_exit_code = poll_res;
-          child_exited_at = std::chrono::steady_clock::now();
-          if (in_open) {
-            proc.close_input();
-            in_open = false;
-          }
-        }
-      }
-
-      const auto now = std::chrono::steady_clock::now();
-      if (spec.timeout_ms > 0 && now >= deadline) {
-        result.timed_out = true;
-        proc.kill();
-        break;
-      }
-
-      if (child_exited && child_exited_at.has_value()) {
-        constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
-        if (now - child_exited_at.value() >= kPostExitGrace) {
-          break;
-        }
-      }
-
-      std::vector<pollfd> pfds;
-      pfds.reserve(3);
-
-      int in_idx = -1;
-      int out_idx = -1;
-      int err_idx = -1;
-
-      if (in_open && in_fd >= 0) {
-        in_idx = static_cast<int>(pfds.size());
-        pollfd pfd{};
-        pfd.fd = in_fd;
-        pfd.events = POLLOUT;
-        pfd.revents = 0;
-        pfds.push_back(pfd);
-      }
-      if (out_open && out_fd >= 0) {
-        out_idx = static_cast<int>(pfds.size());
-        pollfd pfd{};
-        pfd.fd = out_fd;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-        pfds.push_back(pfd);
-      }
-      if (err_open && err_fd >= 0) {
-        err_idx = static_cast<int>(pfds.size());
-        pollfd pfd{};
-        pfd.fd = err_fd;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-        pfds.push_back(pfd);
-      }
-
-      if (pfds.empty()) {
-        if (!child_exited) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(10));
-          continue;
-        }
-        break;
-      }
-
-      int wait_ms = 50;
-      if (spec.timeout_ms > 0) {
-        const auto rem =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-        wait_ms = std::clamp<int>(static_cast<int>(rem), 0, 50);
-      }
-
-      const int poll_rc = poll(pfds.data(), static_cast<nfds_t>(pfds.size()), wait_ms);
-      if (poll_rc < 0) {
-        if (errno == EINTR) {
-          continue;
-        }
-        break;
-      }
-
-      if (in_idx >= 0 && (pfds[static_cast<std::size_t>(in_idx)].revents & POLLOUT) != 0) {
-        const std::size_t remaining = input.size() - input_offset;
-        if (remaining == 0) {
-          proc.close_input();
-          in_open = false;
-        } else {
-          const ssize_t written = write(in_fd, input.data() + input_offset, remaining);
-          if (written > 0) {
-            input_offset += static_cast<std::size_t>(written);
-            if (input_offset >= input.size()) {
-              proc.close_input();
-              in_open = false;
-            }
-          } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-            proc.close_input();
-            in_open = false;
-          }
-        }
-      }
-
-      if (out_idx >= 0) {
-        const auto rev = pfds[static_cast<std::size_t>(out_idx)].revents;
-        if ((rev & POLLIN) != 0) {
-          while (true) {
-            const ssize_t n = read(out_fd, drain_buffer.data(), drain_buffer.size());
-            if (n > 0) {
-              result.stdout_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
-            } else if (n == 0) {
-              out_open = false;
-              break;
-            } else {
-              break;
-            }
-          }
-        } else if ((rev & (POLLHUP | POLLERR)) != 0) {
-          while (true) {
-            const ssize_t n = read(out_fd, drain_buffer.data(), drain_buffer.size());
-            if (n > 0) {
-              result.stdout_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
-            } else {
-              break;
-            }
-          }
-          out_open = false;
-        }
-      }
-
-      if (err_idx >= 0) {
-        const auto rev = pfds[static_cast<std::size_t>(err_idx)].revents;
-        if ((rev & POLLIN) != 0) {
-          while (true) {
-            const ssize_t n = read(err_fd, drain_buffer.data(), drain_buffer.size());
-            if (n > 0) {
-              result.stderr_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
-            } else if (n == 0) {
-              err_open = false;
-              break;
-            } else {
-              break;
-            }
-          }
-        } else if ((rev & (POLLHUP | POLLERR)) != 0) {
-          while (true) {
-            const ssize_t n = read(err_fd, drain_buffer.data(), drain_buffer.size());
-            if (n > 0) {
-              result.stderr_text.append(drain_buffer.data(), static_cast<std::size_t>(n));
-            } else {
-              break;
-            }
-          }
-          err_open = false;
-        }
-      }
-    }
-
-    if (result.timed_out) {
+    if (pump.timed_out) {
+      proc.kill();
       result.exit_code = -1;
-    } else if (child_exited) {
-      result.exit_code = child_exit_code;
+    } else if (pump.child_exited) {
+      result.exit_code = pump.child_exit_code;
     } else {
+      // Every channel closed without a confirmed exit, so wait for the child itself.
       result.exit_code = proc.wait();
     }
     return result;
@@ -626,7 +488,7 @@ bool RunCommandSilent(const CommandSpec& spec, int* exit_code) {
     return false;
   }
 
-  const auto result = RunCommandWithInput(spec, {});
+  const auto result = RunOnce(spec, {});
   if (exit_code != nullptr) {
     *exit_code = result.exit_code;
   }
@@ -638,7 +500,7 @@ Expected<std::string> RunCommandCaptureStdout(const CommandSpec& spec) {
     return UnexpectedError("Command is empty.");
   }
 
-  const auto result = RunCommandWithInput(spec, {});
+  const auto result = RunOnce(spec, {});
   if (result.launch_failed) {
     return UnexpectedError(!result.stderr_text.empty() ? result.stderr_text
                                                        : "Failed to launch process.");
