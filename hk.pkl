@@ -19,9 +19,9 @@ local linters = new Mapping<String, Step> {
     check = "python3 scripts/check-i18n.py"
   }
 
-  ["json-validate"] {
-    glob = List("data/**/*.json", "notification.json")
-    check = "python3 -m json.tool {{files}} >/dev/null"
+  ["prettier"] = (Builtins.prettier) {
+    glob = List("**/*.json")
+    exclude = List("site/package-lock.json")
   }
 
   ["trailing-whitespace"] = Builtins.trailing_whitespace

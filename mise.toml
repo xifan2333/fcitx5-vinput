@@ -1,9 +1,10 @@
 [tools]
-pandoc = "latest"
 hk = "2"
 node = "latest"
 ruff = "latest"
 shfmt = "latest"
+"npm:jscpd" = "5"
+"npm:prettier" = "3"
 # Pinned to CI's cpp-linter major version (clang-tidy 21, ubuntu-24.04).
 # Do not upgrade past 21.x without checking .github/workflows/ci.yml first.
 "pipx:clang-tidy" = "21.1.6"
