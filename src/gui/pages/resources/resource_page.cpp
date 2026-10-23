@@ -27,7 +27,6 @@
 #include <QtCore/qthreadpool.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qtmetamacros.h>
-#include <QtCore/qtypes.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qdesktopservices.h>
 #include <QtGui/qevent.h>
@@ -343,7 +342,7 @@ ResourcePage::ResourcePage(QWidget* parent)
   btnRemoveAdapter_->setEnabled(false);
 
   connect(&I18nCache::Get(), &I18nCache::mapUpdated, this,
-          [this](quint64 generation) { finishRefreshAfterI18n({}, generation); });
+          [this](uint64_t generation) { finishRefreshAfterI18n({}, generation); });
   connect(&I18nCache::Get(), &I18nCache::reloadFailed, this, &ResourcePage::finishRefreshAfterI18n);
 
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -383,7 +382,7 @@ void ResourcePage::refreshLocalizedTables() {
   populateRemoteAdapters(remoteAdapters_);
 }
 
-void ResourcePage::finishRefreshAfterI18n(const QString& error, quint64 generation) {
+void ResourcePage::finishRefreshAfterI18n(const QString& error, uint64_t generation) {
   // Always repaint with the latest cached map + stored remote entries so
   // startup disk preload and later mapUpdated events refresh titles.
   refreshLocalizedTables();
@@ -599,7 +598,7 @@ void ResourcePage::populateRemoteProviders(
       item->setTextAlignment(Qt::AlignCenter);
       tableAvailableProviders_->setItem(row, 4, item);
     } else {
-      auto* emptyCell = MakeCell(QStringLiteral("-"));
+      auto* emptyCell = MakeCell(QString::fromLatin1("-"));
       emptyCell->setTextAlignment(Qt::AlignCenter);
       tableAvailableProviders_->setItem(row, 4, emptyCell);
     }
@@ -664,7 +663,7 @@ void ResourcePage::populateRemoteAdapters(
       item->setTextAlignment(Qt::AlignCenter);
       tableAvailableAdapters_->setItem(row, 3, item);
     } else {
-      auto* emptyCell = MakeCell(QStringLiteral("-"));
+      auto* emptyCell = MakeCell(QString::fromLatin1("-"));
       emptyCell->setTextAlignment(Qt::AlignCenter);
       tableAvailableAdapters_->setItem(row, 3, emptyCell);
     }
