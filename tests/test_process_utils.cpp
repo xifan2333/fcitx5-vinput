@@ -407,6 +407,69 @@ void TestRunOnceTimesOutWhenChildClosesEveryDescriptor() {
                                  std::to_string(elapsed) + "ms)");
 }
 
+/**
+ * A channel that floods its pipe must not starve the other one. Reads are budgeted per iteration,
+ * so a budget shared without reservation lets stdout consume all of it and leaves stderr unread
+ * until stdout runs dry - the exact shape that deadlocks a real child once its stderr pipe fills
+ * and write() blocks. The reserved share must make the stderr chunk arrive long before stdout is
+ * done.
+ */
+void TestPumpIoReservesBudgetPerChannel() {
+  constexpr std::size_t kFloodBytes = 32 * 1024;
+
+  int out_pipe[2] = {-1, -1};
+  int err_pipe[2] = {-1, -1};
+  ExpectTrue(vinput::process::CreateCloexecPipe(out_pipe), "CreateCloexecPipe should succeed");
+  ExpectTrue(vinput::process::CreateCloexecPipe(err_pipe), "CreateCloexecPipe should succeed");
+
+  const std::string flooded(kFloodBytes, 'o');
+  const std::string urgent = "!!\n";
+  ExpectTrue(std::cmp_equal(write(out_pipe[1], flooded.data(), flooded.size()), flooded.size()),
+             "Flood payload should fit the pipe buffer");
+  ExpectTrue(std::cmp_equal(write(err_pipe[1], urgent.data(), urgent.size()), urgent.size()),
+             "stderr payload should fit the pipe buffer");
+  close(out_pipe[1]);
+  close(err_pipe[1]);
+
+  // Records how much stdout the sink had already seen when the first stderr chunk arrived.
+  class OrderingSink final : public vinput::process::PumpSink {
+  public:
+    void OnStdout(std::string_view chunk) override { out.append(chunk); }
+    void OnStderr(std::string_view chunk) override {
+      if (stdout_bytes_before_first_stderr_chunk == std::string::npos) {
+        stdout_bytes_before_first_stderr_chunk = out.size();
+      }
+      err.append(chunk);
+    }
+
+    std::string out;
+    std::string err;
+    std::size_t stdout_bytes_before_first_stderr_chunk = std::string::npos;
+  };
+
+  OrderingSink sink;
+  vinput::process::PumpChild child;
+  child.channels.stdout_fd = out_pipe[0];
+  child.channels.stderr_fd = err_pipe[0];
+
+  vinput::process::PumpOptions options;
+  options.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  options.read_budget_bytes = 64;
+
+  const auto result = vinput::process::PumpIo(child, {}, options, sink);
+
+  ExpectTrue(!result.timed_out, "Draining closed channels must not time out");
+  ExpectTrue(result.stdout_closed && result.stderr_closed, "Both write ends were closed");
+  ExpectTrue(sink.out == flooded, "Flooded channel must be drained completely");
+  ExpectTrue(sink.err == urgent, "Starved channel must be drained completely: " + sink.err);
+  ExpectTrue(sink.stdout_bytes_before_first_stderr_chunk < kFloodBytes / 4,
+             "stderr must not wait for stdout to run dry, saw " +
+                 std::to_string(sink.stdout_bytes_before_first_stderr_chunk) + " stdout bytes");
+
+  close(out_pipe[0]);
+  close(err_pipe[0]);
+}
+
 } // namespace
 
 int main() {
@@ -422,6 +485,7 @@ int main() {
   TestPumpIoForwardsChannelOutput();
   TestPumpIoHonoursDeadlineWithoutExitProbe();
   TestPumpIoWritesInputAndClosesHandle();
+  TestPumpIoReservesBudgetPerChannel();
   TestRunOnceFeedsStdin();
   TestRunOnceDrainsLargeOutput();
   TestRunOnceTimesOutWhenChildClosesEveryDescriptor();

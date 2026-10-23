@@ -338,31 +338,38 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
 
     // A zero budget would leave readable data in the pipe and spin the loop, so keep it non-zero.
     std::size_t budget = std::max<std::size_t>(options.read_budget_bytes, 1);
+    // Every channel that is still open gets an equal share of what is left, so a child that floods
+    // one stream cannot starve the other. Starvation is not cosmetic: once the starved pipe fills,
+    // the child blocks in write() and both directions stall until the deadline.
+    std::size_t open_readers = (out_open ? 1U : 0U) + (err_open ? 1U : 0U);
 
-    if (out_open && out_idx >= 0) {
-      const auto revents = pfds.at(static_cast<std::size_t>(out_idx)).revents;
-      if ((revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
-        const DrainOutcome drained = DrainFdBudgeted{.fd = out_fd, .budget = budget}(
-            [&sink](std::string_view chunk) { sink.OnStdout(chunk); });
-        budget -= std::min(budget, drained.bytes_read);
-        if (drained.closed) {
-          out_open = false;
-          result.stdout_closed = true;
-        }
+    // Drains one readable channel with its guaranteed share of the remaining budget, shrinking the
+    // shared budget and the reader count as it goes so the leftovers roll over to the next channel.
+    const auto drain_channel = [&](int fd, int idx, auto emit, bool& open, bool& closed_flag) {
+      if (!open || idx < 0 || budget == 0 || open_readers == 0) {
+        return;
       }
-    }
+      const auto revents = pfds.at(static_cast<std::size_t>(idx)).revents;
+      if ((revents & (POLLIN | POLLHUP | POLLERR)) == 0) {
+        return;
+      }
+      const std::size_t quota = std::max<std::size_t>(budget / open_readers, 1);
+      const DrainOutcome drained =
+          DrainFdBudgeted{.fd = fd, .budget = std::min(quota, budget)}(emit);
+      budget -= std::min(budget, drained.bytes_read);
+      open_readers -= 1;
+      if (drained.closed) {
+        open = false;
+        closed_flag = true;
+      }
+    };
 
-    if (err_open && err_idx >= 0) {
-      const auto revents = pfds.at(static_cast<std::size_t>(err_idx)).revents;
-      if ((revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
-        const DrainOutcome drained = DrainFdBudgeted{.fd = err_fd, .budget = budget}(
-            [&sink](std::string_view chunk) { sink.OnStderr(chunk); });
-        if (drained.closed) {
-          err_open = false;
-          result.stderr_closed = true;
-        }
-      }
-    }
+    drain_channel(
+        out_fd, out_idx, [&sink](std::string_view chunk) { sink.OnStdout(chunk); }, out_open,
+        result.stdout_closed);
+    drain_channel(
+        err_fd, err_idx, [&sink](std::string_view chunk) { sink.OnStderr(chunk); }, err_open,
+        result.stderr_closed);
   }
 
   // The child may have exited while the last poll window was still open.

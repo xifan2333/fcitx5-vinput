@@ -77,6 +77,9 @@ struct PumpOptions {
   std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max();
   std::chrono::milliseconds poll_slice{50};
   std::chrono::milliseconds post_exit_grace{200};
+  // Upper bound on the bytes one pump iteration copies out of the child. The budget is shared out
+  // fairly across the channels that are still open, so a flooding stream cannot starve the other
+  // one into a blocking write.
   std::size_t read_budget_bytes = std::size_t{64} * 1024;
   // One-shot callers close the child's stdin after the input is drained; streaming callers keep it
   // open because they push another message later.
