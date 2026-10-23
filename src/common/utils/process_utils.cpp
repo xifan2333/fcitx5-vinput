@@ -328,7 +328,8 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
       }
     }
 
-    std::size_t budget = options.read_budget_bytes;
+    // A zero budget would leave readable data in the pipe and spin the loop, so keep it non-zero.
+    std::size_t budget = std::max<std::size_t>(options.read_budget_bytes, 1);
 
     if (out_open && out_idx >= 0) {
       const auto revents = pfds[static_cast<std::size_t>(out_idx)].revents;
