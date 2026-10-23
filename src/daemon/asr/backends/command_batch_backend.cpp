@@ -55,7 +55,7 @@ public:
 
     finished_ = true;
     const auto audio = std::as_bytes(std::span<const int16_t>(pcm_));
-    auto command_result = vinput::process::RunOnce(command_, audio);
+    auto command_result = vinput::process::Run(command_, audio);
 
     if (command_result.launch_failed) {
       events_.push_back(

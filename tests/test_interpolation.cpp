@@ -148,7 +148,7 @@ void TestProcessEnvInterpolation() {
   spec.env["TEST_VAR"] = "${PATH}";
   spec.timeout_ms = 5000;
 
-  const vinput::process::CommandResult res = vinput::process::RunOnce(spec, {});
+  const vinput::process::CommandResult res = vinput::process::Run(spec, {});
   ExpectTrue(res.exit_code == 0);
   ExpectEq(std::string(vinput::str::Trim(res.stdout_text)), std::string(path_val));
 }
