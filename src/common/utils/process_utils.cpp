@@ -76,6 +76,16 @@ struct DrainOutcome {
   bool closed = false;
 };
 
+// Events that mean a read is worth attempting on a channel: data, a closed peer, a broken pipe, or
+// a descriptor that died while the pump was running. POLLNVAL has to be here because it is the only
+// way an invalid descriptor gets closed: the read that follows fails with EBADF and reports the
+// channel closed. Without it the channel stays open and poll() returns at once on every iteration,
+// burning the CPU until the deadline.
+constexpr short kReadableChannelEvents = POLLIN | POLLHUP | POLLERR | POLLNVAL;
+
+// Events that end the input channel without a successful write, including an invalid descriptor.
+constexpr short kInputFailureEvents = POLLHUP | POLLERR | POLLNVAL;
+
 // Reads at most `budget` bytes from `fd` and forwards every chunk to `emit`. The budget keeps one
 // fast writer from starving the other channels of the same pump iteration.
 struct DrainFdBudgeted {
@@ -342,7 +352,7 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
           result.input_incomplete = true;
           finish_input();
         }
-      } else if ((revents & (POLLHUP | POLLERR)) != 0) {
+      } else if ((revents & kInputFailureEvents) != 0) {
         result.input_incomplete = true;
         finish_input();
       }
@@ -362,7 +372,7 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
         return;
       }
       const auto revents = pfds.at(static_cast<std::size_t>(idx)).revents;
-      if ((revents & (POLLIN | POLLHUP | POLLERR)) == 0) {
+      if ((revents & kReadableChannelEvents) == 0) {
         return;
       }
       const std::size_t quota = std::max<std::size_t>(budget / open_readers, 1);

@@ -557,6 +557,84 @@ void TestPumpIoDeadlineHoldsOnBlockingInputPipe() {
   close(in_pipe[1]);
 }
 
+/**
+ * A borrowed descriptor that goes invalid while the pump is running must close its channel at once.
+ * poll() reports POLLNVAL on every following iteration, so a pump that does not treat it as a
+ * reason to read keeps the channel open and spins at full speed until the deadline, and the stdin
+ * channel never reports that its remaining input can no longer be delivered.
+ */
+void TestPumpIoClosesDescriptorsInvalidatedMidPump() {
+  int out_pipe[2] = {-1, -1};
+  int err_pipe[2] = {-1, -1};
+  int in_pipe[2] = {-1, -1};
+  ExpectTrue(vinput::process::CreateCloexecPipe(out_pipe), "CreateCloexecPipe should succeed");
+  ExpectTrue(vinput::process::CreateCloexecPipe(err_pipe), "CreateCloexecPipe should succeed");
+  ExpectTrue(vinput::process::CreateCloexecPipe(in_pipe), "CreateCloexecPipe should succeed");
+
+  const std::string payload = "triggers the invalidation";
+  ExpectTrue(std::cmp_equal(write(out_pipe[1], payload.data(), payload.size()), payload.size()),
+             "stdout payload should fit the pipe buffer");
+  close(out_pipe[1]);
+  out_pipe[1] = -1;
+
+  // More input than the pipe can absorb, so the stdin channel is still open when it is invalidated.
+  const std::string overlong_input(std::size_t{256} * 1024, 'i');
+
+  int close_calls = 0;
+  vinput::process::PumpChild child;
+  child.channels.input_fd = in_pipe[1];
+  child.channels.stdout_fd = out_pipe[0];
+  child.channels.stderr_fd = err_pipe[0];
+  child.close_input = [&close_calls] { ++close_calls; };
+
+  // Closes the other two borrowed descriptors from inside the pump, which is what a consumer that
+  // gives up on a channel does.
+  struct InvalidatingSink final : public vinput::process::PumpSink {
+    int stderr_fd = -1;
+    int input_fd = -1;
+    std::string out;
+    bool invalidated = false;
+
+    void OnStdout(std::string_view chunk) override {
+      out.append(chunk);
+      if (invalidated) {
+        return;
+      }
+      invalidated = true;
+      close(stderr_fd);
+      close(input_fd);
+    }
+    void OnStderr(std::string_view /*chunk*/) override {}
+  };
+  InvalidatingSink sink;
+  sink.stderr_fd = err_pipe[0];
+  sink.input_fd = in_pipe[1];
+
+  vinput::process::PumpOptions options;
+  options.poll_slice = std::chrono::milliseconds(10);
+  options.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+
+  const auto bytes = std::as_bytes(std::span(overlong_input.data(), overlong_input.size()));
+  const auto start = std::chrono::steady_clock::now();
+  const auto result = vinput::process::PumpIo(child, bytes, options, sink);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+
+  ExpectTrue(!result.timed_out, "Invalid descriptors must not be waited out to the deadline");
+  ExpectTrue(result.stderr_closed, "Invalid stderr channel must be closed");
+  ExpectTrue(result.input_incomplete, "Input behind an invalid descriptor is incomplete");
+  ExpectTrue(sink.out == payload, "The readable channel must still be drained: " + sink.out);
+  ExpectTrue(close_calls == 1,
+             "Input close hook must still run once, got " + std::to_string(close_calls));
+  ExpectTrue(elapsed < 200, "Invalid descriptors must close on the spot (elapsed=" +
+                                std::to_string(elapsed) + "ms)");
+
+  close(out_pipe[0]);
+  close(err_pipe[1]);
+  close(in_pipe[0]);
+}
+
 } // namespace
 
 int main() {
@@ -575,6 +653,7 @@ int main() {
   TestPumpIoReservesBudgetPerChannel();
   TestPumpIoForcesNonBlockingDescriptors();
   TestPumpIoDeadlineHoldsOnBlockingInputPipe();
+  TestPumpIoClosesDescriptorsInvalidatedMidPump();
   TestRunOnceFeedsStdin();
   TestRunOnceDrainsLargeOutput();
   TestRunOnceTimesOutWhenChildClosesEveryDescriptor();
