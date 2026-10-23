@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Override target sherpa-onnx version (no leading v). Empty = use upstream latest.'
+        description: 'Override target sherpa-onnx version (no leading v). Empty = use upstream latest. Passing the current version forces a flake.lock refresh + PR.'
         required: false
         default: ''
 
@@ -81,7 +81,14 @@ jobs:
 
           echo "current=${current}" >> "${GITHUB_OUTPUT}"
           echo "target=${target}"   >> "${GITHUB_OUTPUT}"
-          if [[ "${current}" == "${target}" ]]; then
+          if [[ -n "${OVERRIDE}" ]]; then
+            # Explicit manual override always runs the pipeline, even when
+            # the version is unchanged. This lets maintainers force the
+            # best-effort `nix flake update sherpa-onnx` (refresh flake.lock
+            # to the latest xifan2333/sherpa-onnx-flake rev) and re-open the
+            # bump PR without waiting for an upstream release.
+            echo "Forced run via manual override: v${current} -> v${target}" >&2
+          elif [[ "${current}" == "${target}" ]]; then
             echo "skip=true" >> "${GITHUB_OUTPUT}"
             echo "Already pinned at v${target}, nothing to do." >&2
           else
