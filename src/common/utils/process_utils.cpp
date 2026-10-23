@@ -69,6 +69,46 @@ std::map<std::string, std::string> BuildEnvMap(const CommandSpec& spec) {
   return env_map;
 }
 
+struct DrainOutcome {
+  std::size_t bytes_read = 0;
+  bool closed = false;
+};
+
+// Reads at most `budget` bytes from `fd` and forwards every chunk to `emit`. The budget keeps one
+// fast writer from starving the other channels of the same pump iteration.
+struct DrainFdBudgeted {
+  int fd = -1;
+  std::size_t budget = 0;
+
+  template <typename Emit> DrainOutcome operator()(const Emit& emit) const {
+    DrainOutcome outcome;
+    std::array<char, 4096> buffer{};
+
+    while (outcome.bytes_read < budget) {
+      const std::size_t want = std::min(buffer.size(), budget - outcome.bytes_read);
+      const ssize_t n = ::read(fd, buffer.data(), want);
+      if (n > 0) {
+        const auto count = static_cast<std::size_t>(n);
+        outcome.bytes_read += count;
+        emit(std::string_view(buffer.data(), count));
+        continue;
+      }
+      if (n == 0) {
+        // Peer closed the write end.
+        outcome.closed = true;
+        break;
+      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        break;
+      }
+      outcome.closed = true;
+      break;
+    }
+
+    return outcome;
+  }
+};
+
 } // namespace
 
 bool KillAndReap(pid_t pid) {
@@ -146,6 +186,174 @@ bool CreateCloexecPipe(int pipefd[2]) {
   (void)fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
   return true;
 #endif
+}
+
+PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
+                  const PumpOptions& options, PumpSink& sink) {
+  using Clock = std::chrono::steady_clock;
+
+  PumpResult result;
+  const int in_fd = child.channels.input_fd;
+  const int out_fd = child.channels.stdout_fd;
+  const int err_fd = child.channels.stderr_fd;
+
+  std::size_t input_offset = 0;
+  bool in_open = (in_fd >= 0 && !input.empty());
+  bool out_open = (out_fd >= 0);
+  bool err_open = (err_fd >= 0);
+  bool input_closed = false;
+
+  // Marks the input channel done and lets the owner release its own handle exactly once.
+  const auto finish_input = [&]() {
+    in_open = false;
+    if (!input_closed) {
+      input_closed = true;
+      if (options.close_input_after_write && child.close_input) {
+        child.close_input();
+      }
+    }
+  };
+
+  if (in_fd >= 0 && input.empty()) {
+    finish_input();
+  }
+
+  std::optional<Clock::time_point> child_exited_at;
+
+  while (in_open || out_open || err_open || !result.child_exited) {
+    if (!result.child_exited && child.exited) {
+      int exit_code = -1;
+      if (child.exited(&exit_code)) {
+        result.child_exited = true;
+        result.child_exit_code = exit_code;
+        child_exited_at = Clock::now();
+        if (in_open) {
+          finish_input();
+        }
+      }
+    }
+
+    const auto now = Clock::now();
+    if (now >= options.deadline) {
+      result.timed_out = true;
+      if (in_open) {
+        result.input_incomplete = true;
+        in_open = false;
+      }
+      break;
+    }
+
+    // A closed child can still leave buffered output behind, so drain for a bounded grace only.
+    if (result.child_exited && child_exited_at.has_value() &&
+        now - *child_exited_at >= options.post_exit_grace) {
+      break;
+    }
+
+    if (!in_open && !out_open && !err_open) {
+      break;
+    }
+
+    std::array<pollfd, 3> pfds{};
+    std::size_t pfd_count = 0;
+    int in_idx = -1;
+    int out_idx = -1;
+    int err_idx = -1;
+
+    if (in_open) {
+      in_idx = static_cast<int>(pfd_count);
+      pfds[pfd_count].fd = in_fd;
+      pfds[pfd_count].events = POLLOUT;
+      pfd_count += 1;
+    }
+    if (out_open) {
+      out_idx = static_cast<int>(pfd_count);
+      pfds[pfd_count].fd = out_fd;
+      pfds[pfd_count].events = POLLIN;
+      pfd_count += 1;
+    }
+    if (err_open) {
+      err_idx = static_cast<int>(pfd_count);
+      pfds[pfd_count].fd = err_fd;
+      pfds[pfd_count].events = POLLIN;
+      pfd_count += 1;
+    }
+
+    auto wait_ms = static_cast<int>(std::clamp<std::int64_t>(options.poll_slice.count(), 0, 1000));
+    if (options.deadline != Clock::time_point::max()) {
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds>(options.deadline - now).count();
+      wait_ms = std::min(wait_ms, static_cast<int>(std::clamp<std::int64_t>(remaining, 0, 1000)));
+    }
+
+    const int poll_rc = ::poll(pfds.data(), static_cast<nfds_t>(pfd_count), wait_ms);
+    if (poll_rc < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    if (poll_rc == 0) {
+      continue;
+    }
+
+    if (in_idx >= 0) {
+      const auto revents = pfds[static_cast<std::size_t>(in_idx)].revents;
+      if ((revents & POLLOUT) != 0) {
+        const std::size_t remaining = input.size() - input_offset;
+        const ssize_t written = ::write(in_fd, input.data() + input_offset, remaining);
+        if (written > 0) {
+          input_offset += static_cast<std::size_t>(written);
+          if (input_offset >= input.size()) {
+            finish_input();
+          }
+        } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+          result.input_incomplete = true;
+          finish_input();
+        }
+      } else if ((revents & (POLLHUP | POLLERR)) != 0) {
+        result.input_incomplete = true;
+        finish_input();
+      }
+    }
+
+    std::size_t budget = options.read_budget_bytes;
+
+    if (out_open && out_idx >= 0) {
+      const auto revents = pfds[static_cast<std::size_t>(out_idx)].revents;
+      if ((revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+        const DrainOutcome drained = DrainFdBudgeted{out_fd, budget}(
+            [&sink](std::string_view chunk) { sink.OnStdout(chunk); });
+        budget -= std::min(budget, drained.bytes_read);
+        if (drained.closed) {
+          out_open = false;
+          result.stdout_closed = true;
+        }
+      }
+    }
+
+    if (err_open && err_idx >= 0) {
+      const auto revents = pfds[static_cast<std::size_t>(err_idx)].revents;
+      if ((revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+        const DrainOutcome drained = DrainFdBudgeted{err_fd, budget}(
+            [&sink](std::string_view chunk) { sink.OnStderr(chunk); });
+        if (drained.closed) {
+          err_open = false;
+          result.stderr_closed = true;
+        }
+      }
+    }
+  }
+
+  // The child may have exited while the last poll window was still open.
+  if (!result.child_exited && child.exited) {
+    int exit_code = -1;
+    if (child.exited(&exit_code)) {
+      result.child_exited = true;
+      result.child_exit_code = exit_code;
+    }
+  }
+
+  return result;
 }
 
 CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input) {

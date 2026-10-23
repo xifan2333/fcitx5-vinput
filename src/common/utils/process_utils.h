@@ -2,7 +2,9 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <span>
 #include <string>
@@ -37,6 +39,67 @@ struct SpawnedProcess {
   pid_t pid = -1;
   int stderr_fd = -1;
 };
+
+// Receives child output incrementally. Chunk boundaries are arbitrary, so a sink must not assume
+// that a chunk equals a line or a message.
+class PumpSink {
+public:
+  PumpSink() = default;
+  PumpSink(const PumpSink&) = delete;
+  PumpSink& operator=(const PumpSink&) = delete;
+  PumpSink(PumpSink&&) = delete;
+  PumpSink& operator=(PumpSink&&) = delete;
+  virtual ~PumpSink() = default;
+
+  virtual void OnStdout(std::string_view chunk) = 0;
+  virtual void OnStderr(std::string_view chunk) = 0;
+};
+
+// Raw descriptors of one spawned child. The caller keeps ownership of every descriptor and of the
+// child itself, so a pump never spawns, signals, reaps or closes anything on its own.
+struct PumpChannels {
+  int input_fd = -1;  // write end of the child's stdin, optional
+  int stdout_fd = -1; // read end of the child's stdout, optional
+  int stderr_fd = -1; // read end of the child's stderr, optional
+};
+
+// Reports whether the child already exited, filling `exit_code` with the normalized return code.
+using ChildExitProbe = std::function<bool(int* exit_code)>;
+
+struct PumpChild {
+  PumpChannels channels;
+  // Empty when the caller cannot probe the child; the pump then ends once all channels close.
+  ChildExitProbe exited;
+  // Invoked once after the last input byte was accepted, so the caller can close its own handle.
+  std::function<void()> close_input;
+};
+
+struct PumpOptions {
+  std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max();
+  std::chrono::milliseconds poll_slice{50};
+  std::chrono::milliseconds post_exit_grace{200};
+  std::size_t read_budget_bytes = std::size_t{64} * 1024;
+  // One-shot callers close the child's stdin after the input is drained; streaming callers keep it
+  // open because they push another message later.
+  bool close_input_after_write = true;
+};
+
+struct PumpResult {
+  bool timed_out = false;
+  // Set when the input was not fully accepted, either because the deadline expired or because the
+  // child stopped reading.
+  bool input_incomplete = false;
+  bool child_exited = false;
+  int child_exit_code = -1;
+  bool stdout_closed = false;
+  bool stderr_closed = false;
+};
+
+// Drives one spawned child until its channels close and it exits, or until the deadline expires.
+// This is the single implementation of deadline-bounded, non-blocking, bidirectional draining that
+// every child-process call site shares.
+PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
+                  const PumpOptions& options, PumpSink& sink);
 
 CommandResult RunCommandWithInput(const CommandSpec& spec, std::span<const std::byte> input);
 bool RunCommandSilent(const CommandSpec& spec, int* exit_code = nullptr);
