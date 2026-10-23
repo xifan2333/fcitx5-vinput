@@ -22,10 +22,6 @@ run = "hk install --mise"
 
 [tasks.check]
 description = "Run all hk checks across the repo"
-run = "hk check"
-
-[tasks."check:safe"]
-description = "Run hk check across the repo"
 run = "hk run check"
 
 [tasks."check:plan"]
@@ -46,39 +42,19 @@ set -euo pipefail
 
 [tasks."check:dup"]
 description = "Analyze code duplication across src/ using jscpd"
-run = "npx --yes jscpd src --reporters console"
+run = "jscpd src --reporters console"
+
+[tasks."check:tidy"]
+description = "Run clang-tidy on C++ files (default: changed vs origin/main; --all; --full for VINPUT_ENABLE_LOCAL_ASR paths)"
+run = "bash scripts/check-tidy.sh \"$@\""
 
 [tasks.fix]
 description = "Run all hk fixers to format files"
 run = "hk fix"
 
-[tasks.fmt]
-description = "Format C++ source code with clang-format"
-run = "find src tests -name '*.cpp' -o -name '*.h' | xargs clang-format -i"
-
-[tasks.check-fmt]
-description = "Check C++ source formatting without modifying files"
-run = "find src tests -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror"
-
-[tasks.check-i18n]
+[tasks."check-i18n"]
 description = "Validate gettext and Qt translation files"
 run = "python3 scripts/check-i18n.py"
-
-[tasks.lint]
-description = "Run linter and check i18n & JSON formatting"
-depends = ["check-fmt", "check-i18n"]
-run = """
-python3 -m json.tool data/default-config.json >/dev/null
-python3 -m json.tool notification.json >/dev/null
-"""
-
-[tasks.gen-man]
-description = "Generate roff man pages from markdown using pandoc"
-run = "bash scripts/gen-man.sh"
-
-[tasks."check:tidy"]
-description = "Run clang-tidy on C++ files (default: changed vs origin/main; --all; --full for VINPUT_ENABLE_LOCAL_ASR paths)"
-run = "bash scripts/check-tidy.sh \"$@\""
 
 [tasks.configure]
 description = "Configure CMake build directory (Release by default, or: mise run configure Debug /usr)"
@@ -95,26 +71,6 @@ else
 fi
 """
 
-[tasks.dev]
-description = "Configure CMake for debug build"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-prefix="${1:-/usr}"
-shift 1 2>/dev/null || true
-cmake --preset debug-clang-mold -DCMAKE_INSTALL_PREFIX="$prefix" "$@"
-"""
-
-[tasks.configure-release]
-description = "Configure CMake for release build"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-prefix="${1:-/usr}"
-shift 1 2>/dev/null || true
-cmake --preset release-clang-mold -DCMAKE_INSTALL_PREFIX="$prefix" "$@"
-"""
-
 [tasks.build]
 description = "Build project with CMake (Release preset)"
 run = "cmake --build --preset release-clang-mold"
@@ -127,24 +83,6 @@ run = "cmake --build --preset debug-clang-mold"
 description = "Remove CMake build directory"
 run = "rm -rf build"
 
-[tasks.rebuild]
-description = "Clean and rebuild the project (default Release /usr)"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm -rf build
-type="${1:-Release}"
-prefix="${2:-/usr}"
-shift 2 2>/dev/null || shift 1 2>/dev/null || true
-if [ "$type" = "Debug" ]; then
-  cmake --preset debug-clang-mold -DCMAKE_INSTALL_PREFIX="$prefix" "$@"
-  cmake --build --preset debug-clang-mold
-else
-  cmake --preset release-clang-mold -DCMAKE_INSTALL_PREFIX="$prefix" "$@"
-  cmake --build --preset release-clang-mold
-fi
-"""
-
 [tasks.install]
 description = "Install built binaries, systemd units and man pages"
 run = """
@@ -155,7 +93,13 @@ cmake --preset release-clang-mold -DCMAKE_INSTALL_PREFIX="$prefix"
 cmake --install build
 echo "note: run 'systemctl --user daemon-reload' after installing systemd user units"
 if [ "$prefix" = "/usr" ]; then
-  mise run check-stale-install
+  echo "== Stale /usr/local Paths =="
+  for p in /usr/local/bin/vinput /usr/local/bin/vinput-daemon /usr/local/bin/vinput-gui \
+           /usr/local/share/systemd/user/vinput-daemon.service \
+           /usr/local/share/dbus-1/services/org.fcitx.Vinput.service \
+           /usr/local/share/applications/vinput-gui.desktop; do
+    [ -e "$p" ] && ls -ld "$p"
+  done
 fi
 """
 
@@ -166,69 +110,6 @@ run = """
 set -euo pipefail
 bash scripts/build-sherpa-onnx.sh "${1:-}" "${2:-/usr}" "${3:-}"
 """
-
-[tasks.doctor]
-description = "Run full system diagnostic checks"
-depends = [
-  "check-build-cache",
-  "check-installed-binaries",
-  "check-user-service",
-  "check-stale-install",
-]
-
-[tasks.check-build-cache]
-description = "Inspect CMake build cache"
-run = """
-echo "== Build Cache =="
-cmake -LA -N build 2>/dev/null | grep -E 'CMAKE_BUILD_TYPE|CMAKE_INSTALL_PREFIX' || true
-echo
-"""
-
-[tasks.check-installed-binaries]
-description = "Check installed vinput executable paths"
-run = """
-echo "== Installed Binaries =="
-for cmd in vinput vinput-daemon vinput-gui; do
-  if command -v "$cmd" >/dev/null 2>&1; then
-    path="$(command -v "$cmd")"
-    echo "$cmd -> $path"
-    ls -l "$path"
-  else
-    echo "$cmd -> (not found)"
-  fi
-  echo
-done
-"""
-
-[tasks.check-user-service]
-description = "Check systemd user service status"
-run = """
-echo "== User Service =="
-systemctl --user cat vinput-daemon.service || true
-echo
-"""
-
-[tasks.check-stale-install]
-description = "Check for conflicting /usr/local legacy paths"
-run = """
-echo "== Stale /usr/local Paths =="
-found=0
-for p in /usr/local/bin/vinput /usr/local/bin/vinput-daemon /usr/local/bin/vinput-gui \
-         /usr/local/share/systemd/user/vinput-daemon.service \
-         /usr/local/share/dbus-1/services/org.fcitx.Vinput.service \
-         /usr/local/share/applications/vinput-gui.desktop; do
-  if [ -e "$p" ]; then
-    found=1
-    ls -ld "$p"
-  fi
-done
-[ "$found" -eq 0 ] && echo "(none)" || true
-echo
-"""
-
-[tasks.source-archive]
-description = "Create tarball source archive"
-run = "bash scripts/create-source-archive.sh"
 
 [tasks.release]
 description = "Create and push a git release tag (e.g.: mise run release 0.8.0 main)"
@@ -265,50 +146,6 @@ gh workflow run channels.yml \
   --field ref="${ref}" \
   --field version="${version_value}" \
   "${extra_fields[@]}"
-"""
-
-[tasks.deb]
-description = "Build Debian package using Docker"
-run = """
-DOCKER_BUILDKIT=1 docker build \
-  --target exporter \
-  -t fcitx5-vinput-builder \
-  -f Dockerfile.debian \
-  --output type=local,dest=. .
-"""
-
-[tasks.deb-local]
-description = "Build Debian package with local network overrides"
-run = """
-DOCKER_BUILDKIT=1 docker build \
-  --add-host=host.docker.internal:host-gateway \
-  --build-arg APT_MIRROR="${APT_MIRROR:-}" \
-  --build-arg all_proxy="${all_proxy:-}" \
-  --build-arg http_proxy="${http_proxy:-}" \
-  --build-arg https_proxy="${https_proxy:-}" \
-  --target exporter \
-  -t fcitx5-vinput-builder \
-  -f Dockerfile.debian \
-  --output type=local,dest=. .
-"""
-
-[tasks.flatpak-build]
-description = "Build Flatpak package"
-run = "flatpak-builder --user --force-clean --repo=repo --ccache builddir packaging/flatpak/ci-manifest.yaml"
-
-[tasks.flatpak-bundle]
-description = "Create Flatpak single-file bundle"
-run = "flatpak build-bundle --runtime repo fcitx5-vinput.flatpak org.fcitx.Fcitx5.Addon.Vinput stable"
-
-[tasks.flatpak-install]
-description = "Install Flatpak bundle locally"
-run = "flatpak install --user -y fcitx5-vinput.flatpak"
-
-[tasks.flatpak-permissions]
-description = "Apply Flatpak PipeWire and systemd overrides"
-run = """
-flatpak override --user --filesystem=xdg-run/pipewire-0 org.fcitx.Fcitx5
-flatpak override --user --filesystem=xdg-config/systemd:create org.fcitx.Fcitx5
 """
 
 [tasks.docs-dev]

@@ -1,8 +1,0 @@
-.git
-.github
-build/
-runtime/
-*.deb
-*.tar.bz2
-node_modules/
-.claude/

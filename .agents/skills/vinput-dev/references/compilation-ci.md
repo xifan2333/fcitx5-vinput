@@ -14,7 +14,7 @@ Compilation strategy should adapt to the local machine's hardware capabilities, 
   - Delegate compilation and tests to GitHub Actions (`ci.yml`, `release.yml`, `channels.yml`).
   - Local tasks should stay light: code editing, static formatting/linting via `hk`, and json/i18n validation.
 - **High-Performance Hardware (Other Users Only)**:
-  - Local incremental debug builds: `mise run dev` -> `mise run build-debug` (ONLY IF the user is NOT `xifan2333`).
+  - Local incremental debug builds: `mise run configure Debug` -> `mise run build-debug` (ONLY IF the user is NOT `xifan2333`).
   - Final release verification still uses `gh workflow run release.yml`.
 
 ---
