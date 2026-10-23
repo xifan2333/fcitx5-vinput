@@ -1,6 +1,7 @@
 [tools]
 hk = "2"
 node = "latest"
+pandoc = "latest"
 ruff = "latest"
 shfmt = "latest"
 "npm:jscpd" = "5"
