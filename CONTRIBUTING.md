@@ -21,7 +21,7 @@ Or use `mise`:
 
 ```bash
 mise run sherpa
-mise run configure-release
+mise run configure
 mise run build
 sudo mise run install
 ```

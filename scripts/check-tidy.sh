@@ -41,12 +41,19 @@ fi
 if [ "$ALL" -eq 1 ]; then
   mapfile -t FILES < <(find src tests -name '*.cpp' | sort)
 elif [ "${#FILES[@]}" -eq 0 ]; then
-  mapfile -t FILES < <({
+  mapfile -t changed_all < <({
     git diff --name-only origin/main...HEAD
     git diff --name-only
     git diff --cached --name-only
     git ls-files --others --exclude-standard
-  } | grep -E '^(src|tests)/.*\.cpp$' | sort -u || true)
+  } | grep -E '^(src|tests)/.*\.(cpp|h)$' | sort -u || true)
+  mapfile -t FILES < <(printf '%s\n' "${changed_all[@]:-}" | grep '\.cpp$' || true)
+  changed_headers=$(printf '%s\n' "${changed_all[@]:-}" | grep -c '\.h$' || true)
+  if [ "${#FILES[@]}" -eq 0 ] && [ "$changed_headers" -gt 0 ]; then
+    echo "warning: only headers changed; headers are linted through their including .cpp TUs." >&2
+    echo "warning: no affected TU was identified automatically — run 'mise run check:tidy --all'" >&2
+    echo "         (or pass specific .cpp files) to make sure the change is analyzed." >&2
+  fi
 fi
 
 if [ "${#FILES[@]}" -eq 0 ]; then
@@ -70,6 +77,9 @@ if [ "$FULL" -eq 1 ]; then
   trap 'mv "$BUILD_DIR/.config.h.tidy-bak" "$BUILD_DIR/config.h"' EXIT
   sed -i 's/#define VINPUT_ENABLE_LOCAL_ASR 0/#define VINPUT_ENABLE_LOCAL_ASR 1/' "$BUILD_DIR/config.h"
   echo "full mode: VINPUT_ENABLE_LOCAL_ASR=1 (restored on exit)"
+  echo "note: sherpa backend TUs (sherpa_offline/streaming_backend.cpp, hotword_utils.cpp,"
+  echo "      vad_trimmer.cpp, ...) have no entries in the local Lite compile DB and"
+  echo "      remain CI-only even in full mode."
 fi
 
 printf '%s\0' "${lintable[@]}" | xargs -0 -r -n 1 -P "$(nproc)" clang-tidy -p "$BUILD_DIR"

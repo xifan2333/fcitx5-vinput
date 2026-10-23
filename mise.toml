@@ -99,7 +99,9 @@ if [ "$prefix" = "/usr" ]; then
            /usr/local/share/systemd/user/vinput-daemon.service \
            /usr/local/share/dbus-1/services/org.fcitx.Vinput.service \
            /usr/local/share/applications/vinput-gui.desktop; do
-    [ -e "$p" ] && ls -ld "$p"
+    if [ -e "$p" ]; then
+      ls -ld "$p"
+    fi
   done
 fi
 """
