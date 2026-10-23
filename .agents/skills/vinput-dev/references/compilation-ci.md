@@ -116,7 +116,17 @@ gh run list --branch $(git branch --show-current) --status in_progress --json da
 
 ## 8. Local clang-tidy Reproduction (check:tidy)
 
-Static analysis is **not** a heavy build (parse-only, no binaries), so running it locally is allowed even on the maintainer machine. Use it BEFORE pushing to avoid cpp-linter round-trips:
+Static analysis is **not** a heavy build (parse-only, no binaries), so running it locally is allowed even on the maintainer machine. Use it BEFORE pushing to avoid cpp-linter round-trips.
+
+### Prerequisites
+
+| Dependency | Required for | Arch install |
+| :--- | :--- | :--- |
+| **Qt 6** (qt6-base, qt6-tools) | GUI code lint | `pacman -S qt6-base qt6-tools` |
+| **PipeWire** (libpipewire) | Audio code lint | `pacman -S libpipewire` |
+| **sherpa-onnx** (optional) | Full-mode lint (ASR backend) | `yay -S sherpa-onnx-bin` |
+
+### Commands
 
 ```bash
 # one-time Lite-mode compile DB (fast, no sherpa-onnx needed).
@@ -129,8 +139,8 @@ mise run check:tidy --all          # lint everything under src/ and tests/
 mise run check:tidy <file> [...]   # lint specific files
 ```
 
-Alignment contract with CI (`.github/workflows/ci.yml` job `cpp-linter`):
+### Notes
 
 - **clang-tidy version**: pinned to `21.x` via `mise.toml [tools]` (`pipx:clang-tidy = "21.1.6"`; CI runs 21.1.8). Do not upgrade past 21.x without checking CI first.
-- **Full vs Lite**: CI lints the full build. `check:tidy --full` flips `build/config.h` locally and always restores it on exit. The two sherpa backend `.cpp` files are absent from the local Lite compile DB (no sherpa-onnx headers locally) and remain CI-only.
+- **Full vs Lite**: CI lints the full build. `check:tidy --full` flips `build/config.h` locally and always restores it on exit. The two sherpa backend `.cpp` files are absent from the local Lite compile DB (no sherpa-onnx headers locally) and remain CI-only unless you install `sherpa-onnx-bin` first.
 - **Qt version skew**: local Qt (e.g. 6.12 on Arch) may be newer than CI's Qt 6.4. A clean local result can still fail CI when version-sensitive constructs are used. Rules of thumb: prefer `uint64_t` over `quint64`, `QString::fromLatin1` over `QStringLiteral`, and never include Qt headers introduced after Qt 6.4 (e.g. `<QtCore/qtypes.h>`).
