@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -240,6 +241,8 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
         result.child_exit_code = exit_code;
         child_exited_at = Clock::now();
         if (in_open) {
+          // The child is gone, so the rest of the input can never be read.
+          result.input_incomplete = true;
           finish_input();
         }
       }
@@ -261,10 +264,6 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
       break;
     }
 
-    if (!in_open && !out_open && !err_open) {
-      break;
-    }
-
     std::array<pollfd, 3> pfds{};
     std::size_t pfd_count = 0;
     int in_idx = -1;
@@ -273,20 +272,17 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
 
     if (in_open) {
       in_idx = static_cast<int>(pfd_count);
-      pfds[pfd_count].fd = in_fd;
-      pfds[pfd_count].events = POLLOUT;
+      pfds.at(pfd_count) = pollfd{.fd = in_fd, .events = POLLOUT, .revents = 0};
       pfd_count += 1;
     }
     if (out_open) {
       out_idx = static_cast<int>(pfd_count);
-      pfds[pfd_count].fd = out_fd;
-      pfds[pfd_count].events = POLLIN;
+      pfds.at(pfd_count) = pollfd{.fd = out_fd, .events = POLLIN, .revents = 0};
       pfd_count += 1;
     }
     if (err_open) {
       err_idx = static_cast<int>(pfd_count);
-      pfds[pfd_count].fd = err_fd;
-      pfds[pfd_count].events = POLLIN;
+      pfds.at(pfd_count) = pollfd{.fd = err_fd, .events = POLLIN, .revents = 0};
       pfd_count += 1;
     }
 
@@ -295,6 +291,16 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
       const auto remaining =
           std::chrono::duration_cast<std::chrono::milliseconds>(options.deadline - now).count();
       wait_ms = std::min(wait_ms, static_cast<int>(std::clamp<std::int64_t>(remaining, 0, 1000)));
+    }
+
+    if (pfd_count == 0) {
+      // Every channel is closed but the child still runs. Keep the deadline in force instead of
+      // waiting for the exit without a bound, and sleep rather than spin while doing it.
+      if (!child.exited && options.deadline == Clock::time_point::max()) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(std::max(wait_ms, 1)));
+      continue;
     }
 
     const int poll_rc = ::poll(pfds.data(), static_cast<nfds_t>(pfd_count), wait_ms);
@@ -309,7 +315,7 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
     }
 
     if (in_idx >= 0) {
-      const auto revents = pfds[static_cast<std::size_t>(in_idx)].revents;
+      const auto revents = pfds.at(static_cast<std::size_t>(in_idx)).revents;
       if ((revents & POLLOUT) != 0) {
         const std::size_t remaining = input.size() - input_offset;
         const ssize_t written = ::write(in_fd, input.data() + input_offset, remaining);
@@ -332,9 +338,9 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
     std::size_t budget = std::max<std::size_t>(options.read_budget_bytes, 1);
 
     if (out_open && out_idx >= 0) {
-      const auto revents = pfds[static_cast<std::size_t>(out_idx)].revents;
+      const auto revents = pfds.at(static_cast<std::size_t>(out_idx)).revents;
       if ((revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
-        const DrainOutcome drained = DrainFdBudgeted{out_fd, budget}(
+        const DrainOutcome drained = DrainFdBudgeted{.fd = out_fd, .budget = budget}(
             [&sink](std::string_view chunk) { sink.OnStdout(chunk); });
         budget -= std::min(budget, drained.bytes_read);
         if (drained.closed) {
@@ -345,9 +351,9 @@ PumpResult PumpIo(const PumpChild& child, std::span<const std::byte> input,
     }
 
     if (err_open && err_idx >= 0) {
-      const auto revents = pfds[static_cast<std::size_t>(err_idx)].revents;
+      const auto revents = pfds.at(static_cast<std::size_t>(err_idx)).revents;
       if ((revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
-        const DrainOutcome drained = DrainFdBudgeted{err_fd, budget}(
+        const DrainOutcome drained = DrainFdBudgeted{.fd = err_fd, .budget = budget}(
             [&sink](std::string_view chunk) { sink.OnStderr(chunk); });
         if (drained.closed) {
           err_open = false;

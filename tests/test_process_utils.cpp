@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 
 #include "common/utils/process_utils.h"
 
@@ -250,7 +251,7 @@ void TestPumpIoForwardsChannelOutput() {
 
   const std::string payload = "first chunk\nsecond chunk\n";
   const ssize_t written = write(pipefd[1], payload.data(), payload.size());
-  ExpectTrue(written == static_cast<ssize_t>(payload.size()), "Payload should fit the pipe buffer");
+  ExpectTrue(std::cmp_equal(written, payload.size()), "Payload should fit the pipe buffer");
   close(pipefd[1]);
 
   CollectSink sink;
@@ -383,6 +384,29 @@ void TestRunOnceDrainsLargeOutput() {
   ExpectTrue(line_count == 20000, "All lines must be captured, got " + std::to_string(line_count));
 }
 
+/**
+ * A child that closes every standard descriptor and keeps running must still be bounded by the
+ * deadline: closing the channels is not an exit, so the pump may not hand the caller an unbounded
+ * wait.
+ */
+void TestRunOnceTimesOutWhenChildClosesEveryDescriptor() {
+  vinput::process::CommandSpec spec;
+  spec.command = "sh";
+  spec.args = {"-c", "exec 0<&- 1>&- 2>&-; sleep 5"};
+  spec.timeout_ms = 200;
+
+  const auto start = std::chrono::steady_clock::now();
+  const auto result = vinput::process::RunOnce(spec, {});
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+
+  ExpectTrue(!result.launch_failed, "Launch should succeed");
+  ExpectTrue(result.timed_out, "Closed channels must not disable the deadline");
+  ExpectTrue(elapsed < 1500, "Deadline must still stop a running child (elapsed=" +
+                                 std::to_string(elapsed) + "ms)");
+}
+
 } // namespace
 
 int main() {
@@ -400,6 +424,7 @@ int main() {
   TestPumpIoWritesInputAndClosesHandle();
   TestRunOnceFeedsStdin();
   TestRunOnceDrainsLargeOutput();
+  TestRunOnceTimesOutWhenChildClosesEveryDescriptor();
   std::cout << "All test_process_utils passed!\n";
   return 0;
 }
