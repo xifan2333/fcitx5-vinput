@@ -418,6 +418,10 @@ CommandResult Run(const CommandSpec& spec, std::span<const std::byte> stdin_byte
     result.timed_out = outcome.timed_out;
     if (outcome.timed_out) {
       proc.kill();
+      // The child was killed because the deadline expired, but kill() only sends the signal: the
+      // zombie must be reaped here or every timed-out Run() leaks one process (Popen's destructor
+      // is disabled upstream). wait() is safe because the child was just SIGKILLed.
+      (void)proc.wait();
       result.exit_code = -1;
     } else if (outcome.child_exited) {
       result.exit_code = outcome.child_exit_code;

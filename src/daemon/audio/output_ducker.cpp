@@ -187,7 +187,13 @@ void OutputDucker::ProcessDuck(double scale) {
 
   const double target = *current * scale;
   if (!SetDefaultSinkVolume(target)) {
-    VLOG_WARN("output ducking skipped (failed to set volume)");
+    // wpctl is fire-and-forget: the volume may have been applied even though the call timed out.
+    // Since we know the volume before the attempt, assume the write took effect and mark the
+    // worker ducked so Restore() can try to undo it. This is safer than leaving the volume
+    // lowered with no way to restore it.
+    VLOG_WARN("set-volume call failed or timed out; assuming volume was applied");
+    saved_volume_ = *current;
+    worker_ducked_ = true;
     return;
   }
 
