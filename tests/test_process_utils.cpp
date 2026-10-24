@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <fcntl.h>
 #include <iostream>
@@ -18,6 +19,19 @@
 namespace {
 
 constexpr int kWaitNoHang = 1;
+constexpr auto kTestGracefulTimeout = std::chrono::milliseconds(300);
+constexpr auto kTestForceTimeout = std::chrono::milliseconds(2000);
+
+// Spawns an unreaped child running |script| with /bin/sh, so termination can be
+// exercised against a process the test itself owns.
+pid_t SpawnStandaloneChild(const char* script) {
+  const pid_t pid = fork();
+  if (pid == 0) {
+    execl("/bin/sh", "sh", "-c", script, static_cast<char*>(nullptr));
+    _exit(127);
+  }
+  return pid;
+}
 
 void ExpectTrue(bool condition, const std::string& message) {
   if (!condition) {
@@ -273,6 +287,100 @@ void TestRunTimesOutWhenChildClosesEveryDescriptor() {
                                  std::to_string(elapsed) + "ms)");
 }
 
+/**
+ * TerminateGracefully must stop the exact instance recorded by (pid, start_time),
+ * on the plain SIGTERM path, and report the exit.
+ */
+void TestTerminateGracefullyStopsOnSigterm() {
+  const pid_t pid = SpawnStandaloneChild("trap 'exit 0' TERM; while true; do sleep 0.05; done");
+  ExpectTrue(pid > 0, "Standalone child should spawn");
+
+  const std::uint64_t start_time = vinput::process::ProcessStartTime(pid);
+  ExpectTrue(start_time != 0, "A live process must have a readable start time");
+
+  const auto result = vinput::process::TerminateGracefully(pid, start_time, kTestGracefulTimeout,
+                                                           kTestForceTimeout);
+  ExpectTrue(result.outcome == vinput::process::TerminateOutcome::Exited,
+             "A SIGTERM handler must end the process gracefully");
+  ExpectTrue(result.error.empty(), "A graceful exit must not report an error: " + result.error);
+
+  (void)vinput::process::KillAndReap(pid);
+}
+
+/**
+ * A process that ignores SIGTERM must be escalated to SIGKILL, and only after the
+ * graceful window has elapsed.
+ */
+void TestTerminateGracefullyEscalatesToSigkill() {
+  const pid_t pid = SpawnStandaloneChild("trap '' TERM; while true; do sleep 0.05; done");
+  ExpectTrue(pid > 0, "Standalone child should spawn");
+  const std::uint64_t start_time = vinput::process::ProcessStartTime(pid);
+  ExpectTrue(start_time != 0, "A live process must have a readable start time");
+
+  const auto start = std::chrono::steady_clock::now();
+  const auto result = vinput::process::TerminateGracefully(pid, start_time, kTestGracefulTimeout,
+                                                           kTestForceTimeout);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+
+  ExpectTrue(result.outcome == vinput::process::TerminateOutcome::Exited,
+             "SIGKILL escalation must end a SIGTERM-ignoring process");
+  ExpectTrue(elapsed >= static_cast<long long>(kTestGracefulTimeout.count()),
+             "The graceful window must be honoured before escalating (elapsed=" +
+                 std::to_string(elapsed) + "ms)");
+
+  (void)vinput::process::KillAndReap(pid);
+}
+
+/**
+ * The pid-reuse guard: a record whose start time does not match the live process
+ * must never be signalled, because that process is somebody else.
+ */
+void TestTerminateGracefullyRejectsStaleIdentity() {
+  const pid_t pid = SpawnStandaloneChild("sleep 30");
+  ExpectTrue(pid > 0, "Standalone child should spawn");
+
+  const std::uint64_t start_time = vinput::process::ProcessStartTime(pid);
+  ExpectTrue(start_time != 0, "A live process must have a readable start time");
+
+  const auto result = vinput::process::TerminateGracefully(pid, start_time + 1,
+                                                           kTestGracefulTimeout, kTestForceTimeout);
+  ExpectTrue(result.outcome == vinput::process::TerminateOutcome::NotFound,
+             "A mismatched identity must be reported as not found");
+  ExpectTrue(!vinput::process::TryReapProcess(pid), "A mismatched identity must not be signalled");
+  ExpectTrue(vinput::process::ProcessIdentityMatches(pid, start_time),
+             "The untouched process must still be alive");
+
+  (void)vinput::process::KillAndReap(pid);
+}
+
+/**
+ * A record whose process is already gone must be reported as not found instead of
+ * waiting out the full timeout.
+ */
+void TestTerminateGracefullyReportsMissingProcess() {
+  const pid_t pid = SpawnStandaloneChild("exit 0");
+  ExpectTrue(pid > 0, "Standalone child should spawn");
+  const std::uint64_t start_time = vinput::process::ProcessStartTime(pid);
+  ExpectTrue(start_time != 0, "A live process must have a readable start time");
+
+  ExpectTrue(vinput::process::KillAndReap(pid), "The short-lived child must be reaped");
+
+  const auto start = std::chrono::steady_clock::now();
+  const auto result = vinput::process::TerminateGracefully(pid, start_time, kTestGracefulTimeout,
+                                                           kTestForceTimeout);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+
+  ExpectTrue(result.outcome == vinput::process::TerminateOutcome::NotFound,
+             "A reaped process must be reported as not found");
+  ExpectTrue(elapsed < static_cast<long long>(kTestGracefulTimeout.count()),
+             "A gone process must not wait out the graceful window (elapsed=" +
+                 std::to_string(elapsed) + "ms)");
+}
+
 } // namespace
 
 int main() {
@@ -287,6 +395,10 @@ int main() {
   TestRunDrainsLargeOutput();
   TestRunCapturesBothStreamsWhenBothFlood();
   TestRunTimesOutWhenChildClosesEveryDescriptor();
+  TestTerminateGracefullyStopsOnSigterm();
+  TestTerminateGracefullyEscalatesToSigkill();
+  TestTerminateGracefullyRejectsStaleIdentity();
+  TestTerminateGracefullyReportsMissingProcess();
   std::cout << "All test_process_utils passed!\n";
   return 0;
 }
