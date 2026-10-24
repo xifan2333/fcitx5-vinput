@@ -134,6 +134,7 @@ private:
   std::atomic<std::size_t> queued_output_bytes_{0};
   std::atomic<std::size_t> stdin_backlog_{0};
   std::atomic<bool> stdin_lost_{false};
+  std::atomic<bool> stdin_released_{false};
   std::thread pump_;
   std::optional<subprocess::Popen> proc_;
 
@@ -205,6 +206,10 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, std::string* error) {
 }
 
 void ProcessSession::Impl::CloseStdinChannel() {
+  // Published before the backlog is examined: a push that is between its own check and its
+  // reservation then has a definite answer to look at, instead of reserving into a channel nobody
+  // will ever drain.
+  stdin_released_.store(true, std::memory_order_release);
   stdin_channel_open_ = false;
   // A channel released with a block still outstanding failed to deliver it. Recording that
   // separately keeps "written" and "gone" apart for the caller waiting in SendBytes.
@@ -534,7 +539,8 @@ bool ProcessSession::Impl::PushStdin(std::span<const std::byte> bytes) {
   }
   if (pump_finished_.load(std::memory_order_acquire) ||
       stdin_closed_.load(std::memory_order_acquire) ||
-      stdin_lost_.load(std::memory_order_acquire)) {
+      stdin_lost_.load(std::memory_order_acquire) ||
+      stdin_released_.load(std::memory_order_acquire)) {
     return false;
   }
 
@@ -543,6 +549,12 @@ bool ProcessSession::Impl::PushStdin(std::span<const std::byte> bytes) {
   // thread got to its own bookkeeping, which would leave the count permanently wrong.
   stdin_backlog_.fetch_add(1, std::memory_order_release);
   if (!stdin_queue_.try_enqueue(std::move(block))) {
+    stdin_backlog_.fetch_sub(1, std::memory_order_release);
+    return false;
+  }
+  // The channel may have been released while this block was being published; then nothing will ever
+  // write it, and claiming success would leave the caller waiting on a backlog that cannot drain.
+  if (stdin_released_.load(std::memory_order_acquire)) {
     stdin_backlog_.fetch_sub(1, std::memory_order_release);
     return false;
   }
