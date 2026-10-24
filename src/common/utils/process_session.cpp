@@ -108,11 +108,16 @@ struct ProcessSession::Impl {
   bool NextEvent(ChildEvent& out, std::chrono::milliseconds wait);
   void Cancel() const noexcept;
   [[nodiscard]] int Pid() const noexcept { return proc_.has_value() ? proc_->pid() : -1; }
+  [[nodiscard]] bool StdinFlushed() const {
+    return stdin_backlog_.load(std::memory_order_acquire) == 0;
+  }
+  [[nodiscard]] bool Finished() const { return pump_finished_.load(std::memory_order_acquire); }
 
 private:
   void Pump();
   void QueueEvent(ChildEvent&& event);
   bool PopEvent(ChildEvent& out);
+  void ReleaseStdinBacklog() { stdin_backlog_.store(0, std::memory_order_release); }
 
   // Channel bookkeeping is centralised so the poll set and the released descriptors can never
   // disagree about what is still live.
@@ -124,6 +129,7 @@ private:
   moodycamel::ReaderWriterQueue<std::vector<std::byte>> stdin_queue_{kStdinQueueCapacity};
   moodycamel::ReaderWriterQueue<ChildEvent> event_queue_{kEventQueueCapacity};
   std::atomic<std::size_t> queued_output_bytes_{0};
+  std::atomic<std::size_t> stdin_backlog_{0};
   std::thread pump_;
   std::optional<subprocess::Popen> proc_;
 
@@ -196,6 +202,8 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, std::string* error) {
 
 void ProcessSession::Impl::CloseStdinChannel() {
   stdin_channel_open_ = false;
+  // Nothing queued here will ever be written again, so nothing is outstanding.
+  ReleaseStdinBacklog();
   pending_.clear();
   pending_offset_ = 0;
   in_fd_ = -1;
@@ -371,6 +379,7 @@ void ProcessSession::Impl::Pump() {
           if (pending_offset_ >= pending_.size()) {
             pending_.clear();
             pending_offset_ = 0;
+            stdin_backlog_.fetch_sub(1, std::memory_order_release);
           }
         } else if (written < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
           CloseStdinChannel();
@@ -525,6 +534,7 @@ bool ProcessSession::Impl::PushStdin(std::span<const std::byte> bytes) {
   if (!stdin_queue_.try_enqueue(std::move(block))) {
     return false;
   }
+  stdin_backlog_.fetch_add(1, std::memory_order_release);
   SignalEventFd(stdin_event_);
   return true;
 }
@@ -654,6 +664,14 @@ bool ProcessSession::PushStdin(std::span<const std::byte> bytes) {
 
 void ProcessSession::CloseStdin() {
   impl_->CloseStdin();
+}
+
+bool ProcessSession::StdinFlushed() const {
+  return impl_ && impl_->StdinFlushed();
+}
+
+bool ProcessSession::Finished() const {
+  return impl_ && impl_->Finished();
 }
 
 bool ProcessSession::NextEvent(ChildEvent& out, std::chrono::milliseconds wait) {

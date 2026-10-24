@@ -74,9 +74,20 @@ public:
   // input rather than a truncated one.
   void CloseStdin();
 
+  // True when nothing handed to `PushStdin` is still waiting to be written. Acceptance is not
+  // delivery: a caller that must know whether its bytes reached the child - a provider that stopped
+  // reading is a failure, not a queue that silently fills - waits on this. It also reports true
+  // once the input channel has been released, because nothing is outstanding any more.
+  [[nodiscard]] bool StdinFlushed() const;
+
   // Pops the next event, waiting at most `wait` for one to arrive. False means nothing arrived in
   // time, or the session has nothing left to report. A zero `wait` never blocks.
   bool NextEvent(ChildEvent& out, std::chrono::milliseconds wait);
+
+  // True once the child is gone and every event has been published. A caller waiting for output can
+  // stop waiting on this instead of on a timeout; `Exited` is always already queued when it turns
+  // true.
+  [[nodiscard]] bool Finished() const;
 
   // Asks the pump thread to terminate the child's process group. Idempotent, never blocks, and safe
   // from any thread: it only signals the pump, which owns the child.
