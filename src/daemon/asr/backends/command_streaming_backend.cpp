@@ -170,9 +170,10 @@ public:
     }
     cancelled_ = true;
     if (session_ && !finished_) {
-      // Best effort: telling the provider lets it abort its upstream session cleanly, but the
-      // session is stopped either way.
-      (void)SendControlEvent("cancel", nullptr);
+      // Best effort: telling the provider lets it abort its upstream session cleanly, but it gets a
+      // short deadline of its own, because the termination it is being told about must not wait for
+      // it.
+      (void)SendControlEvent("cancel", nullptr, kCancelNotifyTimeout);
       session_->Cancel();
       // The child must be gone before this returns: the caller is about to drop the session, and a
       // provider still holding the microphone's successor would be worse than a slow cancel.
