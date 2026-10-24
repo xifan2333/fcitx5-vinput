@@ -21,6 +21,7 @@ namespace {
 
 constexpr char kWpctl[] = "wpctl";
 constexpr char kDefaultSink[] = "@DEFAULT_AUDIO_SINK@";
+constexpr std::string_view kVolumePrefix = "Volume:";
 
 // Parse the numeric volume out of `wpctl get-volume` output, e.g.
 // "Volume: 1.00" or "Volume: 0.15 [MUTED]".
@@ -28,11 +29,13 @@ std::optional<double> ParseVolume(std::string_view text) {
   if (text.empty()) {
     return std::nullopt;
   }
-  const auto prefix_pos = text.find("Volume:");
+  // Locate the marker, then let it own its own length: no hand-counted offsets that go stale if
+  // wpctl ever renames the field.
+  const auto prefix_pos = text.find(kVolumePrefix);
   if (prefix_pos == std::string_view::npos) {
     return std::nullopt;
   }
-  const std::string_view after_prefix = text.substr(prefix_pos + 7);
+  const std::string_view after_prefix = text.substr(prefix_pos + kVolumePrefix.size());
   const auto num_start = after_prefix.find_first_not_of(" \t");
   if (num_start == std::string_view::npos) {
     return std::nullopt;
