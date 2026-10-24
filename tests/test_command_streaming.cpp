@@ -356,6 +356,48 @@ void TestErrorHintKeepsEveryStderrLine() {
              "the last diagnostic line must be part of the error hint, got: " + error);
 }
 
+/**
+ * A user cancel is not a provider failure: the child ends through SIGTERM, so its status is
+ * non-zero by construction, and reporting that as an error would turn "stop dictating" into an
+ * error notification.
+ */
+void TestCancelProducesNoErrorEvent() {
+  const std::string pid_file = GetUniquePidFilePath(9);
+  unlink(pid_file.c_str());
+  CommandAsrProvider provider;
+  provider.id = "test-cancel-events-provider";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo $$ > " + pid_file +
+                             " && echo '{\"type\": \"session_started\"}'"
+                             " && sleep 30"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "cancel provider did not start");
+
+  session->Cancel();
+
+  int error_events = 0;
+  int completed_events = 0;
+  for (const auto& event : session->PollEvents()) {
+    if (event.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
+      ++error_events;
+    }
+    if (event.kind == vinput::daemon::asr::RecognitionEventKind::Completed) {
+      ++completed_events;
+    }
+  }
+  ExpectTrue(error_events == 0, "cancelling must not report a provider failure");
+  ExpectTrue(completed_events == 1, "cancelling must still complete the session exactly once");
+  AssertChildAlreadyReaped(child_pid);
+}
+
 /** Cancel of a never-started session must not spawn a new child. */
 void TestCancelDoesNotStartProvider() {
   const std::string marker = GetUniquePidFilePath(8);
@@ -391,6 +433,7 @@ int main() {
   TestOutputEofWait(true, 6);
   TestStalledProviderWriteIsBounded();
   TestCancelDoesNotStartProvider();
+  TestCancelProducesNoErrorEvent();
   TestErrorHintKeepsEveryStderrLine();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;

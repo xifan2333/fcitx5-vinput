@@ -328,22 +328,24 @@ void TestManySmallEventsSurviveASlowCaller() {
  * bytes reached the child must be able to ask, because a provider that stopped reading has to
  * surface as a failure instead of as a queue that silently fills.
  */
-void TestStdinBacklogIsVisible() {
-  // A provider that never reads: everything beyond the pipe buffer stays outstanding.
+void TestStdinStateIsVisible() {
+  constexpr std::size_t kBigPayloadBytes = std::size_t{256} * 1024;
+  // A provider that never reads: everything beyond the pipe buffer stays queued.
   auto stalled = MustStart("exec sleep 30");
-  const std::string big_payload(256 * 1024, 'x');
+  const std::string big_payload(kBigPayloadBytes, 'x');
   ExpectTrue(stalled.PushStdin(AsBytes(big_payload)), "the session should accept the bytes");
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  ExpectTrue(!stalled.StdinFlushed(), "bytes a stalled provider never read must stay outstanding");
+  ExpectTrue(stalled.Stdin() == vinput::process::StdinState::Pending,
+             "bytes a stalled provider never read must still be pending");
   stalled.Cancel();
 
-  // A provider that reads: the same bytes drain and the caller observes it.
+  // A provider that reads: the same bytes drain, and the caller can see that they did.
   auto reading = MustStart("cat > /dev/null; echo done_reading");
   ExpectTrue(reading.PushStdin(AsBytes(big_payload)), "the session should accept the bytes");
   bool flushed = false;
   const Clock::time_point deadline = Clock::now() + kTestTimeout;
   while (Clock::now() < deadline) {
-    if (reading.StdinFlushed()) {
+    if (reading.Stdin() == vinput::process::StdinState::Flushed) {
       flushed = true;
       break;
     }
@@ -352,6 +354,47 @@ void TestStdinBacklogIsVisible() {
   ExpectTrue(flushed, "a reading provider must drain the backlog the caller can observe");
   reading.CloseStdin();
   (void)AwaitExit(reading, kTestTimeout);
+}
+
+/**
+ * A channel released with a block still queued did not deliver it, so it must not be reported as
+ * written: the caller has to be able to tell "the provider took my bytes" from "the provider
+ * stopped reading and my bytes are gone".
+ */
+void TestStdinStateReportsALostBlock() {
+  constexpr std::size_t kBigPayloadBytes = std::size_t{256} * 1024;
+  auto session = MustStart("exec 0<&-; echo ready; sleep 30");
+
+  std::string stdout_text;
+  const Clock::time_point deadline = Clock::now() + kTestTimeout;
+  while (stdout_text.find("ready") == std::string::npos && Clock::now() < deadline) {
+    ChildEvent event;
+    if (!session.NextEvent(event, kEventWait)) {
+      continue;
+    }
+    if (event.kind == ChildEventKind::StdoutChunk) {
+      stdout_text.append(ToText(event.data));
+    }
+  }
+  ExpectTrue(stdout_text.find("ready") != std::string::npos, "the child should announce itself");
+  ExpectTrue(session.Stdin() == vinput::process::StdinState::Flushed,
+             "a session that was never written to has nothing pending");
+
+  ExpectTrue(session.PushStdin(AsBytes(std::string(kBigPayloadBytes, 'x'))),
+             "the session should accept the bytes");
+
+  bool closed = false;
+  const Clock::time_point closed_deadline = Clock::now() + kTestTimeout;
+  while (Clock::now() < closed_deadline) {
+    if (session.Stdin() == vinput::process::StdinState::Closed) {
+      closed = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  ExpectTrue(closed, "a write to a provider that closed its stdin must be reported as lost");
+  ExpectTrue(!session.PushStdin(AsBytes("more\n")),
+             "a released input channel must not accept more bytes");
 }
 
 /**
@@ -411,7 +454,8 @@ int main() {
   TestCancelTerminatesTheProcessGroup();
   TestHelperIgnoringSigtermIsKilled();
   TestDestructorStopsTheWholeGroup();
-  TestStdinBacklogIsVisible();
+  TestStdinStateIsVisible();
+  TestStdinStateReportsALostBlock();
   TestCloseStdinDeliversQueuedBytesBeforeEof();
   TestManySmallEventsSurviveASlowCaller();
   TestProviderClosingStdinDoesNotKillTheHost();
