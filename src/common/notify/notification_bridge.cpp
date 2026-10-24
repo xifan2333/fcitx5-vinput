@@ -2,14 +2,18 @@
 
 #include <chrono>
 #include <cstddef>
-#include <glaze/glaze.hpp>
+#include <functional>
+#include <glaze/json/read.hpp>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "common/i18n.h"
 #include "common/utils/process_utils.h"
@@ -20,11 +24,12 @@ namespace vinput::notify {
 namespace {
 
 struct JsonNotificationWire {
-  std::string title;
-  std::string body;
+  std::optional<std::string> title;
+  std::optional<std::string> body;
 };
 
 constexpr std::size_t kMaxDedupCacheSize = 256;
+constexpr std::size_t kMaxSourceBufferSize = 64 * 1024; // 64 KiB
 
 std::string MakeDedupKey(std::string_view title, std::string_view body) {
   std::string key;
@@ -54,7 +59,7 @@ struct NotificationBridge::Impl {
       : sink_(std::move(sink)), dedup_window_(dedup_window),
         time_provider_(std::move(time_provider)) {}
 
-  std::chrono::steady_clock::time_point Now() const {
+  [[nodiscard]] std::chrono::steady_clock::time_point Now() const {
     if (time_provider_) {
       return time_provider_();
     }
@@ -62,12 +67,19 @@ struct NotificationBridge::Impl {
   }
 
   void EvictStaleDedupEntriesLocked(std::chrono::steady_clock::time_point now) {
-    if (dedup_cache_.size() <= kMaxDedupCacheSize) {
-      return;
-    }
     std::erase_if(dedup_cache_, [this, now](const auto& item) {
       return (now - item.second.timestamp) >= dedup_window_;
     });
+
+    while (dedup_cache_.size() > kMaxDedupCacheSize) {
+      auto oldest = dedup_cache_.begin();
+      for (auto it = dedup_cache_.begin(); it != dedup_cache_.end(); ++it) {
+        if (it->second.timestamp < oldest->second.timestamp) {
+          oldest = it;
+        }
+      }
+      dedup_cache_.erase(oldest);
+    }
   }
 
   void ProcessLineLocked(std::string_view raw_line, std::string_view default_title,
@@ -84,14 +96,11 @@ struct NotificationBridge::Impl {
     if (trimmed.starts_with('{') && trimmed.ends_with('}')) {
       JsonNotificationWire wire;
       if (!bool(glz::read_json(wire, trimmed))) {
-        if (!wire.body.empty() || !wire.title.empty()) {
+        if (wire.title.has_value() && wire.body.has_value()) {
           parsed_json = true;
-          n.title = std::move(wire.title);
-          n.body = std::move(wire.body);
+          n.title = std::move(*wire.title);
+          n.body = std::move(*wire.body);
           if (n.title.empty()) {
-            n.title = default_title.empty() ? _("Voice Input") : std::string(default_title);
-          } else if (n.body.empty()) {
-            n.body = std::move(n.title);
             n.title = default_title.empty() ? _("Voice Input") : std::string(default_title);
           }
         }
@@ -99,7 +108,7 @@ struct NotificationBridge::Impl {
     }
 
     if (!parsed_json) {
-      n.body = std::string(trimmed);
+      n.body = std::string(raw_line);
       n.title = default_title.empty() ? _("Voice Input") : std::string(default_title);
     }
 
@@ -115,13 +124,15 @@ struct NotificationBridge::Impl {
       it->second.timestamp = now;
     } else {
       dedup_cache_.emplace(dedup_key, DedupEntry{.timestamp = now});
-      EvictStaleDedupEntriesLocked(now);
+      if (dedup_cache_.size() > kMaxDedupCacheSize) {
+        EvictStaleDedupEntriesLocked(now);
+      }
     }
 
     ready_to_send.push_back(std::move(n));
   }
 
-  void Dispatch(const std::vector<Notification>& notifications) {
+  void Dispatch(const std::vector<Notification>& notifications) const {
     if (!sink_) {
       return;
     }
@@ -149,9 +160,20 @@ void NotificationBridge::FeedStderr(std::string_view source_id, std::span<const 
 
   std::vector<Notification> to_send;
   {
-    const std::lock_guard lock(impl_->mutex_);
+    const std::scoped_lock lock(impl_->mutex_);
     auto& buffer = impl_->buffers_[std::string(source_id)];
-    buffer.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+
+    if (buffer.size() + bytes.size() > kMaxSourceBufferSize) {
+      if (!buffer.empty()) {
+        impl_->ProcessLineLocked(buffer, default_title, to_send);
+        buffer.clear();
+      }
+    }
+
+    buffer.reserve(buffer.size() + bytes.size());
+    for (const auto b : bytes) {
+      buffer.push_back(static_cast<char>(b));
+    }
 
     vinput::process::DrainLinesFromBuffer(
         buffer,
@@ -168,7 +190,7 @@ void NotificationBridge::DeliverLine(std::string_view /*source_id*/, std::string
                                      std::string_view default_title) {
   std::vector<Notification> to_send;
   {
-    const std::lock_guard lock(impl_->mutex_);
+    const std::scoped_lock lock(impl_->mutex_);
     impl_->ProcessLineLocked(raw_line, default_title, to_send);
   }
   impl_->Dispatch(to_send);
@@ -177,7 +199,7 @@ void NotificationBridge::DeliverLine(std::string_view /*source_id*/, std::string
 void NotificationBridge::Flush(std::string_view source_id, std::string_view default_title) {
   std::vector<Notification> to_send;
   {
-    const std::lock_guard lock(impl_->mutex_);
+    const std::scoped_lock lock(impl_->mutex_);
     auto it = impl_->buffers_.find(source_id);
     if (it != impl_->buffers_.end() && !it->second.empty()) {
       vinput::process::DrainLinesFromBuffer(
@@ -192,12 +214,12 @@ void NotificationBridge::Flush(std::string_view source_id, std::string_view defa
 }
 
 void NotificationBridge::RetireSource(std::string_view source_id) {
-  const std::lock_guard lock(impl_->mutex_);
+  const std::scoped_lock lock(impl_->mutex_);
   impl_->buffers_.erase(std::string(source_id));
 }
 
 void NotificationBridge::ResetDedup() {
-  const std::lock_guard lock(impl_->mutex_);
+  const std::scoped_lock lock(impl_->mutex_);
   impl_->dedup_cache_.clear();
 }
 

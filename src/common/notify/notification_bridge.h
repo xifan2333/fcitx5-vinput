@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <span>
@@ -55,7 +56,7 @@ public:
   // Flushes any remaining incomplete line in `source_id`'s buffer (e.g. on child process exit).
   void Flush(std::string_view source_id, std::string_view default_title = {});
 
-  // Erases line buffers for a retired helper to prevent memory accumulation.
+  // Drops the buffer for a retired helper to prevent memory accumulation.
   void RetireSource(std::string_view source_id);
 
   // Clears deduplication cache (e.g. at session reset or for deterministic tests).
