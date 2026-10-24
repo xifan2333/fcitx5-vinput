@@ -556,6 +556,7 @@ TerminateResult TerminateGracefully(pid_t pid, std::uint64_t start_time,
     return result;
   }
   if (terminate == SignalOutcome::Failed) {
+    result.failed_signal = SIGTERM;
     result.error = std::strerror(errno);
     return result;
   }
@@ -566,7 +567,7 @@ TerminateResult TerminateGracefully(pid_t pid, std::uint64_t start_time,
 
   const SignalOutcome forced = process.Signal(SIGKILL);
   if (forced == SignalOutcome::Failed) {
-    result.forced_kill_failed = true;
+    result.failed_signal = SIGKILL;
     result.error = std::strerror(errno);
     return result;
   }

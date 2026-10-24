@@ -9,6 +9,10 @@
 #include <sys/types.h>
 #include <system_error>
 
+extern "C" {
+#include <signal.h>
+}
+
 #include "common/config/core_config_types.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -189,8 +193,8 @@ bool Stop(std::string_view adapter_id, std::string* error) {
   case vinput::process::TerminateOutcome::Failed:
     // The escalation phase belongs in the diagnosis: a rejected SIGTERM and a
     // rejected SIGKILL point at very different conditions.
-    return fail((result.forced_kill_failed ? "failed to force-kill adapter "
-                                           : "failed to signal adapter ") +
+    return fail((result.failed_signal == SIGKILL ? "failed to force-kill adapter "
+                                                 : "failed to signal adapter ") +
                 id + ": " + result.error);
   }
   return false;

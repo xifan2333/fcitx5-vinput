@@ -89,11 +89,10 @@ enum class TerminateOutcome : std::uint8_t {
 
 struct TerminateResult {
   TerminateOutcome outcome = TerminateOutcome::Failed;
-  // Which phase could not deliver its signal: false when the graceful request
-  // was rejected, true when the escalation to the forced kill was. Only
-  // meaningful when `outcome` is Failed; it is the difference between an
-  // unreachable process and one that survives SIGKILL.
-  bool forced_kill_failed = false;
+  // The signal whose delivery failed, which tells a rejected graceful request
+  // apart from a failed forced kill: an unreachable process versus one that
+  // refuses to die. Zero unless `outcome` is Failed.
+  int failed_signal = 0;
   std::string error;
 };
 
