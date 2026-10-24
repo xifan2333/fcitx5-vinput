@@ -71,12 +71,12 @@ void TerminateProcessBounded(pid_t pid, std::chrono::milliseconds graceful_timeo
 // once a process exits the kernel may hand its pid to an unrelated one, so a
 // bare pid is not a stable handle. Returns 0 when the process is gone or the
 // field cannot be parsed.
-std::uint64_t ProcessStartTime(pid_t pid);
+[[nodiscard]] std::uint64_t ProcessStartTime(pid_t pid);
 
 // True when the live process at `pid` is still the instance that was recorded
 // with `start_time`. A record without a start time cannot be re-identified, so
 // it never matches anything.
-bool ProcessIdentityMatches(pid_t pid, std::uint64_t start_time);
+[[nodiscard]] bool ProcessIdentityMatches(pid_t pid, std::uint64_t start_time);
 
 // How a termination attempt ended.
 enum class TerminateOutcome : std::uint8_t {
@@ -89,6 +89,11 @@ enum class TerminateOutcome : std::uint8_t {
 
 struct TerminateResult {
   TerminateOutcome outcome = TerminateOutcome::Failed;
+  // Which phase could not deliver its signal: false when the graceful request
+  // was rejected, true when the escalation to the forced kill was. Only
+  // meaningful when `outcome` is Failed; it is the difference between an
+  // unreachable process and one that survives SIGKILL.
+  bool forced_kill_failed = false;
   std::string error;
 };
 

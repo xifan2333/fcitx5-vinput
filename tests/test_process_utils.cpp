@@ -22,14 +22,34 @@ constexpr int kWaitNoHang = 1;
 constexpr auto kTestGracefulTimeout = std::chrono::milliseconds(300);
 constexpr auto kTestForceTimeout = std::chrono::milliseconds(2000);
 
-// Spawns an unreaped child running |script| with /bin/sh, so termination can be
-// exercised against a process the test itself owns.
+// Spawns an unreaped child running |script| with /bin/sh, so termination can be exercised against a
+// process the test itself owns. The child's stdout is a pipe into the parent, and the script has to
+// write a single readiness byte into it once its signal handlers are installed: returning earlier
+// would let a test signal a child that still runs the default SIGTERM action, which kills it
+// outright instead of exercising the trap. A script that exits without writing releases the parent
+// through EOF.
 pid_t SpawnStandaloneChild(const char* script) {
+  std::array<int, 2> ready{-1, -1};
+  if (pipe(ready.data()) != 0) {
+    return -1;
+  }
   const pid_t pid = fork();
   if (pid == 0) {
+    (void)dup2(ready.at(1), STDOUT_FILENO);
+    (void)close(ready.at(0));
+    (void)close(ready.at(1));
     execl("/bin/sh", "sh", "-c", script, static_cast<char*>(nullptr));
     _exit(127);
   }
+  (void)close(ready.at(1));
+  if (pid > 0) {
+    char byte = 0;
+    ssize_t n = read(ready.at(0), &byte, 1);
+    while (n < 0 && errno == EINTR) {
+      n = read(ready.at(0), &byte, 1);
+    }
+  }
+  (void)close(ready.at(0));
   return pid;
 }
 
@@ -292,7 +312,8 @@ void TestRunTimesOutWhenChildClosesEveryDescriptor() {
  * on the plain SIGTERM path, and report the exit.
  */
 void TestTerminateGracefullyStopsOnSigterm() {
-  const pid_t pid = SpawnStandaloneChild("trap 'exit 0' TERM; while true; do sleep 0.05; done");
+  const pid_t pid =
+      SpawnStandaloneChild("trap 'exit 0' TERM; echo ready; while true; do sleep 0.05; done");
   ExpectTrue(pid > 0, "Standalone child should spawn");
 
   const std::uint64_t start_time = vinput::process::ProcessStartTime(pid);
@@ -338,7 +359,7 @@ void TestTerminateGracefullyEscalatesToSigkill() {
  * must never be signalled, because that process is somebody else.
  */
 void TestTerminateGracefullyRejectsStaleIdentity() {
-  const pid_t pid = SpawnStandaloneChild("sleep 30");
+  const pid_t pid = SpawnStandaloneChild("echo ready; exec sleep 30");
   ExpectTrue(pid > 0, "Standalone child should spawn");
 
   const std::uint64_t start_time = vinput::process::ProcessStartTime(pid);
