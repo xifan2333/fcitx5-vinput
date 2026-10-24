@@ -324,6 +324,37 @@ void TestManySmallEventsSurviveASlowCaller() {
 }
 
 /**
+ * Handing bytes over is not the same as delivering them: a caller that has to know whether its
+ * bytes reached the child must be able to ask, because a provider that stopped reading has to
+ * surface as a failure instead of as a queue that silently fills.
+ */
+void TestStdinBacklogIsVisible() {
+  // A provider that never reads: everything beyond the pipe buffer stays outstanding.
+  auto stalled = MustStart("exec sleep 30");
+  const std::string big_payload(256 * 1024, 'x');
+  ExpectTrue(stalled.PushStdin(AsBytes(big_payload)), "the session should accept the bytes");
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  ExpectTrue(!stalled.StdinFlushed(), "bytes a stalled provider never read must stay outstanding");
+  stalled.Cancel();
+
+  // A provider that reads: the same bytes drain and the caller observes it.
+  auto reading = MustStart("cat > /dev/null; echo done_reading");
+  ExpectTrue(reading.PushStdin(AsBytes(big_payload)), "the session should accept the bytes");
+  bool flushed = false;
+  const Clock::time_point deadline = Clock::now() + kTestTimeout;
+  while (Clock::now() < deadline) {
+    if (reading.StdinFlushed()) {
+      flushed = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  ExpectTrue(flushed, "a reading provider must drain the backlog the caller can observe");
+  reading.CloseStdin();
+  (void)AwaitExit(reading, kTestTimeout);
+}
+
+/**
  * A provider that closes its stdin before the caller writes must produce a failed write, not a
  * SIGPIPE that ends the host process: the session is one small part of the daemon, and losing the
  * whole daemon to a provider quirk is not an acceptable failure mode.
@@ -380,6 +411,7 @@ int main() {
   TestCancelTerminatesTheProcessGroup();
   TestHelperIgnoringSigtermIsKilled();
   TestDestructorStopsTheWholeGroup();
+  TestStdinBacklogIsVisible();
   TestCloseStdinDeliversQueuedBytesBeforeEof();
   TestManySmallEventsSurviveASlowCaller();
   TestProviderClosingStdinDoesNotKillTheHost();
