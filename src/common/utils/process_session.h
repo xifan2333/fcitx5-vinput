@@ -24,6 +24,18 @@ enum class ChildEventKind : std::uint8_t {
   Exited,
 };
 
+// How the child's input channel stands.
+enum class StdinState : std::uint8_t {
+  // Every byte handed to `PushStdin` was written to the child.
+  Flushed,
+  // Bytes are still queued, or are being written right now.
+  Pending,
+  // The channel is gone: the child stopped reading, exited, or the session was cancelled. A block
+  // that
+  // was still queued at that point was lost, which is why this case is not reported as `Flushed`.
+  Closed,
+};
+
 struct ChildEvent {
   ChildEventKind kind = ChildEventKind::Exited;
   // `StdoutChunk` / `StderrChunk` payload.
@@ -74,11 +86,11 @@ public:
   // input rather than a truncated one.
   void CloseStdin();
 
-  // True when nothing handed to `PushStdin` is still waiting to be written. Acceptance is not
-  // delivery: a caller that must know whether its bytes reached the child - a provider that stopped
-  // reading is a failure, not a queue that silently fills - waits on this. It also reports true
-  // once the input channel has been released, because nothing is outstanding any more.
-  [[nodiscard]] bool StdinFlushed() const;
+  // Acceptance is not delivery, and a released channel is not a delivered one, so the two get
+  // separate answers: a caller that must know whether its bytes actually reached the child - a
+  // provider that stopped reading is a failure, not a queue that silently fills - can tell
+  // "written" from "gone".
+  [[nodiscard]] StdinState Stdin() const;
 
   // Pops the next event, waiting at most `wait` for one to arrive. False means nothing arrived in
   // time, or the session has nothing left to report. A zero `wait` never blocks.

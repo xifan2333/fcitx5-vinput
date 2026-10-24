@@ -108,8 +108,12 @@ struct ProcessSession::Impl {
   bool NextEvent(ChildEvent& out, std::chrono::milliseconds wait);
   void Cancel() const noexcept;
   [[nodiscard]] int Pid() const noexcept { return proc_.has_value() ? proc_->pid() : -1; }
-  [[nodiscard]] bool StdinFlushed() const {
-    return stdin_backlog_.load(std::memory_order_acquire) == 0;
+  [[nodiscard]] StdinState Stdin() const {
+    if (stdin_lost_.load(std::memory_order_acquire)) {
+      return StdinState::Closed;
+    }
+    return stdin_backlog_.load(std::memory_order_acquire) == 0 ? StdinState::Flushed
+                                                               : StdinState::Pending;
   }
   [[nodiscard]] bool Finished() const { return pump_finished_.load(std::memory_order_acquire); }
 
@@ -117,7 +121,6 @@ private:
   void Pump();
   void QueueEvent(ChildEvent&& event);
   bool PopEvent(ChildEvent& out);
-  void ReleaseStdinBacklog() { stdin_backlog_.store(0, std::memory_order_release); }
 
   // Channel bookkeeping is centralised so the poll set and the released descriptors can never
   // disagree about what is still live.
@@ -130,6 +133,7 @@ private:
   moodycamel::ReaderWriterQueue<ChildEvent> event_queue_{kEventQueueCapacity};
   std::atomic<std::size_t> queued_output_bytes_{0};
   std::atomic<std::size_t> stdin_backlog_{0};
+  std::atomic<bool> stdin_lost_{false};
   std::thread pump_;
   std::optional<subprocess::Popen> proc_;
 
@@ -202,8 +206,11 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, std::string* error) {
 
 void ProcessSession::Impl::CloseStdinChannel() {
   stdin_channel_open_ = false;
-  // Nothing queued here will ever be written again, so nothing is outstanding.
-  ReleaseStdinBacklog();
+  // A channel released with a block still outstanding failed to deliver it. Recording that
+  // separately keeps "written" and "gone" apart for the caller waiting in SendBytes.
+  if (stdin_backlog_.load(std::memory_order_acquire) > 0) {
+    stdin_lost_.store(true, std::memory_order_release);
+  }
   pending_.clear();
   pending_offset_ = 0;
   in_fd_ = -1;
@@ -526,15 +533,19 @@ bool ProcessSession::Impl::PushStdin(std::span<const std::byte> bytes) {
     return true;
   }
   if (pump_finished_.load(std::memory_order_acquire) ||
-      stdin_closed_.load(std::memory_order_acquire)) {
+      stdin_closed_.load(std::memory_order_acquire) ||
+      stdin_lost_.load(std::memory_order_acquire)) {
     return false;
   }
 
   std::vector<std::byte> block(bytes.begin(), bytes.end());
+  // Counted before the block is published: the pump may write it and report it finished before this
+  // thread got to its own bookkeeping, which would leave the count permanently wrong.
+  stdin_backlog_.fetch_add(1, std::memory_order_release);
   if (!stdin_queue_.try_enqueue(std::move(block))) {
+    stdin_backlog_.fetch_sub(1, std::memory_order_release);
     return false;
   }
-  stdin_backlog_.fetch_add(1, std::memory_order_release);
   SignalEventFd(stdin_event_);
   return true;
 }
@@ -666,8 +677,8 @@ void ProcessSession::CloseStdin() {
   impl_->CloseStdin();
 }
 
-bool ProcessSession::StdinFlushed() const {
-  return impl_ && impl_->StdinFlushed();
+StdinState ProcessSession::Stdin() const {
+  return impl_ ? impl_->Stdin() : StdinState::Closed;
 }
 
 bool ProcessSession::Finished() const {
