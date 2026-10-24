@@ -34,10 +34,10 @@ the daemon environment. The host never composes, translates, prefixes, or trunca
 
 ### NotificationBridge
 
-The host-side single consumer of helper `stderr`. Splits lines, parses the two notification shapes,
-collapses duplicates inside a short sliding window, and forwards `(title, body)` to
-`fcitx::INotifications::sendNotification`. Both ASR sessions and adapter supervision feed the same
-bridge; there is no per-subsystem notification code.
+The host-side single consumer of helper `stderr` inside `vinput-daemon`. Splits lines, parses the two
+notification shapes, collapses duplicates inside a short sliding window, and forwards `(title, body)`
+directly to the desktop notification service (`org.freedesktop.Notifications`) over the user session D-Bus.
+Both ASR sessions and adapter supervision feed the same bridge; there is no per-subsystem notification code.
 
 ### ProcessSession
 

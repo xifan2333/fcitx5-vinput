@@ -23,6 +23,7 @@ set(VINPUT_CONFIG_SOURCES
     utils/version_utils.cpp
     utils/process_utils.cpp
     utils/process_session.cpp
+    notify/notification_bridge.cpp
 )
 
 add_library(config STATIC
