@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <span>
@@ -64,6 +65,46 @@ bool TryReapProcess(pid_t pid, int* exit_code = nullptr);
 // to a forced kill and performs a final bounded reap.
 void TerminateProcessBounded(pid_t pid, std::chrono::milliseconds graceful_timeout,
                              std::chrono::milliseconds force_timeout);
+
+// Reads the process start time (field 22 of /proc/<pid>/stat, in clock ticks
+// since boot). Together with the pid this identifies one specific instance:
+// once a process exits the kernel may hand its pid to an unrelated one, so a
+// bare pid is not a stable handle. Returns 0 when the process is gone or the
+// field cannot be parsed.
+std::uint64_t ProcessStartTime(pid_t pid);
+
+// True when the live process at `pid` is still the instance that was recorded
+// with `start_time`. A record without a start time cannot be re-identified, so
+// it never matches anything.
+bool ProcessIdentityMatches(pid_t pid, std::uint64_t start_time);
+
+// How a termination attempt ended.
+enum class TerminateOutcome : std::uint8_t {
+  Exited,       // The recorded instance is gone.
+  NotFound,     // Nothing runs at `pid`, or the pid now belongs to another instance.
+  StillRunning, // Observed alive after the forced kill.
+  Unconfirmed,  // The exit could not be observed either way.
+  Failed,       // A signal could not be delivered; `error` explains why.
+};
+
+struct TerminateResult {
+  TerminateOutcome outcome = TerminateOutcome::Failed;
+  std::string error;
+};
+
+// Stops the process instance identified by (`pid`, `start_time`): SIGTERM, a
+// bounded wait for `graceful_timeout`, then SIGKILL and a final bounded wait of
+// `force_timeout`.
+//
+// Every signal is delivered through a pidfd when the kernel offers one, so the
+// pinned instance can never be confused with a recycled pid; without a pidfd the
+// recorded identity is re-checked immediately before each signal instead. This is
+// the seam for stopping something this process did not spawn - a child of ours
+// cannot have its pid recycled before it is reaped, so plain pid signalling is
+// enough there.
+TerminateResult TerminateGracefully(pid_t pid, std::uint64_t start_time,
+                                    std::chrono::milliseconds graceful_timeout,
+                                    std::chrono::milliseconds force_timeout);
 
 // Drains complete newline-terminated lines out of an incrementally filled
 // process output buffer, leaving any unterminated tail in place. A trailing
