@@ -22,28 +22,24 @@ namespace {
 constexpr char kWpctl[] = "wpctl";
 constexpr char kDefaultSink[] = "@DEFAULT_AUDIO_SINK@";
 
-// The literal wpctl prints before the numeric volume. Kept as a named view so the prefix length
-// is never a magic number counted by hand.
-constexpr std::string_view kVolumePrefix = "Volume:";
-
 // Parse the numeric volume out of `wpctl get-volume` output, e.g.
 // "Volume: 1.00" or "Volume: 0.15 [MUTED]".
-std::optional<double> ParseVolume(const std::string& text) {
-  std::string_view rest(text);
-  const auto idx = rest.find(kVolumePrefix);
-  if (idx == std::string_view::npos) {
+std::optional<double> ParseVolume(std::string_view text) {
+  if (text.empty()) {
     return std::nullopt;
   }
-  rest.remove_prefix(idx + kVolumePrefix.size());
-  // from_chars does not skip leading whitespace (unlike strtod), so advance past the spaces wpctl
-  // prints between "Volume:" and the number before parsing.
-  const auto num_start = rest.find_first_not_of(" \t");
+  const auto prefix_pos = text.find("Volume:");
+  if (prefix_pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  const std::string_view after_prefix = text.substr(prefix_pos + 7);
+  const auto num_start = after_prefix.find_first_not_of(" \t");
   if (num_start == std::string_view::npos) {
     return std::nullopt;
   }
-  rest.remove_prefix(num_start);
+  const std::string_view number = after_prefix.substr(num_start);
   double value = 0.0;
-  const auto parsed = std::from_chars(rest.data(), rest.data() + rest.size(), value);
+  const auto parsed = std::from_chars(number.data(), number.data() + number.size(), value);
   if (parsed.ec != std::errc{}) {
     return std::nullopt;
   }
