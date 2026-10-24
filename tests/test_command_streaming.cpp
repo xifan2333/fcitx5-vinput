@@ -325,6 +325,37 @@ void TestStalledProviderWriteIsBounded() {
   AssertChildAlreadyReaped(child_pid);
 }
 
+/**
+ * Every stderr line is diagnostic content: a failed provider usually explains itself in one line,
+ * but dropping all but the last one loses the explanation whenever the provider prints more than
+ * that.
+ */
+void TestErrorHintKeepsEveryStderrLine() {
+  CommandAsrProvider provider;
+  provider.id = "test-stderr-hint-provider";
+  provider.command = "/bin/sh";
+  provider.args = {"-c",
+                   "echo '{\"type\":\"session_started\"}'"
+                   " && while IFS= read -r line; do case \"$line\" in *finish*) break ;; esac; done"
+                   " && echo 'connection refused by upstream' >&2"
+                   " && echo 'retry budget exhausted' >&2"
+                   " && exit 3"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
+
+  ExpectTrue(!session->Finish(&error), "a provider that exits non-zero must fail the session");
+  ExpectTrue(error.find("connection refused by upstream") != std::string::npos,
+             "the first diagnostic line must be part of the error hint, got: " + error);
+  ExpectTrue(error.find("retry budget exhausted") != std::string::npos,
+             "the last diagnostic line must be part of the error hint, got: " + error);
+}
+
 /** Cancel of a never-started session must not spawn a new child. */
 void TestCancelDoesNotStartProvider() {
   const std::string marker = GetUniquePidFilePath(8);
@@ -360,6 +391,7 @@ int main() {
   TestOutputEofWait(true, 6);
   TestStalledProviderWriteIsBounded();
   TestCancelDoesNotStartProvider();
+  TestErrorHintKeepsEveryStderrLine();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

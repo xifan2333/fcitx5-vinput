@@ -1,37 +1,26 @@
 #include "daemon/asr/backends/command_streaming_backend.h"
 
 #include <algorithm>
-#include <array>
 #include <base64.hpp>
-#include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
-#include <cstring>
-#include <fcntl.h>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
-#include <map>
 #include <memory>
-#include <poll.h>
 #include <span>
-#include <spawn.h>
 #include <string>
 #include <string_view>
-#include <sys/poll.h>
-#include <sys/types.h>
-#include <unistd.h>
 #include <utility>
 #include <vector>
 
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
-#include "common/utils/interpolation.h"
+#include "common/utils/debug_log.h"
+#include "common/utils/process_session.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
-#include "common/utils/time_utils.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 
@@ -41,81 +30,23 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-constexpr int kPollSliceMs = 50;
+constexpr auto kPollSlice = std::chrono::milliseconds(50);
 constexpr int kDefaultWriteTimeoutMs = 5000;
 constexpr int kMaxWriteTimeoutMs = 30000;
-constexpr std::size_t kDrainBudgetBytes = std::size_t{64} * 1024;
-constexpr int kAwaitFinalTimeoutMs = 10000;
-constexpr int kFinalGraceMs = 200;
 
-bool SetNonBlocking(int fd) {
-  const int flags = fcntl(fd, F_GETFL, 0);
-  if (flags < 0) {
-    return false;
-  }
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
-}
+// How long a provider may take to answer `finish` with its final text, and how long it then gets to
+// flush whatever else it printed.
+constexpr auto kAwaitFinalTimeout = std::chrono::milliseconds(10000);
+constexpr auto kFinalGrace = std::chrono::milliseconds(200);
 
-void CloseIfOpen(int* fd) {
-  if (*fd >= 0) {
-    close(*fd);
-    *fd = -1;
-  }
-}
+// Cancelling has to leave a reaped child behind before it returns, because the caller's next step
+// is to drop the session. The pump's own escalation is bounded, so this only bounds the handshake.
+constexpr auto kCancelReapTimeout = std::chrono::milliseconds(3000);
 
-std::vector<char*> BuildArgv(const CommandAsrProvider& provider,
-                             std::vector<std::string>* storage) {
-  storage->clear();
-  storage->reserve(provider.args.size() + 1);
-  storage->push_back(provider.command);
-  for (const auto& arg : provider.args) {
-    storage->push_back(arg);
-  }
-
-  std::vector<char*> argv;
-  argv.reserve(storage->size() + 1);
-  for (auto& entry : *storage) {
-    argv.push_back(entry.data());
-  }
-  argv.emplace_back(nullptr);
-  return argv;
-}
-
-std::vector<char*> BuildEnvp(const std::map<std::string, std::string>& env,
-                             std::vector<std::string>* storage) {
-  storage->clear();
-
-  for (char* const* entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
-    storage->emplace_back(*entry);
-  }
-
-  for (const auto& [key, value] : env) {
-    if (key.empty()) {
-      continue;
-    }
-    bool replaced = false;
-    const std::string resolved_value = vinput::interpolate::InterpolateEnv(value);
-    const std::string prefix = key + "=";
-    for (auto& item : *storage) {
-      if (item.starts_with(prefix)) {
-        item = prefix + resolved_value;
-        replaced = true;
-        break;
-      }
-    }
-    if (!replaced) {
-      storage->push_back(prefix + resolved_value);
-    }
-  }
-
-  std::vector<char*> envp;
-  envp.reserve(storage->size() + 1);
-  for (auto& entry : *storage) {
-    envp.push_back(entry.data());
-  }
-  envp.push_back(nullptr);
-  return envp;
-}
+// stderr is diagnostics only, but it is the only explanation a failing provider gives, so every
+// line is kept for the error hint. The budget keeps a chatty provider from turning a notification
+// into a wall of text; whole lines are dropped from the oldest end.
+constexpr std::size_t kMaxStderrHintBytes = std::size_t{1024};
 
 std::string FormatProviderError(std::string detail, std::string_view fallback) {
   detail = std::string(vinput::str::Trim(detail));
@@ -125,116 +56,17 @@ std::string FormatProviderError(std::string detail, std::string_view fallback) {
   return std::string(fallback);
 }
 
-struct ChildProcess {
-  int pid = -1;
-  int stdin_fd = -1;
-  int stdout_fd = -1;
-  int stderr_fd = -1;
-  bool stdin_closed = false;
-  bool child_exited = false;
-  int exit_code = -1;
-};
-
-bool SpawnChild(const CommandAsrProvider& provider, ChildProcess* child, std::string* error) {
-  if (child == nullptr) {
-    if (error != nullptr) {
-      *error = "child process output is null";
-    }
-    return false;
+// The session reports raw bytes; the protocol on top of it is text. This is where the two meet.
+void AppendText(std::string* out, const std::vector<std::byte>& data) {
+  out->reserve(out->size() + data.size());
+  for (const std::byte value : data) {
+    out->push_back(static_cast<char>(value));
   }
-  child->pid = -1;
-  child->stdin_fd = -1;
-  child->stdout_fd = -1;
-  child->stderr_fd = -1;
-  child->stdin_closed = false;
-  child->child_exited = false;
-  child->exit_code = -1;
-
-  int stdin_pipe[2] = {-1, -1};
-  int stdout_pipe[2] = {-1, -1};
-  int stderr_pipe[2] = {-1, -1};
-  if (!vinput::process::CreateCloexecPipe(stdin_pipe) ||
-      !vinput::process::CreateCloexecPipe(stdout_pipe) ||
-      !vinput::process::CreateCloexecPipe(stderr_pipe)) {
-    if (error != nullptr) {
-      *error = std::string("pipe failed: ") + std::strerror(errno);
-    }
-    CloseIfOpen(&stdin_pipe[0]);
-    CloseIfOpen(&stdin_pipe[1]);
-    CloseIfOpen(&stdout_pipe[0]);
-    CloseIfOpen(&stdout_pipe[1]);
-    CloseIfOpen(&stderr_pipe[0]);
-    CloseIfOpen(&stderr_pipe[1]);
-    return false;
-  }
-
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_adddup2(&actions, stdin_pipe[0], STDIN_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, stdout_pipe[1], STDOUT_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, stderr_pipe[1], STDERR_FILENO);
-  posix_spawn_file_actions_addclose(&actions, stdin_pipe[1]);
-  posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]);
-  posix_spawn_file_actions_addclose(&actions, stderr_pipe[0]);
-
-  std::vector<std::string> argv_storage;
-  std::vector<char*> argv = BuildArgv(provider, &argv_storage);
-  std::vector<std::string> env_storage;
-  std::vector<char*> envp = BuildEnvp(provider.env, &env_storage);
-
-  int pid = -1;
-  const int rc =
-      posix_spawnp(&pid, provider.command.c_str(), &actions, nullptr, argv.data(), envp.data());
-  posix_spawn_file_actions_destroy(&actions);
-
-  CloseIfOpen(&stdin_pipe[0]);
-  CloseIfOpen(&stdout_pipe[1]);
-  CloseIfOpen(&stderr_pipe[1]);
-
-  if (rc != 0) {
-    if (error != nullptr) {
-      *error = std::string("failed to launch command: ") + std::strerror(rc);
-    }
-    CloseIfOpen(&stdin_pipe[1]);
-    CloseIfOpen(&stdout_pipe[0]);
-    CloseIfOpen(&stderr_pipe[0]);
-    return false;
-  }
-
-  if (!SetNonBlocking(stdin_pipe[1]) || !SetNonBlocking(stdout_pipe[0]) ||
-      !SetNonBlocking(stderr_pipe[0])) {
-    (void)vinput::process::KillAndReap(pid);
-    CloseIfOpen(&stdin_pipe[1]);
-    CloseIfOpen(&stdout_pipe[0]);
-    CloseIfOpen(&stderr_pipe[0]);
-    if (error != nullptr) {
-      *error = std::string("fcntl failed: ") + std::strerror(errno);
-    }
-    return false;
-  }
-
-  child->pid = pid;
-  child->stdin_fd = stdin_pipe[1];
-  child->stdout_fd = stdout_pipe[0];
-  child->stderr_fd = stderr_pipe[0];
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
-}
-
-bool HasTimedOut(Clock::time_point deadline) {
-  return Clock::now() >= deadline;
-}
-
-int RemainingMs(Clock::time_point deadline, int fallback_ms) {
-  return vinput::time::RemainingTimeoutMs(deadline, fallback_ms, Clock::now());
 }
 
 class CommandStreamingSession : public RecognitionSession {
 public:
-  CommandStreamingSession(CommandAsrProvider provider, std::string provider_id)
-      : provider_(std::move(provider)), provider_id_(std::move(provider_id)) {}
+  explicit CommandStreamingSession(CommandAsrProvider provider) : provider_(std::move(provider)) {}
 
   CommandStreamingSession(const CommandStreamingSession&) = delete;
   CommandStreamingSession& operator=(const CommandStreamingSession&) = delete;
@@ -245,126 +77,100 @@ public:
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (finished_) {
-      if (error != nullptr) {
-        *error = "Recognition session already finished.";
-      }
+      SetError(error, "Recognition session already finished.");
       return false;
     }
-
     if (!EnsureStarted(error)) {
       return false;
     }
 
+    // The chunk boundary is what the provider sees as one JSON line: the previous chunk is
+    // committed now, the new one waits for the next call.
     if (!FlushPendingChunk(false, error)) {
       return false;
     }
-
     if (!pcm.empty()) {
-      const auto byte_span = std::as_bytes(pcm);
-      pending_chunk_.assign(byte_span.begin(), byte_span.end());
+      const auto bytes = std::as_bytes(pcm);
+      pending_chunk_.assign(bytes.begin(), bytes.end());
     }
 
-    if (!PumpIo(0, error)) {
-      return false;
-    }
-
-    if (error != nullptr) {
-      error->clear();
-    }
+    PumpEvents(std::chrono::milliseconds::zero());
+    SetError(error, {});
     return true;
   }
 
   bool Finish(std::string* error) override {
     if (finished_) {
-      if (error != nullptr) {
-        error->clear();
-      }
+      SetError(error, {});
       return true;
     }
-
     if (!EnsureStarted(error)) {
       return false;
     }
-
     finished_ = true;
+
     if (!FlushPendingChunk(true, error)) {
-      QueueError(error != nullptr && !error->empty() ? *error : "failed to flush audio chunk.");
-      QueueCompleted();
-      Terminate();
+      FailPending(error, "failed to flush the last audio chunk.");
       return false;
     }
     if (!SendControlEvent("finish", error)) {
-      QueueError(error != nullptr && !error->empty() ? *error : "failed to send finish event.");
-      QueueCompleted();
-      Terminate();
+      FailPending(error, "failed to send the finish event.");
       return false;
     }
-    CloseIfOpen(&child_.stdin_fd);
-    child_.stdin_closed = true;
-    deadline_ = Clock::now() + std::chrono::milliseconds(kAwaitFinalTimeoutMs);
+    session_->CloseStdin();
 
-    while (!saw_final_text_ && !completed_ && !child_.child_exited) {
-      if (!PumpIo(kPollSliceMs, error)) {
-        QueueError(error != nullptr && !error->empty() ? *error : "failed to poll provider.");
-        QueueCompleted();
-        Terminate();
-        return false;
+    const Clock::time_point deadline = Clock::now() + kAwaitFinalTimeout;
+    while (!saw_final_text_ && !completed_ && !child_exited_) {
+      if (Clock::now() >= deadline) {
+        QueueError(FormatProviderError(StderrHint(), "timed out."));
+        break;
       }
-      if (HasTimedOut(deadline_)) {
-        QueueError(FormatProviderError(std::move(stderr_tail_), "timed out."));
-        QueueCompleted();
-        Terminate();
-        if (error != nullptr) {
-          *error = events_.back().error;
-        }
-        return false;
+      PumpEvents(kPollSlice);
+      if (session_->Finished()) {
+        // Nothing more will arrive: the terminal event was delivered with the drain above.
+        break;
       }
     }
 
-    bool grace_pump_failed = false;
-    if (saw_final_text_) {
-      const Clock::time_point grace_deadline =
-          Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
-      while (!HasTimedOut(grace_deadline) && !completed_ && !child_.child_exited) {
-        if (!PumpIo(RemainingMs(grace_deadline, kPollSliceMs), error)) {
-          grace_pump_failed = true;
-          break;
-        }
+    // A provider that already published its final text may still be flushing its tail, but it does
+    // not get to hold the caller here.
+    if (saw_final_text_ && !completed_ && !child_exited_) {
+      const Clock::time_point grace_deadline = Clock::now() + kFinalGrace;
+      while (!completed_ && !child_exited_ && Clock::now() < grace_deadline) {
+        PumpEvents(kPollSlice);
       }
     }
 
-    PumpIo(0, nullptr);
-
+    PumpEvents(std::chrono::milliseconds::zero());
     if (!saw_final_text_ && !saw_error_) {
-      QueueError(FormatProviderError(std::move(stderr_tail_), "returned no text."));
+      QueueError(FormatProviderError(StderrHint(), "returned no text."));
     }
     QueueCompleted();
     Terminate();
 
-    if (error != nullptr) {
-      if (saw_error_ && !events_.empty()) {
-        for (const auto& event : events_) {
-          if (event.kind == RecognitionEventKind::Error) {
-            *error = event.error;
-            return false;
-          }
-        }
-      }
-      if (grace_pump_failed) {
-        return false;
-      }
-      error->clear();
+    if (saw_error_) {
+      SetError(error, last_error_);
+      return false;
     }
-    return !saw_error_ && !grace_pump_failed;
+    SetError(error, {});
+    return true;
   }
 
   void Cancel() override {
-    if (!cancelled_) {
-      cancelled_ = true;
-      // Cancel does not start a new child. For a running provider the
-      // notification is best-effort and is itself subject to a finite deadline.
-      if (started_ && !child_.stdin_closed && child_.stdin_fd >= 0) {
-        SendControlEvent("cancel", nullptr);
+    if (cancelled_) {
+      return;
+    }
+    cancelled_ = true;
+    if (session_ && !finished_) {
+      // Best effort: telling the provider lets it abort its upstream session cleanly, but the
+      // session is stopped either way.
+      (void)SendControlEvent("cancel", nullptr);
+      session_->Cancel();
+      // The child must be gone before this returns: the caller is about to drop the session, and a
+      // provider still holding the microphone's successor would be worse than a slow cancel.
+      const Clock::time_point deadline = Clock::now() + kCancelReapTimeout;
+      while (!child_exited_ && Clock::now() < deadline) {
+        PumpEvents(kPollSlice);
       }
     }
     QueueCompleted();
@@ -378,36 +184,48 @@ public:
   }
 
 private:
+  static void SetError(std::string* error, std::string_view message) {
+    if (error != nullptr) {
+      *error = std::string(message);
+    }
+  }
+
+  [[nodiscard]] int WriteTimeoutMs() const {
+    return provider_.timeoutMs > 0 ? std::min(provider_.timeoutMs, kMaxWriteTimeoutMs)
+                                   : kDefaultWriteTimeoutMs;
+  }
+
   bool EnsureStarted(std::string* error) {
     if (cancelled_) {
-      if (error != nullptr) {
-        *error = "Recognition session already cancelled.";
-      }
+      SetError(error, "Recognition session already cancelled.");
       return false;
     }
-    if (started_) {
+    if (session_) {
       return true;
     }
     if (provider_.command.empty()) {
-      if (error != nullptr) {
-        *error = "Command ASR provider has empty command.";
-      }
+      SetError(error, "Command ASR provider has empty command.");
       return false;
     }
-    if (!SpawnChild(provider_, &child_, error)) {
-      QueueError(error != nullptr ? *error : "failed to start.");
+
+    vinput::process::CommandSpec spec;
+    spec.command = provider_.command;
+    spec.args = provider_.args;
+    spec.env = provider_.env;
+    auto session = vinput::process::ProcessSession::Start(spec);
+    if (!session.has_value()) {
+      QueueError(session.error());
       QueueCompleted();
+      SetError(error, session.error());
       return false;
     }
-    started_ = true;
+    session_ = std::make_unique<vinput::process::ProcessSession>(std::move(*session));
     return true;
   }
 
   bool FlushPendingChunk(bool commit, std::string* error) {
     if (pending_chunk_.empty()) {
-      if (error != nullptr) {
-        error->clear();
-      }
+      SetError(error, {});
       return true;
     }
 
@@ -429,223 +247,103 @@ private:
   }
 
   bool SendJsonLine(const glz::json_t& payload, std::string* error) {
-    if (child_.stdin_closed || child_.stdin_fd < 0) {
-      if (error != nullptr) {
-        *error = "provider stdin is already closed.";
-      }
-      return false;
-    }
-
     std::string line = vinput::json::ToText(payload);
     line.push_back('\n');
-    std::size_t offset = 0;
-    // Each outbound message has its own deadline. A prolonged recording
-    // must not be limited by the budget of its first chunk.
-    const int write_timeout_ms = provider_.timeoutMs > 0
-                                     ? std::min(provider_.timeoutMs, kMaxWriteTimeoutMs)
-                                     : kDefaultWriteTimeoutMs;
-    const auto write_deadline = Clock::now() + std::chrono::milliseconds(write_timeout_ms);
-    while (offset < line.size()) {
-      if (HasTimedOut(write_deadline) || HasTimedOut(deadline_)) {
-        if (error != nullptr) {
-          *error = FormatProviderError(std::move(stderr_tail_), "provider write timed out.");
-        }
-        return false;
-      }
+    return SendBytes(line, error);
+  }
 
-      pollfd fd{};
-      fd.fd = child_.stdin_fd;
-      fd.events = POLLOUT;
-      const auto deadline = std::min(write_deadline, deadline_);
-      const int rc = poll(&fd, 1, RemainingMs(deadline, kPollSliceMs));
-      if (rc < 0) {
-        if (errno == EINTR) {
-          continue;
-        }
-        if (error != nullptr) {
-          *error = std::string("poll failed: ") + std::strerror(errno);
-        }
-        return false;
-      }
-      if (rc == 0) {
-        // Providers may emit output before reading more stdin; draining it
-        // (bounded per call in PumpIo/Drain*) keeps both pipe directions
-        // moving without extending the absolute write deadline.
-        PumpIo(0, nullptr);
-        continue;
-      }
-
-      if ((fd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-        if (error != nullptr) {
-          *error = FormatProviderError(std::move(stderr_tail_), "provider closed stdin.");
-        }
-        return false;
-      }
-      if ((fd.revents & POLLOUT) == 0) {
-        continue;
-      }
-
-      const ssize_t written = write(child_.stdin_fd, line.data() + offset, line.size() - offset);
-      if (written > 0) {
-        offset += static_cast<std::size_t>(written);
-        continue;
-      }
-      if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-        continue;
-      }
-      if (error != nullptr) {
-        *error = std::string("write failed: ") + std::strerror(errno);
-      }
+  // Hands `line` to the provider and waits until it has actually been written. Acceptance into the
+  // session's queue is not delivery: a provider that stopped reading has to surface as a write
+  // failure within its own deadline, not as a queue that quietly fills up.
+  bool SendBytes(std::string_view line, std::string* error) {
+    if (!session_) {
+      SetError(error, "provider is not running.");
       return false;
     }
 
-    if (error != nullptr) {
-      error->clear();
-    }
-    return true;
-  }
-
-  bool PumpIo(int poll_timeout_ms, std::string* error) {
-    if (!started_) {
-      if (error != nullptr) {
-        error->clear();
+    const auto bytes = std::as_bytes(std::span<const char>(line.data(), line.size()));
+    const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(WriteTimeoutMs());
+    bool accepted = session_->PushStdin(bytes);
+    while (true) {
+      if (accepted && session_->StdinFlushed()) {
+        SetError(error, {});
+        return true;
       }
-      return true;
-    }
-
-    ReapChild();
-
-    std::array<pollfd, 2> fds{};
-    std::size_t nfds = 0;
-    if (child_.stdout_fd >= 0) {
-      fds.at(nfds).fd = child_.stdout_fd;
-      fds.at(nfds).events = POLLIN;
-      fds.at(nfds).revents = 0;
-      ++nfds;
-    }
-    if (child_.stderr_fd >= 0) {
-      fds.at(nfds).fd = child_.stderr_fd;
-      fds.at(nfds).events = POLLIN;
-      fds.at(nfds).revents = 0;
-      ++nfds;
-    }
-
-    const int timeout_ms = HasTimedOut(deadline_) ? 0 : RemainingMs(deadline_, poll_timeout_ms);
-    // Once both output pipes reach EOF, Finish may still be waiting for the
-    // provider to exit. A bounded wait prevents a tight waitpid(WNOHANG) loop.
-    // Preserve PumpIo(0)'s nonblocking behavior for live audio ingestion.
-    if (nfds == 0 && !child_.child_exited && timeout_ms > 0) {
-      const int rc = poll(nullptr, 0, timeout_ms);
-      if (rc < 0 && errno != EINTR) {
-        if (error != nullptr) {
-          *error = std::string("poll failed: ") + std::strerror(errno);
-        }
+      if (child_exited_) {
+        SetError(error, FormatProviderError(StderrHint(), "provider is no longer running."));
         return false;
       }
-    }
-    if (nfds > 0) {
-      const int rc = poll(fds.data(), static_cast<nfds_t>(nfds), timeout_ms);
-      if (rc < 0 && errno != EINTR) {
-        if (error != nullptr) {
-          *error = std::string("poll failed: ") + std::strerror(errno);
-        }
+      if (Clock::now() >= deadline) {
+        SetError(error, FormatProviderError(StderrHint(), "provider write timed out."));
         return false;
       }
-
-      for (std::size_t i = 0; i < nfds; ++i) {
-        if ((fds.at(i).revents & POLLIN) == 0 &&
-            (fds.at(i).revents & (POLLERR | POLLHUP | POLLNVAL)) == 0) {
-          continue;
-        }
-        if (fds.at(i).fd == child_.stdout_fd) {
-          if (!DrainStdout(error)) {
-            return false;
-          }
-        } else if (fds.at(i).fd == child_.stderr_fd) {
-          DrainStderr();
-        }
+      if (!accepted) {
+        accepted = session_->PushStdin(bytes);
       }
+      PumpEvents(kPollSlice);
     }
-
-    ReapChild();
-    if (child_.child_exited && child_.exit_code != 0 && !saw_error_ && !saw_final_text_) {
-      QueueError(FormatProviderError(std::move(stderr_tail_), "failed."));
-    }
-    if (error != nullptr) {
-      error->clear();
-    }
-    return true;
   }
 
-  bool DrainStdout(std::string* error) {
-    char buffer[4096];
-    std::size_t remaining_budget = kDrainBudgetBytes;
-    while (remaining_budget > 0) {
-      const ssize_t n = read(child_.stdout_fd, buffer, std::min(sizeof(buffer), remaining_budget));
-      if (n > 0) {
-        remaining_budget -= static_cast<std::size_t>(n);
-        stdout_buffer_.append(buffer, static_cast<std::size_t>(n));
-        ConsumeStdoutLines(error);
-        if (error != nullptr && !error->empty()) {
-          return false;
-        }
-        continue;
-      }
-      if (n == 0) {
-        CloseIfOpen(&child_.stdout_fd);
-        break;
-      }
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        break;
-      }
-      if (errno == EINTR) {
-        continue;
-      }
-      if (error != nullptr) {
-        *error = std::string("read stdout failed: ") + std::strerror(errno);
-      }
-      return false;
-    }
-    return true;
+  void FailPending(std::string* error, std::string_view fallback) {
+    const std::string message =
+        error != nullptr && !error->empty() ? *error : std::string(fallback);
+    QueueError(message);
+    QueueCompleted();
+    Terminate();
+    SetError(error, message);
   }
 
-  void DrainStderr() {
-    char buffer[4096];
-    std::size_t remaining_budget = kDrainBudgetBytes;
-    while (remaining_budget > 0) {
-      const ssize_t n = read(child_.stderr_fd, buffer, std::min(sizeof(buffer), remaining_budget));
-      if (n > 0) {
-        remaining_budget -= static_cast<std::size_t>(n);
-        stderr_buffer_.append(buffer, static_cast<std::size_t>(n));
-        ConsumeStderrLines();
-        continue;
-      }
-      if (n == 0) {
-        ConsumeStderrLines(true);
-        CloseIfOpen(&child_.stderr_fd);
-        break;
-      }
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        break;
-      }
-      if (errno == EINTR) {
-        continue;
+  // Delivers what the child has already produced, waiting at most `wait` for the first of it. The
+  // session owns the pipes and the timers; this only translates.
+  void PumpEvents(std::chrono::milliseconds wait) {
+    if (!session_) {
+      return;
+    }
+    vinput::process::ChildEvent event;
+    if (!session_->NextEvent(event, wait)) {
+      return;
+    }
+    HandleChildEvent(event);
+    while (session_->NextEvent(event, std::chrono::milliseconds::zero())) {
+      HandleChildEvent(event);
+    }
+  }
+
+  void HandleChildEvent(const vinput::process::ChildEvent& event) {
+    switch (event.kind) {
+    case vinput::process::ChildEventKind::StdoutChunk:
+      AppendText(&stdout_buffer_, event.data);
+      ConsumeStdoutLines();
+      break;
+    case vinput::process::ChildEventKind::StderrChunk:
+      AppendText(&stderr_buffer_, event.data);
+      ConsumeStderrLines(false);
+      break;
+    case vinput::process::ChildEventKind::Cancelled:
+      // Bookkeeping only: the terminal `Exited` follows and carries the status.
+      break;
+    case vinput::process::ChildEventKind::Exited:
+      child_exited_ = true;
+      exit_code_ = event.exit_code;
+      ConsumeStderrLines(true);
+      if (exit_code_ != 0 && !saw_error_ && !saw_final_text_) {
+        QueueError(FormatProviderError(StderrHint(), "failed."));
       }
       break;
     }
   }
 
-  void ConsumeStdoutLines(std::string* error) {
+  void ConsumeStdoutLines() {
     vinput::process::DrainLinesFromBuffer(stdout_buffer_, [&](std::string_view raw_line) {
       const std::string line(vinput::str::Trim(raw_line));
       if (line.empty()) {
-        return true;
+        return;
       }
-      return HandleOutputLine(line, error);
+      HandleOutputLine(line);
     });
   }
 
-  void ConsumeStderrLines(bool flush_tail = false) {
+  void ConsumeStderrLines(bool flush_tail) {
     vinput::process::DrainLinesFromBuffer(
         stderr_buffer_,
         [&](std::string_view raw_line) {
@@ -653,24 +351,40 @@ private:
           if (line.empty()) {
             return;
           }
-          stderr_tail_ = line;
-          std::fprintf(stderr, "vinput: command streaming stderr: %s\n", line.c_str());
+          VLOG_DEBUG("command streaming stderr: {}", line);
+          AppendStderrLine(line);
         },
         flush_tail);
   }
 
-  bool HandleOutputLine(const std::string& line, std::string* error) {
+  // Every diagnostic line becomes part of the hint. A provider's fatal line is usually its last
+  // one, but the lines before it are what explain it, and a line printed after the incident is
+  // noise - so keeping only the last line both loses information and can pick the wrong line.
+  void AppendStderrLine(std::string_view line) {
+    if (!stderr_hint_.empty()) {
+      stderr_hint_.push_back('\n');
+    }
+    stderr_hint_.append(line);
+    if (stderr_hint_.size() <= kMaxStderrHintBytes) {
+      return;
+    }
+    const std::size_t overflow = stderr_hint_.size() - kMaxStderrHintBytes;
+    const std::size_t next_line = stderr_hint_.find('\n', overflow);
+    stderr_hint_.erase(0, next_line == std::string::npos ? overflow : next_line + 1);
+  }
+
+  [[nodiscard]] std::string StderrHint() const { return stderr_hint_; }
+
+  void HandleOutputLine(const std::string& line) {
     glz::json_t payload;
     if (const auto ec = glz::read_json(payload, line); bool(ec)) {
-      if (error != nullptr) {
-        *error = std::string("invalid streaming provider JSON: ") + glz::format_error(ec, line);
-      }
-      return false;
+      QueueError(std::string("invalid streaming provider JSON: ") + glz::format_error(ec, line));
+      return;
     }
 
     const std::string type = vinput::json::String(payload, "type");
     if (type == "session_started" || type.empty()) {
-      return true;
+      return;
     }
     if (type == "partial") {
       const std::string text =
@@ -679,7 +393,7 @@ private:
         last_partial_text_ = text;
         events_.push_back({RecognitionEventKind::PartialText, text, {}});
       }
-      return true;
+      return;
     }
     if (type == "final" || type == "final_timestamps") {
       const std::string text =
@@ -689,22 +403,21 @@ private:
         last_partial_text_.clear();
         events_.push_back({RecognitionEventKind::FinalText, text, {}});
       }
-      return true;
+      return;
     }
     if (type == "error") {
       QueueError(std::string(vinput::str::Trim(vinput::json::String(payload, "message"))));
-      return true;
+      return;
     }
     if (type == "closed") {
       completed_ = true;
-      return true;
     }
-    return true;
   }
 
   void QueueError(std::string error_text) {
     error_text = FormatProviderError(std::move(error_text), "failed.");
     saw_error_ = true;
+    last_error_ = error_text;
     events_.push_back({RecognitionEventKind::Error, {}, std::move(error_text)});
   }
 
@@ -717,53 +430,27 @@ private:
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
   }
 
-  void ReapChild() {
-    if (child_.pid <= 0 || child_.child_exited) {
-      return;
-    }
-    int exit_code = -1;
-    if (!vinput::process::TryReapProcess(child_.pid, &exit_code)) {
-      return;
-    }
-    child_.child_exited = true;
-    child_.exit_code = exit_code;
-    ConsumeStderrLines(true);
-  }
-
+  // The session is the only owner of the child: dropping it cancels, joins the pump and reaps, all
+  // of which is bounded by the module itself.
   void Terminate() {
-    if (terminated_) {
-      return;
-    }
-    terminated_ = true;
-
-    CloseIfOpen(&child_.stdin_fd);
-    CloseIfOpen(&child_.stdout_fd);
-    CloseIfOpen(&child_.stderr_fd);
-
-    ReapChild();
-    if (child_.pid > 0 && !child_.child_exited) {
-      if (vinput::process::KillAndReap(child_.pid)) {
-        child_.child_exited = true;
-        child_.exit_code = -1;
-      }
-    }
+    session_.reset();
+    child_exited_ = true;
   }
 
   CommandAsrProvider provider_;
-  std::string provider_id_;
-  Clock::time_point deadline_ = Clock::time_point::max();
-  ChildProcess child_;
-  bool started_ = false;
+  std::unique_ptr<vinput::process::ProcessSession> session_;
   bool finished_ = false;
   bool cancelled_ = false;
-  bool terminated_ = false;
   bool completed_ = false;
   bool completed_emitted_ = false;
   bool saw_error_ = false;
   bool saw_final_text_ = false;
+  bool child_exited_ = false;
+  int exit_code_ = -1;
+  std::string last_error_;
   std::string stdout_buffer_;
   std::string stderr_buffer_;
-  std::string stderr_tail_;
+  std::string stderr_hint_;
   std::string last_partial_text_;
   std::vector<std::byte> pending_chunk_;
   std::vector<RecognitionEvent> events_;
@@ -787,18 +474,20 @@ public:
 
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
     if (provider_.command.empty()) {
-      if (error != nullptr) {
-        *error = "Command ASR provider has empty command.";
-      }
+      SetError(error, "Command ASR provider has empty command.");
       return nullptr;
     }
-    if (error != nullptr) {
-      error->clear();
-    }
-    return std::make_unique<CommandStreamingSession>(provider_, provider_.id);
+    SetError(error, {});
+    return std::make_unique<CommandStreamingSession>(provider_);
   }
 
 private:
+  static void SetError(std::string* error, std::string_view message) {
+    if (error != nullptr) {
+      *error = std::string(message);
+    }
+  }
+
   CommandAsrProvider provider_;
 };
 
