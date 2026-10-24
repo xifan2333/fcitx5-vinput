@@ -31,6 +31,10 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 constexpr auto kPollSlice = std::chrono::milliseconds(50);
+
+// Upper bound on the events one pump call delivers before returning to its caller, so the caller's
+// own deadlines stay in charge.
+constexpr std::size_t kMaxEventsPerPump = 64;
 constexpr int kDefaultWriteTimeoutMs = 5000;
 constexpr int kMaxWriteTimeoutMs = 30000;
 
@@ -38,6 +42,10 @@ constexpr int kMaxWriteTimeoutMs = 30000;
 // flush whatever else it printed.
 constexpr auto kAwaitFinalTimeout = std::chrono::milliseconds(10000);
 constexpr auto kFinalGrace = std::chrono::milliseconds(200);
+
+// How long the provider gets to be *told* about a cancel. It is a courtesy message: a provider that
+// stopped reading must not delay the termination it is being told about.
+constexpr auto kCancelNotifyTimeout = std::chrono::milliseconds(200);
 
 // Cancelling has to leave a reaped child behind before it returns, because the caller's next step
 // is to drop the session. The pump's own escalation is bounded, so this only bounds the handshake.
@@ -239,38 +247,47 @@ private:
     return SendJsonLine(payload, error);
   }
 
-  bool SendControlEvent(std::string_view type, std::string* error) {
+  bool SendControlEvent(std::string_view type, std::string* error,
+                        std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
     const glz::json_t payload = {
         {"type", std::string(type)},
     };
-    return SendJsonLine(payload, error);
+    return SendJsonLine(payload, error, timeout);
   }
 
-  bool SendJsonLine(const glz::json_t& payload, std::string* error) {
+  bool SendJsonLine(const glz::json_t& payload, std::string* error,
+                    std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
     std::string line = vinput::json::ToText(payload);
     line.push_back('\n');
-    return SendBytes(line, error);
+    return SendBytes(line, error, timeout);
   }
 
   // Hands `line` to the provider and waits until it has actually been written. Acceptance into the
   // session's queue is not delivery: a provider that stopped reading has to surface as a write
   // failure within its own deadline, not as a queue that quietly fills up.
-  bool SendBytes(std::string_view line, std::string* error) {
+  bool SendBytes(std::string_view line, std::string* error,
+                 std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
     if (!session_) {
       SetError(error, "provider is not running.");
       return false;
     }
 
     const auto bytes = std::as_bytes(std::span<const char>(line.data(), line.size()));
-    const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(WriteTimeoutMs());
+    const auto budget = timeout > std::chrono::milliseconds::zero()
+                            ? timeout
+                            : std::chrono::milliseconds(WriteTimeoutMs());
+    const Clock::time_point deadline = Clock::now() + budget;
     bool accepted = session_->PushStdin(bytes);
     while (true) {
-      if (accepted && session_->StdinFlushed()) {
+      const vinput::process::StdinState state = session_->Stdin();
+      if (accepted && state == vinput::process::StdinState::Flushed) {
         SetError(error, {});
         return true;
       }
-      if (child_exited_) {
-        SetError(error, FormatProviderError(StderrHint(), "provider is no longer running."));
+      // Accepted but closed, or the child is gone: the block was not delivered, and waiting for the
+      // deadline would only delay the report.
+      if (state == vinput::process::StdinState::Closed || child_exited_) {
+        SetError(error, FormatProviderError(StderrHint(), "provider stopped reading its input."));
         return false;
       }
       if (Clock::now() >= deadline) {
@@ -278,7 +295,10 @@ private:
         return false;
       }
       if (!accepted) {
+        // The queue had no room; the pump makes room from its side, so give it a slice first.
+        PumpEvents(kPollSlice);
         accepted = session_->PushStdin(bytes);
+        continue;
       }
       PumpEvents(kPollSlice);
     }
@@ -304,7 +324,12 @@ private:
       return;
     }
     HandleChildEvent(event);
-    while (session_->NextEvent(event, std::chrono::milliseconds::zero())) {
+    // Bounded on purpose: a provider that keeps producing would otherwise hold this call - and with
+    // it the caller's write or finish deadline - inside the drain loop indefinitely.
+    for (std::size_t drained = 1; drained < kMaxEventsPerPump; ++drained) {
+      if (!session_->NextEvent(event, std::chrono::milliseconds::zero())) {
+        return;
+      }
       HandleChildEvent(event);
     }
   }
@@ -326,7 +351,11 @@ private:
       child_exited_ = true;
       exit_code_ = event.exit_code;
       ConsumeStderrLines(true);
-      if (exit_code_ != 0 && !saw_error_ && !saw_final_text_) {
+      // A cancel ends the child through SIGTERM, so its status is non-zero by construction:
+      // reporting that as a provider failure would turn "the user stopped dictating" into an error
+      // notification.
+      const bool cancelled_by_us = cancelled_ || event.killed_by_us;
+      if (exit_code_ != 0 && !cancelled_by_us && !saw_error_ && !saw_final_text_) {
         QueueError(FormatProviderError(StderrHint(), "failed."));
       }
       break;
