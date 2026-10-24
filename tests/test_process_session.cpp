@@ -89,6 +89,38 @@ std::string DrainUntilExit(ProcessSession& session, ChildEvent* terminal,
   return stdout_text;
 }
 
+// Waits for a helper the provider script forked to disappear, tolerating the short window in which
+// the kernel still lists a process that has just been killed.
+bool WaitUntilHelperGone(int helper_pid, std::uint64_t helper_start_time) {
+  const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(2000);
+  while (Clock::now() < deadline) {
+    if (!vinput::process::ProcessIdentityMatches(helper_pid, helper_start_time)) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  return false;
+}
+
+// Reads the pid the child prints on its first line, so a test can track a helper the provider
+// script forked.
+int ReadHelperPid(ProcessSession& session) {
+  std::string stdout_text;
+  const Clock::time_point deadline = Clock::now() + kTestTimeout;
+  while (stdout_text.find('\n') == std::string::npos && Clock::now() < deadline) {
+    ChildEvent event;
+    if (!session.NextEvent(event, kEventWait)) {
+      continue;
+    }
+    if (event.kind == ChildEventKind::StdoutChunk) {
+      stdout_text.append(ToText(event.data));
+    }
+  }
+  const std::size_t newline = stdout_text.find('\n');
+  ExpectTrue(newline != std::string::npos, "the child should report its helper's pid");
+  return std::atoi(stdout_text.substr(0, newline).c_str());
+}
+
 std::span<const std::byte> AsBytes(const std::string& text) {
   return std::as_bytes(std::span<const char>(text.data(), text.size()));
 }
@@ -178,20 +210,7 @@ void TestCancelInterruptsBlockedWait() {
 void TestCancelTerminatesTheProcessGroup() {
   auto session = MustStart("sleep 30 & echo $!; wait");
 
-  std::string stdout_text;
-  const Clock::time_point deadline = Clock::now() + kTestTimeout;
-  while (stdout_text.find('\n') == std::string::npos && Clock::now() < deadline) {
-    ChildEvent event;
-    if (!session.NextEvent(event, kEventWait)) {
-      continue;
-    }
-    if (event.kind == ChildEventKind::StdoutChunk) {
-      stdout_text.append(ToText(event.data));
-    }
-  }
-  const std::size_t newline = stdout_text.find('\n');
-  ExpectTrue(newline != std::string::npos, "the child should report its helper's pid");
-  const int helper_pid = std::atoi(stdout_text.substr(0, newline).c_str());
+  const int helper_pid = ReadHelperPid(session);
   ExpectTrue(helper_pid > 0, "the reported helper pid should be usable");
 
   const std::uint64_t helper_start_time = vinput::process::ProcessStartTime(helper_pid);
@@ -213,6 +232,56 @@ void TestCancelTerminatesTheProcessGroup() {
 }
 
 /**
+ * Cancelling is a promise about the whole process group: a helper that ignores SIGTERM must still
+ * be killed once the leader is gone, and the wait for it must stay bounded.
+ */
+void TestHelperIgnoringSigtermIsKilled() {
+  auto session = MustStart("( trap '' TERM; exec sleep 30 ) & sleep 0.2; echo $!; sleep 30");
+  const int helper_pid = ReadHelperPid(session);
+  ExpectTrue(helper_pid > 0, "the reported helper pid should be usable");
+  const std::uint64_t helper_start_time = vinput::process::ProcessStartTime(helper_pid);
+  ExpectTrue(helper_start_time != 0, "the helper should be running before the cancel");
+
+  const Clock::time_point cancel_start = Clock::now();
+  session.Cancel();
+  const ChildEvent exit = AwaitExit(session, kTestTimeout);
+  const auto cancel_elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - cancel_start);
+
+  ExpectTrue(exit.killed_by_us, "a cancelled session must report that it killed the child");
+  ExpectTrue(cancel_elapsed < std::chrono::milliseconds(3000),
+             "cancelling must stay bounded even when a helper ignores SIGTERM (elapsed=" +
+                 std::to_string(cancel_elapsed.count()) + "ms)");
+  ExpectTrue(WaitUntilHelperGone(helper_pid, helper_start_time),
+             "a helper that ignores SIGTERM must not outlive the session");
+}
+
+/**
+ * Destruction is the last owner of the group: it must stop every member and return, without waiting
+ * on one that ignores SIGTERM.
+ */
+void TestDestructorStopsTheWholeGroup() {
+  int helper_pid = -1;
+  std::uint64_t helper_start_time = 0;
+  const Clock::time_point teardown_start = Clock::now();
+  {
+    auto session = MustStart("( trap '' TERM; exec sleep 30 ) & sleep 0.2; echo $!; sleep 30");
+    helper_pid = ReadHelperPid(session);
+    ExpectTrue(helper_pid > 0, "the reported helper pid should be usable");
+    helper_start_time = vinput::process::ProcessStartTime(helper_pid);
+    ExpectTrue(helper_start_time != 0, "the helper should be running before the teardown");
+  }
+  const auto teardown_elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - teardown_start);
+
+  ExpectTrue(teardown_elapsed < std::chrono::milliseconds(3000),
+             "destroying the session must be bounded (elapsed=" +
+                 std::to_string(teardown_elapsed.count()) + "ms)");
+  ExpectTrue(WaitUntilHelperGone(helper_pid, helper_start_time),
+             "destroying the session must stop the whole process group");
+}
+
+/**
  * Closing stdin is an explicit end of input: the child must see every byte handed over before it,
  * and then EOF.
  */
@@ -227,6 +296,61 @@ void TestCloseStdinDeliversQueuedBytesBeforeEof() {
   const std::string stdout_text = DrainUntilExit(session, nullptr, kTestTimeout);
   ExpectTrue(stdout_text.find("done_after_eof") != std::string::npos,
              "the child should reach EOF only after the queued bytes were written");
+}
+
+/**
+ * Backpressure is a byte budget, not an event count: a provider that prints many small lines while
+ * the caller is still busy must not lose the overflow - and above all must not lose the terminal
+ * event, which is how the caller learns the child is gone.
+ */
+void TestManySmallEventsSurviveASlowCaller() {
+  constexpr int kLineCount = 120;
+  auto session =
+      MustStart("i=0; while [ $i -lt 120 ]; do echo burst$i; sleep 0.001; i=$((i+1)); done");
+
+  // Let the pump run ahead of the caller on purpose: a caller that has not asked for events yet is
+  // exactly the situation a fixed-size event queue cannot survive.
+  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
+  const std::string stdout_text = DrainUntilExit(session, nullptr, kTestTimeout);
+  std::string missing;
+  for (int i = 0; i < kLineCount; ++i) {
+    if (stdout_text.find("burst" + std::to_string(i) + "\n") == std::string::npos) {
+      missing += " " + std::to_string(i);
+    }
+  }
+  ExpectTrue(missing.empty(),
+             "every line the provider printed must be delivered, missing:" + missing);
+}
+
+/**
+ * A provider that closes its stdin before the caller writes must produce a failed write, not a
+ * SIGPIPE that ends the host process: the session is one small part of the daemon, and losing the
+ * whole daemon to a provider quirk is not an acceptable failure mode.
+ */
+void TestProviderClosingStdinDoesNotKillTheHost() {
+  auto session = MustStart("exec 0<&-; echo ready; sleep 30");
+
+  std::string stdout_text;
+  const Clock::time_point deadline = Clock::now() + kTestTimeout;
+  while (stdout_text.find("ready") == std::string::npos && Clock::now() < deadline) {
+    ChildEvent event;
+    if (!session.NextEvent(event, kEventWait)) {
+      continue;
+    }
+    if (event.kind == ChildEventKind::StdoutChunk) {
+      stdout_text.append(ToText(event.data));
+    }
+  }
+  ExpectTrue(stdout_text.find("ready") != std::string::npos, "the child should announce itself");
+
+  ExpectTrue(session.PushStdin(AsBytes("payload\n")), "the session should still accept the bytes");
+  // The write happens on the pump thread; give it a moment to fail and be survived.
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  session.Cancel();
+  const ChildEvent exit = AwaitExit(session, kTestTimeout);
+  ExpectTrue(exit.killed_by_us, "the session should still be cancellable after the failed write");
 }
 
 /**
@@ -254,7 +378,11 @@ int main() {
   TestOutputArrivesWithoutStdin();
   TestCancelInterruptsBlockedWait();
   TestCancelTerminatesTheProcessGroup();
+  TestHelperIgnoringSigtermIsKilled();
+  TestDestructorStopsTheWholeGroup();
   TestCloseStdinDeliversQueuedBytesBeforeEof();
+  TestManySmallEventsSurviveASlowCaller();
+  TestProviderClosingStdinDoesNotKillTheHost();
   TestDestructorReapsTheChild();
   std::cout << "All test_process_session passed!\n";
   return 0;
