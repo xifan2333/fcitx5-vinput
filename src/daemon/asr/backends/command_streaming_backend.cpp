@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
@@ -56,12 +57,15 @@ constexpr auto kCancelReapTimeout = std::chrono::milliseconds(3000);
 // into a wall of text; whole lines are dropped from the oldest end.
 constexpr std::size_t kMaxStderrHintBytes = std::size_t{1024};
 
-std::string FormatProviderError(std::string detail, std::string_view fallback) {
+// A provider failure reads as the reason this daemon observed, followed by whatever the provider
+// printed: the reason alone hides the provider's own explanation, and the provider's output alone
+// leaves the caller guessing what went wrong.
+std::string FormatProviderError(std::string_view reason, std::string detail) {
   detail = std::string(vinput::str::Trim(detail));
-  if (!detail.empty()) {
-    return detail;
+  if (detail.empty()) {
+    return std::string(reason);
   }
-  return std::string(fallback);
+  return std::format("{}: {}", reason, detail);
 }
 
 // The session reports raw bytes; the protocol on top of it is text. This is where the two meet.
@@ -130,14 +134,10 @@ public:
     const Clock::time_point deadline = Clock::now() + kAwaitFinalTimeout;
     while (!saw_final_text_ && !completed_ && !child_exited_) {
       if (Clock::now() >= deadline) {
-        QueueError(FormatProviderError(StderrHint(), "timed out."));
+        QueueError(FormatProviderError("timed out.", StderrHint()));
         break;
       }
       PumpEvents(kPollSlice);
-      if (session_->Finished()) {
-        // Nothing more will arrive: the terminal event was delivered with the drain above.
-        break;
-      }
     }
 
     // A provider that already published its final text may still be flushing its tail, but it does
@@ -151,7 +151,7 @@ public:
 
     PumpEvents(std::chrono::milliseconds::zero());
     if (!saw_final_text_ && !saw_error_) {
-      QueueError(FormatProviderError(StderrHint(), "returned no text."));
+      QueueError(FormatProviderError("returned no text.", StderrHint()));
     }
     QueueCompleted();
     Terminate();
@@ -288,11 +288,11 @@ private:
       // Accepted but closed, or the child is gone: the block was not delivered, and waiting for the
       // deadline would only delay the report.
       if (state == vinput::process::StdinState::Closed || child_exited_) {
-        SetError(error, FormatProviderError(StderrHint(), "provider stopped reading its input."));
+        SetError(error, FormatProviderError("provider stopped reading its input.", StderrHint()));
         return false;
       }
       if (Clock::now() >= deadline) {
-        SetError(error, FormatProviderError(StderrHint(), "provider write timed out."));
+        SetError(error, FormatProviderError("provider write timed out.", StderrHint()));
         return false;
       }
       if (!accepted) {
@@ -325,9 +325,21 @@ private:
       return;
     }
     HandleChildEvent(event);
-    // Bounded on purpose: a provider that keeps producing would otherwise hold this call - and with
-    // it the caller's write or finish deadline - inside the drain loop indefinitely.
-    for (std::size_t drained = 1; drained < kMaxEventsPerPump; ++drained) {
+    DrainEvents();
+  }
+
+  // Drains what is already queued. While the child still runs the drain is capped, so a provider
+  // that keeps producing cannot hold this call - and with it the caller's write or finish deadline
+  // - inside the loop. Once the session has finished, every event is already published: the queue
+  // is finite, and draining all of it is what keeps a real `final` from being left behind and read
+  // as "no text".
+  void DrainEvents() {
+    if (!session_) {
+      return;
+    }
+    const bool unbounded = session_->Finished();
+    vinput::process::ChildEvent event;
+    for (std::size_t drained = 0; unbounded || drained < kMaxEventsPerPump; ++drained) {
       if (!session_->NextEvent(event, std::chrono::milliseconds::zero())) {
         return;
       }
@@ -357,7 +369,7 @@ private:
       // notification.
       const bool cancelled_by_us = cancelled_ || event.killed_by_us;
       if (exit_code_ != 0 && !cancelled_by_us && !saw_error_ && !saw_final_text_) {
-        QueueError(FormatProviderError(StderrHint(), "failed."));
+        QueueError(FormatProviderError("failed.", StderrHint()));
       }
       break;
     }
