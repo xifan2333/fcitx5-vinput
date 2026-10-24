@@ -37,10 +37,10 @@ constexpr uint64_t kStatusSyncIntervalUsec = 200 * 1000;
 constexpr auto kPolledIdleRecoveryDelay =
     std::chrono::milliseconds(vinput::runtime::kDbusCallTimeoutMs);
 std::string StartingPreeditText() {
-  return _("... Starting ...");
+  return {};
 }
 std::string RecordingPreeditText() {
-  return _("... Recording ...");
+  return {};
 }
 
 std::string CommandingPreeditText() {

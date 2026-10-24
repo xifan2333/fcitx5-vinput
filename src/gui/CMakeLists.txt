@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-find_package(Qt6 COMPONENTS Core Gui Widgets Network REQUIRED)
+find_package(Qt6 COMPONENTS Core Gui Widgets Network DBus REQUIRED)
 find_package(Qt6LinguistTools QUIET)
 set(QT_LINGUIST_FOUND ${Qt6LinguistTools_FOUND})
 
@@ -43,6 +43,26 @@ endif()
 add_executable(gui
     ${VINPUT_GUI_SOURCES}
     ${VINPUT_GUI_HEADERS}
+)
+
+add_executable(recording_orb
+    overlay/main.cpp
+    overlay/recording_orb.cpp
+    overlay/recording_orb.h
+)
+set_target_properties(recording_orb PROPERTIES OUTPUT_NAME "vinput-recording-orb")
+target_include_directories(recording_orb PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(recording_orb PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::DBus
+)
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/systemd/vinput-recording-orb.service.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/vinput-recording-orb.service"
+    @ONLY
 )
 
 set_target_properties(gui PROPERTIES OUTPUT_NAME "vinput-gui")
@@ -107,8 +127,12 @@ target_link_libraries(gui
     ${SDBUS_LIBRARIES}
 )
 
-install(TARGETS gui
+install(TARGETS gui recording_orb
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/vinput-recording-orb.service"
+    DESTINATION "${VINPUT_SYSTEMD_USER_DIR}"
 )
 
 install(FILES ${VINPUT_GUI_DESKTOP_FILE}

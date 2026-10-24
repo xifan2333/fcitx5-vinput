@@ -49,6 +49,7 @@ public:
   void SetStopHandler(std::function<MethodResult(const std::string& scene_id)> handler);
   void SetCancelOperationHandler(std::function<MethodResult(bool commit_raw_text)> handler);
   void SetStatusHandler(std::function<std::string()> handler);
+  void SetAudioLevelHandler(std::function<double()> handler);
   void SetAsrBackendStateHandler(std::function<vinput::dbus::AsrBackendState()> handler);
   void SetReloadAsrBackendHandler(std::function<MethodResult()> handler);
   void SetStartAdapterHandler(std::function<MethodResult(const std::string& adapter_id)> handler);
@@ -59,6 +60,7 @@ public:
   static int handleStopRecording(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleCancelOperation(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleGetStatus(sd_bus_message* m, void* userdata, sd_bus_error* error);
+  static int handleGetAudioLevel(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleGetAsrBackendState(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleReloadAsrBackend(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStartAdapter(sd_bus_message* m, void* userdata, sd_bus_error* error);
@@ -83,6 +85,7 @@ private:
   std::function<MethodResult(const std::string& scene_id)> stop_handler_;
   std::function<MethodResult(bool commit_raw_text)> cancel_operation_handler_;
   std::function<std::string()> status_handler_;
+  std::function<double()> audio_level_handler_;
   std::function<vinput::dbus::AsrBackendState()> asr_backend_state_handler_;
   std::function<MethodResult()> reload_asr_backend_handler_;
   std::function<MethodResult(const std::string& adapter_id)> start_adapter_handler_;

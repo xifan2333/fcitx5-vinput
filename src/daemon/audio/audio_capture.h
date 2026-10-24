@@ -42,6 +42,7 @@ public:
   bool BeginRecording(std::string* error = nullptr, StartTiming* timing = nullptr);
   void EndRecording();
   bool IsRecording() const;
+  [[nodiscard]] float AudioLevel() const noexcept;
   void SetTargetObject(std::string target_object);
 
   // SPSC lock-free dequeue for downstream audio consumers.
@@ -94,6 +95,7 @@ private:
   struct pw_stream* stream_ = nullptr;
   struct pw_stream_events stream_events_{};
   std::atomic<bool> recording_{false};
+  std::atomic<float> audio_level_{0.0F};
   mutable std::mutex target_mutex_;
   mutable std::mutex timing_mutex_;
   std::mutex consumer_mutex_;

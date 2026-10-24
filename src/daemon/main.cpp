@@ -100,6 +100,7 @@ int main(int argc, char* argv[]) {
       [&](bool commit_raw_text) { return runtime_controller.CancelOperation(commit_raw_text); });
 
   dbus.SetStatusHandler([&]() -> std::string { return runtime_controller.GetStatus(); });
+  dbus.SetAudioLevelHandler([&]() -> double { return capture.AudioLevel(); });
   dbus.SetAsrBackendStateHandler(
       [&]() -> vinput::dbus::AsrBackendState { return runtime_controller.GetAsrBackendState(); });
   dbus.SetReloadAsrBackendHandler([&]() { return runtime_controller.ReloadAsrBackend(); });

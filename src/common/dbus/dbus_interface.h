@@ -19,6 +19,7 @@ constexpr const char* kMethodStartCommandRecording = "StartCommandRecording";
 constexpr const char* kMethodStopRecording = "StopRecording";
 constexpr const char* kMethodCancelOperation = "CancelOperation";
 constexpr const char* kMethodGetStatus = "GetStatus";
+constexpr const char* kMethodGetAudioLevel = "GetAudioLevel";
 constexpr const char* kMethodGetAsrBackendState = "GetAsrBackendState";
 constexpr const char* kMethodReloadAsrBackend = "ReloadAsrBackend";
 constexpr const char* kMethodStartAdapter = "StartAdapter";

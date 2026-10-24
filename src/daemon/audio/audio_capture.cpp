@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/audio/pcm_level.h"
 #include "common/audio/pipewire_device.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
@@ -119,6 +120,11 @@ void AudioCapture::processCallback() {
       const uint32_t n_samples = size / sizeof(int16_t);
 
       if (n_samples > 0) {
+        const auto block_level = vinput::audio::NormalizePcmRms(
+            std::span<const std::uint8_t>(raw + offset, static_cast<std::size_t>(size)));
+        const float previous_level = audio_level_.load(std::memory_order_relaxed);
+        audio_level_.store(previous_level * 0.58F + block_level * 0.42F,
+                           std::memory_order_relaxed);
         int64_t expected_zero = 0;
         const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                    std::chrono::steady_clock::now().time_since_epoch())
@@ -430,6 +436,7 @@ void AudioCapture::DestroyStream() {
 }
 
 bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
+  audio_level_.store(0.0F, std::memory_order_relaxed);
   StartTiming local_timing;
   local_timing.reuse_policy_enabled = StreamReuseEnabled();
   CancelIdleDestroy();
@@ -545,6 +552,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
 
 void AudioCapture::EndRecording() {
   recording_.store(false, std::memory_order_relaxed);
+  audio_level_.store(0.0F, std::memory_order_relaxed);
   if (StreamReuseEnabled() && stream_) {
     std::string error;
     if (!SetStreamActive(false, &error)) {
@@ -562,6 +570,7 @@ void AudioCapture::EndRecording() {
 
 std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
   recording_.store(false, std::memory_order_relaxed);
+  audio_level_.store(0.0F, std::memory_order_relaxed);
   if (StreamReuseEnabled() && stream_) {
     std::string error;
     if (!SetStreamActive(false, &error)) {
@@ -587,6 +596,7 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
 
 void AudioCapture::Stop() {
   recording_.store(false, std::memory_order_relaxed);
+  audio_level_.store(0.0F, std::memory_order_relaxed);
   CancelIdleDestroy();
   DestroyStream();
   const std::lock_guard<std::mutex> lock(consumer_mutex_);
@@ -597,6 +607,13 @@ void AudioCapture::Stop() {
 
 bool AudioCapture::IsRecording() const {
   return recording_.load(std::memory_order_relaxed);
+}
+
+float AudioCapture::AudioLevel() const noexcept {
+  if (!recording_.load(std::memory_order_relaxed)) {
+    return 0.0F;
+  }
+  return audio_level_.load(std::memory_order_relaxed);
 }
 
 bool AudioCapture::TryDequeue(vinput::audio::AudioPcmChunk& chunk) {

@@ -249,6 +249,10 @@ target_include_directories(test_file_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_file_utils PRIVATE common pthread)
 add_test(NAME test_file_utils COMMAND test_file_utils)
 
+add_executable(test_overlay_audio_level test_overlay_audio_level.cpp)
+target_include_directories(test_overlay_audio_level PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME test_overlay_audio_level COMMAND test_overlay_audio_level)
+
 add_executable(test_sandbox test_sandbox.cpp)
 target_include_directories(test_sandbox PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_sandbox PRIVATE common pthread)

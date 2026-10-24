@@ -1,0 +1,12 @@
+[Unit]
+Description=Vinput Recording Orb Overlay
+After=graphical-session.target vinput-daemon.service
+
+[Service]
+Type=simple
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/vinput-recording-orb
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
