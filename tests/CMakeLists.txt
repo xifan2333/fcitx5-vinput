@@ -135,6 +135,21 @@ target_link_libraries(test_process_session PRIVATE
 
 add_test(NAME test_process_session COMMAND test_process_session)
 
+add_executable(test_notification_bridge
+    test_notification_bridge.cpp
+)
+
+target_include_directories(test_notification_bridge PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_notification_bridge PRIVATE
+    common
+    pthread
+)
+
+add_test(NAME test_notification_bridge COMMAND test_notification_bridge)
+
 add_executable(test_editor_utils
     test_editor_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/utils/editor_utils.cpp
