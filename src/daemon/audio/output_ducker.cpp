@@ -1,16 +1,19 @@
 #include "daemon/audio/output_ducker.h"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
-#include <exception>
+#include <cstring>
 #include <mutex>
 #include <optional>
 #include <string>
-#include <subprocess.hpp>
-#include <vector>
+#include <string_view>
+#include <system_error>
 
 #include "common/utils/debug_log.h"
+#include "common/utils/process_utils.h"
 
 namespace vinput::daemon::audio {
 
@@ -26,45 +29,59 @@ std::optional<double> ParseVolume(const std::string& text) {
   if (pos == std::string::npos) {
     return std::nullopt;
   }
-  const char* cursor = text.c_str() + pos + 7; // skip "Volume:"
-  char* end = nullptr;
-  const double value = std::strtod(cursor, &end);
-  if (end == cursor) {
+  // Skip "Volume:" and any leading whitespace; wpctl prints "Volume: 1.00" or "Volume: 0.15
+  // [MUTED]".
+  const std::string_view tail(text.c_str() + pos + 7);
+  const auto* const begin = tail.data();
+  const auto* const end = tail.data() + tail.size();
+  double value = 0.0;
+  const auto parsed = std::from_chars(begin, end, value);
+  if (parsed.ptr == begin || parsed.ec != std::errc{}) {
     return std::nullopt;
   }
   return value;
 }
 
-// Reads the current volume of the default sink using a single stdout pipe
-// without allocating stdin or stderr pipes.
+// wpctl is a local process that must answer almost instantly. A deadline keeps the ducking worker
+// thread from blocking forever if WirePlumber hangs: a timed-out or failed call is treated the
+// same as "wpctl unavailable" so recording is never stalled by volume control.
+constexpr int kWpctlTimeoutMs = 2000;
+
+// Reads the current volume of the default sink through the unified process entry, which owns the
+// deadline, the session leader and reaping.
 std::optional<double> ReadDefaultSinkVolume() {
-  try {
-    auto proc =
-        subprocess::Popen({kWpctl, "get-volume", kDefaultSink},
-                          subprocess::output{subprocess::PIPE}, subprocess::error{"/dev/null"});
-    auto [out_buf, err_buf] = proc.communicate();
-    if (proc.retcode() != 0) {
-      return std::nullopt;
-    }
-    return ParseVolume(std::string(out_buf.buf.data(), out_buf.length));
-  } catch (const std::exception&) {
+  vinput::process::CommandSpec spec;
+  spec.command = kWpctl;
+  spec.args = {"get-volume", kDefaultSink};
+  spec.timeout_ms = kWpctlTimeoutMs;
+
+  const auto result = vinput::process::Run(spec);
+  if (result.launch_failed || result.timed_out || result.exit_code != 0) {
     return std::nullopt;
   }
+  return ParseVolume(result.stdout_text);
 }
 
-// Sets the volume of the default sink using zero pipes (redirecting streams
-// to /dev/null), eliminating pipe leaks and buffer contention.
+// Sets the volume of the default sink through the unified process entry. Only the exit code
+// matters, so every non-success outcome (launch failure, timeout, non-zero exit) collapses to
+// false and the caller skips the ducking step.
 bool SetDefaultSinkVolume(double volume) {
-  char buffer[32];
-  std::snprintf(buffer, sizeof(buffer), "%.4F", volume);
-
-  try {
-    return subprocess::call({kWpctl, "set-volume", kDefaultSink, buffer},
-                            subprocess::input{"/dev/null"}, subprocess::output{"/dev/null"},
-                            subprocess::error{"/dev/null"}) == 0;
-  } catch (const std::exception&) {
+  std::array<char, 32> buffer{};
+  const int written = std::snprintf(buffer.data(), buffer.size(), "%.4F", volume);
+  if (written <= 0) {
     return false;
   }
+  if (static_cast<std::size_t>(written) >= buffer.size()) {
+    return false;
+  }
+
+  vinput::process::CommandSpec spec;
+  spec.command = kWpctl;
+  spec.args = {"set-volume", kDefaultSink, std::string(buffer.data(), buffer.data() + written)};
+  spec.timeout_ms = kWpctlTimeoutMs;
+
+  const auto result = vinput::process::Run(spec);
+  return !result.launch_failed && !result.timed_out && result.exit_code == 0;
 }
 
 } // namespace
@@ -94,7 +111,7 @@ void OutputDucker::Duck(double scale) {
       return;
     }
     logical_ducked_ = true;
-    queue_.push(DuckerTask{DuckerAction::Duck, scale});
+    queue_.push(DuckerTask{.action = DuckerAction::Duck, .scale = scale});
   }
   cv_.notify_one();
 }
@@ -106,7 +123,7 @@ void OutputDucker::Restore() {
       return;
     }
     logical_ducked_ = false;
-    queue_.push(DuckerTask{DuckerAction::Restore, 1.0});
+    queue_.push(DuckerTask{.action = DuckerAction::Restore, .scale = 1.0});
   }
   cv_.notify_one();
 }
@@ -157,14 +174,13 @@ void OutputDucker::ProcessDuck(double scale) {
 
   const auto current = ReadDefaultSinkVolume();
   if (!current) {
-    fprintf(stderr,
-            "vinput-daemon: output ducking skipped (wpctl unavailable or no default sink)\n");
+    VLOG_WARN("output ducking skipped (wpctl unavailable or no default sink)");
     return;
   }
 
   const double target = *current * scale;
   if (!SetDefaultSinkVolume(target)) {
-    fprintf(stderr, "vinput-daemon: output ducking skipped (failed to set volume)\n");
+    VLOG_WARN("output ducking skipped (failed to set volume)");
     return;
   }
 
@@ -183,7 +199,7 @@ void OutputDucker::ProcessRestore() {
   if (SetDefaultSinkVolume(restore_to)) {
     VLOG_DEBUG("restored output volume -> {:.2f}", restore_to);
   } else {
-    fprintf(stderr, "vinput-daemon: failed to restore output volume to %.2f\n", restore_to);
+    VLOG_WARN("failed to restore output volume to {:.2f}", restore_to);
   }
 }
 
