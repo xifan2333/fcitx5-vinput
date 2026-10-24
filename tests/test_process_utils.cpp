@@ -9,6 +9,7 @@
 #include <iostream>
 #include <span>
 #include <string>
+#include <sys/poll.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
@@ -22,12 +23,17 @@ constexpr int kWaitNoHang = 1;
 constexpr auto kTestGracefulTimeout = std::chrono::milliseconds(300);
 constexpr auto kTestForceTimeout = std::chrono::milliseconds(2000);
 
+// Upper bound on the readiness handshake. It only guards against a miswritten test script: the
+// scripts below announce readiness immediately.
+constexpr int kReadyTimeoutMs = 5000;
+
 // Spawns an unreaped child running |script| with /bin/sh, so termination can be exercised against a
 // process the test itself owns. The child's stdout is a pipe into the parent, and the script has to
 // write a single readiness byte into it once its signal handlers are installed: returning earlier
 // would let a test signal a child that still runs the default SIGTERM action, which kills it
 // outright instead of exercising the trap. A script that exits without writing releases the parent
-// through EOF.
+// through EOF. When neither happens the handshake gives up, kills the child and reports failure, so
+// a forgotten readiness byte can never hang the suite.
 pid_t SpawnStandaloneChild(const char* script) {
   std::array<int, 2> ready{-1, -1};
   if (pipe(ready.data()) != 0) {
@@ -42,14 +48,30 @@ pid_t SpawnStandaloneChild(const char* script) {
     _exit(127);
   }
   (void)close(ready.at(1));
+  bool handshake_ok = false;
   if (pid > 0) {
-    char byte = 0;
-    ssize_t n = read(ready.at(0), &byte, 1);
-    while (n < 0 && errno == EINTR) {
-      n = read(ready.at(0), &byte, 1);
+    pollfd descriptor{};
+    descriptor.fd = ready.at(0);
+    descriptor.events = POLLIN;
+    int rc = ::poll(&descriptor, 1, kReadyTimeoutMs);
+    while (rc < 0 && errno == EINTR) {
+      rc = ::poll(&descriptor, 1, kReadyTimeoutMs);
+    }
+    if (rc > 0) {
+      char byte = 0;
+      ssize_t n = read(ready.at(0), &byte, 1);
+      while (n < 0 && errno == EINTR) {
+        n = read(ready.at(0), &byte, 1);
+      }
+      // Zero bytes read is EOF, which is how a child that exits without writing announces itself.
+      handshake_ok = n >= 0;
     }
   }
   (void)close(ready.at(0));
+  if (pid > 0 && !handshake_ok) {
+    (void)vinput::process::KillAndReap(pid);
+    return -1;
+  }
   return pid;
 }
 
@@ -333,7 +355,8 @@ void TestTerminateGracefullyStopsOnSigterm() {
  * graceful window has elapsed.
  */
 void TestTerminateGracefullyEscalatesToSigkill() {
-  const pid_t pid = SpawnStandaloneChild("trap '' TERM; while true; do sleep 0.05; done");
+  const pid_t pid =
+      SpawnStandaloneChild("trap '' TERM; echo ready; while true; do sleep 0.05; done");
   ExpectTrue(pid > 0, "Standalone child should spawn");
   const std::uint64_t start_time = vinput::process::ProcessStartTime(pid);
   ExpectTrue(start_time != 0, "A live process must have a readable start time");
