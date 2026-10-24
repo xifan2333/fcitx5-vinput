@@ -56,8 +56,11 @@ constexpr auto kForceGrace = std::chrono::milliseconds(1000);
 // reading into a reported write failure instead of unbounded memory growth.
 constexpr std::size_t kStdinQueueCapacity = 64;
 
-// The event queue grows on demand, so this is only its first allocation.
-constexpr std::size_t kEventQueueCapacity = 256;
+// The event queue's first block. Further blocks are allocated on demand, so backpressure comes from
+// kMaxQueuedOutputBytes alone: the queue itself must never refuse an event, because the terminal
+// one is how the caller learns the child is gone. A small first block also keeps the growth path
+// cheap to reach in tests.
+constexpr std::size_t kEventQueueCapacity = 16;
 
 // Output is bounded by bytes rather than by event count: at the cap the pump stops draining and
 // lets the pipe apply its own backpressure, so a provider that prints without end cannot outrun a
@@ -155,6 +158,10 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, std::string* error) {
     *error = std::string("eventfd failed: ") + std::strerror(errno);
     return false;
   }
+
+  // Done before the spawn, so the child inherits it too: a provider whose own output pipe is closed
+  // is better off raising an error in its own language than dying on a signal.
+  detail::EnsureSigpipeIgnored();
 
   const auto cmd = detail::BuildCmd(spec);
   const auto env = detail::BuildEnvMap(spec);
@@ -265,6 +272,12 @@ void ProcessSession::Impl::Pump() {
     if (int code = -1; TryReapProcess(proc_->pid(), &code)) {
       reaped_ = true;
       exit_code_ = code;
+      if (cancel_seen) {
+        // The leader is gone, so its own grace window is over - but a helper that ignored SIGTERM
+        // would otherwise outlive the session it belongs to. The group is still addressable for as
+        // long as one of its members holds it, which is exactly this case.
+        proc_->kill(SIGKILL);
+      }
       break;
     }
 
@@ -344,22 +357,6 @@ void ProcessSession::Impl::Pump() {
       continue;
     }
 
-    if ((revents_of(watch, cancel_index) & POLLIN) != 0) {
-      (void)DrainEventFd(cancel_event_);
-      if (!cancel_seen) {
-        cancel_seen = true;
-        killed_by_us_ = true;
-        // Nothing else will be written: the caller is tearing the session down.
-        stdin_closed_.store(true, std::memory_order_release);
-        QueueEvent(ChildEvent{
-            .kind = ChildEventKind::Cancelled, .data = {}, .exit_code = -1, .killed_by_us = false});
-        // Signalling the group covers the helpers a provider script forked; signalling the pid
-        // alone would leave them running with the session's pipes still open.
-        proc_->kill(SIGTERM);
-        terminate_deadline = Clock::now() + kTerminateGrace;
-      }
-    }
-
     if ((revents_of(watch, stdin_index) & POLLIN) != 0) {
       (void)DrainEventFd(stdin_event_);
     }
@@ -375,7 +372,7 @@ void ProcessSession::Impl::Pump() {
             pending_.clear();
             pending_offset_ = 0;
           }
-        } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+        } else if (written < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
           CloseStdinChannel();
         }
       } else if ((revents & detail::kInputFailureEvents) != 0) {
@@ -390,6 +387,27 @@ void ProcessSession::Impl::Pump() {
     if (err_index >= 0 && (revents_of(watch, err_index) & detail::kReadableChannelEvents) != 0) {
       (void)ServiceOutputChannel(false);
     }
+
+    // Cancellation is handled last, after this iteration's input and output have been serviced: the
+    // events it publishes then describe a boundary the caller can trust - everything the provider
+    // produced before the cancel has already been queued, and nothing is written after it.
+    if ((revents_of(watch, cancel_index) & POLLIN) != 0) {
+      (void)DrainEventFd(cancel_event_);
+      if (!cancel_seen) {
+        cancel_seen = true;
+        killed_by_us_ = true;
+        // The provider already received everything it will ever get from this session, and a queued
+        // block written now would arrive after `Cancelled` had been published.
+        stdin_closed_.store(true, std::memory_order_release);
+        CloseStdinChannel();
+        QueueEvent(ChildEvent{
+            .kind = ChildEventKind::Cancelled, .data = {}, .exit_code = -1, .killed_by_us = false});
+        // Signalling the group covers the helpers a provider script forked; signalling the pid
+        // alone would leave them running with the session's pipes still open.
+        proc_->kill(SIGTERM);
+        terminate_deadline = Clock::now() + kTerminateGrace;
+      }
+    }
   }
 
   // The child is gone, but its pipes may still hold whole lines - and a helper it forked may still
@@ -397,6 +415,13 @@ void ProcessSession::Impl::Pump() {
   // deadline, so an open write end cannot keep this thread here.
   const Clock::time_point drain_deadline = Clock::now() + kPostExitDrain;
   while (stdout_channel_open_ || stderr_channel_open_) {
+    // Checked first: a helper that keeps writing would otherwise find new bytes on every iteration
+    // and could hold this phase open for as long as it likes.
+    const Clock::time_point now = Clock::now();
+    if (now >= drain_deadline) {
+      break;
+    }
+
     std::size_t drained = 0;
     if (stdout_channel_open_) {
       drained += ServiceOutputChannel(true).bytes_read;
@@ -409,11 +434,6 @@ void ProcessSession::Impl::Pump() {
     }
     if (drained > 0) {
       continue;
-    }
-
-    const Clock::time_point now = Clock::now();
-    if (now >= drain_deadline) {
-      break;
     }
 
     std::array<pollfd, 2> watch{};
@@ -465,13 +485,19 @@ void ProcessSession::Impl::Pump() {
 }
 
 void ProcessSession::Impl::QueueEvent(ChildEvent&& event) {
-  if (event.kind == ChildEventKind::StdoutChunk || event.kind == ChildEventKind::StderrChunk) {
-    queued_output_bytes_.fetch_add(event.data.size(), std::memory_order_relaxed);
-  }
-  if (!event_queue_.try_enqueue(std::move(event))) {
-    // The queue only fails when it cannot allocate, which would otherwise truncate the session
-    // silently.
+  const bool is_output =
+      event.kind == ChildEventKind::StdoutChunk || event.kind == ChildEventKind::StderrChunk;
+  const std::size_t size = event.data.size();
+  // `enqueue` (not `try_enqueue`) is the allocating one: with a fixed capacity a provider that
+  // prints many small lines while the caller is busy would silently lose the overflow, including
+  // the terminal event, and a byte counter that had already counted the dropped chunks would keep
+  // the output channels out of the poll set for good. Only a failed allocation lands below.
+  if (!event_queue_.enqueue(std::move(event))) {
     VLOG_ERROR("process session: failed to queue child event");
+    return;
+  }
+  if (is_output) {
+    queued_output_bytes_.fetch_add(size, std::memory_order_relaxed);
   }
   SignalEventFd(wake_event_);
 }
@@ -585,11 +611,19 @@ void ProcessSession::Impl::Shutdown() noexcept {
   close_if_open(&wake_event_);
 
   // The pump reaps as soon as the child is gone, so arriving here without a reap means the child
-  // survived SIGKILL in uninterruptible sleep, or never ran at all. The last resort is a blocking
-  // kill-and-reap, so neither a zombie nor a descriptor outlives the session.
+  // survived the pump's escalation, or never ran a pump at all - Start() can fail after the child
+  // was already spawned.
   if (proc_.has_value() && !reaped_) {
+    // The whole group is signalled, not just the pid: a child that had already forked helpers would
+    // otherwise leave them behind. The reap that follows is bounded, because a child stuck in
+    // uninterruptible sleep must not freeze destruction for good - an unreaped pid that the kernel
+    // will reclaim is the lesser evil, and it is reported.
+    proc_->kill(SIGKILL);
     if (int code = -1; !TryReapProcess(proc_->pid(), &code)) {
-      (void)KillAndReap(proc_->pid());
+      TerminateProcessBounded(proc_->pid(), kZeroMs, kForceGrace);
+      if (int unreaped_code = -1; !TryReapProcess(proc_->pid(), &unreaped_code)) {
+        VLOG_ERROR("process session: child {} survived SIGKILL and stays unreaped", proc_->pid());
+      }
     }
     reaped_ = true;
   }

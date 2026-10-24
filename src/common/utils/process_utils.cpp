@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
+#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -14,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -34,6 +36,7 @@ extern "C" {
 #include <time.h>   // pid_t
 }
 
+#include "common/utils/debug_log.h"
 #include "common/utils/expected.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/process_internal.h"
@@ -41,6 +44,15 @@ extern "C" {
 namespace vinput::process {
 
 namespace detail {
+
+void EnsureSigpipeIgnored() {
+  static std::once_flag once;
+  std::call_once(once, [] {
+    if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+      VLOG_WARN("process: SIGPIPE could not be ignored; a pipe write may end the process");
+    }
+  });
+}
 
 bool MakeNonBlocking(int fd) {
   const int flags = fcntl(fd, F_GETFL, 0);
@@ -620,6 +632,8 @@ bool CreateCloexecPipe(int pipefd[2]) {
 }
 
 CommandResult Run(const CommandSpec& spec, std::span<const std::byte> stdin_bytes) {
+  detail::EnsureSigpipeIgnored();
+
   CommandResult result;
   if (spec.command.empty()) {
     result.launch_failed = true;

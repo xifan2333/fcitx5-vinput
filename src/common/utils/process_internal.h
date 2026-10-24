@@ -40,6 +40,11 @@ constexpr std::size_t kReadBudgetBytes = std::size_t{64} * 1024;
 std::vector<std::string> BuildCmd(const CommandSpec& spec);
 std::map<std::string, std::string> BuildEnvMap(const CommandSpec& spec);
 
+// Makes a write to a closed pipe fail with EPIPE instead of raising SIGPIPE, whose default action
+// would end the whole process. A child that closes its stdin is a normal provider behaviour, and
+// the process that spawned it must survive it. Idempotent and process-wide, because the signal is.
+void EnsureSigpipeIgnored();
+
 // Switches `fd` to non-blocking mode. poll() only announces readiness, so nothing may block
 // afterwards: a descriptor that refuses to switch must be reported instead of being used.
 bool MakeNonBlocking(int fd);
