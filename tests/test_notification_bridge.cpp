@@ -165,7 +165,7 @@ void TestOversizedBufferProtection() {
   NotificationBridge bridge([&](const Notification& n) { delivered.push_back(n); });
 
   // Write a 70 KiB string without any newline to test buffer overflow protection
-  std::string huge_chunk(70 * 1024, 'X');
+  const std::string huge_chunk(std::size_t{70} * 1024, 'X');
   bridge.FeedStderr("runaway_helper", AsBytes(huge_chunk));
 
   // Should have triggered force-split / drain to protect buffer memory

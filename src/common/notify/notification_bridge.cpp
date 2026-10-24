@@ -29,7 +29,7 @@ struct JsonNotificationWire {
 };
 
 constexpr std::size_t kMaxDedupCacheSize = 256;
-constexpr std::size_t kMaxSourceBufferSize = 64 * 1024; // 64 KiB
+constexpr std::size_t kMaxSourceBufferSize = std::size_t{64} * 1024; // 64 KiB
 
 std::string MakeDedupKey(std::string_view title, std::string_view body) {
   std::string key;
