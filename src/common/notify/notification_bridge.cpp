@@ -3,6 +3,8 @@
 #include <chrono>
 #include <cstddef>
 #include <functional>
+#include <glaze/core/common.hpp>
+#include <glaze/core/meta.hpp>
 #include <glaze/json/read.hpp>
 #include <map>
 #include <memory>
@@ -41,6 +43,11 @@ std::string MakeDedupKey(std::string_view title, std::string_view body) {
 }
 
 } // namespace
+
+template <> struct glz::meta<JsonNotificationWire> {
+  using T = JsonNotificationWire;
+  static constexpr auto value = object("title", &T::title, "body", &T::body);
+};
 
 struct NotificationBridge::Impl {
   NotificationSink sink_;
