@@ -21,14 +21,23 @@
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
 
-namespace vinput::notify {
-
 namespace {
 
 struct JsonNotificationWire {
   std::optional<std::string> title;
   std::optional<std::string> body;
 };
+
+} // namespace
+
+template <> struct glz::meta<JsonNotificationWire> {
+  using T = JsonNotificationWire;
+  static constexpr auto value = object("title", &T::title, "body", &T::body);
+};
+
+namespace vinput::notify {
+
+namespace {
 
 constexpr std::size_t kMaxDedupCacheSize = 256;
 constexpr std::size_t kMaxSourceBufferSize = std::size_t{64} * 1024; // 64 KiB
@@ -43,11 +52,6 @@ std::string MakeDedupKey(std::string_view title, std::string_view body) {
 }
 
 } // namespace
-
-template <> struct glz::meta<JsonNotificationWire> {
-  using T = JsonNotificationWire;
-  static constexpr auto value = object("title", &T::title, "body", &T::body);
-};
 
 struct NotificationBridge::Impl {
   NotificationSink sink_;
