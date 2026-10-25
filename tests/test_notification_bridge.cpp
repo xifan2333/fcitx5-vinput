@@ -170,6 +170,11 @@ void TestOversizedBufferProtection() {
 
   // Should have triggered force-split / drain to protect buffer memory
   ExpectTrue(!delivered.empty(), "oversized chunk without newlines force-drained");
+  ExpectTrue(delivered[0].body.size() == std::size_t{64} * 1024, "force-drained line size bounded");
+
+  bridge.Flush("runaway_helper");
+  ExpectTrue(delivered.size() == 2, "tail chunk delivered on flush");
+  ExpectTrue(delivered[1].body.size() == std::size_t{6} * 1024, "tail size matches");
 }
 
 void TestDedupCacheHardCapEviction() {

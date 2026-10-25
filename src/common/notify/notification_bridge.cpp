@@ -174,16 +174,13 @@ void NotificationBridge::FeedStderr(std::string_view source_id, std::span<const 
     const std::scoped_lock lock(impl_->mutex_);
     auto& buffer = impl_->buffers_[std::string(source_id)];
 
-    if (buffer.size() + bytes.size() > kMaxSourceBufferSize) {
-      if (!buffer.empty()) {
-        impl_->ProcessLineLocked(buffer, default_title, to_send);
-        buffer.clear();
-      }
-    }
-
     buffer.reserve(buffer.size() + bytes.size());
     for (const auto b : bytes) {
       buffer.push_back(static_cast<char>(b));
+      if (buffer.size() >= kMaxSourceBufferSize) {
+        impl_->ProcessLineLocked(buffer, default_title, to_send);
+        buffer.clear();
+      }
     }
 
     vinput::process::DrainLinesFromBuffer(
