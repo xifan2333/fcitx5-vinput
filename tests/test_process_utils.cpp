@@ -11,8 +11,6 @@
 #include <string>
 #include <sys/poll.h>
 #include <sys/types.h>
-#include <sys/wait.h>
-#include <thread>
 #include <unistd.h>
 
 #include "common/utils/process_utils.h"

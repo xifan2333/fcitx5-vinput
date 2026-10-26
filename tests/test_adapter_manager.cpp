@@ -1,20 +1,15 @@
-#include <chrono>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <string>
-#include <thread>
+#include <sys/types.h>
 #include <vector>
 
 #include "common/config/core_config.h"
-#include "common/config/core_config_store.h"
-#include "common/config/core_config_types.h"
 #include "common/llm/adapter_manager.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
-#include "common/utils/process_utils.h"
 
 namespace {
 
@@ -45,12 +40,17 @@ public:
     setenv("XDG_RUNTIME_DIR", (base_dir_ / "runtime").c_str(), 1);
   }
 
+  TestEnvFixture(const TestEnvFixture&) = delete;
+  TestEnvFixture& operator=(const TestEnvFixture&) = delete;
+  TestEnvFixture(TestEnvFixture&&) = delete;
+  TestEnvFixture& operator=(TestEnvFixture&&) = delete;
+
   ~TestEnvFixture() {
     vinput::adapter::Shutdown();
     std::filesystem::remove_all(base_dir_);
   }
 
-  void WriteConfig(const std::string& json_content) {
+  static void WriteConfig(const std::string& json_content) {
     const auto config_path = vinput::path::CoreConfigPath();
     std::filesystem::create_directories(config_path.parent_path());
     ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, json_content).has_value(),
@@ -62,7 +62,7 @@ private:
 };
 
 void TestAdapterNormalStartAndStopWithStderrSink() {
-  TestEnvFixture fixture;
+  const TestEnvFixture fixture;
 
   fixture.WriteConfig(R"({
     "version": ">=2.4.0",
@@ -116,7 +116,7 @@ void TestAdapterNormalStartAndStopWithStderrSink() {
 }
 
 void TestAdapterImmediateExitDetected() {
-  TestEnvFixture fixture;
+  const TestEnvFixture fixture;
 
   fixture.WriteConfig(R"({
     "version": ">=2.4.0",
@@ -152,7 +152,7 @@ void TestAdapterImmediateExitDetected() {
 }
 
 void TestAdapterAutoStartAndShutdown() {
-  TestEnvFixture fixture;
+  const TestEnvFixture fixture;
 
   fixture.WriteConfig(R"({
     "version": ">=2.4.0",

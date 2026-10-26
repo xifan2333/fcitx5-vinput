@@ -97,7 +97,8 @@ struct ProcessSession::Impl {
   Impl& operator=(Impl&&) = delete;
   ~Impl() { Shutdown(); }
 
-  bool Open(const CommandSpec& spec, StderrSink stderr_sink, std::string* error);
+  bool Open(const CommandSpec& spec, StderrSink stderr_sink, StdoutSink stdout_sink,
+            std::string* error);
   void StartPump() {
     pump_ = std::thread([this] { Pump(); });
   }
@@ -124,6 +125,7 @@ private:
   detail::DrainOutcome ServiceOutputChannel(bool is_stdout);
 
   StderrSink stderr_sink_;
+  StdoutSink stdout_sink_;
 
   moodycamel::ReaderWriterQueue<std::vector<std::byte>> stdin_queue_{kStdinQueueCapacity};
   moodycamel::ReaderWriterQueue<ChildEvent> event_queue_{kEventQueueCapacity};
@@ -153,8 +155,9 @@ private:
 };
 
 bool ProcessSession::Impl::Open(const CommandSpec& spec, StderrSink stderr_sink,
-                                std::string* error) {
+                                StdoutSink stdout_sink, std::string* error) {
   stderr_sink_ = std::move(stderr_sink);
+  stdout_sink_ = std::move(stdout_sink);
   // O_CLOEXEC keeps these out of the child, so nothing it forks can hold the session's wakeups
   // open.
   cancel_event_ = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -224,19 +227,20 @@ void ProcessSession::Impl::CloseOutputChannel(bool is_stdout) {
 
 // Forwards everything currently buffered on one output channel as events. The per-channel budget
 // keeps a flooding stream from starving the other one, and the queued-byte cap hands a child whose
-// output nobody is consuming back to the pipe's own backpressure. When `stderr_sink_` is present,
-// stderr chunks bypass the event queue and are dispatched to the sink immediately.
+// output nobody is consuming back to the pipe's own backpressure. When direct sinks are present,
+// output chunks bypass the event queue and are dispatched to the sink immediately.
 detail::DrainOutcome ProcessSession::Impl::DrainOutput(int fd, ChildEventKind kind) {
   detail::DrainOutcome outcome;
-  const bool direct_stderr = kind == ChildEventKind::StderrChunk && stderr_sink_;
-  if (!direct_stderr &&
+  const bool is_stdout = kind == ChildEventKind::StdoutChunk;
+  const auto& direct_sink = is_stdout ? stdout_sink_ : stderr_sink_;
+  if (!direct_sink &&
       queued_output_bytes_.load(std::memory_order_relaxed) >= kMaxQueuedOutputBytes) {
     return outcome;
   }
   outcome = detail::DrainBudgeted(fd, detail::kReadBudgetBytes, [&](std::string_view chunk) {
     const auto bytes = std::as_bytes(std::span<const char>(chunk.data(), chunk.size()));
-    if (direct_stderr) {
-      stderr_sink_(bytes);
+    if (direct_sink) {
+      direct_sink(bytes);
       return;
     }
     ChildEvent event;
@@ -689,13 +693,15 @@ ProcessSession::ProcessSession(ProcessSession&&) noexcept = default;
 
 ProcessSession::~ProcessSession() = default;
 
-Expected<ProcessSession> ProcessSession::Start(const CommandSpec& spec, StderrSink stderr_sink) {
+Expected<ProcessSession> ProcessSession::Start(const CommandSpec& spec, StderrSink stderr_sink,
+                                               StdoutSink stdout_sink) {
   if (spec.command.empty()) {
     return UnexpectedError("Command is empty.");
   }
 
   auto impl = std::make_unique<Impl>();
-  if (std::string error; !impl->Open(spec, std::move(stderr_sink), &error)) {
+  if (std::string error;
+      !impl->Open(spec, std::move(stderr_sink), std::move(stdout_sink), &error)) {
     return UnexpectedError(std::move(error));
   }
   impl->StartPump();

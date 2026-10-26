@@ -36,9 +36,10 @@ struct ChildEvent {
   bool killed_by_us = false;
 };
 
-// Direct stream sink for child stderr. When provided to `Start`, raw stderr bytes bypass the
-// event queue and are dispatched to the sink immediately on the pump thread.
+// Direct stream sinks for child output. When provided to `Start`, raw bytes bypass the event
+// queue and are dispatched to the sink immediately on the pump thread.
 using StderrSink = std::function<void(std::span<const std::byte>)>;
+using StdoutSink = std::function<void(std::span<const std::byte>)>;
 
 // A child process that outlives any single call: the caller keeps feeding stdin and reading output
 // while the child runs, on the child's schedule rather than the caller's.
@@ -60,9 +61,10 @@ public:
   // Starts `spec` in its own session, so cancelling reaches the helpers it forked. The spec's
   // timeout does not apply: the session lives until the child exits, the caller cancels, or the
   // caller stops draining - a long recording is not bounded by the first chunk's budget.
-  // When `stderr_sink` is provided, the pump thread delivers stderr bytes directly to it as they
-  // arrive, bypassing the event queue.
-  static Expected<ProcessSession> Start(const CommandSpec& spec, StderrSink stderr_sink = nullptr);
+  // When `stderr_sink` or `stdout_sink` is provided, the pump thread delivers bytes directly to it
+  // as they arrive, bypassing the event queue.
+  static Expected<ProcessSession> Start(const CommandSpec& spec, StderrSink stderr_sink = nullptr,
+                                        StdoutSink stdout_sink = nullptr);
 
   ProcessSession(ProcessSession&& other) noexcept;
   ProcessSession& operator=(ProcessSession&& other) noexcept = delete;
