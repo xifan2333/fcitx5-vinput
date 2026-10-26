@@ -174,7 +174,7 @@ jobs:
         run: cmake --build --preset ci-clang-mold
 
       - name: Run unit test suite
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 60
 
       - name: Verify CLI feature surface
         shell: bash

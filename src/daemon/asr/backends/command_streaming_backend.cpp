@@ -194,10 +194,8 @@ public:
   void Cancel() override {
     if (!cancelled_) {
       cancelled_ = true;
-      const std::scoped_lock lock(session_mutex_);
-      if (started_ && session_.has_value()) {
+      if (started_) {
         SendControlEvent("cancel", nullptr);
-        session_->CloseStdin();
       }
     }
     QueueCompleted();
@@ -254,6 +252,10 @@ private:
 
     {
       const std::scoped_lock lock(session_mutex_);
+      if (interrupted_.load(std::memory_order_acquire)) {
+        session_res->Cancel();
+        return false;
+      }
       session_.emplace(std::move(*session_res));
     }
     started_ = true;
@@ -286,23 +288,17 @@ private:
   }
 
   bool SendJsonLine(const glz::json_t& payload, std::string* error) {
+    if (!session_.has_value()) {
+      if (error != nullptr) {
+        *error = "provider session is not started.";
+      }
+      return false;
+    }
+
     std::string line = vinput::json::ToText(payload);
     line.push_back('\n');
     const auto bytes = std::as_bytes(std::span(line));
-
-    bool pushed = false;
-    {
-      const std::scoped_lock lock(session_mutex_);
-      if (!session_.has_value()) {
-        if (error != nullptr) {
-          *error = "provider session is not started.";
-        }
-        return false;
-      }
-      pushed = session_->PushStdin(bytes);
-    }
-
-    if (!pushed) {
+    if (!session_->PushStdin(bytes)) {
       DrainEvents(std::chrono::milliseconds(0), nullptr);
       if (error != nullptr) {
         *error = "Provider closed stdin or input buffer is full.";
@@ -456,11 +452,16 @@ private:
       notification_bridge_->RetireSource(source_id_);
     }
 
-    const std::scoped_lock lock(session_mutex_);
-    if (session_.has_value()) {
-      session_->Cancel();
-      session_.reset();
+    std::optional<vinput::process::ProcessSession> to_destroy;
+    {
+      const std::scoped_lock lock(session_mutex_);
+      if (session_.has_value()) {
+        session_->Cancel();
+        to_destroy = std::move(session_);
+        session_.reset();
+      }
     }
+    to_destroy.reset();
   }
 
   CommandAsrProvider provider_;
