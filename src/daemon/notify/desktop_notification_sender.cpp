@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <systemd/sd-bus-protocol.h>
 #include <systemd/sd-bus.h>
 
 #include "common/notify/notification_bridge.h"

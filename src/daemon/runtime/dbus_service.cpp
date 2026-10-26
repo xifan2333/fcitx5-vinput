@@ -8,12 +8,15 @@
 #include <mutex>
 #include <string>
 #include <sys/eventfd.h>
+#include <systemd/sd-bus-protocol.h>
+#include <systemd/sd-bus-vtable.h>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
 
 #include "common/dbus/dbus_interface.h"
+#include "common/dbus/error_info.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 
