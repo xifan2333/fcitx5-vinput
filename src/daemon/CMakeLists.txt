@@ -53,6 +53,7 @@ add_executable(daemon
     audio/audio_utils.cpp
     audio/output_ducker.cpp
     llm/adapter_supervisor.cpp
+    notify/desktop_notification_sender.cpp
     remote/remote_assets.cpp
     remote/remote_text_service.cpp
     runtime/dbus_service.cpp

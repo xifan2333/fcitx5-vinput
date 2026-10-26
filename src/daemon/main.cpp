@@ -12,6 +12,7 @@ extern "C" {
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
+#include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 
 #include "daemon/asr/runtime/recognition_session_manager.h"
@@ -75,6 +76,9 @@ int main(int argc, char* argv[]) {
 
   DbusService dbus;
   PostProcessor post_processor;
+  vinput::notify::NotificationBridge notification_bridge(
+      [&dbus](const auto& n) { dbus.EmitDesktopNotification(n); });
+  (void)notification_bridge;
 
   using vinput::dbus::Status;
   using vinput::dbus::StatusToString;
