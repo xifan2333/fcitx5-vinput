@@ -1,7 +1,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <stdlib.h> // setenv
 #include <string>
 #include <sys/types.h>
 #include <vector>
