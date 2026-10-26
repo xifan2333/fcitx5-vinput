@@ -2,12 +2,14 @@
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <systemd/sd-bus.h>
+
+#include "common/notify/notification_bridge.h"
+#include "common/utils/debug_log.h"
 
 namespace vinput::daemon::notify {
 
-std::string_view NotificationIcon(vinput::notify::NotificationLevel level) noexcept {
+const char* NotificationIcon(vinput::notify::NotificationLevel level) noexcept {
   switch (level) {
   case vinput::notify::NotificationLevel::Information:
     return "dialog-information";
@@ -31,6 +33,12 @@ std::int32_t NotificationTimeoutMs(vinput::notify::NotificationLevel level) noex
   return 3000;
 }
 
+// Dispatches a notification to org.freedesktop.Notifications.Notify.
+// Design Note:
+// Uses sd_bus_message_new_method_call + sd_bus_message_set_expect_reply(m, 0) + sd_bus_send
+// rather than sd_bus_call_method_async. This fire-and-forget pattern avoids round-trip D-Bus
+// reply traffic and callback slot tracking for unreplied popups, and accommodates the complex
+// container signature "susssasa{sv}i" without varargs limitations.
 bool SendDesktopNotification(sd_bus* bus, const vinput::notify::Notification& notification) {
   if (bus == nullptr) {
     return false;
@@ -41,16 +49,18 @@ bool SendDesktopNotification(sd_bus* bus, const vinput::notify::Notification& no
                                          "/org/freedesktop/Notifications",
                                          "org.freedesktop.Notifications", "Notify");
   if (r < 0 || m == nullptr) {
+    VLOG_WARN("failed to create Notify method call for '{}': {}", notification.title, r);
     return false;
   }
 
   r = sd_bus_message_set_expect_reply(m, 0);
   if (r < 0) {
+    VLOG_WARN("failed to set NO_REPLY_EXPECTED on notification '{}': {}", notification.title, r);
     sd_bus_message_unref(m);
     return false;
   }
 
-  const auto icon = NotificationIcon(notification.level);
+  const char* icon = NotificationIcon(notification.level);
   const auto timeout_ms = NotificationTimeoutMs(notification.level);
 
   // Signature: "susssasa{sv}i"
@@ -59,9 +69,10 @@ bool SendDesktopNotification(sd_bus* bus, const vinput::notify::Notification& no
   // 3. app_icon (s)
   // 4. summary (s)
   // 5. body (s)
-  r = sd_bus_message_append(m, "susss", "fcitx5-vinput", static_cast<std::uint32_t>(0), icon.data(),
+  r = sd_bus_message_append(m, "susss", "fcitx5-vinput", static_cast<std::uint32_t>(0), icon,
                             notification.title.c_str(), notification.body.c_str());
   if (r < 0) {
+    VLOG_WARN("failed to append notification payload for '{}': {}", notification.title, r);
     sd_bus_message_unref(m);
     return false;
   }
@@ -99,7 +110,11 @@ bool SendDesktopNotification(sd_bus* bus, const vinput::notify::Notification& no
 
   r = sd_bus_send(bus, m, nullptr);
   sd_bus_message_unref(m);
-  return r >= 0;
+  if (r < 0) {
+    VLOG_WARN("failed to send desktop notification '{}': {}", notification.title, r);
+    return false;
+  }
+  return true;
 }
 
 } // namespace vinput::daemon::notify

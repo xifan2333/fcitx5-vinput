@@ -20,11 +20,13 @@ void TestNotificationIconMapping() {
   using vinput::daemon::notify::NotificationIcon;
   using vinput::notify::NotificationLevel;
 
-  ExpectTrue(NotificationIcon(NotificationLevel::Information) == "dialog-information",
+  ExpectTrue(std::string_view(NotificationIcon(NotificationLevel::Information)) ==
+                 "dialog-information",
              "information icon matches");
-  ExpectTrue(NotificationIcon(NotificationLevel::Warning) == "dialog-warning",
+  ExpectTrue(std::string_view(NotificationIcon(NotificationLevel::Warning)) == "dialog-warning",
              "warning icon matches");
-  ExpectTrue(NotificationIcon(NotificationLevel::Error) == "dialog-error", "error icon matches");
+  ExpectTrue(std::string_view(NotificationIcon(NotificationLevel::Error)) == "dialog-error",
+             "error icon matches");
 }
 
 void TestNotificationTimeoutMapping() {
@@ -42,7 +44,7 @@ void TestNullBusSafeHandling() {
   using vinput::notify::Notification;
   using vinput::notify::NotificationLevel;
 
-  Notification n{
+  const Notification n{
       .title = "Test Title",
       .body = "Test Body",
       .level = NotificationLevel::Warning,

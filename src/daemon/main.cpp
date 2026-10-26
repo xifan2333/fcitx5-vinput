@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
 
   DbusService dbus;
   PostProcessor post_processor;
-  vinput::notify::NotificationBridge notification_bridge(
+  const vinput::notify::NotificationBridge notification_bridge(
       [&dbus](const auto& n) { dbus.EmitDesktopNotification(n); });
   (void)notification_bridge;
 

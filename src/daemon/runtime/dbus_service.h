@@ -4,8 +4,8 @@
 #include <functional>
 #include <mutex>
 #include <string>
-#include <sys/eventfd.h>
 #include <systemd/sd-bus.h>
+#include <utility>
 #include <vector>
 
 #include "common/dbus/dbus_interface.h"
@@ -35,10 +35,14 @@ public:
 
   DbusService();
   ~DbusService();
+  DbusService(const DbusService&) = delete;
+  DbusService& operator=(const DbusService&) = delete;
+  DbusService(DbusService&&) = delete;
+  DbusService& operator=(DbusService&&) = delete;
 
   bool Start(std::string* error = nullptr);
-  int GetFd() const;
-  int GetNotifyFd() const;
+  [[nodiscard]] int GetFd() const;
+  [[nodiscard]] int GetNotifyFd() const;
   bool ProcessOnce();
   void FlushEmitQueue(); // main thread only
   void EmitRecognitionResult(const std::string& text);

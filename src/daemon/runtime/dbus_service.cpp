@@ -1,13 +1,21 @@
 #include "dbus_service.h"
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
+#include <mutex>
+#include <string>
 #include <sys/eventfd.h>
+#include <systemd/sd-bus.h>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
 #include "common/dbus/dbus_interface.h"
+#include "common/notify/notification_bridge.h"
+#include "common/utils/debug_log.h"
 
 #include "daemon/notify/desktop_notification_sender.h"
 
@@ -16,10 +24,10 @@ using namespace vinput::dbus;
 DbusService::DbusService() = default;
 
 DbusService::~DbusService() {
-  if (slot_) {
+  if (slot_ != nullptr) {
     sd_bus_slot_unref(slot_);
   }
-  if (bus_) {
+  if (bus_ != nullptr) {
     sd_bus_flush_close_unref(bus_);
   }
   if (notify_fd_ >= 0) {
@@ -35,7 +43,7 @@ int ReplyWithMethodResult(sd_bus_message* m, sd_bus_error* error,
     return sd_bus_error_set(error, kErrorOperationFailed, result.message.c_str());
   }
 
-  if (!reply_signature || reply_signature[0] == '\0') {
+  if (reply_signature == nullptr || reply_signature[0] == '\0') {
     return sd_bus_reply_method_return(m, "");
   }
   return sd_bus_reply_method_return(m, reply_signature, result.payload.c_str());
@@ -73,7 +81,7 @@ static const sd_bus_vtable vtable[] = {
 bool DbusService::Start(std::string* error) {
   notify_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
   if (notify_fd_ < 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = std::string("failed to create eventfd: ") + strerror(errno);
     }
     return false;
@@ -81,7 +89,7 @@ bool DbusService::Start(std::string* error) {
 
   int ret = sd_bus_open_user(&bus_);
   if (ret < 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = std::string("failed to open user bus: ") + strerror(-ret);
     }
     return false;
@@ -89,7 +97,7 @@ bool DbusService::Start(std::string* error) {
 
   ret = sd_bus_add_object_vtable(bus_, &slot_, kObjectPath, kInterface, vtable, this);
   if (ret < 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = std::string("failed to add D-Bus vtable: ") + strerror(-ret);
     }
     return false;
@@ -98,7 +106,7 @@ bool DbusService::Start(std::string* error) {
   ret = sd_bus_request_name(bus_, kBusName,
                             SD_BUS_NAME_REPLACE_EXISTING | SD_BUS_NAME_ALLOW_REPLACEMENT);
   if (ret < 0) {
-    if (error) {
+    if (error != nullptr) {
       *error = std::string("failed to request D-Bus name: ") + strerror(-ret);
     }
     return false;
@@ -117,7 +125,7 @@ int DbusService::GetNotifyFd() const {
 }
 
 bool DbusService::ProcessOnce() {
-  int ret = sd_bus_process(bus_, nullptr);
+  const int ret = sd_bus_process(bus_, nullptr);
   if (ret < 0) {
     fprintf(stderr, "vinput: sd_bus_process failed: %s\n", strerror(-ret));
     return false;
@@ -127,7 +135,7 @@ bool DbusService::ProcessOnce() {
 
 void DbusService::FlushEmitQueue() {
   // Drain the eventfd counter
-  uint64_t val;
+  uint64_t val = 0;
   (void)read(notify_fd_, &val, sizeof(val));
 
   std::vector<PendingEmit> local;
@@ -147,13 +155,20 @@ void DbusService::FlushEmitQueue() {
       sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalStatusChanged, "s",
                          item.payload.c_str());
     } else if (item.type == PendingEmit::Type::DesktopNotification) {
-      vinput::daemon::notify::SendDesktopNotification(bus_, item.desktop_notification);
+      if (!vinput::daemon::notify::SendDesktopNotification(bus_, item.desktop_notification)) {
+        VLOG_WARN("failed to send desktop notification: title='{}'",
+                  item.desktop_notification.title);
+      }
     } else {
       sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalDaemonNotification,
                          kErrorInfoSignature, item.notification.code.c_str(),
                          item.notification.subject.c_str(), item.notification.detail.c_str(),
                          item.notification.raw_message.c_str());
     }
+  }
+
+  if (bus_ != nullptr) {
+    (void)sd_bus_flush(bus_);
   }
 }
 
@@ -253,7 +268,7 @@ int DbusService::handleStartCommandRecording(sd_bus_message* m, void* userdata,
                                              sd_bus_error* error) {
   auto* self = static_cast<DbusService*>(userdata);
   const char* selected_text = "";
-  int ret = sd_bus_message_read(m, "s", &selected_text);
+  const int ret = sd_bus_message_read(m, "s", &selected_text);
   if (ret < 0) {
     fprintf(stderr, "vinput: failed to read StartCommandRecording text: %s\n", strerror(-ret));
     return ret;
@@ -261,7 +276,7 @@ int DbusService::handleStartCommandRecording(sd_bus_message* m, void* userdata,
 
   MethodResult result;
   if (self->start_command_handler_) {
-    result = self->start_command_handler_(selected_text ? selected_text : "");
+    result = self->start_command_handler_(selected_text != nullptr ? selected_text : "");
   }
   return ReplyWithMethodResult(m, error, result, "");
 }
@@ -269,7 +284,7 @@ int DbusService::handleStartCommandRecording(sd_bus_message* m, void* userdata,
 int DbusService::handleStopRecording(sd_bus_message* m, void* userdata, sd_bus_error* error) {
   auto* self = static_cast<DbusService*>(userdata);
   const char* scene_id = "";
-  int ret = sd_bus_message_read(m, "s", &scene_id);
+  const int ret = sd_bus_message_read(m, "s", &scene_id);
   if (ret < 0) {
     fprintf(stderr, "vinput: failed to read StopRecording scene id: %s\n", strerror(-ret));
     return ret;
@@ -277,7 +292,7 @@ int DbusService::handleStopRecording(sd_bus_message* m, void* userdata, sd_bus_e
 
   MethodResult result;
   if (self->stop_handler_) {
-    result = self->stop_handler_(scene_id ? scene_id : "");
+    result = self->stop_handler_(scene_id != nullptr ? scene_id : "");
   }
   return ReplyWithMethodResult(m, error, result, "s");
 }
@@ -362,7 +377,7 @@ int DbusService::handleReloadAsrBackend(sd_bus_message* m, void* userdata, sd_bu
 int DbusService::handleStartAdapter(sd_bus_message* m, void* userdata, sd_bus_error* error) {
   auto* self = static_cast<DbusService*>(userdata);
   const char* adapter_id = "";
-  int ret = sd_bus_message_read(m, "s", &adapter_id);
+  const int ret = sd_bus_message_read(m, "s", &adapter_id);
   if (ret < 0) {
     fprintf(stderr, "vinput: failed to read StartAdapter id: %s\n", strerror(-ret));
     return ret;
@@ -370,7 +385,7 @@ int DbusService::handleStartAdapter(sd_bus_message* m, void* userdata, sd_bus_er
 
   MethodResult result;
   if (self->start_adapter_handler_) {
-    result = self->start_adapter_handler_(adapter_id ? adapter_id : "");
+    result = self->start_adapter_handler_(adapter_id != nullptr ? adapter_id : "");
   }
   return ReplyWithMethodResult(m, error, result, "");
 }
@@ -378,7 +393,7 @@ int DbusService::handleStartAdapter(sd_bus_message* m, void* userdata, sd_bus_er
 int DbusService::handleStopAdapter(sd_bus_message* m, void* userdata, sd_bus_error* error) {
   auto* self = static_cast<DbusService*>(userdata);
   const char* adapter_id = "";
-  int ret = sd_bus_message_read(m, "s", &adapter_id);
+  const int ret = sd_bus_message_read(m, "s", &adapter_id);
   if (ret < 0) {
     fprintf(stderr, "vinput: failed to read StopAdapter id: %s\n", strerror(-ret));
     return ret;
@@ -386,7 +401,7 @@ int DbusService::handleStopAdapter(sd_bus_message* m, void* userdata, sd_bus_err
 
   MethodResult result;
   if (self->stop_adapter_handler_) {
-    result = self->stop_adapter_handler_(adapter_id ? adapter_id : "");
+    result = self->stop_adapter_handler_(adapter_id != nullptr ? adapter_id : "");
   }
   return ReplyWithMethodResult(m, error, result, "");
 }
