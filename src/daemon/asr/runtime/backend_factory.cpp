@@ -68,7 +68,8 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
 
 } // namespace
 
-std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string* error) {
+std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string* error,
+                                          vinput::notify::NotificationBridge* notification_bridge) {
   const AsrProvider* provider = ResolveActiveAsrProvider(config);
   if (provider == nullptr) {
     if (error != nullptr) {
@@ -82,7 +83,7 @@ std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string*
   }
   if (const auto* command = std::get_if<CommandAsrProvider>(provider)) {
     if (IsStreamingCommandProvider(*command)) {
-      return CreateCommandStreamingBackend(*command, error);
+      return CreateCommandStreamingBackend(*command, error, notification_bridge);
     }
     return CreateCommandBatchBackend(*command, error);
   }

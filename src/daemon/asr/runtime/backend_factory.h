@@ -3,13 +3,19 @@
 #include <memory>
 #include <string>
 
-#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 
+namespace vinput::notify {
+class NotificationBridge;
+}
+
 namespace vinput::daemon::asr {
 
-std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string* error);
+std::unique_ptr<AsrBackend>
+CreateBackend(const CoreConfig& config, std::string* error,
+              vinput::notify::NotificationBridge* notification_bridge = nullptr);
 bool DescribeActiveBackend(const CoreConfig& config, BackendDescriptor* descriptor,
                            std::string* error);
 

@@ -55,6 +55,7 @@ jobs:
     name: cpp-linter
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
@@ -173,7 +174,7 @@ jobs:
         run: cmake --build --preset ci-clang-mold
 
       - name: Run unit test suite
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 60
 
       - name: Verify CLI feature surface
         shell: bash

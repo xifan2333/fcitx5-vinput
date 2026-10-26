@@ -11,6 +11,10 @@
 
 #include "daemon/asr/runtime/recognition_contract.h"
 
+namespace vinput::notify {
+class NotificationBridge;
+}
+
 namespace vinput::daemon::asr {
 
 struct RecognitionRunResult {
@@ -34,7 +38,8 @@ public:
     bool has_effective_backend = false;
   };
 
-  RecognitionSessionManager();
+  explicit RecognitionSessionManager(
+      vinput::notify::NotificationBridge* notification_bridge = nullptr);
   ~RecognitionSessionManager();
 
   RecognitionSessionManager(const RecognitionSessionManager&) = delete;
@@ -49,6 +54,7 @@ public:
   static RecognitionRunResult ConsumeEvents(std::unique_ptr<RecognitionSession>* session,
                                             bool cancel, std::string* error);
   ReloadSnapshot GetReloadSnapshot() const;
+  void SetNotificationBridge(vinput::notify::NotificationBridge* notification_bridge);
   void
   SetReloadResultCallback(std::function<void(bool success, const std::string& message)> callback);
   void Shutdown();
@@ -62,12 +68,14 @@ private:
     std::string signature;
   };
 
-  static bool CreatePreparedBackend(const CoreConfig& settings, PreparedBackend* prepared,
-                                    std::string* error);
+  static bool
+  CreatePreparedBackend(const CoreConfig& settings, PreparedBackend* prepared, std::string* error,
+                        vinput::notify::NotificationBridge* notification_bridge = nullptr);
   bool ActivatePreparedBackend(PreparedBackend prepared, std::string* error);
-  static bool CreatePreparedBackendForReload(const CoreConfig& settings,
-                                             const std::string& signature,
-                                             PreparedBackend* prepared, std::string* error);
+  static bool
+  CreatePreparedBackendForReload(const CoreConfig& settings, const std::string& signature,
+                                 PreparedBackend* prepared, std::string* error,
+                                 vinput::notify::NotificationBridge* notification_bridge = nullptr);
   bool CreateSessionFromEffectiveBackend(BackendDescriptor* descriptor,
                                          std::unique_ptr<RecognitionSession>* session,
                                          std::string* error);
@@ -93,6 +101,7 @@ private:
   std::string effective_model_id_;
   std::string effective_backend_signature_;
   std::string last_reload_error_;
+  vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   std::thread reload_worker_;
   std::function<void(bool success, const std::string& message)> reload_result_callback_;
 };

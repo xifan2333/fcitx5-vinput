@@ -45,6 +45,7 @@ public:
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override;
   bool Finish(std::string* error) override;
   void Cancel() override;
+  void Interrupt() noexcept override;
   std::vector<RecognitionEvent> PollEvents() override;
 
   void SetWakeCallback(WakeCallback callback);

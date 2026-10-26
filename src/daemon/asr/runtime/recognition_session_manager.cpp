@@ -71,6 +71,12 @@ public:
     }
   }
 
+  void Interrupt() noexcept override {
+    if (session_) {
+      session_->Interrupt();
+    }
+  }
+
   std::vector<RecognitionEvent> PollEvents() override {
     if (!session_) {
       return {};
@@ -137,7 +143,9 @@ void LogActiveBackend(const CoreConfig& config) {
 
 } // namespace
 
-RecognitionSessionManager::RecognitionSessionManager() = default;
+RecognitionSessionManager::RecognitionSessionManager(
+    vinput::notify::NotificationBridge* notification_bridge)
+    : notification_bridge_(notification_bridge) {}
 
 RecognitionSessionManager::~RecognitionSessionManager() {
   Shutdown();
@@ -157,7 +165,7 @@ bool RecognitionSessionManager::Initialize(const CoreConfig& settings,
 
   PreparedBackend prepared;
   std::string error;
-  if (!CreatePreparedBackend(settings, &prepared, &error)) {
+  if (!CreatePreparedBackend(settings, &prepared, &error, notification_bridge_)) {
     {
       const std::scoped_lock lock(state_mutex_);
       ResetEffectiveBackendLocked();
@@ -307,6 +315,12 @@ RecognitionSessionManager::ReloadSnapshot RecognitionSessionManager::GetReloadSn
   };
 }
 
+void RecognitionSessionManager::SetNotificationBridge(
+    vinput::notify::NotificationBridge* notification_bridge) {
+  const std::scoped_lock lock(state_mutex_);
+  notification_bridge_ = notification_bridge;
+}
+
 void RecognitionSessionManager::SetReloadResultCallback(
     std::function<void(bool success, const std::string& message)> callback) {
   const std::scoped_lock lock(state_mutex_);
@@ -332,9 +346,9 @@ void RecognitionSessionManager::Shutdown() {
   last_reload_error_.clear();
 }
 
-bool RecognitionSessionManager::CreatePreparedBackend(const CoreConfig& settings,
-                                                      PreparedBackend* prepared,
-                                                      std::string* error) {
+bool RecognitionSessionManager::CreatePreparedBackend(
+    const CoreConfig& settings, PreparedBackend* prepared, std::string* error,
+    vinput::notify::NotificationBridge* notification_bridge) {
   if (prepared == nullptr) {
     if (error != nullptr) {
       *error = "Prepared backend output is not available.";
@@ -345,7 +359,8 @@ bool RecognitionSessionManager::CreatePreparedBackend(const CoreConfig& settings
   LogActiveBackend(settings);
   const auto prepare_started_at = std::chrono::steady_clock::now();
   std::string create_error;
-  auto backend = std::shared_ptr<AsrBackend>(CreateBackend(settings, &create_error).release());
+  auto backend = std::shared_ptr<AsrBackend>(
+      CreateBackend(settings, &create_error, notification_bridge).release());
   if (!backend) {
     if (error != nullptr) {
       *error = std::move(create_error);
@@ -412,11 +427,10 @@ bool RecognitionSessionManager::ActivatePreparedBackend(PreparedBackend prepared
   return true;
 }
 
-bool RecognitionSessionManager::CreatePreparedBackendForReload(const CoreConfig& settings,
-                                                               const std::string& signature,
-                                                               PreparedBackend* prepared,
-                                                               std::string* error) {
-  if (!CreatePreparedBackend(settings, prepared, error)) {
+bool RecognitionSessionManager::CreatePreparedBackendForReload(
+    const CoreConfig& settings, const std::string& signature, PreparedBackend* prepared,
+    std::string* error, vinput::notify::NotificationBridge* notification_bridge) {
+  if (!CreatePreparedBackend(settings, prepared, error, notification_bridge)) {
     return false;
   }
   prepared->signature = signature;
@@ -490,6 +504,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
   while (true) {
     CoreConfig settings;
     std::string signature;
+    vinput::notify::NotificationBridge* bridge = nullptr;
     {
       std::unique_lock<std::mutex> lock(state_mutex_);
       reload_cv_.wait(lock, [&]() { return reload_requested_ || !reload_worker_running_; });
@@ -499,6 +514,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
 
       settings = pending_settings_;
       signature = target_backend_signature_;
+      bridge = notification_bridge_;
       reload_requested_ = false;
       reload_in_progress_ = true;
     }
@@ -507,7 +523,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
     std::string error;
     const auto reload_started_at = std::chrono::steady_clock::now();
     VLOG_DEBUG("ASR backend reload worker started");
-    const bool ok = CreatePreparedBackendForReload(settings, signature, &prepared, &error);
+    const bool ok = CreatePreparedBackendForReload(settings, signature, &prepared, &error, bridge);
     const auto reload_elapsed_ms = vinput::time::MillisecondsSince(reload_started_at);
 
     if (ok) {

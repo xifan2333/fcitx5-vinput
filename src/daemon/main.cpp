@@ -51,9 +51,13 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  DbusService dbus;
+  vinput::notify::NotificationBridge notification_bridge(
+      [&dbus](const auto& n) { dbus.EmitDesktopNotification(n); });
+
   auto startup_settings = LoadCoreConfig();
   NormalizeCoreConfig(&startup_settings);
-  vinput::daemon::asr::RecognitionSessionManager recognition_manager;
+  vinput::daemon::asr::RecognitionSessionManager recognition_manager(&notification_bridge);
 
   std::string asr_disabled_reason;
   if (!recognition_manager.Initialize(startup_settings, &asr_disabled_reason)) {
@@ -74,11 +78,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  DbusService dbus;
   PostProcessor post_processor;
-  const vinput::notify::NotificationBridge notification_bridge(
-      [&dbus](const auto& n) { dbus.EmitDesktopNotification(n); });
-  (void)notification_bridge;
 
   using vinput::dbus::Status;
   using vinput::dbus::StatusToString;

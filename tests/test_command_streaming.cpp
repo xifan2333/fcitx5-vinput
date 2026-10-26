@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "common/config/core_config_types.h"
+#include "common/notify/notification_bridge.h"
 
 #include "daemon/asr/backends/command_streaming_backend.h"
 #include "daemon/asr/runtime/recognition_contract.h"
@@ -316,7 +317,13 @@ void TestStalledProviderWriteIsBounded() {
   ExpectTrue(child_pid > 0, "stalled provider did not start");
   const auto started = std::chrono::steady_clock::now();
   alarm(6);
-  const bool ok = session->PushAudio(std::span<const int16_t>{}, &error);
+  bool ok = true;
+  for (int i = 0; i < 200; ++i) {
+    ok = session->PushAudio(long_chunk, &error);
+    if (!ok) {
+      break;
+    }
+  }
   const auto elapsed = std::chrono::steady_clock::now() - started;
   ExpectTrue(!ok && !error.empty(), "a filled provider pipe must eventually report failure");
   ExpectTrue(elapsed < std::chrono::seconds(2), "outbound write must respect its timeout");
@@ -348,6 +355,176 @@ void TestCancelDoesNotStartProvider() {
   ExpectTrue(!started, "Cancel must not spawn a provider solely to stop it");
 }
 
+/** Test Interrupt() immediately breaks a blocked Finish() wait. */
+void TestInterruptWakesBlockedFinish() {
+  const std::string pid_file = GetUniquePidFilePath(9);
+  unlink(pid_file.c_str());
+
+  CommandAsrProvider provider;
+  provider.id = "test-interrupt-provider";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo $$ > " + pid_file +
+                             " && echo '{\"type\": \"session_started\"}'"
+                             " && exec sleep 30"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
+
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "Failed to read child pid file for interrupt test");
+
+  std::thread interrupter([&session]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    session->Interrupt();
+  });
+
+  const auto started = std::chrono::steady_clock::now();
+  const bool finish_ok = session->Finish(&error);
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+
+  interrupter.join();
+
+  ExpectTrue(!finish_ok, "Finish should return false after interrupt");
+  ExpectTrue(elapsed < std::chrono::milliseconds(2500),
+             "Interrupt() should wake Finish immediately without waiting for 10s timeout");
+
+  AssertChildAlreadyReaped(child_pid);
+}
+
+/** Test that stderr chunks are fed to NotificationBridge and properly parsed and flushed. */
+void TestStderrPipedToNotificationBridge() {
+  const std::string pid_file = GetUniquePidFilePath(10);
+  unlink(pid_file.c_str());
+
+  std::vector<vinput::notify::Notification> received;
+  vinput::notify::NotificationBridge bridge([&](const auto& n) { received.push_back(n); });
+
+  CommandAsrProvider provider;
+  provider.id = "test-bridge-provider";
+  provider.command = "/bin/sh";
+  provider.args = {
+      "-c", "echo $$ > " + pid_file +
+                " && echo '{\"type\": \"session_started\"}'"
+                " && echo '{\"title\": \"Custom Warning\", \"body\": \"Rate limit reached\"}' >&2"
+                " && echo 'Verbatim plain error' >&2"
+                " && while read -r line; do case \"$line\" in *finish*) break ;; esac; done"
+                " && echo '{\"type\": \"final\", \"text\": \"test output\"}'"
+                " && echo '{\"type\": \"closed\"}'"
+                " && exit 0"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error, &bridge);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
+
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "Failed to read child pid file for bridge test");
+
+  ExpectTrue(session->Finish(&error), "Finish failed: " + error);
+
+  AssertChildAlreadyReaped(child_pid);
+
+  ExpectTrue(received.size() == 2,
+             "Expected 2 notifications from stderr, got " + std::to_string(received.size()));
+  ExpectTrue(received[0].title == "Custom Warning",
+             "Expected custom title, got " + received[0].title);
+  ExpectTrue(received[0].body == "Rate limit reached",
+             "Expected json body, got " + received[0].body);
+  ExpectTrue(received[1].body == "Verbatim plain error",
+             "Expected plain body, got " + received[1].body);
+}
+
+/** Test killed_by_us semantics: user cancellation does not emit Error, provider crash does. */
+void TestKilledByUsVsAbnormalExit() {
+  // Scenario A: User Cancel (killed_by_us == true)
+  {
+    const std::string pid_file = GetUniquePidFilePath(11);
+    unlink(pid_file.c_str());
+
+    CommandAsrProvider provider;
+    provider.id = "test-killed-by-us-provider";
+    provider.command = "/bin/sh";
+    provider.args = {"-c", "echo $$ > " + pid_file +
+                               " && echo '{\"type\": \"session_started\"}'"
+                               " && exec sleep 30"};
+    provider.timeoutMs = 5000;
+
+    std::string error;
+    auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+    ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed");
+
+    auto session = backend->CreateSession(&error);
+    ExpectTrue(session != nullptr, "CreateSession failed");
+    ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed");
+
+    const int child_pid = ReadPidFileWithRetry(pid_file);
+    ExpectTrue(child_pid > 0, "Failed to read child pid file");
+
+    session->Cancel();
+    AssertChildAlreadyReaped(child_pid);
+
+    const auto events = session->PollEvents();
+    bool saw_error = false;
+    for (const auto& ev : events) {
+      if (ev.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
+        saw_error = true;
+      }
+    }
+    ExpectTrue(!saw_error, "User cancellation must not emit Error event (killed_by_us = true)");
+  }
+
+  // Scenario B: Provider crash / abnormal exit (killed_by_us == false, exit_code != 0)
+  {
+    const std::string pid_file = GetUniquePidFilePath(12);
+    unlink(pid_file.c_str());
+
+    CommandAsrProvider provider;
+    provider.id = "test-provider-crash";
+    provider.command = "/bin/sh";
+    provider.args = {"-c", "echo $$ > " + pid_file +
+                               " && echo '{\"type\": \"session_started\"}'"
+                               " && echo 'provider crashed internally' >&2"
+                               " && exit 42"};
+    provider.timeoutMs = 5000;
+
+    std::string error;
+    auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+    ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed");
+
+    auto session = backend->CreateSession(&error);
+    ExpectTrue(session != nullptr, "CreateSession failed");
+    ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed");
+
+    const int child_pid = ReadPidFileWithRetry(pid_file);
+    ExpectTrue(child_pid > 0, "Failed to read child pid file");
+
+    const bool finish_ok = session->Finish(&error);
+    ExpectTrue(!finish_ok, "Finish must fail when provider exits with non-zero status");
+    AssertChildAlreadyReaped(child_pid);
+
+    const auto events = session->PollEvents();
+    bool saw_error = false;
+    for (const auto& ev : events) {
+      if (ev.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
+        saw_error = true;
+      }
+    }
+    ExpectTrue(saw_error, "Abnormal provider exit must emit Error event (killed_by_us = false)");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -360,6 +537,9 @@ int main() {
   TestOutputEofWait(true, 6);
   TestStalledProviderWriteIsBounded();
   TestCancelDoesNotStartProvider();
+  TestInterruptWakesBlockedFinish();
+  TestStderrPipedToNotificationBridge();
+  TestKilledByUsVsAbnormalExit();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -12,12 +13,12 @@ namespace vinput::daemon::asr {
 
 constexpr std::size_t kMinSamplesForRecognition = 8000;
 
-enum class AudioDeliveryMode {
+enum class AudioDeliveryMode : std::uint8_t {
   Buffered,
   Chunked,
 };
 
-enum class RecognitionEventKind {
+enum class RecognitionEventKind : std::uint8_t {
   PartialText,
   FinalText,
   Error,
@@ -47,12 +48,19 @@ struct BackendDescriptor {
 
 class RecognitionSession {
 public:
+  RecognitionSession() = default;
   virtual ~RecognitionSession() = default;
+
+  RecognitionSession(const RecognitionSession&) = delete;
+  RecognitionSession& operator=(const RecognitionSession&) = delete;
+  RecognitionSession(RecognitionSession&&) = delete;
+  RecognitionSession& operator=(RecognitionSession&&) = delete;
 
   virtual bool PushAudio(std::span<const int16_t> pcm, std::string* error) = 0;
   virtual bool PushAudio(std::span<const float> samples, std::string* error);
   virtual bool Finish(std::string* error) = 0;
   virtual void Cancel() = 0;
+  virtual void Interrupt() noexcept {}
   virtual std::vector<RecognitionEvent> PollEvents() = 0;
 };
 
@@ -74,9 +82,15 @@ inline bool RecognitionSession::PushAudio(std::span<const float> samples, std::s
 
 class AsrBackend {
 public:
+  AsrBackend() = default;
   virtual ~AsrBackend() = default;
 
-  virtual BackendDescriptor Describe() const = 0;
+  AsrBackend(const AsrBackend&) = delete;
+  AsrBackend& operator=(const AsrBackend&) = delete;
+  AsrBackend(AsrBackend&&) = delete;
+  AsrBackend& operator=(AsrBackend&&) = delete;
+
+  [[nodiscard]] virtual BackendDescriptor Describe() const = 0;
   virtual std::unique_ptr<RecognitionSession> CreateSession(std::string* error) = 0;
 };
 
