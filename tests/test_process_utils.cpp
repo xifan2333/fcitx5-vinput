@@ -195,49 +195,22 @@ void TestPipeCloexecBehavior() {
   close(pipefd[1]);
 }
 
-void TestSpawnForMonitoring() {
+/**
+ * The spec's environment reaches the child. `Run` and `ProcessSession` share one spawn path, so
+ * this covers the environment every helper process is started with.
+ */
+void TestRunFeedsSpecEnvironment() {
   vinput::process::CommandSpec spec;
   spec.command = "sh";
-  spec.args = {"-c", "echo test_var=$VINPUT_TEST_ENV >&2; exit 0"};
+  spec.args = {"-c", "printf '%s' \"$VINPUT_TEST_ENV\""};
   spec.env["VINPUT_TEST_ENV"] = "safe_spawn_ok";
 
-  auto process_res = vinput::process::SpawnForMonitoring(spec, "");
-  ExpectTrue(process_res.has_value(),
-             "SpawnForMonitoring should succeed: " + (process_res ? "" : process_res.error()));
-  const auto process = *process_res;
-  ExpectTrue(process.pid > 0, "Spawned process PID should be > 0");
-  ExpectTrue(process.stderr_fd >= 0, "Spawned process stderr_fd should be >= 0");
-
-  std::string stderr_output;
-  std::array<char, 128> buffer{};
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-  while (std::chrono::steady_clock::now() < deadline) {
-    const ssize_t bytes_read = read(process.stderr_fd, buffer.data(), buffer.size());
-    if (bytes_read > 0) {
-      stderr_output.append(buffer.data(), static_cast<std::size_t>(bytes_read));
-    } else if (bytes_read == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-
-  close(process.stderr_fd);
-  int status = -1;
-  bool exited = false;
-  const auto exit_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-  while (std::chrono::steady_clock::now() < exit_deadline) {
-    const auto wait_rc = waitpid(process.pid, &status, kWaitNoHang);
-    if (wait_rc == process.pid) {
-      exited = true;
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  ExpectTrue(exited, "Child process should exit within deadline");
-  ExpectTrue(stderr_output.find("test_var=safe_spawn_ok") != std::string::npos,
-             "Child process should receive environment variable via BuildEnvp (got: " +
-                 stderr_output + ")");
-  ExpectTrue(status == 0, "Child process should exit cleanly with status 0");
+  const auto result = vinput::process::Run(spec);
+  ExpectTrue(!result.launch_failed,
+             "Run should start the child (stderr: " + result.stderr_text + ")");
+  ExpectTrue(result.exit_code == 0, "Child process should exit cleanly with status 0");
+  ExpectTrue(result.stdout_text == "safe_spawn_ok",
+             "Child process should receive the spec environment (got: " + result.stdout_text + ")");
 }
 
 /**
@@ -434,7 +407,7 @@ int main() {
   TestCommandTimeout();
   TestChildExitWithLeakedPipeDoesNotHang();
   TestClosedFdsDoesNotBusySpin();
-  TestSpawnForMonitoring();
+  TestRunFeedsSpecEnvironment();
   TestRunFeedsStdin();
   TestRunDrainsLargeOutput();
   TestRunCapturesBothStreamsWhenBothFlood();

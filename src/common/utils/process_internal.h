@@ -5,8 +5,10 @@
 #include <cerrno>
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <subprocess.hpp>
 #include <sys/poll.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -39,6 +41,15 @@ constexpr std::size_t kReadBudgetBytes = std::size_t{64} * 1024;
 // with the spec's entries interpolated and overriding it.
 std::vector<std::string> BuildCmd(const CommandSpec& spec);
 std::map<std::string, std::string> BuildEnvMap(const CommandSpec& spec);
+
+// Builds the one monitored-child shape both entry points of the module share: the child becomes its
+// own session leader (so a cancellation reaches the helpers a provider script forked) and all three
+// channels are pipes. Keeping the spawn in one place is what stops the one-shot and the streaming
+// path from drifting apart.
+//
+// Constructed in place because `subprocess::Popen` is neither copyable nor movable; throws
+// `subprocess::OSError` when the child cannot be started.
+void SpawnMonitored(const CommandSpec& spec, std::optional<subprocess::Popen>& out);
 
 // Makes a write to a closed pipe fail with EPIPE instead of raising SIGPIPE, whose default action
 // would end the whole process. A child that closes its stdin is a normal provider behaviour, and
