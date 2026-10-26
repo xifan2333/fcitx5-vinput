@@ -52,7 +52,7 @@ struct TrackedSession {
 
 struct TrackedState {
   std::mutex mutex;
-  std::map<std::string, TrackedSession, std::less<>> sessions;
+  std::map<std::string, std::unique_ptr<TrackedSession>, std::less<>> sessions;
 };
 
 TrackedState& GetTrackedState() {
@@ -128,17 +128,17 @@ pid_t GetPid(std::string_view adapter_id) {
     auto& state = GetTrackedState();
     const std::scoped_lock lock(state.mutex);
     if (const auto it = state.sessions.find(adapter_id); it != state.sessions.end()) {
-      if (it->second.session.HasExited()) {
-        if (it->second.bridge != nullptr) {
+      if (it->second->session.HasExited()) {
+        if (it->second->bridge != nullptr) {
           const std::string source_id = SourceId(adapter_id);
-          it->second.bridge->Flush(source_id);
-          it->second.bridge->RetireSource(source_id);
+          it->second->bridge->Flush(source_id);
+          it->second->bridge->RetireSource(source_id);
         }
         RemovePidFile(adapter_id);
         state.sessions.erase(it);
         return -1;
       }
-      return static_cast<pid_t>(it->second.session.Pid());
+      return static_cast<pid_t>(it->second->session.Pid());
     }
   }
 
@@ -220,11 +220,15 @@ bool Start(std::string_view adapter_id, vinput::notify::NotificationBridge* brid
     return false;
   }
 
+  auto tracked = std::make_unique<TrackedSession>(TrackedSession{
+      .session = std::move(session),
+      .bridge = bridge,
+  });
+
   {
     auto& state = GetTrackedState();
     const std::scoped_lock lock(state.mutex);
-    state.sessions.insert_or_assign(
-        std::string(adapter_id), TrackedSession{.session = std::move(session), .bridge = bridge});
+    state.sessions.insert_or_assign(std::string(adapter_id), std::move(tracked));
   }
 
   VLOG_DEBUG("adapter started id={}", adapter_id);
@@ -236,17 +240,17 @@ bool Start(std::string_view adapter_id, vinput::notify::NotificationBridge* brid
 
 bool Stop(std::string_view adapter_id, std::string* error,
           vinput::notify::NotificationBridge* bridge) {
-  std::optional<TrackedSession> to_stop;
+  std::unique_ptr<TrackedSession> to_stop;
   {
     auto& state = GetTrackedState();
     const std::scoped_lock lock(state.mutex);
     if (const auto it = state.sessions.find(adapter_id); it != state.sessions.end()) {
-      to_stop.emplace(std::move(it->second));
+      to_stop = std::move(it->second);
       state.sessions.erase(it);
     }
   }
 
-  if (to_stop.has_value()) {
+  if (to_stop != nullptr) {
     to_stop->session.Cancel();
     (void)to_stop->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
     auto* b = bridge != nullptr ? bridge : to_stop->bridge;
@@ -319,7 +323,7 @@ void AutoStart(const CoreConfig& config, vinput::notify::NotificationBridge* bri
 }
 
 void Shutdown() {
-  std::vector<std::pair<std::string, TrackedSession>> to_shutdown;
+  std::vector<std::pair<std::string, std::unique_ptr<TrackedSession>>> to_shutdown;
   {
     auto& state = GetTrackedState();
     const std::scoped_lock lock(state.mutex);
@@ -329,14 +333,14 @@ void Shutdown() {
     state.sessions.clear();
   }
   for (auto& [id, tracked] : to_shutdown) {
-    tracked.session.Cancel();
+    tracked->session.Cancel();
   }
   for (auto& [id, tracked] : to_shutdown) {
-    (void)tracked.session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
-    if (tracked.bridge != nullptr) {
+    (void)tracked->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
+    if (tracked->bridge != nullptr) {
       const std::string source_id = SourceId(id);
-      tracked.bridge->Flush(source_id);
-      tracked.bridge->RetireSource(source_id);
+      tracked->bridge->Flush(source_id);
+      tracked->bridge->RetireSource(source_id);
     }
     RemovePidFile(id);
   }
