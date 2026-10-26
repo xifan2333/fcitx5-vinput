@@ -150,6 +150,24 @@ target_link_libraries(test_notification_bridge PRIVATE
 
 add_test(NAME test_notification_bridge COMMAND test_notification_bridge)
 
+add_executable(test_desktop_notification_sender
+    test_desktop_notification_sender.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/notify/desktop_notification_sender.cpp
+)
+
+target_include_directories(test_desktop_notification_sender PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${SDBUS_INCLUDE_DIRS}
+)
+
+target_link_libraries(test_desktop_notification_sender PRIVATE
+    common
+    pthread
+    ${SDBUS_LIBRARIES}
+)
+
+add_test(NAME test_desktop_notification_sender COMMAND test_desktop_notification_sender)
+
 add_executable(test_editor_utils
     test_editor_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/utils/editor_utils.cpp
