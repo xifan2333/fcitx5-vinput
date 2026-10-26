@@ -457,7 +457,7 @@ private:
       const std::scoped_lock lock(session_mutex_);
       if (session_.has_value()) {
         session_->Cancel();
-        to_destroy = std::move(session_);
+        to_destroy.emplace(std::move(*session_));
         session_.reset();
       }
     }
