@@ -318,7 +318,7 @@ void TestStalledProviderWriteIsBounded() {
   const auto started = std::chrono::steady_clock::now();
   alarm(6);
   bool ok = true;
-  for (int i = 0; i < 70; ++i) {
+  for (int i = 0; i < 200; ++i) {
     ok = session->PushAudio(long_chunk, &error);
     if (!ok) {
       break;
