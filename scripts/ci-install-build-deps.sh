@@ -42,6 +42,7 @@ ubuntu24.04)
   if grep -rq "azure\.archive\.ubuntu\.com" /etc/apt 2>/dev/null; then
     grep -rl "azure\.archive\.ubuntu\.com" /etc/apt | xargs -r "${sudo_cmd[@]}" sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g'
   fi
+  "${sudo_cmd[@]}" apt-get update -o Acquire::Retries=3
   "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     bzip2 \
     clang \
