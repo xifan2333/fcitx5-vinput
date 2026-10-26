@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <stdlib.h> // setenv
 #include <string>
 #include <sys/types.h>
 #include <vector>
@@ -64,7 +65,7 @@ private:
 void TestAdapterNormalStartAndStopWithStderrSink() {
   const TestEnvFixture fixture;
 
-  fixture.WriteConfig(R"({
+  TestEnvFixture::WriteConfig(R"({
     "version": ">=2.4.0",
     "llm": {
       "adapters": [
@@ -118,7 +119,7 @@ void TestAdapterNormalStartAndStopWithStderrSink() {
 void TestAdapterImmediateExitDetected() {
   const TestEnvFixture fixture;
 
-  fixture.WriteConfig(R"({
+  TestEnvFixture::WriteConfig(R"({
     "version": ">=2.4.0",
     "llm": {
       "adapters": [
@@ -154,7 +155,7 @@ void TestAdapterImmediateExitDetected() {
 void TestAdapterAutoStartAndShutdown() {
   const TestEnvFixture fixture;
 
-  fixture.WriteConfig(R"({
+  TestEnvFixture::WriteConfig(R"({
     "version": ">=2.4.0",
     "llm": {
       "adapters": [
