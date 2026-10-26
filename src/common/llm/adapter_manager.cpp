@@ -9,8 +9,8 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
