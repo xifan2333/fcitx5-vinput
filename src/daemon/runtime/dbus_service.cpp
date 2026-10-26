@@ -1,5 +1,6 @@
 #include "dbus_service.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <sys/eventfd.h>
@@ -7,6 +8,8 @@
 #include <utility>
 
 #include "common/dbus/dbus_interface.h"
+
+#include "daemon/notify/desktop_notification_sender.h"
 
 using namespace vinput::dbus;
 
@@ -129,7 +132,7 @@ void DbusService::FlushEmitQueue() {
 
   std::vector<PendingEmit> local;
   {
-    std::lock_guard<std::mutex> lock(emit_mutex_);
+    const std::scoped_lock lock(emit_mutex_);
     local.swap(emit_queue_);
   }
 
@@ -143,6 +146,8 @@ void DbusService::FlushEmitQueue() {
     } else if (item.type == PendingEmit::Type::Status) {
       sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalStatusChanged, "s",
                          item.payload.c_str());
+    } else if (item.type == PendingEmit::Type::DesktopNotification) {
+      vinput::daemon::notify::SendDesktopNotification(bus_, item.desktop_notification);
     } else {
       sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalDaemonNotification,
                          kErrorInfoSignature, item.notification.code.c_str(),
@@ -154,7 +159,7 @@ void DbusService::FlushEmitQueue() {
 
 void DbusService::EmitRecognitionResult(const std::string& text) {
   {
-    std::lock_guard<std::mutex> lock(emit_mutex_);
+    const std::scoped_lock lock(emit_mutex_);
     emit_queue_.push_back({PendingEmit::Type::Result, text, {}});
   }
   uint64_t val = 1;
@@ -163,7 +168,7 @@ void DbusService::EmitRecognitionResult(const std::string& text) {
 
 void DbusService::EmitRecognitionPartial(const std::string& text) {
   {
-    std::lock_guard<std::mutex> lock(emit_mutex_);
+    const std::scoped_lock lock(emit_mutex_);
     emit_queue_.push_back({PendingEmit::Type::Partial, text, {}});
   }
   uint64_t val = 1;
@@ -172,7 +177,7 @@ void DbusService::EmitRecognitionPartial(const std::string& text) {
 
 void DbusService::EmitStatusChanged(const std::string& status) {
   {
-    std::lock_guard<std::mutex> lock(emit_mutex_);
+    const std::scoped_lock lock(emit_mutex_);
     emit_queue_.push_back({PendingEmit::Type::Status, status, {}});
   }
   uint64_t val = 1;
@@ -181,8 +186,17 @@ void DbusService::EmitStatusChanged(const std::string& status) {
 
 void DbusService::EmitNotification(const vinput::dbus::ErrorInfo& notification) {
   {
-    std::lock_guard<std::mutex> lock(emit_mutex_);
+    const std::scoped_lock lock(emit_mutex_);
     emit_queue_.push_back({PendingEmit::Type::Notification, {}, notification});
+  }
+  uint64_t val = 1;
+  (void)write(notify_fd_, &val, sizeof(val));
+}
+
+void DbusService::EmitDesktopNotification(const vinput::notify::Notification& notification) {
+  {
+    const std::scoped_lock lock(emit_mutex_);
+    emit_queue_.push_back({PendingEmit::Type::DesktopNotification, {}, {}, notification});
   }
   uint64_t val = 1;
   (void)write(notify_fd_, &val, sizeof(val));
