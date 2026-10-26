@@ -17,7 +17,6 @@
 
 namespace {
 
-constexpr int kWaitNoHang = 1;
 constexpr auto kTestGracefulTimeout = std::chrono::milliseconds(300);
 constexpr auto kTestForceTimeout = std::chrono::milliseconds(2000);
 
