@@ -12,12 +12,12 @@ extern "C" {
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
+#include "common/llm/adapter_manager.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
-#include "daemon/llm/adapter_supervisor.h"
 #include "daemon/postprocess/post_processor.h"
 #include "daemon/remote/remote_text_service.h"
 #include "daemon/runtime/daemon_runtime_controller.h"
@@ -84,7 +84,6 @@ int main(int argc, char* argv[]) {
   using vinput::dbus::StatusToString;
 
   // --- Single-slot state (all protected by state_mutex) ---
-  vinput::daemon::llm::AdapterSupervisor adapter_supervisor(&dbus);
   vinput::daemon::remote::RemoteTextService remote_text_service;
   vinput::daemon::runtime::RecognitionPipeline recognition_pipeline(&post_processor);
   vinput::daemon::runtime::DaemonRuntimeController runtime_controller(
@@ -109,11 +108,19 @@ int main(int argc, char* argv[]) {
   dbus.SetReloadAsrBackendHandler([&]() { return runtime_controller.ReloadAsrBackend(); });
 
   dbus.SetStartAdapterHandler([&](const std::string& adapter_id) -> DbusService::MethodResult {
-    return adapter_supervisor.StartAdapter(adapter_id);
+    std::string error;
+    if (!vinput::adapter::Start(adapter_id, &notification_bridge, &error)) {
+      return DbusService::MethodResult::Failure(error.empty() ? "failed to start adapter" : error);
+    }
+    return DbusService::MethodResult::Success();
   });
 
   dbus.SetStopAdapterHandler([&](const std::string& adapter_id) -> DbusService::MethodResult {
-    return adapter_supervisor.StopAdapter(adapter_id);
+    std::string error;
+    if (!vinput::adapter::Stop(adapter_id, &error, &notification_bridge)) {
+      return DbusService::MethodResult::Failure(error.empty() ? "failed to stop adapter" : error);
+    }
+    return DbusService::MethodResult::Success();
   });
 
   std::string dbus_error;
@@ -125,12 +132,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  std::string adapter_error;
-  if (!adapter_supervisor.Start(&adapter_error)) {
-    fprintf(stderr, "vinput-daemon: %s\n", adapter_error.c_str());
-    return 1;
-  }
-  adapter_supervisor.AutoStart(startup_settings);
+  vinput::adapter::AutoStart(startup_settings, &notification_bridge);
 
   runtime_controller.StartWorker();
   std::string remote_error;
@@ -186,6 +188,6 @@ int main(int argc, char* argv[]) {
   remote_text_service.Shutdown();
   runtime_controller.Shutdown();
   recognition_manager.Shutdown();
-  adapter_supervisor.Shutdown();
+  vinput::adapter::Shutdown();
   return 0;
 }

@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <map>
 #include <span>
 #include <string>
@@ -14,8 +13,6 @@
 extern "C" {
 #include <time.h> // pid_t: <chrono> pulls <time.h> in first, so <sys/types.h> would be a no-op
 }
-
-#include "common/utils/expected.h"
 
 namespace vinput::process {
 
@@ -34,11 +31,6 @@ struct CommandResult {
   std::string stderr_text;
 };
 
-struct SpawnedProcess {
-  pid_t pid = -1;
-  int stderr_fd = -1;
-};
-
 // Runs `spec` to completion, feeding `stdin_bytes` to its standard input, and returns its
 // normalized result: exit code, timeout flag and the full stdout/stderr text. The child runs in its
 // own session and `spec.timeout_ms` bounds the whole call; on expiry it is killed.
@@ -48,8 +40,6 @@ struct SpawnedProcess {
 // provider command they want to run.
 CommandResult Run(const CommandSpec& spec, std::span<const std::byte> stdin_bytes = {});
 
-Expected<SpawnedProcess> SpawnForMonitoring(const CommandSpec& spec,
-                                            const std::filesystem::path& working_dir);
 bool CreateCloexecPipe(int pipefd[2]);
 
 // Forcefully terminates `pid` with SIGKILL and reaps it, tolerating children that

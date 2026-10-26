@@ -1,21 +1,35 @@
 #include "common/llm/adapter_manager.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
+#include <format>
 #include <fstream>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 extern "C" {
 #include <signal.h>
 }
 
+#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/notify/notification_bridge.h"
+#include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
+#include "common/utils/process_session.h"
 #include "common/utils/process_utils.h"
 
 namespace vinput::adapter {
@@ -24,45 +38,26 @@ namespace fs = std::filesystem;
 
 namespace {
 
-fs::path ExpandConfigPath(const std::string& candidate) {
-  if (candidate.empty()) {
-    return {};
-  }
-  fs::path path = vinput::path::ExpandUserPath(candidate);
-  if (path.empty()) {
-    return {};
-  }
-  if (path.is_relative()) {
-    std::error_code ec;
-    const fs::path cwd = fs::current_path(ec);
-    if (ec) {
-      return {};
-    }
-    path = cwd / path;
-  }
-  return path.lexically_normal();
+constexpr auto kGracefulStopTimeout = std::chrono::milliseconds(2000);
+constexpr auto kForceKillTimeout = std::chrono::milliseconds(1000);
+
+std::string SourceId(std::string_view adapter_id) {
+  return std::format("llm:{}", adapter_id);
 }
 
-fs::path ResolveScriptPath(const LlmAdapter& adapter) {
-  for (const auto& arg : adapter.args) {
-    const fs::path path = ExpandConfigPath(arg);
-    if (path.empty()) {
-      continue;
-    }
-    std::error_code ec;
-    if (fs::exists(path, ec) && !ec && fs::is_regular_file(path, ec) && !ec) {
-      return path;
-    }
-  }
+struct TrackedSession {
+  vinput::process::ProcessSession session;
+  vinput::notify::NotificationBridge* bridge = nullptr;
+};
 
-  fs::path command_path = ExpandConfigPath(adapter.command);
-  if (!command_path.empty()) {
-    std::error_code ec;
-    if (fs::exists(command_path, ec) && !ec && fs::is_regular_file(command_path, ec) && !ec) {
-      return command_path;
-    }
-  }
-  return {};
+struct TrackedState {
+  std::mutex mutex;
+  std::map<std::string, std::unique_ptr<TrackedSession>, std::less<>> sessions;
+};
+
+TrackedState& GetTrackedState() {
+  static TrackedState state;
+  return state;
 }
 
 } // namespace
@@ -73,19 +68,6 @@ vinput::process::CommandSpec BuildCommandSpec(const LlmAdapter& adapter) {
   spec.args = adapter.args;
   spec.env = adapter.env;
   return spec;
-}
-
-std::filesystem::path ResolveWorkingDir(const LlmAdapter& adapter) {
-  const fs::path script_path = ResolveScriptPath(adapter);
-  if (!script_path.empty()) {
-    const fs::path parent = script_path.parent_path();
-    if (!parent.empty()) {
-      return parent;
-    }
-  }
-  std::error_code ec;
-  const fs::path cwd = fs::current_path(ec);
-  return ec ? fs::path{} : cwd;
 }
 
 std::filesystem::path PidPath(std::string_view adapter_id) {
@@ -142,6 +124,24 @@ void RemovePidFile(std::string_view adapter_id) {
 }
 
 pid_t GetPid(std::string_view adapter_id) {
+  {
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    if (const auto it = state.sessions.find(adapter_id); it != state.sessions.end()) {
+      if (it->second->session.HasExited()) {
+        if (it->second->bridge != nullptr) {
+          const std::string source_id = SourceId(adapter_id);
+          it->second->bridge->Flush(source_id);
+          it->second->bridge->RetireSource(source_id);
+        }
+        RemovePidFile(adapter_id);
+        state.sessions.erase(it);
+        return -1;
+      }
+      return static_cast<pid_t>(it->second->session.Pid());
+    }
+  }
+
   const AdapterPidRecord record = ReadPidRecord(adapter_id);
   const bool alive = vinput::process::ProcessIdentityMatches(record.pid, record.start_time);
   return alive ? record.pid : -1;
@@ -151,19 +151,131 @@ bool IsRunning(std::string_view adapter_id) {
   return GetPid(adapter_id) > 0;
 }
 
-namespace {
+bool Start(std::string_view adapter_id, vinput::notify::NotificationBridge* bridge,
+           std::string* error) {
+  auto config = LoadCoreConfig();
+  NormalizeCoreConfig(&config);
+  const auto* adapter = ResolveLlmAdapter(config, std::string(adapter_id));
+  if (adapter == nullptr) {
+    if (error != nullptr) {
+      *error = "adapter not found";
+    }
+    return false;
+  }
+  if (adapter->command.empty()) {
+    if (error != nullptr) {
+      *error = "adapter command is not configured";
+    }
+    return false;
+  }
+  if (IsRunning(adapter_id)) {
+    if (error != nullptr) {
+      *error = "adapter is already running";
+    }
+    return false;
+  }
 
-// An adapter that ignores SIGTERM is given two seconds to wind down before the
-// forced kill, and one more second to disappear afterwards.
-constexpr auto kGracefulStopTimeout = std::chrono::milliseconds(2000);
-constexpr auto kForceKillTimeout = std::chrono::milliseconds(1000);
+  const auto spec = BuildCommandSpec(*adapter);
+  const std::string source_id = SourceId(adapter_id);
 
-} // namespace
+  auto started = vinput::process::ProcessSession::Start(
+      spec,
+      [bridge, source_id](std::span<const std::byte> bytes) {
+        if (bridge != nullptr) {
+          bridge->FeedStderr(source_id, bytes);
+        }
+      },
+      [](std::span<const std::byte> /*bytes*/) {
+        // Adapters communicate via HTTP; stdout logs are drained and discarded to prevent pipe
+        // backpressure from stalling long-lived processes.
+      });
+  if (!started) {
+    if (error != nullptr) {
+      *error = started.error().empty() ? "failed to start adapter" : started.error();
+    }
+    return false;
+  }
 
-bool Stop(std::string_view adapter_id, std::string* error) {
+  vinput::process::ProcessSession session = std::move(*started);
+  int immediate_exit = -1;
+  if (session.WaitForExit(std::chrono::milliseconds(250), &immediate_exit)) {
+    if (bridge != nullptr) {
+      bridge->Flush(source_id);
+      bridge->RetireSource(source_id);
+    }
+    if (error != nullptr) {
+      *error = std::format("adapter exited immediately (code {})", immediate_exit);
+    }
+    return false;
+  }
+
+  const auto child_pid = static_cast<pid_t>(session.Pid());
+  if (!WritePidFile(adapter_id, child_pid, error)) {
+    session.Cancel();
+    (void)session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
+    if (bridge != nullptr) {
+      bridge->Flush(source_id);
+      bridge->RetireSource(source_id);
+    }
+    return false;
+  }
+
+  auto tracked = std::make_unique<TrackedSession>(TrackedSession{
+      .session = std::move(session),
+      .bridge = bridge,
+  });
+
+  {
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    state.sessions.insert_or_assign(std::string(adapter_id), std::move(tracked));
+  }
+
+  VLOG_DEBUG("adapter started id={}", adapter_id);
+  if (error != nullptr) {
+    error->clear();
+  }
+  return true;
+}
+
+bool Stop(std::string_view adapter_id, std::string* error,
+          vinput::notify::NotificationBridge* bridge) {
+  std::unique_ptr<TrackedSession> to_stop;
+  {
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    if (const auto it = state.sessions.find(adapter_id); it != state.sessions.end()) {
+      to_stop = std::move(it->second);
+      state.sessions.erase(it);
+    }
+  }
+
+  if (to_stop != nullptr) {
+    to_stop->session.Cancel();
+    (void)to_stop->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
+    auto* b = bridge != nullptr ? bridge : to_stop->bridge;
+    if (b != nullptr) {
+      const std::string source_id = SourceId(adapter_id);
+      b->Flush(source_id);
+      b->RetireSource(source_id);
+    }
+    RemovePidFile(adapter_id);
+    VLOG_DEBUG("adapter stopped id={}", adapter_id);
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
   const AdapterPidRecord record = ReadPidRecord(adapter_id);
   const auto result = vinput::process::TerminateGracefully(record.pid, record.start_time,
                                                            kGracefulStopTimeout, kForceKillTimeout);
+
+  if (bridge != nullptr) {
+    const std::string source_id = SourceId(adapter_id);
+    bridge->Flush(source_id);
+    bridge->RetireSource(source_id);
+  }
 
   const auto fail = [error](const std::string& message) {
     if (error != nullptr) {
@@ -181,23 +293,57 @@ bool Stop(std::string_view adapter_id, std::string* error) {
     }
     return true;
   case vinput::process::TerminateOutcome::NotFound:
-    // Either the adapter already exited or its pid was recycled: drop the stale
-    // record, nothing was signalled.
     RemovePidFile(adapter_id);
     return fail("adapter is not running: " + id);
   case vinput::process::TerminateOutcome::StillRunning:
-    // Keep the record so the adapter can still be located and retried.
     return fail("adapter did not exit after SIGKILL: " + id);
   case vinput::process::TerminateOutcome::Unconfirmed:
     return fail("could not confirm that adapter stopped: " + id);
   case vinput::process::TerminateOutcome::Failed:
-    // The escalation phase belongs in the diagnosis: a rejected SIGTERM and a
-    // rejected SIGKILL point at very different conditions.
     return fail((result.failed_signal == SIGKILL ? "failed to force-kill adapter "
                                                  : "failed to signal adapter ") +
                 id + ": " + result.error);
   }
   return false;
+}
+
+void AutoStart(const CoreConfig& config, vinput::notify::NotificationBridge* bridge) {
+  for (const auto& adapter : config.llm.adapters) {
+    if (!adapter.autoStart) {
+      continue;
+    }
+    std::string err;
+    if (!Start(adapter.id, bridge, &err)) {
+      fprintf(stderr, "vinput-daemon: failed to autostart adapter '%s': %s\n", adapter.id.c_str(),
+              err.c_str());
+    } else {
+      VLOG_DEBUG("autostarted adapter '{}'", adapter.id);
+    }
+  }
+}
+
+void Shutdown() {
+  std::vector<std::pair<std::string, std::unique_ptr<TrackedSession>>> to_shutdown;
+  {
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    for (auto& [id, tracked] : state.sessions) {
+      to_shutdown.emplace_back(id, std::move(tracked));
+    }
+    state.sessions.clear();
+  }
+  for (auto& [id, tracked] : to_shutdown) {
+    tracked->session.Cancel();
+  }
+  for (auto& [id, tracked] : to_shutdown) {
+    (void)tracked->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
+    if (tracked->bridge != nullptr) {
+      const std::string source_id = SourceId(id);
+      tracked->bridge->Flush(source_id);
+      tracked->bridge->RetireSource(source_id);
+    }
+    RemovePidFile(id);
+  }
 }
 
 } // namespace vinput::adapter

@@ -12,7 +12,6 @@
 #include <cstring>
 #include <exception>
 #include <fcntl.h>
-#include <filesystem>
 #include <fstream>
 #include <map>
 #include <mutex>
@@ -37,7 +36,6 @@ extern "C" {
 }
 
 #include "common/utils/debug_log.h"
-#include "common/utils/expected.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/process_internal.h"
 
@@ -88,6 +86,11 @@ std::map<std::string, std::string> BuildEnvMap(const CommandSpec& spec) {
   return env_map;
 }
 
+void SpawnMonitored(const CommandSpec& spec, std::optional<subprocess::Popen>& out) {
+  out.emplace(BuildCmd(spec), subprocess::input{subprocess::PIPE},
+              subprocess::output{subprocess::PIPE}, subprocess::error{subprocess::PIPE},
+              subprocess::environment{BuildEnvMap(spec)}, subprocess::session_leader{true});
+}
 } // namespace detail
 
 namespace {
@@ -641,34 +644,29 @@ CommandResult Run(const CommandSpec& spec, std::span<const std::byte> stdin_byte
     return result;
   }
 
-  const auto cmd = detail::BuildCmd(spec);
-  const auto env_map = detail::BuildEnvMap(spec);
-
   try {
-    auto proc =
-        subprocess::Popen(cmd, subprocess::input{subprocess::PIPE},
-                          subprocess::output{subprocess::PIPE}, subprocess::error{subprocess::PIPE},
-                          subprocess::environment{env_map}, subprocess::session_leader{true});
+    std::optional<subprocess::Popen> proc;
+    detail::SpawnMonitored(spec, proc);
 
     const auto deadline = spec.timeout_ms > 0 ? std::chrono::steady_clock::now() +
                                                     std::chrono::milliseconds(spec.timeout_ms)
                                               : std::chrono::steady_clock::time_point::max();
     const PumpOutcome outcome =
-        PumpProcess(proc, stdin_bytes, deadline, result.stdout_text, result.stderr_text);
+        PumpProcess(*proc, stdin_bytes, deadline, result.stdout_text, result.stderr_text);
 
     result.timed_out = outcome.timed_out;
     if (outcome.timed_out) {
-      proc.kill();
+      proc->kill();
       // The child was killed because the deadline expired, but kill() only sends the signal: the
       // zombie must be reaped here or every timed-out Run() leaks one process (Popen's destructor
       // is disabled upstream). wait() is safe because the child was just SIGKILLed.
-      (void)proc.wait();
+      (void)proc->wait();
       result.exit_code = -1;
     } else if (outcome.child_exited) {
       result.exit_code = outcome.child_exit_code;
     } else {
       // Every channel closed without a confirmed exit, so wait for the child itself.
-      result.exit_code = proc.wait();
+      result.exit_code = proc->wait();
     }
     return result;
   } catch (const subprocess::OSError& e) {
@@ -679,39 +677,6 @@ CommandResult Run(const CommandSpec& spec, std::span<const std::byte> stdin_byte
     result.launch_failed = true;
     result.stderr_text = e.what();
     return result;
-  }
-}
-
-Expected<SpawnedProcess> SpawnForMonitoring(const CommandSpec& spec,
-                                            const std::filesystem::path& working_dir) {
-  if (spec.command.empty()) {
-    return UnexpectedError("Command is empty.");
-  }
-
-  const auto cmd = detail::BuildCmd(spec);
-  const auto env_map = detail::BuildEnvMap(spec);
-
-  try {
-    auto proc = subprocess::Popen(
-        cmd, subprocess::input{"/dev/null"}, subprocess::output{"/dev/null"},
-        subprocess::error{subprocess::PIPE}, subprocess::cwd{working_dir.string()},
-        subprocess::environment{env_map}, subprocess::session_leader{true});
-
-    SpawnedProcess process_out{.pid = proc.pid(), .stderr_fd = -1};
-    FILE* err_fp = proc.error();
-    if (err_fp != nullptr) {
-      const int dup_fd = fcntl(subprocess_fileno(err_fp), F_DUPFD_CLOEXEC, 0);
-      if (dup_fd < 0) {
-        const std::string err =
-            "fcntl F_DUPFD_CLOEXEC failed: " + std::string(std::strerror(errno));
-        proc.kill();
-        return UnexpectedError(err);
-      }
-      process_out.stderr_fd = dup_fd;
-    }
-    return process_out;
-  } catch (const std::exception& e) {
-    return UnexpectedError(e.what());
   }
 }
 

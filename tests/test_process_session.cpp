@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
 #include <span>
 #include <string>
 #include <thread>
@@ -354,6 +355,73 @@ void TestProviderClosingStdinDoesNotKillTheHost() {
 }
 
 /**
+ * When a `stderr_sink` is passed to `Start`, stderr bytes bypass the event queue and reach the sink
+ * directly on the pump thread without requiring `NextEvent` polling.
+ */
+void TestStderrSinkReceivesBytesDirectly() {
+  std::string captured;
+  std::mutex mutex;
+  vinput::process::CommandSpec spec;
+  spec.command = "sh";
+  spec.args = {"-c", "printf 'err1\\n' >&2; printf 'err2\\n' >&2; exit 0"};
+
+  auto session = ProcessSession::Start(spec, [&](std::span<const std::byte> bytes) {
+    const std::scoped_lock lock(mutex);
+    captured.append(ToText(std::vector<std::byte>(bytes.begin(), bytes.end())));
+  });
+  ExpectTrue(session.has_value(), "ProcessSession::Start should succeed with stderr_sink");
+
+  int exit_code = -1;
+  ExpectTrue(session->WaitForExit(std::chrono::milliseconds(2000), &exit_code),
+             "the child should exit within timeout");
+  ExpectTrue(exit_code == 0, "the child should exit cleanly with status 0");
+
+  const std::scoped_lock lock(mutex);
+  ExpectTrue(captured == "err1\nerr2\n",
+             "stderr_sink should receive all stderr bytes directly (got: " + captured + ")");
+}
+
+/**
+ * `WaitForExit` and `HasExited` report child exit accurately without requiring `NextEvent`
+ * consumption.
+ */
+void TestWaitForExitAndHasExited() {
+  // 1. Immediately exiting process
+  {
+    vinput::process::CommandSpec spec;
+    spec.command = "sh";
+    spec.args = {"-c", "exit 42"};
+    auto session = ProcessSession::Start(spec);
+    ExpectTrue(session.has_value(), "ProcessSession::Start should succeed");
+
+    int exit_code = -1;
+    ExpectTrue(session->WaitForExit(std::chrono::milliseconds(2000), &exit_code),
+               "WaitForExit should report true for completed process");
+    ExpectTrue(exit_code == 42, "WaitForExit should return the child's exit code (42)");
+    ExpectTrue(session->HasExited(), "HasExited should return true after exit");
+  }
+
+  // 2. Long-running process: WaitForExit with short timeout returns false, then true after cancel
+  {
+    vinput::process::CommandSpec spec;
+    spec.command = "sh";
+    spec.args = {"-c", "sleep 30"};
+    auto session = ProcessSession::Start(spec);
+    ExpectTrue(session.has_value(), "ProcessSession::Start should succeed");
+
+    ExpectTrue(!session->HasExited(), "HasExited should return false while running");
+    ExpectTrue(!session->WaitForExit(std::chrono::milliseconds(50)),
+               "WaitForExit with short timeout should return false while running");
+
+    session->Cancel();
+    int exit_code = -1;
+    ExpectTrue(session->WaitForExit(std::chrono::milliseconds(2000), &exit_code),
+               "WaitForExit should return true after session cancel");
+    ExpectTrue(session->HasExited(), "HasExited should return true after cancel exit");
+  }
+}
+
+/**
  * The destructor is the last owner of the child: it has to stop it and reap it, because a zombie
  * out lives the session otherwise.
  */
@@ -384,6 +452,8 @@ int main() {
   TestManySmallEventsSurviveASlowCaller();
   TestProviderClosingStdinDoesNotKillTheHost();
   TestDestructorReapsTheChild();
+  TestStderrSinkReceivesBytesDirectly();
+  TestWaitForExitAndHasExited();
   std::cout << "All test_process_session passed!\n";
   return 0;
 }

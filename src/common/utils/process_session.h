@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <vector>
@@ -35,6 +36,11 @@ struct ChildEvent {
   bool killed_by_us = false;
 };
 
+// Direct stream sinks for child output. When provided to `Start`, raw bytes bypass the event
+// queue and are dispatched to the sink immediately on the pump thread.
+using StderrSink = std::function<void(std::span<const std::byte>)>;
+using StdoutSink = std::function<void(std::span<const std::byte>)>;
+
 // A child process that outlives any single call: the caller keeps feeding stdin and reading output
 // while the child runs, on the child's schedule rather than the caller's.
 //
@@ -55,7 +61,10 @@ public:
   // Starts `spec` in its own session, so cancelling reaches the helpers it forked. The spec's
   // timeout does not apply: the session lives until the child exits, the caller cancels, or the
   // caller stops draining - a long recording is not bounded by the first chunk's budget.
-  static Expected<ProcessSession> Start(const CommandSpec& spec);
+  // When `stderr_sink` or `stdout_sink` is provided, the pump thread delivers bytes directly to it
+  // as they arrive, bypassing the event queue.
+  static Expected<ProcessSession> Start(const CommandSpec& spec, StderrSink stderr_sink = nullptr,
+                                        StdoutSink stdout_sink = nullptr);
 
   ProcessSession(ProcessSession&& other) noexcept;
   ProcessSession& operator=(ProcessSession&& other) noexcept = delete;
@@ -81,6 +90,12 @@ public:
   // Asks the pump thread to terminate the child's process group. Idempotent, never blocks, and safe
   // from any thread: it only signals the pump, which owns the child.
   void Cancel() noexcept;
+
+  // True when the child process has exited and been reaped.
+  [[nodiscard]] bool HasExited(int* exit_code = nullptr) const noexcept;
+
+  // Waits up to `wait` for the child process to exit. Returns true if exited within the window.
+  bool WaitForExit(std::chrono::milliseconds wait, int* exit_code = nullptr);
 
   // The child's pid. Diagnostics only: the session owns the child, and the pid stops being a valid
   // handle the moment the session reaps it.
