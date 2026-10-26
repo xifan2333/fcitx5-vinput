@@ -5,6 +5,10 @@
 #include <sys/types.h>
 #include <vector>
 
+extern "C" {
+#include <stdlib.h> // setenv
+}
+
 #include "common/config/core_config.h"
 #include "common/llm/adapter_manager.h"
 #include "common/notify/notification_bridge.h"
