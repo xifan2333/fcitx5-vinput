@@ -355,7 +355,8 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   LogResponseSummary(provider, url, res.status_code, res.total_time_ms);
 
   if (res.status_code < 200 || res.status_code >= 300) {
-    const std::string msg = _("LLM request returned an HTTP error.");
+    const std::string msg = std::string(_("LLM request returned an HTTP error.")) + "\nHTTP " +
+                            std::to_string(res.status_code) + ": " + res.body;
     // TODO(#407): LogResponseBody("LLM error response from", url, res.body);
     if (error_out != nullptr) {
       *error_out = msg;
