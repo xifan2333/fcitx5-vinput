@@ -129,20 +129,15 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
     return false;
   }
 
-  std::ifstream input(model_path, std::ios::binary);
-  if (!input) {
+  auto mapping_res = vinput::file::MapFileReadOnly(model_path);
+  if (!mapping_res) {
     if (error != nullptr) {
-      *error = "failed to open SentencePiece model: " + model_path.string();
+      *error = "failed to open SentencePiece model: " + mapping_res.error();
     }
     return false;
   }
-  const std::string data((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-  if (!input.good() && !input.eof()) {
-    if (error != nullptr) {
-      *error = "failed to read SentencePiece model: " + model_path.string();
-    }
-    return false;
-  }
+  const auto& mapping = *mapping_res;
+  const std::string_view data = mapping.View();
 
   std::ostringstream output;
   output.imbue(std::locale::classic());
