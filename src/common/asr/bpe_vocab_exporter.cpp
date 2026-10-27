@@ -6,15 +6,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <fstream>
-#include <iomanip>
 #include <ios>
 #include <iterator>
 #include <limits>
-#include <locale>
 #include <optional>
 #include <span>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -177,9 +175,8 @@ vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path
   const auto& mapping = *mapping_res;
   const std::string_view data = mapping.View();
 
-  std::ostringstream output;
-  output.imbue(std::locale::classic());
-  output << std::setprecision(std::numeric_limits<float>::max_digits10);
+  std::string output_buffer;
+  output_buffer.reserve(64 * 1024);
 
   ByteReader reader(std::as_bytes(std::span(data.data(), data.size())));
   std::size_t piece_count = 0;
@@ -202,11 +199,9 @@ vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path
         return vinput::Unexpected("unsupported SentencePiece piece record in: " +
                                   model_path.string());
       }
-      output << record->piece << '\t' << record->score << '\n';
+      std::format_to(std::back_inserter(output_buffer), "{}\t{}\n", record->piece, record->score);
       ++piece_count;
-      const auto tell_pos = static_cast<std::streamoff>(output.tellp());
-      if (piece_count > kMaxPieceCount || tell_pos < 0 ||
-          std::cmp_greater(tell_pos, kMaxBpeVocabularyBytes)) {
+      if (piece_count > kMaxPieceCount || output_buffer.size() > kMaxBpeVocabularyBytes) {
         return vinput::Unexpected("SentencePiece vocabulary exceeds safety limits: " +
                                   model_path.string());
       }
@@ -221,7 +216,7 @@ vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path
                               model_path.string());
   }
 
-  if (auto res = vinput::file::AtomicWriteTextFile(vocab_path, output.str()); !res) {
+  if (auto res = vinput::file::AtomicWriteTextFile(vocab_path, output_buffer); !res) {
     return vinput::Unexpected("failed to write BPE vocabulary: " + res.error());
   }
   return {};
