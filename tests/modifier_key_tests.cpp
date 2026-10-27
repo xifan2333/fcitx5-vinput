@@ -1,6 +1,7 @@
 #include <chrono>
 #include <exception>
 #include <fcitx-config/rawconfig.h>
+#include <fcitx-utils/capabilityflags.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
@@ -20,6 +21,7 @@
 #include <system_error>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include "core/vinput.h"
 
@@ -44,11 +46,15 @@ public:
   ~TestInputContext() override { destroy(); }
   [[nodiscard]] const char* frontend() const override { return "test"; }
 
+  std::vector<std::string> log;
+
 protected:
-  void commitStringImpl(const std::string&) override {}
+  void commitStringImpl(const std::string& str) override { log.push_back("commit:" + str); }
   void deleteSurroundingTextImpl(int, unsigned int) override {}
   void forwardKeyImpl(const fcitx::ForwardKeyEvent&) override {}
-  void updatePreeditImpl() override {}
+  void updatePreeditImpl() override {
+    log.push_back("preedit:" + inputPanel().clientPreedit().toString());
+  }
 };
 
 struct ScopedConfigDir {
@@ -325,6 +331,34 @@ void runAllTests() {
     expect(shared != nullptr && *shared, "lifetimeToken payload must be true");
   }
   expect(token.expired(), "lifetimeToken must expire immediately upon engine destruction");
+
+  std::cout << "--- 8. Testing commitText with clientPreedit and capability filtering ---\n";
+  {
+    ic.log.clear();
+    VinputEngine::commitText(&ic, "hello");
+    expect(ic.log.size() == 3,
+           "commitText should emit clientPreedit before commit and clear after");
+    expect(ic.log[0] == "preedit:hello", "first event must be clientPreedit with commit text");
+    expect(ic.log[1] == "commit:hello", "second event must be commitString");
+    expect(ic.log[2] == "preedit:", "third event must clear clientPreedit");
+    expect(ic.inputPanel().clientPreedit().toString().empty(), "clientPreedit must be cleared");
+
+    // Null/empty checks
+    ic.log.clear();
+    VinputEngine::commitText(nullptr, "hello");
+    expect(ic.log.empty(), "commitText with null ic must be a no-op");
+
+    VinputEngine::commitText(&ic, "");
+    expect(ic.log.empty(), "commitText with empty string must be a no-op");
+
+    // Password / sensitive context should bypass clientPreedit
+    ic.log.clear();
+    ic.setCapabilityFlags(fcitx::CapabilityFlag::Password);
+    VinputEngine::commitText(&ic, "secret");
+    expect(ic.log.size() == 1, "Password context must not emit clientPreedit");
+    expect(ic.log[0] == "commit:secret", "Password context must only call commitString directly");
+    ic.setCapabilityFlags(fcitx::CapabilityFlag::NoFlag);
+  }
 
   std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }
