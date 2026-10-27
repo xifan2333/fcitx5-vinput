@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <fcitx-utils/capabilityflags.h>
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/event.h>
@@ -868,7 +869,7 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
     }
   }
 
-  ic->commitString(payload.commitText);
+  commitText(ic, payload.commitText);
 }
 
 void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
@@ -980,13 +981,18 @@ void VinputEngine::commitText(fcitx::InputContext* ic, const std::string& text) 
     return;
   }
 
-  fcitx::Text client_preedit;
-  client_preedit.append(text);
-  ic->inputPanel().setClientPreedit(client_preedit);
-  ic->updatePreedit();
+  if (!ic->capabilityFlags().test(fcitx::CapabilityFlag::Password) &&
+      !ic->capabilityFlags().test(fcitx::CapabilityFlag::Sensitive)) {
+    fcitx::Text client_preedit;
+    client_preedit.append(text);
+    ic->inputPanel().setClientPreedit(client_preedit);
+    ic->updatePreedit();
 
-  ic->commitString(text);
+    ic->commitString(text);
 
-  ic->inputPanel().setClientPreedit(fcitx::Text{});
-  ic->updatePreedit();
+    ic->inputPanel().setClientPreedit(fcitx::Text{});
+    ic->updatePreedit();
+  } else {
+    ic->commitString(text);
+  }
 }
