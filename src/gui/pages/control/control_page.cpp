@@ -734,7 +734,6 @@ void ControlPage::onDaemonStart() {
         return;
       }
       if (!result.ok()) {
-        vinput::cli::NotifyDaemonNotification(result.notification);
         QMessageBox::critical(self, ControlPage::tr("Error"),
                               QString::fromStdString(result.failure_message));
       }
@@ -771,7 +770,6 @@ void ControlPage::onDaemonRestart() {
         return;
       }
       if (!result.ok()) {
-        vinput::cli::NotifyDaemonNotification(result.notification);
         QMessageBox::critical(self, ControlPage::tr("Error"),
                               QString::fromStdString(result.failure_message));
       }

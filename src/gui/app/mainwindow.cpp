@@ -163,7 +163,6 @@ void MainWindow::onSaveClicked() {
 
   const auto result = vinput::cli::SystemctlRestartWithDiagnostics();
   if (!result.ok()) {
-    vinput::cli::NotifyDaemonNotification(result.notification);
     QMessageBox::critical(this, tr("Error"), QString::fromStdString(result.failure_message));
     return;
   }

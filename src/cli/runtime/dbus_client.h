@@ -3,7 +3,6 @@
 #include <string>
 
 #include "common/dbus/dbus_interface.h"
-#include "common/dbus/error_info.h"
 
 struct sd_bus;
 
@@ -27,7 +26,6 @@ public:
   bool ReloadAsrBackend(std::string* error = nullptr);
   bool StartAdapter(const std::string& adapter_id, std::string* error = nullptr);
   bool StopAdapter(const std::string& adapter_id, std::string* error = nullptr);
-  bool Notify(const vinput::dbus::ErrorInfo& notification, std::string* error = nullptr);
 
 private:
   sd_bus* bus_ = nullptr;
