@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <span>
 #include <string>
 #include <string_view>
@@ -141,7 +142,7 @@ void TestValidateBpeVocabulary() {
   // Empty file
   const auto empty_path = tmp_dir / "empty.vocab";
   {
-    std::ofstream ofs(empty_path);
+    const std::ofstream ofs(empty_path);
   }
   TEST_ASSERT(!ValidateBpeVocabulary(empty_path).has_value());
 
@@ -209,7 +210,7 @@ void TestExportSentencePieceVocabularyEndToEnd() {
   const auto model_data = MakeModelProto(pieces);
   {
     std::ofstream ofs(model_path, std::ios::binary);
-    ofs.write(reinterpret_cast<const char*>(model_data.data()),
+    ofs.write(static_cast<const char*>(static_cast<const void*>(model_data.data())),
               static_cast<std::streamsize>(model_data.size()));
   }
 
@@ -234,7 +235,7 @@ void TestExportSentencePieceVocabularyEndToEnd() {
   const auto bad_model_data = MakeModelProto({{"bad\tpiece", 1.0F}});
   {
     std::ofstream ofs(bad_model_path, std::ios::binary);
-    ofs.write(reinterpret_cast<const char*>(bad_model_data.data()),
+    ofs.write(static_cast<const char*>(static_cast<const void*>(bad_model_data.data())),
               static_cast<std::streamsize>(bad_model_data.size()));
   }
   TEST_ASSERT(!ExportSentencePieceVocabulary(bad_model_path, bad_vocab_path).has_value());

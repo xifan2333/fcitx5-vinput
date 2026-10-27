@@ -10,14 +10,13 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
-#include <limits>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <utility>
 
+#include "common/utils/expected.h"
 #include "common/utils/file_utils.h"
 
 namespace {
@@ -111,8 +110,8 @@ private:
   std::span<const std::byte> buffer_;
 };
 
-constexpr std::string_view AsStringView(std::span<const std::byte> span) noexcept {
-  return {reinterpret_cast<const char*>(span.data()), span.size()};
+inline std::string_view AsStringView(std::span<const std::byte> span) noexcept {
+  return {static_cast<const char*>(static_cast<const void*>(span.data())), span.size()};
 }
 
 } // namespace
@@ -155,8 +154,6 @@ Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> mess
 
 } // namespace vinput::asr
 
-} // namespace
-
 vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
                                                      const std::filesystem::path& vocab_path) {
   std::error_code size_error;
@@ -176,7 +173,7 @@ vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path
   const std::string_view data = mapping.View();
 
   std::string output_buffer;
-  output_buffer.reserve(64 * 1024);
+  output_buffer.reserve(64U * 1024U);
 
   ByteReader reader(std::as_bytes(std::span(data.data(), data.size())));
   std::size_t piece_count = 0;
@@ -193,7 +190,11 @@ vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path
         return vinput::Unexpected("invalid SentencePiece piece record: " + model_path.string());
       }
       auto record = vinput::asr::ParseSentencePiece(*message);
-      if (!record || record->piece.empty() || record->piece.size() > kMaxPieceBytes ||
+      if (!record) {
+        return vinput::Unexpected("invalid SentencePiece piece record (" + record.error() +
+                                  ") in: " + model_path.string());
+      }
+      if (record->piece.empty() || record->piece.size() > kMaxPieceBytes ||
           !std::isfinite(record->score) ||
           record->piece.find_first_of("\t\r\n") != std::string::npos) {
         return vinput::Unexpected("unsupported SentencePiece piece record in: " +
