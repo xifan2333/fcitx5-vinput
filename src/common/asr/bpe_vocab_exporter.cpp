@@ -12,6 +12,8 @@
 #include <iterator>
 #include <limits>
 #include <locale>
+#include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -27,88 +29,118 @@ constexpr std::uintmax_t kMaxBpeVocabularyBytes = 256ULL * 1024 * 1024;
 constexpr std::size_t kMaxPieceCount = 1000000;
 constexpr std::size_t kMaxPieceBytes = 1024ULL * 1024;
 
-bool ReadVarint(std::string_view data, std::size_t* offset, std::uint64_t* value) {
-  std::uint64_t result = 0;
-  for (int shift = 0; shift < 64; shift += 7) {
-    if (*offset >= data.size()) {
+class ByteReader {
+public:
+  constexpr explicit ByteReader(std::span<const std::byte> buffer) noexcept : buffer_(buffer) {}
+
+  [[nodiscard]] constexpr bool Empty() const noexcept { return buffer_.empty(); }
+  [[nodiscard]] constexpr std::size_t Remaining() const noexcept { return buffer_.size(); }
+  [[nodiscard]] constexpr std::span<const std::byte> RemainingSpan() const noexcept {
+    return buffer_;
+  }
+
+  std::optional<std::uint64_t> ReadVarint() noexcept {
+    std::uint64_t result = 0;
+    for (int shift = 0; shift < 64; shift += 7) {
+      if (buffer_.empty()) {
+        return std::nullopt;
+      }
+      const auto byte = static_cast<std::uint8_t>(buffer_.front());
+      buffer_ = buffer_.subspan(1);
+      result |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
+      if ((byte & 0x80) == 0) {
+        return result;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::span<const std::byte>> ReadLengthDelimited() noexcept {
+    const auto len = ReadVarint();
+    if (!len.has_value() || *len > buffer_.size()) {
+      return std::nullopt;
+    }
+    const auto count = static_cast<std::size_t>(*len);
+    const auto sub = buffer_.first(count);
+    buffer_ = buffer_.subspan(count);
+    return sub;
+  }
+
+  std::optional<std::uint32_t> ReadFixed32() noexcept {
+    if (buffer_.size() < 4) {
+      return std::nullopt;
+    }
+    const auto b0 = static_cast<std::uint32_t>(static_cast<std::uint8_t>(buffer_[0]));
+    const auto b1 = static_cast<std::uint32_t>(static_cast<std::uint8_t>(buffer_[1]));
+    const auto b2 = static_cast<std::uint32_t>(static_cast<std::uint8_t>(buffer_[2]));
+    const auto b3 = static_cast<std::uint32_t>(static_cast<std::uint8_t>(buffer_[3]));
+    buffer_ = buffer_.subspan(4);
+    return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+  }
+
+  std::optional<float> ReadFloat() noexcept {
+    const auto bits = ReadFixed32();
+    if (!bits.has_value()) {
+      return std::nullopt;
+    }
+    return std::bit_cast<float>(*bits);
+  }
+
+  bool Skip(std::size_t count) noexcept {
+    if (buffer_.size() < count) {
       return false;
     }
-    const auto byte = static_cast<std::uint8_t>(data[(*offset)++]);
-    result |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
-    if ((byte & 0x80) == 0) {
-      *value = result;
-      return true;
-    }
-  }
-  return false;
-}
-
-bool ReadLengthDelimited(std::string_view data, std::size_t* offset, std::string_view* value) {
-  std::uint64_t length = 0;
-  if (!ReadVarint(data, offset, &length) || length > data.size() - *offset) {
-    return false;
-  }
-  *value = data.substr(*offset, static_cast<std::size_t>(length));
-  *offset += static_cast<std::size_t>(length);
-  return true;
-}
-
-bool SkipField(std::string_view data, std::size_t* offset, std::uint32_t wire_type) {
-  switch (wire_type) {
-  case 0: {
-    std::uint64_t ignored = 0;
-    return ReadVarint(data, offset, &ignored);
-  }
-  case 1:
-    if (data.size() - *offset < 8) {
-      return false;
-    }
-    *offset += 8;
+    buffer_ = buffer_.subspan(count);
     return true;
-  case 2: {
-    std::string_view ignored;
-    return ReadLengthDelimited(data, offset, &ignored);
   }
-  case 5:
-    if (data.size() - *offset < 4) {
+
+  bool SkipField(std::uint32_t wire_type) noexcept {
+    switch (wire_type) {
+    case 0:
+      return ReadVarint().has_value();
+    case 1:
+      return Skip(8);
+    case 2:
+      return ReadLengthDelimited().has_value();
+    case 5:
+      return Skip(4);
+    default:
       return false;
     }
-    *offset += 4;
-    return true;
-  default:
-    return false;
   }
+
+private:
+  std::span<const std::byte> buffer_;
+};
+
+constexpr std::string_view AsStringView(std::span<const std::byte> span) noexcept {
+  return {reinterpret_cast<const char*>(span.data()), span.size()};
 }
 
-bool ParseSentencePiece(std::string_view message, std::string* piece, float* score) {
-  std::size_t offset = 0;
+bool ParseSentencePiece(std::span<const std::byte> message, std::string* piece, float* score) {
+  ByteReader reader(message);
   bool found_piece = false;
-  while (offset < message.size()) {
-    std::uint64_t key = 0;
-    if (!ReadVarint(message, &offset, &key)) {
+  while (!reader.Empty()) {
+    const auto key = reader.ReadVarint();
+    if (!key.has_value()) {
       return false;
     }
-    const auto field = static_cast<std::uint32_t>(key >> 3);
-    const auto wire = static_cast<std::uint32_t>(key & 7);
+    const auto field = static_cast<std::uint32_t>(*key >> 3);
+    const auto wire = static_cast<std::uint32_t>(*key & 7);
     if (field == 1 && wire == 2) {
-      std::string_view value;
-      if (!ReadLengthDelimited(message, &offset, &value)) {
+      const auto value = reader.ReadLengthDelimited();
+      if (!value.has_value()) {
         return false;
       }
-      piece->assign(value);
+      piece->assign(AsStringView(*value));
       found_piece = true;
     } else if (field == 2 && wire == 5) {
-      if (message.size() - offset < 4) {
+      const auto s = reader.ReadFloat();
+      if (!s.has_value()) {
         return false;
       }
-      const std::uint32_t bits =
-          static_cast<std::uint8_t>(message[offset]) |
-          (static_cast<std::uint32_t>(static_cast<std::uint8_t>(message[offset + 1])) << 8) |
-          (static_cast<std::uint32_t>(static_cast<std::uint8_t>(message[offset + 2])) << 16) |
-          (static_cast<std::uint32_t>(static_cast<std::uint8_t>(message[offset + 3])) << 24);
-      *score = std::bit_cast<float>(bits);
-      offset += 4;
-    } else if (!SkipField(message, &offset, wire)) {
+      *score = *s;
+    } else if (!reader.SkipField(wire)) {
       return false;
     }
   }
@@ -143,21 +175,21 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
   output.imbue(std::locale::classic());
   output << std::setprecision(std::numeric_limits<float>::max_digits10);
 
-  std::size_t offset = 0;
+  ByteReader reader(std::as_bytes(std::span(data.data(), data.size())));
   std::size_t piece_count = 0;
-  while (offset < data.size()) {
-    std::uint64_t key = 0;
-    if (!ReadVarint(data, &offset, &key)) {
+  while (!reader.Empty()) {
+    const auto key = reader.ReadVarint();
+    if (!key.has_value()) {
       if (error != nullptr) {
         *error = "invalid SentencePiece ModelProto: " + model_path.string();
       }
       return false;
     }
-    const auto field = static_cast<std::uint32_t>(key >> 3);
-    const auto wire = static_cast<std::uint32_t>(key & 7);
+    const auto field = static_cast<std::uint32_t>(*key >> 3);
+    const auto wire = static_cast<std::uint32_t>(*key & 7);
     if (field == 1 && wire == 2) {
-      std::string_view message;
-      if (!ReadLengthDelimited(data, &offset, &message)) {
+      const auto message = reader.ReadLengthDelimited();
+      if (!message.has_value()) {
         if (error != nullptr) {
           *error = "invalid SentencePiece piece record: " + model_path.string();
         }
@@ -165,7 +197,7 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
       }
       std::string piece;
       float score = 0;
-      if (!ParseSentencePiece(message, &piece, &score) || piece.empty() ||
+      if (!ParseSentencePiece(*message, &piece, &score) || piece.empty() ||
           piece.size() > kMaxPieceBytes || !std::isfinite(score) ||
           piece.find_first_of("\t\r\n") != std::string::npos) {
         if (error != nullptr) {
@@ -183,7 +215,7 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
         }
         return false;
       }
-    } else if (!SkipField(data, &offset, wire)) {
+    } else if (!reader.SkipField(wire)) {
       if (error != nullptr) {
         *error = "unsupported SentencePiece ModelProto field in: " + model_path.string();
       }
