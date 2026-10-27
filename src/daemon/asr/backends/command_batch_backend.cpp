@@ -1,5 +1,6 @@
 #include "daemon/asr/backends/command_batch_backend.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -9,6 +10,9 @@
 #include <vector>
 
 #include "common/config/core_config_types.h"
+#include "common/i18n.h"
+#include "common/notify/notification_bridge.h"
+#include "common/utils/debug_log.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
 
@@ -18,18 +22,23 @@ namespace vinput::daemon::asr {
 
 namespace {
 
-std::string FormatProviderError(std::string detail, std::string_view fallback) {
-  detail = std::string(vinput::str::Trim(detail));
-  if (detail.empty()) {
-    detail = std::string(fallback);
-  }
-  return detail;
+constexpr std::size_t kMaxBatchNotifications = 10;
+
+vinput::process::CommandSpec BuildCommandSpec(const CommandAsrProvider& provider) {
+  vinput::process::CommandSpec spec;
+  spec.command = provider.command;
+  spec.args = provider.args;
+  spec.env = provider.env;
+  spec.timeout_ms = provider.timeoutMs;
+  return spec;
 }
 
 class CommandBatchSession : public RecognitionSession {
 public:
-  CommandBatchSession(vinput::process::CommandSpec command, std::string provider_id)
-      : command_(std::move(command)), provider_id_(std::move(provider_id)) {}
+  CommandBatchSession(const CommandAsrProvider& provider,
+                      vinput::notify::NotificationBridge* notification_bridge)
+      : command_(BuildCommandSpec(provider)), provider_id_(provider.id),
+        notification_bridge_(notification_bridge) {}
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (finished_) {
@@ -57,24 +66,26 @@ public:
     const auto audio = std::as_bytes(std::span<const int16_t>(pcm_));
     auto command_result = vinput::process::Run(command_, audio);
 
+    // The provider owns the wording of its diagnostics: a one-shot run leaves a complete stderr
+    // capture behind, so it is handed to the bridge in a single pass (ADR 0001) instead of being
+    // folded into this backend's own error text.
+    DeliverStderr(command_result.stderr_text);
+
     if (command_result.launch_failed) {
       events_.push_back(
-          {RecognitionEventKind::Error,
-           {},
-           FormatProviderError(std::move(command_result.stderr_text), "failed to start.")});
+          {RecognitionEventKind::Error, {}, _("Command ASR provider failed to start.")});
     } else if (command_result.timed_out) {
-      events_.push_back({RecognitionEventKind::Error,
-                         {},
-                         FormatProviderError(std::move(command_result.stderr_text), "timed out.")});
+      events_.push_back({RecognitionEventKind::Error, {}, _("Command ASR provider timed out.")});
     } else if (command_result.exit_code != 0) {
-      events_.push_back({RecognitionEventKind::Error,
-                         {},
-                         FormatProviderError(std::move(command_result.stderr_text), "failed.")});
+      VLOG_WARN("command ASR provider '{}' exited with code {}", provider_id_,
+                command_result.exit_code);
+      events_.push_back(
+          {RecognitionEventKind::Error, {}, _("Command ASR provider exited abnormally.")});
     } else {
       std::string text = std::string(vinput::str::Trim(command_result.stdout_text));
       if (text.empty()) {
         events_.push_back(
-            {RecognitionEventKind::Error, {}, FormatProviderError({}, "returned no text.")});
+            {RecognitionEventKind::Error, {}, _("Command ASR provider returned no text.")});
       } else {
         events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
       }
@@ -94,8 +105,7 @@ public:
   void Cancel() override {
     finished_ = true;
     pcm_.clear();
-    events_.clear();
-    events_.push_back({RecognitionEventKind::Completed, {}, {}});
+    events_ = {{RecognitionEventKind::Completed, {}, {}}};
   }
 
   std::vector<RecognitionEvent> PollEvents() override {
@@ -105,8 +115,27 @@ public:
   }
 
 private:
+  void DeliverStderr(std::string stderr_text) const {
+    if (notification_bridge_ == nullptr || stderr_text.empty()) {
+      return;
+    }
+    std::size_t delivered = 0;
+    vinput::process::DrainLinesFromBuffer(
+        stderr_text,
+        [this, &delivered](std::string_view line) -> bool {
+          if (delivered >= kMaxBatchNotifications) {
+            return false;
+          }
+          notification_bridge_->DeliverLine(provider_id_, line);
+          ++delivered;
+          return true;
+        },
+        /*flush_tail=*/true);
+  }
+
   vinput::process::CommandSpec command_;
   std::string provider_id_;
+  vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   bool finished_ = false;
   std::vector<int16_t> pcm_;
   std::vector<RecognitionEvent> events_;
@@ -114,12 +143,13 @@ private:
 
 class CommandBatchBackend : public AsrBackend {
 public:
-  CommandBatchBackend(vinput::process::CommandSpec command, std::string provider_id)
-      : command_(std::move(command)), provider_id_(std::move(provider_id)) {}
+  CommandBatchBackend(CommandAsrProvider provider,
+                      vinput::notify::NotificationBridge* notification_bridge)
+      : provider_(std::move(provider)), notification_bridge_(notification_bridge) {}
 
   [[nodiscard]] BackendDescriptor Describe() const override {
     BackendDescriptor descriptor;
-    descriptor.provider_id = provider_id_;
+    descriptor.provider_id = provider_.id;
     descriptor.provider_type = vinput::asr::kCommandProviderType;
     descriptor.backend_id = "command-batch";
     descriptor.capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
@@ -130,18 +160,19 @@ public:
     if (error != nullptr) {
       error->clear();
     }
-    return std::make_unique<CommandBatchSession>(command_, provider_id_);
+    return std::make_unique<CommandBatchSession>(provider_, notification_bridge_);
   }
 
 private:
-  vinput::process::CommandSpec command_;
-  std::string provider_id_;
+  CommandAsrProvider provider_;
+  vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
 };
 
 } // namespace
 
-std::unique_ptr<AsrBackend> CreateCommandBatchBackend(const CommandAsrProvider& provider,
-                                                      std::string* error) {
+std::unique_ptr<AsrBackend>
+CreateCommandBatchBackend(const CommandAsrProvider& provider, std::string* error,
+                          vinput::notify::NotificationBridge* notification_bridge) {
   if (provider.command.empty()) {
     if (error != nullptr) {
       *error = "Command ASR provider has empty command.";
@@ -149,16 +180,10 @@ std::unique_ptr<AsrBackend> CreateCommandBatchBackend(const CommandAsrProvider& 
     return nullptr;
   }
 
-  vinput::process::CommandSpec command;
-  command.command = provider.command;
-  command.args = provider.args;
-  command.env = provider.env;
-  command.timeout_ms = provider.timeoutMs;
-
   if (error != nullptr) {
     error->clear();
   }
-  return std::make_unique<CommandBatchBackend>(std::move(command), provider.id);
+  return std::make_unique<CommandBatchBackend>(provider, notification_bridge);
 }
 
 } // namespace vinput::daemon::asr

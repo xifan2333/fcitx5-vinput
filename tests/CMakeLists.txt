@@ -72,6 +72,21 @@ target_link_libraries(test_interpolation PRIVATE
 
 add_test(NAME test_interpolation COMMAND test_interpolation)
 
+add_executable(test_command_batch
+    test_command_batch.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/asr/backends/command_batch_backend.cpp
+)
+
+target_include_directories(test_command_batch PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_command_batch PRIVATE
+    common
+)
+
+add_test(NAME test_command_batch COMMAND test_command_batch)
+
 add_executable(test_command_streaming
     test_command_streaming.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/asr/backends/command_streaming_backend.cpp
