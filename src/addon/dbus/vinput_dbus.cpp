@@ -205,6 +205,10 @@ std::string RenderMethodCallFailure(std::string_view error_name, std::string_vie
   }
 
   if (!error_message.empty()) {
+    const auto newline_pos = error_message.find('\n');
+    if (newline_pos != std::string_view::npos) {
+      return std::string(error_message.substr(0, newline_pos));
+    }
     return std::string(error_message);
   }
   return fallback;
@@ -429,7 +433,7 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::
   }
   const bool raw_prev = vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
   if (!session_.has_value()) {
-    session_.emplace();
+    session_.emplace(Session{});
     session_->press_time = std::chrono::steady_clock::now();
   }
   session_->phase = Session::Phase::PendingStart;
@@ -458,7 +462,7 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
   const bool raw_prev = session_ ? session_->raw_prev
                                  : vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
   if (!session_.has_value()) {
-    session_.emplace();
+    session_.emplace(Session{});
     session_->press_time = std::chrono::steady_clock::now();
   }
   session_->phase = Session::Phase::Recording;
@@ -492,7 +496,7 @@ void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
                : vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev);
   const auto phase = postprocessing ? Session::Phase::Postprocessing : Session::Phase::Inferring;
   if (!session_.has_value()) {
-    session_.emplace();
+    session_.emplace(Session{});
     session_->press_time = std::chrono::steady_clock::now();
   }
   session_->phase = phase;

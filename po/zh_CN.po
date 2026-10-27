@@ -1331,6 +1331,18 @@ msgstr "语音输入守护进程不可用。"
 msgid "Voice input daemon is not responding."
 msgstr "语音输入守护进程无响应。"
 
+msgid "ASR provider failed."
+msgstr "ASR 提供商运行失败。"
+
+msgid "Failed to start command recording."
+msgstr "启动命令录音失败。"
+
+msgid "Failed to start recognition session."
+msgstr "启动语音识别会话失败。"
+
+msgid "Failed to start recording."
+msgstr "启动录音失败。"
+
 #: src/addon/dbus/vinput_dbus.cpp:164
 #, c-format
 msgid "Local ASR model check failed for provider '%s'."

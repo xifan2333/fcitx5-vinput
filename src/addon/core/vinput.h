@@ -140,6 +140,8 @@ private:
   std::unique_ptr<fcitx::dbus::Slot> pending_status_call_slot_;
   vinput::addon::StatusPollGate status_poll_gate_;
   struct Session {
+    Session() = default;
+
     enum class Phase : std::uint8_t { PendingStart, Recording, Inferring, Postprocessing };
     Phase phase = Phase::PendingStart;
     fcitx::InputContext* ic = nullptr;

@@ -436,7 +436,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
   AudioCapture::StartTiming capture_timing;
   if (!capture_->BeginRecording(&error, &capture_timing)) {
     std::string message =
-        is_command ? "Failed to start command recording." : "Failed to start recording.";
+        is_command ? _("Failed to start command recording.") : _("Failed to start recording.");
     if (!error.empty()) {
       message = std::string(vinput::str::StripSuffix(message, ".")) + ": " + error;
     }
@@ -455,7 +455,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
   auto session = recognition_manager_->CreateSession(runtime_settings, &active_backend, &error);
   const long session_ms = static_cast<long>(vinput::time::MillisecondsSince(session_start_at));
   if (!session) {
-    std::string message = "Failed to start recognition session.";
+    std::string message = _("Failed to start recognition session.");
     if (!error.empty()) {
       message += " " + error;
     }
@@ -781,6 +781,14 @@ void DaemonRuntimeController::PollActiveSessionEvents() {
     if (auto* async_session =
             dynamic_cast<vinput::daemon::asr::AsyncRecognitionSession*>(session.get())) {
       failure = async_session->FailureError();
+    }
+    if (!failure.has_value()) {
+      for (const auto& event : events) {
+        if (event.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
+          failure = event.error.empty() ? _("ASR provider failed.") : event.error;
+          break;
+        }
+      }
     }
     if (failure.has_value()) {
       // FailActiveSession below emits the single error notification; do not
