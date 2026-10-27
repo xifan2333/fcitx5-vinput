@@ -1,5 +1,6 @@
 #include "daemon/asr/backends/command_batch_backend.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -21,11 +22,22 @@ namespace vinput::daemon::asr {
 
 namespace {
 
+constexpr std::size_t kMaxBatchNotifications = 10;
+
+vinput::process::CommandSpec BuildCommandSpec(const CommandAsrProvider& provider) {
+  vinput::process::CommandSpec spec;
+  spec.command = provider.command;
+  spec.args = provider.args;
+  spec.env = provider.env;
+  spec.timeout_ms = provider.timeoutMs;
+  return spec;
+}
+
 class CommandBatchSession : public RecognitionSession {
 public:
-  CommandBatchSession(vinput::process::CommandSpec command, std::string provider_id,
+  CommandBatchSession(const CommandAsrProvider& provider,
                       vinput::notify::NotificationBridge* notification_bridge)
-      : command_(std::move(command)), provider_id_(std::move(provider_id)),
+      : command_(BuildCommandSpec(provider)), provider_id_(provider.id),
         notification_bridge_(notification_bridge) {}
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
@@ -93,8 +105,7 @@ public:
   void Cancel() override {
     finished_ = true;
     pcm_.clear();
-    events_.clear();
-    events_.push_back({RecognitionEventKind::Completed, {}, {}});
+    events_ = {{RecognitionEventKind::Completed, {}, {}}};
   }
 
   std::vector<RecognitionEvent> PollEvents() override {
@@ -108,9 +119,17 @@ private:
     if (notification_bridge_ == nullptr || stderr_text.empty()) {
       return;
     }
+    std::size_t delivered = 0;
     vinput::process::DrainLinesFromBuffer(
         stderr_text,
-        [this](std::string_view line) { notification_bridge_->DeliverLine(provider_id_, line); },
+        [this, &delivered](std::string_view line) -> bool {
+          if (delivered >= kMaxBatchNotifications) {
+            return false;
+          }
+          notification_bridge_->DeliverLine(provider_id_, line);
+          ++delivered;
+          return true;
+        },
         /*flush_tail=*/true);
   }
 
@@ -124,14 +143,13 @@ private:
 
 class CommandBatchBackend : public AsrBackend {
 public:
-  CommandBatchBackend(vinput::process::CommandSpec command, std::string provider_id,
+  CommandBatchBackend(CommandAsrProvider provider,
                       vinput::notify::NotificationBridge* notification_bridge)
-      : command_(std::move(command)), provider_id_(std::move(provider_id)),
-        notification_bridge_(notification_bridge) {}
+      : provider_(std::move(provider)), notification_bridge_(notification_bridge) {}
 
   [[nodiscard]] BackendDescriptor Describe() const override {
     BackendDescriptor descriptor;
-    descriptor.provider_id = provider_id_;
+    descriptor.provider_id = provider_.id;
     descriptor.provider_type = vinput::asr::kCommandProviderType;
     descriptor.backend_id = "command-batch";
     descriptor.capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
@@ -142,12 +160,11 @@ public:
     if (error != nullptr) {
       error->clear();
     }
-    return std::make_unique<CommandBatchSession>(command_, provider_id_, notification_bridge_);
+    return std::make_unique<CommandBatchSession>(provider_, notification_bridge_);
   }
 
 private:
-  vinput::process::CommandSpec command_;
-  std::string provider_id_;
+  CommandAsrProvider provider_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
 };
 
@@ -163,17 +180,10 @@ CreateCommandBatchBackend(const CommandAsrProvider& provider, std::string* error
     return nullptr;
   }
 
-  vinput::process::CommandSpec command;
-  command.command = provider.command;
-  command.args = provider.args;
-  command.env = provider.env;
-  command.timeout_ms = provider.timeoutMs;
-
   if (error != nullptr) {
     error->clear();
   }
-  return std::make_unique<CommandBatchBackend>(std::move(command), provider.id,
-                                               notification_bridge);
+  return std::make_unique<CommandBatchBackend>(provider, notification_bridge);
 }
 
 } // namespace vinput::daemon::asr

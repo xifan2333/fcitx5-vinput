@@ -95,6 +95,32 @@ void TestStderrPipedToNotificationBridge() {
   ExpectTrue(received[1].body == "Verbatim batch notice", "Plain text notification body mismatch");
 }
 
+void TestBatchNotificationsBounded() {
+  std::vector<vinput::notify::Notification> received;
+  vinput::notify::NotificationBridge bridge([&](const auto& n) { received.push_back(n); });
+
+  CommandAsrProvider provider;
+  provider.id = "test-batch-flood";
+  provider.command = "/bin/sh";
+  provider.args = {
+      "-c",
+      "for i in $(seq 1 25); do echo \"flood line $i\" >&2; done\n"
+      "echo 'done text'\n",
+  };
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandBatchBackend(provider, &error, &bridge);
+  ExpectTrue(backend != nullptr, "CreateCommandBatchBackend failed");
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed");
+
+  ExpectTrue(session->Finish(&error), "Finish failed: " + error);
+  ExpectTrue(received.size() == 10,
+             "Notifications must be capped at 10, got " + std::to_string(received.size()));
+}
+
 void TestCommandFailure() {
   CommandAsrProvider provider;
   provider.id = "test-batch-fail";
@@ -197,6 +223,7 @@ int main() {
   TestEmptyCommandRejected();
   TestNormalExecution();
   TestStderrPipedToNotificationBridge();
+  TestBatchNotificationsBounded();
   TestCommandFailure();
   TestCommandTimeout();
   TestEmptyOutputIsError();
