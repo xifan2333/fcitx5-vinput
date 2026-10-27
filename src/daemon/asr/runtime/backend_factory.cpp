@@ -85,7 +85,7 @@ std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string*
     if (IsStreamingCommandProvider(*command)) {
       return CreateCommandStreamingBackend(*command, error, notification_bridge);
     }
-    return CreateCommandBatchBackend(*command, error);
+    return CreateCommandBatchBackend(*command, error, notification_bridge);
   }
 
   if (error != nullptr) {

@@ -1562,3 +1562,19 @@ msgstr "缺失 Flatpak 权限："
 #: src/cli/control/daemon_actions.cpp:30
 msgid "To grant permissions, run:"
 msgstr "如需授权，请运行："
+
+#: src/daemon/asr/backends/command_batch_backend.cpp:64
+msgid "Command ASR provider failed to start."
+msgstr "命令 ASR 提供商启动失败。"
+
+#: src/daemon/asr/backends/command_batch_backend.cpp:66
+msgid "Command ASR provider timed out."
+msgstr "命令 ASR 提供商运行超时。"
+
+#: src/daemon/asr/backends/command_batch_backend.cpp:71
+msgid "Command ASR provider exited abnormally."
+msgstr "命令 ASR 提供商异常退出。"
+
+#: src/daemon/asr/backends/command_batch_backend.cpp:75
+msgid "Command ASR provider returned no text."
+msgstr "命令 ASR 提供商未返回任何文本。"
