@@ -47,8 +47,8 @@ namespace {
 constexpr std::size_t kStreamingChunkSamples = 800;
 constexpr const char* kFailedToPushAudioError = "Failed to push audio chunk.";
 constexpr const char* kFailedToFinishSessionError = "Failed to finish recognition session.";
-constexpr float kNonSilentPeakThreshold = 0.02f;
-constexpr float kNonSilentRmsThreshold = 0.005f;
+constexpr float kNonSilentPeakThreshold = 0.02F;
+constexpr float kNonSilentRmsThreshold = 0.005F;
 
 void LogRecognitionRequest(const vinput::daemon::asr::BackendDescriptor& descriptor,
                            std::size_t sample_count) {
@@ -67,15 +67,15 @@ bool HasNonSilentAudio(std::span<const int16_t> pcm) {
   }
 
   double sum_squares = 0.0;
-  float peak = 0.0f;
-  for (int16_t sample : pcm) {
-    const float value = static_cast<float>(sample) / 32768.0f;
+  float peak = 0.0F;
+  for (const int16_t sample : pcm) {
+    const float value = static_cast<float>(sample) / 32768.0F;
     const float abs_value = std::fabs(value);
     peak = std::max(peak, abs_value);
     sum_squares += static_cast<double>(value) * static_cast<double>(value);
   }
 
-  const float rms = static_cast<float>(std::sqrt(sum_squares / pcm.size()));
+  const auto rms = static_cast<float>(std::sqrt(sum_squares / static_cast<double>(pcm.size())));
   return peak >= kNonSilentPeakThreshold || rms >= kNonSilentRmsThreshold;
 }
 
@@ -168,12 +168,12 @@ vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
     std::mutex* session_io_mutex, std::string* error) {
   vinput::daemon::asr::RecognitionRunResult result;
   if (!session) {
-    if (error) {
+    if (error != nullptr) {
       *error = "Recognition session is not initialized.";
     }
     result.available = false;
     result.ok = false;
-    result.error = error ? *error : "Recognition session is not initialized.";
+    result.error = (error != nullptr) ? *error : "Recognition session is not initialized.";
     return result;
   }
 
@@ -181,7 +181,7 @@ vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
   std::string session_error;
   std::vector<vinput::daemon::asr::RecognitionEvent> events;
   {
-    std::lock_guard<std::mutex> session_lock(*session_io_mutex);
+    const std::scoped_lock session_lock(*session_io_mutex);
     if (!session->Finish(&session_error)) {
       result.ok = false;
       result.error = session_error.empty() ? kFailedToFinishSessionError : session_error;
@@ -207,7 +207,7 @@ vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
     }
   }
 
-  if (error) {
+  if (error != nullptr) {
     *error = result.error;
   }
   return result;
@@ -221,7 +221,7 @@ DaemonRuntimeController::DaemonRuntimeController(
     RecognitionPipeline* pipeline, vinput::daemon::remote::RemoteTextService* remote_text_service)
     : capture_(capture), dbus_(dbus), recognition_manager_(recognition_manager),
       pipeline_(pipeline), remote_text_service_(remote_text_service) {
-  if (recognition_manager_) {
+  if (recognition_manager_ != nullptr) {
     recognition_manager_->SetReloadResultCallback([this](bool success, const std::string& message) {
       if (success) {
         return;
@@ -278,7 +278,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
 
   {
-    const std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (phase_ == vinput::dbus::Status::Recording) {
       accepting_chunks_.store(false, std::memory_order_relaxed);
       stop_capture = true;
@@ -341,10 +341,11 @@ bool DaemonRuntimeController::SynchronizeAsrBackend(std::string* error) {
   if (!recognition_manager_->SynchronizeBackend(runtime_settings, error)) {
     return false;
   }
-  if (remote_text_service_ && !remote_text_service_->Synchronize(runtime_settings, error)) {
+  if (remote_text_service_ != nullptr &&
+      !remote_text_service_->Synchronize(runtime_settings, error)) {
     return false;
   }
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -352,7 +353,7 @@ bool DaemonRuntimeController::SynchronizeAsrBackend(std::string* error) {
 
 DbusService::MethodResult DaemonRuntimeController::ReloadAsrBackend() {
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (phase_ != vinput::dbus::Status::Idle || start_recording_in_progress_) {
       pending_asr_backend_reload_ = true;
       VLOG_DEBUG("ASR backend reload deferred until idle (phase: {} start_in_progress={})",
@@ -376,7 +377,7 @@ DbusService::MethodResult DaemonRuntimeController::ReloadAsrBackend() {
 
 void DaemonRuntimeController::MaybeApplyPendingAsrBackendReload() {
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (!pending_asr_backend_reload_ || phase_ != vinput::dbus::Status::Idle) {
       return;
     }
@@ -407,7 +408,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
   }
 
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (phase_ != vinput::dbus::Status::Idle || start_recording_in_progress_) {
       VLOG_DEBUG("start rejected (phase: {} start_in_progress={})",
                  vinput::dbus::StatusToString(phase_), start_recording_in_progress_);
@@ -440,7 +441,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       message = std::string(vinput::str::StripSuffix(message, ".")) + ": " + error;
     }
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      const std::scoped_lock lock(state_mutex_);
       start_recording_in_progress_ = false;
       accepting_chunks_.store(false, std::memory_order_relaxed);
       startup_pcm_buffer_.Clear();
@@ -460,7 +461,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     }
     capture_->EndRecording();
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      const std::scoped_lock lock(state_mutex_);
       start_recording_in_progress_ = false;
       accepting_chunks_.store(false, std::memory_order_relaxed);
       startup_pcm_buffer_.Clear();
@@ -499,7 +500,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
 
   bool abort_started_capture = false;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (!start_recording_in_progress_ || phase_ != vinput::dbus::Status::Idle) {
       start_recording_in_progress_ = false;
       accepting_chunks_.store(false, std::memory_order_relaxed);
@@ -599,7 +600,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
   std::vector<int16_t> chunk_to_push;
   bool streaming_mode = false;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (!active_session_) {
       return;
     }
@@ -631,7 +632,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
     std::string push_error;
     bool pushed = false;
     {
-      std::lock_guard<std::mutex> session_lock(session_io_mutex_);
+      const std::scoped_lock session_lock(session_io_mutex_);
       pushed = session->PushAudio(chunk_to_push, &push_error);
     }
     if (!pushed && push_error.empty()) {
@@ -646,7 +647,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
     bool keep_processing = false;
     bool session_retired = false;
     {
-      std::lock_guard<std::mutex> lock(state_mutex_);
+      const std::scoped_lock lock(state_mutex_);
       if (active_session_ != session) {
         deferred_cancelled_sessions_.push_back(session);
         session_retired = true;
@@ -815,7 +816,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
   std::vector<int16_t> captured_pcm;
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (phase_ != vinput::dbus::Status::Recording) {
       VLOG_DEBUG("stop rejected (phase: {})", vinput::dbus::StatusToString(phase_));
       return DbusService::MethodResult::Failure(_("Recording is not active."));
@@ -843,7 +844,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
   }
 
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     if (!active_session_) {
       VLOG_DEBUG("recording stopped without active session");
       phase_ = vinput::dbus::Status::Idle;
@@ -939,7 +940,7 @@ DaemonRuntimeController::ReleaseActiveSessionLocked() {
   current_recording_pcm_.clear();
   pending_chunk_pcm_.clear();
   current_sample_count_ = 0;
-  current_input_gain_ = 1.0f;
+  current_input_gain_ = 1.0F;
   latest_final_text_.clear();
   recording_started_at_.reset();
   first_non_silent_at_.reset();
@@ -949,7 +950,7 @@ DaemonRuntimeController::ReleaseActiveSessionLocked() {
 }
 
 std::string DaemonRuntimeController::GetStatus() const {
-  std::lock_guard<std::mutex> lock(state_mutex_);
+  const std::scoped_lock lock(state_mutex_);
   return vinput::dbus::StatusToString(phase_);
 }
 
@@ -965,7 +966,7 @@ vinput::dbus::AsrBackendState DaemonRuntimeController::GetAsrBackendState() cons
       .has_effective_backend = snapshot.has_effective_backend,
       .remote_endpoints = {},
   };
-  if (remote_text_service_) {
+  if (remote_text_service_ != nullptr) {
     state.remote_endpoints = remote_text_service_->ListEndpoints();
   }
   return state;
@@ -1012,7 +1013,7 @@ void DaemonRuntimeController::FlushDeferredActions() {
   vinput::dbus::Status phase_snapshot = vinput::dbus::Status::Idle;
   bool start_in_progress = false;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     phase_snapshot = phase_;
     start_in_progress = start_recording_in_progress_;
     skip_teardown = start_recording_in_progress_ || capture_->IsRecording() ||
@@ -1060,13 +1061,13 @@ void DaemonRuntimeController::Shutdown() {
   RestoreOutputIfDucked();
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    const std::scoped_lock lock(state_mutex_);
     start_recording_in_progress_ = false;
     session_to_cancel = ReleaseActiveSessionLocked();
     worker_running_ = false;
   }
   if (session_to_cancel) {
-    std::lock_guard<std::mutex> session_lock(session_io_mutex_);
+    const std::scoped_lock session_lock(session_io_mutex_);
     session_to_cancel->Cancel();
   }
   worker_cv_.notify_all();
@@ -1112,7 +1113,7 @@ void DaemonRuntimeController::ResetToIdle() {
     current_recording_pcm_.clear();
     pending_chunk_pcm_.clear();
     current_sample_count_ = 0;
-    current_input_gain_ = 1.0f;
+    current_input_gain_ = 1.0F;
     recording_started_at_.reset();
     first_non_silent_at_.reset();
     first_partial_logged_ = false;
@@ -1154,13 +1155,13 @@ void DaemonRuntimeController::WorkerMain() {
           vinput::audio::PeakNormalize(float_samples);
 
           std::string push_error;
-          const std::lock_guard<std::mutex> session_lock(session_io_mutex_);
+          const std::scoped_lock session_lock(session_io_mutex_);
           if (!order.session->PushAudio(float_samples, &push_error)) {
             throw std::runtime_error(push_error.empty() ? kFailedToPushAudioError : push_error);
           }
         } else if (!order.pcm.empty()) {
           std::string push_error;
-          const std::lock_guard<std::mutex> session_lock(session_io_mutex_);
+          const std::scoped_lock session_lock(session_io_mutex_);
           if (!order.session->PushAudio(order.pcm, &push_error)) {
             throw std::runtime_error(push_error.empty() ? kFailedToPushAudioError : push_error);
           }

@@ -43,7 +43,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
                              const std::function<void()>& on_enter_postprocessing,
                              const std::atomic<bool>* cancel_flag) const {
   RecognitionPipelineResult output;
-  if (!post_processor_) {
+  if (post_processor_ == nullptr) {
     output.errors.emplace_back("Recognition pipeline is not initialized.");
     return output;
   }
@@ -68,7 +68,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
     vinput::scene::Definition fallback_cmd;
     fallback_cmd.id = std::string(vinput::scene::kCommandSceneId);
     fallback_cmd.builtin = true;
-    const auto& command_scene = cmd_scene ? *cmd_scene : fallback_cmd;
+    const auto& command_scene = (cmd_scene != nullptr) ? *cmd_scene : fallback_cmd;
     std::string llm_error;
     output.payload =
         post_processor_->ProcessCommand(order.recognized_text, order.selected_text, command_scene,

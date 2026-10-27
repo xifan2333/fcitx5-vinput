@@ -29,8 +29,8 @@
 #include <qfont.h>
 #include <qformlayout.h>
 #include <qframe.h>
-#include <qglobal.h>
 #include <qlabel.h>
+#include <qlist.h>
 #include <qmessagebox.h>
 #include <qnamespace.h>
 #include <qobjectdefs.h>
@@ -421,7 +421,7 @@ void ControlPage::populateAsrList(const CoreConfig& config,
       display += " · " + QString::fromStdString(command->command);
     }
 
-    QStringList markers;
+    QList<QString> markers;
     if (id == selected_id) {
       markers << tr("configured");
     }
@@ -439,7 +439,7 @@ void ControlPage::populateAsrList(const CoreConfig& config,
     }
     if (id == effective_id && (backend_state != nullptr) &&
         !backend_state->remote_endpoints.empty()) {
-      QStringList urls;
+      QList<QString> urls;
       for (const auto& endpoint : backend_state->remote_endpoints) {
         urls << QString::fromStdString(endpoint);
       }
@@ -602,14 +602,14 @@ void ControlPage::refreshAdapterList() {
       tooltip += "\n" + tr("Command: %1").arg(command);
     }
     if (!adapter.args.empty()) {
-      QStringList argsList;
+      QList<QString> argsList;
       for (const auto& a : adapter.args) {
         argsList << QString::fromStdString(a);
       }
       tooltip += "\n" + tr("Args: %1").arg(argsList.join(" "));
     }
     if (!adapter.env.empty()) {
-      QStringList envList;
+      QList<QString> envList;
       for (const auto& [k, v] : adapter.env) {
         envList << QString::fromStdString(k) + "=" + QString::fromStdString(v);
       }

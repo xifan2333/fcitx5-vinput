@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -7,12 +8,13 @@
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/event.h>
+#include <fcitx-utils/eventloopinterface.h>
+#include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
 #include <fcitx/userinterface.h>
-#include <libintl.h>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,6 +39,7 @@ using namespace vinput::dbus;
 
 namespace {
 
+constexpr auto kStatusClock = 1; // POSIX CLOCK_MONOTONIC
 constexpr uint64_t kStatusSyncIntervalUsec = 200ULL * 1000;
 constexpr auto kPolledIdleRecoveryDelay =
     std::chrono::milliseconds(vinput::runtime::kDbusCallTimeoutMs);
@@ -211,12 +214,14 @@ std::string RenderMethodCallFailure(std::string_view error_name, std::string_vie
 } // namespace
 
 void VinputEngine::setupDBusWatcher() {
-  if (!bus_)
+  if (bus_ == nullptr) {
     return;
+  }
 
   const std::weak_ptr<bool> token = lifetime_token_;
 
-  fcitx::dbus::MatchRule result_rule(kBusName, kObjectPath, kInterface, kSignalRecognitionResult);
+  const fcitx::dbus::MatchRule result_rule(kBusName, kObjectPath, kInterface,
+                                           kSignalRecognitionResult);
 
   result_slot_ = bus_->addMatch(result_rule, [this, token](fcitx::dbus::Message& msg) {
     if (token.expired()) {
@@ -226,7 +231,8 @@ void VinputEngine::setupDBusWatcher() {
     return true;
   });
 
-  fcitx::dbus::MatchRule partial_rule(kBusName, kObjectPath, kInterface, kSignalRecognitionPartial);
+  const fcitx::dbus::MatchRule partial_rule(kBusName, kObjectPath, kInterface,
+                                            kSignalRecognitionPartial);
 
   partial_slot_ = bus_->addMatch(partial_rule, [this, token](fcitx::dbus::Message& msg) {
     if (token.expired()) {
@@ -236,7 +242,7 @@ void VinputEngine::setupDBusWatcher() {
     return true;
   });
 
-  fcitx::dbus::MatchRule status_rule(kBusName, kObjectPath, kInterface, kSignalStatusChanged);
+  const fcitx::dbus::MatchRule status_rule(kBusName, kObjectPath, kInterface, kSignalStatusChanged);
 
   status_slot_ = bus_->addMatch(status_rule, [this, token](fcitx::dbus::Message& msg) {
     if (token.expired()) {
@@ -250,7 +256,7 @@ void VinputEngine::setupDBusWatcher() {
 bool VinputEngine::callStartRecording() {
   command_selected_text_.clear();
   flushContextBuffer();
-  if (!bus_ || !daemonSyncAllowed()) {
+  if (bus_ == nullptr || !daemonSyncAllowed()) {
     noteDaemonSyncFailure();
     return false;
   }
@@ -288,7 +294,7 @@ bool VinputEngine::callStartRecording() {
 bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
   command_selected_text_ = selected_text;
   flushContextBuffer();
-  if (!bus_ || !daemonSyncAllowed()) {
+  if (bus_ == nullptr || !daemonSyncAllowed()) {
     noteDaemonSyncFailure();
     return false;
   }
@@ -326,7 +332,7 @@ bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
 }
 
 bool VinputEngine::callStopRecording(const std::string& scene_id) {
-  if (!bus_ || !daemonSyncAllowed()) {
+  if (bus_ == nullptr || !daemonSyncAllowed()) {
     noteDaemonSyncFailure();
     return false;
   }
@@ -382,13 +388,13 @@ void VinputEngine::ensureStatusSync() {
   if (!status_sync_event_) {
     const std::weak_ptr<bool> token = lifetime_token_;
     status_sync_event_ = instance_->eventLoop().addTimeEvent(
-        CLOCK_MONOTONIC, fcitx::now(CLOCK_MONOTONIC) + kStatusSyncIntervalUsec, 0,
+        kStatusClock, fcitx::now(kStatusClock) + kStatusSyncIntervalUsec, 0,
         [this, token](fcitx::EventSourceTime* event, uint64_t) {
           if (token.expired()) {
             return false;
           }
           syncFrontendWithDaemonStatus();
-          if (!(session_.has_value() || status_ic_ != nullptr)) {
+          if (!session_.has_value() && status_ic_ == nullptr) {
             return false;
           }
           event->setNextInterval(kStatusSyncIntervalUsec);
@@ -397,7 +403,7 @@ void VinputEngine::ensureStatusSync() {
     return;
   }
 
-  status_sync_event_->setTime(fcitx::now(CLOCK_MONOTONIC) + kStatusSyncIntervalUsec);
+  status_sync_event_->setTime(fcitx::now(kStatusClock) + kStatusSyncIntervalUsec);
   status_sync_event_->setEnabled(true);
 }
 
@@ -414,12 +420,12 @@ void VinputEngine::stopStatusSyncIfIdle() {
 
 void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::Key& trigger,
                                           bool command_mode) {
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
   rememberInputContext(ic);
   status_poll_gate_.Invalidate(); // A prior session's delayed status is stale.
-  if (status_ic_ && status_ic_ != ic) {
+  if (status_ic_ != nullptr && status_ic_ != ic) {
     clearVoicePresentation(status_ic_);
   }
   const bool raw_prev = vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
@@ -445,11 +451,11 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::
 
 void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key& trigger,
                                        bool command_mode) {
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
   rememberInputContext(ic);
-  if (status_ic_ && status_ic_ != ic) {
+  if (status_ic_ != nullptr && status_ic_ != ic) {
     clearVoicePresentation(status_ic_);
   }
   const bool stop_after_start =
@@ -485,11 +491,11 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
 void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
                                   const std::string& preedit_text, bool postprocessing,
                                   std::optional<bool> raw_prev) {
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
   rememberInputContext(ic);
-  if (status_ic_ && status_ic_ != ic) {
+  if (status_ic_ != nullptr && status_ic_ != ic) {
     clearVoicePresentation(status_ic_);
   }
   const bool effective_raw_prev = raw_prev.value_or(
@@ -541,14 +547,14 @@ void VinputEngine::finishFrontendSession(fcitx::InputContext* fallback_ic) {
   if (status_ic_ == ic) {
     status_ic_ = nullptr;
   }
-  if (ic) {
+  if (ic != nullptr) {
     clearVoicePresentation(ic);
   }
   stopStatusSyncIfIdle();
 }
 
 std::string VinputEngine::queryDaemonStatus() const {
-  if (!bus_ || !daemonSyncAllowed()) {
+  if (bus_ == nullptr || !daemonSyncAllowed()) {
     return {};
   }
 
@@ -569,9 +575,10 @@ std::string VinputEngine::queryDaemonStatus() const {
 }
 
 bool VinputEngine::callReloadAsrBackend(std::string* error) {
-  if (!bus_ || !daemonSyncAllowed()) {
-    if (error) {
-      *error = bus_ ? _("Daemon access is temporarily throttled.") : "D-Bus is unavailable.";
+  if (bus_ == nullptr || !daemonSyncAllowed()) {
+    if (error != nullptr) {
+      *error = (bus_ != nullptr) ? _("Daemon access is temporarily throttled.")
+                                 : "D-Bus is unavailable.";
     }
     noteDaemonSyncFailure();
     return false;
@@ -582,7 +589,7 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
   if (!reply) {
     VLOG_DEBUG("ASR backend reload RPC failed: no reply");
     noteDaemonSyncFailure();
-    if (error) {
+    if (error != nullptr) {
       *error = _("Failed to contact vinput-daemon.");
     }
     return false;
@@ -592,7 +599,7 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
     VLOG_DEBUG("ASR backend reload RPC failed reply={} error={}", reply.errorName(),
                reply.errorMessage());
     noteDaemonSyncFailure();
-    if (error) {
+    if (error != nullptr) {
       *error = reply.errorMessage();
       if (error->empty()) {
         *error = _("Failed to reload ASR backend.");
@@ -602,7 +609,7 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
   }
   clearDaemonSyncFailure();
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;
@@ -684,7 +691,7 @@ bool VinputEngine::daemonSyncAllowed() const {
   return std::chrono::steady_clock::now() >= daemon_sync_blocked_until_;
 }
 
-void VinputEngine::noteDaemonSyncFailure() {
+void VinputEngine::noteDaemonSyncFailure() const {
   daemon_sync_blocked_until_ =
       std::chrono::steady_clock::now() + vinput::runtime::kDaemonFailureCooldown;
   VLOG_DEBUG(
@@ -693,7 +700,7 @@ void VinputEngine::noteDaemonSyncFailure() {
           .count());
 }
 
-void VinputEngine::clearDaemonSyncFailure() {
+void VinputEngine::clearDaemonSyncFailure() const {
   daemon_sync_blocked_until_ = std::chrono::steady_clock::time_point{};
 }
 
@@ -752,12 +759,12 @@ void VinputEngine::syncFrontendWithDaemonStatus() {
 void VinputEngine::applyDaemonStatusLocally(const std::string& status,
                                             fcitx::InputContext* fallback_ic,
                                             bool prefer_command_mode) {
-  if (status == kStatusIdle && !session_ && status_ic_ == nullptr) {
+  if (status == kStatusIdle && !session_.has_value() && status_ic_ == nullptr) {
     return;
   }
 
   auto* ic = resolveFrontendInputContext(fallback_ic);
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
 
@@ -798,7 +805,7 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
   const std::string command_selected_text = is_command ? command_selected_text_ : std::string{};
   auto* ic = resolveFrontendInputContext();
 
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
 
@@ -818,7 +825,7 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
       break;
     }
   }
-  if (!asr_candidate) {
+  if (asr_candidate == nullptr) {
     for (const auto& candidate : payload.candidates) {
       if (candidate.source != vinput::result::kSourceRaw) {
         continue;
@@ -829,7 +836,7 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
       }
     }
   }
-  if (asr_candidate && !asr_candidate->text.empty()) {
+  if (asr_candidate != nullptr && !asr_candidate->text.empty()) {
     appendContextEntry(asr_candidate->text, "asr");
   }
 
@@ -866,8 +873,8 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
     if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
       const int cursor = static_cast<int>(surrounding.cursor());
       const int anchor = static_cast<int>(surrounding.anchor());
-      int from = std::min(cursor, anchor);
-      int len = std::abs(cursor - anchor);
+      const int from = std::min(cursor, anchor);
+      const int len = std::abs(cursor - anchor);
       ic->deleteSurroundingText(from - cursor, len);
     }
   }
@@ -882,31 +889,36 @@ void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
 }
 
 void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) {
-  if (!session_ || transcript_text.empty()) {
+  if (transcript_text.empty()) {
     return;
   }
 
   auto* ic = resolveFrontendInputContext();
-  if (!ic) {
+  if (ic == nullptr) {
     return;
   }
 
   rememberInputContext(ic);
-  session_->transcript_text = transcript_text;
-  if (session_->phase == Session::Phase::Postprocessing) {
-    enterBusyState(ic, session_->command_mode,
-                   PostprocessingPreeditText(session_->command_mode, session_->raw_prev), true,
-                   session_->raw_prev);
+  if (!session_.has_value()) {
     return;
   }
 
-  if (session_->phase == Session::Phase::Inferring && !session_->raw_prev) {
+  auto& session = *session_;
+  session.transcript_text = transcript_text;
+  if (session.phase == Session::Phase::Postprocessing) {
+    enterBusyState(ic, session.command_mode,
+                   PostprocessingPreeditText(session.command_mode, session.raw_prev), true,
+                   session.raw_prev);
+    return;
+  }
+
+  if (session.phase == Session::Phase::Inferring && !session.raw_prev) {
     return;
   }
 
   updateVoicePresentation(ic, ComposeLivePreedit(transcript_text,
-                                                 session_->command_mode ? CommandingPreeditText()
-                                                                        : RecordingPreeditText(),
+                                                 session.command_mode ? CommandingPreeditText()
+                                                                      : RecordingPreeditText(),
                                                  max_streaming_display_width_));
 }
 
@@ -919,7 +931,7 @@ void VinputEngine::onStatusChanged(fcitx::dbus::Message& msg) {
   polled_idle_since_.reset();
 
   auto* ic = resolveFrontendInputContext();
-  if (ic) {
+  if (ic != nullptr) {
     rememberInputContext(ic);
   }
   applyDaemonStatusLocally(status);
@@ -932,7 +944,7 @@ void VinputEngine::sendNotification(const std::string& message, const char* icon
 
   const std::string title = _("Voice Input");
   auto* notifications = instance_->addonManager().addon("notifications", true);
-  if (notifications) {
+  if (notifications != nullptr) {
     notifications->call<fcitx::INotifications::sendNotification>(
         "fcitx5-vinput", 0, icon, title, message, std::vector<std::string>{}, timeout_ms,
         fcitx::NotificationActionCallback{}, fcitx::NotificationClosedCallback{});
@@ -956,8 +968,9 @@ void VinputEngine::dismissMenusForVoiceActivity() {
 
 void VinputEngine::updateVoicePresentation(fcitx::InputContext* ic, const std::string& preedit_text,
                                            const std::string& aux_down_text) {
-  if (!ic)
+  if (ic == nullptr) {
     return;
+  }
   dismissMenusForVoiceActivity();
   fcitx::Text preedit;
   preedit.append(preedit_text);

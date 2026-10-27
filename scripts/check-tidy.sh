@@ -76,6 +76,9 @@ else
   # Lite mode: skip the sherpa-onnx translation units (no headers locally).
   filtered=()
   for f in "${FILES[@]}"; do
+    if [ ! -f "$f" ]; then
+      continue
+    fi
     case "$f" in
     src/daemon/asr/backends/sherpa_*_backend.cpp | src/daemon/asr/hotword_utils.cpp | src/daemon/asr/vad_trimmer.cpp)
       echo "skip (needs sherpa-onnx, run with --full): $f" >&2

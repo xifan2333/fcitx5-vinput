@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <systemd/sd-bus-protocol.h>
 #include <systemd/sd-bus.h>
 #include <utility>
 #include <vector>
@@ -139,7 +140,7 @@ bool DbusClient::GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::s
   std::vector<std::string> endpoints;
   if (sd_bus_message_enter_container(reply, 'a', "s") >= 0) {
     const char* endpoint = nullptr;
-    while (sd_bus_message_read_basic(reply, 's', &endpoint) > 0) {
+    while (sd_bus_message_read_basic(reply, 's', static_cast<void*>(&endpoint)) > 0) {
       endpoints.emplace_back((endpoint != nullptr) ? endpoint : "");
     }
     sd_bus_message_exit_container(reply);

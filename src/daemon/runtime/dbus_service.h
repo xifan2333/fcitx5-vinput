@@ -4,6 +4,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <systemd/sd-bus-protocol.h>
 #include <systemd/sd-bus.h>
 #include <utility>
 #include <vector>
