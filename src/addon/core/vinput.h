@@ -49,6 +49,7 @@ public:
 
   void selectPaletteItem(std::size_t index, fcitx::InputContext* ic);
   void selectResultCandidate(std::size_t index, fcitx::InputContext* ic);
+  static void commitText(fcitx::InputContext* ic, const std::string& text);
 
   void reloadConfig() override;
   void save() override;
