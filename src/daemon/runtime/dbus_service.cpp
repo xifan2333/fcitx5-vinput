@@ -8,7 +8,6 @@
 #include <mutex>
 #include <string>
 #include <sys/eventfd.h>
-#include <systemd/sd-bus-protocol.h>
 #include <systemd/sd-bus-vtable.h>
 #include <systemd/sd-bus.h>
 #include <unistd.h>

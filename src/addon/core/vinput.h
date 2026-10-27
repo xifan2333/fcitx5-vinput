@@ -141,8 +141,8 @@ private:
   vinput::addon::StatusPollGate status_poll_gate_;
   struct Session {
     enum class Phase : std::uint8_t { PendingStart, Recording, Inferring, Postprocessing };
-    Phase phase;
-    fcitx::InputContext* ic;
+    Phase phase = Phase::PendingStart;
+    fcitx::InputContext* ic = nullptr;
     fcitx::Key trigger;
     std::chrono::steady_clock::time_point press_time;
     bool command_mode = false;

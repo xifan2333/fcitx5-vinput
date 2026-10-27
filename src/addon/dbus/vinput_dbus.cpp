@@ -8,7 +8,6 @@
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/event.h>
-#include <fcitx-utils/eventloopinterface.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx/inputcontext.h>
@@ -89,7 +88,7 @@ std::string LimitPreviewText(std::string_view text, int max_display_width) {
   const auto max_width = static_cast<size_t>(max_display_width);
   std::u32string u32;
   unicode::utf8::decode(text.data(), text.size(), u32);
-  const size_t total_width =
+  const auto total_width =
       static_cast<size_t>(std::max(0, unicode::width(u32, unicode::AmbiguousWidth::Wide)));
   if (total_width <= max_width) {
     return std::string(text);
@@ -98,7 +97,7 @@ std::string LimitPreviewText(std::string_view text, int max_display_width) {
   constexpr std::string_view ellipsis = "...";
   std::u32string ellipsis_u32;
   unicode::utf8::decode(ellipsis.data(), ellipsis.size(), ellipsis_u32);
-  const size_t ellipsis_width =
+  const auto ellipsis_width =
       static_cast<size_t>(std::max(0, unicode::width(ellipsis_u32, unicode::AmbiguousWidth::Wide)));
 
   struct GraphemeInfo {
@@ -109,8 +108,8 @@ std::string LimitPreviewText(std::string_view text, int max_display_width) {
   std::vector<GraphemeInfo> graphemes;
   size_t i = 0;
   while (i < u32.size()) {
-    const size_t glen = unicode::grapheme_length(u32.data() + i, u32.size() - i);
-    const size_t gwidth = static_cast<size_t>(
+    const auto glen = unicode::grapheme_length(u32.data() + i, u32.size() - i);
+    const auto gwidth = static_cast<size_t>(
         std::max(0, unicode::width(u32.data() + i, glen, unicode::AmbiguousWidth::Wide)));
     graphemes.push_back({i, glen, gwidth});
     i += glen;
@@ -429,20 +428,15 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::
     clearVoicePresentation(status_ic_);
   }
   const bool raw_prev = vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
-  if (!session_) {
-    session_.emplace(Session{.phase = Session::Phase::PendingStart,
-                             .ic = ic,
-                             .trigger = trigger,
-                             .press_time = std::chrono::steady_clock::now(),
-                             .command_mode = command_mode,
-                             .raw_prev = raw_prev});
-  } else {
-    session_->phase = Session::Phase::PendingStart;
-    session_->ic = ic;
-    session_->trigger = trigger;
-    session_->command_mode = command_mode;
-    session_->raw_prev = raw_prev;
+  if (!session_.has_value()) {
+    session_.emplace();
+    session_->press_time = std::chrono::steady_clock::now();
   }
+  session_->phase = Session::Phase::PendingStart;
+  session_->ic = ic;
+  session_->trigger = trigger;
+  session_->command_mode = command_mode;
+  session_->raw_prev = raw_prev;
   status_ic_ = ic;
   updateVoicePresentation(
       ic, ComposeLivePreedit({}, StartingPreeditText(), max_streaming_display_width_));
@@ -463,20 +457,15 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
       session_->phase == Session::Phase::PendingStart && session_->trigger_released;
   const bool raw_prev = session_ ? session_->raw_prev
                                  : vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
-  if (!session_) {
-    session_.emplace(Session{.phase = Session::Phase::Recording,
-                             .ic = ic,
-                             .trigger = trigger,
-                             .press_time = std::chrono::steady_clock::now(),
-                             .command_mode = command_mode,
-                             .raw_prev = raw_prev});
-  } else {
-    session_->phase = Session::Phase::Recording;
-    session_->ic = ic;
-    session_->trigger = trigger;
-    session_->command_mode = command_mode;
-    session_->raw_prev = raw_prev;
+  if (!session_.has_value()) {
+    session_.emplace();
+    session_->press_time = std::chrono::steady_clock::now();
   }
+  session_->phase = Session::Phase::Recording;
+  session_->ic = ic;
+  session_->trigger = trigger;
+  session_->command_mode = command_mode;
+  session_->raw_prev = raw_prev;
   status_ic_ = ic;
   updateVoicePresentation(
       ic, ComposeLivePreedit(session_ ? session_->transcript_text : std::string{},
@@ -502,20 +491,15 @@ void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
       session_ ? session_->raw_prev
                : vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev);
   const auto phase = postprocessing ? Session::Phase::Postprocessing : Session::Phase::Inferring;
-  if (!session_) {
-    session_.emplace(Session{.phase = phase,
-                             .ic = ic,
-                             .trigger = fcitx::Key(),
-                             .press_time = std::chrono::steady_clock::now(),
-                             .command_mode = command_mode,
-                             .raw_prev = effective_raw_prev});
-  } else {
-    session_->phase = phase;
-    session_->ic = ic;
-    session_->trigger = fcitx::Key();
-    session_->command_mode = command_mode;
-    session_->raw_prev = effective_raw_prev;
+  if (!session_.has_value()) {
+    session_.emplace();
+    session_->press_time = std::chrono::steady_clock::now();
   }
+  session_->phase = phase;
+  session_->ic = ic;
+  session_->trigger = fcitx::Key();
+  session_->command_mode = command_mode;
+  session_->raw_prev = effective_raw_prev;
   status_ic_ = ic;
   if (!session_->raw_prev) {
     updateVoicePresentation(ic, preedit_text);
