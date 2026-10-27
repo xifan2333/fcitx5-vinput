@@ -357,7 +357,10 @@ bool ValidateTransducerHotwordAssets(const ModelInfo& info, std::string* error) 
       }
       return false;
     }
-    if (!ValidateBpeVocabulary(bpe_vocab, error)) {
+    if (auto valid_res = ValidateBpeVocabulary(bpe_vocab); !valid_res) {
+      if (error != nullptr) {
+        *error = valid_res.error();
+      }
       return false;
     }
   }

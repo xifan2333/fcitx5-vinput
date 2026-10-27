@@ -159,24 +159,20 @@ Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> mess
 
 } // namespace
 
-bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
-                                   const std::filesystem::path& vocab_path, std::string* error) {
+vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
+                                                     const std::filesystem::path& vocab_path) {
   std::error_code size_error;
   const auto model_size = std::filesystem::file_size(model_path, size_error);
-  if (size_error || model_size > kMaxSentencePieceModelBytes) {
-    if (error != nullptr) {
-      *error = size_error ? "failed to inspect SentencePiece model: " + size_error.message()
-                          : "SentencePiece model exceeds 64 MiB limit: " + model_path.string();
-    }
-    return false;
+  if (size_error) {
+    return vinput::Unexpected("failed to inspect SentencePiece model: " + size_error.message());
+  }
+  if (model_size > kMaxSentencePieceModelBytes) {
+    return vinput::Unexpected("SentencePiece model exceeds 64 MiB limit: " + model_path.string());
   }
 
   auto mapping_res = vinput::file::MapFileReadOnly(model_path);
   if (!mapping_res) {
-    if (error != nullptr) {
-      *error = "failed to open SentencePiece model: " + mapping_res.error();
-    }
-    return false;
+    return vinput::Unexpected("failed to open SentencePiece model: " + mapping_res.error());
   }
   const auto& mapping = *mapping_res;
   const std::string_view data = mapping.View();
@@ -190,84 +186,60 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
   while (!reader.Empty()) {
     const auto key = reader.ReadVarint();
     if (!key.has_value()) {
-      if (error != nullptr) {
-        *error = "invalid SentencePiece ModelProto: " + model_path.string();
-      }
-      return false;
+      return vinput::Unexpected("invalid SentencePiece ModelProto: " + model_path.string());
     }
     const auto field = static_cast<std::uint32_t>(*key >> 3);
     const auto wire = static_cast<std::uint32_t>(*key & 7);
     if (field == 1 && wire == 2) {
       const auto message = reader.ReadLengthDelimited();
       if (!message.has_value()) {
-        if (error != nullptr) {
-          *error = "invalid SentencePiece piece record: " + model_path.string();
-        }
-        return false;
+        return vinput::Unexpected("invalid SentencePiece piece record: " + model_path.string());
       }
       auto record = vinput::asr::ParseSentencePiece(*message);
       if (!record || record->piece.empty() || record->piece.size() > kMaxPieceBytes ||
           !std::isfinite(record->score) ||
           record->piece.find_first_of("\t\r\n") != std::string::npos) {
-        if (error != nullptr) {
-          *error = "unsupported SentencePiece piece record in: " + model_path.string();
-        }
-        return false;
+        return vinput::Unexpected("unsupported SentencePiece piece record in: " +
+                                  model_path.string());
       }
       output << record->piece << '\t' << record->score << '\n';
       ++piece_count;
       const auto tell_pos = static_cast<std::streamoff>(output.tellp());
       if (piece_count > kMaxPieceCount || tell_pos < 0 ||
           std::cmp_greater(tell_pos, kMaxBpeVocabularyBytes)) {
-        if (error != nullptr) {
-          *error = "SentencePiece vocabulary exceeds safety limits: " + model_path.string();
-        }
-        return false;
+        return vinput::Unexpected("SentencePiece vocabulary exceeds safety limits: " +
+                                  model_path.string());
       }
     } else if (!reader.SkipField(wire)) {
-      if (error != nullptr) {
-        *error = "unsupported SentencePiece ModelProto field in: " + model_path.string();
-      }
-      return false;
+      return vinput::Unexpected("unsupported SentencePiece ModelProto field in: " +
+                                model_path.string());
     }
   }
 
   if (piece_count == 0) {
-    if (error != nullptr) {
-      *error = "SentencePiece model contains no vocabulary pieces: " + model_path.string();
-    }
-    return false;
+    return vinput::Unexpected("SentencePiece model contains no vocabulary pieces: " +
+                              model_path.string());
   }
 
   if (auto res = vinput::file::AtomicWriteTextFile(vocab_path, output.str()); !res) {
-    if (error != nullptr) {
-      *error = "failed to write BPE vocabulary: " + res.error();
-    }
-    return false;
+    return vinput::Unexpected("failed to write BPE vocabulary: " + res.error());
   }
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
+  return {};
 }
 
-bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string* error) {
+vinput::Expected<void> ValidateBpeVocabulary(const std::filesystem::path& vocab_path) {
   std::error_code size_error;
   const auto vocab_size = std::filesystem::file_size(vocab_path, size_error);
-  if (size_error || vocab_size == 0 || vocab_size > kMaxBpeVocabularyBytes) {
-    if (error != nullptr) {
-      *error = size_error ? "failed to inspect BPE vocabulary: " + size_error.message()
-                          : "BPE vocabulary is empty or exceeds 256 MiB: " + vocab_path.string();
-    }
-    return false;
+  if (size_error) {
+    return vinput::Unexpected("failed to inspect BPE vocabulary: " + size_error.message());
+  }
+  if (vocab_size == 0 || vocab_size > kMaxBpeVocabularyBytes) {
+    return vinput::Unexpected("BPE vocabulary is empty or exceeds 256 MiB: " + vocab_path.string());
   }
 
   std::ifstream input(vocab_path, std::ios::binary);
   if (!input) {
-    if (error != nullptr) {
-      *error = "failed to open BPE vocabulary: " + vocab_path.string();
-    }
-    return false;
+    return vinput::Unexpected("failed to open BPE vocabulary: " + vocab_path.string());
   }
 
   std::string line;
@@ -278,10 +250,7 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
     }
     const auto tab = line.find('\t');
     if (tab == std::string::npos || tab == 0 || tab + 1 >= line.size() || tab > kMaxPieceBytes) {
-      if (error != nullptr) {
-        *error = "invalid BPE vocabulary line in: " + vocab_path.string();
-      }
-      return false;
+      return vinput::Unexpected("invalid BPE vocabulary line in: " + vocab_path.string());
     }
     const std::string score_text = line.substr(tab + 1);
     float score = 0.0F;
@@ -289,26 +258,14 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
         std::from_chars(score_text.data(), score_text.data() + score_text.size(), score);
     if (ec != std::errc{} || ptr != score_text.data() + score_text.size() ||
         !std::isfinite(score)) {
-      if (error != nullptr) {
-        *error = "invalid BPE vocabulary score in: " + vocab_path.string();
-      }
-      return false;
+      return vinput::Unexpected("invalid BPE vocabulary score in: " + vocab_path.string());
     }
     if (++piece_count > kMaxPieceCount) {
-      if (error != nullptr) {
-        *error = "BPE vocabulary has too many pieces: " + vocab_path.string();
-      }
-      return false;
+      return vinput::Unexpected("BPE vocabulary has too many pieces: " + vocab_path.string());
     }
   }
   if ((!input.good() && !input.eof()) || piece_count == 0) {
-    if (error != nullptr) {
-      *error = "failed to read BPE vocabulary: " + vocab_path.string();
-    }
-    return false;
+    return vinput::Unexpected("failed to read BPE vocabulary: " + vocab_path.string());
   }
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
+  return {};
 }
