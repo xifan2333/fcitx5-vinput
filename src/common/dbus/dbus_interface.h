@@ -3,16 +3,11 @@
 #include <string>
 #include <vector>
 
-#include "common/dbus/error_info.h"
-
 namespace vinput::dbus {
 
-constexpr const char* kFcitxBusName = "org.fcitx.Fcitx5";
 constexpr const char* kBusName = "org.fcitx.Vinput";
 constexpr const char* kObjectPath = "/org/fcitx/Vinput";
 constexpr const char* kInterface = "org.fcitx.Vinput.Service";
-constexpr const char* kNotifierObjectPath = "/org/fcitx/Fcitx5/Vinput";
-constexpr const char* kNotifierInterface = "org.fcitx.Fcitx5.Vinput1";
 
 constexpr const char* kMethodStartRecording = "StartRecording";
 constexpr const char* kMethodStartCommandRecording = "StartCommandRecording";
@@ -23,12 +18,10 @@ constexpr const char* kMethodGetAsrBackendState = "GetAsrBackendState";
 constexpr const char* kMethodReloadAsrBackend = "ReloadAsrBackend";
 constexpr const char* kMethodStartAdapter = "StartAdapter";
 constexpr const char* kMethodStopAdapter = "StopAdapter";
-constexpr const char* kMethodNotify = "Notify";
 
 constexpr const char* kSignalRecognitionResult = "RecognitionResult";
 constexpr const char* kSignalRecognitionPartial = "RecognitionPartial";
 constexpr const char* kSignalStatusChanged = "StatusChanged";
-constexpr const char* kSignalDaemonNotification = "DaemonNotification";
 
 constexpr const char* kErrorOperationFailed = "org.fcitx.Vinput.Error.OperationFailed";
 constexpr const char* kStatusIdle = "idle";

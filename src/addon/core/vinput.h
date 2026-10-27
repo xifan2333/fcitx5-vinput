@@ -25,13 +25,11 @@
 #include "common/asr/recognition_result.h"
 #include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
-#include "common/dbus/error_info.h"
 #include "common/scene/postprocess_scene.h"
 
 #include "dbus/status_poll_gate.h"
 #include "menu/palette_command.h"
 
-class VinputNotifierDBusObject;
 namespace vinput::addon {
 class AsyncContextWriter;
 }
@@ -89,9 +87,7 @@ private:
   void onRecognitionPartial(fcitx::dbus::Message& msg);
   void handleRecognitionPartial(const std::string& transcript_text);
   void onStatusChanged(fcitx::dbus::Message& msg);
-  void onDaemonNotification(fcitx::dbus::Message& msg);
-  void showDaemonNotification(const vinput::dbus::ErrorInfo& notification);
-  void notifyError(const vinput::dbus::ErrorInfo& error);
+  void sendNotification(const std::string& message, const char* icon, int timeout_ms);
   void notifyError(const std::string& message);
   void notifyInfo(const std::string& message);
   std::string queryDaemonStatus() const;
@@ -127,11 +123,9 @@ private:
   fcitx::EventDispatcher event_dispatcher_;
   std::vector<std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>> eventHandlers_;
   fcitx::dbus::Bus* bus_ = nullptr;
-  std::unique_ptr<VinputNotifierDBusObject> notifier_dbus_;
   std::unique_ptr<fcitx::dbus::Slot> result_slot_;
   std::unique_ptr<fcitx::dbus::Slot> partial_slot_;
   std::unique_ptr<fcitx::dbus::Slot> status_slot_;
-  std::unique_ptr<fcitx::dbus::Slot> error_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_start_call_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_stop_call_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_status_call_slot_;
