@@ -22,7 +22,6 @@
 
 #include "common/config/core_config.h"
 #include "common/config/vinput_config.h"
-#include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/scene/postprocess_scene.h"

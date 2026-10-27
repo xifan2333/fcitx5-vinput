@@ -23,8 +23,30 @@
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
+#include <cmath>
+#include <qboxlayout.h>
+#include <qcombobox.h>
+#include <qfont.h>
+#include <qformlayout.h>
+#include <qframe.h>
+#include <qglobal.h>
+#include <qlabel.h>
+#include <qmessagebox.h>
+#include <qnamespace.h>
+#include <qobjectdefs.h>
+#include <qpointer.h>
+#include <qspinbox.h>
+#include <qthreadpool.h>
+#include <qtimer.h>
+#include <qtmetamacros.h>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "common/audio/pipewire_device.h"
+#include "common/config/core_config_types.h"
+#include "common/dbus/dbus_interface.h"
 #include "common/llm/adapter_manager.h"
 #include "common/registry/registry_i18n.h"
 #include "common/utils/sandbox.h"
@@ -46,7 +68,7 @@ bool ReloadAsrBackend(std::string* error = nullptr) {
   vinput::cli::DbusClient dbus;
   std::string daemon_error;
   if (!dbus.IsDaemonRunning(&daemon_error)) {
-    if (error) {
+    if (error != nullptr) {
       *error = daemon_error;
     }
     return daemon_error.empty();
@@ -58,7 +80,7 @@ bool GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::string* error
   vinput::cli::DbusClient dbus;
   std::string daemon_error;
   if (!dbus.IsDaemonRunning(&daemon_error)) {
-    if (error) {
+    if (error != nullptr) {
       *error = daemon_error;
     }
     return false;
@@ -67,7 +89,7 @@ bool GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::string* error
 }
 
 template <typename Callback> void RunReloadAsrBackendAsync(ControlPage* page, Callback callback) {
-  QPointer<ControlPage> self(page);
+  const QPointer<ControlPage> self(page);
   QThreadPool::globalInstance()->start([self, callback = std::move(callback)]() mutable {
     std::string err;
     const bool ok = ReloadAsrBackend(&err);
@@ -81,7 +103,7 @@ template <typename Callback> void RunReloadAsrBackendAsync(ControlPage* page, Ca
 }
 
 template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, Callback callback) {
-  QPointer<ControlPage> self(page);
+  const QPointer<ControlPage> self(page);
   QThreadPool::globalInstance()->start([self, callback = std::move(callback)]() mutable {
     vinput::dbus::AsrBackendState state;
     std::string err;
@@ -118,10 +140,12 @@ void RunAdapterControlAsync(ControlPage* page, std::string adapter_id, bool star
 } // namespace
 
 ControlPage::ControlPage(QWidget* parent)
-    : QWidget(parent), listAdapters_(new QListWidget(this)),
-      btnAdapterStart_(new QPushButton(tr("Start"), this)),
+    : QWidget(parent), comboDevice_(new QComboBox()), spinInputGain_(new QDoubleSpinBox()),
+      spinDuckVolume_(new QSpinBox()), listAsrProviders_(new QListWidget()),
+      listAdapters_(new QListWidget(this)), btnAdapterStart_(new QPushButton(tr("Start"), this)),
       btnAdapterStop_(new QPushButton(tr("Stop"), this)),
-      chkAdapterAutostart_(new QCheckBox(tr("Start with daemon"), this)) {
+      chkAdapterAutostart_(new QCheckBox(tr("Start with daemon"), this)),
+      daemonRefreshTimer_(new QTimer(this)) {
   auto* layout = new QVBoxLayout(this);
 
   // Audio section: capture device + audio processing knobs.
@@ -132,7 +156,7 @@ ControlPage::ControlPage(QWidget* parent)
 
   auto* formLayout = new QFormLayout();
   formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  comboDevice_ = new QComboBox();
+
   comboDevice_->setEditable(false);
   formLayout->addRow(tr("Capture Device:"), comboDevice_);
 
@@ -141,7 +165,6 @@ ControlPage::ControlPage(QWidget* parent)
       tr("Apply peak normalization to captured audio before recognition."));
   formLayout->addRow(QString(), chkNormalizeAudio_);
 
-  spinInputGain_ = new QDoubleSpinBox();
   spinInputGain_->setRange(0.1, 10.0);
   spinInputGain_->setSingleStep(0.1);
   spinInputGain_->setDecimals(1);
@@ -159,7 +182,6 @@ ControlPage::ControlPage(QWidget* parent)
                                 "Useful when speaker sound leaks into the microphone."));
   formLayout->addRow(QString(), chkDuckOutput_);
 
-  spinDuckVolume_ = new QSpinBox();
   spinDuckVolume_->setRange(0, 100);
   spinDuckVolume_->setSuffix(tr(" %"));
   spinDuckVolume_->setToolTip(tr("Fraction of the current output volume to keep while recording."));
@@ -182,7 +204,7 @@ ControlPage::ControlPage(QWidget* parent)
   asrLayout->addWidget(asrTitle);
 
   auto* asrListLayout = new QHBoxLayout();
-  listAsrProviders_ = new QListWidget();
+
   asrListLayout->addWidget(listAsrProviders_);
 
   auto* asrBtnLayout = new QVBoxLayout();
@@ -271,7 +293,6 @@ ControlPage::ControlPage(QWidget* parent)
 
   layout->addStretch();
 
-  daemonRefreshTimer_ = new QTimer(this);
   connect(daemonRefreshTimer_, &QTimer::timeout, this, &ControlPage::refreshDaemonStatus);
   daemonRefreshTimer_->start(2000);
 
@@ -284,8 +305,8 @@ void ControlPage::reload() {
   comboDevice_->addItem("default", "default");
 
   const auto devices = vinput::pw::EnumerateAudioSources();
-  CoreConfig config = ConfigManager::Get().Load();
-  QString activeDevice = QString::fromStdString(config.global.captureDevice);
+  const CoreConfig config = ConfigManager::Get().Load();
+  const QString activeDevice = QString::fromStdString(config.global.captureDevice);
 
   chkNormalizeAudio_->setChecked(config.asr.normalizeAudio);
   spinInputGain_->setValue(config.asr.inputGain);
@@ -293,13 +314,13 @@ void ControlPage::reload() {
   chkVadEnabled_->setChecked(config.asr.vad.enabled);
 #endif
   chkDuckOutput_->setChecked(config.global.duckOutputWhileRecording);
-  spinDuckVolume_->setValue(static_cast<int>(config.global.duckOutputVolume * 100.0 + 0.5));
+  spinDuckVolume_->setValue(static_cast<int>(std::lround(config.global.duckOutputVolume * 100.0)));
   spinDuckVolume_->setEnabled(chkDuckOutput_->isChecked());
 
   for (const auto& dev : devices) {
-    QString name = QString::fromStdString(dev.name);
-    QString desc = QString::fromStdString(dev.description);
-    QString label = desc.isEmpty() ? name : desc;
+    const QString name = QString::fromStdString(dev.name);
+    const QString desc = QString::fromStdString(dev.description);
+    const QString label = desc.isEmpty() ? name : desc;
     comboDevice_->addItem(label, name);
     if (name == activeDevice) {
       comboDevice_->setCurrentIndex(comboDevice_->count() - 1);
@@ -315,8 +336,9 @@ void ControlPage::reload() {
 
 QString ControlPage::currentDevice() const {
   QString val = comboDevice_->currentData().toString();
-  if (val.isEmpty())
+  if (val.isEmpty()) {
     val = comboDevice_->currentText();
+  }
   return val;
 }
 
@@ -343,7 +365,7 @@ double ControlPage::duckOutputVolume() const {
 }
 
 void ControlPage::refreshAsrList() {
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
   populateAsrList(config, nullptr);
   RunGetAsrBackendStateAsync(
       this, [this](bool ok, const vinput::dbus::AsrBackendState& state, const std::string&) {
@@ -357,15 +379,17 @@ void ControlPage::refreshAsrList() {
 void ControlPage::populateAsrList(const CoreConfig& config,
                                   const vinput::dbus::AsrBackendState* backend_state) {
   const QString selected_id = QString::fromStdString(config.asr.activeProvider);
-  const QString effective_id =
-      backend_state ? QString::fromStdString(backend_state->effective_provider_id) : QString{};
-  const QString target_id =
-      backend_state ? QString::fromStdString(backend_state->target_provider_id) : QString{};
-  const bool reload_in_progress = backend_state && backend_state->reload_in_progress;
-  const bool reload_failed = backend_state && !backend_state->last_error.empty();
+  const QString effective_id = (backend_state != nullptr)
+                                   ? QString::fromStdString(backend_state->effective_provider_id)
+                                   : QString{};
+  const QString target_id = (backend_state != nullptr)
+                                ? QString::fromStdString(backend_state->target_provider_id)
+                                : QString{};
+  const bool reload_in_progress = (backend_state != nullptr) && backend_state->reload_in_progress;
+  const bool reload_failed = (backend_state != nullptr) && !backend_state->last_error.empty();
 
   const QString current_selection =
-      listAsrProviders_->currentItem()
+      (listAsrProviders_->currentItem() != nullptr)
           ? listAsrProviders_->currentItem()->data(Qt::UserRole).toString()
           : QString{};
 
@@ -378,11 +402,11 @@ void ControlPage::populateAsrList(const CoreConfig& config,
       continue;
     }
 #endif
-    QString id = QString::fromStdString(AsrProviderId(provider));
-    QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
+    const QString id = QString::fromStdString(AsrProviderId(provider));
+    const QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
 
-    std::string id_str = id.toStdString();
-    QString title =
+    const std::string id_str = id.toStdString();
+    const QString title =
         QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id_str + ".title", id_str));
 
     QString display = title + " [" + type + "]";
@@ -413,7 +437,8 @@ void ControlPage::populateAsrList(const CoreConfig& config,
     if (!markers.isEmpty()) {
       display += " · " + markers.join(", ");
     }
-    if (id == effective_id && backend_state && !backend_state->remote_endpoints.empty()) {
+    if (id == effective_id && (backend_state != nullptr) &&
+        !backend_state->remote_endpoints.empty()) {
       QStringList urls;
       for (const auto& endpoint : backend_state->remote_endpoints) {
         urls << QString::fromStdString(endpoint);
@@ -433,7 +458,7 @@ void ControlPage::populateAsrList(const CoreConfig& config,
 
 void ControlPage::updateAsrButtons() {
   auto* item = listAsrProviders_->currentItem();
-  if (!item) {
+  if (item == nullptr) {
     btnAsrEdit_->setEnabled(false);
     btnAsrSetActive_->setEnabled(false);
     return;
@@ -445,9 +470,10 @@ void ControlPage::updateAsrButtons() {
 
 void ControlPage::onAsrEdit() {
   auto* item = listAsrProviders_->currentItem();
-  if (!item)
+  if (item == nullptr) {
     return;
-  QString provider_id = item->data(Qt::UserRole).toString();
+  }
+  const QString provider_id = item->data(Qt::UserRole).toString();
 
   CoreConfig config = ConfigManager::Get().Load();
   AsrProviderData current;
@@ -470,8 +496,9 @@ void ControlPage::onAsrEdit() {
     }
   }
 
-  if (!found)
+  if (!found) {
     return;
+  }
 
   AsrProviderData updated;
   if (!ShowAsrProviderDialog(this, tr("Edit ASR Provider"), &current, &updated)) {
@@ -479,10 +506,8 @@ void ControlPage::onAsrEdit() {
   }
 
   // Remove old
-  auto it = std::remove_if(config.asr.providers.begin(), config.asr.providers.end(),
-                           [&](const AsrProvider& p) { return AsrProviderId(p) == current.id; });
-
-  config.asr.providers.erase(it, config.asr.providers.end());
+  std::erase_if(config.asr.providers,
+                [&](const AsrProvider& p) { return AsrProviderId(p) == current.id; });
 
   // Add new
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -490,7 +515,7 @@ void ControlPage::onAsrEdit() {
     LocalAsrProvider p;
     p.model = updated.model;
     p.timeoutMs = updated.timeout_ms;
-    config.asr.providers.push_back(p);
+    config.asr.providers.emplace_back(p);
   } else
 #endif
   {
@@ -500,7 +525,7 @@ void ControlPage::onAsrEdit() {
     p.args = updated.args;
     p.env = updated.env;
     p.timeoutMs = updated.timeout_ms;
-    config.asr.providers.push_back(p);
+    config.asr.providers.emplace_back(p);
   }
 
   if (!ConfigManager::Get().Save(config)) {
@@ -520,10 +545,11 @@ void ControlPage::onAsrEdit() {
 
 void ControlPage::onAsrSetActive() {
   auto* item = listAsrProviders_->currentItem();
-  if (!item)
+  if (item == nullptr) {
     return;
+  }
 
-  QString provider_id = item->data(Qt::UserRole).toString();
+  const QString provider_id = item->data(Qt::UserRole).toString();
 
   CoreConfig config = ConfigManager::Get().Load();
   config.asr.activeProvider = provider_id.toStdString();
@@ -669,9 +695,9 @@ void ControlPage::onAdapterAutostartToggled(bool checked) {
   const QString adapter_id = item->data(Qt::UserRole).toString();
 
   CoreConfig config = ConfigManager::Get().Load();
-  auto it =
-      std::find_if(config.llm.adapters.begin(), config.llm.adapters.end(),
-                   [&adapter_id](const LlmAdapter& a) { return a.id == adapter_id.toStdString(); });
+  auto it = std::ranges::find_if(config.llm.adapters, [&adapter_id](const LlmAdapter& a) {
+    return a.id == adapter_id.toStdString();
+  });
   if (it == config.llm.adapters.end()) {
     return;
   }
@@ -726,7 +752,7 @@ void ControlPage::onDaemonStart() {
   btnDaemonStart_->setEnabled(false);
   btnDaemonStop_->setEnabled(false);
   btnDaemonRestart_->setEnabled(false);
-  QPointer<ControlPage> self(this);
+  const QPointer<ControlPage> self(this);
   QThreadPool::globalInstance()->start([self]() {
     const auto result = vinput::cli::SystemctlStartWithDiagnostics();
     QMetaObject::invokeMethod(self, [self, result]() {
@@ -746,7 +772,7 @@ void ControlPage::onDaemonStop() {
   btnDaemonStop_->setEnabled(false);
   btnDaemonStart_->setEnabled(false);
   btnDaemonRestart_->setEnabled(false);
-  QPointer<ControlPage> self(this);
+  const QPointer<ControlPage> self(this);
   QThreadPool::globalInstance()->start([self]() {
     vinput::cli::SystemctlStop();
     QMetaObject::invokeMethod(self, [self]() {
@@ -762,7 +788,7 @@ void ControlPage::onDaemonRestart() {
   btnDaemonRestart_->setEnabled(false);
   btnDaemonStop_->setEnabled(false);
   btnDaemonStart_->setEnabled(false);
-  QPointer<ControlPage> self(this);
+  const QPointer<ControlPage> self(this);
   QThreadPool::globalInstance()->start([self]() {
     const auto result = vinput::cli::SystemctlRestartWithDiagnostics();
     QMetaObject::invokeMethod(self, [self, result]() {

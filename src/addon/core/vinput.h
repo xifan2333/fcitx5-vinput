@@ -5,7 +5,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
+#include <fcitx-config/configuration.h>
+#include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/dbus/bus.h>
+#include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/eventdispatcher.h>
 #include <fcitx-utils/handlertable.h>
@@ -38,6 +41,12 @@ class VinputEngine : public fcitx::AddonInstance {
 public:
   VinputEngine(fcitx::Instance* instance);
   ~VinputEngine() override;
+
+  VinputEngine(const VinputEngine&) = delete;
+  VinputEngine& operator=(const VinputEngine&) = delete;
+  VinputEngine(VinputEngine&&) = delete;
+  VinputEngine& operator=(VinputEngine&&) = delete;
+
   void selectPaletteItem(std::size_t index, fcitx::InputContext* ic);
   void selectResultCandidate(std::size_t index, fcitx::InputContext* ic);
 
@@ -92,8 +101,8 @@ private:
   void notifyInfo(const std::string& message);
   std::string queryDaemonStatus() const;
   bool daemonSyncAllowed() const;
-  void noteDaemonSyncFailure();
-  void clearDaemonSyncFailure();
+  void noteDaemonSyncFailure() const;
+  void clearDaemonSyncFailure() const;
   void applyDaemonStatusLocally(const std::string& status,
                                 fcitx::InputContext* fallback_ic = nullptr,
                                 bool prefer_command_mode = false);
@@ -184,8 +193,8 @@ private:
   std::vector<vinput::result::Candidate> result_candidates_;
   bool result_is_command_ = false;
   std::chrono::steady_clock::time_point last_trigger_time_;
-  std::chrono::steady_clock::time_point daemon_sync_blocked_until_{};
-  std::string last_known_daemon_status_;
+  mutable std::chrono::steady_clock::time_point daemon_sync_blocked_until_;
+  mutable std::string last_known_daemon_status_;
   std::optional<std::chrono::steady_clock::time_point> polled_idle_since_;
   std::optional<fcitx::Key> pending_postprocessing_release_;
   vinput::dbus::AsrBackendState cached_asr_backend_state_;

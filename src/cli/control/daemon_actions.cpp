@@ -1,6 +1,7 @@
 #include "cli/control/daemon_actions.h"
 
 #include <cstdio>
+#include <string>
 
 #include "common/i18n.h"
 #include "common/utils/sandbox.h"
@@ -8,11 +9,13 @@
 
 #include "cli/runtime/dbus_client.h"
 #include "cli/runtime/systemd_client.h"
+#include "cli/utils/cli_context.h"
+#include "cli/utils/formatter.h"
 int RunDaemonControlStatus(Formatter& fmt, const CliContext& ctx) {
   vinput::cli::DbusClient dbus;
 
   std::string dbus_error;
-  bool running = dbus.IsDaemonRunning(&dbus_error);
+  const bool running = dbus.IsDaemonRunning(&dbus_error);
 
   if (!running) {
     if (ctx.json_output) {
@@ -82,7 +85,7 @@ int RunDaemonControlStart(Formatter& fmt, const CliContext& ctx) {
 
 int RunDaemonControlStop(Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
-  int r = vinput::cli::SystemctlStop();
+  const int r = vinput::cli::SystemctlStop();
   if (r == 0) {
     fmt.PrintSuccess(_("Daemon stopped."));
     return 0;

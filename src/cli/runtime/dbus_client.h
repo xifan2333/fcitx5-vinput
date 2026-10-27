@@ -15,6 +15,8 @@ public:
 
   DbusClient(const DbusClient&) = delete;
   DbusClient& operator=(const DbusClient&) = delete;
+  DbusClient(DbusClient&&) = delete;
+  DbusClient& operator=(DbusClient&&) = delete;
 
   bool IsDaemonRunning(std::string* error = nullptr);
   bool GetDaemonStatus(std::string* status, std::string* error = nullptr);

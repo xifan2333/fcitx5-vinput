@@ -1,11 +1,17 @@
 #include "daemon/runtime/recognition_pipeline.h"
 
 #include <atomic>
+#include <cstddef>
 #include <functional>
+#include <string>
+#include <string_view>
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
+
+#include "daemon/postprocess/post_processor.h"
 
 namespace {
 

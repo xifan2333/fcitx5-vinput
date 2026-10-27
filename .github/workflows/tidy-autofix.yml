@@ -50,13 +50,13 @@ jobs:
             src/gui/pages/control/control_page.cpp
           )
           for f in "${files[@]}"; do
-            clang-tidy -p build --fix "$f"
+            clang-tidy -p build --extra-arg=-DFMT_USE_CONSTEVAL=0 --fix "$f"
           done
           git diff > tidy-fix.patch
           git status --short > tidy-fix-status.txt
           : > tidy-remaining.log
           for f in "${files[@]}"; do
-            clang-tidy -p build "$f" >> tidy-remaining.log 2>&1
+            clang-tidy -p build --extra-arg=-DFMT_USE_CONSTEVAL=0 "$f" >> tidy-remaining.log 2>&1
           done
 
       - name: Upload artifact

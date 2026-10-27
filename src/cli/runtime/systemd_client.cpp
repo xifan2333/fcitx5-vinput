@@ -20,10 +20,10 @@ std::vector<std::string> BuildCommand(const std::vector<std::string>& args) {
 std::vector<std::string> BuildJournalctlCommand(bool follow, int lines) {
   auto args = vinput::sandbox::DaemonLogFilter();
   const std::string lines_str = std::to_string(lines);
-  args.push_back("-n");
+  args.emplace_back("-n");
   args.push_back(lines_str);
   if (follow) {
-    args.push_back("-f");
+    args.emplace_back("-f");
   }
   return args;
 }
@@ -32,7 +32,7 @@ int RunCommand(const std::vector<std::string>& args);
 
 std::string BuildFailureMessage(const char* fmt, int exit_code) {
   std::string message = vinput::str::FmtStr(fmt, exit_code);
-  std::string logs = JournalctlLogsText(20);
+  const std::string logs = JournalctlLogsText(20);
   if (!logs.empty()) {
     message += "\n\n";
     message += logs;

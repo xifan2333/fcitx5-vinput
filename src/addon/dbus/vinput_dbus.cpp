@@ -1,27 +1,33 @@
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <fcitx-utils/dbus/matchrule.h>
 #include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/event.h>
+#include <fcitx-utils/key.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
+#include <fcitx/text.h>
+#include <fcitx/userinterface.h>
+#include <libintl.h>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unicodelib.h>
 #include <unicodelib_encodings.h>
+#include <utility>
 #include <vector>
 
 #include "common/asr/recognition_result.h"
 #include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
-#include "common/i18n.h"
 #include "common/runtime/runtime_defaults.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
-#include "common/utils/path_utils.h"
 #include "common/utils/string_utils.h"
 
 #include "core/vinput.h"
@@ -31,7 +37,7 @@ using namespace vinput::dbus;
 
 namespace {
 
-constexpr uint64_t kStatusSyncIntervalUsec = 200 * 1000;
+constexpr uint64_t kStatusSyncIntervalUsec = 200ULL * 1000;
 constexpr auto kPolledIdleRecoveryDelay =
     std::chrono::milliseconds(vinput::runtime::kDbusCallTimeoutMs);
 std::string StartingPreeditText() {
@@ -418,15 +424,12 @@ void VinputEngine::enterPendingStartState(fcitx::InputContext* ic, const fcitx::
   }
   const bool raw_prev = vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
   if (!session_) {
-    session_.emplace(Session{Session::Phase::PendingStart,
-                             ic,
-                             trigger,
-                             std::chrono::steady_clock::now(),
-                             command_mode,
-                             false,
-                             raw_prev,
-                             {},
-                             false});
+    session_.emplace(Session{.phase = Session::Phase::PendingStart,
+                             .ic = ic,
+                             .trigger = trigger,
+                             .press_time = std::chrono::steady_clock::now(),
+                             .command_mode = command_mode,
+                             .raw_prev = raw_prev});
   } else {
     session_->phase = Session::Phase::PendingStart;
     session_->ic = ic;
@@ -455,15 +458,12 @@ void VinputEngine::enterRecordingState(fcitx::InputContext* ic, const fcitx::Key
   const bool raw_prev = session_ ? session_->raw_prev
                                  : vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
   if (!session_) {
-    session_.emplace(Session{Session::Phase::Recording,
-                             ic,
-                             trigger,
-                             std::chrono::steady_clock::now(),
-                             command_mode,
-                             false,
-                             raw_prev,
-                             {},
-                             false});
+    session_.emplace(Session{.phase = Session::Phase::Recording,
+                             .ic = ic,
+                             .trigger = trigger,
+                             .press_time = std::chrono::steady_clock::now(),
+                             .command_mode = command_mode,
+                             .raw_prev = raw_prev});
   } else {
     session_->phase = Session::Phase::Recording;
     session_->ic = ic;
@@ -497,14 +497,12 @@ void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
                : vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev);
   const auto phase = postprocessing ? Session::Phase::Postprocessing : Session::Phase::Inferring;
   if (!session_) {
-    session_.emplace(Session{phase,
-                             ic,
-                             fcitx::Key(),
-                             std::chrono::steady_clock::now(),
-                             command_mode,
-                             {},
-                             effective_raw_prev,
-                             {}});
+    session_.emplace(Session{.phase = phase,
+                             .ic = ic,
+                             .trigger = fcitx::Key(),
+                             .press_time = std::chrono::steady_clock::now(),
+                             .command_mode = command_mode,
+                             .raw_prev = effective_raw_prev});
   } else {
     session_->phase = phase;
     session_->ic = ic;
@@ -531,7 +529,12 @@ void VinputEngine::enterBusyState(fcitx::InputContext* ic, bool command_mode,
 
 void VinputEngine::finishFrontendSession(fcitx::InputContext* fallback_ic) {
   status_poll_gate_.Invalidate();
-  auto* ic = session_ ? session_->ic : (fallback_ic ? fallback_ic : status_ic_);
+  auto* ic = status_ic_;
+  if (session_) {
+    ic = session_->ic;
+  } else if (fallback_ic != nullptr) {
+    ic = fallback_ic;
+  }
   session_.reset();
   polled_idle_since_.reset();
   command_selected_text_.clear();
@@ -554,14 +557,14 @@ std::string VinputEngine::queryDaemonStatus() const {
   if (!reply || reply.isError()) {
     VLOG_DEBUG("daemon status query failed reply={} error={}", reply ? reply.errorName() : "(null)",
                reply ? reply.errorMessage() : "(no reply)");
-    const_cast<VinputEngine*>(this)->noteDaemonSyncFailure();
+    noteDaemonSyncFailure();
     return {};
   }
-  const_cast<VinputEngine*>(this)->clearDaemonSyncFailure();
+  clearDaemonSyncFailure();
 
   std::string status;
   reply >> status;
-  const_cast<VinputEngine*>(this)->last_known_daemon_status_ = status;
+  last_known_daemon_status_ = status;
   return status;
 }
 
@@ -861,8 +864,8 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
   if (is_command) {
     auto& surrounding = ic->surroundingText();
     if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
-      int cursor = surrounding.cursor();
-      int anchor = surrounding.anchor();
+      const int cursor = static_cast<int>(surrounding.cursor());
+      const int anchor = static_cast<int>(surrounding.anchor());
       int from = std::min(cursor, anchor);
       int len = std::abs(cursor - anchor);
       ic->deleteSurroundingText(from - cursor, len);

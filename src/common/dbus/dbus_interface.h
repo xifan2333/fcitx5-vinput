@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,7 @@ constexpr const char* kStatusInferring = "inferring";
 constexpr const char* kStatusPostprocessing = "postprocessing";
 constexpr const char* kStatusError = "error";
 
-enum class Status { Idle, Recording, Inferring, Postprocessing, Error };
+enum class Status : std::uint8_t { Idle, Recording, Inferring, Postprocessing, Error };
 
 struct AsrBackendState {
   std::string target_provider_id;
@@ -60,16 +61,21 @@ inline const char* StatusToString(Status s) {
 }
 
 inline Status StringToStatus(const std::string& s) {
-  if (s == kStatusIdle)
+  if (s == kStatusIdle) {
     return Status::Idle;
-  if (s == kStatusRecording)
+  }
+  if (s == kStatusRecording) {
     return Status::Recording;
-  if (s == kStatusInferring)
+  }
+  if (s == kStatusInferring) {
     return Status::Inferring;
-  if (s == kStatusPostprocessing)
+  }
+  if (s == kStatusPostprocessing) {
     return Status::Postprocessing;
-  if (s == kStatusError)
+  }
+  if (s == kStatusError) {
     return Status::Error;
+  }
   return Status::Idle;
 }
 

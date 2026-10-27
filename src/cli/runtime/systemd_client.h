@@ -8,7 +8,7 @@ struct DaemonControlResult {
   int exit_code = -1;
   std::string failure_message;
 
-  bool ok() const { return exit_code == 0; }
+  [[nodiscard]] bool ok() const { return exit_code == 0; }
 };
 
 int SystemctlStop();
