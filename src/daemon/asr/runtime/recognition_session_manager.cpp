@@ -457,7 +457,7 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
         if (!last_reload_error_.empty()) {
           *error = last_reload_error_;
         } else if (reload_in_progress_) {
-          *error = "ASR backend is still loading.";
+          *error = _("ASR backend is still loading. Please try again in a moment.");
         } else {
           *error = "ASR backend is not ready.";
         }

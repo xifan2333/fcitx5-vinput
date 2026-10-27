@@ -21,8 +21,11 @@ vinput::Expected<LocalAsrModelContext> LoadLocalAsrModelContext(const CoreConfig
 
   const ModelManager model_mgr(ResolveModelBaseDir(config).string(), provider.model);
   if (auto ensure_result = model_mgr.EnsureModels(); !ensure_result) {
-    return vinput::UnexpectedError("Local ASR model check failed for provider '" + provider.id +
-                                   "': " + std::move(ensure_result).error());
+    std::string message =
+        vinput::str::FmtStr(_("Local ASR model check failed for provider '%s'."), provider.id);
+    message += "\n";
+    message += std::move(ensure_result).error();
+    return vinput::UnexpectedError(std::move(message));
   }
 
   auto model_info = model_mgr.GetModelInfo();

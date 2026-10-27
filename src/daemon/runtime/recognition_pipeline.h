@@ -8,7 +8,6 @@
 
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config_types.h"
-#include "common/dbus/error_info.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/postprocess/post_processor.h"
@@ -29,7 +28,7 @@ struct RecognitionOrder {
 
 struct RecognitionPipelineResult {
   vinput::result::Payload payload;
-  std::vector<vinput::dbus::ErrorInfo> errors;
+  std::vector<std::string> errors;
 };
 
 class RecognitionPipeline {

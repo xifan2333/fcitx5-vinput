@@ -19,6 +19,7 @@
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/llm/defaults.h"
 #include "common/net/http_client.h"
@@ -232,7 +233,8 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
     auto loaded = vinput::prompt_template::LoadFromFileUri(base_prompt, &load_err);
     if (!loaded) {
       if (error_out != nullptr) {
-        *error_out = "Prompt file load failed: " + base_prompt + ": " + load_err;
+        *error_out =
+            vinput::str::FmtStr(_("Failed to load prompt file '%s': %s"), base_prompt, load_err);
       }
       return std::nullopt;
     }
@@ -340,7 +342,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   }
 
   if (!res.error_message.empty()) {
-    const std::string msg = std::string("LLM request failed: ") + res.error_message;
+    const std::string msg = std::string(_("LLM request failed.")) + "\n" + res.error_message;
     fprintf(stderr, "vinput-daemon: LLM request provider=%s url=%s failed after %.1fms: %s\n",
             provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(), res.total_time_ms,
             res.error_message.c_str());
@@ -353,7 +355,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   LogResponseSummary(provider, url, res.status_code, res.total_time_ms);
 
   if (res.status_code < 200 || res.status_code >= 300) {
-    const std::string msg = "HTTP " + std::to_string(res.status_code) + ": " + res.body;
+    const std::string msg = _("LLM request returned an HTTP error.");
     // TODO(#407): LogResponseBody("LLM error response from", url, res.body);
     if (error_out != nullptr) {
       *error_out = msg;
@@ -495,7 +497,8 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
     auto loaded = vinput::prompt_template::LoadFromFileUri(task_prompt, &load_err);
     if (!loaded) {
       if (error_out != nullptr) {
-        *error_out = "Prompt file load failed: " + task_prompt + ": " + load_err;
+        *error_out =
+            vinput::str::FmtStr(_("Failed to load prompt file '%s': %s"), task_prompt, load_err);
       }
       return fallback;
     }

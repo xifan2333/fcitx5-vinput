@@ -15,7 +15,6 @@
 #include <vector>
 
 #include "common/dbus/dbus_interface.h"
-#include "common/dbus/error_info.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 
@@ -76,7 +75,6 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_SIGNAL(kSignalRecognitionResult, "s", 0),
     SD_BUS_SIGNAL(kSignalRecognitionPartial, "s", 0),
     SD_BUS_SIGNAL(kSignalStatusChanged, "s", 0),
-    SD_BUS_SIGNAL(kSignalDaemonNotification, kErrorInfoSignature, 0),
     SD_BUS_VTABLE_END,
 };
 
@@ -161,11 +159,6 @@ void DbusService::FlushEmitQueue() {
         VLOG_WARN("failed to send desktop notification: title='{}'",
                   item.desktop_notification.title);
       }
-    } else {
-      sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalDaemonNotification,
-                         kErrorInfoSignature, item.notification.code.c_str(),
-                         item.notification.subject.c_str(), item.notification.detail.c_str(),
-                         item.notification.raw_message.c_str());
     }
   }
 
@@ -174,74 +167,30 @@ void DbusService::FlushEmitQueue() {
   }
 }
 
-void DbusService::EmitRecognitionResult(const std::string& text) {
+void DbusService::EnqueueEmit(PendingEmit item) {
   {
     const std::scoped_lock lock(emit_mutex_);
-    emit_queue_.push_back(PendingEmit{
-        .type = PendingEmit::Type::Result,
-        .payload = text,
-        .notification = {},
-        .desktop_notification = {},
-    });
+    emit_queue_.push_back(std::move(item));
   }
   uint64_t val = 1;
   (void)write(notify_fd_, &val, sizeof(val));
+}
+
+void DbusService::EmitRecognitionResult(const std::string& text) {
+  EnqueueEmit({.type = PendingEmit::Type::Result, .payload = text});
 }
 
 void DbusService::EmitRecognitionPartial(const std::string& text) {
-  {
-    const std::scoped_lock lock(emit_mutex_);
-    emit_queue_.push_back(PendingEmit{
-        .type = PendingEmit::Type::Partial,
-        .payload = text,
-        .notification = {},
-        .desktop_notification = {},
-    });
-  }
-  uint64_t val = 1;
-  (void)write(notify_fd_, &val, sizeof(val));
+  EnqueueEmit({.type = PendingEmit::Type::Partial, .payload = text});
 }
 
 void DbusService::EmitStatusChanged(const std::string& status) {
-  {
-    const std::scoped_lock lock(emit_mutex_);
-    emit_queue_.push_back(PendingEmit{
-        .type = PendingEmit::Type::Status,
-        .payload = status,
-        .notification = {},
-        .desktop_notification = {},
-    });
-  }
-  uint64_t val = 1;
-  (void)write(notify_fd_, &val, sizeof(val));
-}
-
-void DbusService::EmitNotification(const vinput::dbus::ErrorInfo& notification) {
-  {
-    const std::scoped_lock lock(emit_mutex_);
-    emit_queue_.push_back(PendingEmit{
-        .type = PendingEmit::Type::Notification,
-        .payload = {},
-        .notification = notification,
-        .desktop_notification = {},
-    });
-  }
-  uint64_t val = 1;
-  (void)write(notify_fd_, &val, sizeof(val));
+  EnqueueEmit({.type = PendingEmit::Type::Status, .payload = status});
 }
 
 void DbusService::EmitDesktopNotification(const vinput::notify::Notification& notification) {
-  {
-    const std::scoped_lock lock(emit_mutex_);
-    emit_queue_.push_back(PendingEmit{
-        .type = PendingEmit::Type::DesktopNotification,
-        .payload = {},
-        .notification = {},
-        .desktop_notification = notification,
-    });
-  }
-  uint64_t val = 1;
-  (void)write(notify_fd_, &val, sizeof(val));
+  EnqueueEmit(
+      {.type = PendingEmit::Type::DesktopNotification, .desktop_notification = notification});
 }
 
 void DbusService::SetStartHandler(std::function<MethodResult()> handler) {

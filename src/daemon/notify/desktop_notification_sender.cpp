@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <string>
 #include <systemd/sd-bus.h>
+#include <utility>
 
+#include "common/i18n.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 
@@ -31,6 +33,12 @@ std::int32_t NotificationTimeoutMs(vinput::notify::NotificationLevel level) noex
     return 5000;
   }
   return 3000;
+}
+
+vinput::notify::Notification MakeDaemonErrorNotification(std::string body) {
+  return vinput::notify::Notification{.title = _("Voice Input"),
+                                      .body = std::move(body),
+                                      .level = vinput::notify::NotificationLevel::Error};
 }
 
 // Dispatches a notification to org.freedesktop.Notifications.Notify.

@@ -21,7 +21,6 @@
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
-#include "common/dbus/error_info.h"
 #include "common/i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/string_utils.h"
@@ -31,6 +30,7 @@
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/audio/audio_types.h"
 #include "daemon/audio/audio_utils.h"
+#include "daemon/notify/desktop_notification_sender.h"
 #include "daemon/remote/remote_text_service.h"
 #include "daemon/runtime/dbus_service.h"
 
@@ -126,7 +126,8 @@ void HandleError(const vinput::daemon::asr::RecognitionEvent& event,
   if (event.error.empty() || ctx.dbus == nullptr) {
     return;
   }
-  ctx.dbus->EmitNotification(vinput::dbus::ClassifyErrorText(event.error));
+  ctx.dbus->EmitDesktopNotification(
+      vinput::daemon::notify::MakeDaemonErrorNotification(event.error));
 }
 
 void DispatchSingleEvent(const vinput::daemon::asr::RecognitionEvent& event,
@@ -222,8 +223,9 @@ DaemonRuntimeController::DaemonRuntimeController(
       if (!dbus_ || message.empty()) {
         return;
       }
-      dbus_->EmitNotification(
-          vinput::dbus::MakeRawError("Failed to apply ASR backend reload. " + message));
+      dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(
+          std::string(_("ASR backend reload failed. The previous backend may still be active.")) +
+          "\n" + message));
     });
   }
 
@@ -355,9 +357,9 @@ DbusService::MethodResult DaemonRuntimeController::ReloadAsrBackend() {
 
   std::string error;
   if (!SynchronizeAsrBackend(&error)) {
-    std::string message = "Failed to reload ASR backend.";
+    std::string message = _("ASR backend reload failed. The previous backend may still be active.");
     if (!error.empty()) {
-      message += " " + error;
+      message += "\n" + error;
     }
     fprintf(stderr, "vinput-daemon: %s\n", message.c_str());
     return DbusService::MethodResult::Failure(message);
@@ -377,12 +379,12 @@ void DaemonRuntimeController::MaybeApplyPendingAsrBackendReload() {
 
   std::string error;
   if (!SynchronizeAsrBackend(&error)) {
-    std::string message = "Failed to apply deferred ASR backend reload.";
+    std::string message = _("ASR backend reload failed. The previous backend may still be active.");
     if (!error.empty()) {
-      message += " " + error;
+      message += "\n" + error;
     }
     fprintf(stderr, "vinput-daemon: %s\n", message.c_str());
-    dbus_->EmitNotification(vinput::dbus::MakeRawError(message));
+    dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(message));
     return;
   }
 
@@ -403,7 +405,8 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     if (phase_ != vinput::dbus::Status::Idle || start_recording_in_progress_) {
       VLOG_DEBUG("start rejected (phase: {} start_in_progress={})",
                  vinput::dbus::StatusToString(phase_), start_recording_in_progress_);
-      return DbusService::MethodResult::Failure("Daemon is busy.");
+      return DbusService::MethodResult::Failure(
+          _("Voice input daemon is busy. Please wait for the current request to finish."));
     }
     // Drop a stale deferred stop scheduled between the check above and now.
     pending_capture_stop_.store(false, std::memory_order_release);
@@ -529,7 +532,8 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     capture_->EndRecording();
     RestoreOutputIfDucked();
     ScheduleCaptureStopOnMainThread();
-    return DbusService::MethodResult::Failure("Daemon is busy.");
+    return DbusService::MethodResult::Failure(
+        _("Voice input daemon is busy. Please wait for the current request to finish."));
   }
 
   if (runtime_settings.global.duckOutputWhileRecording) {
@@ -721,7 +725,8 @@ bool DaemonRuntimeController::FailActiveSession(
   // repeated wake-up for the same failure is discarded by the identity
   // checks in PollActiveSessionEvents/FailActiveSession: notified once.
   dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Error));
-  dbus_->EmitNotification(vinput::dbus::MakeRawError(error_message));
+  dbus_->EmitDesktopNotification(
+      vinput::daemon::notify::MakeDaemonErrorNotification(error_message));
   capture_->EndRecording();
   RestoreOutputIfDucked();
   ScheduleCaptureStopOnMainThread();
@@ -1166,7 +1171,8 @@ void DaemonRuntimeController::WorkerMain() {
           const std::string failure =
               result.error.empty() ? kFailedToFinishSessionError : result.error;
           fprintf(stderr, "vinput-daemon: recognition error: %s\n", failure.c_str());
-          dbus_->EmitNotification(vinput::dbus::ClassifyErrorText(failure));
+          dbus_->EmitDesktopNotification(
+              vinput::daemon::notify::MakeDaemonErrorNotification(failure));
           recognition_failed = true;
         } else if (!result.text.empty()) {
           order.recognized_text = std::move(result.text);
@@ -1197,21 +1203,21 @@ void DaemonRuntimeController::WorkerMain() {
         pipeline_result.errors.clear();
       }
       for (const auto& error : pipeline_result.errors) {
-        if (!error.raw_message.empty()) {
-          fprintf(stderr, "vinput-daemon: processing error: %s\n", error.raw_message.c_str());
+        if (!error.empty()) {
+          fprintf(stderr, "vinput-daemon: processing error: %s\n", error.c_str());
         }
-        dbus_->EmitNotification(error);
+        dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(error));
       }
       dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
     } catch (const std::exception& e) {
       (void)TakePostprocessingState();
       fprintf(stderr, "vinput-daemon: worker exception: %s\n", e.what());
-      dbus_->EmitNotification(vinput::dbus::MakeRawError(e.what()));
+      dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(e.what()));
     } catch (...) {
       (void)TakePostprocessingState();
       fprintf(stderr, "vinput-daemon: worker unknown exception\n");
-      dbus_->EmitNotification(vinput::dbus::MakeErrorInfo(
-          vinput::dbus::kErrorCodeProcessingUnknown, {}, {}, "Unknown error during processing"));
+      dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(
+          _("Unknown error during processing.")));
     }
 
     ResetToIdle();

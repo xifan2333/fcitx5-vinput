@@ -5,7 +5,6 @@
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
-#include "common/dbus/error_info.h"
 #include "common/utils/debug_log.h"
 
 namespace {
@@ -39,7 +38,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
                              const std::atomic<bool>* cancel_flag) const {
   RecognitionPipelineResult output;
   if (!post_processor_) {
-    output.errors.push_back(vinput::dbus::MakeRawError("Recognition pipeline is not initialized."));
+    output.errors.emplace_back("Recognition pipeline is not initialized.");
     return output;
   }
 
@@ -69,7 +68,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
         post_processor_->ProcessCommand(order.recognized_text, order.selected_text, command_scene,
                                         settings, &llm_error, cancel_flag);
     if (!llm_error.empty()) {
-      output.errors.push_back(vinput::dbus::ClassifyErrorText(llm_error));
+      output.errors.push_back(llm_error);
     }
     return output;
   }
@@ -83,7 +82,7 @@ RecognitionPipeline::Process(const RecognitionOrder& order, const CoreConfig& se
   output.payload =
       post_processor_->Process(order.recognized_text, scene, settings, &llm_error, cancel_flag);
   if (!llm_error.empty()) {
-    output.errors.push_back(vinput::dbus::ClassifyErrorText(llm_error));
+    output.errors.push_back(llm_error);
   }
   return output;
 }
