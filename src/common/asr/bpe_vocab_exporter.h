@@ -1,7 +1,22 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
+#include <span>
 #include <string>
+
+#include "common/utils/expected.h"
+
+namespace vinput::asr {
+
+struct SentencePieceRecord {
+  std::string piece;
+  float score{0.0F};
+};
+
+Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> message);
+
+} // namespace vinput::asr
 
 // Exports the piece table embedded in a SentencePiece ModelProto to the text
 // vocabulary format expected by sherpa-onnx's model.bpe_vocab option.

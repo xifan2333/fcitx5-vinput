@@ -117,35 +117,45 @@ constexpr std::string_view AsStringView(std::span<const std::byte> span) noexcep
   return {reinterpret_cast<const char*>(span.data()), span.size()};
 }
 
-bool ParseSentencePiece(std::span<const std::byte> message, std::string* piece, float* score) {
+} // namespace
+
+namespace vinput::asr {
+
+Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> message) {
   ByteReader reader(message);
+  SentencePieceRecord record;
   bool found_piece = false;
   while (!reader.Empty()) {
     const auto key = reader.ReadVarint();
     if (!key.has_value()) {
-      return false;
+      return Unexpected("invalid field key in piece record");
     }
     const auto field = static_cast<std::uint32_t>(*key >> 3);
     const auto wire = static_cast<std::uint32_t>(*key & 7);
     if (field == 1 && wire == 2) {
       const auto value = reader.ReadLengthDelimited();
       if (!value.has_value()) {
-        return false;
+        return Unexpected("invalid length-delimited string in piece record");
       }
-      piece->assign(AsStringView(*value));
+      record.piece.assign(AsStringView(*value));
       found_piece = true;
     } else if (field == 2 && wire == 5) {
       const auto s = reader.ReadFloat();
       if (!s.has_value()) {
-        return false;
+        return Unexpected("invalid float score in piece record");
       }
-      *score = *s;
+      record.score = *s;
     } else if (!reader.SkipField(wire)) {
-      return false;
+      return Unexpected("unsupported wire type in piece record");
     }
   }
-  return found_piece;
+  if (!found_piece) {
+    return Unexpected("missing piece text in piece record");
+  }
+  return record;
 }
+
+} // namespace vinput::asr
 
 } // namespace
 
@@ -195,17 +205,16 @@ bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
         }
         return false;
       }
-      std::string piece;
-      float score = 0;
-      if (!ParseSentencePiece(*message, &piece, &score) || piece.empty() ||
-          piece.size() > kMaxPieceBytes || !std::isfinite(score) ||
-          piece.find_first_of("\t\r\n") != std::string::npos) {
+      auto record = vinput::asr::ParseSentencePiece(*message);
+      if (!record || record->piece.empty() || record->piece.size() > kMaxPieceBytes ||
+          !std::isfinite(record->score) ||
+          record->piece.find_first_of("\t\r\n") != std::string::npos) {
         if (error != nullptr) {
           *error = "unsupported SentencePiece piece record in: " + model_path.string();
         }
         return false;
       }
-      output << piece << '\t' << score << '\n';
+      output << record->piece << '\t' << record->score << '\n';
       ++piece_count;
       const auto tell_pos = static_cast<std::streamoff>(output.tellp());
       if (piece_count > kMaxPieceCount || tell_pos < 0 ||
