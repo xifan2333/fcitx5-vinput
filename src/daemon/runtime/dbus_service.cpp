@@ -177,20 +177,31 @@ void DbusService::EnqueueEmit(PendingEmit item) {
 }
 
 void DbusService::EmitRecognitionResult(const std::string& text) {
-  EnqueueEmit({.type = PendingEmit::Type::Result, .payload = text});
+  PendingEmit item;
+  item.type = PendingEmit::Type::Result;
+  item.payload = text;
+  EnqueueEmit(std::move(item));
 }
 
 void DbusService::EmitRecognitionPartial(const std::string& text) {
-  EnqueueEmit({.type = PendingEmit::Type::Partial, .payload = text});
+  PendingEmit item;
+  item.type = PendingEmit::Type::Partial;
+  item.payload = text;
+  EnqueueEmit(std::move(item));
 }
 
 void DbusService::EmitStatusChanged(const std::string& status) {
-  EnqueueEmit({.type = PendingEmit::Type::Status, .payload = status});
+  PendingEmit item;
+  item.type = PendingEmit::Type::Status;
+  item.payload = status;
+  EnqueueEmit(std::move(item));
 }
 
 void DbusService::EmitDesktopNotification(const vinput::notify::Notification& notification) {
-  EnqueueEmit(
-      {.type = PendingEmit::Type::DesktopNotification, .desktop_notification = notification});
+  PendingEmit item;
+  item.type = PendingEmit::Type::DesktopNotification;
+  item.desktop_notification = notification;
+  EnqueueEmit(std::move(item));
 }
 
 void DbusService::SetStartHandler(std::function<MethodResult()> handler) {
