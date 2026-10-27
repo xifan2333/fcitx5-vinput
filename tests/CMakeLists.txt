@@ -332,6 +332,13 @@ target_include_directories(test_sandbox PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_sandbox PRIVATE common pthread)
 add_test(NAME test_sandbox COMMAND test_sandbox)
 
+add_executable(test_bpe_vocab_exporter
+    test_bpe_vocab_exporter.cpp
+)
+target_include_directories(test_bpe_vocab_exporter PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_bpe_vocab_exporter PRIVATE common pthread)
+add_test(NAME test_bpe_vocab_exporter COMMAND test_bpe_vocab_exporter)
+
 add_executable(test_hotword_utils
     test_hotword_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/asr/hotword_utils.cpp
