@@ -1,0 +1,70 @@
+name: tidy-autofix
+
+on:
+  push:
+    branches:
+      - refactor/issue-475-slice5-remove-legacy-notifications
+
+permissions:
+  contents: read
+
+jobs:
+  autofix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: ./scripts/ci-install-build-deps.sh ubuntu24.04
+
+      - name: Install clang-tidy 21
+        run: |
+          python3 -m pip install --user clang-tidy==21.1.6
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Install sherpa-onnx runtime
+        run: |
+          prefix="${RUNNER_TEMP}/sherpa-onnx-install"
+          source scripts/sherpa-onnx-vars.sh
+          bash scripts/build-sherpa-onnx.sh "${SHERPA_ONNX_VERSION}" "${prefix}"
+          echo "VINPUT_CMAKE_PREFIX_PATH=${prefix}" >> "${GITHUB_ENV}"
+
+      - name: Configure CMake
+        run: |
+          cmake --preset release-clang-mold \
+            -DVINPUT_ENABLE_WERROR=ON \
+            -DVINPUT_RUNTIME_MODE=bundled
+
+      - name: Run clang-tidy --fix
+        run: |
+          set +e
+          files=(
+            src/addon/core/vinput.cpp
+            src/addon/dbus/vinput_dbus.cpp
+            src/cli/control/daemon_actions.cpp
+            src/cli/runtime/dbus_client.cpp
+            src/cli/runtime/systemd_client.cpp
+            src/daemon/runtime/daemon_runtime_controller.cpp
+            src/daemon/runtime/recognition_pipeline.cpp
+            src/gui/pages/control/control_page.cpp
+          )
+          for f in "${files[@]}"; do
+            clang-tidy -p build --fix "$f"
+          done
+          git diff > tidy-fix.patch
+          git status --short > tidy-fix-status.txt
+          : > tidy-remaining.log
+          for f in "${files[@]}"; do
+            clang-tidy -p build "$f" >> tidy-remaining.log 2>&1
+          done
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tidy-fix
+          path: |
+            tidy-fix.patch
+            tidy-fix-status.txt
+            tidy-remaining.log
