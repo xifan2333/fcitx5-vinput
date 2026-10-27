@@ -1,18 +1,14 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include "common/dbus/error_info.h"
-
 namespace vinput::dbus {
 
-constexpr const char* kFcitxBusName = "org.fcitx.Fcitx5";
 constexpr const char* kBusName = "org.fcitx.Vinput";
 constexpr const char* kObjectPath = "/org/fcitx/Vinput";
 constexpr const char* kInterface = "org.fcitx.Vinput.Service";
-constexpr const char* kNotifierObjectPath = "/org/fcitx/Fcitx5/Vinput";
-constexpr const char* kNotifierInterface = "org.fcitx.Fcitx5.Vinput1";
 
 constexpr const char* kMethodStartRecording = "StartRecording";
 constexpr const char* kMethodStartCommandRecording = "StartCommandRecording";
@@ -23,12 +19,10 @@ constexpr const char* kMethodGetAsrBackendState = "GetAsrBackendState";
 constexpr const char* kMethodReloadAsrBackend = "ReloadAsrBackend";
 constexpr const char* kMethodStartAdapter = "StartAdapter";
 constexpr const char* kMethodStopAdapter = "StopAdapter";
-constexpr const char* kMethodNotify = "Notify";
 
 constexpr const char* kSignalRecognitionResult = "RecognitionResult";
 constexpr const char* kSignalRecognitionPartial = "RecognitionPartial";
 constexpr const char* kSignalStatusChanged = "StatusChanged";
-constexpr const char* kSignalDaemonNotification = "DaemonNotification";
 
 constexpr const char* kErrorOperationFailed = "org.fcitx.Vinput.Error.OperationFailed";
 constexpr const char* kStatusIdle = "idle";
@@ -37,7 +31,7 @@ constexpr const char* kStatusInferring = "inferring";
 constexpr const char* kStatusPostprocessing = "postprocessing";
 constexpr const char* kStatusError = "error";
 
-enum class Status { Idle, Recording, Inferring, Postprocessing, Error };
+enum class Status : std::uint8_t { Idle, Recording, Inferring, Postprocessing, Error };
 
 struct AsrBackendState {
   std::string target_provider_id;
@@ -67,16 +61,21 @@ inline const char* StatusToString(Status s) {
 }
 
 inline Status StringToStatus(const std::string& s) {
-  if (s == kStatusIdle)
+  if (s == kStatusIdle) {
     return Status::Idle;
-  if (s == kStatusRecording)
+  }
+  if (s == kStatusRecording) {
     return Status::Recording;
-  if (s == kStatusInferring)
+  }
+  if (s == kStatusInferring) {
     return Status::Inferring;
-  if (s == kStatusPostprocessing)
+  }
+  if (s == kStatusPostprocessing) {
     return Status::Postprocessing;
-  if (s == kStatusError)
+  }
+  if (s == kStatusError) {
     return Status::Error;
+  }
   return Status::Idle;
 }
 

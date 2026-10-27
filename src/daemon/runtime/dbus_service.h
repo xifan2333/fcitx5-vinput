@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "common/dbus/dbus_interface.h"
-#include "common/dbus/error_info.h"
 #include "common/notify/notification_bridge.h"
 
 class DbusService {
@@ -48,7 +47,6 @@ public:
   void EmitRecognitionResult(const std::string& text);
   void EmitRecognitionPartial(const std::string& text);
   void EmitStatusChanged(const std::string& status);
-  void EmitNotification(const vinput::dbus::ErrorInfo& notification);
   void EmitDesktopNotification(const vinput::notify::Notification& notification);
 
   void SetStartHandler(std::function<MethodResult()> handler);
@@ -77,12 +75,14 @@ private:
   int notify_fd_ = -1;
 
   struct PendingEmit {
-    enum class Type : std::uint8_t { Result, Partial, Status, Notification, DesktopNotification };
+    enum class Type : std::uint8_t { Result, Partial, Status, DesktopNotification };
     Type type = Type::Result;
     std::string payload;
-    vinput::dbus::ErrorInfo notification;
     vinput::notify::Notification desktop_notification;
   };
+
+  void EnqueueEmit(PendingEmit item);
+
   std::mutex emit_mutex_;
   std::vector<PendingEmit> emit_queue_;
 

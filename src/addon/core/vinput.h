@@ -5,7 +5,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
+#include <fcitx-config/configuration.h>
+#include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/dbus/bus.h>
+#include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/eventdispatcher.h>
 #include <fcitx-utils/handlertable.h>
@@ -25,13 +28,11 @@
 #include "common/asr/recognition_result.h"
 #include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
-#include "common/dbus/error_info.h"
 #include "common/scene/postprocess_scene.h"
 
 #include "dbus/status_poll_gate.h"
 #include "menu/palette_command.h"
 
-class VinputNotifierDBusObject;
 namespace vinput::addon {
 class AsyncContextWriter;
 }
@@ -40,6 +41,12 @@ class VinputEngine : public fcitx::AddonInstance {
 public:
   VinputEngine(fcitx::Instance* instance);
   ~VinputEngine() override;
+
+  VinputEngine(const VinputEngine&) = delete;
+  VinputEngine& operator=(const VinputEngine&) = delete;
+  VinputEngine(VinputEngine&&) = delete;
+  VinputEngine& operator=(VinputEngine&&) = delete;
+
   void selectPaletteItem(std::size_t index, fcitx::InputContext* ic);
   void selectResultCandidate(std::size_t index, fcitx::InputContext* ic);
 
@@ -89,15 +96,13 @@ private:
   void onRecognitionPartial(fcitx::dbus::Message& msg);
   void handleRecognitionPartial(const std::string& transcript_text);
   void onStatusChanged(fcitx::dbus::Message& msg);
-  void onDaemonNotification(fcitx::dbus::Message& msg);
-  void showDaemonNotification(const vinput::dbus::ErrorInfo& notification);
-  void notifyError(const vinput::dbus::ErrorInfo& error);
+  void sendNotification(const std::string& message, const char* icon, int timeout_ms);
   void notifyError(const std::string& message);
   void notifyInfo(const std::string& message);
   std::string queryDaemonStatus() const;
   bool daemonSyncAllowed() const;
-  void noteDaemonSyncFailure();
-  void clearDaemonSyncFailure();
+  void noteDaemonSyncFailure() const;
+  void clearDaemonSyncFailure() const;
   void applyDaemonStatusLocally(const std::string& status,
                                 fcitx::InputContext* fallback_ic = nullptr,
                                 bool prefer_command_mode = false);
@@ -127,19 +132,19 @@ private:
   fcitx::EventDispatcher event_dispatcher_;
   std::vector<std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>>> eventHandlers_;
   fcitx::dbus::Bus* bus_ = nullptr;
-  std::unique_ptr<VinputNotifierDBusObject> notifier_dbus_;
   std::unique_ptr<fcitx::dbus::Slot> result_slot_;
   std::unique_ptr<fcitx::dbus::Slot> partial_slot_;
   std::unique_ptr<fcitx::dbus::Slot> status_slot_;
-  std::unique_ptr<fcitx::dbus::Slot> error_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_start_call_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_stop_call_slot_;
   std::unique_ptr<fcitx::dbus::Slot> pending_status_call_slot_;
   vinput::addon::StatusPollGate status_poll_gate_;
   struct Session {
+    Session() = default;
+
     enum class Phase : std::uint8_t { PendingStart, Recording, Inferring, Postprocessing };
-    Phase phase;
-    fcitx::InputContext* ic;
+    Phase phase = Phase::PendingStart;
+    fcitx::InputContext* ic = nullptr;
     fcitx::Key trigger;
     std::chrono::steady_clock::time_point press_time;
     bool command_mode = false;
@@ -190,8 +195,8 @@ private:
   std::vector<vinput::result::Candidate> result_candidates_;
   bool result_is_command_ = false;
   std::chrono::steady_clock::time_point last_trigger_time_;
-  std::chrono::steady_clock::time_point daemon_sync_blocked_until_{};
-  std::string last_known_daemon_status_;
+  mutable std::chrono::steady_clock::time_point daemon_sync_blocked_until_;
+  mutable std::string last_known_daemon_status_;
   std::optional<std::chrono::steady_clock::time_point> polled_idle_since_;
   std::optional<fcitx::Key> pending_postprocessing_release_;
   vinput::dbus::AsrBackendState cached_asr_backend_state_;

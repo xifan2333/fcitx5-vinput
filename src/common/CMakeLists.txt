@@ -13,7 +13,6 @@ set(VINPUT_CONFIG_SOURCES
     llm/adapter_manager.cpp
     asr/recognition_result.cpp
     asr/model_manager.cpp
-    dbus/error_info.cpp
     registry/registry_i18n.cpp
     i18n.cpp
     utils/path_utils.cpp

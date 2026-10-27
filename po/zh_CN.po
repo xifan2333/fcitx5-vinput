@@ -1331,200 +1331,22 @@ msgstr "语音输入守护进程不可用。"
 msgid "Voice input daemon is not responding."
 msgstr "语音输入守护进程无响应。"
 
-#: src/addon/dbus/vinput_dbus.cpp:101
-msgid ""
-"Local ASR model configuration is missing. Please configure a model first."
-msgstr "本地 ASR 模型配置缺失。请先配置模型。"
+msgid "ASR provider failed."
+msgstr "ASR 提供商运行失败。"
 
-#: src/addon/dbus/vinput_dbus.cpp:103
-#, c-format
-msgid ""
-"Local ASR model configuration is missing for provider '%s'. Please configure "
-"a model first."
-msgstr "提供商 '%s' 的本地 ASR 模型配置缺失。请先配置模型。"
+msgid "Failed to start command recording."
+msgstr "启动命令录音失败。"
 
-#: src/addon/dbus/vinput_dbus.cpp:108
-msgid "Local ASR model metadata is missing family."
-msgstr "本地 ASR 模型元数据缺少 family。"
+msgid "Failed to start recognition session."
+msgstr "启动语音识别会话失败。"
 
-#: src/addon/dbus/vinput_dbus.cpp:109
-#, c-format
-msgid "Local ASR model metadata is missing family for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型元数据缺少 family。"
-
-#: src/addon/dbus/vinput_dbus.cpp:114
-msgid "Local ASR model metadata contains an invalid path."
-msgstr "本地 ASR 模型元数据包含无效路径。"
-
-#: src/addon/dbus/vinput_dbus.cpp:115
-#, c-format
-msgid "Local ASR model metadata contains an invalid path for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型元数据包含无效路径。"
-
-#: src/addon/dbus/vinput_dbus.cpp:120
-msgid "Local ASR model tokens file is missing."
-msgstr "本地 ASR 模型缺少 tokens 文件。"
-
-#: src/addon/dbus/vinput_dbus.cpp:121
-#, c-format
-msgid "Local ASR model tokens file is missing for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型缺少 tokens 文件。"
-
-#: src/addon/dbus/vinput_dbus.cpp:127
-msgid "Local ASR model files are missing."
-msgstr "本地 ASR 模型文件缺失。"
-
-#: src/addon/dbus/vinput_dbus.cpp:128
-#, c-format
-msgid "Local ASR model files are missing for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型文件缺失。"
-
-#: src/addon/dbus/vinput_dbus.cpp:132
-msgid "Failed to resolve the local ASR model directory."
-msgstr "解析本地 ASR 模型目录失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:133
-#, c-format
-msgid "Failed to resolve the local ASR model directory for provider '%s'."
-msgstr "解析提供商 '%s' 的本地 ASR 模型目录失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:138
-msgid "Failed to parse local ASR model metadata."
-msgstr "解析本地 ASR 模型元数据失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:139
-#, c-format
-msgid "Failed to parse local ASR model metadata for provider '%s'."
-msgstr "解析提供商 '%s' 的本地 ASR 模型元数据失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:144
-msgid "The local ASR model type is not supported."
-msgstr "不支持该本地 ASR 模型类型。"
-
-#: src/addon/dbus/vinput_dbus.cpp:145
-#, c-format
-msgid "The local ASR model type is not supported for provider '%s'."
-msgstr "提供商 '%s' 的本地 ASR 模型类型不受支持。"
-
-#: src/addon/dbus/vinput_dbus.cpp:150
-msgid "Failed to initialize the local ASR recognizer."
-msgstr "初始化本地 ASR 识别器失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:151
-#, c-format
-msgid "Failed to initialize the local ASR recognizer for provider '%s'."
-msgstr "初始化提供商 '%s' 的本地 ASR 识别器失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:157
-msgid "Failed to initialize VAD."
-msgstr "初始化 VAD 失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:158
-#, c-format
-msgid "Failed to initialize VAD for provider '%s'."
-msgstr "初始化提供商 '%s' 的 VAD 失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:163
-msgid "Local ASR model check failed."
-msgstr "本地 ASR 模型检查失败。"
+msgid "Failed to start recording."
+msgstr "启动录音失败。"
 
 #: src/addon/dbus/vinput_dbus.cpp:164
 #, c-format
 msgid "Local ASR model check failed for provider '%s'."
 msgstr "提供商 '%s' 的本地 ASR 模型检查失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:169
-msgid "Failed to initialize the local ASR provider."
-msgstr "初始化本地 ASR 提供商失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:170
-#, c-format
-msgid "Failed to initialize the local ASR provider '%s'."
-msgstr "初始化本地 ASR 提供商 '%s' 失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:174
-msgid "Audio capture is not initialized."
-msgstr "音频采集尚未初始化。"
-
-#: src/addon/dbus/vinput_dbus.cpp:177
-msgid "Failed to create the PipeWire thread loop."
-msgstr "创建 PipeWire 线程循环失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:180
-msgid "Failed to start the PipeWire thread loop."
-msgstr "启动 PipeWire 线程循环失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:183
-msgid "Failed to allocate PipeWire properties."
-msgstr "分配 PipeWire 属性失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:186
-msgid "Failed to create the PipeWire stream."
-msgstr "创建 PipeWire 流失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:189
-msgid "Failed to connect the PipeWire stream."
-msgstr "连接 PipeWire 流失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:192
-msgid "Failed to initialize daemon notifications."
-msgstr "初始化守护进程通知失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:195
-msgid "Failed to connect to the user D-Bus."
-msgstr "连接用户 D-Bus 失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:198
-msgid "Failed to register the daemon D-Bus interface."
-msgstr "注册守护进程 D-Bus 接口失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:201
-msgid "Failed to acquire the daemon D-Bus name."
-msgstr "获取守护进程 D-Bus 名称失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:204
-msgid "Failed to start recording."
-msgstr "开始录音失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:207
-msgid "Failed to start command recording."
-msgstr "开始命令录音失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:211
-msgid "ASR provider failed to start."
-msgstr "ASR 提供商启动失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:212
-#, c-format
-msgid "ASR provider '%s' failed to start."
-msgstr "ASR 提供商 '%s' 启动失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:216
-msgid "ASR provider timed out."
-msgstr "ASR 提供商超时。"
-
-#: src/addon/dbus/vinput_dbus.cpp:217
-#, c-format
-msgid "ASR provider '%s' timed out."
-msgstr "ASR 提供商 '%s' 超时。"
-
-#: src/addon/dbus/vinput_dbus.cpp:221
-msgid "ASR provider failed."
-msgstr "ASR 提供商失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:222
-#, c-format
-msgid "ASR provider '%s' failed."
-msgstr "ASR 提供商 '%s' 失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:226
-msgid "ASR provider returned no text."
-msgstr "ASR 提供商未返回文本。"
-
-#: src/addon/dbus/vinput_dbus.cpp:227
-#, c-format
-msgid "ASR provider '%s' returned no text."
-msgstr "ASR 提供商 '%s' 未返回文本。"
 
 #: src/addon/dbus/vinput_dbus.cpp:230
 msgid "LLM request failed."
@@ -1534,15 +1356,6 @@ msgstr "LLM 请求失败。"
 msgid "LLM request returned an HTTP error."
 msgstr "LLM 请求返回了 HTTP 错误。"
 
-#: src/addon/dbus/vinput_dbus.cpp:237
-msgid "Failed to load prompt file."
-msgstr "加载 prompt 文件失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:240
-#, c-format
-msgid "Failed to load prompt file '%s'."
-msgstr "加载 prompt 文件 '%s' 失败。"
-
 #: src/addon/dbus/vinput_dbus.cpp:242
 #, c-format
 msgid "Failed to load prompt file '%s': %s"
@@ -1551,14 +1364,6 @@ msgstr "加载 prompt 文件 '%s' 失败：%s"
 #: src/addon/dbus/vinput_dbus.cpp:246
 msgid "Unknown error during processing."
 msgstr "处理过程中发生未知错误。"
-
-#: src/addon/dbus/vinput_dbus.cpp:249
-msgid "Failed to start the daemon."
-msgstr "启动守护进程失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:252
-msgid "Failed to restart the daemon."
-msgstr "重启守护进程失败。"
 
 #: src/addon/dbus/vinput_dbus.cpp:255
 msgid ""
@@ -1572,10 +1377,6 @@ msgstr "ASR 后端仍在加载中。请稍后再试。"
 #: src/addon/dbus/vinput_dbus.cpp:262
 msgid "ASR backend reload failed. The previous backend may still be active."
 msgstr "ASR 后端重新加载失败。此前的后端可能仍在使用中。"
-
-#: src/addon/dbus/vinput_dbus.cpp:273
-msgid "Unknown error."
-msgstr "未知错误。"
 
 #: src/addon/dbus/vinput_dbus.cpp:646 src/addon/dbus/vinput_dbus.cpp:686
 #: src/addon/dbus/vinput_dbus.cpp:722

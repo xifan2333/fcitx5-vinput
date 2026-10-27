@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
-#include <ctime>
 #include <dbus_public.h>
 #include <fcitx-config/iniparser.h>
 #include <fcitx-utils/event.h>
@@ -22,8 +21,6 @@
 
 #include "common/config/core_config.h"
 #include "common/config/vinput_config.h"
-#include "common/dbus/dbus_interface.h"
-#include "common/dbus/error_info.h"
 #include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/scene/postprocess_scene.h"
@@ -33,7 +30,6 @@
 #include "common/utils/time_utils.h"
 
 #include "core/context_writer.h"
-#include "dbus/notifier_dbus_object.h"
 #include "fcitx-config/rawconfig.h"
 #include "fcitx-utils/capabilityflags.h"
 #include "fcitx/addonfactory.h"
@@ -248,19 +244,6 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
   auto* dbus_addon = instance_->addonManager().addon("dbus");
   if (dbus_addon != nullptr) {
     bus_ = dbus_addon->call<fcitx::IDBusModule::bus>();
-    const std::weak_ptr<bool> token = lifetime_token_;
-    notifier_dbus_ = std::make_unique<VinputNotifierDBusObject>(
-        [this, token](const vinput::dbus::ErrorInfo& notification) {
-          if (token.expired()) {
-            return;
-          }
-          showDaemonNotification(notification);
-        });
-    if (!bus_->addObjectVTable(vinput::dbus::kNotifierObjectPath, vinput::dbus::kNotifierInterface,
-                               *notifier_dbus_)) {
-      FCITX_LOG(Error) << "vinput: failed to register notifier DBus object";
-      notifier_dbus_.reset();
-    }
     setupDBusWatcher();
   }
 }
@@ -280,13 +263,11 @@ VinputEngine::~VinputEngine() {
   pending_stop_call_slot_.reset();
   pending_start_call_slot_.reset();
 
-  error_slot_.reset();
   status_slot_.reset();
   partial_slot_.reset();
   result_slot_.reset();
 
   event_dispatcher_.detach();
-  notifier_dbus_.reset();
   bus_ = nullptr;
 }
 
