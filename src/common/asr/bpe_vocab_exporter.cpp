@@ -25,6 +25,7 @@ constexpr std::uintmax_t kMaxSentencePieceModelBytes = 64ULL * 1024 * 1024;
 constexpr std::uintmax_t kMaxBpeVocabularyBytes = 256ULL * 1024 * 1024;
 constexpr std::size_t kMaxPieceCount = 1000000;
 constexpr std::size_t kMaxPieceBytes = 1024ULL * 1024;
+constexpr std::size_t kInitialVocabBufferSize = 64ULL * 1024;
 
 class ByteReader {
 public:
@@ -110,10 +111,6 @@ private:
   std::span<const std::byte> buffer_;
 };
 
-inline std::string_view AsStringView(std::span<const std::byte> span) noexcept {
-  return {static_cast<const char*>(static_cast<const void*>(span.data())), span.size()};
-}
-
 } // namespace
 
 namespace vinput::asr {
@@ -134,7 +131,11 @@ Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> mess
       if (!value.has_value()) {
         return Unexpected("invalid length-delimited string in piece record");
       }
-      record.piece.assign(AsStringView(*value));
+      record.piece.clear();
+      record.piece.reserve(value->size());
+      for (const auto b : *value) {
+        record.piece.push_back(static_cast<char>(b));
+      }
       found_piece = true;
     } else if (field == 2 && wire == 5) {
       const auto s = reader.ReadFloat();
@@ -173,7 +174,7 @@ vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path
   const std::string_view data = mapping.View();
 
   std::string output_buffer;
-  output_buffer.reserve(64U * 1024U);
+  output_buffer.reserve(kInitialVocabBufferSize);
 
   ByteReader reader(std::as_bytes(std::span(data.data(), data.size())));
   std::size_t piece_count = 0;

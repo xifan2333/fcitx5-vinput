@@ -30,31 +30,31 @@ void AssertTrue(bool condition, const char* message, const char* file, int line)
 
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
-std::vector<std::byte> MakePieceBytes(std::string_view piece, float score) {
-  std::vector<std::byte> buf;
+std::vector<char> MakePieceBytes(std::string_view piece, float score) {
+  std::vector<char> buf;
   // Field 1, wire 2 (piece)
-  buf.push_back(static_cast<std::byte>(0x0A));
-  buf.push_back(static_cast<std::byte>(piece.size()));
+  buf.push_back('\x0A');
+  buf.push_back(static_cast<char>(piece.size()));
   for (char c : piece) {
-    buf.push_back(static_cast<std::byte>(c));
+    buf.push_back(c);
   }
   // Field 2, wire 5 (score)
-  buf.push_back(static_cast<std::byte>(0x15));
+  buf.push_back('\x15');
   const auto bits = std::bit_cast<std::uint32_t>(score);
-  buf.push_back(static_cast<std::byte>(bits & 0xFF));
-  buf.push_back(static_cast<std::byte>((bits >> 8) & 0xFF));
-  buf.push_back(static_cast<std::byte>((bits >> 16) & 0xFF));
-  buf.push_back(static_cast<std::byte>((bits >> 24) & 0xFF));
+  buf.push_back(static_cast<char>(bits & 0xFF));
+  buf.push_back(static_cast<char>((bits >> 8) & 0xFF));
+  buf.push_back(static_cast<char>((bits >> 16) & 0xFF));
+  buf.push_back(static_cast<char>((bits >> 24) & 0xFF));
   return buf;
 }
 
-std::vector<std::byte> MakeModelProto(const std::vector<std::pair<std::string, float>>& pieces) {
-  std::vector<std::byte> buf;
+std::vector<char> MakeModelProto(const std::vector<std::pair<std::string, float>>& pieces) {
+  std::vector<char> buf;
   for (const auto& [piece, score] : pieces) {
     auto piece_bytes = MakePieceBytes(piece, score);
     // Field 1, wire 2 (SentencePiece message)
-    buf.push_back(static_cast<std::byte>(0x0A));
-    buf.push_back(static_cast<std::byte>(piece_bytes.size()));
+    buf.push_back('\x0A');
+    buf.push_back(static_cast<char>(piece_bytes.size()));
     buf.insert(buf.end(), piece_bytes.begin(), piece_bytes.end());
   }
   return buf;
@@ -62,74 +62,72 @@ std::vector<std::byte> MakeModelProto(const std::vector<std::pair<std::string, f
 
 void TestParseSentencePieceValid() {
   const auto msg = MakePieceBytes("hello", -1.5F);
-  auto res = vinput::asr::ParseSentencePiece(msg);
+  auto res = vinput::asr::ParseSentencePiece(std::as_bytes(std::span(msg)));
   TEST_ASSERT(res.has_value());
   TEST_ASSERT(res->piece == "hello");
   TEST_ASSERT(res->score == -1.5F);
 
   // Piece only (no score field -> score defaults to 0.0)
-  std::vector<std::byte> piece_only = {
-      static_cast<std::byte>(0x0A), static_cast<std::byte>(0x03), static_cast<std::byte>('f'),
-      static_cast<std::byte>('o'),  static_cast<std::byte>('o'),
+  const std::vector<char> piece_only = {
+      '\x0A', '\x03', 'f', 'o', 'o',
   };
-  auto res2 = vinput::asr::ParseSentencePiece(piece_only);
+  auto res2 = vinput::asr::ParseSentencePiece(std::as_bytes(std::span(piece_only)));
   TEST_ASSERT(res2.has_value());
   TEST_ASSERT(res2->piece == "foo");
   TEST_ASSERT(res2->score == 0.0F);
 
   // Piece with extra unknown fields (wire 0, wire 1, wire 5)
-  std::vector<std::byte> with_extra = piece_only;
+  std::vector<char> with_extra = piece_only;
   // Field 3, wire 0 (varint): key = (3<<3)|0 = 24 (0x18), value = 42
-  with_extra.push_back(static_cast<std::byte>(0x18));
-  with_extra.push_back(static_cast<std::byte>(42));
+  with_extra.push_back('\x18');
+  with_extra.push_back('\x2A');
   // Field 4, wire 5 (fixed32): key = (4<<3)|5 = 37 (0x25), value = 4 bytes
-  with_extra.push_back(static_cast<std::byte>(0x25));
-  with_extra.push_back(static_cast<std::byte>(1));
-  with_extra.push_back(static_cast<std::byte>(2));
-  with_extra.push_back(static_cast<std::byte>(3));
-  with_extra.push_back(static_cast<std::byte>(4));
+  with_extra.push_back('\x25');
+  with_extra.push_back('\x01');
+  with_extra.push_back('\x02');
+  with_extra.push_back('\x03');
+  with_extra.push_back('\x04');
 
-  auto res3 = vinput::asr::ParseSentencePiece(with_extra);
+  auto res3 = vinput::asr::ParseSentencePiece(std::as_bytes(std::span(with_extra)));
   TEST_ASSERT(res3.has_value());
   TEST_ASSERT(res3->piece == "foo");
 }
 
 void TestParseSentencePieceMalformed() {
   // Empty buffer -> missing piece
-  std::vector<std::byte> empty;
-  TEST_ASSERT(!vinput::asr::ParseSentencePiece(empty).has_value());
+  const std::vector<char> empty;
+  TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(empty))).has_value());
 
   // Truncated varint (continuation bit set without following byte)
-  std::vector<std::byte> trunc_varint = {static_cast<std::byte>(0x8A)};
-  TEST_ASSERT(!vinput::asr::ParseSentencePiece(trunc_varint).has_value());
+  const std::vector<char> trunc_varint = {static_cast<char>('\x8A')};
+  TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(trunc_varint))).has_value());
 
   // Declared length exceeds buffer size
-  std::vector<std::byte> trunc_len = {
-      static_cast<std::byte>(0x0A),
-      static_cast<std::byte>(10),
-      static_cast<std::byte>('a'),
-      static_cast<std::byte>('b'),
+  const std::vector<char> trunc_len = {
+      '\x0A',
+      '\x0A',
+      'a',
+      'b',
   };
-  TEST_ASSERT(!vinput::asr::ParseSentencePiece(trunc_len).has_value());
+  TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(trunc_len))).has_value());
 
   // Truncated wire 5 float (less than 4 bytes)
-  std::vector<std::byte> trunc_float = {
-      static_cast<std::byte>(0x15),
-      static_cast<std::byte>(0),
-      static_cast<std::byte>(0),
+  const std::vector<char> trunc_float = {
+      '\x15',
+      '\x00',
+      '\x00',
   };
-  TEST_ASSERT(!vinput::asr::ParseSentencePiece(trunc_float).has_value());
+  TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(trunc_float))).has_value());
 
   // Missing piece string (score only)
-  std::vector<std::byte> score_only = {
-      static_cast<std::byte>(0x15), static_cast<std::byte>(0), static_cast<std::byte>(0),
-      static_cast<std::byte>(0),    static_cast<std::byte>(0),
+  const std::vector<char> score_only = {
+      '\x15', '\x00', '\x00', '\x00', '\x00',
   };
-  TEST_ASSERT(!vinput::asr::ParseSentencePiece(score_only).has_value());
+  TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(score_only))).has_value());
 
   // Unsupported wire type 3 (deprecated start group)
-  std::vector<std::byte> bad_wire = {static_cast<std::byte>(0x0B)};
-  TEST_ASSERT(!vinput::asr::ParseSentencePiece(bad_wire).has_value());
+  const std::vector<char> bad_wire = {'\x0B'};
+  TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(bad_wire))).has_value());
 }
 
 void TestValidateBpeVocabulary() {
@@ -210,8 +208,7 @@ void TestExportSentencePieceVocabularyEndToEnd() {
   const auto model_data = MakeModelProto(pieces);
   {
     std::ofstream ofs(model_path, std::ios::binary);
-    ofs.write(static_cast<const char*>(static_cast<const void*>(model_data.data())),
-              static_cast<std::streamsize>(model_data.size()));
+    ofs.write(model_data.data(), static_cast<std::streamsize>(model_data.size()));
   }
 
   // Export
@@ -235,8 +232,7 @@ void TestExportSentencePieceVocabularyEndToEnd() {
   const auto bad_model_data = MakeModelProto({{"bad\tpiece", 1.0F}});
   {
     std::ofstream ofs(bad_model_path, std::ios::binary);
-    ofs.write(static_cast<const char*>(static_cast<const void*>(bad_model_data.data())),
-              static_cast<std::streamsize>(bad_model_data.size()));
+    ofs.write(bad_model_data.data(), static_cast<std::streamsize>(bad_model_data.size()));
   }
   TEST_ASSERT(!ExportSentencePieceVocabulary(bad_model_path, bad_vocab_path).has_value());
 
