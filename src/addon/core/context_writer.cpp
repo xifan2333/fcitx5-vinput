@@ -1,12 +1,13 @@
 #include "core/context_writer.h"
 
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#include "common/utils/debug_log.h"
 
 namespace vinput::addon {
 
@@ -97,14 +98,13 @@ void AsyncContextWriter::Persist(const ContextWriteTask& task) {
       std::error_code ec;
       std::filesystem::create_directories(path_.parent_path(), ec);
       if (ec) {
-        std::fprintf(stderr, "vinput: failed to create context cache directory: %s\n",
-                     ec.message().c_str());
+        VLOG_ERROR("failed to create context cache directory: {}", ec.message());
         return;
       }
       ofs.clear();
       ofs.open(path_, std::ios::app);
       if (!ofs) {
-        std::fprintf(stderr, "vinput: failed to open context cache for append\n");
+        VLOG_ERROR("failed to open context cache for append");
         return;
       }
     }
@@ -148,7 +148,7 @@ void AsyncContextWriter::Persist(const ContextWriteTask& task) {
   std::error_code ec;
   std::filesystem::rename(temp_path, path_, ec);
   if (ec) {
-    std::fprintf(stderr, "vinput: failed to rotate context cache: %s\n", ec.message().c_str());
+    VLOG_ERROR("failed to rotate context cache: {}", ec.message());
   }
 }
 
