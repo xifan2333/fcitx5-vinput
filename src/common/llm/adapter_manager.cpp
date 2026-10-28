@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -314,8 +313,7 @@ void AutoStart(const CoreConfig& config, vinput::notify::NotificationBridge* bri
     }
     std::string err;
     if (!Start(adapter.id, bridge, &err)) {
-      fprintf(stderr, "vinput-daemon: failed to autostart adapter '%s': %s\n", adapter.id.c_str(),
-              err.c_str());
+      VLOG_ERROR("failed to autostart adapter '{}': {}", adapter.id, err);
     } else {
       VLOG_DEBUG("autostarted adapter '{}'", adapter.id);
     }
