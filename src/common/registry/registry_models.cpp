@@ -203,7 +203,13 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
   }
   std::error_code ec;
   if (fs::is_regular_file(vocab_path, ec) && !ec) {
-    return ValidateBpeVocabulary(vocab_path, error);
+    if (auto valid_res = ValidateBpeVocabulary(vocab_path); !valid_res) {
+      if (error != nullptr) {
+        *error = valid_res.error();
+      }
+      return false;
+    }
+    return true;
   }
 
   const auto* bpe_model_node = vinput::json::Find(model, "bpe_model");
@@ -225,10 +231,19 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
     }
     return false;
   }
-  if (!ExportSentencePieceVocabulary(bpe_model_path, vocab_path, error)) {
+  if (auto export_res = ExportSentencePieceVocabulary(bpe_model_path, vocab_path); !export_res) {
+    if (error != nullptr) {
+      *error = export_res.error();
+    }
     return false;
   }
-  return ValidateBpeVocabulary(vocab_path, error);
+  if (auto valid_res = ValidateBpeVocabulary(vocab_path); !valid_res) {
+    if (error != nullptr) {
+      *error = valid_res.error();
+    }
+    return false;
+  }
+  return true;
 }
 
 std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig* config,

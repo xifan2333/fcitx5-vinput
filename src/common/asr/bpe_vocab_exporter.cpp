@@ -6,18 +6,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <fstream>
-#include <iomanip>
 #include <ios>
 #include <iterator>
-#include <limits>
-#include <locale>
-#include <sstream>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <utility>
 
+#include "common/utils/expected.h"
 #include "common/utils/file_utils.h"
 
 namespace {
@@ -26,212 +25,225 @@ constexpr std::uintmax_t kMaxSentencePieceModelBytes = 64ULL * 1024 * 1024;
 constexpr std::uintmax_t kMaxBpeVocabularyBytes = 256ULL * 1024 * 1024;
 constexpr std::size_t kMaxPieceCount = 1000000;
 constexpr std::size_t kMaxPieceBytes = 1024ULL * 1024;
+constexpr std::size_t kInitialVocabBufferSize = 64ULL * 1024;
 
-bool ReadVarint(std::string_view data, std::size_t* offset, std::uint64_t* value) {
-  std::uint64_t result = 0;
-  for (int shift = 0; shift < 64; shift += 7) {
-    if (*offset >= data.size()) {
-      return false;
-    }
-    const auto byte = static_cast<std::uint8_t>(data[(*offset)++]);
-    result |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
-    if ((byte & 0x80) == 0) {
-      *value = result;
-      return true;
-    }
-  }
-  return false;
-}
+class ByteReader {
+public:
+  constexpr explicit ByteReader(std::span<const std::byte> buffer) noexcept : buffer_(buffer) {}
 
-bool ReadLengthDelimited(std::string_view data, std::size_t* offset, std::string_view* value) {
-  std::uint64_t length = 0;
-  if (!ReadVarint(data, offset, &length) || length > data.size() - *offset) {
-    return false;
+  [[nodiscard]] constexpr bool Empty() const noexcept { return buffer_.empty(); }
+  [[nodiscard]] constexpr std::size_t Remaining() const noexcept { return buffer_.size(); }
+  [[nodiscard]] constexpr std::span<const std::byte> RemainingSpan() const noexcept {
+    return buffer_;
   }
-  *value = data.substr(*offset, static_cast<std::size_t>(length));
-  *offset += static_cast<std::size_t>(length);
-  return true;
-}
 
-bool SkipField(std::string_view data, std::size_t* offset, std::uint32_t wire_type) {
-  switch (wire_type) {
-  case 0: {
-    std::uint64_t ignored = 0;
-    return ReadVarint(data, offset, &ignored);
-  }
-  case 1:
-    if (data.size() - *offset < 8) {
-      return false;
-    }
-    *offset += 8;
-    return true;
-  case 2: {
-    std::string_view ignored;
-    return ReadLengthDelimited(data, offset, &ignored);
-  }
-  case 5:
-    if (data.size() - *offset < 4) {
-      return false;
-    }
-    *offset += 4;
-    return true;
-  default:
-    return false;
-  }
-}
-
-bool ParseSentencePiece(std::string_view message, std::string* piece, float* score) {
-  std::size_t offset = 0;
-  bool found_piece = false;
-  while (offset < message.size()) {
-    std::uint64_t key = 0;
-    if (!ReadVarint(message, &offset, &key)) {
-      return false;
-    }
-    const auto field = static_cast<std::uint32_t>(key >> 3);
-    const auto wire = static_cast<std::uint32_t>(key & 7);
-    if (field == 1 && wire == 2) {
-      std::string_view value;
-      if (!ReadLengthDelimited(message, &offset, &value)) {
-        return false;
+  std::optional<std::uint64_t> ReadVarint() noexcept {
+    std::uint64_t result = 0;
+    for (int shift = 0; shift < 64; shift += 7) {
+      if (buffer_.empty()) {
+        return std::nullopt;
       }
-      piece->assign(value);
-      found_piece = true;
-    } else if (field == 2 && wire == 5) {
-      if (message.size() - offset < 4) {
-        return false;
+      const auto byte = static_cast<std::uint8_t>(buffer_.front());
+      buffer_ = buffer_.subspan(1);
+      if (shift == 63 && (byte & 0x7f) > 1) {
+        return std::nullopt;
       }
-      const std::uint32_t bits =
-          static_cast<std::uint8_t>(message[offset]) |
-          (static_cast<std::uint32_t>(static_cast<std::uint8_t>(message[offset + 1])) << 8) |
-          (static_cast<std::uint32_t>(static_cast<std::uint8_t>(message[offset + 2])) << 16) |
-          (static_cast<std::uint32_t>(static_cast<std::uint8_t>(message[offset + 3])) << 24);
-      *score = std::bit_cast<float>(bits);
-      offset += 4;
-    } else if (!SkipField(message, &offset, wire)) {
+      result |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
+      if ((byte & 0x80) == 0) {
+        return result;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::span<const std::byte>> ReadLengthDelimited() noexcept {
+    const auto len = ReadVarint();
+    if (!len.has_value() || *len > buffer_.size()) {
+      return std::nullopt;
+    }
+    const auto count = static_cast<std::size_t>(*len);
+    const auto sub = buffer_.first(count);
+    buffer_ = buffer_.subspan(count);
+    return sub;
+  }
+
+  std::optional<std::uint32_t> ReadFixed32() noexcept {
+    if (buffer_.size() < 4) {
+      return std::nullopt;
+    }
+    const auto b0 = static_cast<std::uint32_t>(static_cast<std::uint8_t>(buffer_[0]));
+    const auto b1 = static_cast<std::uint32_t>(static_cast<std::uint8_t>(buffer_[1]));
+    const auto b2 = static_cast<std::uint32_t>(static_cast<std::uint8_t>(buffer_[2]));
+    const auto b3 = static_cast<std::uint32_t>(static_cast<std::uint8_t>(buffer_[3]));
+    buffer_ = buffer_.subspan(4);
+    return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+  }
+
+  std::optional<float> ReadFloat() noexcept {
+    const auto bits = ReadFixed32();
+    if (!bits.has_value()) {
+      return std::nullopt;
+    }
+    return std::bit_cast<float>(*bits);
+  }
+
+  bool Skip(std::size_t count) noexcept {
+    if (buffer_.size() < count) {
+      return false;
+    }
+    buffer_ = buffer_.subspan(count);
+    return true;
+  }
+
+  bool SkipField(std::uint32_t wire_type) noexcept {
+    switch (wire_type) {
+    case 0:
+      return ReadVarint().has_value();
+    case 1:
+      return Skip(8);
+    case 2:
+      return ReadLengthDelimited().has_value();
+    case 5:
+      return Skip(4);
+    default:
       return false;
     }
   }
-  return found_piece;
-}
+
+private:
+  std::span<const std::byte> buffer_;
+};
 
 } // namespace
 
-bool ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
-                                   const std::filesystem::path& vocab_path, std::string* error) {
+namespace vinput::asr {
+
+Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> message) {
+  ByteReader reader(message);
+  SentencePieceRecord record;
+  bool found_piece = false;
+  while (!reader.Empty()) {
+    const auto key = reader.ReadVarint();
+    if (!key.has_value()) {
+      return UnexpectedError("invalid field key in piece record");
+    }
+    const auto field = static_cast<std::uint32_t>(*key >> 3);
+    const auto wire = static_cast<std::uint32_t>(*key & 7);
+    if (field == 1 && wire == 2) {
+      const auto value = reader.ReadLengthDelimited();
+      if (!value.has_value()) {
+        return UnexpectedError("invalid length-delimited string in piece record");
+      }
+      record.piece.clear();
+      record.piece.reserve(value->size());
+      for (const auto b : *value) {
+        record.piece.push_back(static_cast<char>(b));
+      }
+      found_piece = true;
+    } else if (field == 2 && wire == 5) {
+      const auto s = reader.ReadFloat();
+      if (!s.has_value()) {
+        return UnexpectedError("invalid float score in piece record");
+      }
+      record.score = *s;
+    } else if (!reader.SkipField(wire)) {
+      return UnexpectedError("unsupported wire type in piece record");
+    }
+  }
+  if (!found_piece) {
+    return UnexpectedError("missing piece text in piece record");
+  }
+  return record;
+}
+
+} // namespace vinput::asr
+
+vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path& model_path,
+                                                     const std::filesystem::path& vocab_path) {
   std::error_code size_error;
   const auto model_size = std::filesystem::file_size(model_path, size_error);
-  if (size_error || model_size > kMaxSentencePieceModelBytes) {
-    if (error != nullptr) {
-      *error = size_error ? "failed to inspect SentencePiece model: " + size_error.message()
-                          : "SentencePiece model exceeds 64 MiB limit: " + model_path.string();
-    }
-    return false;
+  if (size_error) {
+    return vinput::UnexpectedError("failed to inspect SentencePiece model: " +
+                                   size_error.message());
+  }
+  if (model_size > kMaxSentencePieceModelBytes) {
+    return vinput::UnexpectedError("SentencePiece model exceeds 64 MiB limit: " +
+                                   model_path.string());
   }
 
-  std::ifstream input(model_path, std::ios::binary);
-  if (!input) {
-    if (error != nullptr) {
-      *error = "failed to open SentencePiece model: " + model_path.string();
-    }
-    return false;
+  auto mapping_res = vinput::file::MapFileReadOnly(model_path);
+  if (!mapping_res) {
+    return vinput::UnexpectedError("failed to open SentencePiece model: " + mapping_res.error());
   }
-  const std::string data((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-  if (!input.good() && !input.eof()) {
-    if (error != nullptr) {
-      *error = "failed to read SentencePiece model: " + model_path.string();
-    }
-    return false;
-  }
+  const auto& mapping = *mapping_res;
+  const std::string_view data = mapping.View();
 
-  std::ostringstream output;
-  output.imbue(std::locale::classic());
-  output << std::setprecision(std::numeric_limits<float>::max_digits10);
+  std::string output_buffer;
+  output_buffer.reserve(kInitialVocabBufferSize);
 
-  std::size_t offset = 0;
+  ByteReader reader(std::as_bytes(std::span(data.data(), data.size())));
   std::size_t piece_count = 0;
-  while (offset < data.size()) {
-    std::uint64_t key = 0;
-    if (!ReadVarint(data, &offset, &key)) {
-      if (error != nullptr) {
-        *error = "invalid SentencePiece ModelProto: " + model_path.string();
-      }
-      return false;
+  while (!reader.Empty()) {
+    const auto key = reader.ReadVarint();
+    if (!key.has_value()) {
+      return vinput::UnexpectedError("invalid SentencePiece ModelProto: " + model_path.string());
     }
-    const auto field = static_cast<std::uint32_t>(key >> 3);
-    const auto wire = static_cast<std::uint32_t>(key & 7);
+    const auto field = static_cast<std::uint32_t>(*key >> 3);
+    const auto wire = static_cast<std::uint32_t>(*key & 7);
     if (field == 1 && wire == 2) {
-      std::string_view message;
-      if (!ReadLengthDelimited(data, &offset, &message)) {
-        if (error != nullptr) {
-          *error = "invalid SentencePiece piece record: " + model_path.string();
-        }
-        return false;
+      const auto message = reader.ReadLengthDelimited();
+      if (!message.has_value()) {
+        return vinput::UnexpectedError("invalid SentencePiece piece record: " +
+                                       model_path.string());
       }
-      std::string piece;
-      float score = 0;
-      if (!ParseSentencePiece(message, &piece, &score) || piece.empty() ||
-          piece.size() > kMaxPieceBytes || !std::isfinite(score) ||
-          piece.find_first_of("\t\r\n") != std::string::npos) {
-        if (error != nullptr) {
-          *error = "unsupported SentencePiece piece record in: " + model_path.string();
-        }
-        return false;
+      auto record = vinput::asr::ParseSentencePiece(*message);
+      if (!record) {
+        return vinput::UnexpectedError("invalid SentencePiece piece record (" + record.error() +
+                                       ") in: " + model_path.string());
       }
-      output << piece << '\t' << score << '\n';
+      if (record->piece.empty() || record->piece.size() > kMaxPieceBytes ||
+          !std::isfinite(record->score) ||
+          record->piece.find_first_of("\t\r\n") != std::string::npos) {
+        return vinput::UnexpectedError("unsupported SentencePiece piece record in: " +
+                                       model_path.string());
+      }
+      std::format_to(std::back_inserter(output_buffer), "{}\t{}\n", record->piece, record->score);
       ++piece_count;
-      const auto tell_pos = static_cast<std::streamoff>(output.tellp());
-      if (piece_count > kMaxPieceCount || tell_pos < 0 ||
-          std::cmp_greater(tell_pos, kMaxBpeVocabularyBytes)) {
-        if (error != nullptr) {
-          *error = "SentencePiece vocabulary exceeds safety limits: " + model_path.string();
-        }
-        return false;
+      if (piece_count > kMaxPieceCount || output_buffer.size() > kMaxBpeVocabularyBytes) {
+        return vinput::UnexpectedError("SentencePiece vocabulary exceeds safety limits: " +
+                                       model_path.string());
       }
-    } else if (!SkipField(data, &offset, wire)) {
-      if (error != nullptr) {
-        *error = "unsupported SentencePiece ModelProto field in: " + model_path.string();
-      }
-      return false;
+    } else if (!reader.SkipField(wire)) {
+      return vinput::UnexpectedError("unsupported SentencePiece ModelProto field in: " +
+                                     model_path.string());
     }
   }
 
   if (piece_count == 0) {
-    if (error != nullptr) {
-      *error = "SentencePiece model contains no vocabulary pieces: " + model_path.string();
-    }
-    return false;
+    return vinput::UnexpectedError("SentencePiece model contains no vocabulary pieces: " +
+                                   model_path.string());
   }
 
-  if (auto res = vinput::file::AtomicWriteTextFile(vocab_path, output.str()); !res) {
-    if (error != nullptr) {
-      *error = "failed to write BPE vocabulary: " + res.error();
-    }
-    return false;
+  if (auto res = vinput::file::AtomicWriteTextFile(vocab_path, output_buffer); !res) {
+    return vinput::UnexpectedError("failed to write BPE vocabulary: " + res.error());
   }
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
+  return {};
 }
 
-bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string* error) {
+vinput::Expected<void> ValidateBpeVocabulary(const std::filesystem::path& vocab_path) {
   std::error_code size_error;
   const auto vocab_size = std::filesystem::file_size(vocab_path, size_error);
-  if (size_error || vocab_size == 0 || vocab_size > kMaxBpeVocabularyBytes) {
-    if (error != nullptr) {
-      *error = size_error ? "failed to inspect BPE vocabulary: " + size_error.message()
-                          : "BPE vocabulary is empty or exceeds 256 MiB: " + vocab_path.string();
-    }
-    return false;
+  if (size_error) {
+    return vinput::UnexpectedError("failed to inspect BPE vocabulary: " + size_error.message());
+  }
+  if (vocab_size == 0 || vocab_size > kMaxBpeVocabularyBytes) {
+    return vinput::UnexpectedError("BPE vocabulary is empty or exceeds 256 MiB: " +
+                                   vocab_path.string());
   }
 
   std::ifstream input(vocab_path, std::ios::binary);
   if (!input) {
-    if (error != nullptr) {
-      *error = "failed to open BPE vocabulary: " + vocab_path.string();
-    }
-    return false;
+    return vinput::UnexpectedError("failed to open BPE vocabulary: " + vocab_path.string());
   }
 
   std::string line;
@@ -242,10 +254,7 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
     }
     const auto tab = line.find('\t');
     if (tab == std::string::npos || tab == 0 || tab + 1 >= line.size() || tab > kMaxPieceBytes) {
-      if (error != nullptr) {
-        *error = "invalid BPE vocabulary line in: " + vocab_path.string();
-      }
-      return false;
+      return vinput::UnexpectedError("invalid BPE vocabulary line in: " + vocab_path.string());
     }
     const std::string score_text = line.substr(tab + 1);
     float score = 0.0F;
@@ -253,26 +262,14 @@ bool ValidateBpeVocabulary(const std::filesystem::path& vocab_path, std::string*
         std::from_chars(score_text.data(), score_text.data() + score_text.size(), score);
     if (ec != std::errc{} || ptr != score_text.data() + score_text.size() ||
         !std::isfinite(score)) {
-      if (error != nullptr) {
-        *error = "invalid BPE vocabulary score in: " + vocab_path.string();
-      }
-      return false;
+      return vinput::UnexpectedError("invalid BPE vocabulary score in: " + vocab_path.string());
     }
     if (++piece_count > kMaxPieceCount) {
-      if (error != nullptr) {
-        *error = "BPE vocabulary has too many pieces: " + vocab_path.string();
-      }
-      return false;
+      return vinput::UnexpectedError("BPE vocabulary has too many pieces: " + vocab_path.string());
     }
   }
   if ((!input.good() && !input.eof()) || piece_count == 0) {
-    if (error != nullptr) {
-      *error = "failed to read BPE vocabulary: " + vocab_path.string();
-    }
-    return false;
+    return vinput::UnexpectedError("failed to read BPE vocabulary: " + vocab_path.string());
   }
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
+  return {};
 }
