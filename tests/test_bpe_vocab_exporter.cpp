@@ -1,6 +1,5 @@
 #include <bit>
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -35,7 +34,7 @@ std::vector<char> MakePieceBytes(std::string_view piece, float score) {
   // Field 1, wire 2 (piece)
   buf.push_back('\x0A');
   buf.push_back(static_cast<char>(piece.size()));
-  for (char c : piece) {
+  for (const char c : piece) {
     buf.push_back(c);
   }
   // Field 2, wire 5 (score)
@@ -99,7 +98,7 @@ void TestParseSentencePieceMalformed() {
   TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(empty))).has_value());
 
   // Truncated varint (continuation bit set without following byte)
-  const std::vector<char> trunc_varint = {static_cast<char>('\x8A')};
+  const std::vector<char> trunc_varint = {'\x8A'};
   TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(trunc_varint))).has_value());
 
   // Declared length exceeds buffer size
