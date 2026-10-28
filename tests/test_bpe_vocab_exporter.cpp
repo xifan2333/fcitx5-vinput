@@ -86,6 +86,11 @@ void TestParseSentencePieceValid() {
   with_extra.push_back('\x02');
   with_extra.push_back('\x03');
   with_extra.push_back('\x04');
+  // Field 5, wire 1 (fixed64): key = (5<<3)|1 = 41 (0x29), value = 8 bytes
+  with_extra.push_back('\x29');
+  for (int i = 0; i < 8; ++i) {
+    with_extra.push_back('\x01');
+  }
 
   auto res3 = vinput::asr::ParseSentencePiece(std::as_bytes(std::span(with_extra)));
   TEST_ASSERT(res3.has_value());
@@ -100,6 +105,13 @@ void TestParseSentencePieceMalformed() {
   // Truncated varint (continuation bit set without following byte)
   const std::vector<char> trunc_varint = {'\x8A'};
   TEST_ASSERT(!vinput::asr::ParseSentencePiece(std::as_bytes(std::span(trunc_varint))).has_value());
+
+  // 10th byte overflow in varint (low 7 bits > 1 at shift 63)
+  const std::vector<char> overflow_varint = {
+      '\x80', '\x80', '\x80', '\x80', '\x80', '\x80', '\x80', '\x80', '\x80', '\x02',
+  };
+  TEST_ASSERT(
+      !vinput::asr::ParseSentencePiece(std::as_bytes(std::span(overflow_varint))).has_value());
 
   // Declared length exceeds buffer size
   const std::vector<char> trunc_len = {
@@ -224,6 +236,27 @@ void TestExportSentencePieceVocabularyEndToEnd() {
   TEST_ASSERT(read_res->find("<unk>\t0\n") != std::string::npos);
   TEST_ASSERT(read_res->find(" hello\t-1.25\n") != std::string::npos);
   TEST_ASSERT(read_res->find("world\t-3.75\n") != std::string::npos);
+
+  // A malformed later record must not replace an existing vocabulary.
+  const auto partial_model_path = tmp_dir / "partial.model";
+  const auto partial_vocab_path = tmp_dir / "partial.vocab";
+  {
+    std::vector<char> partial_model_data = MakeModelProto({{"valid", 0.0F}});
+    partial_model_data.push_back('\x0A');
+    partial_model_data.push_back('\x01');
+    partial_model_data.push_back('\x8A'); // Truncated nested varint
+    std::ofstream model_ofs(partial_model_path, std::ios::binary);
+    model_ofs.write(partial_model_data.data(),
+                    static_cast<std::streamsize>(partial_model_data.size()));
+  }
+  {
+    std::ofstream vocab_ofs(partial_vocab_path);
+    vocab_ofs << "sentinel\n";
+  }
+  TEST_ASSERT(!ExportSentencePieceVocabulary(partial_model_path, partial_vocab_path).has_value());
+  auto sentinel_res = vinput::file::ReadTextFile(partial_vocab_path);
+  TEST_ASSERT(sentinel_res.has_value());
+  TEST_ASSERT(*sentinel_res == "sentinel\n");
 
   // Export model with piece containing illegal tab character
   const auto bad_model_path = tmp_dir / "bad.model";

@@ -45,6 +45,9 @@ public:
       }
       const auto byte = static_cast<std::uint8_t>(buffer_.front());
       buffer_ = buffer_.subspan(1);
+      if (shift == 63 && (byte & 0x7f) > 1) {
+        return std::nullopt;
+      }
       result |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
       if ((byte & 0x80) == 0) {
         return result;
