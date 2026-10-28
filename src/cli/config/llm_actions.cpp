@@ -873,8 +873,8 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
     return 0;
   }
 
-  fmt.PrintSuccess(
-      vinput::str::FmtStr(_("Connected to '%s'. Found %d model(s)."), id, (int)models.size()));
+  fmt.PrintSuccess(vinput::str::FmtStr(_("Connected to '%s'. Found %d model(s)."), id,
+                                       static_cast<int>(models.size())));
   if (!models.empty()) {
     std::ranges::sort(models);
     const std::vector<std::string> headers_row = {_("MODEL")};
