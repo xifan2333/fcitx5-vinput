@@ -1,8 +1,8 @@
 #include "daemon/asr/backends/sherpa_offline_backend.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -22,6 +22,7 @@
 #include "common/asr/model_manager.h"
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
+#include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
 
 #include "daemon/asr/asr_config.h"
@@ -389,8 +390,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
     std::error_code remove_error;
     std::filesystem::remove(temporary_hotwords_file, remove_error);
     if (remove_error) {
-      fprintf(stderr, "vinput: failed to remove temporary hotwords file: %s\n",
-              remove_error.message().c_str());
+      VLOG_WARN("failed to remove temporary hotwords file: {}", remove_error.message());
     }
   }
   if (recognizer.Get() == nullptr) {
@@ -400,8 +400,8 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
     return std::nullopt;
   }
 
-  fprintf(stderr, "vinput: sherpa-onnx offline ASR initialized (family: %s, lang: %s)\n",
-          family.c_str(), asr_config.language.c_str());
+  VLOG_INFO("sherpa-onnx offline ASR initialized (family: {}, lang: {})", family,
+            asr_config.language);
   return recognizer;
 }
 
@@ -478,8 +478,8 @@ public:
     finished_ = true;
 
     if (samples_.size() < kMinSamplesForInference) {
-      fprintf(stderr, "vinput: skipping ASR for short audio: %zu samples (%.1f ms)\n",
-              samples_.size(), static_cast<double>(samples_.size()) * 1000.0 / 16000.0);
+      VLOG_DEBUG("skipping ASR for short audio: {} samples ({:.1f} ms)", samples_.size(),
+                 static_cast<double>(samples_.size()) * 1000.0 / 16000.0);
       events_.push_back({RecognitionEventKind::Completed, {}, {}});
       if (error != nullptr) {
         error->clear();
@@ -490,7 +490,7 @@ public:
     if (vad_available_ && vad_ != nullptr) {
       samples_ = vad_->Trim(samples_, 16000);
       if (samples_.size() < kMinSamplesForInference) {
-        fprintf(stderr, "vinput: audio too short after VAD trim, skipping\n");
+        VLOG_DEBUG("audio too short after VAD trim, skipping");
         events_.push_back({RecognitionEventKind::Completed, {}, {}});
         if (error != nullptr) {
           error->clear();
@@ -593,8 +593,8 @@ private:
       vad_params.speech_pad_ms = asr_config_.vad_speech_pad_ms;
       std::string vad_error;
       if (!vad_.Init(asr_config_.vad_model_path, 16000, vad_provider, vad_params, &vad_error)) {
-        fprintf(stderr, "vinput: %s, continuing without VAD\n",
-                vad_error.empty() ? "VAD model not available" : vad_error.c_str());
+        VLOG_WARN("{}, continuing without VAD",
+                  vad_error.empty() ? "VAD model not available" : vad_error);
       }
     }
 
