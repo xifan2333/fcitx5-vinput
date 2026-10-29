@@ -17,12 +17,17 @@
 #include <pipewire/stream.h>
 #include <pipewire/thread-loop.h>
 #include <spa/buffer/buffer.h>
+#if __has_include(<spa/param/audio/raw-utils.h>)
 #include <spa/param/audio/raw-utils.h>
+#else
+#include <spa/param/audio/format-utils.h>
+#endif
 #include <spa/param/audio/raw.h>
 #include <spa/param/param.h>
 #include <spa/pod/builder.h>
 #include <spa/pod/pod.h>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <unistd.h>
 #include <utility>
@@ -76,9 +81,22 @@ long AudioCapture::IdleDestroyMs() {
   if (value == nullptr || value[0] == '\0') {
     return 15000;
   }
+  std::string_view sv(value);
+  while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t')) {
+    sv.remove_prefix(1);
+  }
+  if (!sv.empty() && sv.front() == '+') {
+    sv.remove_prefix(1);
+  }
+  while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t')) {
+    sv.remove_suffix(1);
+  }
+  if (sv.empty()) {
+    return 15000;
+  }
   long parsed = 0;
-  const auto [ptr, ec] = std::from_chars(value, value + std::strlen(value), parsed);
-  if (ec != std::errc{} || parsed < 0) {
+  const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), parsed);
+  if (ec != std::errc{} || ptr != sv.data() + sv.size() || parsed < 0) {
     return 15000;
   }
   // Cap to 10 minutes to avoid accidental always-on connect.
