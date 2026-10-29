@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <glaze/json/json_t.hpp>
 #include <memory>
@@ -18,6 +18,7 @@
 #include "common/asr/model_manager.h"
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
+#include "common/utils/debug_log.h"
 #include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
@@ -117,21 +118,19 @@ public:
     DecodeAvailable();
 
     std::string text = GetCurrentText();
-    fprintf(stderr, "vinput: streaming finish current result bytes=%zu\n", text.size());
+    VLOG_DEBUG("streaming finish current result bytes={}", text.size());
     if (!text.empty()) {
       if (text != last_partial_text_) {
         events_.push_back({RecognitionEventKind::PartialText, text, {}});
         last_partial_text_ = text;
       }
       events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
-      fprintf(stderr, "vinput: streaming queued final result\n");
+      VLOG_DEBUG("streaming queued final result");
     } else {
       const double rms =
           total_samples_ > 0 ? std::sqrt(sum_squares_ / static_cast<double>(total_samples_)) : 0.0;
-      fprintf(stderr,
-              "vinput: streaming finish produced empty text samples=%zu "
-              "peak=%.4f rms=%.4f\n",
-              total_samples_, peak_abs_, rms);
+      VLOG_DEBUG("streaming finish produced empty text samples={} peak={:.4f} rms={:.4f}",
+                 total_samples_, peak_abs_, rms);
     }
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
 
@@ -178,13 +177,13 @@ private:
       const std::string text = GetCurrentText();
       if (!text.empty() && text != last_partial_text_) {
         last_partial_text_ = text;
-        fprintf(stderr, "vinput: streaming partial result bytes=%zu decode_iterations=%d\n",
-                text.size(), decode_iterations);
+        VLOG_DEBUG("streaming partial result bytes={} decode_iterations={}", text.size(),
+                   decode_iterations);
         events_.push_back({RecognitionEventKind::PartialText, text, {}});
       }
     }
     if (decode_iterations > 0) {
-      fprintf(stderr, "vinput: streaming decode loop completed iterations=%d\n", decode_iterations);
+      VLOG_DEBUG("streaming decode loop completed iterations={}", decode_iterations);
     }
   }
 
@@ -197,8 +196,8 @@ private:
     const auto& stream = *stream_;
     const auto result = recognizer_->GetResult(&stream);
     std::string text = std::string(vinput::str::Trim(result.text));
-    fprintf(stderr, "vinput: streaming current result bytes=%zu token_count=%zu\n", text.size(),
-            result.tokens.size());
+    VLOG_DEBUG("streaming current result bytes={} token_count={}", text.size(),
+               result.tokens.size());
     return text;
   }
 
@@ -409,11 +408,9 @@ private:
 
     recognizer_ = std::move(recognizer);
 
-    fprintf(stderr,
-            "vinput: sherpa-onnx streaming ASR initialized successfully "
-            "(family: %s, lang: %s, threads: %d)\n",
-            model_info_.family.c_str(), asr_config_.language.c_str(),
-            config.model_config.num_threads);
+    VLOG_INFO(
+        "sherpa-onnx streaming ASR initialized successfully (family: {}, lang: {}, threads: {})",
+        model_info_.family, asr_config_.language, config.model_config.num_threads);
 
     WarmupRecognizerLocked();
 
@@ -430,7 +427,7 @@ private:
 
     auto stream = recognizer_->CreateStream();
     if (stream.Get() == nullptr) {
-      fprintf(stderr, "vinput: streaming warmup skipped (stream create failed)\n");
+      VLOG_WARN("streaming warmup skipped (stream create failed)");
       return;
     }
 
@@ -444,7 +441,7 @@ private:
       recognizer_->Decode(&stream);
     }
 
-    fprintf(stderr, "vinput: streaming recognizer warmup completed\n");
+    VLOG_DEBUG("streaming recognizer warmup completed");
   }
 
   ModelInfo model_info_;
