@@ -7,7 +7,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <exception>
 #include <memory>
@@ -237,7 +236,7 @@ DaemonRuntimeController::DaemonRuntimeController(
 
   notify_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
   if (notify_fd_ < 0) {
-    fprintf(stderr, "vinput-daemon: failed to create runtime notify fd: %s\n", strerror(errno));
+    VLOG_ERROR("failed to create runtime notify fd: {}", strerror(errno));
   } else if (capture_ != nullptr) {
     capture_->SetNotifyFd(notify_fd_);
   }
@@ -368,7 +367,7 @@ DbusService::MethodResult DaemonRuntimeController::ReloadAsrBackend() {
     if (!error.empty()) {
       message += "\n" + error;
     }
-    fprintf(stderr, "vinput-daemon: %s\n", message.c_str());
+    VLOG_WARN("{}", message);
     return DbusService::MethodResult::Failure(message);
   }
 
@@ -390,7 +389,7 @@ void DaemonRuntimeController::MaybeApplyPendingAsrBackendReload() {
     if (!error.empty()) {
       message += "\n" + error;
     }
-    fprintf(stderr, "vinput-daemon: %s\n", message.c_str());
+    VLOG_WARN("{}", message);
     dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(message));
     return;
   }
@@ -446,7 +445,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       accepting_chunks_.store(false, std::memory_order_relaxed);
       startup_pcm_buffer_.Clear();
     }
-    fprintf(stderr, "vinput-daemon: %s\n", message.c_str());
+    VLOG_WARN("{}", message);
     return DbusService::MethodResult::Failure(message);
   }
 
@@ -468,7 +467,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     }
     RestoreOutputIfDucked();
     ScheduleCaptureStopOnMainThread();
-    fprintf(stderr, "vinput-daemon: %s\n", message.c_str());
+    VLOG_WARN("{}", message);
     return DbusService::MethodResult::Failure(message);
   }
 
@@ -713,7 +712,7 @@ bool DaemonRuntimeController::FailActiveSession(
     if (active_session_ != session) {
       return false;
     }
-    fprintf(stderr, "vinput-daemon: failed to push audio chunk: %s\n", error_message.c_str());
+    VLOG_ERROR("failed to push audio chunk: {}", error_message);
     accepting_chunks_.store(false, std::memory_order_relaxed);
     session_to_cancel = ReleaseActiveSessionLocked();
     phase_ = vinput::dbus::Status::Error;
@@ -1185,7 +1184,7 @@ void DaemonRuntimeController::WorkerMain() {
           // exception handler, which would downgrade it to a raw error.
           const std::string failure =
               result.error.empty() ? kFailedToFinishSessionError : result.error;
-          fprintf(stderr, "vinput-daemon: recognition error: %s\n", failure.c_str());
+          VLOG_ERROR("recognition error: {}", failure);
           dbus_->EmitDesktopNotification(
               vinput::daemon::notify::MakeDaemonErrorNotification(failure));
           recognition_failed = true;
@@ -1219,18 +1218,18 @@ void DaemonRuntimeController::WorkerMain() {
       }
       for (const auto& error : pipeline_result.errors) {
         if (!error.empty()) {
-          fprintf(stderr, "vinput-daemon: processing error: %s\n", error.c_str());
+          VLOG_ERROR("processing error: {}", error);
         }
         dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(error));
       }
       dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
     } catch (const std::exception& e) {
       (void)TakePostprocessingState();
-      fprintf(stderr, "vinput-daemon: worker exception: %s\n", e.what());
+      VLOG_ERROR("worker exception: {}", e.what());
       dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(e.what()));
     } catch (...) {
       (void)TakePostprocessingState();
-      fprintf(stderr, "vinput-daemon: worker unknown exception\n");
+      VLOG_ERROR("worker unknown exception");
       dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(
           _("Unknown error during processing.")));
     }
