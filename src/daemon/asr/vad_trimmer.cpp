@@ -1,11 +1,12 @@
 #include "vad_trimmer.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <sherpa-onnx/c-api/cxx-api.h>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "common/utils/debug_log.h"
 
 VadTrimmer::VadTrimmer() = default;
 VadTrimmer::~VadTrimmer() = default;
@@ -41,11 +42,10 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
 
   vad_ = std::move(vad);
   sample_rate_ = sample_rate;
-  fprintf(stderr,
-          "vinput: VAD initialized from '%s' threshold=%.2f min_speech=%.2f "
-          "min_silence=%.2f pad_ms=%d\n",
-          model_path.c_str(), params_.threshold, params_.min_speech_duration,
-          params_.min_silence_duration, params_.speech_pad_ms);
+  VLOG_INFO("VAD initialized from '{}' threshold={:.2f} min_speech={:.2f} "
+            "min_silence={:.2f} pad_ms={}",
+            model_path, params_.threshold, params_.min_speech_duration,
+            params_.min_silence_duration, params_.speech_pad_ms);
   return true;
 }
 
@@ -94,11 +94,11 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
   }
 
   if (earliest_speech_start < 0) {
-    fprintf(stderr, "vinput: VAD found no speech, returning empty audio\n");
+    VLOG_DEBUG("VAD found no speech, returning empty audio");
     return {};
   }
   if (latest_speech_end <= earliest_speech_start) {
-    fprintf(stderr, "vinput: VAD produced invalid speech bounds, returning original audio\n");
+    VLOG_WARN("VAD produced invalid speech bounds, returning original audio");
     return samples;
   }
 
@@ -118,11 +118,10 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
 
   const int leading_removed = cut_start;
   const int trailing_removed = n - cut_end;
-  fprintf(stderr,
-          "vinput: VAD trimmed %d -> %zu samples leading_removed_ms=%d "
-          "trailing_removed_ms=%d pad_ms=%d\n",
-          n, result.size(), leading_removed * 1000 / sample_rate_,
-          trailing_removed * 1000 / sample_rate_, params_.speech_pad_ms);
+  VLOG_DEBUG("VAD trimmed {} -> {} samples leading_removed_ms={} "
+             "trailing_removed_ms={} pad_ms={}",
+             n, result.size(), leading_removed * 1000 / sample_rate_,
+             trailing_removed * 1000 / sample_rate_, params_.speech_pad_ms);
   return result;
 }
 
