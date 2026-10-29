@@ -1,6 +1,5 @@
 #include <atomic>
 #include <cerrno>
-#include <cstdio>
 #include <cstring>
 #include <string>
 #include <sys/poll.h>
@@ -61,11 +60,11 @@ int main(int argc, char* argv[]) {
 
   std::string asr_disabled_reason;
   if (!recognition_manager.Initialize(startup_settings, &asr_disabled_reason)) {
-    fprintf(stderr, "vinput-daemon: running with ASR disabled");
-    if (!asr_disabled_reason.empty()) {
-      fprintf(stderr, " (%s)", asr_disabled_reason.c_str());
+    if (asr_disabled_reason.empty()) {
+      VLOG_WARN("running with ASR disabled");
+    } else {
+      VLOG_WARN("running with ASR disabled ({})", asr_disabled_reason);
     }
-    fprintf(stderr, "\n");
   }
 
   AudioCapture capture;
@@ -74,7 +73,7 @@ int main(int argc, char* argv[]) {
     if (capture_error.empty()) {
       capture_error = "audio capture start failed";
     }
-    fprintf(stderr, "vinput-daemon: %s\n", capture_error.c_str());
+    VLOG_ERROR("{}", capture_error);
     return 1;
   }
 
@@ -128,7 +127,7 @@ int main(int argc, char* argv[]) {
     if (dbus_error.empty()) {
       dbus_error = "DBus service start failed";
     }
-    fprintf(stderr, "vinput-daemon: %s\n", dbus_error.c_str());
+    VLOG_ERROR("{}", dbus_error);
     return 1;
   }
 
@@ -137,14 +136,14 @@ int main(int argc, char* argv[]) {
   runtime_controller.StartWorker();
   std::string remote_error;
   if (!remote_text_service.Synchronize(startup_settings, &remote_error)) {
-    fprintf(stderr, "vinput-daemon: remote ASR service disabled");
-    if (!remote_error.empty()) {
-      fprintf(stderr, " (%s)", remote_error.c_str());
+    if (remote_error.empty()) {
+      VLOG_WARN("remote ASR service disabled");
+    } else {
+      VLOG_WARN("remote ASR service disabled ({})", remote_error);
     }
-    fprintf(stderr, "\n");
   }
 
-  fprintf(stderr, "vinput-daemon: running\n");
+  VLOG_INFO("running");
 
   const int dbus_fd = dbus.GetFd();
   const int notify_fd = dbus.GetNotifyFd();
@@ -161,7 +160,7 @@ int main(int argc, char* argv[]) {
       if (errno == EINTR) {
         continue;
       }
-      fprintf(stderr, "vinput-daemon: poll error: %s\n", strerror(errno));
+      VLOG_ERROR("poll error: {}", strerror(errno));
       break;
     }
 
@@ -183,7 +182,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  fprintf(stderr, "vinput-daemon: shutting down\n");
+  VLOG_INFO("shutting down");
   post_processor.Shutdown();
   remote_text_service.Shutdown();
   runtime_controller.Shutdown();
