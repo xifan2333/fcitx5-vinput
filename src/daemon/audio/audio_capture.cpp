@@ -4,7 +4,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <pipewire/keys.h>
@@ -164,13 +163,13 @@ void AudioCapture::onParamChanged(void* userdata, uint32_t id, const struct spa_
     return;
   }
 
-  struct spa_audio_info_raw info;
+  struct spa_audio_info_raw info{};
   if (spa_format_audio_raw_parse(param, &info) < 0) {
     return;
   }
 
-  fprintf(stderr, "vinput: negotiated format: rate=%u channels=%u fmt=%d\n", info.rate,
-          info.channels, info.format);
+  VLOG_INFO("negotiated format: rate={} channels={} fmt={}", info.rate, info.channels,
+            static_cast<int>(info.format));
 }
 
 void AudioCapture::onStateChanged(void* userdata, enum pw_stream_state old,
@@ -181,8 +180,7 @@ void AudioCapture::onStateChanged(void* userdata, enum pw_stream_state old,
              pw_stream_state_as_string(state), err_str != nullptr ? " error=" : "",
              err_str != nullptr ? err_str : "");
   if (state == PW_STREAM_STATE_ERROR) {
-    fprintf(stderr, "vinput: PipeWire stream error: %s\n",
-            err_str != nullptr ? err_str : "unknown error");
+    VLOG_ERROR("PipeWire stream error: {}", err_str != nullptr ? err_str : "unknown error");
   }
 }
 
@@ -266,8 +264,8 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
 
   if (!resolved_target.node_name.empty()) {
     pw_properties_set(properties, PW_KEY_TARGET_OBJECT, resolved_target.node_name.c_str());
-    fprintf(stderr, "vinput: using PipeWire target.object=%s (stream.capture.sink=%s)\n",
-            resolved_target.node_name.c_str(), capture_sink_str);
+    VLOG_INFO("using PipeWire target.object={} (stream.capture.sink={})", resolved_target.node_name,
+              capture_sink_str);
   }
 
   stream_ = pw_stream_new_simple(pw_thread_loop_get_loop(loop_), "vinput-capture", properties,
