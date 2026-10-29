@@ -5,7 +5,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
-#include <cstdio>
+#include <cstddef>
 #include <exception>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
@@ -29,6 +29,7 @@
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
+#include "common/utils/debug_log.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
 
@@ -415,8 +416,7 @@ bool RemoteTextService::Start(const Settings& settings, std::string* error) {
   http_server_->wait_until_ready();
 
   service_started_ = true;
-  std::fprintf(stderr, "vinput-daemon: remote ASR service listening on 0.0.0.0:%d\n",
-               settings_.port);
+  VLOG_INFO("remote ASR service listening on 0.0.0.0:{}", settings_.port);
   if (error != nullptr) {
     error->clear();
   }
