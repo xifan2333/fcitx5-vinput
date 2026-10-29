@@ -94,17 +94,17 @@ void AudioCapture::onProcess(void* userdata) {
 }
 
 void AudioCapture::processCallback() {
-  pw_stream* s = stream_;
+  struct pw_stream* s = stream_;
   if (!s) {
     return;
   }
 
-  pw_buffer* b = pw_stream_dequeue_buffer(s);
+  struct pw_buffer* b = pw_stream_dequeue_buffer(s);
   if (!b) {
     return;
   }
 
-  spa_buffer* buf = b->buffer;
+  struct spa_buffer* buf = b->buffer;
   if (!buf || buf->n_datas == 0 || buf->datas[0].data == nullptr ||
       buf->datas[0].chunk == nullptr) {
     pw_stream_queue_buffer(s, b);

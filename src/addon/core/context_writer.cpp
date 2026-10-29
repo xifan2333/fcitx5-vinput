@@ -1,7 +1,11 @@
 #include "core/context_writer.h"
 
+#include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <ios>
+#include <mutex>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -16,7 +20,7 @@ AsyncContextWriter::AsyncContextWriter(std::filesystem::path path)
 
 AsyncContextWriter::~AsyncContextWriter() {
   {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     stopping_ = true;
   }
   wake_cv_.notify_one();
@@ -32,7 +36,7 @@ bool AsyncContextWriter::Enqueue(std::string json_line, int max_lines) {
   }
   bool lost_entries = false;
   {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     if (stopping_) {
       return false;
     }
@@ -60,7 +64,7 @@ bool AsyncContextWriter::WaitUntilIdle(std::chrono::milliseconds timeout) {
 }
 
 std::size_t AsyncContextWriter::DroppedEntries() const {
-  const std::lock_guard<std::mutex> lock(mutex_);
+  const std::scoped_lock lock(mutex_);
   return dropped_;
 }
 
@@ -82,7 +86,7 @@ void AsyncContextWriter::Run() {
     Persist(task);
 
     {
-      const std::lock_guard<std::mutex> lock(mutex_);
+      const std::scoped_lock lock(mutex_);
       writing_ = false;
       if (pending_.empty()) {
         idle_cv_.notify_all();

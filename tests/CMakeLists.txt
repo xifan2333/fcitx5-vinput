@@ -270,9 +270,10 @@ add_executable(test_async_context_writer
     ${CMAKE_SOURCE_DIR}/src/addon/core/context_writer.cpp
 )
 target_include_directories(test_async_context_writer PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/addon
 )
-target_link_libraries(test_async_context_writer PRIVATE pthread)
+target_link_libraries(test_async_context_writer PRIVATE common pthread)
 add_test(NAME test_async_context_writer COMMAND test_async_context_writer)
 
 add_executable(test_post_processor
