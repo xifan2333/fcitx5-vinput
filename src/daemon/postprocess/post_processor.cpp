@@ -295,10 +295,8 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
   const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider.api_key);
   if (vinput::interpolate::HasInterpolation(provider.api_key) && resolved_api_key.empty()) {
-    fprintf(stderr,
-            "vinput-daemon: environment variable in api_key ('%s') for provider '%s' is unset or "
-            "empty\n",
-            provider.api_key.c_str(), provider.id.c_str());
+    VLOG_WARN("environment variable in api_key ('{}') for provider '{}' is unset or empty",
+              provider.api_key, provider.id);
   }
 
   std::atomic<bool> cancel_token{is_cancelled()};
@@ -343,9 +341,9 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
   if (!res.error_message.empty()) {
     const std::string msg = std::string(_("LLM request failed.")) + "\n" + res.error_message;
-    fprintf(stderr, "vinput-daemon: LLM request provider=%s url=%s failed after %.1fms: %s\n",
-            provider.id.empty() ? "(unnamed)" : provider.id.c_str(), url.c_str(), res.total_time_ms,
-            res.error_message.c_str());
+    VLOG_ERROR("LLM request provider={} url={} failed after {:.1f}ms: {}",
+               provider.id.empty() ? "(unnamed)" : provider.id, url, res.total_time_ms,
+               res.error_message);
     if (error_out != nullptr) {
       *error_out = msg;
     }
@@ -368,21 +366,20 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
   glz::json_t response;
   if (const auto ec = glz::read_json(response, res.body); bool(ec)) {
-    fprintf(stderr, "vinput-daemon: failed to parse LLM response JSON from %s: %s\n", url.c_str(),
-            glz::format_error(ec, res.body).c_str());
+    VLOG_ERROR("failed to parse LLM response JSON from {}: {}", url,
+               glz::format_error(ec, res.body));
     return std::nullopt;
   }
 
   if (vinput::json::Find(response, "error") != nullptr) {
-    fprintf(stderr, "vinput-daemon: LLM response from %s contains error\n", url.c_str());
+    VLOG_ERROR("LLM response from {} contains error", url);
     // TODO(#407): LogResponseBody("LLM parsed error payload from", url, error_it->dump());
     return std::nullopt;
   }
 
   auto candidates = ExtractCandidates(response);
   if (candidates.empty()) {
-    fprintf(stderr, "vinput-daemon: LLM response from %s returned no valid candidates\n",
-            url.c_str());
+    VLOG_WARN("LLM response from {} returned no valid candidates", url);
     return std::nullopt;
   }
 
