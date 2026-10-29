@@ -1,6 +1,7 @@
 #include "vad_trimmer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <sherpa-onnx/c-api/cxx-api.h>
 #include <string>
 #include <utility>
@@ -77,14 +78,14 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
   // Determine global speech bounds across all detected segments.
   // We trim only leading and trailing silence outside the outer speech bounds;
   // internal pauses are fully preserved to retain natural acoustic context.
-  int earliest_speech_start = -1;
-  int latest_speech_end = -1;
+  int64_t earliest_speech_start = -1;
+  int64_t latest_speech_end = -1;
 
   while (!vad.IsEmpty()) {
     auto seg = vad.Front();
     if (!seg.samples.empty()) {
-      const int seg_start = seg.start;
-      const int seg_end = seg_start + static_cast<int>(seg.samples.size());
+      const int64_t seg_start = seg.start;
+      const int64_t seg_end = seg_start + static_cast<int64_t>(seg.samples.size());
       if (earliest_speech_start < 0 || seg_start < earliest_speech_start) {
         earliest_speech_start = seg_start;
       }
@@ -102,12 +103,13 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
     return samples;
   }
 
-  const int padding_samples = std::max(
-      0, static_cast<int>(static_cast<long long>(params_.speech_pad_ms) * sample_rate_ / 1000));
-  const int cut_start = std::max(0, earliest_speech_start - padding_samples);
-  const int cut_end = std::min(n, latest_speech_end + padding_samples);
+  const int64_t padding_samples =
+      std::max(int64_t{0}, static_cast<int64_t>(params_.speech_pad_ms) * sample_rate_ / 1000);
+  const auto total_n = static_cast<int64_t>(n);
+  const int64_t cut_start = std::max(int64_t{0}, earliest_speech_start - padding_samples);
+  const int64_t cut_end = std::min(total_n, latest_speech_end + padding_samples);
 
-  if (cut_start <= 0 && cut_end >= n) {
+  if (cut_start <= 0 && cut_end >= total_n) {
     return samples;
   }
   if (cut_end <= cut_start) {
@@ -116,8 +118,8 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
 
   std::vector<float> result(samples.begin() + cut_start, samples.begin() + cut_end);
 
-  const int leading_removed = cut_start;
-  const int trailing_removed = n - cut_end;
+  const int64_t leading_removed = cut_start;
+  const int64_t trailing_removed = total_n - cut_end;
   VLOG_DEBUG("VAD trimmed {} -> {} samples leading_removed_ms={} "
              "trailing_removed_ms={} pad_ms={}",
              n, result.size(), leading_removed * 1000 / sample_rate_,
