@@ -2,7 +2,6 @@
 
 #include <cerrno>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <mutex>
@@ -112,7 +111,7 @@ bool DbusService::Start(std::string* error) {
     return false;
   }
 
-  fprintf(stderr, "vinput: DBus service started on %s\n", kBusName);
+  VLOG_INFO("DBus service started on {}", kBusName);
   return true;
 }
 
@@ -127,7 +126,7 @@ int DbusService::GetNotifyFd() const {
 bool DbusService::ProcessOnce() {
   const int ret = sd_bus_process(bus_, nullptr);
   if (ret < 0) {
-    fprintf(stderr, "vinput: sd_bus_process failed: %s\n", strerror(-ret));
+    VLOG_ERROR("sd_bus_process failed: {}", strerror(-ret));
     return false;
   }
   return ret > 0;
@@ -257,7 +256,7 @@ int DbusService::handleStartCommandRecording(sd_bus_message* m, void* userdata,
   const char* selected_text = "";
   const int ret = sd_bus_message_read(m, "s", &selected_text);
   if (ret < 0) {
-    fprintf(stderr, "vinput: failed to read StartCommandRecording text: %s\n", strerror(-ret));
+    VLOG_ERROR("failed to read StartCommandRecording text: {}", strerror(-ret));
     return ret;
   }
 
@@ -273,7 +272,7 @@ int DbusService::handleStopRecording(sd_bus_message* m, void* userdata, sd_bus_e
   const char* scene_id = "";
   const int ret = sd_bus_message_read(m, "s", &scene_id);
   if (ret < 0) {
-    fprintf(stderr, "vinput: failed to read StopRecording scene id: %s\n", strerror(-ret));
+    VLOG_ERROR("failed to read StopRecording scene id: {}", strerror(-ret));
     return ret;
   }
 
@@ -289,7 +288,7 @@ int DbusService::handleCancelOperation(sd_bus_message* m, void* userdata, sd_bus
   int commit_raw_text = 0;
   const int ret = sd_bus_message_read(m, "b", &commit_raw_text);
   if (ret < 0) {
-    fprintf(stderr, "vinput: failed to read CancelOperation action: %s\n", strerror(-ret));
+    VLOG_ERROR("failed to read CancelOperation action: {}", strerror(-ret));
     return ret;
   }
 
@@ -366,7 +365,7 @@ int DbusService::handleStartAdapter(sd_bus_message* m, void* userdata, sd_bus_er
   const char* adapter_id = "";
   const int ret = sd_bus_message_read(m, "s", &adapter_id);
   if (ret < 0) {
-    fprintf(stderr, "vinput: failed to read StartAdapter id: %s\n", strerror(-ret));
+    VLOG_ERROR("failed to read StartAdapter id: {}", strerror(-ret));
     return ret;
   }
 
@@ -382,7 +381,7 @@ int DbusService::handleStopAdapter(sd_bus_message* m, void* userdata, sd_bus_err
   const char* adapter_id = "";
   const int ret = sd_bus_message_read(m, "s", &adapter_id);
   if (ret < 0) {
-    fprintf(stderr, "vinput: failed to read StopAdapter id: %s\n", strerror(-ret));
+    VLOG_ERROR("failed to read StopAdapter id: {}", strerror(-ret));
     return ret;
   }
 
