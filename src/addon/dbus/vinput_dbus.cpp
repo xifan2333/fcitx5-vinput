@@ -2,7 +2,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <fcitx-utils/dbus/matchrule.h>
@@ -273,7 +272,7 @@ bool VinputEngine::callStartRecording() {
         auto slot = std::move(pending_start_call_slot_);
         if (!reply || reply.isError()) {
           noteDaemonSyncFailure();
-          fprintf(stderr, "vinput: StartRecording rejected by daemon\n");
+          VLOG_ERROR("StartRecording rejected by daemon");
           auto* ic = resolveFrontendInputContext();
           finishFrontendSession(ic);
           if (ic) {
@@ -313,7 +312,7 @@ bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
         auto slot = std::move(pending_start_call_slot_);
         if (!reply || reply.isError()) {
           noteDaemonSyncFailure();
-          fprintf(stderr, "vinput: StartCommandRecording rejected by daemon\n");
+          VLOG_ERROR("StartCommandRecording rejected by daemon");
           auto* ic = resolveFrontendInputContext();
           finishFrontendSession(ic);
           if (ic) {
@@ -350,7 +349,7 @@ bool VinputEngine::callStopRecording(const std::string& scene_id) {
         auto slot = std::move(pending_stop_call_slot_);
         if (!reply || reply.isError()) {
           noteDaemonSyncFailure();
-          fprintf(stderr, "vinput: StopRecording rejected by daemon\n");
+          VLOG_ERROR("StopRecording rejected by daemon");
           auto* ic = resolveFrontendInputContext();
           finishFrontendSession(ic);
           if (ic) {

@@ -1,12 +1,17 @@
 #include "core/context_writer.h"
 
-#include <cstdio>
+#include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <ios>
+#include <mutex>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#include "common/utils/debug_log.h"
 
 namespace vinput::addon {
 
@@ -15,7 +20,7 @@ AsyncContextWriter::AsyncContextWriter(std::filesystem::path path)
 
 AsyncContextWriter::~AsyncContextWriter() {
   {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     stopping_ = true;
   }
   wake_cv_.notify_one();
@@ -31,7 +36,7 @@ bool AsyncContextWriter::Enqueue(std::string json_line, int max_lines) {
   }
   bool lost_entries = false;
   {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     if (stopping_) {
       return false;
     }
@@ -59,7 +64,7 @@ bool AsyncContextWriter::WaitUntilIdle(std::chrono::milliseconds timeout) {
 }
 
 std::size_t AsyncContextWriter::DroppedEntries() const {
-  const std::lock_guard<std::mutex> lock(mutex_);
+  const std::scoped_lock lock(mutex_);
   return dropped_;
 }
 
@@ -81,7 +86,7 @@ void AsyncContextWriter::Run() {
     Persist(task);
 
     {
-      const std::lock_guard<std::mutex> lock(mutex_);
+      const std::scoped_lock lock(mutex_);
       writing_ = false;
       if (pending_.empty()) {
         idle_cv_.notify_all();
@@ -97,14 +102,13 @@ void AsyncContextWriter::Persist(const ContextWriteTask& task) {
       std::error_code ec;
       std::filesystem::create_directories(path_.parent_path(), ec);
       if (ec) {
-        std::fprintf(stderr, "vinput: failed to create context cache directory: %s\n",
-                     ec.message().c_str());
+        VLOG_ERROR("failed to create context cache directory: {}", ec.message());
         return;
       }
       ofs.clear();
       ofs.open(path_, std::ios::app);
       if (!ofs) {
-        std::fprintf(stderr, "vinput: failed to open context cache for append\n");
+        VLOG_ERROR("failed to open context cache for append");
         return;
       }
     }
@@ -148,7 +152,7 @@ void AsyncContextWriter::Persist(const ContextWriteTask& task) {
   std::error_code ec;
   std::filesystem::rename(temp_path, path_, ec);
   if (ec) {
-    std::fprintf(stderr, "vinput: failed to rotate context cache: %s\n", ec.message().c_str());
+    VLOG_ERROR("failed to rotate context cache: {}", ec.message());
   }
 }
 

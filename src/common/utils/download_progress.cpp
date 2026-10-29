@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
+#include <format>
 #include <indicators/indicators.hpp>
 #include <iostream>
 #include <memory>
@@ -16,15 +16,13 @@ std::string FormatSpeed(double speed_bps) {
   if (speed_bps <= 0) {
     return "";
   }
-  char buf[32];
   if (speed_bps >= 1024.0 * 1024.0) {
-    snprintf(buf, sizeof(buf), "%.1fMB/s", speed_bps / (1024.0 * 1024.0));
-  } else if (speed_bps >= 1024.0) {
-    snprintf(buf, sizeof(buf), "%.1fKB/s", speed_bps / 1024.0);
-  } else {
-    snprintf(buf, sizeof(buf), "%.0fB/s", speed_bps);
+    return std::format("{:.1f}MB/s", speed_bps / (1024.0 * 1024.0));
   }
-  return buf;
+  if (speed_bps >= 1024.0) {
+    return std::format("{:.1f}KB/s", speed_bps / 1024.0);
+  }
+  return std::format("{:.0f}B/s", speed_bps);
 }
 
 } // namespace
@@ -69,8 +67,7 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
     const int bucket = (percent / 10) * 10;
     const int last_bucket = (last_percent_ < 0) ? -1 : (last_percent_ / 10) * 10;
     if (bucket > last_bucket) {
-      fprintf(stderr, "%s: %d%%\n", label_.c_str(), bucket);
-      fflush(stderr);
+      std::cerr << std::format("{}: {}%\n", label_, bucket) << std::flush;
       last_percent_ = percent;
     }
   }
