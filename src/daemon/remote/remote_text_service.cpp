@@ -5,6 +5,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <cstddef>
 #include <exception>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
