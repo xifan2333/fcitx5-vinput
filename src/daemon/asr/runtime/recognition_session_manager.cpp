@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <functional>
 #include <glaze/json/json_t.hpp>
 #include <memory>
@@ -548,8 +547,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
       last_reload_error_ = error;
       reload_in_progress_ = false;
     }
-    fprintf(stderr, "vinput-daemon: async ASR backend reload failed after %lld ms: %s\n",
-            static_cast<long long>(reload_elapsed_ms), error.c_str());
+    VLOG_ERROR("async ASR backend reload failed after {} ms: {}", reload_elapsed_ms, error);
     NotifyReloadResult(false, error);
   }
 }
