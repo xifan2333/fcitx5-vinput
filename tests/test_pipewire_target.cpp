@@ -120,6 +120,79 @@ int main() {
     }
   }
 
+  // Auto selection and priority lists.
+  {
+    std::vector<vinput::pw::DeviceInfo> devices;
+    devices.push_back({
+        .id = 200,
+        .name = "alsa_input.usb",
+        .description = "USB microphone",
+        .is_sink_monitor = false,
+    });
+    devices.push_back({
+        .id = 201,
+        .name = "atvv-miremote-rc003",
+        .description = "ATVV source",
+        .is_sink_monitor = false,
+    });
+    devices.push_back({
+        .id = 202,
+        .name = "probe.monitor",
+        .description = "Null sink (Monitor)",
+        .is_sink_monitor = true,
+    });
+
+    const auto auto_res = ResolveCaptureTarget("auto", devices);
+    CHECK(auto_res.node_name == "atvv-miremote-rc003");
+    CHECK(!auto_res.is_sink_capture);
+
+    const auto auto_missing =
+        ResolveCaptureTarget("auto", std::vector<vinput::pw::DeviceInfo>{devices[0]});
+    CHECK(auto_missing.node_name.empty());
+    CHECK(!auto_missing.is_sink_capture);
+
+    const auto priority = ResolveCaptureTarget("atvv-*,alsa_input.*", devices);
+    CHECK(priority.node_name == "atvv-miremote-rc003");
+    CHECK(!priority.is_sink_capture);
+
+    const auto fallback = ResolveCaptureTarget("missing-*,alsa_input.*", devices);
+    CHECK(fallback.node_name == "alsa_input.usb");
+    CHECK(!fallback.is_sink_capture);
+
+    const auto no_match = ResolveCaptureTarget("missing-*", devices);
+    CHECK(no_match.node_name.empty());
+    CHECK(!no_match.is_sink_capture);
+
+    const auto default_first = ResolveCaptureTarget("default,atvv-*", devices);
+    CHECK(default_first.node_name.empty());
+    CHECK(!default_first.is_sink_capture);
+
+    const auto wildcard_sink = ResolveCaptureTarget("probe.*", devices);
+    CHECK(wildcard_sink.node_name == "probe");
+    CHECK(wildcard_sink.is_sink_capture);
+
+    const auto wildcard_any = ResolveCaptureTarget("*", devices);
+    CHECK(wildcard_any.node_name == "alsa_input.usb");
+    CHECK(!wildcard_any.is_sink_capture);
+
+    std::vector<vinput::pw::DeviceInfo> comma_device;
+    comma_device.push_back({
+        .id = 203,
+        .name = "weird,name",
+        .description = "Source with a comma",
+        .is_sink_monitor = false,
+    });
+    const auto exact_with_comma = ResolveCaptureTarget("weird,name", comma_device);
+    CHECK(exact_with_comma.node_name == "weird,name");
+    CHECK(!exact_with_comma.is_sink_capture);
+
+    CHECK(vinput::pw::IsCaptureTargetPattern("auto"));
+    CHECK(vinput::pw::IsCaptureTargetPattern("atvv-*"));
+    CHECK(vinput::pw::IsCaptureTargetPattern("a,b"));
+    CHECK(!vinput::pw::IsCaptureTargetPattern("default"));
+    CHECK(!vinput::pw::IsCaptureTargetPattern("alsa_input.usb"));
+  }
+
   std::cout << "All pipewire capture target tests passed!\n";
   return 0;
 }

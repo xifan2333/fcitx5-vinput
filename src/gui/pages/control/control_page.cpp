@@ -303,6 +303,7 @@ ControlPage::ControlPage(QWidget* parent)
 void ControlPage::reload() {
   comboDevice_->clear();
   comboDevice_->addItem("default", "default");
+  comboDevice_->addItem(tr("Auto (priority: atvv-*, default)"), "auto");
 
   const auto devices = vinput::pw::EnumerateAudioSources();
   const CoreConfig config = ConfigManager::Get().Load();
@@ -326,7 +327,13 @@ void ControlPage::reload() {
       comboDevice_->setCurrentIndex(comboDevice_->count() - 1);
     }
   }
-  if (comboDevice_->currentIndex() <= 0) {
+  if (activeDevice == "auto") {
+    comboDevice_->setCurrentIndex(1);
+  } else if (vinput::pw::IsCaptureTargetPattern(activeDevice.toStdString()) &&
+             activeDevice != "default") {
+    comboDevice_->addItem(tr("Auto (%1)").arg(activeDevice), activeDevice);
+    comboDevice_->setCurrentIndex(comboDevice_->count() - 1);
+  } else if (comboDevice_->currentIndex() <= 0) {
     comboDevice_->setCurrentIndex(0);
   }
 

@@ -20,7 +20,8 @@ void RegisterDeviceCommands(CLI::App& app, CliAction* action) {
 
   auto id = std::make_shared<std::string>();
   auto* use = device->add_subcommand("use", _("Set active capture device"));
-  use->add_option("id", *id, _("Device id or 'default'"))->required();
+  use->add_option("id", *id, _("Device id, 'default', 'auto', or a comma-separated priority list"))
+      ->required();
   use->callback([action, id]() {
     *action = [id](Formatter& fmt, const CliContext& ctx) {
       return RunDeviceConfigUse(*id, fmt, ctx);

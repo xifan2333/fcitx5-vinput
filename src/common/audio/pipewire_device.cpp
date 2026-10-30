@@ -227,40 +227,89 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
 ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
                                            const std::vector<DeviceInfo>& known_devices) {
   ResolvedCaptureTarget resolved;
-  if (target.empty() || target == "default") {
+  const auto trimmed = vinput::str::Trim(target);
+  if (trimmed.empty() || trimmed == "default") {
     return resolved;
   }
 
   static constexpr std::string_view kMonitorSuffix = ".monitor";
 
-  // 1. If known devices are provided, prioritize matching against real device metadata.
-  for (const auto& dev : known_devices) {
-    if (dev.name == target) {
-      if (!dev.is_sink_monitor) {
-        // Real Audio/Source node, even if named with a ".monitor" suffix (e.g. clean.monitor).
-        resolved.node_name = dev.name;
-        resolved.is_sink_capture = false;
-        return resolved;
-      }
+  const auto resolve_device = [](const DeviceInfo& dev) {
+    ResolvedCaptureTarget device;
+    if (!dev.is_sink_monitor) {
+      // Real Audio/Source node, even if named with a ".monitor" suffix (e.g. clean.monitor).
+      device.node_name = dev.name;
+      return device;
+    }
 
-      // Real Audio/Sink monitor: strip the ".monitor" suffix to target the underlying sink node.
-      const auto stripped = vinput::str::StripSuffix(target, kMonitorSuffix);
-      resolved.node_name = stripped.empty() ? dev.name : std::string(stripped);
-      resolved.is_sink_capture = true;
-      return resolved;
+    // Real Audio/Sink monitor: strip the ".monitor" suffix to target the underlying sink node.
+    const auto stripped = vinput::str::StripSuffix(dev.name, kMonitorSuffix);
+    device.node_name = stripped.empty() ? dev.name : std::string(stripped);
+    device.is_sink_capture = true;
+    return device;
+  };
+
+  // 1. An exact device name always wins, including names containing commas or
+  // wildcard characters.
+  for (const auto& dev : known_devices) {
+    if (dev.name == trimmed) {
+      return resolve_device(dev);
     }
   }
 
-  // 2. Fallback heuristic when device is offline or unknown.
-  if (target.size() > kMonitorSuffix.size() && target.ends_with(kMonitorSuffix)) {
-    resolved.node_name = std::string(vinput::str::StripSuffix(target, kMonitorSuffix));
-    resolved.is_sink_capture = true;
+  const bool auto_target = trimmed == kAutoCaptureTarget;
+  const bool list_target = trimmed.find(',') != std::string_view::npos;
+  const bool pattern_target = vinput::str::HasWildcard(trimmed);
+  if (!auto_target && !list_target && !pattern_target) {
+    // 2. Fallback heuristic for an exact offline or unknown name.
+    if (trimmed.size() > kMonitorSuffix.size() && trimmed.ends_with(kMonitorSuffix)) {
+      resolved.node_name = std::string(vinput::str::StripSuffix(trimmed, kMonitorSuffix));
+      resolved.is_sink_capture = true;
+      return resolved;
+    }
+
+    resolved.node_name = std::string(trimmed);
     return resolved;
   }
 
-  resolved.node_name = std::string(target);
-  resolved.is_sink_capture = false;
+  // 3. A pattern cannot be passed as target.object; without device metadata,
+  // use the system default.
+  if (known_devices.empty()) {
+    return resolved;
+  }
+
+  std::vector<std::string_view> patterns;
+  if (auto_target) {
+    patterns = vinput::str::Split(kAutoCapturePriority, ',');
+  } else if (list_target) {
+    patterns = vinput::str::Split(trimmed, ',');
+  } else {
+    patterns.push_back(trimmed);
+  }
+
+  for (auto pattern : patterns) {
+    pattern = vinput::str::Trim(pattern);
+    if (pattern.empty()) {
+      continue;
+    }
+    if (pattern == "default") {
+      return resolved;
+    }
+    for (const auto& dev : known_devices) {
+      if (dev.name == pattern || vinput::str::WildcardMatch(pattern, dev.name)) {
+        return resolve_device(dev);
+      }
+    }
+  }
+
+  // 4. No pattern matched; the system default is the safe fallback.
   return resolved;
+}
+
+bool IsCaptureTargetPattern(std::string_view target) {
+  const auto trimmed = vinput::str::Trim(target);
+  return trimmed == kAutoCaptureTarget || trimmed.find(',') != std::string_view::npos ||
+         vinput::str::HasWildcard(trimmed);
 }
 
 } // namespace vinput::pw

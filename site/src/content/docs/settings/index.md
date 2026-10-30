@@ -30,15 +30,34 @@ Corresponding config:
 
 Select the microphone input source. Vinput captures audio via PipeWire — this lists available capture devices on your system.
 
+`capture_device` accepts an exact PipeWire node name, `default`, `auto`, or a
+comma-separated priority list of wildcard patterns:
+
+- `default` uses the system default source.
+- `auto` is the built-in priority list `atvv-*,default`: the first available
+  source matching `atvv-*`, otherwise the system default.
+- A custom list such as `atvv-*,alsa_input.*,default` tries each pattern in
+  order. Patterns support `*` and `?`.
+- An exact node name always wins over pattern parsing, including names that
+  contain commas or wildcard characters.
+- If no pattern matches, the system default is used.
+
+The daemon re-reads the target at the start of every recording, so the next
+recording uses the new value; no daemon restart is required.
+
 ### GUI
 
-In Vinput GUI, select the device on the **Control** page.
+In Vinput GUI, select the device on the **Control** page. **Auto** selects the
+built-in `atvv-*,default` priority.
 
 ### CLI
 
 ```bash
-vinput device list              # List available capture devices
-vinput device use <name>        # Set active device
+vinput device list              # List available capture devices and the active target
+vinput device use <name>        # Exact node name
+vinput device use default       # System default
+vinput device use auto          # atvv-*,default
+vinput device use "atvv-*,default"   # Custom priority list
 ```
 
 ## Input gain

@@ -103,10 +103,38 @@ msgstr "系统默认"
 msgid "Device '%s' not found in PipeWire. Setting it anyway."
 msgstr "在 PipeWire 中未找到设备 '%s'，仍将继续设置。"
 
-#: src/cli/config/device_actions.cpp:80
+#: src/cli/config/device_actions.cpp
 #, c-format
-msgid "Capture device set to '%s'. Restart daemon to apply changes."
-msgstr "录音设备已设为 '%s'，请重启守护进程生效。"
+msgid "Capture device must not be empty."
+msgstr "录音设备不能为空。"
+
+#: src/cli/config/device_actions.cpp
+#, c-format
+msgid "Capture device set to '%s'. No matching source; the system default will be used."
+msgstr "已设置录音设备为“%s”。没有匹配的音源，将使用系统默认设备。"
+
+#: src/cli/config/device_actions.cpp
+#, c-format
+msgid "Capture device set to '%s'. The next recording will use '%s'."
+msgstr "已设置录音设备为“%s”。下次录音将使用“%s”。"
+
+#: src/cli/config/device_actions.cpp
+#, c-format
+msgid "Capture device set to '%s'. The next recording will use it when it appears."
+msgstr "已设置录音设备为“%s”。设备出现后，下次录音将使用它。"
+
+#: src/cli/config/device_actions.cpp
+#, c-format
+msgid "Capture device set to '%s'. The next recording will use it."
+msgstr "已设置录音设备为“%s”。下次录音将使用它。"
+
+#: src/cli/config/device_actions.cpp
+msgid "Capture device set to 'default' (system default)."
+msgstr "已设置录音设备为“default”（系统默认）。"
+
+#: src/cli/config/device_actions.cpp
+msgid "First matching source (atvv-*, default)"
+msgstr "第一个匹配的音源（atvv-*, default）"
 
 #: src/cli/config/init_actions.cpp:19
 #, c-format
@@ -194,8 +222,8 @@ msgid "Set active capture device"
 msgstr "设置当前录音设备"
 
 #: src/cli/config/register_device.cpp:23
-msgid "Device id or 'default'"
-msgstr "设备 ID 或 'default'"
+msgid "Device id, 'default', 'auto', or a comma-separated priority list"
+msgstr "设备 ID、'default'、'auto'，或逗号分隔的优先级列表"
 
 #: src/cli/config/register_init.cpp:13
 msgid "Initialize default config and directories"

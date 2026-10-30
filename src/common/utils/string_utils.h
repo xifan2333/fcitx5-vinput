@@ -262,4 +262,42 @@ inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
   return text.size() >= prefix.size() && EqualsIgnoreCase(text.substr(0, prefix.size()), prefix);
 }
 
+// =========================================================================
+// 7. Wildcard Matching
+// =========================================================================
+
+// Matches `*` (any sequence) and `?` (one character) without locale or
+// pathname-specific rules. Used for capture-device priority patterns.
+[[nodiscard]] inline bool WildcardMatch(std::string_view pattern, std::string_view text) noexcept {
+  size_t pattern_idx = 0;
+  size_t text_idx = 0;
+  size_t star_idx = std::string_view::npos;
+  size_t star_text_idx = 0;
+  while (text_idx < text.size()) {
+    if (pattern_idx < pattern.size() &&
+        (pattern[pattern_idx] == '?' || pattern[pattern_idx] == text[text_idx])) {
+      ++pattern_idx;
+      ++text_idx;
+    } else if (pattern_idx < pattern.size() && pattern[pattern_idx] == '*') {
+      star_idx = pattern_idx;
+      star_text_idx = text_idx;
+      ++pattern_idx;
+    } else if (star_idx != std::string_view::npos) {
+      pattern_idx = star_idx + 1;
+      ++star_text_idx;
+      text_idx = star_text_idx;
+    } else {
+      return false;
+    }
+  }
+  while (pattern_idx < pattern.size() && pattern[pattern_idx] == '*') {
+    ++pattern_idx;
+  }
+  return pattern_idx == pattern.size();
+}
+
+[[nodiscard]] inline bool HasWildcard(std::string_view text) noexcept {
+  return text.find('*') != std::string_view::npos || text.find('?') != std::string_view::npos;
+}
+
 } // namespace vinput::str

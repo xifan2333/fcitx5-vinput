@@ -271,6 +271,16 @@
         <translation>录音设备：</translation>
     </message>
     <message>
+        <location filename="../src/gui/pages/control/control_page.cpp" line="306"/>
+        <source>Auto (priority: atvv-*, default)</source>
+        <translation>自动（优先级：atvv-*, default）</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/pages/control/control_page.cpp" line="334"/>
+        <source>Auto (%1)</source>
+        <translation>自动（%1）</translation>
+    </message>
+    <message>
         <location filename="../src/gui/pages/control/control_page.cpp" line="139"/>
         <source>Normalize audio</source>
         <translation>归一化音频</translation>

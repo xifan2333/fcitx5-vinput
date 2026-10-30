@@ -258,6 +258,32 @@ void TestJoinKeyValue() {
 }
 
 namespace {
+void TestWildcardMatch() {
+  using vinput::str::HasWildcard;
+  using vinput::str::WildcardMatch;
+
+  TEST_ASSERT(WildcardMatch("atvv-*", "atvv-miremote-rc003"));
+  TEST_ASSERT(WildcardMatch("atvv-*", "atvv-"));
+  TEST_ASSERT(WildcardMatch("*", "anything"));
+  TEST_ASSERT(WildcardMatch("*", ""));
+  TEST_ASSERT(WildcardMatch("a*b*c", "a-x-b-y-c"));
+  TEST_ASSERT(WildcardMatch("a?c", "abc"));
+  TEST_ASSERT(!WildcardMatch("a?c", "ac"));
+  TEST_ASSERT(!WildcardMatch("a?c", "abbc"));
+  TEST_ASSERT(!WildcardMatch("atvv-*", "alsa_input.atvv"));
+  TEST_ASSERT(WildcardMatch("", ""));
+  TEST_ASSERT(!WildcardMatch("", "x"));
+  TEST_ASSERT(WildcardMatch("**", "x"));
+  TEST_ASSERT(WildcardMatch("a**b", "ab"));
+  TEST_ASSERT(WildcardMatch("literal", "literal"));
+  TEST_ASSERT(!WildcardMatch("literal", "literals"));
+
+  TEST_ASSERT(HasWildcard("atvv-*"));
+  TEST_ASSERT(HasWildcard("a?"));
+  TEST_ASSERT(!HasWildcard("atvv-miremote-rc003"));
+  TEST_ASSERT(!HasWildcard(""));
+}
+
 void TestFmtStr() {
   using vinput::str::FmtStr;
 
@@ -314,6 +340,7 @@ int main() {
   TestRSplitOnce();
   TestJoin();
   TestJoinKeyValue();
+  TestWildcardMatch();
   TestFmtStr();
   return 0;
 }

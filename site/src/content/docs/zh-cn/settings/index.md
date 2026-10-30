@@ -30,15 +30,28 @@ description: 录音设备、增益、VAD 等基础配置。
 
 选择麦克风输入源。Vinput 通过 PipeWire 获取音频，这里列出的是系统可用的采集设备。
 
+`capture_device` 支持精确的 PipeWire 节点名、`default`、`auto`，或逗号分隔的通配符优先级列表：
+
+- `default` 使用系统默认音源。
+- `auto` 是内置优先级 `atvv-*,default`：优先选择匹配 `atvv-*` 的可用音源，否则使用系统默认。
+- 自定义列表（例如 `atvv-*,alsa_input.*,default`）按顺序尝试每个模式；模式支持 `*` 和 `?`。
+- 精确节点名优先于模式解析，包括名称中包含逗号或通配符的情况。
+- 没有模式匹配时使用系统默认。
+
+守护进程在每次录音开始时重新读取目标，因此下一次录音立即生效，无需重启守护进程。
+
 ### GUI 操作
 
-在 Vinput GUI 的 **控制** 页面选择设备。
+在 Vinput GUI 的 **控制** 页面选择设备；**Auto** 对应内置的 `atvv-*,default` 优先级。
 
 ### CLI 操作
 
 ```bash
-vinput device list              # 列出可用录音设备
-vinput device use <名称>         # 设置当前设备
+vinput device list              # 列出可用录音设备与当前目标
+vinput device use <名称>         # 精确节点名
+vinput device use default       # 系统默认
+vinput device use auto          # atvv-*,default
+vinput device use "atvv-*,default"   # 自定义优先级列表
 ```
 
 ## 音频增益
