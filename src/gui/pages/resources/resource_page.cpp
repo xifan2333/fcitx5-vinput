@@ -160,7 +160,7 @@ struct SelectedResourceItem {
 };
 
 std::optional<SelectedResourceItem> GetSelectedResourceItem(const QTableWidget* table) {
-  if (table == nullptr) {
+  if (table == nullptr || table->selectedItems().isEmpty()) {
     return std::nullopt;
   }
   const int row = table->currentRow();
@@ -176,7 +176,7 @@ std::optional<SelectedResourceItem> GetSelectedResourceItem(const QTableWidget* 
   if (title.isEmpty()) {
     title = id;
   }
-  return SelectedResourceItem{id, title};
+  return SelectedResourceItem{.id = id, .title = title};
 }
 
 void CleanupInstalledScript(vinput::script::Kind kind, const std::string& id) {
@@ -192,7 +192,7 @@ template <typename MaterializeFn>
 bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::string& id,
                                       const std::vector<std::string>& registry_urls,
                                       std::string* err, const std::atomic<bool>* cancel_token,
-                                      MaterializeFn&& materialize_fn) {
+                                      const MaterializeFn& materialize_fn, bool is_update = false) {
   const CoreConfig config = ConfigManager::Get().Load();
   auto entries = vinput::script::FetchRegistry(config, kind, registry_urls, err);
   if (!err->empty() || IsWorkerCancelled(cancel_token)) {
@@ -207,7 +207,7 @@ bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::stri
   }
 
   const bool is_adapter = (kind == vinput::script::Kind::kLlmAdapter);
-  const bool was_running = is_adapter && vinput::adapter::IsRunning(id);
+  const bool was_running = is_adapter && is_update && vinput::adapter::IsRunning(id);
   bool stopped = false;
   if (was_running) {
     vinput::cli::DbusClient dbus;
@@ -672,7 +672,7 @@ void ResourcePage::populateRemoteProviders(
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kAsrProvider, entry, installed);
 
-    QString status = FormatScriptUpdateStatus(ver_info, installed);
+    const QString status = FormatScriptUpdateStatus(ver_info, installed);
 
     auto* stCell = MakeCell(status);
     stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
@@ -719,7 +719,7 @@ void ResourcePage::populateRemoteAdapters(
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
 
-    QString status = FormatScriptUpdateStatus(ver_info, installed);
+    const QString status = FormatScriptUpdateStatus(ver_info, installed);
 
     auto* stCell = MakeCell(status);
     stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
@@ -1115,7 +1115,8 @@ void ResourcePage::onUpdateProviderClicked() {
             vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
             [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
               return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
-            });
+            },
+            /*is_update=*/true);
         updateSucceeded->store(saved);
         return saved;
       });
@@ -1175,7 +1176,8 @@ void ResourcePage::onUpdateAdapterClicked() {
         vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
         [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
           return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-        });
+        },
+        /*is_update=*/true);
   });
   textLog_->append(tr("Updating adapter %1...").arg(title));
   downloadWorker_->start();

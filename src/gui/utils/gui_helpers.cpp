@@ -1,17 +1,28 @@
 #include "utils/gui_helpers.h"
 
-#include <QApplication>
-#include <QHash>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QLineEdit>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QTimer>
-#include <QUrl>
+#include <QtCore/qbytearray.h>
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qglobal.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qjsonarray.h>
+#include <QtCore/qjsondocument.h>
+#include <QtCore/qjsonobject.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qnamespace.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
+#include <QtCore/qtimer.h>
+#include <QtCore/qurl.h>
+#include <QtNetwork/qnetworkaccessmanager.h>
+#include <QtNetwork/qnetworkreply.h>
+#include <QtNetwork/qnetworkrequest.h>
+#include <QtWidgets/qcombobox.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qtablewidget.h>
+#include <algorithm>
+#include <map>
+#include <string>
 #include <vector>
 
 #include "common/llm/defaults.h"
@@ -44,8 +55,9 @@ QStringList NonEmptyLines(const QString& text) {
 QTableWidgetItem* MakeCell(const QString& text, const QString& data) {
   auto* cell = new QTableWidgetItem(text);
   cell->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
-  if (!data.isEmpty())
+  if (!data.isEmpty()) {
     cell->setData(Qt::UserRole, data);
+  }
   return cell;
 }
 
@@ -75,7 +87,7 @@ QString FormatScriptUpdateStatus(const vinput::script::ResourceVersionInfo& ver_
 
 bool ValidateProviderInput(const QString& name, const QString& base_url, QString* error_out) {
   if (name.trimmed().isEmpty()) {
-    if (error_out) {
+    if (error_out != nullptr) {
       *error_out = GuiHelpers::tr("Provider name must not be empty.");
     }
     return false;
@@ -84,7 +96,7 @@ bool ValidateProviderInput(const QString& name, const QString& base_url, QString
   const QUrl url = QUrl::fromUserInput(base_url.trimmed());
   if (!url.isValid() || url.scheme().isEmpty() || url.host().isEmpty() ||
       (url.scheme() != "http" && url.scheme() != "https")) {
-    if (error_out) {
+    if (error_out != nullptr) {
       *error_out = GuiHelpers::tr("Base URL must be a valid http:// or https:// URL.");
     }
     return false;
@@ -95,22 +107,23 @@ bool ValidateProviderInput(const QString& name, const QString& base_url, QString
 
 bool ParseCommandEnv(const QString& text, std::map<std::string, std::string>* env,
                      QString* error_out) {
-  if (!env) {
+  if (env == nullptr) {
     return false;
   }
 
   env->clear();
-  for (const QString& line : NonEmptyLines(text)) {
-    const int pos = line.indexOf('=');
+  const QStringList lines = NonEmptyLines(text);
+  return std::ranges::all_of(lines, [&](const QString& line) {
+    const qsizetype pos = line.indexOf('=');
     if (pos <= 0) {
-      if (error_out) {
+      if (error_out != nullptr) {
         *error_out = GuiHelpers::tr("Invalid env entry '%1'. Use KEY=VALUE.").arg(line);
       }
       return false;
     }
     (*env)[line.left(pos).toStdString()] = line.mid(pos + 1).toStdString();
-  }
-  return true;
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +209,7 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
 
   const std::string url_str =
       vinput::url::JoinPath(provider.base_url.toStdString(), vinput::llm::kOpenAiModelsPath);
-  QString url = QString::fromStdString(url_str);
+  const QString url = QString::fromStdString(url_str);
 
   auto* nam = new QNetworkAccessManager(comboModel);
   QNetworkRequest req{QUrl(url)};
@@ -276,7 +289,7 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
 
 // Load LLM providers from CLI -> NO, from config now.
 QList<ProviderInfo> LoadLlmProviders() {
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
   QList<ProviderInfo> providers;
   for (const auto& prov : config.llm.providers) {
     ProviderInfo info;
@@ -306,7 +319,7 @@ void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
   comboModel->setProperty("vinput_desired_model", currentModel);
 
   auto refreshModels = [comboModel, comboProvider, providers]() {
-    QString selected = comboProvider->currentText();
+    const QString selected = comboProvider->currentText();
     if (selected.isEmpty()) {
       comboModel->setEnabled(true);
       comboModel->clear();

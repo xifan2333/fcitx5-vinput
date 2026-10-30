@@ -168,7 +168,7 @@
     </message>
     <message>
         <source>incompatible (requires vinput %1)</source>
-        <translation>不兼容 (需要 vinput %1)</translation>
+        <translation>不兼容（需要 vinput %1）</translation>
     </message>
     <message>
         <source>update available (%1 -&gt; %2)</source>
@@ -188,7 +188,7 @@
     </message>
     <message>
         <source>available</source>
-        <translation>可用</translation>
+        <translation>可下载</translation>
     </message>
 </context>
 <context>

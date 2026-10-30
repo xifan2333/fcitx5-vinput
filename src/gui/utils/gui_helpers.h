@@ -1,10 +1,13 @@
 #pragma once
 
-#include <QComboBox>
-#include <QStringList>
-#include <QTableWidgetItem>
-#include <QWidget>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
+#include <QtWidgets/qcombobox.h>
+#include <QtWidgets/qtablewidget.h>
+#include <QtWidgets/qwidget.h>
 #include <atomic>
+#include <map>
+#include <string>
 
 namespace vinput::script {
 struct ResourceVersionInfo;

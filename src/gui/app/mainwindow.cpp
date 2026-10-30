@@ -234,7 +234,7 @@ void MainWindow::checkNotification() {
       return true; // silent fail or cancelled
     }
 
-    if (IsWorkerCancelled(cancel_token)) {
+    if (vinput::gui::IsWorkerCancelled(cancel_token)) {
       return true;
     }
 
@@ -267,7 +267,7 @@ void MainWindow::checkNotification() {
     const QString url = QString::fromStdString(vinput::json::String(j, "url"));
     const QString id = QString::number(remote_id);
 
-    if (IsWorkerCancelled(cancel_token)) {
+    if (vinput::gui::IsWorkerCancelled(cancel_token)) {
       return true;
     }
 
