@@ -1,10 +1,15 @@
 #include "common/i18n.h"
 
 #include <algorithm>
+#include <array>
+extern "C" {
+#include <locale.h>
+}
 #include <cstdlib>
 #include <filesystem>
-#include <locale.h>
+#include <libintl.h>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "common/utils/locale_utils.h"
@@ -20,7 +25,7 @@ namespace {
 std::vector<std::string> LocaleCandidates() {
   std::vector<std::string> candidates;
   const auto add_candidate = [&candidates](const char* value) {
-    if (!value || !*value) {
+    if (value == nullptr || *value == '\0') {
       return;
     }
 
@@ -28,14 +33,13 @@ std::vector<std::string> LocaleCandidates() {
     if (locale.empty()) {
       return;
     }
-    if (std::find(candidates.begin(), candidates.end(), locale) == candidates.end()) {
+    if (std::ranges::find(candidates, locale) == candidates.end()) {
       candidates.push_back(locale);
     }
     const auto underscore = locale.find('_');
     if (underscore != std::string::npos) {
       const auto language = locale.substr(0, underscore);
-      if (!language.empty() &&
-          std::find(candidates.begin(), candidates.end(), language) == candidates.end()) {
+      if (!language.empty() && std::ranges::find(candidates, language) == candidates.end()) {
         candidates.push_back(language);
       }
     }
@@ -50,10 +54,11 @@ std::vector<std::string> LocaleCandidates() {
 }
 
 std::string PreferredMessageLocale() {
-  const char* vars[] = {"LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"};
-  for (const char* name : vars) {
+  constexpr std::array<const char*, 4> kLocaleEnvVars = {"LANGUAGE", "LC_ALL", "LC_MESSAGES",
+                                                         "LANG"};
+  for (const char* name : kLocaleEnvVars) {
     const char* value = std::getenv(name);
-    if (!value || !*value) {
+    if (value == nullptr || *value == '\0') {
       continue;
     }
     const std::string locale = vinput::locale::NormalizeLocaleName(value);
@@ -70,7 +75,7 @@ void ApplyPreferredMessageLocale() {
     return;
   }
 
-  const std::string candidates[] = {
+  const std::array<std::string, 3> candidates = {
       preferred_locale,
       preferred_locale + ".UTF-8",
       preferred_locale + ".utf8",
