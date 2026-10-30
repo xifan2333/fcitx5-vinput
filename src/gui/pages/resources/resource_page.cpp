@@ -1008,7 +1008,7 @@ void ResourcePage::onAddProviderClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return false;
     }
 
@@ -1025,7 +1025,7 @@ void ResourcePage::onAddProviderClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return false;
     }
 
@@ -1034,7 +1034,7 @@ void ResourcePage::onAddProviderClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return false;
     }
 
@@ -1092,7 +1092,7 @@ void ResourcePage::onUpdateProviderClicked() {
           return false;
         }
 
-        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+        if (IsWorkerCancelled(cancel_token)) {
           return false;
         }
 
@@ -1109,7 +1109,7 @@ void ResourcePage::onUpdateProviderClicked() {
           return false;
         }
 
-        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+        if (IsWorkerCancelled(cancel_token)) {
           return false;
         }
 
@@ -1118,7 +1118,7 @@ void ResourcePage::onUpdateProviderClicked() {
           return false;
         }
 
-        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+        if (IsWorkerCancelled(cancel_token)) {
           return false;
         }
 
@@ -1159,7 +1159,7 @@ void ResourcePage::onAddAdapterClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return false;
     }
 
@@ -1176,7 +1176,7 @@ void ResourcePage::onAddAdapterClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return false;
     }
 
@@ -1185,7 +1185,7 @@ void ResourcePage::onAddAdapterClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return false;
     }
 
@@ -1227,7 +1227,7 @@ void ResourcePage::onUpdateAdapterClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return false;
     }
 
@@ -1273,7 +1273,7 @@ void ResourcePage::onUpdateAdapterClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       restart();
       return false;
     }
@@ -1284,7 +1284,7 @@ void ResourcePage::onUpdateAdapterClicked() {
       return false;
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       restart();
       return false;
     }

@@ -4,8 +4,14 @@
 #include <QStringList>
 #include <QTableWidgetItem>
 #include <QWidget>
+#include <atomic>
 
 namespace vinput::gui {
+
+// Check if a background worker cancellation token has been signalled.
+[[nodiscard]] inline bool IsWorkerCancelled(const std::atomic<bool>* cancel_token) noexcept {
+  return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
+}
 
 // Split text into non-empty trimmed lines.
 QStringList NonEmptyLines(const QString& text);

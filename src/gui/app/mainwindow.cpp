@@ -28,6 +28,7 @@
 
 #include "gui/utils/config_manager.h"
 #include "gui/utils/download_worker.h"
+#include "gui/utils/gui_helpers.h"
 #include "gui/utils/i18n_cache.h"
 
 #include "config.h"
@@ -233,7 +234,7 @@ void MainWindow::checkNotification() {
       return true; // silent fail or cancelled
     }
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return true;
     }
 
@@ -266,7 +267,7 @@ void MainWindow::checkNotification() {
     const QString url = QString::fromStdString(vinput::json::String(j, "url"));
     const QString id = QString::number(remote_id);
 
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (IsWorkerCancelled(cancel_token)) {
       return true;
     }
 
