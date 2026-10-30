@@ -86,6 +86,11 @@ Read **[references/audio-debugging.md](references/audio-debugging.md)**
 - **Trigger**: When audio capture fails, PipeWire reports XRuns, D-Bus service crashes, or analyzing daemon logs.
 - **Core Standard**: Inspect systemd user logs via `journalctl --user-unit vinput-daemon -f` and run with `VINPUT_LOG_LEVEL=debug`.
 
+### Branch: Auditing C ABI Boundaries & Review Bot Triage
+Read **[references/c-abi-boundaries.md](references/c-abi-boundaries.md)**
+- **Trigger**: When triaging review bot (CodeRabbit, Qodo) comments, handling C API callbacks, or planning C++20 refactoring.
+- **Core Standard**: Strict separation of the 6 canonical C ABI boundaries (PipeWire/SPA, sd-bus, libarchive, OpenSSL EVP, POSIX signal/poll, Fcitx5 addon factory) from pure C++20 business logic. Never modernize C ABI callbacks or raw arrays at these boundaries.
+
 ---
 
 ## 4. Upstream Pillar Grounding (Context7 Pointers)
