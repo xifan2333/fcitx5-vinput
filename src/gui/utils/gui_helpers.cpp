@@ -1,18 +1,21 @@
 #include "utils/gui_helpers.h"
 
 #include <QtCore/qbytearray.h>
+#include <QtCore/qcontainerfwd.h>
 #include <QtCore/qcoreapplication.h>
-#include <QtCore/qglobal.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qjsonarray.h>
 #include <QtCore/qjsondocument.h>
 #include <QtCore/qjsonobject.h>
+#include <QtCore/qjsonparseerror.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
+#include <QtCore/qoverload.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qtimer.h>
+#include <QtCore/qtypes.h>
 #include <QtCore/qurl.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qnetworkreply.h>

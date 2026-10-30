@@ -1,10 +1,10 @@
 #pragma once
 
+#include <QtCore/qcontainerfwd.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtWidgets/qcombobox.h>
 #include <QtWidgets/qtablewidget.h>
-#include <QtWidgets/qwidget.h>
 #include <atomic>
 #include <map>
 #include <string>
