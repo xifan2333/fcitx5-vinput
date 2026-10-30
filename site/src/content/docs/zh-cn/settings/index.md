@@ -40,6 +40,11 @@ description: 录音设备、增益、VAD 等基础配置。
 
 守护进程在每次录音开始时重新读取目标，因此下一次录音立即生效，无需重启守护进程。
 
+当所选音源声明了 `atvv.recording_keys`（ATVV 会声明）时，`vinput device use`
+会通过 fcitx 控制器把映射后的 fcitx5 触发键（`Dictate`、`VoiceCommand`、
+`Assistant`）追加到 `[TriggerKey]`，保留已有条目并使用下一个空闲索引。
+如果 fcitx5 未运行，则只打印需要添加的条目，不直接写配置文件。
+
 ### GUI 操作
 
 在 Vinput GUI 的 **控制** 页面选择设备；**Auto** 对应内置的 `atvv-*,default` 优先级。

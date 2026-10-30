@@ -45,6 +45,12 @@ comma-separated priority list of wildcard patterns:
 The daemon re-reads the target at the start of every recording, so the next
 recording uses the new value; no daemon restart is required.
 
+When the selected source advertises `atvv.recording_keys` (ATVV does),
+`vinput device use` appends the mapped fcitx5 trigger keys (`Dictate`,
+`VoiceCommand`, `Assistant`) to `[TriggerKey]` through fcitx's controller,
+preserving existing entries and using the next free indices. If fcitx5 is not
+running, it prints the exact entries to add instead of writing the file.
+
 ### GUI
 
 In Vinput GUI, select the device on the **Control** page. **Auto** selects the

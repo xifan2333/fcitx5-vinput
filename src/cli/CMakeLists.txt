@@ -33,6 +33,7 @@ add_executable(cli
     config/asr_actions.cpp
     config/config_actions.cpp
     config/device_actions.cpp
+    config/fcitx_controller.cpp
     config/init_actions.cpp
     config/llm_actions.cpp
     config/register.cpp

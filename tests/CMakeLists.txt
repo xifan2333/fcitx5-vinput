@@ -314,6 +314,13 @@ target_include_directories(test_recording_keys PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_recording_keys PRIVATE pipewire_device)
 add_test(NAME test_recording_keys COMMAND test_recording_keys)
 
+add_executable(test_fcitx_controller
+    test_fcitx_controller.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/config/fcitx_controller.cpp
+)
+target_include_directories(test_fcitx_controller PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_fcitx_controller PRIVATE config pthread)
+add_test(NAME test_fcitx_controller COMMAND test_fcitx_controller)
 
 add_executable(test_expected test_expected.cpp)
 target_include_directories(test_expected PRIVATE ${CMAKE_SOURCE_DIR}/src)

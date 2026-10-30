@@ -6,11 +6,13 @@
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
+#include "common/audio/recording_keys.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/i18n.h"
 #include "common/utils/string_utils.h"
 
+#include "cli/config/fcitx_controller.h"
 #include "cli/utils/cli_context.h"
 #include "cli/utils/cli_helpers.h"
 #include "cli/utils/formatter.h"
@@ -32,6 +34,47 @@ std::string ActiveMark(bool active) {
   return active ? std::string("[*] ") + _("Active") : "[ ]";
 }
 
+void BindRecordingKeys(const vinput::pw::DeviceInfo& device, Formatter& fmt) {
+  const auto key_names = vinput::pw::FcitxKeyNamesFromRecordingKeys(device.recording_keys);
+  if (key_names.empty()) {
+    return;
+  }
+
+  vinput::cli::TriggerKeyUpdate update;
+  std::string error;
+  if (vinput::cli::BindFcitxTriggerKeys(key_names, &update, &error)) {
+    if (update.Empty()) {
+      fmt.PrintInfo(_("All declared recording keys are already bound in fcitx5."));
+      return;
+    }
+    std::vector<std::string> names;
+    names.reserve(update.entries.size());
+    for (const auto& entry : update.entries) {
+      names.push_back(entry.name);
+    }
+    fmt.PrintSuccess(
+        vinput::str::FmtStr(_("Added fcitx5 trigger keys: %s"), vinput::str::Join(names, ", ")));
+    return;
+  }
+
+  const auto planned = vinput::cli::PlannedTriggerKeysFromDisk(key_names);
+  if (planned.Empty()) {
+    fmt.PrintInfo(_("All declared recording keys are already bound in fcitx5."));
+    return;
+  }
+
+  fmt.PrintWarning(
+      vinput::str::FmtStr(_("Could not update fcitx5 trigger keys automatically: %s"), error));
+  std::string instructions =
+      _("Add these entries to [TriggerKey] in ~/.config/fcitx5/conf/vinput.conf while "
+        "fcitx5 is stopped:");
+  instructions += "\n[TriggerKey]";
+  for (const auto& entry : planned.entries) {
+    instructions += "\n" + entry.index + "=" + entry.name;
+  }
+  fmt.PrintInfo(instructions);
+}
+
 } // namespace
 
 int RunDeviceConfigList(Formatter& fmt, const CliContext& ctx) {
@@ -41,7 +84,7 @@ int RunDeviceConfigList(Formatter& fmt, const CliContext& ctx) {
       active_device == vinput::pw::kAutoCaptureTarget ||
       (vinput::pw::IsCaptureTargetPattern(active_device) && active_device != "default");
 
-  auto devices = vinput::pw::EnumerateAudioSources();
+  const auto devices = vinput::pw::EnumerateAudioSources();
   if (devices.empty()) {
     fmt.PrintInfo(_("No audio capture devices found or PipeWire is not running."));
     return 0;
@@ -68,9 +111,16 @@ int RunDeviceConfigList(Formatter& fmt, const CliContext& ctx) {
   const std::vector<std::string> headers = {_("NAME"), _("DESCRIPTION"), _("STATUS")};
   std::vector<std::vector<std::string>> rows;
 
-  rows.push_back({"default", _("System Default"),
-                  ActiveMark(active_device.empty() || active_device == "default")});
-  rows.push_back({"auto", _("First matching source (atvv-*, default)"), ActiveMark(auto_active)});
+  rows.push_back({
+      "default",
+      _("System Default"),
+      ActiveMark(active_device.empty() || active_device == "default"),
+  });
+  rows.push_back({
+      "auto",
+      _("First matching source (atvv-*, default)"),
+      ActiveMark(auto_active),
+  });
 
   for (const auto& d : devices) {
     rows.push_back({d.name, d.description, ActiveMark(DeviceMatchesResolved(d, resolved))});
@@ -130,6 +180,19 @@ int RunDeviceConfigUse(const std::string& name, Formatter& fmt, const CliContext
     fmt.PrintSuccess(vinput::str::FmtStr(
         _("Capture device set to '%s'. The next recording will use it when it appears."),
         target_to_save));
+  }
+
+  const vinput::pw::DeviceInfo* selected_device = exact_device;
+  if (selected_device == nullptr && !resolved.node_name.empty()) {
+    for (const auto& device : devices) {
+      if (DeviceMatchesResolved(device, resolved)) {
+        selected_device = &device;
+        break;
+      }
+    }
+  }
+  if (selected_device != nullptr && !selected_device->recording_keys.empty()) {
+    BindRecordingKeys(*selected_device, fmt);
   }
   return 0;
 }

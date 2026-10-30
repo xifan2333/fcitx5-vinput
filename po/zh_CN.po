@@ -136,6 +136,24 @@ msgstr "已设置录音设备为“default”（系统默认）。"
 msgid "First matching source (atvv-*, default)"
 msgstr "第一个匹配的音源（atvv-*, default）"
 
+#: src/cli/config/device_actions.cpp
+msgid "All declared recording keys are already bound in fcitx5."
+msgstr "所有声明的录音键已绑定到 fcitx5。"
+
+#: src/cli/config/device_actions.cpp
+#, c-format
+msgid "Added fcitx5 trigger keys: %s"
+msgstr "已添加 fcitx5 触发键：%s"
+
+#: src/cli/config/device_actions.cpp
+#, c-format
+msgid "Could not update fcitx5 trigger keys automatically: %s"
+msgstr "无法自动更新 fcitx5 触发键：%s"
+
+#: src/cli/config/device_actions.cpp
+msgid "Add these entries to [TriggerKey] in ~/.config/fcitx5/conf/vinput.conf while fcitx5 is stopped:"
+msgstr "在 fcitx5 停止时，将以下条目添加到 ~/.config/fcitx5/conf/vinput.conf 的 [TriggerKey]："
+
 #: src/cli/config/init_actions.cpp:19
 #, c-format
 msgid "Config already exists: %s"
