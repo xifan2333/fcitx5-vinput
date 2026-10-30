@@ -166,6 +166,30 @@
         <source>Provider returned invalid JSON for /v1/models.</source>
         <translation>提供程序的 /v1/models 返回了无效的 JSON。</translation>
     </message>
+    <message>
+        <source>incompatible (requires vinput %1)</source>
+        <translation>不兼容（需要 vinput %1）</translation>
+    </message>
+    <message>
+        <source>update available (%1 -&gt; %2)</source>
+        <translation>有可用更新 (%1 -&gt; %2)</translation>
+    </message>
+    <message>
+        <source>update available</source>
+        <translation>有可用更新</translation>
+    </message>
+    <message>
+        <source>installed (%1)</source>
+        <translation>已安装 (%1)</translation>
+    </message>
+    <message>
+        <source>installed</source>
+        <translation>已安装</translation>
+    </message>
+    <message>
+        <source>available</source>
+        <translation>可下载</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>

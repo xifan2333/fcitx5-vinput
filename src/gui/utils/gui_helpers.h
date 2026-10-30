@@ -1,11 +1,28 @@
 #pragma once
 
-#include <QComboBox>
-#include <QStringList>
-#include <QTableWidgetItem>
-#include <QWidget>
+#include <QtCore/qcontainerfwd.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
+#include <QtWidgets/qcombobox.h>
+#include <QtWidgets/qtablewidget.h>
+#include <atomic>
+#include <map>
+#include <string>
+
+namespace vinput::script {
+struct ResourceVersionInfo;
+}
 
 namespace vinput::gui {
+
+// Check if a background worker cancellation token has been signalled.
+[[nodiscard]] inline bool IsWorkerCancelled(const std::atomic<bool>* cancel_token) noexcept {
+  return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
+}
+
+// Format user-facing status string for a registry resource (provider or adapter).
+QString FormatScriptUpdateStatus(const vinput::script::ResourceVersionInfo& ver_info,
+                                 bool installed);
 
 // Split text into non-empty trimmed lines.
 QStringList NonEmptyLines(const QString& text);

@@ -49,6 +49,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -151,6 +152,109 @@ template <typename Callback> void RunReloadAsrBackendAsync(ResourcePage* page, C
       callback(ok, err);
     });
   });
+}
+
+struct SelectedResourceItem {
+  QString id;
+  QString title;
+};
+
+std::optional<SelectedResourceItem> GetSelectedResourceItem(const QTableWidget* table) {
+  if (table == nullptr || table->selectedItems().isEmpty()) {
+    return std::nullopt;
+  }
+  const int row = table->currentRow();
+  if (row < 0 || row >= table->rowCount()) {
+    return std::nullopt;
+  }
+  auto* name_item = table->item(row, 0);
+  if (name_item == nullptr) {
+    return std::nullopt;
+  }
+  const QString id = name_item->data(Qt::UserRole).toString();
+  QString title = name_item->text();
+  if (title.isEmpty()) {
+    title = id;
+  }
+  return SelectedResourceItem{.id = id, .title = title};
+}
+
+void CleanupInstalledScript(vinput::script::Kind kind, const std::string& id) {
+  const auto managed_path = vinput::script::DefaultLocalScriptPath(kind, id);
+  if (!managed_path.empty()) {
+    std::error_code ec;
+    std::filesystem::remove(managed_path, ec);
+  }
+  vinput::script::UnregisterInstalledScript(id);
+}
+
+template <typename MaterializeFn>
+bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::string& id,
+                                      const std::vector<std::string>& registry_urls,
+                                      std::string* err, const std::atomic<bool>* cancel_token,
+                                      const MaterializeFn& materialize_fn, bool is_update = false) {
+  const CoreConfig config = ConfigManager::Get().Load();
+  auto entries = vinput::script::FetchRegistry(config, kind, registry_urls, err);
+  if (!err->empty() || IsWorkerCancelled(cancel_token)) {
+    return false;
+  }
+
+  auto it = std::ranges::find_if(entries, [&](const auto& e) { return e.id == id; });
+  if (it == entries.end()) {
+    *err = (kind == vinput::script::Kind::kAsrProvider) ? "Provider not found in registry."
+                                                        : "Adapter not found in registry.";
+    return false;
+  }
+
+  const bool is_adapter = (kind == vinput::script::Kind::kLlmAdapter);
+  const bool was_running = is_adapter && is_update && vinput::adapter::IsRunning(id);
+  bool stopped = false;
+  if (was_running) {
+    vinput::cli::DbusClient dbus;
+    std::string stop_err;
+    if (!dbus.StopAdapter(id, &stop_err)) {
+      *err = stop_err.empty() ? "Failed to stop adapter." : stop_err;
+      return false;
+    }
+    stopped = true;
+  }
+
+  auto restart = [&]() -> bool {
+    if (!stopped) {
+      return true;
+    }
+    vinput::cli::DbusClient dbus;
+    std::string start_err;
+    if (!dbus.StartAdapter(id, &start_err)) {
+      if (!err->empty()) {
+        *err += "; ";
+      }
+      *err += start_err.empty() ? "Failed to restart adapter." : start_err;
+      return false;
+    }
+    return true;
+  };
+
+  std::filesystem::path script_path;
+  if (!vinput::script::DownloadScript(*it, kind, &script_path, err, nullptr, cancel_token) ||
+      IsWorkerCancelled(cancel_token)) {
+    restart();
+    return false;
+  }
+
+  CoreConfig mut_config = ConfigManager::Get().Load();
+  if (!materialize_fn(&mut_config, *it, script_path, err) || IsWorkerCancelled(cancel_token)) {
+    restart();
+    return false;
+  }
+
+  if (!ConfigManager::Get().Save(mut_config)) {
+    *err = "Failed to save configuration.";
+    restart();
+    return false;
+  }
+
+  return restart();
 }
 
 } // namespace
@@ -568,25 +672,7 @@ void ResourcePage::populateRemoteProviders(
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kAsrProvider, entry, installed);
 
-    QString status = tr("available");
-    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status = tr("incompatible (requires vinput %1)")
-                   .arg(QString::fromStdString(ver_info.vinput_version));
-    } else if (installed) {
-      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
-        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status = tr("update available (%1 -> %2)")
-                       .arg(QString::fromStdString(ver_info.installed_version),
-                            QString::fromStdString(ver_info.remote_version));
-        } else {
-          status = tr("update available");
-        }
-      } else if (!ver_info.installed_version.empty()) {
-        status = tr("installed (%1)").arg(QString::fromStdString(ver_info.installed_version));
-      } else {
-        status = tr("installed");
-      }
-    }
+    const QString status = FormatScriptUpdateStatus(ver_info, installed);
 
     auto* stCell = MakeCell(status);
     stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
@@ -633,25 +719,7 @@ void ResourcePage::populateRemoteAdapters(
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
 
-    QString status = tr("available");
-    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status = tr("incompatible (requires vinput %1)")
-                   .arg(QString::fromStdString(ver_info.vinput_version));
-    } else if (installed) {
-      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
-        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status = tr("update available (%1 -> %2)")
-                       .arg(QString::fromStdString(ver_info.installed_version),
-                            QString::fromStdString(ver_info.remote_version));
-        } else {
-          status = tr("update available");
-        }
-      } else if (!ver_info.installed_version.empty()) {
-        status = tr("installed (%1)").arg(QString::fromStdString(ver_info.installed_version));
-      } else {
-        status = tr("installed");
-      }
-    }
+    const QString status = FormatScriptUpdateStatus(ver_info, installed);
 
     auto* stCell = MakeCell(status);
     stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
@@ -980,16 +1048,12 @@ void ResourcePage::onDownloadModelClicked() {
 }
 
 void ResourcePage::onAddProviderClicked() {
-  auto items = tableAvailableProviders_->selectedItems();
-  if (items.isEmpty()) {
+  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
+  if (!selected) {
     return;
   }
-  auto* name_item = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 0);
-  QString id = name_item->data(Qt::UserRole).toString();
-  QString title = name_item->text();
-  if (title.isEmpty()) {
-    title = id;
-  }
+  const QString id = selected->id;
+  const QString title = selected->title;
 
   abortDownload();
   btnAddProvider_->setEnabled(false);
@@ -1002,62 +1066,23 @@ void ResourcePage::onAddProviderClicked() {
   downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
     const CoreConfig config = ConfigManager::Get().Load();
     auto urls = ResolveAsrProviderRegistryUrls(config);
-    auto entries =
-        vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider, urls, err);
-    if (!err->empty()) {
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      return false;
-    }
-
-    auto it =
-        std::ranges::find_if(entries, [&](const auto& e) { return e.id == id.toStdString(); });
-    if (it == entries.end()) {
-      *err = "Provider not found in registry.";
-      return false;
-    }
-
-    std::filesystem::path scriptPath;
-    if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kAsrProvider, &scriptPath, err,
-                                        nullptr, cancel_token)) {
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      return false;
-    }
-
-    CoreConfig mutConfig = ConfigManager::Get().Load();
-    if (!vinput::script::MaterializeAsrProvider(&mutConfig, *it, scriptPath, err)) {
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      return false;
-    }
-
-    return ConfigManager::Get().Save(mutConfig);
+    return ExecuteScriptInstallOrUpdateTask(
+        vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
+        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+          return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
+        });
   });
   textLog_->append(tr("Installing provider %1...").arg(title));
   downloadWorker_->start();
 }
 
 void ResourcePage::onUpdateProviderClicked() {
-  auto items = tableAvailableProviders_->selectedItems();
-  if (items.isEmpty()) {
+  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
+  if (!selected) {
     return;
   }
-  auto* name_item = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 0);
-  if (name_item == nullptr) {
-    return;
-  }
-  QString id = name_item->data(Qt::UserRole).toString();
-  QString title = name_item->text();
-  if (title.isEmpty()) {
-    title = id;
-  }
+  const QString id = selected->id;
+  const QString title = selected->title;
 
   abortDownload();
   btnUpdateProvider_->setEnabled(false);
@@ -1086,43 +1111,12 @@ void ResourcePage::onUpdateProviderClicked() {
       [id, updateSucceeded](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
         const CoreConfig config = ConfigManager::Get().Load();
         auto urls = ResolveAsrProviderRegistryUrls(config);
-        auto entries =
-            vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider, urls, err);
-        if (!err->empty()) {
-          return false;
-        }
-
-        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-          return false;
-        }
-
-        auto it =
-            std::ranges::find_if(entries, [&](const auto& e) { return e.id == id.toStdString(); });
-        if (it == entries.end()) {
-          *err = "Provider not found in registry.";
-          return false;
-        }
-
-        std::filesystem::path scriptPath;
-        if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kAsrProvider, &scriptPath,
-                                            err, nullptr, cancel_token)) {
-          return false;
-        }
-
-        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-          return false;
-        }
-
-        CoreConfig mutConfig = ConfigManager::Get().Load();
-        if (!vinput::script::MaterializeAsrProvider(&mutConfig, *it, scriptPath, err)) {
-          return false;
-        }
-
-        if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-          return false;
-        }
-
-        const bool saved = ConfigManager::Get().Save(mutConfig);
+        const bool saved = ExecuteScriptInstallOrUpdateTask(
+            vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
+            [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+              return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
+            },
+            /*is_update=*/true);
         updateSucceeded->store(saved);
         return saved;
       });
@@ -1131,16 +1125,12 @@ void ResourcePage::onUpdateProviderClicked() {
 }
 
 void ResourcePage::onAddAdapterClicked() {
-  auto items = tableAvailableAdapters_->selectedItems();
-  if (items.isEmpty()) {
+  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
+  if (!selected) {
     return;
   }
-  auto* name_item = tableAvailableAdapters_->item(tableAvailableAdapters_->currentRow(), 0);
-  QString id = name_item->data(Qt::UserRole).toString();
-  QString title = name_item->text();
-  if (title.isEmpty()) {
-    title = id;
-  }
+  const QString id = selected->id;
+  const QString title = selected->title;
 
   abortDownload();
   btnAddAdapter_->setEnabled(false);
@@ -1153,62 +1143,23 @@ void ResourcePage::onAddAdapterClicked() {
   downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
     const CoreConfig config = ConfigManager::Get().Load();
     auto urls = ResolveLlmAdapterRegistryUrls(config);
-    auto entries =
-        vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter, urls, err);
-    if (!err->empty()) {
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      return false;
-    }
-
-    auto it =
-        std::ranges::find_if(entries, [&](const auto& e) { return e.id == id.toStdString(); });
-    if (it == entries.end()) {
-      *err = "Adapter not found in registry.";
-      return false;
-    }
-
-    std::filesystem::path scriptPath;
-    if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kLlmAdapter, &scriptPath, err,
-                                        nullptr, cancel_token)) {
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      return false;
-    }
-
-    CoreConfig mutConfig = ConfigManager::Get().Load();
-    if (!vinput::script::MaterializeLlmAdapter(&mutConfig, *it, scriptPath, err)) {
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      return false;
-    }
-
-    return ConfigManager::Get().Save(mutConfig);
+    return ExecuteScriptInstallOrUpdateTask(
+        vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
+        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
+        });
   });
   textLog_->append(tr("Installing adapter %1...").arg(title));
   downloadWorker_->start();
 }
 
 void ResourcePage::onUpdateAdapterClicked() {
-  auto items = tableAvailableAdapters_->selectedItems();
-  if (items.isEmpty()) {
+  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
+  if (!selected) {
     return;
   }
-  auto* name_item = tableAvailableAdapters_->item(tableAvailableAdapters_->currentRow(), 0);
-  if (name_item == nullptr) {
-    return;
-  }
-  QString id = name_item->data(Qt::UserRole).toString();
-  QString title = name_item->text();
-  if (title.isEmpty()) {
-    title = id;
-  }
+  const QString id = selected->id;
+  const QString title = selected->title;
 
   abortDownload();
   btnUpdateAdapter_->setEnabled(false);
@@ -1221,105 +1172,28 @@ void ResourcePage::onUpdateAdapterClicked() {
   downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
     const CoreConfig config = ConfigManager::Get().Load();
     auto urls = ResolveLlmAdapterRegistryUrls(config);
-    auto entries =
-        vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter, urls, err);
-    if (!err->empty()) {
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      return false;
-    }
-
-    auto it =
-        std::ranges::find_if(entries, [&](const auto& e) { return e.id == id.toStdString(); });
-    if (it == entries.end()) {
-      *err = "Adapter not found in registry.";
-      return false;
-    }
-
-    const bool was_running = vinput::adapter::IsRunning(id.toStdString());
-    bool stopped = false;
-    if (was_running) {
-      vinput::cli::DbusClient dbus;
-      std::string stop_err;
-      if (!dbus.StopAdapter(id.toStdString(), &stop_err)) {
-        *err = stop_err.empty() ? "Failed to stop adapter." : stop_err;
-        return false;
-      }
-      stopped = true;
-    }
-
-    auto restart = [&]() -> bool {
-      if (!stopped) {
-        return true;
-      }
-      vinput::cli::DbusClient dbus;
-      std::string start_err;
-      if (!dbus.StartAdapter(id.toStdString(), &start_err)) {
-        if (!err->empty()) {
-          *err += "; ";
-        }
-        *err += start_err.empty() ? "Failed to restart adapter." : start_err;
-        return false;
-      }
-      return true;
-    };
-
-    std::filesystem::path scriptPath;
-    if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kLlmAdapter, &scriptPath, err,
-                                        nullptr, cancel_token)) {
-      restart();
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      restart();
-      return false;
-    }
-
-    CoreConfig mutConfig = ConfigManager::Get().Load();
-    if (!vinput::script::MaterializeLlmAdapter(&mutConfig, *it, scriptPath, err)) {
-      restart();
-      return false;
-    }
-
-    if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-      restart();
-      return false;
-    }
-
-    if (!ConfigManager::Get().Save(mutConfig)) {
-      *err = "Failed to save configuration.";
-      restart();
-      return false;
-    }
-
-    return restart();
+    return ExecuteScriptInstallOrUpdateTask(
+        vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
+        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
+        },
+        /*is_update=*/true);
   });
   textLog_->append(tr("Updating adapter %1...").arg(title));
   downloadWorker_->start();
 }
 
 void ResourcePage::updateProviderButtons() {
-  const int row = tableAvailableProviders_->currentRow();
-  if (row < 0 || row >= tableAvailableProviders_->rowCount()) {
+  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
+  if (!selected) {
     btnAddProvider_->setEnabled(false);
     btnUpdateProvider_->setEnabled(false);
     btnRemoveProvider_->setEnabled(false);
     return;
   }
-  auto* item = tableAvailableProviders_->item(row, 0);
-  if (item == nullptr) {
-    btnAddProvider_->setEnabled(false);
-    btnUpdateProvider_->setEnabled(false);
-    btnRemoveProvider_->setEnabled(false);
-    return;
-  }
-  const QString id = item->data(Qt::UserRole).toString();
   const CoreConfig config = ConfigManager::Get().Load();
-  const bool installed = ResolveAsrProvider(config, id.toStdString()) != nullptr;
-  auto* stCell = tableAvailableProviders_->item(row, 3);
+  const bool installed = ResolveAsrProvider(config, selected->id.toStdString()) != nullptr;
+  auto* stCell = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 3);
   const bool incompatible =
       stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
                                static_cast<int>(vinput::script::UpdateStatus::kIncompatible);
@@ -1329,24 +1203,16 @@ void ResourcePage::updateProviderButtons() {
 }
 
 void ResourcePage::updateAdapterButtons() {
-  const int row = tableAvailableAdapters_->currentRow();
-  if (row < 0 || row >= tableAvailableAdapters_->rowCount()) {
+  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
+  if (!selected) {
     btnAddAdapter_->setEnabled(false);
     btnUpdateAdapter_->setEnabled(false);
     btnRemoveAdapter_->setEnabled(false);
     return;
   }
-  auto* item = tableAvailableAdapters_->item(row, 0);
-  if (item == nullptr) {
-    btnAddAdapter_->setEnabled(false);
-    btnUpdateAdapter_->setEnabled(false);
-    btnRemoveAdapter_->setEnabled(false);
-    return;
-  }
-  const QString id = item->data(Qt::UserRole).toString();
   const CoreConfig config = ConfigManager::Get().Load();
-  const bool installed = ResolveLlmAdapter(config, id.toStdString()) != nullptr;
-  auto* stCell = tableAvailableAdapters_->item(row, 2);
+  const bool installed = ResolveLlmAdapter(config, selected->id.toStdString()) != nullptr;
+  auto* stCell = tableAvailableAdapters_->item(tableAvailableAdapters_->currentRow(), 2);
   const bool incompatible =
       stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
                                static_cast<int>(vinput::script::UpdateStatus::kIncompatible);
@@ -1356,19 +1222,12 @@ void ResourcePage::updateAdapterButtons() {
 }
 
 void ResourcePage::onRemoveProviderClicked() {
-  const int row = tableAvailableProviders_->currentRow();
-  if (row < 0 || row >= tableAvailableProviders_->rowCount()) {
+  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
+  if (!selected) {
     return;
   }
-  auto* name_item = tableAvailableProviders_->item(row, 0);
-  if (name_item == nullptr) {
-    return;
-  }
-  const QString id = name_item->data(Qt::UserRole).toString();
-  QString title = name_item->text();
-  if (title.isEmpty()) {
-    title = id;
-  }
+  const QString id = selected->id;
+  const QString title = selected->title;
 
   const auto response = QMessageBox::question(
       this, tr("Confirm"), tr("Are you sure you want to remove ASR provider '%1'?").arg(title));
@@ -1398,13 +1257,7 @@ void ResourcePage::onRemoveProviderClicked() {
     return;
   }
 
-  const auto managed_path =
-      vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kAsrProvider, id.toStdString());
-  if (!managed_path.empty()) {
-    std::error_code ec;
-    std::filesystem::remove(managed_path, ec);
-  }
-  vinput::script::UnregisterInstalledScript(id.toStdString());
+  CleanupInstalledScript(vinput::script::Kind::kAsrProvider, id.toStdString());
   textLog_->append(tr("Removed ASR provider %1.").arg(title));
   refreshAll();
   emit configChanged();
@@ -1420,19 +1273,12 @@ void ResourcePage::onRemoveProviderClicked() {
 }
 
 void ResourcePage::onRemoveAdapterClicked() {
-  const int row = tableAvailableAdapters_->currentRow();
-  if (row < 0 || row >= tableAvailableAdapters_->rowCount()) {
+  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
+  if (!selected) {
     return;
   }
-  auto* name_item = tableAvailableAdapters_->item(row, 0);
-  if (name_item == nullptr) {
-    return;
-  }
-  const QString id = name_item->data(Qt::UserRole).toString();
-  QString title = name_item->text();
-  if (title.isEmpty()) {
-    title = id;
-  }
+  const QString id = selected->id;
+  const QString title = selected->title;
 
   const auto response = QMessageBox::question(
       this, tr("Confirm"), tr("Are you sure you want to remove LLM adapter '%1'?").arg(title));
@@ -1459,13 +1305,7 @@ void ResourcePage::onRemoveAdapterClicked() {
     return;
   }
 
-  const auto managed_path =
-      vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kLlmAdapter, id.toStdString());
-  if (!managed_path.empty()) {
-    std::error_code ec;
-    std::filesystem::remove(managed_path, ec);
-  }
-  vinput::script::UnregisterInstalledScript(id.toStdString());
+  CleanupInstalledScript(vinput::script::Kind::kLlmAdapter, id.toStdString());
   textLog_->append(tr("Removed LLM adapter %1.").arg(title));
   refreshAll();
   emit configChanged();
