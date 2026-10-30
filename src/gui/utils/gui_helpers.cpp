@@ -16,6 +16,7 @@
 
 #include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
+#include "common/registry/registry_scripts.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/url_utils.h"
 
@@ -46,6 +47,30 @@ QTableWidgetItem* MakeCell(const QString& text, const QString& data) {
   if (!data.isEmpty())
     cell->setData(Qt::UserRole, data);
   return cell;
+}
+
+QString FormatScriptUpdateStatus(const vinput::script::ResourceVersionInfo& ver_info,
+                                 bool installed) {
+  if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
+    return GuiHelpers::tr("incompatible (requires vinput %1)")
+        .arg(QString::fromStdString(ver_info.vinput_version));
+  }
+  if (installed) {
+    if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
+      if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
+        return GuiHelpers::tr("update available (%1 -> %2)")
+            .arg(QString::fromStdString(ver_info.installed_version),
+                 QString::fromStdString(ver_info.remote_version));
+      }
+      return GuiHelpers::tr("update available");
+    }
+    if (!ver_info.installed_version.empty()) {
+      return GuiHelpers::tr("installed (%1)")
+          .arg(QString::fromStdString(ver_info.installed_version));
+    }
+    return GuiHelpers::tr("installed");
+  }
+  return GuiHelpers::tr("available");
 }
 
 bool ValidateProviderInput(const QString& name, const QString& base_url, QString* error_out) {

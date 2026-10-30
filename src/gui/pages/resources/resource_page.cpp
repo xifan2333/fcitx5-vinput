@@ -568,25 +568,7 @@ void ResourcePage::populateRemoteProviders(
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kAsrProvider, entry, installed);
 
-    QString status = tr("available");
-    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status = tr("incompatible (requires vinput %1)")
-                   .arg(QString::fromStdString(ver_info.vinput_version));
-    } else if (installed) {
-      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
-        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status = tr("update available (%1 -> %2)")
-                       .arg(QString::fromStdString(ver_info.installed_version),
-                            QString::fromStdString(ver_info.remote_version));
-        } else {
-          status = tr("update available");
-        }
-      } else if (!ver_info.installed_version.empty()) {
-        status = tr("installed (%1)").arg(QString::fromStdString(ver_info.installed_version));
-      } else {
-        status = tr("installed");
-      }
-    }
+    QString status = FormatScriptUpdateStatus(ver_info, installed);
 
     auto* stCell = MakeCell(status);
     stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
@@ -633,25 +615,7 @@ void ResourcePage::populateRemoteAdapters(
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
 
-    QString status = tr("available");
-    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status = tr("incompatible (requires vinput %1)")
-                   .arg(QString::fromStdString(ver_info.vinput_version));
-    } else if (installed) {
-      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
-        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status = tr("update available (%1 -> %2)")
-                       .arg(QString::fromStdString(ver_info.installed_version),
-                            QString::fromStdString(ver_info.remote_version));
-        } else {
-          status = tr("update available");
-        }
-      } else if (!ver_info.installed_version.empty()) {
-        status = tr("installed (%1)").arg(QString::fromStdString(ver_info.installed_version));
-      } else {
-        status = tr("installed");
-      }
-    }
+    QString status = FormatScriptUpdateStatus(ver_info, installed);
 
     auto* stCell = MakeCell(status);
     stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));

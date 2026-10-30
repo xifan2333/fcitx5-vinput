@@ -6,12 +6,20 @@
 #include <QWidget>
 #include <atomic>
 
+namespace vinput::script {
+struct ResourceVersionInfo;
+}
+
 namespace vinput::gui {
 
 // Check if a background worker cancellation token has been signalled.
 [[nodiscard]] inline bool IsWorkerCancelled(const std::atomic<bool>* cancel_token) noexcept {
   return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
 }
+
+// Format user-facing status string for a registry resource (provider or adapter).
+QString FormatScriptUpdateStatus(const vinput::script::ResourceVersionInfo& ver_info,
+                                 bool installed);
 
 // Split text into non-empty trimmed lines.
 QStringList NonEmptyLines(const QString& text);
