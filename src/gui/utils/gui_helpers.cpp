@@ -1,5 +1,6 @@
 #include "utils/gui_helpers.h"
 
+#include <QJsonParseError>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qcontainerfwd.h>
 #include <QtCore/qcoreapplication.h>
@@ -7,7 +8,6 @@
 #include <QtCore/qjsonarray.h>
 #include <QtCore/qjsondocument.h>
 #include <QtCore/qjsonobject.h>
-#include <QtCore/qjsonparseerror.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
@@ -15,7 +15,6 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qtimer.h>
-#include <QtCore/qtypes.h>
 #include <QtCore/qurl.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qnetworkreply.h>
@@ -117,7 +116,7 @@ bool ParseCommandEnv(const QString& text, std::map<std::string, std::string>* en
   env->clear();
   const QStringList lines = NonEmptyLines(text);
   return std::ranges::all_of(lines, [&](const QString& line) {
-    const qsizetype pos = line.indexOf('=');
+    const auto pos = line.indexOf('=');
     if (pos <= 0) {
       if (error_out != nullptr) {
         *error_out = GuiHelpers::tr("Invalid env entry '%1'. Use KEY=VALUE.").arg(line);
