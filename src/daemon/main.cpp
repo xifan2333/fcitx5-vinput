@@ -1,7 +1,9 @@
 #include <atomic>
 #include <cerrno>
 #include <cstring>
+#include <span>
 #include <string>
+#include <string_view>
 #include <sys/poll.h>
 
 extern "C" {
@@ -42,11 +44,18 @@ int main(int argc, char* argv[]) {
   signal(SIGTERM, signal_handler);
   signal(SIGINT, signal_handler);
 
-  for (int i = 1; i < argc; ++i) {
-    if (std::strncmp(argv[i], "--log-level=", 12) == 0) {
-      vinput::log::SetLogLevel(argv[i] + 12);
-    } else if (std::strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
-      vinput::log::SetLogLevel(argv[++i]);
+  if (argc > 0 && argv != nullptr) {
+    const std::span<char* const> args(argv, static_cast<size_t>(argc));
+    for (size_t i = 1; i < args.size(); ++i) {
+      if (args[i] == nullptr) {
+        continue;
+      }
+      const std::string_view arg(args[i]);
+      if (arg.starts_with("--log-level=")) {
+        vinput::log::SetLogLevel(arg.substr(12));
+      } else if (arg == "--log-level" && i + 1 < args.size() && args[i + 1] != nullptr) {
+        vinput::log::SetLogLevel(args[++i]);
+      }
     }
   }
 
