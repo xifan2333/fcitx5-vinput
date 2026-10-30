@@ -89,6 +89,7 @@ pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 
 add_library(pipewire_device STATIC
     audio/pipewire_device.cpp
+    audio/recording_keys.cpp
 )
 
 set_target_properties(pipewire_device PROPERTIES

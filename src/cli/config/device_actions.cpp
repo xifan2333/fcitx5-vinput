@@ -54,8 +54,11 @@ int RunDeviceConfigList(Formatter& fmt, const CliContext& ctx) {
     arr.reserve(devices.size());
     for (const auto& d : devices) {
       const bool is_active = DeviceMatchesResolved(d, resolved);
-      glz::json_t json_entry = {
-          {"id", d.id}, {"name", d.name}, {"description", d.description}, {"active", is_active}};
+      glz::json_t json_entry = {{"id", d.id},
+                                {"name", d.name},
+                                {"description", d.description},
+                                {"active", is_active},
+                                {"recording_keys", d.recording_keys}};
       arr.emplace_back(std::move(json_entry));
     }
     fmt.PrintJson(glz::json_t(std::move(arr)));

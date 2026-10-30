@@ -4,14 +4,18 @@
 #include <bit>
 #include <cstdint>
 #include <ctime>
+#include <memory>
 #include <pipewire/context.h>
 #include <pipewire/core.h>
 #include <pipewire/keys.h>
 #include <pipewire/loop.h>
 #include <pipewire/main-loop.h>
+#include <pipewire/node.h>
 #include <pipewire/pipewire.h>
 #include <pipewire/proxy.h>
+#include <set>
 #include <spa/support/loop.h>
+#include <spa/utils/defs.h>
 #include <spa/utils/dict.h>
 #include <spa/utils/hook.h>
 #include <string>
@@ -25,6 +29,12 @@ namespace vinput::pw {
 
 namespace {
 
+struct NodeBinding {
+  uint32_t id = 0;
+  pw_node* node = nullptr;
+  spa_hook listener{};
+};
+
 struct PwData {
   pw_main_loop* loop = nullptr;
   pw_context* context = nullptr;
@@ -34,10 +44,15 @@ struct PwData {
   spa_hook core_listener;
   int pending_sync = -1;
   std::vector<DeviceInfo> devices;
+  std::set<uint32_t> node_info_seen;
+  // Node proxies read the full info properties; the registry global only
+  // carries a subset, so custom keys such as `atvv.recording_keys` are not
+  // visible there.
+  std::vector<std::unique_ptr<NodeBinding>> nodes;
 };
 
 void on_core_done(void* data, uint32_t id, int seq) {
-  auto* d = static_cast<PwData*>(data);
+  const auto* d = static_cast<const PwData*>(data);
   if (id == PW_ID_CORE && d->pending_sync == seq) {
     pw_main_loop_quit(d->loop);
   }
@@ -48,18 +63,18 @@ void on_core_error(void* data, uint32_t id, int seq, int res, const char* messag
   (void)seq;
   (void)res;
   (void)message;
-  auto* d = static_cast<PwData*>(data);
+  const auto* d = static_cast<const PwData*>(data);
   pw_main_loop_quit(d->loop);
 }
 
 void on_enumeration_timeout(void* data, uint64_t expirations) {
   (void)expirations;
-  auto* d = static_cast<PwData*>(data);
+  const auto* d = static_cast<const PwData*>(data);
   pw_main_loop_quit(d->loop);
 }
 
-const struct pw_core_events core_events = []() {
-  struct pw_core_events ev;
+const struct pw_core_events core_events = [] {
+  struct pw_core_events ev{};
   spa_zero(ev);
   ev.version = PW_VERSION_CORE_EVENTS;
   ev.done = on_core_done;
@@ -67,11 +82,43 @@ const struct pw_core_events core_events = []() {
   return ev;
 }();
 
+void on_node_info(void* data, const struct pw_node_info* info) {
+  if (info == nullptr) {
+    return;
+  }
+  auto* d = static_cast<PwData*>(data);
+  d->node_info_seen.insert(info->id);
+  if (!d->nodes.empty() && d->node_info_seen.size() >= d->nodes.size()) {
+    pw_main_loop_quit(d->loop);
+  }
+  if (info->props == nullptr) {
+    return;
+  }
+  const char* keys = spa_dict_lookup(info->props, kRecordingKeysProperty);
+  if (keys == nullptr) {
+    return;
+  }
+  for (auto& device : d->devices) {
+    if (device.id == info->id) {
+      device.recording_keys = keys;
+      return;
+    }
+  }
+}
+
+const struct pw_node_events node_events = [] {
+  struct pw_node_events ev{};
+  spa_zero(ev);
+  ev.version = PW_VERSION_NODE_EVENTS;
+  ev.info = on_node_info;
+  return ev;
+}();
+
 void registry_event_global(void* data, uint32_t id, uint32_t permissions, const char* type,
                            uint32_t version, const struct spa_dict* props) {
   (void)permissions;
   (void)version;
-  if (std::string(type) == PW_TYPE_INTERFACE_Node && props) {
+  if (std::string(type) == PW_TYPE_INTERFACE_Node && props != nullptr) {
     const char* media_class = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
     if (media_class == nullptr) {
       return;
@@ -91,7 +138,17 @@ void registry_event_global(void* data, uint32_t id, uint32_t permissions, const 
         info.description = desc;
       }
       info.is_sink_monitor = false;
+      const uint32_t device_id = info.id;
       d->devices.push_back(std::move(info));
+
+      auto binding = std::make_unique<NodeBinding>();
+      binding->id = device_id;
+      binding->node = static_cast<pw_node*>(
+          pw_registry_bind(d->registry, device_id, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
+      if (binding->node != nullptr) {
+        pw_node_add_listener(binding->node, &binding->listener, &node_events, d);
+        d->nodes.push_back(std::move(binding));
+      }
     } else if (cls == "Audio/Sink") {
       DeviceInfo info;
       info.id = id;
@@ -115,10 +172,45 @@ void registry_event_global_remove(void* data, uint32_t id) {
 }
 
 const struct pw_registry_events registry_events = {
-    PW_VERSION_REGISTRY_EVENTS,
-    registry_event_global,
-    registry_event_global_remove,
+    .version = PW_VERSION_REGISTRY_EVENTS,
+    .global = registry_event_global,
+    .global_remove = registry_event_global_remove,
 };
+
+void RunBounded(PwData& data) {
+  // Arm a 250ms timer so enumeration never hangs if PipeWire is unresponsive.
+  const pw_loop* const loop = pw_main_loop_get_loop(data.loop);
+  spa_source* timer = nullptr;
+  const spa_loop_utils_methods* utils = nullptr;
+  void* u_data = nullptr;
+  bool timer_armed = false;
+
+  if (loop != nullptr && loop->utils != nullptr && loop->utils->iface.cb.funcs != nullptr) {
+    utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
+    u_data = loop->utils->iface.cb.data;
+    if (utils->add_timer != nullptr && utils->update_timer != nullptr) {
+      timer = utils->add_timer(u_data, on_enumeration_timeout, &data);
+      if (timer != nullptr) {
+        timespec value{};
+        value.tv_sec = 0;
+        value.tv_nsec = 250'000'000L;
+        if (utils->update_timer(u_data, timer, &value, nullptr, false) >= 0) {
+          timer_armed = true;
+        }
+      }
+    }
+  }
+
+  // Only enter the event loop if timeout protection is armed; otherwise a
+  // missing PipeWire reply could hang forever.
+  if (timer_armed) {
+    pw_main_loop_run(data.loop);
+  }
+
+  if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
+    utils->destroy_source(u_data, timer);
+  }
+}
 
 } // namespace
 
@@ -134,6 +226,13 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
       if (d == nullptr) {
         return;
       }
+      for (auto& binding : d->nodes) {
+        if (binding->node != nullptr) {
+          spa_hook_remove(&binding->listener);
+          pw_proxy_destroy(std::bit_cast<pw_proxy*>(binding->node));
+        }
+      }
+      d->nodes.clear();
       if (d->registry != nullptr) {
         spa_hook_remove(&d->registry_listener);
         pw_proxy_destroy(std::bit_cast<pw_proxy*>(d->registry));
@@ -159,17 +258,17 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   const PwResourceGuard guard{&data};
 
   data.loop = pw_main_loop_new(nullptr);
-  if (!data.loop) {
+  if (data.loop == nullptr) {
     return {};
   }
 
   data.context = pw_context_new(pw_main_loop_get_loop(data.loop), nullptr, 0);
-  if (!data.context) {
+  if (data.context == nullptr) {
     return {};
   }
 
   data.core = pw_context_connect(data.context, nullptr, 0);
-  if (!data.core) {
+  if (data.core == nullptr) {
     return {};
   }
 
@@ -180,46 +279,22 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
 
   data.pending_sync = pw_core_sync(data.core, PW_ID_CORE, 0);
   if (data.pending_sync >= 0) {
-    // Arm a 250ms bounded timer so enumeration never hangs if PipeWire is unresponsive.
-    pw_loop* const loop = pw_main_loop_get_loop(data.loop);
-    spa_source* timer = nullptr;
-    const spa_loop_utils_methods* utils = nullptr;
-    void* u_data = nullptr;
-    bool timer_armed = false;
-
-    if (loop != nullptr && loop->utils != nullptr && loop->utils->iface.cb.funcs != nullptr) {
-      utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
-      u_data = loop->utils->iface.cb.data;
-      if (utils->add_timer != nullptr && utils->update_timer != nullptr) {
-        timer = utils->add_timer(u_data, on_enumeration_timeout, &data);
-        if (timer != nullptr) {
-          timespec value{};
-          value.tv_sec = 0;
-          value.tv_nsec = 250'000'000L;
-          if (utils->update_timer(u_data, timer, &value, nullptr, false) >= 0) {
-            timer_armed = true;
-          }
-        }
-      }
-    }
-
-    // Only enter event loop if timeout protection is armed to prevent unbounded hang.
-    if (timer_armed) {
-      pw_main_loop_run(data.loop);
-    }
-
-    if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
-      utils->destroy_source(u_data, timer);
-    }
+    RunBounded(data);
+  }
+  // Node info events (which carry custom properties) can arrive after the
+  // registry round-trip. Run the loop again until every bound node delivered
+  // its info, with the same bounded timer as a fallback.
+  if (!data.nodes.empty() && data.node_info_seen.size() < data.nodes.size()) {
+    data.pending_sync = -1;
+    RunBounded(data);
   }
 
-  std::stable_sort(data.devices.begin(), data.devices.end(),
-                   [](const DeviceInfo& a, const DeviceInfo& b) {
-                     if (a.is_sink_monitor != b.is_sink_monitor) {
-                       return !a.is_sink_monitor && b.is_sink_monitor;
-                     }
-                     return a.id < b.id;
-                   });
+  std::ranges::stable_sort(data.devices, [](const DeviceInfo& a, const DeviceInfo& b) {
+    if (a.is_sink_monitor != b.is_sink_monitor) {
+      return !a.is_sink_monitor && b.is_sink_monitor;
+    }
+    return a.id < b.id;
+  });
 
   return data.devices;
 }

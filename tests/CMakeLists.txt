@@ -309,6 +309,12 @@ target_include_directories(test_string_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_string_utils PRIVATE config)
 add_test(NAME test_string_utils COMMAND test_string_utils)
 
+add_executable(test_recording_keys test_recording_keys.cpp)
+target_include_directories(test_recording_keys PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_recording_keys PRIVATE pipewire_device)
+add_test(NAME test_recording_keys COMMAND test_recording_keys)
+
+
 add_executable(test_expected test_expected.cpp)
 target_include_directories(test_expected PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_expected PRIVATE config)

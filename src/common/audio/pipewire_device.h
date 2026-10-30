@@ -12,7 +12,12 @@ struct DeviceInfo {
   std::string name;
   std::string description;
   bool is_sink_monitor{false};
+  // Canonical recording keys advertised by the source, if any.
+  std::string recording_keys;
 };
+
+// PipeWire property carrying comma-separated canonical recording-key names.
+inline constexpr char kRecordingKeysProperty[] = "atvv.recording_keys";
 
 struct ResolvedCaptureTarget {
   std::string node_name;

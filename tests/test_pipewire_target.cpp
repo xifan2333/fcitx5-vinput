@@ -75,18 +75,21 @@ int main() {
         .name = "clean.monitor",
         .description = "Remapped source",
         .is_sink_monitor = false,
+        .recording_keys = "",
     });
     known_devices.push_back({
         .id = 101,
         .name = "probe.monitor",
         .description = "Null sink (Monitor)",
         .is_sink_monitor = true,
+        .recording_keys = "",
     });
     known_devices.push_back({
         .id = 102,
         .name = "alsa_input.pci-0000_00_1b.0.analog-stereo",
         .description = "Built-in microphone",
         .is_sink_monitor = false,
+        .recording_keys = "",
     });
 
     // 1. Real Audio/Source named clean.monitor must NOT have its suffix stripped or be marked sink.
@@ -128,18 +131,21 @@ int main() {
         .name = "alsa_input.usb",
         .description = "USB microphone",
         .is_sink_monitor = false,
+        .recording_keys = "",
     });
     devices.push_back({
         .id = 201,
         .name = "atvv-miremote-rc003",
         .description = "ATVV source",
         .is_sink_monitor = false,
+        .recording_keys = "",
     });
     devices.push_back({
         .id = 202,
         .name = "probe.monitor",
         .description = "Null sink (Monitor)",
         .is_sink_monitor = true,
+        .recording_keys = "",
     });
 
     const auto auto_res = ResolveCaptureTarget("auto", devices);
@@ -181,6 +187,7 @@ int main() {
         .name = "weird,name",
         .description = "Source with a comma",
         .is_sink_monitor = false,
+        .recording_keys = "",
     });
     const auto exact_with_comma = ResolveCaptureTarget("weird,name", comma_device);
     CHECK(exact_with_comma.node_name == "weird,name");
