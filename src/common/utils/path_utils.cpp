@@ -2,8 +2,9 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <string>
-#include <sys/stat.h>
+#include <string_view>
 #include <system_error>
 
 #include "common/utils/sandbox.h"
@@ -16,6 +17,13 @@ namespace {
 
 constexpr std::string_view kDaemonServiceUnitName = "vinput-daemon.service";
 constexpr std::string_view kDaemonExecutableName = "vinput-daemon";
+
+std::optional<std::string_view> GetEnvNonEmpty(const char* name) {
+  if (const char* val = std::getenv(name); val != nullptr && val[0] != '\0') {
+    return std::string_view(val);
+  }
+  return std::nullopt;
+}
 
 std::filesystem::path FlatpakAddonRootDir() {
   return std::filesystem::path("/app") / "addons" / "Vinput";
@@ -34,39 +42,33 @@ std::filesystem::path UserSystemdUnitPath(std::string_view unit_name) {
 }
 
 std::filesystem::path XdgConfigHome() {
-  const char* xdg = std::getenv("XDG_CONFIG_HOME");
-  if (xdg && xdg[0] != '\0') {
-    return std::filesystem::path(xdg);
+  if (const auto xdg = GetEnvNonEmpty("XDG_CONFIG_HOME")) {
+    return {*xdg};
   }
-  const char* home = std::getenv("HOME");
-  if (!home || home[0] == '\0') {
-    return {};
+  if (const auto home = GetEnvNonEmpty("HOME")) {
+    return std::filesystem::path(*home) / ".config";
   }
-  return std::filesystem::path(home) / ".config";
+  return {};
 }
 
 std::filesystem::path XdgDataHome() {
-  const char* xdg = std::getenv("XDG_DATA_HOME");
-  if (xdg && xdg[0] != '\0') {
-    return std::filesystem::path(xdg);
+  if (const auto xdg = GetEnvNonEmpty("XDG_DATA_HOME")) {
+    return {*xdg};
   }
-  const char* home = std::getenv("HOME");
-  if (!home || home[0] == '\0') {
-    return {};
+  if (const auto home = GetEnvNonEmpty("HOME")) {
+    return std::filesystem::path(*home) / ".local" / "share";
   }
-  return std::filesystem::path(home) / ".local" / "share";
+  return {};
 }
 
 std::filesystem::path XdgCacheHome() {
-  const char* xdg = std::getenv("XDG_CACHE_HOME");
-  if (xdg && xdg[0] != '\0') {
-    return std::filesystem::path(xdg);
+  if (const auto xdg = GetEnvNonEmpty("XDG_CACHE_HOME")) {
+    return {*xdg};
   }
-  const char* home = std::getenv("HOME");
-  if (!home || home[0] == '\0') {
-    return {};
+  if (const auto home = GetEnvNonEmpty("HOME")) {
+    return std::filesystem::path(*home) / ".cache";
   }
-  return std::filesystem::path(home) / ".cache";
+  return {};
 }
 
 } // namespace
@@ -106,7 +108,7 @@ std::filesystem::path DaemonExecutablePath() {
   if (vinput::sandbox::IsInSandbox()) {
     return FlatpakBundledExecutablePath(kDaemonExecutableName);
   }
-  return std::filesystem::path(kDaemonExecutableName);
+  return {kDaemonExecutableName};
 }
 
 std::filesystem::path DaemonServiceUnitInstallPath() {
@@ -121,13 +123,14 @@ std::filesystem::path DaemonServiceUnitTemplatePath() {
 }
 
 std::filesystem::path ExpandUserPath(std::string_view path) {
-  if (path.empty() || path[0] != '~') {
-    return std::filesystem::path(path);
+  if (path.empty() || path.front() != '~') {
+    return {path};
   }
-  const char* home = std::getenv("HOME");
-  if (!home || home[0] == '\0')
+  const auto home = GetEnvNonEmpty("HOME");
+  if (!home) {
     return {};
-  return std::filesystem::path(home) /
+  }
+  return std::filesystem::path(*home) /
          std::filesystem::path(path.substr(path.size() > 1 && path[1] == '/' ? 2 : 1));
 }
 
@@ -140,15 +143,11 @@ std::filesystem::path CoreConfigPath() {
 }
 
 std::filesystem::path FcitxAddonConfigPath() {
-  const char* xdg = std::getenv("XDG_CONFIG_HOME");
-  if (xdg && xdg[0] != '\0') {
-    return std::filesystem::path(xdg) / "fcitx5" / "conf" / "vinput.conf";
-  }
-  const char* home = std::getenv("HOME");
-  if (!home || home[0] == '\0') {
+  const auto config_home = XdgConfigHome();
+  if (config_home.empty()) {
     return {};
   }
-  return std::filesystem::path(home) / ".config" / "fcitx5" / "conf" / "vinput.conf";
+  return config_home / "fcitx5" / "conf" / "vinput.conf";
 }
 
 std::filesystem::path RegistryCacheDir() {
@@ -172,14 +171,13 @@ std::filesystem::path ManagedLlmAdapterDir() {
 }
 
 std::filesystem::path AdapterRuntimeDir() {
-  const char* xdg_runtime = std::getenv("XDG_RUNTIME_DIR");
-  if (xdg_runtime && xdg_runtime[0] != '\0') {
-    return std::filesystem::path(xdg_runtime) / "vinput" / "adapters";
+  if (const auto xdg_runtime = GetEnvNonEmpty("XDG_RUNTIME_DIR")) {
+    return std::filesystem::path(*xdg_runtime) / "vinput" / "adapters";
   }
 
-  const char* tmpdir = std::getenv("TMPDIR");
-  std::filesystem::path base =
-      (tmpdir && tmpdir[0] != '\0') ? std::filesystem::path(tmpdir) : std::filesystem::path("/tmp");
+  const auto tmpdir = GetEnvNonEmpty("TMPDIR");
+  const std::filesystem::path base =
+      tmpdir ? std::filesystem::path(*tmpdir) : std::filesystem::path("/tmp");
   return base / "vinput" / "adapters";
 }
 
