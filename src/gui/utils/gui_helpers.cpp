@@ -1,17 +1,18 @@
 #include "utils/gui_helpers.h"
 
-#include <QJsonParseError>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qcontainerfwd.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qjsonarray.h>
 #include <QtCore/qjsondocument.h>
+#if __has_include(<QtCore/qjsonparseerror.h>)
+#include <QtCore/qjsonparseerror.h>
+#endif
 #include <QtCore/qjsonobject.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
-#include <QtCore/qoverload.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qtimer.h>
@@ -339,8 +340,7 @@ void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
     }
   };
 
-  QObject::connect(comboProvider, QOverload<int>::of(&QComboBox::activated), comboProvider,
-                   refreshModels);
+  QObject::connect(comboProvider, &QComboBox::activated, comboProvider, refreshModels);
 
   if (!currentProvider.isEmpty()) {
     comboProvider->setCurrentText(currentProvider);
