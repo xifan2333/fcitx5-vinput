@@ -29,6 +29,7 @@
 #include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlineedit.h>
 #include <QtWidgets/qtablewidget.h>
+#include <QtWidgets/qtextedit.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <functional>
@@ -41,6 +42,7 @@
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/interpolation.h"
+#include "common/utils/string_utils.h"
 #include "common/utils/url_utils.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -264,6 +266,67 @@ bool ParseCommandEnv(const QString& text, std::map<std::string, std::string>* en
     (*env)[line.left(pos).toStdString()] = line.mid(pos + 1).toStdString();
     return true;
   });
+}
+
+CommandEditorGroup::CommandEditorGroup()
+    : edit_command_(new QLineEdit()), text_args_(new QTextEdit()), text_env_(new QTextEdit()) {
+  text_args_->setMaximumHeight(90);
+  text_env_->setMaximumHeight(90);
+  edit_command_->setPlaceholderText(GuiHelpers::tr("Command or interpreter"));
+  text_args_->setPlaceholderText(GuiHelpers::tr("One argument per line"));
+  text_env_->setPlaceholderText(GuiHelpers::tr("One KEY=VALUE entry per line"));
+}
+
+void CommandEditorGroup::Populate(const std::string& command, const std::vector<std::string>& args,
+                                  const std::map<std::string, std::string>& env) {
+  edit_command_->setText(QString::fromStdString(command));
+  text_args_->setPlainText(QString::fromStdString(vinput::str::Join(args, "\n")));
+  text_env_->setPlainText(QString::fromStdString(vinput::str::JoinKeyValue(env, "\n", "=")));
+}
+
+void CommandEditorGroup::Clear() {
+  edit_command_->clear();
+  text_args_->clear();
+  text_env_->clear();
+}
+
+void CommandEditorGroup::SetEnvMaxHeight(int height) {
+  text_env_->setMaximumHeight(height);
+}
+
+void CommandEditorGroup::SetEnabled(bool enabled) {
+  edit_command_->setEnabled(enabled);
+  text_args_->setEnabled(enabled);
+  text_env_->setEnabled(enabled);
+}
+
+void CommandEditorGroup::AddToForm(QFormLayout* form) {
+  if (form == nullptr) {
+    return;
+  }
+  form->addRow(GuiHelpers::tr("Command / Interpreter:"), edit_command_);
+  form->addRow(GuiHelpers::tr("Args:"), text_args_);
+  form->addRow(GuiHelpers::tr("Env:"), text_env_);
+}
+
+bool CommandEditorGroup::Extract(std::string* command, std::vector<std::string>* args,
+                                 std::map<std::string, std::string>* env,
+                                 QString* error_out) const {
+  if (command != nullptr) {
+    *command = edit_command_->text().trimmed().toStdString();
+  }
+  if (args != nullptr) {
+    args->clear();
+    for (const QString& arg : NonEmptyLines(text_args_->toPlainText())) {
+      args->push_back(arg.toStdString());
+    }
+  }
+  if (env != nullptr) {
+    if (!ParseCommandEnv(text_env_->toPlainText(), env, error_out)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

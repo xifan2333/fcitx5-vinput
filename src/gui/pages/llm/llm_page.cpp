@@ -228,15 +228,6 @@ QString AdapterTitleForGui(const std::string& adapter_id) {
       vinput::registry::LookupI18n(i18n_map, adapter_id + ".title", adapter_id));
 }
 
-// Convert between AdapterData (GUI dialog) and LlmAdapter (config).
-AdapterData AdapterDataFromConfig(const LlmAdapter& a) {
-  return {.id = a.id, .command = a.command, .args = a.args, .env = a.env, .autoStart = a.autoStart};
-}
-
-LlmAdapter LlmAdapterFromDialog(const AdapterData& d) {
-  return {.id = d.id, .command = d.command, .args = d.args, .env = d.env, .autoStart = d.autoStart};
-}
-
 std::optional<vinput::scene::Definition>
 ShowSceneDialog(QWidget* parent, const QString& title,
                 const vinput::scene::Definition* initial = nullptr) {
@@ -681,7 +672,7 @@ void LlmPage::onAdapterEdit() {
   int idx = -1;
   for (size_t i = 0; i < config.llm.adapters.size(); ++i) {
     if (config.llm.adapters[i].id == adapter_id.toStdString()) {
-      current = AdapterDataFromConfig(config.llm.adapters[i]);
+      current = config.llm.adapters[i];
       found = true;
       idx = static_cast<int>(i);
       break;
@@ -700,7 +691,7 @@ void LlmPage::onAdapterEdit() {
     return;
   }
 
-  config.llm.adapters[idx] = LlmAdapterFromDialog(updated);
+  config.llm.adapters[idx] = updated;
   if (!ConfigManager::Get().Save(config)) {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;

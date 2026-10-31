@@ -1,20 +1,12 @@
 #pragma once
 
-#include <QWidget>
-#include <map>
-#include <string>
-#include <vector>
+#include <QtWidgets/qwidget.h>
+
+#include "common/config/core_config_types.h"
 
 namespace vinput::gui {
 
-// LLM adapter config data for the dialog.
-struct AdapterData {
-  std::string id;
-  std::string command;
-  std::vector<std::string> args;
-  std::map<std::string, std::string> env;
-  bool autoStart{false};
-};
+using AdapterData = ::LlmAdapter;
 
 // Show a dialog to edit an adapter's command/args/env.
 // Returns true if accepted, fills out_data.
