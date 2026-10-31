@@ -21,6 +21,8 @@
 
 class QByteArray;
 class QFormLayout;
+class QNetworkAccessManager;
+class QNetworkReply;
 
 namespace vinput::script {
 struct ResourceVersionInfo;
@@ -36,6 +38,13 @@ namespace vinput::gui {
 // Returns true on success; on failure returns false and sets error_out if provided.
 [[nodiscard]] bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
                                              QString* error_out = nullptr);
+
+// Send an authenticated GET request to the OpenAI /v1/models endpoint with timeout handling.
+QNetworkReply* StartOpenAiModelsRequest(QNetworkAccessManager* nam, const std::string& base_url,
+                                        const std::string& api_key, int timeout_ms);
+
+// Save fetched models list for a provider into cache.
+bool SaveProviderModels(const std::string& provider_id, const QStringList& models);
 
 // Check if a background worker cancellation token has been signalled.
 [[nodiscard]] inline bool IsWorkerCancelled(const std::atomic<bool>* cancel_token) noexcept {

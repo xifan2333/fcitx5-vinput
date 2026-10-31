@@ -326,6 +326,22 @@ ShowSceneDialog(QWidget* parent, const QString& title,
   return def;
 }
 
+template <typename Action> bool MutateSceneConfig(QWidget* parent, Action&& action) {
+  CoreConfig config = ConfigManager::Get().Load();
+  vinput::scene::Config sc = ToSceneConfig(config.scenes);
+  std::string err;
+  if (!action(&sc, &err)) {
+    QMessageBox::warning(parent, LlmPage::tr("Error"), QString::fromStdString(err));
+    return false;
+  }
+  FromSceneConfig(config.scenes, sc);
+  if (!ConfigManager::Get().Save(config)) {
+    QMessageBox::warning(parent, LlmPage::tr("Error"), LlmPage::tr("Failed to save config."));
+    return false;
+  }
+  return true;
+}
+
 } // namespace
 
 LlmPage::LlmPage(QWidget* parent)
@@ -609,72 +625,44 @@ void LlmPage::onLlmTest() {
     return;
   }
 
-  QString url = QString::fromStdString(provider->base_url);
-  if (url.isEmpty()) {
+  if (provider->base_url.empty()) {
     QMessageBox::warning(this, tr("Error"), tr("Provider base_url is empty."));
     return;
   }
-  while (!url.isEmpty() && url.endsWith(u'/')) {
-    url.chop(1);
-  }
-  url += vinput::llm::kOpenAiModelsPath;
 
   btnLlmTest_->setEnabled(false);
   btnLlmTest_->setText(tr("Testing..."));
 
   auto* nam = new QNetworkAccessManager(this);
-  QNetworkRequest req{QUrl(url)};
-  req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-  const std::string resolved_key = vinput::interpolate::InterpolateEnv(provider->api_key);
-  if (!resolved_key.empty()) {
-    const QByteArray bearer =
-        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(resolved_key);
-    req.setRawHeader(vinput::llm::kAuthorizationHeader, bearer);
-  }
+  QNetworkReply* reply =
+      StartOpenAiModelsRequest(nam, provider->base_url, provider->api_key, 10000);
 
-  QNetworkReply* reply = nam->get(req);
-  auto* timeout = new QTimer(reply);
-  timeout->setSingleShot(true);
-  QObject::connect(timeout, &QTimer::timeout, reply, [reply]() {
-    if (!reply->isFinished()) {
-      reply->abort();
-    }
-  });
-  timeout->start(10000);
+  QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, nam, provider_id]() {
+    btnLlmTest_->setEnabled(true);
+    btnLlmTest_->setText(tr("Test"));
 
-  QObject::connect(
-      reply, &QNetworkReply::finished, this, [this, reply, timeout, nam, provider_id]() {
-        timeout->stop();
-        btnLlmTest_->setEnabled(true);
-        btnLlmTest_->setText(tr("Test"));
-
-        if (reply->error() != QNetworkReply::NoError) {
-          QMessageBox::warning(
-              this, tr("Test Failed"),
-              tr("Connection to '%1' failed:\n%2").arg(provider_id, reply->errorString()));
-        } else {
-          QStringList models;
-          if (!ParseOpenAiModelsResponse(reply->readAll(), &models)) {
-            QMessageBox::warning(this, tr("Test Failed"),
-                                 tr("Invalid response from '%1'.").arg(provider_id));
-          } else {
-            std::vector<std::string> models_vec;
-            models_vec.reserve(models.size());
-            for (const auto& m : models) {
-              models_vec.push_back(m.toStdString());
-            }
-            vinput::llm::SaveProviderModels(provider_id.toStdString(), models_vec);
-            QString msg =
-                tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(models.size());
-            if (!models.empty()) {
-              msg += "\n\n" + models.join('\n');
-            }
-            QMessageBox::information(this, tr("Test Succeeded"), msg);
-          }
+    if (reply->error() != QNetworkReply::NoError) {
+      QMessageBox::warning(
+          this, tr("Test Failed"),
+          tr("Connection to '%1' failed:\n%2").arg(provider_id, reply->errorString()));
+    } else {
+      QStringList models;
+      if (!ParseOpenAiModelsResponse(reply->readAll(), &models)) {
+        QMessageBox::warning(this, tr("Test Failed"),
+                             tr("Invalid response from '%1'.").arg(provider_id));
+      } else {
+        SaveProviderModels(provider_id.toStdString(), models);
+        QString msg =
+            tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(models.size());
+        if (!models.empty()) {
+          msg += "\n\n" + models.join('\n');
         }
-        reply->deleteLater();
-        nam->deleteLater();
-      });
+        QMessageBox::information(this, tr("Test Succeeded"), msg);
+      }
+    }
+    reply->deleteLater();
+    nam->deleteLater();
+  });
 }
 
 void LlmPage::onAdapterEdit() {
@@ -838,20 +826,12 @@ void LlmPage::onSceneAdd() {
     return;
   }
 
-  CoreConfig config = ConfigManager::Get().Load();
-  std::string err;
-  vinput::scene::Config sc = ToSceneConfig(config.scenes);
-  if (!vinput::scene::AddScene(&sc, *def, &err)) {
-    QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-    return;
+  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
+        return vinput::scene::AddScene(sc, *def, err);
+      })) {
+    refreshSceneList();
+    configChanged();
   }
-  FromSceneConfig(config.scenes, sc);
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-  refreshSceneList();
-  configChanged();
 }
 
 void LlmPage::onSceneEdit() {
@@ -874,19 +854,12 @@ void LlmPage::onSceneEdit() {
     return;
   }
 
-  std::string err;
-  sc = ToSceneConfig(config.scenes);
-  if (!vinput::scene::UpdateScene(&sc, scene_id.toStdString(), *def, &err)) {
-    QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-    return;
+  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
+        return vinput::scene::UpdateScene(sc, scene_id.toStdString(), *def, err);
+      })) {
+    refreshSceneList();
+    configChanged();
   }
-  FromSceneConfig(config.scenes, sc);
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-  refreshSceneList();
-  configChanged();
 }
 
 void LlmPage::onSceneRemove() {
@@ -908,18 +881,12 @@ void LlmPage::onSceneRemove() {
     return;
   }
 
-  std::string err;
-  if (!vinput::scene::RemoveScene(&sc, scene_id.toStdString(), true, &err)) {
-    QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-    return;
+  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
+        return vinput::scene::RemoveScene(sc, scene_id.toStdString(), true, err);
+      })) {
+    refreshSceneList();
+    configChanged();
   }
-  FromSceneConfig(config.scenes, sc);
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-  refreshSceneList();
-  configChanged();
 }
 
 void LlmPage::onSceneSetActive() {
@@ -929,24 +896,13 @@ void LlmPage::onSceneSetActive() {
   }
 
   const QString scene_id = item->data(Qt::UserRole).toString();
-
-  CoreConfig config = vinput::gui::ConfigManager::Get().Load();
-  std::string err;
-
-  vinput::scene::Config sc = ToSceneConfig(config.scenes);
-  if (!vinput::scene::SetActiveScene(&sc, scene_id.toStdString(), &err)) {
-    QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-    return;
+  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
+        return vinput::scene::SetActiveScene(sc, scene_id.toStdString(), err);
+      })) {
+    refreshSceneList();
+    configChanged();
   }
-  FromSceneConfig(config.scenes, sc);
-
-  if (!vinput::gui::ConfigManager::Get().Save(config)) {
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-
-  refreshSceneList();
-  configChanged();
+}
 }
 
 } // namespace vinput::gui

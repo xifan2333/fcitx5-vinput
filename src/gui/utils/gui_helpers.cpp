@@ -120,6 +120,43 @@ bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_ou
   return true;
 }
 
+QNetworkReply* StartOpenAiModelsRequest(QNetworkAccessManager* nam, const std::string& base_url,
+                                        const std::string& api_key, int timeout_ms) {
+  if (nam == nullptr) {
+    return nullptr;
+  }
+  const std::string url_str = vinput::url::JoinPath(base_url, vinput::llm::kOpenAiModelsPath);
+  QNetworkRequest req{QUrl(QString::fromStdString(url_str))};
+  req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+  const std::string resolved_key = vinput::interpolate::InterpolateEnv(api_key);
+  if (!resolved_key.empty()) {
+    const QByteArray bearer =
+        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(resolved_key);
+    req.setRawHeader(vinput::llm::kAuthorizationHeader, bearer);
+  }
+
+  QNetworkReply* reply = nam->get(req);
+  auto* timeout = new QTimer(reply);
+  timeout->setSingleShot(true);
+  QObject::connect(timeout, &QTimer::timeout, reply, [reply]() {
+    if (!reply->isFinished()) {
+      reply->abort();
+    }
+  });
+  QObject::connect(reply, &QNetworkReply::finished, timeout, &QTimer::stop);
+  timeout->start(timeout_ms);
+  return reply;
+}
+
+bool SaveProviderModels(const std::string& provider_id, const QStringList& models) {
+  std::vector<std::string> models_vec;
+  models_vec.reserve(models.size());
+  for (const auto& m : models) {
+    models_vec.push_back(m.toStdString());
+  }
+  return vinput::llm::SaveProviderModels(provider_id, models_vec);
+}
+
 QStringList NonEmptyLines(const QString& text) {
   QStringList lines;
   for (const QString& line : text.split('\n')) {
@@ -286,68 +323,40 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
     lineEdit->setPlaceholderText(GuiHelpers::tr("Loading models..."));
   }
 
-  const std::string url_str =
-      vinput::url::JoinPath(provider.base_url.toStdString(), vinput::llm::kOpenAiModelsPath);
-  const QString url = QString::fromStdString(url_str);
-
   auto* nam = new QNetworkAccessManager(comboModel);
-  QNetworkRequest req{QUrl(url)};
-  req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-  const std::string resolved_key =
-      vinput::interpolate::InterpolateEnv(provider.api_key.trimmed().toStdString());
-  if (!resolved_key.empty()) {
-    const QByteArray bearer =
-        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(resolved_key);
-    req.setRawHeader(vinput::llm::kAuthorizationHeader, bearer);
-  }
+  QNetworkReply* reply = StartOpenAiModelsRequest(nam, provider.base_url.toStdString(),
+                                                  provider.api_key.trimmed().toStdString(),
+                                                  vinput::llm::kModelFetchTimeoutMs);
 
-  QNetworkReply* reply = nam->get(req);
-  auto* timeout = new QTimer(reply);
-  timeout->setSingleShot(true);
-  QObject::connect(timeout, &QTimer::timeout, reply, [reply]() {
-    if (!reply->isFinished()) {
-      reply->abort();
-    }
-  });
-  timeout->start(vinput::llm::kModelFetchTimeoutMs);
+  QObject::connect(
+      reply, &QNetworkReply::finished, comboModel,
+      [comboModel, reply, cacheKey, generation, provider_id = provider.id.toStdString()]() {
+        const bool stale =
+            comboModel->property("vinput_provider_fetch_generation").toInt() != generation ||
+            comboModel->property("vinput_provider_fetch_key").toString() != cacheKey;
 
-  QObject::connect(reply, &QNetworkReply::finished, comboModel,
-                   [comboModel, reply, timeout, cacheKey, generation,
-                    provider_id = provider.id.toStdString()]() {
-                     timeout->stop();
+        QStringList models;
+        QString error;
+        bool success = false;
+        if (reply->error() == QNetworkReply::NoError) {
+          success = ParseOpenAiModelsResponse(reply->readAll(), &models, &error);
+        } else {
+          error = reply->errorString();
+        }
 
-                     const bool stale =
-                         comboModel->property("vinput_provider_fetch_generation").toInt() !=
-                             generation ||
-                         comboModel->property("vinput_provider_fetch_key").toString() != cacheKey;
+        if (!stale) {
+          if (success) {
+            cache.insert(cacheKey, models);
+            SaveProviderModels(provider_id, models);
+            ApplyFetchedProviderModels(comboModel, models);
+          } else {
+            ApplyProviderModelFetchError(comboModel, error);
+          }
+        }
 
-                     QStringList models;
-                     QString error;
-                     bool success = false;
-                     if (reply->error() == QNetworkReply::NoError) {
-                       success = ParseOpenAiModelsResponse(reply->readAll(), &models, &error);
-                     } else {
-                       error = reply->errorString();
-                     }
-
-                     if (!stale) {
-                       if (success) {
-                         cache.insert(cacheKey, models);
-                         std::vector<std::string> models_vec;
-                         models_vec.reserve(models.size());
-                         for (const auto& m : models) {
-                           models_vec.push_back(m.toStdString());
-                         }
-                         vinput::llm::SaveProviderModels(provider_id, models_vec);
-                         ApplyFetchedProviderModels(comboModel, models);
-                       } else {
-                         ApplyProviderModelFetchError(comboModel, error);
-                       }
-                     }
-
-                     reply->deleteLater();
-                     reply->manager()->deleteLater();
-                   });
+        reply->deleteLater();
+        reply->manager()->deleteLater();
+      });
 }
 
 // Load LLM providers from CLI -> NO, from config now.
