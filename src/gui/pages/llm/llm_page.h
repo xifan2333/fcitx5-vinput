@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QtCore/qobject.h>
+#include <QtCore/qobjectdefs.h>
+#include <QtCore/qtmetamacros.h>
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qwidget.h>

@@ -11,6 +11,7 @@
 #include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
 #include <atomic>
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <string>

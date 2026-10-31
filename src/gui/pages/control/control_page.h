@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QtCore/qobject.h>
+#include <QtCore/qobjectdefs.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qtimer.h>
+#include <QtCore/qtmetamacros.h>
 #include <QtWidgets/qcheckbox.h>
 #include <QtWidgets/qcombobox.h>
 #include <QtWidgets/qlabel.h>
