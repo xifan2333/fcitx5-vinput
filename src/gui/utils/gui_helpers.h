@@ -19,11 +19,23 @@
 #include <utility>
 #include <vector>
 
+class QByteArray;
+class QFormLayout;
+
 namespace vinput::script {
 struct ResourceVersionInfo;
 }
 
 namespace vinput::gui {
+
+// Create and display a modal form dialog containing form layout and standard Ok/Cancel buttons.
+// Returns true if the user accepted (clicked Ok).
+[[nodiscard]] bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form);
+
+// Parse OpenAI /v1/models JSON payload into a sorted, deduplicated list of model IDs.
+// Returns true on success; on failure returns false and sets error_out if provided.
+[[nodiscard]] bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
+                                             QString* error_out = nullptr);
 
 // Check if a background worker cancellation token has been signalled.
 [[nodiscard]] inline bool IsWorkerCancelled(const std::atomic<bool>* cancel_token) noexcept {

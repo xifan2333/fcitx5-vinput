@@ -22,7 +22,11 @@
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qnetworkreply.h>
 #include <QtNetwork/qnetworkrequest.h>
+#include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qcombobox.h>
+#include <QtWidgets/qdialog.h>
+#include <QtWidgets/qdialogbuttonbox.h>
+#include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlineedit.h>
 #include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
@@ -68,6 +72,53 @@ struct GuiHelpers {
   Q_DECLARE_TR_FUNCTIONS(GuiHelpers)
 };
 } // namespace
+
+bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form) {
+  if (form == nullptr) {
+    return false;
+  }
+  QDialog dialog(parent);
+  dialog.setWindowTitle(title);
+
+  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+  auto* dlgLayout = new QVBoxLayout(&dialog);
+  dlgLayout->addLayout(form);
+  dlgLayout->addWidget(buttons);
+
+  return dialog.exec() == QDialog::Accepted;
+}
+
+bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
+                               QString* error_out) {
+  if (models_out == nullptr) {
+    return false;
+  }
+  models_out->clear();
+
+  QJsonParseError parseError;
+  const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+  if (parseError.error != QJsonParseError::NoError || !doc.isObject() ||
+      !doc.object().value("data").isArray()) {
+    if (error_out != nullptr) {
+      *error_out = GuiHelpers::tr("Provider returned invalid JSON for /v1/models.");
+    }
+    return false;
+  }
+
+  const QJsonArray data = doc.object().value("data").toArray();
+  for (const auto& v : data) {
+    const QString id = v.toObject().value("id").toString();
+    if (!id.isEmpty()) {
+      models_out->append(id);
+    }
+  }
+  models_out->removeDuplicates();
+  models_out->sort();
+  return true;
+}
 
 QStringList NonEmptyLines(const QString& text) {
   QStringList lines;
@@ -260,59 +311,43 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
   });
   timeout->start(vinput::llm::kModelFetchTimeoutMs);
 
-  QObject::connect(
-      reply, &QNetworkReply::finished, comboModel,
-      [comboModel, reply, timeout, cacheKey, generation,
-       provider_id = provider.id.toStdString()]() {
-        timeout->stop();
+  QObject::connect(reply, &QNetworkReply::finished, comboModel,
+                   [comboModel, reply, timeout, cacheKey, generation,
+                    provider_id = provider.id.toStdString()]() {
+                     timeout->stop();
 
-        const bool stale =
-            comboModel->property("vinput_provider_fetch_generation").toInt() != generation ||
-            comboModel->property("vinput_provider_fetch_key").toString() != cacheKey;
+                     const bool stale =
+                         comboModel->property("vinput_provider_fetch_generation").toInt() !=
+                             generation ||
+                         comboModel->property("vinput_provider_fetch_key").toString() != cacheKey;
 
-        QStringList models;
-        QString error;
-        bool success = false;
-        if (reply->error() == QNetworkReply::NoError) {
-          QJsonParseError parseError;
-          const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll(), &parseError);
-          if (parseError.error != QJsonParseError::NoError || !doc.isObject() ||
-              !doc.object().value("data").isArray()) {
-            error = GuiHelpers::tr("Provider returned invalid JSON for /v1/models.");
-          } else {
-            const QJsonArray data = doc.object().value("data").toArray();
-            for (const auto& v : data) {
-              const QString id = v.toObject().value("id").toString();
-              if (!id.isEmpty()) {
-                models.append(id);
-              }
-            }
-            models.removeDuplicates();
-            models.sort();
-            success = true;
-          }
-        } else {
-          error = reply->errorString();
-        }
+                     QStringList models;
+                     QString error;
+                     bool success = false;
+                     if (reply->error() == QNetworkReply::NoError) {
+                       success = ParseOpenAiModelsResponse(reply->readAll(), &models, &error);
+                     } else {
+                       error = reply->errorString();
+                     }
 
-        if (!stale) {
-          if (success) {
-            cache.insert(cacheKey, models);
-            std::vector<std::string> models_vec;
-            models_vec.reserve(models.size());
-            for (const auto& m : models) {
-              models_vec.push_back(m.toStdString());
-            }
-            vinput::llm::SaveProviderModels(provider_id, models_vec);
-            ApplyFetchedProviderModels(comboModel, models);
-          } else {
-            ApplyProviderModelFetchError(comboModel, error);
-          }
-        }
+                     if (!stale) {
+                       if (success) {
+                         cache.insert(cacheKey, models);
+                         std::vector<std::string> models_vec;
+                         models_vec.reserve(models.size());
+                         for (const auto& m : models) {
+                           models_vec.push_back(m.toStdString());
+                         }
+                         vinput::llm::SaveProviderModels(provider_id, models_vec);
+                         ApplyFetchedProviderModels(comboModel, models);
+                       } else {
+                         ApplyProviderModelFetchError(comboModel, error);
+                       }
+                     }
 
-        reply->deleteLater();
-        reply->manager()->deleteLater();
-      });
+                     reply->deleteLater();
+                     reply->manager()->deleteLater();
+                   });
 }
 
 // Load LLM providers from CLI -> NO, from config now.
