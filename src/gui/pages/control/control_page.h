@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QtCore/qobject.h>
-#include <QtCore/qobjectdefs.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qtmetamacros.h>
@@ -41,28 +40,7 @@ public:
   [[nodiscard]] bool duckOutputEnabled() const;
   [[nodiscard]] double duckOutputVolume() const;
 
-signals:
-  void configChanged();
-
-private slots:
-  void refreshAsrList();
-  void updateAsrButtons();
-  void onAsrEdit();
-  void onAsrSetActive();
-
-  void refreshAdapterList();
-  void updateAdapterButtons();
-  void onAdapterStart();
-  void onAdapterStop();
-  void onAdapterAutostartToggled(bool checked);
-
-  void refreshDaemonStatus();
-  void onDaemonStart();
-  void onDaemonStop();
-  void onDaemonRestart();
-
-  void checkSandboxPermissions();
-
+private:
   void executeAdapterControl(bool start);
   void executeDaemonAction(bool restart);
   void populateAsrList(const CoreConfig& config,
@@ -90,6 +68,28 @@ private slots:
   QPushButton* btnDaemonStop_;
   QPushButton* btnDaemonRestart_;
   QTimer* daemonRefreshTimer_ = nullptr;
+
+signals:
+  void configChanged();
+
+private slots:
+  void refreshAsrList();
+  void updateAsrButtons();
+  void onAsrEdit();
+  void onAsrSetActive();
+
+  void refreshAdapterList();
+  void updateAdapterButtons();
+  void onAdapterStart();
+  void onAdapterStop();
+  void onAdapterAutostartToggled(bool checked);
+
+  void refreshDaemonStatus();
+  void onDaemonStart();
+  void onDaemonStop();
+  void onDaemonRestart();
+
+  void checkSandboxPermissions();
 };
 
 } // namespace vinput::gui
