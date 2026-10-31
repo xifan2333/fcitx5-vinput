@@ -1,5 +1,6 @@
 #include "dialogs/asr_provider_dialog.h"
 
+#include <QtCore/qcontainerfwd.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qstring.h>
@@ -179,13 +180,13 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     } else
 #endif
     {
-      if (!extract_ok) {
-        QMessageBox::warning(parent, AsrProviderDialog::tr("Error"), env_error);
-        continue;
-      }
       if (extracted_command.empty()) {
         QMessageBox::warning(parent, AsrProviderDialog::tr("Error"),
                              AsrProviderDialog::tr("Command providers require a command."));
+        continue;
+      }
+      if (!extract_ok) {
+        QMessageBox::warning(parent, AsrProviderDialog::tr("Error"), env_error);
         continue;
       }
       out_data->command = std::move(extracted_command);
