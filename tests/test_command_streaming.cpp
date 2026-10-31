@@ -1,3 +1,4 @@
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -525,10 +526,76 @@ void TestKilledByUsVsAbnormalExit() {
   }
 }
 
+/**
+ * Test that PushAudio flushes audio frames immediately to child stdin
+ * without artificial 100ms withholding or waiting for a subsequent chunk / Finish.
+ */
+void TestImmediateAudioEmission() {
+  const std::string received_file =
+      "/tmp/vinput_test_streaming_immediate_" + std::to_string(getpid()) + ".tmp";
+  unlink(received_file.c_str());
+
+  CommandAsrProvider provider;
+  provider.id = "test-immediate-audio-provider";
+  provider.command = "/bin/sh";
+  provider.args = {
+      "-c", "while IFS= read -r line; do "
+            "  case \"$line\" in "
+            "    *\"audio\"*) echo \"$line\" >> " +
+                received_file +
+                " ;; "
+                "    *\"finish\"*) echo '{\"type\": \"final\", \"text\": \"ok\"}' ; break ;; "
+                "  esac; "
+                "done && echo '{\"type\": \"closed\"}' && exit 0"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  const std::array<int16_t, 160> samples = {100, -200, 300, -400};
+  // Push a single chunk without finishing or pushing a second chunk
+  ExpectTrue(session->PushAudio(samples, &error), "PushAudio failed: " + error);
+
+  // Poll for the written received_file; with zero-latency push, it must appear immediately
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  bool saw_audio = false;
+  while (std::chrono::steady_clock::now() < deadline) {
+    std::ifstream file(received_file);
+    if (file.is_open()) {
+      std::string line;
+      if (std::getline(file, line) && line.find("audio") != std::string::npos) {
+        saw_audio = true;
+        break;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ExpectTrue(saw_audio, "Child process should receive audio chunk immediately without withholding");
+
+  const bool finish_ok = session->Finish(&error);
+  ExpectTrue(finish_ok, "Finish should succeed: " + error);
+
+  const auto events = session->PollEvents();
+  bool saw_final = false;
+  for (const auto& ev : events) {
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText && ev.text == "ok") {
+      saw_final = true;
+    }
+  }
+  ExpectTrue(saw_final, "Session should receive final text");
+
+  unlink(received_file.c_str());
+}
+
 } // namespace
 
 int main() {
   std::cout << "Running command streaming process lifecycle tests...\n";
+  TestImmediateAudioEmission();
   TestSilentSessionReapsChild();
   TestDestructionReapsChild();
   TestFinalTextSessionReapsChild();
