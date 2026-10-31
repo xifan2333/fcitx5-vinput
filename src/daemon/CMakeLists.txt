@@ -58,6 +58,7 @@ add_executable(daemon
     runtime/dbus_service.cpp
     runtime/daemon_runtime_controller.cpp
     runtime/recognition_pipeline.cpp
+    runtime/audio_recording_buffer.cpp
     postprocess/post_processor.cpp
     postprocess/prompt_template.cpp
 )
