@@ -3,7 +3,6 @@
 #include <atomic>
 #include <base64.hpp>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <glaze/core/common.hpp>
@@ -78,13 +77,15 @@ public:
       return false;
     }
 
-    if (!FlushPendingChunk(false, error)) {
-      return false;
-    }
-
     if (!pcm.empty()) {
       const auto byte_span = std::as_bytes(pcm);
-      pending_chunk_.assign(byte_span.begin(), byte_span.end());
+      const glz::json_t payload = {
+          {"type", "audio"},
+          {"audio_base64", base64::encode_into<std::string>(byte_span.begin(), byte_span.end())},
+      };
+      if (!SendJsonLine(payload, error)) {
+        return false;
+      }
     }
 
     if (!DrainEvents(std::chrono::milliseconds(0), error)) {
@@ -110,12 +111,6 @@ public:
     }
 
     finished_ = true;
-    if (!FlushPendingChunk(true, error)) {
-      QueueError(error != nullptr && !error->empty() ? *error : "failed to flush audio chunk.");
-      QueueCompleted();
-      Terminate();
-      return false;
-    }
     if (!SendControlEvent("finish", error)) {
       QueueError(error != nullptr && !error->empty() ? *error : "failed to send finish event.");
       QueueCompleted();
@@ -260,24 +255,6 @@ private:
     }
     started_ = true;
     return true;
-  }
-
-  bool FlushPendingChunk(bool commit, std::string* error) {
-    if (pending_chunk_.empty()) {
-      if (error != nullptr) {
-        error->clear();
-      }
-      return true;
-    }
-
-    const glz::json_t payload = {
-        {"type", "audio"},
-        {"audio_base64",
-         base64::encode_into<std::string>(pending_chunk_.begin(), pending_chunk_.end())},
-        {"commit", commit},
-    };
-    pending_chunk_.clear();
-    return SendJsonLine(payload, error);
   }
 
   bool SendControlEvent(std::string_view type, std::string* error) {
@@ -485,7 +462,6 @@ private:
   int exit_code_ = -1;
   std::string stdout_buffer_;
   std::string last_partial_text_;
-  std::vector<std::byte> pending_chunk_;
   std::vector<RecognitionEvent> events_;
 };
 
