@@ -43,7 +43,6 @@ namespace vinput::daemon::runtime {
 
 namespace {
 
-constexpr std::size_t kStreamingChunkSamples = 800;
 constexpr const char* kFailedToPushAudioError = "Failed to push audio chunk.";
 constexpr const char* kFailedToFinishSessionError = "Failed to finish recognition session.";
 constexpr float kNonSilentPeakThreshold = 0.02F;
@@ -284,9 +283,6 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
       session_to_cancel = ReleaseActiveSessionLocked();
       phase_ = vinput::dbus::Status::Idle;
       current_order_.reset();
-      current_recording_pcm_.clear();
-      pending_chunk_pcm_.clear();
-      current_sample_count_ = 0;
       dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
       VLOG_DEBUG("recording cancelled and discarded");
       apply_pending_reload = pending_asr_backend_reload_;
@@ -416,7 +412,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     }
     // Drop a stale deferred stop scheduled between the check above and now.
     pending_capture_stop_.store(false, std::memory_order_release);
-    startup_pcm_buffer_.Clear();
+    audio_buffer_.Reset();
     start_recording_in_progress_ = true;
     // Accept early mic callbacks into the startup buffer until CreateSession
     // completes. They must not be discarded before the backend is ready.
@@ -443,7 +439,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       const std::scoped_lock lock(state_mutex_);
       start_recording_in_progress_ = false;
       accepting_chunks_.store(false, std::memory_order_relaxed);
-      startup_pcm_buffer_.Clear();
+      audio_buffer_.Clear();
     }
     VLOG_WARN("{}", message);
     return DbusService::MethodResult::Failure(message);
@@ -463,7 +459,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       const std::scoped_lock lock(state_mutex_);
       start_recording_in_progress_ = false;
       accepting_chunks_.store(false, std::memory_order_relaxed);
-      startup_pcm_buffer_.Clear();
+      audio_buffer_.Clear();
     }
     RestoreOutputIfDucked();
     ScheduleCaptureStopOnMainThread();
@@ -475,7 +471,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       vinput::daemon::asr::AudioDeliveryMode::Chunked) {
     // Isolate backend PushAudio/PollEvents on the session's worker thread;
     // the capture callback then only enqueues owned chunks. Installation
-    // still happens under state_mutex_ below, so the StartupPcmBuffer prefix
+    // still happens under state_mutex_ below, so the AudioRecordingBuffer prefix
     // replay order is unchanged.
     auto async_session =
         std::make_unique<vinput::daemon::asr::AsyncRecognitionSession>(std::move(session));
@@ -503,7 +499,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     if (!start_recording_in_progress_ || phase_ != vinput::dbus::Status::Idle) {
       start_recording_in_progress_ = false;
       accepting_chunks_.store(false, std::memory_order_relaxed);
-      startup_pcm_buffer_.Clear();
+      audio_buffer_.Clear();
       abort_started_capture = true;
     } else {
       current_order_.reset();
@@ -512,18 +508,8 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       active_backend_ = active_backend;
       current_is_command_ = is_command;
       current_selected_text_ = selected_text;
-      current_recording_pcm_.clear();
-      pending_chunk_pcm_.clear();
-      current_sample_count_ = 0;
-      current_input_gain_ = static_cast<float>(runtime_settings.asr.inputGain);
-      if (UsesBufferedDelivery(active_backend_)) {
-        current_recording_pcm_ = startup_pcm_buffer_.TakeWithGain(current_input_gain_);
-        current_sample_count_ = current_recording_pcm_.size();
-      } else {
-        // Replay the initialization prefix first, before live callbacks can
-        // acquire state_mutex_ and append their later chunks.
-        pending_chunk_pcm_ = startup_pcm_buffer_.TakeWithGain(current_input_gain_);
-      }
+      audio_buffer_.SetGain(static_cast<float>(runtime_settings.asr.inputGain));
+      audio_buffer_.Activate(UsesBufferedDelivery(active_backend_));
       latest_final_text_.clear();
       recording_started_at_ = std::chrono::steady_clock::now();
       first_non_silent_at_.reset();
@@ -587,16 +573,13 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
   {
     const std::scoped_lock lock(state_mutex_);
     if (start_recording_in_progress_ && !active_session_) {
-      startup_pcm_buffer_.Append(pcm);
+      audio_buffer_.AppendStartup(pcm);
       return;
     }
   }
 
-  // Apply gain at the device boundary so all backends see processed audio.
-  // At the default unity gain this borrows `pcm` instead of copying it.
-  std::vector<int16_t> gained_pcm;
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
-  std::vector<int16_t> chunk_to_push;
+  std::optional<std::vector<int16_t>> chunk_to_push;
   bool streaming_mode = false;
   {
     const std::scoped_lock lock(state_mutex_);
@@ -604,35 +587,31 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
       return;
     }
     session = active_session_;
-    const auto pcm_view =
-        vinput::audio::PrepareGainAdjustedInput(pcm, current_input_gain_, &gained_pcm);
 
-    if (!first_non_silent_at_.has_value() && HasNonSilentAudio(pcm_view)) {
-      first_non_silent_at_ = std::chrono::steady_clock::now();
-      VLOG_DEBUG("first non-silent audio after {} ms",
-                 vinput::time::MillisecondsSince(recording_started_at_, *first_non_silent_at_));
+    if (!first_non_silent_at_.has_value()) {
+      std::vector<int16_t> gained_pcm;
+      const auto pcm_view =
+          vinput::audio::PrepareGainAdjustedInput(pcm, audio_buffer_.Gain(), &gained_pcm);
+      if (HasNonSilentAudio(pcm_view)) {
+        first_non_silent_at_ = std::chrono::steady_clock::now();
+        VLOG_DEBUG("first non-silent audio after {} ms",
+                   vinput::time::MillisecondsSince(recording_started_at_, *first_non_silent_at_));
+      }
     }
 
-    if (UsesBufferedDelivery(active_backend_)) {
-      current_recording_pcm_.insert(current_recording_pcm_.end(), pcm_view.begin(), pcm_view.end());
-      current_sample_count_ = current_recording_pcm_.size();
-    } else {
+    audio_buffer_.Append(pcm);
+    if (!UsesBufferedDelivery(active_backend_)) {
       streaming_mode = true;
-      pending_chunk_pcm_.insert(pending_chunk_pcm_.end(), pcm_view.begin(), pcm_view.end());
-      if (pending_chunk_pcm_.size() >= kStreamingChunkSamples) {
-        chunk_to_push.assign(pending_chunk_pcm_.begin(),
-                             pending_chunk_pcm_.begin() +
-                                 static_cast<std::ptrdiff_t>(kStreamingChunkSamples));
-      }
+      chunk_to_push = audio_buffer_.PopStreamingChunk();
     }
   }
 
-  while (streaming_mode && !chunk_to_push.empty()) {
+  while (streaming_mode && chunk_to_push.has_value()) {
     std::string push_error;
     bool pushed = false;
     {
       const std::scoped_lock session_lock(session_io_mutex_);
-      pushed = session->PushAudio(chunk_to_push, &push_error);
+      pushed = session->PushAudio(*chunk_to_push, &push_error);
     }
     if (!pushed && push_error.empty()) {
       push_error = kFailedToPushAudioError;
@@ -643,7 +622,6 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
       return;
     }
 
-    bool keep_processing = false;
     bool session_retired = false;
     {
       const std::scoped_lock lock(state_mutex_);
@@ -651,18 +629,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
         deferred_cancelled_sessions_.push_back(session);
         session_retired = true;
       } else {
-        current_sample_count_ += chunk_to_push.size();
-        pending_chunk_pcm_.erase(pending_chunk_pcm_.begin(),
-                                 pending_chunk_pcm_.begin() +
-                                     static_cast<std::ptrdiff_t>(chunk_to_push.size()));
-        keep_processing = pending_chunk_pcm_.size() >= kStreamingChunkSamples;
-        if (keep_processing) {
-          chunk_to_push.assign(pending_chunk_pcm_.begin(),
-                               pending_chunk_pcm_.begin() +
-                                   static_cast<std::ptrdiff_t>(kStreamingChunkSamples));
-        } else {
-          chunk_to_push.clear();
-        }
+        chunk_to_push = audio_buffer_.PopStreamingChunk();
       }
     }
 
@@ -671,7 +638,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
       return;
     }
 
-    if (!keep_processing) {
+    if (!chunk_to_push.has_value()) {
       break;
     }
   }
@@ -861,34 +828,14 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
       apply_pending_reload = true;
     } else {
       if (!captured_pcm.empty()) {
-        std::vector<int16_t> gained_pcm;
-        const auto pcm_view =
-            vinput::audio::PrepareGainAdjustedInput(captured_pcm, current_input_gain_, &gained_pcm);
-        if (UsesBufferedDelivery(active_backend_)) {
-          current_recording_pcm_.insert(current_recording_pcm_.end(), pcm_view.begin(),
-                                        pcm_view.end());
-          current_sample_count_ = current_recording_pcm_.size();
-        } else {
-          pending_chunk_pcm_.insert(pending_chunk_pcm_.end(), pcm_view.begin(), pcm_view.end());
-        }
+        audio_buffer_.Append(captured_pcm);
       }
 
-      if (UsesBufferedDelivery(active_backend_)) {
-        current_sample_count_ = current_recording_pcm_.size();
-      } else {
-        if (!pending_chunk_pcm_.empty()) {
-          current_sample_count_ += pending_chunk_pcm_.size();
-          VLOG_DEBUG(
-              "deferred final audio tail chunk to worker samples={} captured={} chunk_size={}",
-              pending_chunk_pcm_.size(), captured_pcm.size(), kStreamingChunkSamples);
-        }
-      }
+      const auto total_samples = audio_buffer_.TotalSampleCount();
 
-      if (!apply_pending_reload &&
-          current_sample_count_ < vinput::daemon::asr::kMinSamplesForRecognition) {
-        VLOG_DEBUG("recording too short, skipping inference: {} samples ({:.1f} ms)",
-                   current_sample_count_,
-                   static_cast<double>(current_sample_count_) * 1000.0 / 16000.0);
+      if (!apply_pending_reload && total_samples < vinput::daemon::asr::kMinSamplesForRecognition) {
+        VLOG_DEBUG("recording too short, skipping inference: {} samples ({:.1f} ms)", total_samples,
+                   static_cast<double>(total_samples) * 1000.0 / 16000.0);
         session_to_cancel = ReleaseActiveSessionLocked();
         phase_ = vinput::dbus::Status::Idle;
         current_order_.reset();
@@ -903,9 +850,15 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
         current_order_->session = std::move(active_session_);
         current_order_->backend = active_backend_;
         if (UsesBufferedDelivery(active_backend_)) {
-          current_order_->pcm = std::move(current_recording_pcm_);
+          current_order_->pcm = audio_buffer_.TakeBufferedPcm();
         } else {
-          current_order_->pcm = std::move(pending_chunk_pcm_);
+          current_order_->pcm = audio_buffer_.DrainStreamingTail();
+          if (!current_order_->pcm.empty()) {
+            VLOG_DEBUG(
+                "deferred final audio tail chunk to worker samples={} captured={} chunk_size={}",
+                current_order_->pcm.size(), captured_pcm.size(),
+                AudioRecordingBuffer::kStreamingChunkSamples);
+          }
         }
         current_order_->recognized_text = latest_final_text_;
         current_order_->scene_id = scene_id;
@@ -913,8 +866,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
         current_order_->selected_text = current_selected_text_;
         current_is_command_ = false;
         current_selected_text_.clear();
-        LogRecognitionRequest(active_backend_, current_sample_count_);
-        current_sample_count_ = 0;
+        LogRecognitionRequest(active_backend_, total_samples);
         active_backend_ = {};
         phase_ = vinput::dbus::Status::Inferring;
         dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Inferring));
@@ -943,11 +895,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
 std::shared_ptr<vinput::daemon::asr::RecognitionSession>
 DaemonRuntimeController::ReleaseActiveSessionLocked() {
   auto session = std::move(active_session_);
-  startup_pcm_buffer_.Clear();
-  current_recording_pcm_.clear();
-  pending_chunk_pcm_.clear();
-  current_sample_count_ = 0;
-  current_input_gain_ = 1.0F;
+  audio_buffer_.Clear();
   latest_final_text_.clear();
   recording_started_at_.reset();
   first_non_silent_at_.reset();
@@ -1114,13 +1062,9 @@ void DaemonRuntimeController::ResetToIdle() {
     postprocessing_state_ = PostprocessingState::Inactive;
     postprocessing_cancel_requested_.store(false, std::memory_order_relaxed);
     current_order_.reset();
-    startup_pcm_buffer_.Clear();
+    audio_buffer_.Clear();
     current_is_command_ = false;
     current_selected_text_.clear();
-    current_recording_pcm_.clear();
-    pending_chunk_pcm_.clear();
-    current_sample_count_ = 0;
-    current_input_gain_ = 1.0F;
     recording_started_at_.reset();
     first_non_silent_at_.reset();
     first_partial_logged_ = false;
