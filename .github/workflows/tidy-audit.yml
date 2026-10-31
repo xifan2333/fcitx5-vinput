@@ -1,9 +1,12 @@
 name: tidy-audit
 
-# One-off full-project clang-tidy audit. Manual dispatch only; the regular
-# ci.yml cpp-linter job stays limited to changed files with a 15-minute budget.
+# One-off full-project clang-tidy audit; the regular ci.yml cpp-linter job
+# stays limited to changed files with a 15-minute budget.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - chore/tidy-audit
 
 permissions:
   contents: read
