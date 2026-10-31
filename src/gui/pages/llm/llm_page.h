@@ -37,6 +37,7 @@ private slots:
   void onSceneSetActive();
 
 private:
+  void executeAdapterControl(bool start);
   QListWidget* listProviders_;
   QPushButton* btnLlmAdd_;
   QPushButton* btnLlmEdit_;

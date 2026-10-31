@@ -733,7 +733,7 @@ void LlmPage::updateAdapterButtons() {
   btnAdapterStop_->setEnabled(running);
 }
 
-void LlmPage::onAdapterStart() {
+void LlmPage::executeAdapterControl(bool start) {
   auto* item = listAdapters_->currentItem();
   if (item == nullptr) {
     return;
@@ -744,41 +744,25 @@ void LlmPage::onAdapterStart() {
   if (adapter_title.isEmpty()) {
     adapter_title = AdapterTitleForGui(adapter_id.toStdString());
   }
-  btnAdapterStart_->setEnabled(false);
-  btnAdapterStop_->setEnabled(false);
-  RunAdapterControlAsync(this, adapter_id.toStdString(), true,
-                         [this, adapter_title](bool ok, const std::string& err) {
-                           btnAdapterStart_->setEnabled(true);
-                           btnAdapterStop_->setEnabled(true);
-                           if (!ok) {
-                             QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-                             return;
-                           }
-                           QMessageBox::information(this, tr("LLM Adapter Started"),
-                                                    tr("Adapter '%1' started.").arg(adapter_title));
-                           refreshAdapterList();
-                         });
+
+  RunAdapterControlGuarded(
+      this, {btnAdapterStart_, btnAdapterStop_}, adapter_id.toStdString(), start,
+      [this, start, adapter_title]() {
+        if (start) {
+          QMessageBox::information(this, tr("LLM Adapter Started"),
+                                   tr("Adapter '%1' started.").arg(adapter_title));
+        }
+        refreshAdapterList();
+      },
+      tr("Error"));
+}
+
+void LlmPage::onAdapterStart() {
+  executeAdapterControl(true);
 }
 
 void LlmPage::onAdapterStop() {
-  auto* item = listAdapters_->currentItem();
-  if (item == nullptr) {
-    return;
-  }
-
-  const QString adapter_id = item->data(Qt::UserRole).toString();
-  btnAdapterStart_->setEnabled(false);
-  btnAdapterStop_->setEnabled(false);
-  RunAdapterControlAsync(this, adapter_id.toStdString(), false,
-                         [this](bool ok, const std::string& err) {
-                           btnAdapterStart_->setEnabled(true);
-                           btnAdapterStop_->setEnabled(true);
-                           if (!ok) {
-                             QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-                             return;
-                           }
-                           refreshAdapterList();
-                         });
+  executeAdapterControl(false);
 }
 
 void LlmPage::refreshSceneList() {
