@@ -83,6 +83,14 @@ In-process `sherpa-onnx` inference inside `vinput-daemon`. No child process and 
 One push-to-talk utterance. `AsyncRecognitionSession` owns the worker thread that serialises every
 backend call; a backend session is never touched from two threads.
 
+### AudioRecordingBuffer
+
+`src/daemon/runtime/audio_recording_buffer.{h,cpp}`. The unified in-memory audio buffering module for
+an active recording session. Encapsulates startup pre-session PCM buffering, live gain adjustment,
+batch full-recording accumulation, and streaming chunk slicing (`kStreamingChunkSamples`). Exposes a
+clean append/drain/take interface, hiding internal vector mutations and sample counters from the
+runtime controller.
+
 ### Partial / final
 
 `partial` is cumulative visible text used for live candidate display. `final` is the single committed
