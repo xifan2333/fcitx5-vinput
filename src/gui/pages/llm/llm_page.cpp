@@ -25,7 +25,6 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTextEdit>
-#include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QtCore/qbytearray.h>
@@ -37,7 +36,6 @@
 #include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
-#include <QtCore/qthreadpool.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qfontmetrics.h>
