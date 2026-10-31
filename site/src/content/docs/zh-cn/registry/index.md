@@ -88,8 +88,7 @@ resources/providers/<目录>/batch/
 **输入协议（stdin）：**
 
 ```json
-{"type":"audio","audio_base64":"<base64 PCM S16_LE 单声道 16kHz>","commit":false}
-{"type":"audio","audio_base64":"...","commit":true}
+{"type":"audio","audio_base64":"<base64 PCM S16_LE 单声道 16kHz>"}
 {"type":"finish"}
 {"type":"cancel"}
 ```

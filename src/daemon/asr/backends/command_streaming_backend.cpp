@@ -3,7 +3,6 @@
 #include <atomic>
 #include <base64.hpp>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <glaze/core/common.hpp>

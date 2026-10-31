@@ -88,8 +88,7 @@ A streaming provider recognizes audio in real time as it arrives.
 **Input protocol (stdin):**
 
 ```json
-{"type":"audio","audio_base64":"<base64 PCM S16_LE mono 16kHz>","commit":false}
-{"type":"audio","audio_base64":"...","commit":true}
+{"type":"audio","audio_base64":"<base64 PCM S16_LE mono 16kHz>"}
 {"type":"finish"}
 {"type":"cancel"}
 ```
