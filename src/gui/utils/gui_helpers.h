@@ -19,11 +19,43 @@
 #include <utility>
 #include <vector>
 
+class QByteArray;
+class QFormLayout;
+class QNetworkAccessManager;
+class QNetworkReply;
+
 namespace vinput::script {
 struct ResourceVersionInfo;
 }
 
 namespace vinput::gui {
+
+// Create and display a modal form dialog containing form layout and standard Ok/Cancel buttons.
+// If accepted, executes on_accepted while dialog and form widgets are still alive.
+// Returns true if the user accepted (clicked Ok).
+[[nodiscard]] bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
+                                 const std::function<void()>& on_accepted = {});
+
+// Parse OpenAI /v1/models JSON payload into a sorted, deduplicated list of model IDs.
+// Returns true on success; on failure returns false and sets error_out if provided.
+[[nodiscard]] bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
+                                             QString* error_out = nullptr);
+
+// Send an authenticated GET request to the OpenAI /v1/models endpoint with timeout handling.
+QNetworkReply* StartOpenAiModelsRequest(QNetworkAccessManager* nam, const std::string& base_url,
+                                        const std::string& api_key, int timeout_ms);
+
+// Process OpenAI /v1/models response payload: parse, deduplicate, cache models,
+// and optionally format joined models string and model count.
+// Returns true on success; on failure returns false and sets error_out if provided.
+[[nodiscard]] bool ProcessAndSaveProviderModels(const QByteArray& payload,
+                                                const std::string& provider_id,
+                                                QString* joined_models_out = nullptr,
+                                                int* model_count_out = nullptr,
+                                                QString* error_out = nullptr);
+
+// Save fetched models list for a provider into cache.
+bool SaveProviderModels(const std::string& provider_id, const QStringList& models);
 
 // Check if a background worker cancellation token has been signalled.
 [[nodiscard]] inline bool IsWorkerCancelled(const std::atomic<bool>* cancel_token) noexcept {

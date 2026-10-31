@@ -22,7 +22,11 @@
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qnetworkreply.h>
 #include <QtNetwork/qnetworkrequest.h>
+#include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qcombobox.h>
+#include <QtWidgets/qdialog.h>
+#include <QtWidgets/qdialogbuttonbox.h>
+#include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlineedit.h>
 #include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
@@ -68,6 +72,114 @@ struct GuiHelpers {
   Q_DECLARE_TR_FUNCTIONS(GuiHelpers)
 };
 } // namespace
+
+bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
+                   const std::function<void()>& on_accepted) {
+  if (form == nullptr) {
+    return false;
+  }
+  QDialog dialog(parent);
+  dialog.setWindowTitle(title);
+
+  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+  auto* dlgLayout = new QVBoxLayout(&dialog);
+  dlgLayout->addLayout(form);
+  dlgLayout->addWidget(buttons);
+
+  if (dialog.exec() != QDialog::Accepted) {
+    return false;
+  }
+  if (on_accepted) {
+    on_accepted();
+  }
+  return true;
+}
+
+bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
+                               QString* error_out) {
+  if (models_out == nullptr) {
+    return false;
+  }
+  models_out->clear();
+
+  QJsonParseError parseError;
+  const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+  if (parseError.error != QJsonParseError::NoError || !doc.isObject() ||
+      !doc.object().value("data").isArray()) {
+    if (error_out != nullptr) {
+      *error_out = GuiHelpers::tr("Provider returned invalid JSON for /v1/models.");
+    }
+    return false;
+  }
+
+  const QJsonArray data = doc.object().value("data").toArray();
+  for (const auto& v : data) {
+    const QString id = v.toObject().value("id").toString();
+    if (!id.isEmpty()) {
+      models_out->append(id);
+    }
+  }
+  models_out->removeDuplicates();
+  models_out->sort();
+  return true;
+}
+
+QNetworkReply* StartOpenAiModelsRequest(QNetworkAccessManager* nam, const std::string& base_url,
+                                        const std::string& api_key, int timeout_ms) {
+  if (nam == nullptr) {
+    return nullptr;
+  }
+  const std::string url_str = vinput::url::JoinPath(base_url, vinput::llm::kOpenAiModelsPath);
+  QNetworkRequest req{QUrl(QString::fromStdString(url_str))};
+  req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+  const std::string resolved_key = vinput::interpolate::InterpolateEnv(api_key);
+  if (!resolved_key.empty()) {
+    const QByteArray bearer =
+        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(resolved_key);
+    req.setRawHeader(vinput::llm::kAuthorizationHeader, bearer);
+  }
+
+  QNetworkReply* reply = nam->get(req);
+  auto* timeout = new QTimer(reply);
+  timeout->setSingleShot(true);
+  QObject::connect(timeout, &QTimer::timeout, reply, [reply]() {
+    if (!reply->isFinished()) {
+      reply->abort();
+    }
+  });
+  QObject::connect(reply, &QNetworkReply::finished, timeout, &QTimer::stop);
+  timeout->start(timeout_ms);
+  return reply;
+}
+
+bool SaveProviderModels(const std::string& provider_id, const QStringList& models) {
+  std::vector<std::string> models_vec;
+  models_vec.reserve(models.size());
+  for (const auto& m : models) {
+    models_vec.push_back(m.toStdString());
+  }
+  return vinput::llm::SaveProviderModels(provider_id, models_vec);
+}
+
+bool ProcessAndSaveProviderModels(const QByteArray& payload, const std::string& provider_id,
+                                  QString* joined_models_out, int* model_count_out,
+                                  QString* error_out) {
+  QStringList models;
+  if (!ParseOpenAiModelsResponse(payload, &models, error_out)) {
+    return false;
+  }
+  SaveProviderModels(provider_id, models);
+  if (model_count_out != nullptr) {
+    *model_count_out = static_cast<int>(models.size());
+  }
+  if (joined_models_out != nullptr) {
+    *joined_models_out = models.join('\n');
+  }
+  return true;
+}
 
 QStringList NonEmptyLines(const QString& text) {
   QStringList lines;
@@ -235,37 +347,14 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
     lineEdit->setPlaceholderText(GuiHelpers::tr("Loading models..."));
   }
 
-  const std::string url_str =
-      vinput::url::JoinPath(provider.base_url.toStdString(), vinput::llm::kOpenAiModelsPath);
-  const QString url = QString::fromStdString(url_str);
-
   auto* nam = new QNetworkAccessManager(comboModel);
-  QNetworkRequest req{QUrl(url)};
-  req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-  const std::string resolved_key =
-      vinput::interpolate::InterpolateEnv(provider.api_key.trimmed().toStdString());
-  if (!resolved_key.empty()) {
-    const QByteArray bearer =
-        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(resolved_key);
-    req.setRawHeader(vinput::llm::kAuthorizationHeader, bearer);
-  }
-
-  QNetworkReply* reply = nam->get(req);
-  auto* timeout = new QTimer(reply);
-  timeout->setSingleShot(true);
-  QObject::connect(timeout, &QTimer::timeout, reply, [reply]() {
-    if (!reply->isFinished()) {
-      reply->abort();
-    }
-  });
-  timeout->start(vinput::llm::kModelFetchTimeoutMs);
+  QNetworkReply* reply = StartOpenAiModelsRequest(nam, provider.base_url.toStdString(),
+                                                  provider.api_key.trimmed().toStdString(),
+                                                  vinput::llm::kModelFetchTimeoutMs);
 
   QObject::connect(
       reply, &QNetworkReply::finished, comboModel,
-      [comboModel, reply, timeout, cacheKey, generation,
-       provider_id = provider.id.toStdString()]() {
-        timeout->stop();
-
+      [comboModel, reply, cacheKey, generation, provider_id = provider.id.toStdString()]() {
         const bool stale =
             comboModel->property("vinput_provider_fetch_generation").toInt() != generation ||
             comboModel->property("vinput_provider_fetch_key").toString() != cacheKey;
@@ -274,23 +363,7 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
         QString error;
         bool success = false;
         if (reply->error() == QNetworkReply::NoError) {
-          QJsonParseError parseError;
-          const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll(), &parseError);
-          if (parseError.error != QJsonParseError::NoError || !doc.isObject() ||
-              !doc.object().value("data").isArray()) {
-            error = GuiHelpers::tr("Provider returned invalid JSON for /v1/models.");
-          } else {
-            const QJsonArray data = doc.object().value("data").toArray();
-            for (const auto& v : data) {
-              const QString id = v.toObject().value("id").toString();
-              if (!id.isEmpty()) {
-                models.append(id);
-              }
-            }
-            models.removeDuplicates();
-            models.sort();
-            success = true;
-          }
+          success = ParseOpenAiModelsResponse(reply->readAll(), &models, &error);
         } else {
           error = reply->errorString();
         }
@@ -298,12 +371,7 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
         if (!stale) {
           if (success) {
             cache.insert(cacheKey, models);
-            std::vector<std::string> models_vec;
-            models_vec.reserve(models.size());
-            for (const auto& m : models) {
-              models_vec.push_back(m.toStdString());
-            }
-            vinput::llm::SaveProviderModels(provider_id, models_vec);
+            SaveProviderModels(provider_id, models);
             ApplyFetchedProviderModels(comboModel, models);
           } else {
             ApplyProviderModelFetchError(comboModel, error);

@@ -7,8 +7,6 @@
 #include <QFontMetrics>
 #include <QFormLayout>
 #include <QHBoxLayout>
-#include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QLabel>
@@ -18,7 +16,6 @@
 #include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
-#include <QNetworkRequest>
 #include <QObject>
 #include <QPlainTextEdit>
 #include <QPointer>
@@ -27,21 +24,15 @@
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
-#include <QtCore/qbytearray.h>
-#include <QtCore/qjsonarray.h>
-#include <QtCore/qjsondocument.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
-#include <QtCore/qstringlist.h>
 #include <QtCore/qtimer.h>
-#include <QtCore/qurl.h>
 #include <QtGui/qfontmetrics.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qnetworkreply.h>
-#include <QtNetwork/qnetworkrequest.h>
 #include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qcheckbox.h>
 #include <QtWidgets/qcombobox.h>
@@ -63,19 +54,19 @@
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
+#include <optional>
 #include <system_error>
 #include <utility>
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
 #include "common/llm/adapter_manager.h"
-#include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
 #include "common/scene/postprocess_scene.h"
-#include "common/utils/interpolation.h"
 
 #include "cli/runtime/dbus_client.h"
 
@@ -146,6 +137,72 @@ QPlainTextEdit* MakeExtraBodyEditor(const glz::json_t* prefill = nullptr) {
   return edit;
 }
 
+struct ProviderFormResult {
+  std::string id;
+  std::string base_url;
+  std::string api_key;
+  glz::json_t extra_body;
+};
+
+std::optional<ProviderFormResult> ShowProviderDialog(QWidget* parent, const QString& title,
+                                                     const LlmProvider* initial = nullptr) {
+  auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+
+  auto* editName = new QLineEdit();
+  if (initial != nullptr) {
+    editName->setText(QString::fromStdString(initial->id));
+    editName->setReadOnly(true);
+  }
+
+  auto* editBaseUrl =
+      new QLineEdit(initial != nullptr ? QString::fromStdString(initial->base_url) : QString{});
+  auto* editApiKey = new QLineEdit();
+  editApiKey->setEchoMode(QLineEdit::Password);
+  if (initial != nullptr) {
+    editApiKey->setPlaceholderText(LlmPage::tr("Leave empty to keep current key"));
+  }
+  auto* editExtraBody = MakeExtraBodyEditor(initial != nullptr ? &initial->extra_body : nullptr);
+
+  form->addRow(LlmPage::tr("Name:"), editName);
+  form->addRow(LlmPage::tr("Base URL:"), editBaseUrl);
+  form->addRow(LlmPage::tr("API Key:"), editApiKey);
+  form->addRow(LlmPage::tr("Extra body (JSON):"), editExtraBody);
+
+  QString name_text;
+  QString base_url_text;
+  QString api_key_text;
+  QString extra_body_text;
+
+  const bool accepted = RunFormDialog(parent, title, form, [&]() {
+    name_text = editName->text().trimmed();
+    base_url_text = editBaseUrl->text().trimmed();
+    api_key_text = editApiKey->text().trimmed();
+    extra_body_text = editExtraBody->toPlainText();
+  });
+  if (!accepted) {
+    return std::nullopt;
+  }
+
+  QString validation_error;
+  if (!ValidateProviderInput(name_text, base_url_text, &validation_error)) {
+    QMessageBox::warning(parent, LlmPage::tr("Error"), validation_error);
+    return std::nullopt;
+  }
+
+  glz::json_t extra_body;
+  if (!ParseExtraBodyInput(parent, extra_body_text, &extra_body)) {
+    return std::nullopt;
+  }
+
+  return ProviderFormResult{
+      .id = name_text.toStdString(),
+      .base_url = base_url_text.toStdString(),
+      .api_key = api_key_text.toStdString(),
+      .extra_body = std::move(extra_body),
+  };
+}
+
 constexpr int kDefaultTimeoutMs = vinput::scene::kDefaultTimeoutMs;
 constexpr int kDefaultUiLlmMaxCandidates = 3;
 
@@ -178,6 +235,112 @@ AdapterData AdapterDataFromConfig(const LlmAdapter& a) {
 
 LlmAdapter LlmAdapterFromDialog(const AdapterData& d) {
   return {.id = d.id, .command = d.command, .args = d.args, .env = d.env, .autoStart = d.autoStart};
+}
+
+std::optional<vinput::scene::Definition>
+ShowSceneDialog(QWidget* parent, const QString& title,
+                const vinput::scene::Definition* initial = nullptr) {
+  auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+
+  auto* editId = new QLineEdit();
+  if (initial != nullptr) {
+    editId->setText(QString::fromStdString(initial->id));
+    editId->setReadOnly(true);
+  }
+  auto* editLabel =
+      new QLineEdit(initial != nullptr ? QString::fromStdString(initial->label) : QString{});
+  auto* editPrompt = new QTextEdit();
+  if (initial != nullptr) {
+    editPrompt->setPlainText(QString::fromStdString(initial->prompt));
+  }
+  editPrompt->setMaximumHeight(100);
+
+  auto* comboProvider = new QComboBox();
+  auto* comboModel = new QComboBox();
+  auto* spinTimeout = new QSpinBox();
+  spinTimeout->setRange(1000, 300000);
+  spinTimeout->setSingleStep(1000);
+  spinTimeout->setValue(initial != nullptr ? initial->timeout_ms : kDefaultTimeoutMs);
+  spinTimeout->setSuffix(" ms");
+
+  auto* spinLlmMaxCandidates = new QSpinBox();
+  spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
+                                 vinput::scene::kMaxLlmMaxCandidates);
+  spinLlmMaxCandidates->setValue(initial != nullptr ? initial->llm_max_candidates
+                                                    : kDefaultUiLlmMaxCandidates);
+  spinLlmMaxCandidates->setToolTip(
+      LlmPage::tr("Maximum number of LLM rewrite results (0 to disable LLM)."));
+
+  auto* spinContextLines = new QSpinBox();
+  spinContextLines->setRange(0, 9999);
+  spinContextLines->setValue(initial != nullptr ? initial->context_lines
+                                                : vinput::scene::kDefaultContextLines);
+
+  auto* chkRawCand = new QCheckBox(LlmPage::tr("Include raw transcript in candidate options"));
+  chkRawCand->setChecked(initial != nullptr ? initial->raw_cand : true);
+  chkRawCand->setToolTip(
+      LlmPage::tr("Whether to include raw speech text as option 1 in candidate options."));
+
+  auto* chkRawPrev = new QCheckBox(LlmPage::tr("Preview raw transcript during postprocessing"));
+  chkRawPrev->setChecked(initial != nullptr ? initial->raw_prev : true);
+  chkRawPrev->setToolTip(LlmPage::tr(
+      "Whether to preview raw speech text in the floating panel during postprocessing."));
+
+  if (initial != nullptr) {
+    SetupProviderModelCombos(comboProvider, comboModel,
+                             QString::fromStdString(initial->provider_id),
+                             QString::fromStdString(initial->model));
+  } else {
+    SetupProviderModelCombos(comboProvider, comboModel);
+  }
+
+  form->addRow(LlmPage::tr("ID:"), editId);
+  form->addRow(LlmPage::tr("Label:"), editLabel);
+  form->addRow(LlmPage::tr("Prompt:"), editPrompt);
+  form->addRow(LlmPage::tr("Provider:"), comboProvider);
+  form->addRow(LlmPage::tr("Model:"), comboModel);
+  form->addRow(LlmPage::tr("Context Lines:"), spinContextLines);
+  form->addRow(LlmPage::tr("LLM Max Results:"), spinLlmMaxCandidates);
+  form->addRow(LlmPage::tr("Timeout (ms):"), spinTimeout);
+  form->addRow(QString(), chkRawCand);
+  form->addRow(QString(), chkRawPrev);
+
+  vinput::scene::Definition def = initial != nullptr ? *initial : vinput::scene::Definition{};
+  const bool accepted = RunFormDialog(parent, title, form, [&]() {
+    def.id = editId->text().trimmed().toStdString();
+    def.label = editLabel->text().trimmed().toStdString();
+    def.prompt = editPrompt->toPlainText().trimmed().toStdString();
+    def.provider_id = comboProvider->currentText().trimmed().toStdString();
+    def.model = comboModel->currentText().trimmed().toStdString();
+    def.context_lines = spinContextLines->value();
+    def.llm_max_candidates = spinLlmMaxCandidates->value();
+    def.timeout_ms = spinTimeout->value();
+    def.raw_cand = chkRawCand->isChecked();
+    def.raw_prev = chkRawPrev->isChecked();
+  });
+
+  if (!accepted) {
+    return std::nullopt;
+  }
+
+  return def;
+}
+
+template <typename Action> bool MutateSceneConfig(QWidget* parent, Action&& action) {
+  CoreConfig config = ConfigManager::Get().Load();
+  vinput::scene::Config sc = ToSceneConfig(config.scenes);
+  std::string err;
+  if (!std::forward<Action>(action)(&sc, &err)) {
+    QMessageBox::warning(parent, LlmPage::tr("Error"), QString::fromStdString(err));
+    return false;
+  }
+  FromSceneConfig(config.scenes, sc);
+  if (!ConfigManager::Get().Save(config)) {
+    QMessageBox::warning(parent, LlmPage::tr("Error"), LlmPage::tr("Failed to save config."));
+    return false;
+  }
+  return true;
 }
 
 } // namespace
@@ -339,58 +502,24 @@ void LlmPage::refreshAdapterList() {
 }
 
 void LlmPage::onLlmAdd() {
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Add LLM Provider"));
-
-  auto* form = new QFormLayout();
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  auto* editName = new QLineEdit();
-  auto* editBaseUrl = new QLineEdit();
-  auto* editApiKey = new QLineEdit();
-  editApiKey->setEchoMode(QLineEdit::Password);
-  auto* editExtraBody = MakeExtraBodyEditor();
-
-  form->addRow(tr("Name:"), editName);
-  form->addRow(tr("Base URL:"), editBaseUrl);
-  form->addRow(tr("API Key:"), editApiKey);
-  form->addRow(tr("Extra body (JSON):"), editExtraBody);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
-    return;
-  }
-
-  const QString name_text = editName->text().trimmed();
-  const QString base_url_text = editBaseUrl->text().trimmed();
-  QString validation_error;
-  if (!ValidateProviderInput(name_text, base_url_text, &validation_error)) {
-    QMessageBox::warning(this, tr("Error"), validation_error);
-    return;
-  }
-
-  glz::json_t extra_body;
-  if (!ParseExtraBodyInput(this, editExtraBody->toPlainText(), &extra_body)) {
+  auto result = ShowProviderDialog(this, tr("Add LLM Provider"));
+  if (!result.has_value()) {
     return;
   }
 
   CoreConfig config = ConfigManager::Get().Load();
-  if (ResolveLlmProvider(config, name_text.toStdString()) != nullptr) {
-    QMessageBox::warning(this, tr("Error"), tr("LLM provider '%1' already exists.").arg(name_text));
+  if (ResolveLlmProvider(config, result->id) != nullptr) {
+    QMessageBox::warning(
+        this, tr("Error"),
+        tr("LLM provider '%1' already exists.").arg(QString::fromStdString(result->id)));
     return;
   }
 
   LlmProvider provider;
-  provider.id = name_text.toStdString();
-  provider.base_url = base_url_text.toStdString();
-  provider.api_key = editApiKey->text().trimmed().toStdString();
-  provider.extra_body = std::move(extra_body);
+  provider.id = result->id;
+  provider.base_url = result->base_url;
+  provider.api_key = result->api_key;
+  provider.extra_body = std::move(result->extra_body);
   config.llm.providers.push_back(std::move(provider));
 
   if (!ConfigManager::Get().Save(config)) {
@@ -407,7 +536,7 @@ void LlmPage::onLlmEdit() {
     return;
   }
 
-  QString provider_name = item->data(Qt::UserRole).toString();
+  const QString provider_name = item->data(Qt::UserRole).toString();
 
   CoreConfig config = ConfigManager::Get().Load();
   const LlmProvider* prov = ResolveLlmProvider(config, provider_name.toStdString());
@@ -415,47 +544,8 @@ void LlmPage::onLlmEdit() {
     return;
   }
 
-  const QString current_base_url = QString::fromStdString(prov->base_url);
-
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Edit LLM Provider"));
-
-  auto* form = new QFormLayout();
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  auto* editName = new QLineEdit(provider_name);
-  editName->setReadOnly(true);
-  auto* editBaseUrl = new QLineEdit(current_base_url);
-  auto* editApiKey = new QLineEdit();
-  editApiKey->setEchoMode(QLineEdit::Password);
-  editApiKey->setPlaceholderText(tr("Leave empty to keep current key"));
-  auto* editExtraBody = MakeExtraBodyEditor(&prov->extra_body);
-
-  form->addRow(tr("Name:"), editName);
-  form->addRow(tr("Base URL:"), editBaseUrl);
-  form->addRow(tr("API Key:"), editApiKey);
-  form->addRow(tr("Extra body (JSON):"), editExtraBody);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
-    return;
-  }
-
-  const QString base_url_text = editBaseUrl->text().trimmed();
-  QString validation_error;
-  if (!ValidateProviderInput(provider_name, base_url_text, &validation_error)) {
-    QMessageBox::warning(this, tr("Error"), validation_error);
-    return;
-  }
-
-  glz::json_t extra_body;
-  if (!ParseExtraBodyInput(this, editExtraBody->toPlainText(), &extra_body)) {
+  auto result = ShowProviderDialog(this, tr("Edit LLM Provider"), prov);
+  if (!result.has_value()) {
     return;
   }
 
@@ -463,12 +553,11 @@ void LlmPage::onLlmEdit() {
   auto it = std::ranges::find_if(
       providers, [&](const LlmProvider& p) { return p.id == provider_name.toStdString(); });
   if (it != providers.end()) {
-    it->base_url = base_url_text.toStdString();
-    const QString api_key_text = editApiKey->text().trimmed();
-    if (!api_key_text.isEmpty()) {
-      it->api_key = api_key_text.toStdString();
+    it->base_url = result->base_url;
+    if (!result->api_key.empty()) {
+      it->api_key = result->api_key;
     }
-    it->extra_body = std::move(extra_body);
+    it->extra_body = std::move(result->extra_body);
     if (!ConfigManager::Get().Save(config)) {
       QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
       return;
@@ -537,90 +626,45 @@ void LlmPage::onLlmTest() {
     return;
   }
 
-  QString url = QString::fromStdString(provider->base_url);
-  if (url.isEmpty()) {
+  if (provider->base_url.empty()) {
     QMessageBox::warning(this, tr("Error"), tr("Provider base_url is empty."));
     return;
   }
-  while (!url.isEmpty() && url.endsWith(u'/')) {
-    url.chop(1);
-  }
-  url += vinput::llm::kOpenAiModelsPath;
 
   btnLlmTest_->setEnabled(false);
   btnLlmTest_->setText(tr("Testing..."));
 
   auto* nam = new QNetworkAccessManager(this);
-  QNetworkRequest req{QUrl(url)};
-  req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-  const std::string resolved_key = vinput::interpolate::InterpolateEnv(provider->api_key);
-  if (!resolved_key.empty()) {
-    const QByteArray bearer =
-        QByteArray(vinput::llm::kBearerPrefix) + QByteArray::fromStdString(resolved_key);
-    req.setRawHeader(vinput::llm::kAuthorizationHeader, bearer);
-  }
+  QNetworkReply* reply =
+      StartOpenAiModelsRequest(nam, provider->base_url, provider->api_key, 10000);
 
-  QNetworkReply* reply = nam->get(req);
-  auto* timeout = new QTimer(reply);
-  timeout->setSingleShot(true);
-  QObject::connect(timeout, &QTimer::timeout, reply, [reply]() {
-    if (!reply->isFinished()) {
-      reply->abort();
-    }
-  });
-  timeout->start(10000);
+  QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, nam, provider_id]() {
+    btnLlmTest_->setEnabled(true);
+    btnLlmTest_->setText(tr("Test"));
 
-  QObject::connect(
-      reply, &QNetworkReply::finished, this, [this, reply, timeout, nam, provider_id]() {
-        timeout->stop();
-        btnLlmTest_->setEnabled(true);
-        btnLlmTest_->setText(tr("Test"));
-
-        if (reply->error() != QNetworkReply::NoError) {
-          QMessageBox::warning(
-              this, tr("Test Failed"),
-              tr("Connection to '%1' failed:\n%2").arg(provider_id, reply->errorString()));
-        } else {
-          QJsonParseError parseError;
-          const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll(), &parseError);
-          if (parseError.error != QJsonParseError::NoError || !doc.isObject() ||
-              !doc.object().value("data").isArray()) {
-            QMessageBox::warning(this, tr("Test Failed"),
-                                 tr("Invalid response from '%1'.").arg(provider_id));
-          } else {
-            const QJsonArray data = doc.object().value("data").toArray();
-            std::vector<QString> models;
-            for (const auto& v : data) {
-              const QString id = v.toObject().value("id").toString();
-              if (!id.isEmpty()) {
-                models.push_back(id);
-              }
-            }
-            std::ranges::sort(models);
-            std::vector<std::string> models_vec;
-            models_vec.reserve(models.size());
-            for (const auto& m : models) {
-              models_vec.push_back(m.toStdString());
-            }
-            vinput::llm::SaveProviderModels(provider_id.toStdString(), models_vec);
-            QString msg =
-                tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(models.size());
-            if (!models.empty()) {
-              QString joined_models;
-              for (const auto& m : models) {
-                if (!joined_models.isEmpty()) {
-                  joined_models += '\n';
-                }
-                joined_models += m;
-              }
-              msg += "\n\n" + joined_models;
-            }
-            QMessageBox::information(this, tr("Test Succeeded"), msg);
-          }
+    if (reply->error() != QNetworkReply::NoError) {
+      QMessageBox::warning(
+          this, tr("Test Failed"),
+          tr("Connection to '%1' failed:\n%2").arg(provider_id, reply->errorString()));
+    } else {
+      QString joined_models;
+      int model_count = 0;
+      if (!ProcessAndSaveProviderModels(reply->readAll(), provider_id.toStdString(), &joined_models,
+                                        &model_count)) {
+        QMessageBox::warning(this, tr("Test Failed"),
+                             tr("Invalid response from '%1'.").arg(provider_id));
+      } else {
+        QString msg =
+            tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(model_count);
+        if (!joined_models.isEmpty()) {
+          msg += "\n\n" + joined_models;
         }
-        reply->deleteLater();
-        nam->deleteLater();
-      });
+        QMessageBox::information(this, tr("Test Succeeded"), msg);
+      }
+    }
+    reply->deleteLater();
+    nam->deleteLater();
+  });
 }
 
 void LlmPage::onAdapterEdit() {
@@ -779,90 +823,17 @@ void LlmPage::refreshSceneList() {
 }
 
 void LlmPage::onSceneAdd() {
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Add Scene"));
-
-  auto* form = new QFormLayout();
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  auto* editId = new QLineEdit();
-  auto* editLabel = new QLineEdit();
-  auto* editPrompt = new QTextEdit();
-  editPrompt->setMaximumHeight(100);
-  auto* comboProvider = new QComboBox();
-  auto* comboModel = new QComboBox();
-  auto* spinTimeout = new QSpinBox();
-  spinTimeout->setRange(1000, 300000);
-  spinTimeout->setSingleStep(1000);
-  spinTimeout->setValue(kDefaultTimeoutMs);
-  spinTimeout->setSuffix(" ms");
-  auto* spinLlmMaxCandidates = new QSpinBox();
-  spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
-                                 vinput::scene::kMaxLlmMaxCandidates);
-  spinLlmMaxCandidates->setValue(kDefaultUiLlmMaxCandidates);
-  spinLlmMaxCandidates->setToolTip(tr("Maximum number of LLM rewrite results (0 to disable LLM)."));
-  auto* spinContextLines = new QSpinBox();
-  spinContextLines->setRange(0, 9999);
-  spinContextLines->setValue(vinput::scene::kDefaultContextLines);
-  auto* chkRawCand = new QCheckBox(tr("Include raw transcript in candidate options"));
-  chkRawCand->setChecked(true);
-  chkRawCand->setToolTip(
-      tr("Whether to include raw speech text as option 1 in candidate options."));
-  auto* chkRawPrev = new QCheckBox(tr("Preview raw transcript during postprocessing"));
-  chkRawPrev->setChecked(true);
-  chkRawPrev->setToolTip(
-      tr("Whether to preview raw speech text in the floating panel during postprocessing."));
-
-  SetupProviderModelCombos(comboProvider, comboModel);
-
-  form->addRow(tr("ID:"), editId);
-  form->addRow(tr("Label:"), editLabel);
-  form->addRow(tr("Prompt:"), editPrompt);
-  form->addRow(tr("Provider:"), comboProvider);
-  form->addRow(tr("Model:"), comboModel);
-  form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("LLM Max Results:"), spinLlmMaxCandidates);
-  form->addRow(tr("Timeout (ms):"), spinTimeout);
-  form->addRow(QString(), chkRawCand);
-  form->addRow(QString(), chkRawPrev);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
+  const auto def = ShowSceneDialog(this, tr("Add Scene"));
+  if (!def.has_value()) {
     return;
   }
 
-  vinput::scene::Definition def;
-  def.id = editId->text().trimmed().toStdString();
-  def.label = editLabel->text().trimmed().toStdString();
-  def.prompt = editPrompt->toPlainText().trimmed().toStdString();
-  def.provider_id = comboProvider->currentText().trimmed().toStdString();
-  def.model = comboModel->currentText().trimmed().toStdString();
-  def.context_lines = spinContextLines->value();
-  def.llm_max_candidates = spinLlmMaxCandidates->value();
-  def.timeout_ms = spinTimeout->value();
-  def.raw_cand = chkRawCand->isChecked();
-  def.raw_prev = chkRawPrev->isChecked();
-
-  CoreConfig config = ConfigManager::Get().Load();
-  std::string err;
-  vinput::scene::Config sc = ToSceneConfig(config.scenes);
-  if (!vinput::scene::AddScene(&sc, def, &err)) {
-    QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-    return;
+  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
+        return vinput::scene::AddScene(sc, *def, err);
+      })) {
+    refreshSceneList();
+    configChanged();
   }
-  FromSceneConfig(config.scenes, sc);
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-  refreshSceneList();
-  configChanged();
 }
 
 void LlmPage::onSceneEdit() {
@@ -873,98 +844,24 @@ void LlmPage::onSceneEdit() {
 
   const QString scene_id = item->data(Qt::UserRole).toString();
 
-  CoreConfig config = ConfigManager::Get().Load();
-  vinput::scene::Config sc = ToSceneConfig(config.scenes);
+  const CoreConfig config = ConfigManager::Get().Load();
+  const vinput::scene::Config sc = ToSceneConfig(config.scenes);
   const vinput::scene::Definition* found = vinput::scene::Find(sc, scene_id.toStdString());
   if (found == nullptr) {
     return;
   }
 
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Edit Scene"));
-
-  auto* form = new QFormLayout();
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  auto* editId = new QLineEdit(scene_id);
-  editId->setReadOnly(true);
-  auto* editLabel = new QLineEdit(QString::fromStdString(found->label));
-  auto* editPrompt = new QTextEdit();
-  editPrompt->setPlainText(QString::fromStdString(found->prompt));
-  editPrompt->setMaximumHeight(100);
-  auto* comboProvider = new QComboBox();
-  auto* comboModel = new QComboBox();
-  auto* spinTimeout = new QSpinBox();
-  spinTimeout->setRange(1000, 300000);
-  spinTimeout->setSingleStep(1000);
-  spinTimeout->setValue(found->timeout_ms);
-  spinTimeout->setSuffix(" ms");
-  auto* spinLlmMaxCandidates = new QSpinBox();
-  spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
-                                 vinput::scene::kMaxLlmMaxCandidates);
-  spinLlmMaxCandidates->setValue(found->llm_max_candidates);
-  spinLlmMaxCandidates->setToolTip(tr("Maximum number of LLM rewrite results (0 to disable LLM)."));
-  auto* spinContextLines = new QSpinBox();
-  spinContextLines->setRange(0, 9999);
-  spinContextLines->setValue(found->context_lines);
-  auto* chkRawCand = new QCheckBox(tr("Include raw transcript in candidate options"));
-  chkRawCand->setChecked(found->raw_cand);
-  chkRawCand->setToolTip(
-      tr("Whether to include raw speech text as option 1 in candidate options."));
-  auto* chkRawPrev = new QCheckBox(tr("Preview raw transcript during postprocessing"));
-  chkRawPrev->setChecked(found->raw_prev);
-  chkRawPrev->setToolTip(
-      tr("Whether to preview raw speech text in the floating panel during postprocessing."));
-
-  SetupProviderModelCombos(comboProvider, comboModel, QString::fromStdString(found->provider_id),
-                           QString::fromStdString(found->model));
-
-  form->addRow(tr("ID:"), editId);
-  form->addRow(tr("Label:"), editLabel);
-  form->addRow(tr("Prompt:"), editPrompt);
-  form->addRow(tr("Provider:"), comboProvider);
-  form->addRow(tr("Model:"), comboModel);
-  form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("LLM Max Results:"), spinLlmMaxCandidates);
-  form->addRow(tr("Timeout (ms):"), spinTimeout);
-  form->addRow(QString(), chkRawCand);
-  form->addRow(QString(), chkRawPrev);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
+  const auto def = ShowSceneDialog(this, tr("Edit Scene"), found);
+  if (!def.has_value()) {
     return;
   }
 
-  vinput::scene::Definition def = *found;
-  def.label = editLabel->text().trimmed().toStdString();
-  def.prompt = editPrompt->toPlainText().trimmed().toStdString();
-  def.provider_id = comboProvider->currentText().trimmed().toStdString();
-  def.model = comboModel->currentText().trimmed().toStdString();
-  def.context_lines = spinContextLines->value();
-  def.llm_max_candidates = spinLlmMaxCandidates->value();
-  def.timeout_ms = spinTimeout->value();
-  def.raw_cand = chkRawCand->isChecked();
-  def.raw_prev = chkRawPrev->isChecked();
-
-  std::string err;
-  sc = ToSceneConfig(config.scenes);
-  if (!vinput::scene::UpdateScene(&sc, scene_id.toStdString(), def, &err)) {
-    QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-    return;
+  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
+        return vinput::scene::UpdateScene(sc, scene_id.toStdString(), *def, err);
+      })) {
+    refreshSceneList();
+    configChanged();
   }
-  FromSceneConfig(config.scenes, sc);
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-  refreshSceneList();
-  configChanged();
 }
 
 void LlmPage::onSceneRemove() {
@@ -974,8 +871,8 @@ void LlmPage::onSceneRemove() {
   }
 
   const QString scene_id = item->data(Qt::UserRole).toString();
-  CoreConfig config = ConfigManager::Get().Load();
-  vinput::scene::Config sc = ToSceneConfig(config.scenes);
+  const CoreConfig config = ConfigManager::Get().Load();
+  const vinput::scene::Config sc = ToSceneConfig(config.scenes);
   QString scene_label = scene_id;
   if (const auto* scene = vinput::scene::Find(sc, scene_id.toStdString())) {
     scene_label = SceneLabelForGui(*scene);
@@ -986,18 +883,12 @@ void LlmPage::onSceneRemove() {
     return;
   }
 
-  std::string err;
-  if (!vinput::scene::RemoveScene(&sc, scene_id.toStdString(), true, &err)) {
-    QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-    return;
+  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
+        return vinput::scene::RemoveScene(sc, scene_id.toStdString(), true, err);
+      })) {
+    refreshSceneList();
+    configChanged();
   }
-  FromSceneConfig(config.scenes, sc);
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-  refreshSceneList();
-  configChanged();
 }
 
 void LlmPage::onSceneSetActive() {
@@ -1007,24 +898,12 @@ void LlmPage::onSceneSetActive() {
   }
 
   const QString scene_id = item->data(Qt::UserRole).toString();
-
-  CoreConfig config = vinput::gui::ConfigManager::Get().Load();
-  std::string err;
-
-  vinput::scene::Config sc = ToSceneConfig(config.scenes);
-  if (!vinput::scene::SetActiveScene(&sc, scene_id.toStdString(), &err)) {
-    QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-    return;
+  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
+        return vinput::scene::SetActiveScene(sc, scene_id.toStdString(), err);
+      })) {
+    refreshSceneList();
+    configChanged();
   }
-  FromSceneConfig(config.scenes, sc);
-
-  if (!vinput::gui::ConfigManager::Get().Save(config)) {
-    QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-
-  refreshSceneList();
-  configChanged();
 }
 
 } // namespace vinput::gui
