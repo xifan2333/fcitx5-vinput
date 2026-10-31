@@ -7,8 +7,6 @@
 #include <QFontMetrics>
 #include <QFormLayout>
 #include <QHBoxLayout>
-#include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QLabel>
@@ -18,18 +16,15 @@
 #include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
-#include <QNetworkRequest>
 #include <QObject>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
-#include <QtCore/qbytearray.h>
-#include <QtCore/qjsonarray.h>
-#include <QtCore/qjsondocument.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qobjectdefs.h>
@@ -37,11 +32,9 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qtimer.h>
-#include <QtCore/qurl.h>
 #include <QtGui/qfontmetrics.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qnetworkreply.h>
-#include <QtNetwork/qnetworkrequest.h>
 #include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qcheckbox.h>
 #include <QtWidgets/qcombobox.h>
@@ -69,14 +62,13 @@
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
 #include "common/llm/adapter_manager.h"
-#include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
 #include "common/scene/postprocess_scene.h"
-#include "common/utils/interpolation.h"
 
 #include "cli/runtime/dbus_client.h"
 
@@ -179,12 +171,21 @@ std::optional<ProviderFormResult> ShowProviderDialog(QWidget* parent, const QStr
   form->addRow(LlmPage::tr("API Key:"), editApiKey);
   form->addRow(LlmPage::tr("Extra body (JSON):"), editExtraBody);
 
-  if (!RunFormDialog(parent, title, form)) {
+  QString name_text;
+  QString base_url_text;
+  QString api_key_text;
+  QString extra_body_text;
+
+  const bool accepted = RunFormDialog(parent, title, form, [&]() {
+    name_text = editName->text().trimmed();
+    base_url_text = editBaseUrl->text().trimmed();
+    api_key_text = editApiKey->text().trimmed();
+    extra_body_text = editExtraBody->toPlainText();
+  });
+  if (!accepted) {
     return std::nullopt;
   }
 
-  const QString name_text = editName->text().trimmed();
-  const QString base_url_text = editBaseUrl->text().trimmed();
   QString validation_error;
   if (!ValidateProviderInput(name_text, base_url_text, &validation_error)) {
     QMessageBox::warning(parent, LlmPage::tr("Error"), validation_error);
@@ -192,14 +193,14 @@ std::optional<ProviderFormResult> ShowProviderDialog(QWidget* parent, const QStr
   }
 
   glz::json_t extra_body;
-  if (!ParseExtraBodyInput(parent, editExtraBody->toPlainText(), &extra_body)) {
+  if (!ParseExtraBodyInput(parent, extra_body_text, &extra_body)) {
     return std::nullopt;
   }
 
   return ProviderFormResult{
       .id = name_text.toStdString(),
       .base_url = base_url_text.toStdString(),
-      .api_key = editApiKey->text().trimmed().toStdString(),
+      .api_key = api_key_text.toStdString(),
       .extra_body = std::move(extra_body),
   };
 }
@@ -307,21 +308,23 @@ ShowSceneDialog(QWidget* parent, const QString& title,
   form->addRow(QString(), chkRawCand);
   form->addRow(QString(), chkRawPrev);
 
-  if (!RunFormDialog(parent, title, form)) {
+  vinput::scene::Definition def = initial != nullptr ? *initial : vinput::scene::Definition{};
+  const bool accepted = RunFormDialog(parent, title, form, [&]() {
+    def.id = editId->text().trimmed().toStdString();
+    def.label = editLabel->text().trimmed().toStdString();
+    def.prompt = editPrompt->toPlainText().trimmed().toStdString();
+    def.provider_id = comboProvider->currentText().trimmed().toStdString();
+    def.model = comboModel->currentText().trimmed().toStdString();
+    def.context_lines = spinContextLines->value();
+    def.llm_max_candidates = spinLlmMaxCandidates->value();
+    def.timeout_ms = spinTimeout->value();
+    def.raw_cand = chkRawCand->isChecked();
+    def.raw_prev = chkRawPrev->isChecked();
+  });
+
+  if (!accepted) {
     return std::nullopt;
   }
-
-  vinput::scene::Definition def = initial != nullptr ? *initial : vinput::scene::Definition{};
-  def.id = editId->text().trimmed().toStdString();
-  def.label = editLabel->text().trimmed().toStdString();
-  def.prompt = editPrompt->toPlainText().trimmed().toStdString();
-  def.provider_id = comboProvider->currentText().trimmed().toStdString();
-  def.model = comboModel->currentText().trimmed().toStdString();
-  def.context_lines = spinContextLines->value();
-  def.llm_max_candidates = spinLlmMaxCandidates->value();
-  def.timeout_ms = spinTimeout->value();
-  def.raw_cand = chkRawCand->isChecked();
-  def.raw_prev = chkRawPrev->isChecked();
 
   return def;
 }
@@ -330,7 +333,7 @@ template <typename Action> bool MutateSceneConfig(QWidget* parent, Action&& acti
   CoreConfig config = ConfigManager::Get().Load();
   vinput::scene::Config sc = ToSceneConfig(config.scenes);
   std::string err;
-  if (!action(&sc, &err)) {
+  if (!std::forward<Action>(action)(&sc, &err)) {
     QMessageBox::warning(parent, LlmPage::tr("Error"), QString::fromStdString(err));
     return false;
   }
@@ -501,7 +504,7 @@ void LlmPage::refreshAdapterList() {
 }
 
 void LlmPage::onLlmAdd() {
-  const auto result = ShowProviderDialog(this, tr("Add LLM Provider"));
+  auto result = ShowProviderDialog(this, tr("Add LLM Provider"));
   if (!result.has_value()) {
     return;
   }
@@ -543,7 +546,7 @@ void LlmPage::onLlmEdit() {
     return;
   }
 
-  const auto result = ShowProviderDialog(this, tr("Edit LLM Provider"), prov);
+  auto result = ShowProviderDialog(this, tr("Edit LLM Provider"), prov);
   if (!result.has_value()) {
     return;
   }
@@ -842,8 +845,8 @@ void LlmPage::onSceneEdit() {
 
   const QString scene_id = item->data(Qt::UserRole).toString();
 
-  CoreConfig config = ConfigManager::Get().Load();
-  vinput::scene::Config sc = ToSceneConfig(config.scenes);
+  const CoreConfig config = ConfigManager::Get().Load();
+  const vinput::scene::Config sc = ToSceneConfig(config.scenes);
   const vinput::scene::Definition* found = vinput::scene::Find(sc, scene_id.toStdString());
   if (found == nullptr) {
     return;
@@ -869,8 +872,8 @@ void LlmPage::onSceneRemove() {
   }
 
   const QString scene_id = item->data(Qt::UserRole).toString();
-  CoreConfig config = ConfigManager::Get().Load();
-  vinput::scene::Config sc = ToSceneConfig(config.scenes);
+  const CoreConfig config = ConfigManager::Get().Load();
+  const vinput::scene::Config sc = ToSceneConfig(config.scenes);
   QString scene_label = scene_id;
   if (const auto* scene = vinput::scene::Find(sc, scene_id.toStdString())) {
     scene_label = SceneLabelForGui(*scene);
@@ -902,7 +905,6 @@ void LlmPage::onSceneSetActive() {
     refreshSceneList();
     configChanged();
   }
-}
 }
 
 } // namespace vinput::gui

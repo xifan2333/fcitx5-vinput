@@ -31,8 +31,10 @@ struct ResourceVersionInfo;
 namespace vinput::gui {
 
 // Create and display a modal form dialog containing form layout and standard Ok/Cancel buttons.
+// If accepted, executes on_accepted while dialog and form widgets are still alive.
 // Returns true if the user accepted (clicked Ok).
-[[nodiscard]] bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form);
+[[nodiscard]] bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
+                                 const std::function<void()>& on_accepted = {});
 
 // Parse OpenAI /v1/models JSON payload into a sorted, deduplicated list of model IDs.
 // Returns true on success; on failure returns false and sets error_out if provided.

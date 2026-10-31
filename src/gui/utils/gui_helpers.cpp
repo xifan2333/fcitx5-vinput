@@ -73,7 +73,8 @@ struct GuiHelpers {
 };
 } // namespace
 
-bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form) {
+bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
+                   const std::function<void()>& on_accepted) {
   if (form == nullptr) {
     return false;
   }
@@ -88,7 +89,13 @@ bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form) {
   dlgLayout->addLayout(form);
   dlgLayout->addWidget(buttons);
 
-  return dialog.exec() == QDialog::Accepted;
+  if (dialog.exec() != QDialog::Accepted) {
+    return false;
+  }
+  if (on_accepted) {
+    on_accepted();
+  }
+  return true;
 }
 
 bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
