@@ -190,6 +190,30 @@
         <source>available</source>
         <translation>可下载</translation>
     </message>
+    <message>
+        <source>Command or interpreter</source>
+        <translation>命令或解释器</translation>
+    </message>
+    <message>
+        <source>One argument per line</source>
+        <translation>每行一个参数</translation>
+    </message>
+    <message>
+        <source>One KEY=VALUE entry per line</source>
+        <translation>每行一个 KEY=VALUE 条目</translation>
+    </message>
+    <message>
+        <source>Command / Interpreter:</source>
+        <translation>命令 / 解释器：</translation>
+    </message>
+    <message>
+        <source>Args:</source>
+        <translation>参数：</translation>
+    </message>
+    <message>
+        <source>Env:</source>
+        <translation>环境变量：</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>

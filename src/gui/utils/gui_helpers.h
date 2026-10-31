@@ -21,8 +21,10 @@
 
 class QByteArray;
 class QFormLayout;
+class QLineEdit;
 class QNetworkAccessManager;
 class QNetworkReply;
+class QTextEdit;
 
 namespace vinput::script {
 struct ResourceVersionInfo;
@@ -143,5 +145,35 @@ bool ParseCommandEnv(const QString& text, std::map<std::string, std::string>* en
 void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
                               const QString& currentProvider = {},
                               const QString& currentModel = {});
+
+// Encapsulates standard Command / Interpreter, Args, and Env fields in forms.
+class CommandEditorGroup {
+public:
+  CommandEditorGroup();
+
+  // Populate editor fields with command, args, and env.
+  void Populate(const std::string& command, const std::vector<std::string>& args,
+                const std::map<std::string, std::string>& env);
+
+  // Clear all editor fields.
+  void Clear();
+
+  // Enable or disable all three editor widgets.
+  void SetEnabled(bool enabled);
+
+  // Add the Command, Args, and Env rows to a form layout.
+  void AddToForm(QFormLayout* form);
+
+  // Extract command, args, and env. Validates KEY=VALUE syntax for env.
+  // Returns false and sets error_out if env parsing fails.
+  [[nodiscard]] bool Extract(std::string* command, std::vector<std::string>* args,
+                             std::map<std::string, std::string>* env,
+                             QString* error_out = nullptr) const;
+
+private:
+  QLineEdit* edit_command_{nullptr};
+  QTextEdit* text_args_{nullptr};
+  QTextEdit* text_env_{nullptr};
+};
 
 } // namespace vinput::gui
