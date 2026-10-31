@@ -238,6 +238,94 @@ LlmAdapter LlmAdapterFromDialog(const AdapterData& d) {
   return {.id = d.id, .command = d.command, .args = d.args, .env = d.env, .autoStart = d.autoStart};
 }
 
+std::optional<vinput::scene::Definition>
+ShowSceneDialog(QWidget* parent, const QString& title,
+                const vinput::scene::Definition* initial = nullptr) {
+  auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+
+  auto* editId = new QLineEdit();
+  if (initial != nullptr) {
+    editId->setText(QString::fromStdString(initial->id));
+    editId->setReadOnly(true);
+  }
+  auto* editLabel =
+      new QLineEdit(initial != nullptr ? QString::fromStdString(initial->label) : QString{});
+  auto* editPrompt = new QTextEdit();
+  if (initial != nullptr) {
+    editPrompt->setPlainText(QString::fromStdString(initial->prompt));
+  }
+  editPrompt->setMaximumHeight(100);
+
+  auto* comboProvider = new QComboBox();
+  auto* comboModel = new QComboBox();
+  auto* spinTimeout = new QSpinBox();
+  spinTimeout->setRange(1000, 300000);
+  spinTimeout->setSingleStep(1000);
+  spinTimeout->setValue(initial != nullptr ? initial->timeout_ms : kDefaultTimeoutMs);
+  spinTimeout->setSuffix(" ms");
+
+  auto* spinLlmMaxCandidates = new QSpinBox();
+  spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
+                                 vinput::scene::kMaxLlmMaxCandidates);
+  spinLlmMaxCandidates->setValue(initial != nullptr ? initial->llm_max_candidates
+                                                    : kDefaultUiLlmMaxCandidates);
+  spinLlmMaxCandidates->setToolTip(
+      LlmPage::tr("Maximum number of LLM rewrite results (0 to disable LLM)."));
+
+  auto* spinContextLines = new QSpinBox();
+  spinContextLines->setRange(0, 9999);
+  spinContextLines->setValue(initial != nullptr ? initial->context_lines
+                                                : vinput::scene::kDefaultContextLines);
+
+  auto* chkRawCand = new QCheckBox(LlmPage::tr("Include raw transcript in candidate options"));
+  chkRawCand->setChecked(initial != nullptr ? initial->raw_cand : true);
+  chkRawCand->setToolTip(
+      LlmPage::tr("Whether to include raw speech text as option 1 in candidate options."));
+
+  auto* chkRawPrev = new QCheckBox(LlmPage::tr("Preview raw transcript during postprocessing"));
+  chkRawPrev->setChecked(initial != nullptr ? initial->raw_prev : true);
+  chkRawPrev->setToolTip(LlmPage::tr(
+      "Whether to preview raw speech text in the floating panel during postprocessing."));
+
+  if (initial != nullptr) {
+    SetupProviderModelCombos(comboProvider, comboModel,
+                             QString::fromStdString(initial->provider_id),
+                             QString::fromStdString(initial->model));
+  } else {
+    SetupProviderModelCombos(comboProvider, comboModel);
+  }
+
+  form->addRow(LlmPage::tr("ID:"), editId);
+  form->addRow(LlmPage::tr("Label:"), editLabel);
+  form->addRow(LlmPage::tr("Prompt:"), editPrompt);
+  form->addRow(LlmPage::tr("Provider:"), comboProvider);
+  form->addRow(LlmPage::tr("Model:"), comboModel);
+  form->addRow(LlmPage::tr("Context Lines:"), spinContextLines);
+  form->addRow(LlmPage::tr("LLM Max Results:"), spinLlmMaxCandidates);
+  form->addRow(LlmPage::tr("Timeout (ms):"), spinTimeout);
+  form->addRow(QString(), chkRawCand);
+  form->addRow(QString(), chkRawPrev);
+
+  if (!RunFormDialog(parent, title, form)) {
+    return std::nullopt;
+  }
+
+  vinput::scene::Definition def = initial != nullptr ? *initial : vinput::scene::Definition{};
+  def.id = editId->text().trimmed().toStdString();
+  def.label = editLabel->text().trimmed().toStdString();
+  def.prompt = editPrompt->toPlainText().trimmed().toStdString();
+  def.provider_id = comboProvider->currentText().trimmed().toStdString();
+  def.model = comboModel->currentText().trimmed().toStdString();
+  def.context_lines = spinContextLines->value();
+  def.llm_max_candidates = spinLlmMaxCandidates->value();
+  def.timeout_ms = spinTimeout->value();
+  def.raw_cand = chkRawCand->isChecked();
+  def.raw_prev = chkRawPrev->isChecked();
+
+  return def;
+}
+
 } // namespace
 
 LlmPage::LlmPage(QWidget* parent)
@@ -763,80 +851,15 @@ void LlmPage::refreshSceneList() {
 }
 
 void LlmPage::onSceneAdd() {
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Add Scene"));
-
-  auto* form = new QFormLayout();
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  auto* editId = new QLineEdit();
-  auto* editLabel = new QLineEdit();
-  auto* editPrompt = new QTextEdit();
-  editPrompt->setMaximumHeight(100);
-  auto* comboProvider = new QComboBox();
-  auto* comboModel = new QComboBox();
-  auto* spinTimeout = new QSpinBox();
-  spinTimeout->setRange(1000, 300000);
-  spinTimeout->setSingleStep(1000);
-  spinTimeout->setValue(kDefaultTimeoutMs);
-  spinTimeout->setSuffix(" ms");
-  auto* spinLlmMaxCandidates = new QSpinBox();
-  spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
-                                 vinput::scene::kMaxLlmMaxCandidates);
-  spinLlmMaxCandidates->setValue(kDefaultUiLlmMaxCandidates);
-  spinLlmMaxCandidates->setToolTip(tr("Maximum number of LLM rewrite results (0 to disable LLM)."));
-  auto* spinContextLines = new QSpinBox();
-  spinContextLines->setRange(0, 9999);
-  spinContextLines->setValue(vinput::scene::kDefaultContextLines);
-  auto* chkRawCand = new QCheckBox(tr("Include raw transcript in candidate options"));
-  chkRawCand->setChecked(true);
-  chkRawCand->setToolTip(
-      tr("Whether to include raw speech text as option 1 in candidate options."));
-  auto* chkRawPrev = new QCheckBox(tr("Preview raw transcript during postprocessing"));
-  chkRawPrev->setChecked(true);
-  chkRawPrev->setToolTip(
-      tr("Whether to preview raw speech text in the floating panel during postprocessing."));
-
-  SetupProviderModelCombos(comboProvider, comboModel);
-
-  form->addRow(tr("ID:"), editId);
-  form->addRow(tr("Label:"), editLabel);
-  form->addRow(tr("Prompt:"), editPrompt);
-  form->addRow(tr("Provider:"), comboProvider);
-  form->addRow(tr("Model:"), comboModel);
-  form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("LLM Max Results:"), spinLlmMaxCandidates);
-  form->addRow(tr("Timeout (ms):"), spinTimeout);
-  form->addRow(QString(), chkRawCand);
-  form->addRow(QString(), chkRawPrev);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
+  const auto def = ShowSceneDialog(this, tr("Add Scene"));
+  if (!def.has_value()) {
     return;
   }
-
-  vinput::scene::Definition def;
-  def.id = editId->text().trimmed().toStdString();
-  def.label = editLabel->text().trimmed().toStdString();
-  def.prompt = editPrompt->toPlainText().trimmed().toStdString();
-  def.provider_id = comboProvider->currentText().trimmed().toStdString();
-  def.model = comboModel->currentText().trimmed().toStdString();
-  def.context_lines = spinContextLines->value();
-  def.llm_max_candidates = spinLlmMaxCandidates->value();
-  def.timeout_ms = spinTimeout->value();
-  def.raw_cand = chkRawCand->isChecked();
-  def.raw_prev = chkRawPrev->isChecked();
 
   CoreConfig config = ConfigManager::Get().Load();
   std::string err;
   vinput::scene::Config sc = ToSceneConfig(config.scenes);
-  if (!vinput::scene::AddScene(&sc, def, &err)) {
+  if (!vinput::scene::AddScene(&sc, *def, &err)) {
     QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
     return;
   }
@@ -864,81 +887,14 @@ void LlmPage::onSceneEdit() {
     return;
   }
 
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Edit Scene"));
-
-  auto* form = new QFormLayout();
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  auto* editId = new QLineEdit(scene_id);
-  editId->setReadOnly(true);
-  auto* editLabel = new QLineEdit(QString::fromStdString(found->label));
-  auto* editPrompt = new QTextEdit();
-  editPrompt->setPlainText(QString::fromStdString(found->prompt));
-  editPrompt->setMaximumHeight(100);
-  auto* comboProvider = new QComboBox();
-  auto* comboModel = new QComboBox();
-  auto* spinTimeout = new QSpinBox();
-  spinTimeout->setRange(1000, 300000);
-  spinTimeout->setSingleStep(1000);
-  spinTimeout->setValue(found->timeout_ms);
-  spinTimeout->setSuffix(" ms");
-  auto* spinLlmMaxCandidates = new QSpinBox();
-  spinLlmMaxCandidates->setRange(vinput::scene::kMinLlmMaxCandidates,
-                                 vinput::scene::kMaxLlmMaxCandidates);
-  spinLlmMaxCandidates->setValue(found->llm_max_candidates);
-  spinLlmMaxCandidates->setToolTip(tr("Maximum number of LLM rewrite results (0 to disable LLM)."));
-  auto* spinContextLines = new QSpinBox();
-  spinContextLines->setRange(0, 9999);
-  spinContextLines->setValue(found->context_lines);
-  auto* chkRawCand = new QCheckBox(tr("Include raw transcript in candidate options"));
-  chkRawCand->setChecked(found->raw_cand);
-  chkRawCand->setToolTip(
-      tr("Whether to include raw speech text as option 1 in candidate options."));
-  auto* chkRawPrev = new QCheckBox(tr("Preview raw transcript during postprocessing"));
-  chkRawPrev->setChecked(found->raw_prev);
-  chkRawPrev->setToolTip(
-      tr("Whether to preview raw speech text in the floating panel during postprocessing."));
-
-  SetupProviderModelCombos(comboProvider, comboModel, QString::fromStdString(found->provider_id),
-                           QString::fromStdString(found->model));
-
-  form->addRow(tr("ID:"), editId);
-  form->addRow(tr("Label:"), editLabel);
-  form->addRow(tr("Prompt:"), editPrompt);
-  form->addRow(tr("Provider:"), comboProvider);
-  form->addRow(tr("Model:"), comboModel);
-  form->addRow(tr("Context Lines:"), spinContextLines);
-  form->addRow(tr("LLM Max Results:"), spinLlmMaxCandidates);
-  form->addRow(tr("Timeout (ms):"), spinTimeout);
-  form->addRow(QString(), chkRawCand);
-  form->addRow(QString(), chkRawPrev);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
+  const auto def = ShowSceneDialog(this, tr("Edit Scene"), found);
+  if (!def.has_value()) {
     return;
   }
 
-  vinput::scene::Definition def = *found;
-  def.label = editLabel->text().trimmed().toStdString();
-  def.prompt = editPrompt->toPlainText().trimmed().toStdString();
-  def.provider_id = comboProvider->currentText().trimmed().toStdString();
-  def.model = comboModel->currentText().trimmed().toStdString();
-  def.context_lines = spinContextLines->value();
-  def.llm_max_candidates = spinLlmMaxCandidates->value();
-  def.timeout_ms = spinTimeout->value();
-  def.raw_cand = chkRawCand->isChecked();
-  def.raw_prev = chkRawPrev->isChecked();
-
   std::string err;
   sc = ToSceneConfig(config.scenes);
-  if (!vinput::scene::UpdateScene(&sc, scene_id.toStdString(), def, &err)) {
+  if (!vinput::scene::UpdateScene(&sc, scene_id.toStdString(), *def, &err)) {
     QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
     return;
   }
