@@ -164,6 +164,23 @@ bool SaveProviderModels(const std::string& provider_id, const QStringList& model
   return vinput::llm::SaveProviderModels(provider_id, models_vec);
 }
 
+bool ProcessAndSaveProviderModels(const QByteArray& payload, const std::string& provider_id,
+                                  QString* joined_models_out, int* model_count_out,
+                                  QString* error_out) {
+  QStringList models;
+  if (!ParseOpenAiModelsResponse(payload, &models, error_out)) {
+    return false;
+  }
+  SaveProviderModels(provider_id, models);
+  if (model_count_out != nullptr) {
+    *model_count_out = static_cast<int>(models.size());
+  }
+  if (joined_models_out != nullptr) {
+    *joined_models_out = models.join('\n');
+  }
+  return true;
+}
+
 QStringList NonEmptyLines(const QString& text) {
   QStringList lines;
   for (const QString& line : text.split('\n')) {

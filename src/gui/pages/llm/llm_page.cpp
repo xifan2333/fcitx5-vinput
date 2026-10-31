@@ -21,7 +21,6 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QStringList>
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -30,7 +29,6 @@
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
-#include <QtCore/qstringlist.h>
 #include <QtCore/qtimer.h>
 #include <QtGui/qfontmetrics.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
@@ -649,16 +647,17 @@ void LlmPage::onLlmTest() {
           this, tr("Test Failed"),
           tr("Connection to '%1' failed:\n%2").arg(provider_id, reply->errorString()));
     } else {
-      QStringList models;
-      if (!ParseOpenAiModelsResponse(reply->readAll(), &models)) {
+      QString joined_models;
+      int model_count = 0;
+      if (!ProcessAndSaveProviderModels(reply->readAll(), provider_id.toStdString(), &joined_models,
+                                        &model_count)) {
         QMessageBox::warning(this, tr("Test Failed"),
                              tr("Invalid response from '%1'.").arg(provider_id));
       } else {
-        SaveProviderModels(provider_id.toStdString(), models);
         QString msg =
-            tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(models.size());
-        if (!models.empty()) {
-          msg += "\n\n" + models.join('\n');
+            tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(model_count);
+        if (!joined_models.isEmpty()) {
+          msg += "\n\n" + joined_models;
         }
         QMessageBox::information(this, tr("Test Succeeded"), msg);
       }

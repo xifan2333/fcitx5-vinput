@@ -45,6 +45,15 @@ namespace vinput::gui {
 QNetworkReply* StartOpenAiModelsRequest(QNetworkAccessManager* nam, const std::string& base_url,
                                         const std::string& api_key, int timeout_ms);
 
+// Process OpenAI /v1/models response payload: parse, deduplicate, cache models,
+// and optionally format joined models string and model count.
+// Returns true on success; on failure returns false and sets error_out if provided.
+[[nodiscard]] bool ProcessAndSaveProviderModels(const QByteArray& payload,
+                                                const std::string& provider_id,
+                                                QString* joined_models_out = nullptr,
+                                                int* model_count_out = nullptr,
+                                                QString* error_out = nullptr);
+
 // Save fetched models list for a provider into cache.
 bool SaveProviderModels(const std::string& provider_id, const QStringList& models);
 
