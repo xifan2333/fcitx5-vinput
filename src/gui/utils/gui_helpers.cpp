@@ -13,8 +13,10 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
+#include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
+#include <QtCore/qthreadpool.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qurl.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
@@ -23,9 +25,12 @@
 #include <QtWidgets/qcombobox.h>
 #include <QtWidgets/qlineedit.h>
 #include <QtWidgets/qtablewidget.h>
+#include <QtWidgets/qwidget.h>
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "common/llm/defaults.h"
@@ -34,9 +39,29 @@
 #include "common/utils/interpolation.h"
 #include "common/utils/url_utils.h"
 
+#include "cli/runtime/dbus_client.h"
+
 #include "gui/utils/config_manager.h"
 
 namespace vinput::gui {
+
+void RunAdapterControlAsync(QWidget* context, std::string adapter_id, bool start,
+                            std::function<void(bool ok, const std::string& err)> callback) {
+  const QPointer<QWidget> self(context);
+  QThreadPool::globalInstance()->start(
+      [self, adapter_id = std::move(adapter_id), start, callback = std::move(callback)]() mutable {
+        vinput::cli::DbusClient dbus;
+        std::string err;
+        const bool ok =
+            start ? dbus.StartAdapter(adapter_id, &err) : dbus.StopAdapter(adapter_id, &err);
+        QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
+          if (!self) {
+            return;
+          }
+          callback(ok, err);
+        });
+      });
+}
 
 namespace {
 struct GuiHelpers {

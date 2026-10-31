@@ -25,7 +25,6 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTextEdit>
-#include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QtCore/qbytearray.h>
@@ -37,7 +36,6 @@
 #include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
-#include <QtCore/qthreadpool.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qfontmetrics.h>
@@ -180,24 +178,6 @@ AdapterData AdapterDataFromConfig(const LlmAdapter& a) {
 
 LlmAdapter LlmAdapterFromDialog(const AdapterData& d) {
   return {.id = d.id, .command = d.command, .args = d.args, .env = d.env, .autoStart = d.autoStart};
-}
-
-template <typename Callback>
-void RunAdapterControlAsync(LlmPage* page, std::string adapter_id, bool start, Callback callback) {
-  const QPointer<LlmPage> self(page);
-  QThreadPool::globalInstance()->start(
-      [self, adapter_id = std::move(adapter_id), start, callback = std::move(callback)]() mutable {
-        vinput::cli::DbusClient dbus;
-        std::string err;
-        const bool ok =
-            start ? dbus.StartAdapter(adapter_id, &err) : dbus.StopAdapter(adapter_id, &err);
-        QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
-          if (!self) {
-            return;
-          }
-          callback(ok, err);
-        });
-      });
 }
 
 } // namespace
@@ -751,7 +731,7 @@ void LlmPage::updateAdapterButtons() {
   btnAdapterStop_->setEnabled(running);
 }
 
-void LlmPage::onAdapterStart() {
+void LlmPage::executeAdapterControl(bool start) {
   auto* item = listAdapters_->currentItem();
   if (item == nullptr) {
     return;
@@ -762,41 +742,25 @@ void LlmPage::onAdapterStart() {
   if (adapter_title.isEmpty()) {
     adapter_title = AdapterTitleForGui(adapter_id.toStdString());
   }
-  btnAdapterStart_->setEnabled(false);
-  btnAdapterStop_->setEnabled(false);
-  RunAdapterControlAsync(this, adapter_id.toStdString(), true,
-                         [this, adapter_title](bool ok, const std::string& err) {
-                           btnAdapterStart_->setEnabled(true);
-                           btnAdapterStop_->setEnabled(true);
-                           if (!ok) {
-                             QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-                             return;
-                           }
-                           QMessageBox::information(this, tr("LLM Adapter Started"),
-                                                    tr("Adapter '%1' started.").arg(adapter_title));
-                           refreshAdapterList();
-                         });
+
+  RunAdapterControlGuarded(
+      this, {btnAdapterStart_, btnAdapterStop_}, adapter_id.toStdString(), start,
+      [this, start, adapter_title]() {
+        if (start) {
+          QMessageBox::information(this, tr("LLM Adapter Started"),
+                                   tr("Adapter '%1' started.").arg(adapter_title));
+        }
+        refreshAdapterList();
+      },
+      tr("Error"), [this]() { updateAdapterButtons(); });
+}
+
+void LlmPage::onAdapterStart() {
+  executeAdapterControl(true);
 }
 
 void LlmPage::onAdapterStop() {
-  auto* item = listAdapters_->currentItem();
-  if (item == nullptr) {
-    return;
-  }
-
-  const QString adapter_id = item->data(Qt::UserRole).toString();
-  btnAdapterStart_->setEnabled(false);
-  btnAdapterStop_->setEnabled(false);
-  RunAdapterControlAsync(this, adapter_id.toStdString(), false,
-                         [this](bool ok, const std::string& err) {
-                           btnAdapterStart_->setEnabled(true);
-                           btnAdapterStop_->setEnabled(true);
-                           if (!ok) {
-                             QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-                             return;
-                           }
-                           refreshAdapterList();
-                         });
+  executeAdapterControl(false);
 }
 
 void LlmPage::refreshSceneList() {

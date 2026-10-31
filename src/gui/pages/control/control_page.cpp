@@ -59,6 +59,7 @@
 
 #include "config.h"
 #include "dialogs/asr_provider_dialog.h"
+#include "utils/gui_helpers.h"
 
 namespace vinput::gui {
 
@@ -116,25 +117,6 @@ template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, 
                                 callback(ok, state, err);
                               });
   });
-}
-
-template <typename Callback>
-void RunAdapterControlAsync(ControlPage* page, std::string adapter_id, bool start,
-                            Callback callback) {
-  const QPointer<ControlPage> self(page);
-  QThreadPool::globalInstance()->start(
-      [self, adapter_id = std::move(adapter_id), start, callback = std::move(callback)]() mutable {
-        vinput::cli::DbusClient dbus;
-        std::string err;
-        const bool ok =
-            start ? dbus.StartAdapter(adapter_id, &err) : dbus.StopAdapter(adapter_id, &err);
-        QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
-          if (!self) {
-            return;
-          }
-          callback(ok, err);
-        });
-      });
 }
 
 } // namespace
@@ -645,46 +627,24 @@ void ControlPage::updateAdapterButtons() {
   chkAdapterAutostart_->blockSignals(false);
 }
 
-void ControlPage::onAdapterStart() {
+void ControlPage::executeAdapterControl(bool start) {
   auto* item = listAdapters_->currentItem();
   if (item == nullptr) {
     return;
   }
   const QString adapter_id = item->data(Qt::UserRole).toString();
 
-  btnAdapterStart_->setEnabled(false);
-  btnAdapterStop_->setEnabled(false);
-  RunAdapterControlAsync(this, adapter_id.toStdString(), true,
-                         [this](bool ok, const std::string& err) {
-                           btnAdapterStart_->setEnabled(true);
-                           btnAdapterStop_->setEnabled(true);
-                           if (!ok) {
-                             QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-                             return;
-                           }
-                           refreshAdapterList();
-                         });
+  RunAdapterControlGuarded(
+      this, {btnAdapterStart_, btnAdapterStop_}, adapter_id.toStdString(), start,
+      [this]() { refreshAdapterList(); }, tr("Error"), [this]() { updateAdapterButtons(); });
+}
+
+void ControlPage::onAdapterStart() {
+  executeAdapterControl(true);
 }
 
 void ControlPage::onAdapterStop() {
-  auto* item = listAdapters_->currentItem();
-  if (item == nullptr) {
-    return;
-  }
-  const QString adapter_id = item->data(Qt::UserRole).toString();
-
-  btnAdapterStart_->setEnabled(false);
-  btnAdapterStop_->setEnabled(false);
-  RunAdapterControlAsync(this, adapter_id.toStdString(), false,
-                         [this](bool ok, const std::string& err) {
-                           btnAdapterStart_->setEnabled(true);
-                           btnAdapterStop_->setEnabled(true);
-                           if (!ok) {
-                             QMessageBox::warning(this, tr("Error"), QString::fromStdString(err));
-                             return;
-                           }
-                           refreshAdapterList();
-                         });
+  executeAdapterControl(false);
 }
 
 void ControlPage::onAdapterAutostartToggled(bool checked) {
@@ -748,13 +708,14 @@ void ControlPage::refreshDaemonStatus() {
   btnDaemonRestart_->setEnabled(true);
 }
 
-void ControlPage::onDaemonStart() {
+void ControlPage::executeDaemonAction(bool restart) {
   btnDaemonStart_->setEnabled(false);
   btnDaemonStop_->setEnabled(false);
   btnDaemonRestart_->setEnabled(false);
   const QPointer<ControlPage> self(this);
-  QThreadPool::globalInstance()->start([self]() {
-    const auto result = vinput::cli::SystemctlStartWithDiagnostics();
+  QThreadPool::globalInstance()->start([self, restart]() {
+    const auto result = restart ? vinput::cli::SystemctlRestartWithDiagnostics()
+                                : vinput::cli::SystemctlStartWithDiagnostics();
     QMetaObject::invokeMethod(self, [self, result]() {
       if (!self) {
         return;
@@ -766,6 +727,10 @@ void ControlPage::onDaemonStart() {
       self->refreshDaemonStatus();
     });
   });
+}
+
+void ControlPage::onDaemonStart() {
+  executeDaemonAction(false);
 }
 
 void ControlPage::onDaemonStop() {
@@ -785,23 +750,7 @@ void ControlPage::onDaemonStop() {
 }
 
 void ControlPage::onDaemonRestart() {
-  btnDaemonRestart_->setEnabled(false);
-  btnDaemonStop_->setEnabled(false);
-  btnDaemonStart_->setEnabled(false);
-  const QPointer<ControlPage> self(this);
-  QThreadPool::globalInstance()->start([self]() {
-    const auto result = vinput::cli::SystemctlRestartWithDiagnostics();
-    QMetaObject::invokeMethod(self, [self, result]() {
-      if (!self) {
-        return;
-      }
-      if (!result.ok()) {
-        QMessageBox::critical(self, ControlPage::tr("Error"),
-                              QString::fromStdString(result.failure_message));
-      }
-      self->refreshDaemonStatus();
-    });
-  });
+  executeDaemonAction(true);
 }
 
 void ControlPage::checkSandboxPermissions() {
