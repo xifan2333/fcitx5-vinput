@@ -653,22 +653,11 @@ void LlmPage::onLlmTest() {
               this, tr("Test Failed"),
               tr("Connection to '%1' failed:\n%2").arg(provider_id, reply->errorString()));
         } else {
-          QJsonParseError parseError;
-          const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll(), &parseError);
-          if (parseError.error != QJsonParseError::NoError || !doc.isObject() ||
-              !doc.object().value("data").isArray()) {
+          QStringList models;
+          if (!ParseOpenAiModelsResponse(reply->readAll(), &models)) {
             QMessageBox::warning(this, tr("Test Failed"),
                                  tr("Invalid response from '%1'.").arg(provider_id));
           } else {
-            const QJsonArray data = doc.object().value("data").toArray();
-            std::vector<QString> models;
-            for (const auto& v : data) {
-              const QString id = v.toObject().value("id").toString();
-              if (!id.isEmpty()) {
-                models.push_back(id);
-              }
-            }
-            std::ranges::sort(models);
             std::vector<std::string> models_vec;
             models_vec.reserve(models.size());
             for (const auto& m : models) {
@@ -678,14 +667,7 @@ void LlmPage::onLlmTest() {
             QString msg =
                 tr("Connected to '%1'.\nFound %2 model(s).").arg(provider_id).arg(models.size());
             if (!models.empty()) {
-              QString joined_models;
-              for (const auto& m : models) {
-                if (!joined_models.isEmpty()) {
-                  joined_models += '\n';
-                }
-                joined_models += m;
-              }
-              msg += "\n\n" + joined_models;
+              msg += "\n\n" + models.join('\n');
             }
             QMessageBox::information(this, tr("Test Succeeded"), msg);
           }
