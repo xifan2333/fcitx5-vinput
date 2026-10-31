@@ -182,24 +182,6 @@ LlmAdapter LlmAdapterFromDialog(const AdapterData& d) {
   return {.id = d.id, .command = d.command, .args = d.args, .env = d.env, .autoStart = d.autoStart};
 }
 
-template <typename Callback>
-void RunAdapterControlAsync(LlmPage* page, std::string adapter_id, bool start, Callback callback) {
-  const QPointer<LlmPage> self(page);
-  QThreadPool::globalInstance()->start(
-      [self, adapter_id = std::move(adapter_id), start, callback = std::move(callback)]() mutable {
-        vinput::cli::DbusClient dbus;
-        std::string err;
-        const bool ok =
-            start ? dbus.StartAdapter(adapter_id, &err) : dbus.StopAdapter(adapter_id, &err);
-        QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
-          if (!self) {
-            return;
-          }
-          callback(ok, err);
-        });
-      });
-}
-
 } // namespace
 
 LlmPage::LlmPage(QWidget* parent)

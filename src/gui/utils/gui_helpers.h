@@ -6,8 +6,11 @@
 #include <QtWidgets/qcombobox.h>
 #include <QtWidgets/qtablewidget.h>
 #include <atomic>
+#include <functional>
 #include <map>
 #include <string>
+
+class QWidget;
 
 namespace vinput::script {
 struct ResourceVersionInfo;
@@ -19,6 +22,11 @@ namespace vinput::gui {
 [[nodiscard]] inline bool IsWorkerCancelled(const std::atomic<bool>* cancel_token) noexcept {
   return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
 }
+
+// Execute adapter start or stop asynchronously in QThreadPool and notify callback on context's
+// thread.
+void RunAdapterControlAsync(QWidget* context, std::string adapter_id, bool start,
+                            std::function<void(bool ok, const std::string& err)> callback);
 
 // Format user-facing status string for a registry resource (provider or adapter).
 QString FormatScriptUpdateStatus(const vinput::script::ResourceVersionInfo& ver_info,

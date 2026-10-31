@@ -59,6 +59,7 @@
 
 #include "config.h"
 #include "dialogs/asr_provider_dialog.h"
+#include "utils/gui_helpers.h"
 
 namespace vinput::gui {
 
@@ -116,25 +117,6 @@ template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, 
                                 callback(ok, state, err);
                               });
   });
-}
-
-template <typename Callback>
-void RunAdapterControlAsync(ControlPage* page, std::string adapter_id, bool start,
-                            Callback callback) {
-  const QPointer<ControlPage> self(page);
-  QThreadPool::globalInstance()->start(
-      [self, adapter_id = std::move(adapter_id), start, callback = std::move(callback)]() mutable {
-        vinput::cli::DbusClient dbus;
-        std::string err;
-        const bool ok =
-            start ? dbus.StartAdapter(adapter_id, &err) : dbus.StopAdapter(adapter_id, &err);
-        QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
-          if (!self) {
-            return;
-          }
-          callback(ok, err);
-        });
-      });
 }
 
 } // namespace
