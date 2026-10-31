@@ -62,8 +62,6 @@ private slots:
   void checkSandboxPermissions();
 
 private:
-  void executeAdapterControl(bool start);
-  void executeDaemonAction(bool restart);
   void populateAsrList(const CoreConfig& config,
                        const vinput::dbus::AsrBackendState* backend_state);
 
