@@ -1,9 +1,9 @@
 #pragma once
 
-#include <QListWidget>
-#include <QListWidgetItem>
-#include <QPushButton>
-#include <QWidget>
+#include <QtCore/qobject.h>
+#include <QtWidgets/qlistwidget.h>
+#include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qwidget.h>
 
 namespace vinput::gui {
 
@@ -36,7 +36,8 @@ private slots:
   void onSceneRemove();
   void onSceneSetActive();
 
-private:
+  void executeAdapterControl(bool start);
+
   QListWidget* listProviders_;
   QPushButton* btnLlmAdd_;
   QPushButton* btnLlmEdit_;

@@ -731,7 +731,7 @@ void LlmPage::updateAdapterButtons() {
   btnAdapterStop_->setEnabled(running);
 }
 
-void LlmPage::onAdapterStart() {
+void LlmPage::executeAdapterControl(bool start) {
   auto* item = listAdapters_->currentItem();
   if (item == nullptr) {
     return;
@@ -744,25 +744,23 @@ void LlmPage::onAdapterStart() {
   }
 
   RunAdapterControlGuarded(
-      this, {btnAdapterStart_, btnAdapterStop_}, adapter_id.toStdString(), true,
-      [this, adapter_title]() {
-        QMessageBox::information(this, tr("LLM Adapter Started"),
-                                 tr("Adapter '%1' started.").arg(adapter_title));
+      this, {btnAdapterStart_, btnAdapterStop_}, adapter_id.toStdString(), start,
+      [this, start, adapter_title]() {
+        if (start) {
+          QMessageBox::information(this, tr("LLM Adapter Started"),
+                                   tr("Adapter '%1' started.").arg(adapter_title));
+        }
         refreshAdapterList();
       },
       tr("Error"), [this]() { updateAdapterButtons(); });
 }
 
-void LlmPage::onAdapterStop() {
-  auto* item = listAdapters_->currentItem();
-  if (item == nullptr) {
-    return;
-  }
+void LlmPage::onAdapterStart() {
+  executeAdapterControl(true);
+}
 
-  const QString adapter_id = item->data(Qt::UserRole).toString();
-  RunAdapterControlGuarded(
-      this, {btnAdapterStart_, btnAdapterStop_}, adapter_id.toStdString(), false,
-      [this]() { refreshAdapterList(); }, tr("Error"), [this]() { updateAdapterButtons(); });
+void LlmPage::onAdapterStop() {
+  executeAdapterControl(false);
 }
 
 void LlmPage::refreshSceneList() {

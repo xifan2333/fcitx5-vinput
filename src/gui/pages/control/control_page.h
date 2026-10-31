@@ -1,17 +1,17 @@
 #pragma once
 
-#include <QCheckBox>
-#include <QComboBox>
-#include <QDoubleSpinBox>
-#include <QLabel>
-#include <QListWidget>
-#include <QListWidgetItem>
-#include <QPushButton>
-#include <QSpinBox>
-#include <QTimer>
-#include <QWidget>
+#include <QtCore/qobject.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qtimer.h>
+#include <QtWidgets/qcheckbox.h>
+#include <QtWidgets/qcombobox.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qlistwidget.h>
+#include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qspinbox.h>
+#include <QtWidgets/qwidget.h>
 
-#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 
 #include "config.h"
@@ -28,16 +28,16 @@ public:
   void reload();
 
   // Current device value for saving.
-  QString currentDevice() const;
+  [[nodiscard]] QString currentDevice() const;
 
   // Current audio-processing values for saving.
-  bool normalizeAudio() const;
-  double inputGain() const;
+  [[nodiscard]] bool normalizeAudio() const;
+  [[nodiscard]] double inputGain() const;
 #if VINPUT_ENABLE_LOCAL_ASR
-  bool vadEnabled() const;
+  [[nodiscard]] bool vadEnabled() const;
 #endif
-  bool duckOutputEnabled() const;
-  double duckOutputVolume() const;
+  [[nodiscard]] bool duckOutputEnabled() const;
+  [[nodiscard]] double duckOutputVolume() const;
 
 signals:
   void configChanged();
@@ -61,7 +61,8 @@ private slots:
 
   void checkSandboxPermissions();
 
-private:
+  void executeAdapterControl(bool start);
+  void executeDaemonAction(bool restart);
   void populateAsrList(const CoreConfig& config,
                        const vinput::dbus::AsrBackendState* backend_state);
 
