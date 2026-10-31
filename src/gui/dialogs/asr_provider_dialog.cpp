@@ -1,11 +1,23 @@
 #include "dialogs/asr_provider_dialog.h"
 
-#include <QComboBox>
-#include <QFormLayout>
-#include <QLineEdit>
-#include <QMessageBox>
-#include <QSpinBox>
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qoverload.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
+#include <QtWidgets/qcombobox.h>
+#include <QtWidgets/qformlayout.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qmessagebox.h>
+#include <QtWidgets/qspinbox.h>
+#include <QtWidgets/qwidget.h>
+#include <map>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "common/config/core_config_types.h"
+#include "common/utils/file_utils.h"
 
 #include "config.h"
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -41,8 +53,8 @@ QStringList LoadLocalModelIds() {
 #if !VINPUT_ENABLE_LOCAL_ASR
   return {};
 #else
-  CoreConfig config = ConfigManager::Get().Load();
-  ModelManager manager(ResolveModelBaseDir(config).string());
+  const CoreConfig config = ConfigManager::Get().Load();
+  const ModelManager manager(ResolveModelBaseDir(config).string());
   auto models = manager.ListDetailed("");
   QStringList ids;
   for (const auto& m : models) {
@@ -126,41 +138,60 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     cmd_editor.AddToForm(form);
     form->addRow(AsrProviderDialog::tr("Timeout (ms):"), spinTimeout);
 
-    if (!RunFormDialog(parent, title, form)) {
+    QString extracted_name;
+    QString extracted_type;
+    int extracted_timeout_ms = 0;
+    QString extracted_model;
+    std::string extracted_command;
+    std::vector<std::string> extracted_args;
+    std::map<std::string, std::string> extracted_env;
+    QString env_error;
+    bool extract_ok = false;
+
+    const bool accepted = RunFormDialog(parent, title, form, [&]() {
+      extracted_name = editName->text().trimmed();
+      extracted_type = comboType->currentData().toString();
+      extracted_timeout_ms = spinTimeout->value();
+      extracted_model = comboModel->currentText().trimmed();
+      extract_ok =
+          cmd_editor.Extract(&extracted_command, &extracted_args, &extracted_env, &env_error);
+    });
+
+    if (!accepted) {
       return false;
     }
 
-    const QString name = editName->text().trimmed();
-    const QString type = comboType->currentData().toString();
-    if (name.isEmpty()) {
+    if (extracted_name.isEmpty()) {
       QMessageBox::warning(parent, AsrProviderDialog::tr("Error"),
                            AsrProviderDialog::tr("Provider name must not be empty."));
       continue;
     }
 
-    out_data->id = name.toStdString();
-    out_data->type = type.toStdString();
-    out_data->timeout_ms = spinTimeout->value();
+    out_data->id = extracted_name.toStdString();
+    out_data->type = extracted_type.toStdString();
+    out_data->timeout_ms = extracted_timeout_ms;
 
 #if VINPUT_ENABLE_LOCAL_ASR
-    if (type == kLocalType) {
-      out_data->model = comboModel->currentText().trimmed().toStdString();
+    if (extracted_type == kLocalType) {
+      out_data->model = extracted_model.toStdString();
       out_data->command.clear();
       out_data->args.clear();
       out_data->env.clear();
     } else
 #endif
     {
-      QString env_error;
-      if (!cmd_editor.Extract(&out_data->command, &out_data->args, &out_data->env, &env_error)) {
+      if (!extract_ok) {
         QMessageBox::warning(parent, AsrProviderDialog::tr("Error"), env_error);
         continue;
       }
-      if (out_data->command.empty()) {
+      if (extracted_command.empty()) {
         QMessageBox::warning(parent, AsrProviderDialog::tr("Error"),
                              AsrProviderDialog::tr("Command providers require a command."));
         continue;
       }
+      out_data->command = std::move(extracted_command);
+      out_data->args = std::move(extracted_args);
+      out_data->env = std::move(extracted_env);
       out_data->model.clear();
     }
     return true;

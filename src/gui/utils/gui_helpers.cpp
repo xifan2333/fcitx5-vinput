@@ -290,6 +290,10 @@ void CommandEditorGroup::Clear() {
   text_env_->clear();
 }
 
+void CommandEditorGroup::SetEnvMaxHeight(int height) {
+  text_env_->setMaximumHeight(height);
+}
+
 void CommandEditorGroup::SetEnabled(bool enabled) {
   edit_command_->setEnabled(enabled);
   text_args_->setEnabled(enabled);

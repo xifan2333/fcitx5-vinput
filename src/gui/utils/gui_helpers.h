@@ -158,6 +158,9 @@ public:
   // Clear all editor fields.
   void Clear();
 
+  // Set custom maximum height for environment text editor.
+  void SetEnvMaxHeight(int height);
+
   // Enable or disable all three editor widgets.
   void SetEnabled(bool enabled);
 
