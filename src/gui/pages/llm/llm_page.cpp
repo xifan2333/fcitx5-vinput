@@ -63,6 +63,7 @@
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
+#include <optional>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -144,6 +145,63 @@ QPlainTextEdit* MakeExtraBodyEditor(const glz::json_t* prefill = nullptr) {
     edit->setPlainText(QString::fromStdString(vinput::json::ToPrettyText(*prefill)));
   }
   return edit;
+}
+
+struct ProviderFormResult {
+  std::string id;
+  std::string base_url;
+  std::string api_key;
+  glz::json_t extra_body;
+};
+
+std::optional<ProviderFormResult> ShowProviderDialog(QWidget* parent, const QString& title,
+                                                     const LlmProvider* initial = nullptr) {
+  auto* form = new QFormLayout();
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+
+  auto* editName = new QLineEdit();
+  if (initial != nullptr) {
+    editName->setText(QString::fromStdString(initial->id));
+    editName->setReadOnly(true);
+  }
+
+  auto* editBaseUrl =
+      new QLineEdit(initial != nullptr ? QString::fromStdString(initial->base_url) : QString{});
+  auto* editApiKey = new QLineEdit();
+  editApiKey->setEchoMode(QLineEdit::Password);
+  if (initial != nullptr) {
+    editApiKey->setPlaceholderText(LlmPage::tr("Leave empty to keep current key"));
+  }
+  auto* editExtraBody = MakeExtraBodyEditor(initial != nullptr ? &initial->extra_body : nullptr);
+
+  form->addRow(LlmPage::tr("Name:"), editName);
+  form->addRow(LlmPage::tr("Base URL:"), editBaseUrl);
+  form->addRow(LlmPage::tr("API Key:"), editApiKey);
+  form->addRow(LlmPage::tr("Extra body (JSON):"), editExtraBody);
+
+  if (!RunFormDialog(parent, title, form)) {
+    return std::nullopt;
+  }
+
+  const QString name_text = editName->text().trimmed();
+  const QString base_url_text = editBaseUrl->text().trimmed();
+  QString validation_error;
+  if (!ValidateProviderInput(name_text, base_url_text, &validation_error)) {
+    QMessageBox::warning(parent, LlmPage::tr("Error"), validation_error);
+    return std::nullopt;
+  }
+
+  glz::json_t extra_body;
+  if (!ParseExtraBodyInput(parent, editExtraBody->toPlainText(), &extra_body)) {
+    return std::nullopt;
+  }
+
+  return ProviderFormResult{
+      .id = name_text.toStdString(),
+      .base_url = base_url_text.toStdString(),
+      .api_key = editApiKey->text().trimmed().toStdString(),
+      .extra_body = std::move(extra_body),
+  };
 }
 
 constexpr int kDefaultTimeoutMs = vinput::scene::kDefaultTimeoutMs;
@@ -339,58 +397,24 @@ void LlmPage::refreshAdapterList() {
 }
 
 void LlmPage::onLlmAdd() {
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Add LLM Provider"));
-
-  auto* form = new QFormLayout();
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  auto* editName = new QLineEdit();
-  auto* editBaseUrl = new QLineEdit();
-  auto* editApiKey = new QLineEdit();
-  editApiKey->setEchoMode(QLineEdit::Password);
-  auto* editExtraBody = MakeExtraBodyEditor();
-
-  form->addRow(tr("Name:"), editName);
-  form->addRow(tr("Base URL:"), editBaseUrl);
-  form->addRow(tr("API Key:"), editApiKey);
-  form->addRow(tr("Extra body (JSON):"), editExtraBody);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
-    return;
-  }
-
-  const QString name_text = editName->text().trimmed();
-  const QString base_url_text = editBaseUrl->text().trimmed();
-  QString validation_error;
-  if (!ValidateProviderInput(name_text, base_url_text, &validation_error)) {
-    QMessageBox::warning(this, tr("Error"), validation_error);
-    return;
-  }
-
-  glz::json_t extra_body;
-  if (!ParseExtraBodyInput(this, editExtraBody->toPlainText(), &extra_body)) {
+  const auto result = ShowProviderDialog(this, tr("Add LLM Provider"));
+  if (!result.has_value()) {
     return;
   }
 
   CoreConfig config = ConfigManager::Get().Load();
-  if (ResolveLlmProvider(config, name_text.toStdString()) != nullptr) {
-    QMessageBox::warning(this, tr("Error"), tr("LLM provider '%1' already exists.").arg(name_text));
+  if (ResolveLlmProvider(config, result->id) != nullptr) {
+    QMessageBox::warning(
+        this, tr("Error"),
+        tr("LLM provider '%1' already exists.").arg(QString::fromStdString(result->id)));
     return;
   }
 
   LlmProvider provider;
-  provider.id = name_text.toStdString();
-  provider.base_url = base_url_text.toStdString();
-  provider.api_key = editApiKey->text().trimmed().toStdString();
-  provider.extra_body = std::move(extra_body);
+  provider.id = result->id;
+  provider.base_url = result->base_url;
+  provider.api_key = result->api_key;
+  provider.extra_body = std::move(result->extra_body);
   config.llm.providers.push_back(std::move(provider));
 
   if (!ConfigManager::Get().Save(config)) {
@@ -407,7 +431,7 @@ void LlmPage::onLlmEdit() {
     return;
   }
 
-  QString provider_name = item->data(Qt::UserRole).toString();
+  const QString provider_name = item->data(Qt::UserRole).toString();
 
   CoreConfig config = ConfigManager::Get().Load();
   const LlmProvider* prov = ResolveLlmProvider(config, provider_name.toStdString());
@@ -415,47 +439,8 @@ void LlmPage::onLlmEdit() {
     return;
   }
 
-  const QString current_base_url = QString::fromStdString(prov->base_url);
-
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Edit LLM Provider"));
-
-  auto* form = new QFormLayout();
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  auto* editName = new QLineEdit(provider_name);
-  editName->setReadOnly(true);
-  auto* editBaseUrl = new QLineEdit(current_base_url);
-  auto* editApiKey = new QLineEdit();
-  editApiKey->setEchoMode(QLineEdit::Password);
-  editApiKey->setPlaceholderText(tr("Leave empty to keep current key"));
-  auto* editExtraBody = MakeExtraBodyEditor(&prov->extra_body);
-
-  form->addRow(tr("Name:"), editName);
-  form->addRow(tr("Base URL:"), editBaseUrl);
-  form->addRow(tr("API Key:"), editApiKey);
-  form->addRow(tr("Extra body (JSON):"), editExtraBody);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
-    return;
-  }
-
-  const QString base_url_text = editBaseUrl->text().trimmed();
-  QString validation_error;
-  if (!ValidateProviderInput(provider_name, base_url_text, &validation_error)) {
-    QMessageBox::warning(this, tr("Error"), validation_error);
-    return;
-  }
-
-  glz::json_t extra_body;
-  if (!ParseExtraBodyInput(this, editExtraBody->toPlainText(), &extra_body)) {
+  const auto result = ShowProviderDialog(this, tr("Edit LLM Provider"), prov);
+  if (!result.has_value()) {
     return;
   }
 
@@ -463,12 +448,11 @@ void LlmPage::onLlmEdit() {
   auto it = std::ranges::find_if(
       providers, [&](const LlmProvider& p) { return p.id == provider_name.toStdString(); });
   if (it != providers.end()) {
-    it->base_url = base_url_text.toStdString();
-    const QString api_key_text = editApiKey->text().trimmed();
-    if (!api_key_text.isEmpty()) {
-      it->api_key = api_key_text.toStdString();
+    it->base_url = result->base_url;
+    if (!result->api_key.empty()) {
+      it->api_key = result->api_key;
     }
-    it->extra_body = std::move(extra_body);
+    it->extra_body = std::move(result->extra_body);
     if (!ConfigManager::Get().Save(config)) {
       QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
       return;
