@@ -37,23 +37,28 @@ void TestStartupBufferingStreamingMode() {
   // Activate in streaming mode
   buffer.Activate(/*is_buffered=*/false);
 
-  // Generate 1595 samples so combined total is exactly 1600 (1 chunk)
-  std::vector<int16_t> live(1595);
+  // Generate 795 samples so combined total is exactly 800 (1 default chunk)
+  std::vector<int16_t> live(795);
   std::iota(live.begin(), live.end(), static_cast<int16_t>(100));
   buffer.Append(live);
-  Expect(buffer.TotalSampleCount() == 1600, "TotalSampleCount should be 1600");
+  Expect(buffer.TotalSampleCount() == 800, "TotalSampleCount should be 800");
 
-  auto chunk = buffer.PopStreamingChunk(1600);
-  Expect(chunk.has_value(), "Expected a chunk of 1600 samples");
-  Expect(chunk->size() == 1600, "Chunk size should be 1600");
-  Expect((*chunk)[0] == 10 && (*chunk)[1] == 20 && (*chunk)[4] == 50,
+  // Test default chunk size (kStreamingChunkSamples = 800)
+  auto chunk = buffer.PopStreamingChunk();
+  if (!chunk.has_value()) {
+    std::cerr << "Assertion failed: Expected a chunk of 800 samples\n";
+    std::abort();
+  }
+  const auto& chunk_vec = chunk.value();
+  Expect(chunk_vec.size() == 800, "Chunk size should be 800");
+  Expect(chunk_vec[0] == 10 && chunk_vec[1] == 20 && chunk_vec[4] == 50,
          "Startup samples should be at beginning of chunk");
-  Expect((*chunk)[5] == 100, "Live samples should follow startup samples");
+  Expect(chunk_vec[5] == 100, "Live samples should follow startup samples");
 
   // No further complete chunks
-  Expect(!buffer.PopStreamingChunk(1600).has_value(), "Should be no more chunks");
+  Expect(!buffer.PopStreamingChunk().has_value(), "Should be no more chunks");
   Expect(buffer.DrainStreamingTail().empty(), "Tail should be empty");
-  Expect(buffer.TotalSampleCount() == 1600, "Total count preserved after pop");
+  Expect(buffer.TotalSampleCount() == 800, "Total count preserved after pop");
 }
 
 void TestGainApplicationAndBufferedMode() {
@@ -82,26 +87,37 @@ void TestStreamingChunkingAndTail() {
   buffer.Reset(1.0F);
   buffer.Activate(/*is_buffered=*/false);
 
-  // Append 3500 samples: should yield two 1600 chunks and a 300 sample tail
-  std::vector<int16_t> data(3500, 42);
+  // Append 1800 samples: should yield two 800 chunks and a 200 sample tail
+  std::vector<int16_t> data(1800, 42);
   buffer.Append(data);
-  Expect(buffer.TotalSampleCount() == 3500, "Total count should be 3500");
+  Expect(buffer.TotalSampleCount() == 1800, "Total count should be 1800");
 
-  auto chunk1 = buffer.PopStreamingChunk(1600);
-  Expect(chunk1.has_value() && chunk1->size() == 1600, "Chunk 1 should have 1600 samples");
+  // Reject zero-length chunk request
+  Expect(!buffer.PopStreamingChunk(0).has_value(), "PopStreamingChunk(0) should return nullopt");
 
-  auto chunk2 = buffer.PopStreamingChunk(1600);
-  Expect(chunk2.has_value() && chunk2->size() == 1600, "Chunk 2 should have 1600 samples");
+  auto chunk1 = buffer.PopStreamingChunk();
+  if (!chunk1.has_value()) {
+    std::cerr << "Assertion failed: Expected chunk 1\n";
+    std::abort();
+  }
+  Expect(chunk1.value().size() == 800, "Chunk 1 should have 800 samples");
 
-  auto chunk3 = buffer.PopStreamingChunk(1600);
-  Expect(!chunk3.has_value(), "Chunk 3 should not be available (only 300 remain)");
+  auto chunk2 = buffer.PopStreamingChunk();
+  if (!chunk2.has_value()) {
+    std::cerr << "Assertion failed: Expected chunk 2\n";
+    std::abort();
+  }
+  Expect(chunk2.value().size() == 800, "Chunk 2 should have 800 samples");
+
+  auto chunk3 = buffer.PopStreamingChunk();
+  Expect(!chunk3.has_value(), "Chunk 3 should not be available (only 200 remain)");
 
   auto tail = buffer.DrainStreamingTail();
-  Expect(tail.size() == 300, "Tail should have 300 samples");
+  Expect(tail.size() == 200, "Tail should have 200 samples");
 
   auto empty_tail = buffer.DrainStreamingTail();
   Expect(empty_tail.empty(), "Subsequent tail should be empty");
-  Expect(buffer.TotalSampleCount() == 3500, "Total sample count preserved after drain");
+  Expect(buffer.TotalSampleCount() == 1800, "Total sample count preserved after drain");
 }
 
 void TestAppendBeforeActivate() {

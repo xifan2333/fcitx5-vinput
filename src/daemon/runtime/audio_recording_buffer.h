@@ -14,7 +14,7 @@ namespace vinput::daemon::runtime {
 // and supports dual delivery modes (batch full-utterance vs. streaming chunking).
 class AudioRecordingBuffer {
 public:
-  static constexpr std::size_t kStreamingChunkSamples = 1600;
+  static constexpr std::size_t kStreamingChunkSamples = 800;
 
   AudioRecordingBuffer() = default;
 

@@ -79,7 +79,7 @@ void AudioRecordingBuffer::Append(std::span<const int16_t> pcm) {
 
 std::optional<std::vector<int16_t>>
 AudioRecordingBuffer::PopStreamingChunk(std::size_t chunk_size) {
-  if (streaming_pcm_.size() < chunk_size) {
+  if (chunk_size == 0 || streaming_pcm_.size() < chunk_size) {
     return std::nullopt;
   }
   const auto chunk_end = streaming_pcm_.begin() + static_cast<std::ptrdiff_t>(chunk_size);
