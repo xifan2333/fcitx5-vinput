@@ -2,7 +2,6 @@
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qobject.h>
-#include <QtCore/qoverload.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtWidgets/qcombobox.h>
@@ -16,8 +15,8 @@
 #include <utility>
 #include <vector>
 
+#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
-#include "common/utils/file_utils.h"
 
 #include "config.h"
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -127,7 +126,7 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
     spinTimeout->setValue(initial.timeout_ms > 0 ? initial.timeout_ms : spinTimeout->minimum());
 
     UpdateFieldState(comboType, comboModel, &cmd_editor, spinTimeout);
-    QObject::connect(comboType, QOverload<int>::of(&QComboBox::currentIndexChanged), comboType,
+    QObject::connect(comboType, &QComboBox::currentIndexChanged, comboType,
                      [comboType, comboModel, &cmd_editor, spinTimeout]() {
                        UpdateFieldState(comboType, comboModel, &cmd_editor, spinTimeout);
                      });
