@@ -1,0 +1,55 @@
+name: tidy-audit
+
+# One-off full-project clang-tidy audit. Manual dispatch only; the regular
+# ci.yml cpp-linter job stays limited to changed files with a 15-minute budget.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tidy-audit:
+    name: tidy-audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: ./scripts/ci-install-build-deps.sh ubuntu24.04
+
+      # Same pin as mise.toml (pipx:clang-tidy), matching CI cpp-linter major.
+      - name: Install clang-tidy 21
+        run: |
+          pipx install "clang-tidy==21.1.6"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          clang-tidy --version
+
+      - name: Install sherpa-onnx runtime
+        run: |
+          prefix="${RUNNER_TEMP}/sherpa-onnx-install"
+          source scripts/sherpa-onnx-vars.sh
+          bash scripts/build-sherpa-onnx.sh "${SHERPA_ONNX_VERSION}" "${prefix}"
+          echo "VINPUT_CMAKE_PREFIX_PATH=${prefix}" >> "${GITHUB_ENV}"
+
+      - name: Configure CMake
+        run: |
+          cmake --preset release-clang-mold \
+            -DVINPUT_ENABLE_WERROR=ON \
+            -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
+            -DVINPUT_RUNTIME_MODE=bundled
+
+      # Findings are the payload, not a build failure: keep the log and move on.
+      - name: Run clang-tidy on every translation unit
+        continue-on-error: true
+        run: |
+          mkdir -p tidy-report
+          bash scripts/check-tidy.sh --all --full 2>&1 | tee tidy-report/full.log
+
+      - name: Upload full clang-tidy log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tidy-full-log
+          path: tidy-report/full.log
