@@ -21,6 +21,7 @@
 #include "daemon/runtime/audio_recording_buffer.h"
 #include "daemon/runtime/dbus_service.h"
 #include "daemon/runtime/recognition_pipeline.h"
+#include "daemon/runtime/session_lifecycle_manager.h"
 
 namespace vinput::daemon::remote {
 class RemoteTextService;
@@ -79,12 +80,8 @@ private:
                          const std::string& error_message);
   void ScheduleCaptureStopOnMainThread();
   void WakeMainThread() const;
-  // Moves a cancelled session into deferred_cancelled_sessions_ (destroyed,
-  // worker joined, in FlushDeferredActions on the main thread) and wakes the
-  // main thread. The caller must not hold state_mutex_.
-  void RetireCancelledSession(std::shared_ptr<vinput::daemon::asr::RecognitionSession> session);
   void RestoreOutputIfDucked();
-  std::shared_ptr<vinput::daemon::asr::RecognitionSession> ReleaseActiveSessionLocked();
+  void ResetRecordingStateLocked();
   void EnterPostprocessing(bool command_mode);
   PostprocessingState TakePostprocessingState();
   void ResetToIdle();
@@ -98,17 +95,12 @@ private:
   vinput::daemon::remote::RemoteTextService* remote_text_service_ = nullptr;
 
   mutable std::mutex state_mutex_;
-  mutable std::mutex session_io_mutex_;
   std::condition_variable worker_cv_;
   vinput::dbus::Status phase_ = vinput::dbus::Status::Idle;
   PostprocessingState postprocessing_state_ = PostprocessingState::Inactive;
   std::atomic<bool> postprocessing_cancel_requested_{false};
   std::optional<RecognitionOrder> current_order_;
-  std::shared_ptr<vinput::daemon::asr::RecognitionSession> active_session_;
-  // Sessions cancelled on the capture callback are destroyed (worker joined)
-  // on the main thread in FlushDeferredActions(), never on the callback.
-  std::vector<std::shared_ptr<vinput::daemon::asr::RecognitionSession>>
-      deferred_cancelled_sessions_;
+  SessionLifecycleManager session_lifecycle_;
   vinput::daemon::asr::BackendDescriptor active_backend_;
   bool current_is_command_ = false;
   std::string current_selected_text_;

@@ -61,6 +61,8 @@ public:
   bool CancelAndRetireActiveIfMatches(
       const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& expected_session);
 
+  void CancelAndRetireSession(std::shared_ptr<vinput::daemon::asr::RecognitionSession> session);
+
   void RetireSession(std::shared_ptr<vinput::daemon::asr::RecognitionSession> session);
 
   std::size_t FlushReapedSessions();
@@ -70,6 +72,10 @@ public:
   void Clear();
 
 private:
+  template <typename SampleSpan>
+  bool PushAudioInternal(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
+                         SampleSpan samples, std::string* error);
+
   mutable std::mutex lifecycle_mutex_;
   mutable std::mutex session_io_mutex_;
   WakeCallback wake_callback_;

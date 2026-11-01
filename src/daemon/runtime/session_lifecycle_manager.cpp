@@ -46,11 +46,7 @@ void SessionLifecycleManager::InstallActiveSession(
     active_session_ = std::move(session);
   }
   if (old_session) {
-    {
-      const std::scoped_lock io_lock(session_io_mutex_);
-      old_session->Cancel();
-    }
-    RetireSession(std::move(old_session));
+    CancelAndRetireSession(std::move(old_session));
   }
 }
 
@@ -76,26 +72,10 @@ std::shared_ptr<vinput::daemon::asr::RecognitionSession> SessionLifecycleManager
   return std::move(active_session_);
 }
 
-bool SessionLifecycleManager::PushAudio(
-    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
-    std::span<const int16_t> pcm, std::string* error) {
-  if (!session) {
-    if (error != nullptr) {
-      *error = kSessionNotInitializedError;
-    }
-    return false;
-  }
-  const std::scoped_lock lock(session_io_mutex_);
-  const bool ok = session->PushAudio(pcm, error);
-  if (!ok && error != nullptr && error->empty()) {
-    *error = kFailedToPushAudioError;
-  }
-  return ok;
-}
-
-bool SessionLifecycleManager::PushAudio(
-    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
-    std::span<const float> samples, std::string* error) {
+template <typename SampleSpan>
+bool SessionLifecycleManager::PushAudioInternal(
+    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session, SampleSpan samples,
+    std::string* error) {
   if (!session) {
     if (error != nullptr) {
       *error = kSessionNotInitializedError;
@@ -108,6 +88,18 @@ bool SessionLifecycleManager::PushAudio(
     *error = kFailedToPushAudioError;
   }
   return ok;
+}
+
+bool SessionLifecycleManager::PushAudio(
+    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
+    std::span<const int16_t> pcm, std::string* error) {
+  return PushAudioInternal(session, pcm, error);
+}
+
+bool SessionLifecycleManager::PushAudio(
+    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
+    std::span<const float> samples, std::string* error) {
+  return PushAudioInternal(session, samples, error);
 }
 
 SessionPollResult SessionLifecycleManager::PollActiveEvents() {
@@ -214,6 +206,18 @@ vinput::daemon::asr::RecognitionRunResult SessionLifecycleManager::FinishSession
   return result;
 }
 
+void SessionLifecycleManager::CancelAndRetireSession(
+    std::shared_ptr<vinput::daemon::asr::RecognitionSession> session) {
+  if (!session) {
+    return;
+  }
+  {
+    const std::scoped_lock io_lock(session_io_mutex_);
+    session->Cancel();
+  }
+  RetireSession(std::move(session));
+}
+
 void SessionLifecycleManager::CancelAndRetireActive() {
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {
@@ -223,19 +227,7 @@ void SessionLifecycleManager::CancelAndRetireActive() {
   if (!session_to_cancel) {
     return;
   }
-  {
-    const std::scoped_lock io_lock(session_io_mutex_);
-    session_to_cancel->Cancel();
-  }
-  WakeCallback wake;
-  {
-    const std::scoped_lock lock(lifecycle_mutex_);
-    deferred_cancelled_sessions_.push_back(std::move(session_to_cancel));
-    wake = wake_callback_;
-  }
-  if (wake) {
-    wake();
-  }
+  CancelAndRetireSession(std::move(session_to_cancel));
 }
 
 bool SessionLifecycleManager::CancelAndRetireActiveIfMatches(
@@ -251,19 +243,7 @@ bool SessionLifecycleManager::CancelAndRetireActiveIfMatches(
     }
     session_to_cancel = std::move(active_session_);
   }
-  {
-    const std::scoped_lock io_lock(session_io_mutex_);
-    session_to_cancel->Cancel();
-  }
-  WakeCallback wake;
-  {
-    const std::scoped_lock lock(lifecycle_mutex_);
-    deferred_cancelled_sessions_.push_back(std::move(session_to_cancel));
-    wake = wake_callback_;
-  }
-  if (wake) {
-    wake();
-  }
+  CancelAndRetireSession(std::move(session_to_cancel));
   return true;
 }
 

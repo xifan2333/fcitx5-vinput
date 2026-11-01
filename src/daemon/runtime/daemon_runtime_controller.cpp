@@ -43,8 +43,6 @@ namespace vinput::daemon::runtime {
 
 namespace {
 
-constexpr const char* kFailedToPushAudioError = "Failed to push audio chunk.";
-constexpr const char* kFailedToFinishSessionError = "Failed to finish recognition session.";
 constexpr float kNonSilentPeakThreshold = 0.02F;
 constexpr float kNonSilentRmsThreshold = 0.005F;
 
@@ -161,56 +159,6 @@ void ApplyRecognitionEvents(const std::vector<vinput::daemon::asr::RecognitionEv
   }
 }
 
-vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
-    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
-    std::mutex* session_io_mutex, std::string* error) {
-  vinput::daemon::asr::RecognitionRunResult result;
-  if (!session) {
-    if (error != nullptr) {
-      *error = "Recognition session is not initialized.";
-    }
-    result.available = false;
-    result.ok = false;
-    result.error = (error != nullptr) ? *error : "Recognition session is not initialized.";
-    return result;
-  }
-
-  result.available = true;
-  std::string session_error;
-  std::vector<vinput::daemon::asr::RecognitionEvent> events;
-  {
-    const std::scoped_lock session_lock(*session_io_mutex);
-    if (!session->Finish(&session_error)) {
-      result.ok = false;
-      result.error = session_error.empty() ? kFailedToFinishSessionError : session_error;
-    }
-    events = session->PollEvents();
-  }
-
-  for (auto& event : events) {
-    switch (event.kind) {
-    case vinput::daemon::asr::RecognitionEventKind::PartialText:
-      break;
-    case vinput::daemon::asr::RecognitionEventKind::FinalText:
-      result.text = std::move(event.text);
-      break;
-    case vinput::daemon::asr::RecognitionEventKind::Error:
-      result.ok = false;
-      if (!event.error.empty()) {
-        result.error = std::move(event.error);
-      }
-      break;
-    case vinput::daemon::asr::RecognitionEventKind::Completed:
-      break;
-    }
-  }
-
-  if (error != nullptr) {
-    *error = result.error;
-  }
-  return result;
-}
-
 } // namespace
 
 DaemonRuntimeController::DaemonRuntimeController(
@@ -239,6 +187,7 @@ DaemonRuntimeController::DaemonRuntimeController(
   } else if (capture_ != nullptr) {
     capture_->SetNotifyFd(notify_fd_);
   }
+  session_lifecycle_.SetWakeCallback([this] { WakeMainThread(); });
 
   if (remote_text_service_ != nullptr) {
     remote_text_service_->SetSessionControlCallbacks(
@@ -273,14 +222,13 @@ DaemonRuntimeController::StartCommandRecording(const std::string& selected_text)
 DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_raw_text) {
   bool apply_pending_reload = false;
   bool stop_capture = false;
-  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
 
   {
     const std::scoped_lock lock(state_mutex_);
     if (phase_ == vinput::dbus::Status::Recording) {
       accepting_chunks_.store(false, std::memory_order_relaxed);
       stop_capture = true;
-      session_to_cancel = ReleaseActiveSessionLocked();
+      ResetRecordingStateLocked();
       phase_ = vinput::dbus::Status::Idle;
       current_order_.reset();
       dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
@@ -312,16 +260,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
     RestoreOutputIfDucked();
   }
 
-  if (session_to_cancel) {
-    {
-      const std::scoped_lock io_lock(session_io_mutex_);
-      session_to_cancel->Cancel();
-    }
-    // Do not let session_to_cancel destruct here: destroying an async
-    // session joins its worker on this D-Bus thread. Retire it on the main
-    // thread instead. Cancel() is idempotent, so exactly-once is preserved.
-    RetireCancelledSession(std::move(session_to_cancel));
-  }
+  session_lifecycle_.CancelAndRetireActive();
 
   if (apply_pending_reload) {
     MaybeApplyPendingAsrBackendReload();
@@ -503,8 +442,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
       abort_started_capture = true;
     } else {
       current_order_.reset();
-      active_session_ =
-          std::shared_ptr<vinput::daemon::asr::RecognitionSession>(std::move(session));
+      session_lifecycle_.InstallActiveSession(std::move(session));
       active_backend_ = active_backend;
       current_is_command_ = is_command;
       current_selected_text_ = selected_text;
@@ -572,7 +510,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
   // atomically install the live session.
   {
     const std::scoped_lock lock(state_mutex_);
-    if (start_recording_in_progress_ && !active_session_) {
+    if (start_recording_in_progress_ && !session_lifecycle_.HasActiveSession()) {
       audio_buffer_.AppendStartup(pcm);
       return;
     }
@@ -583,10 +521,10 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
   bool streaming_mode = false;
   {
     const std::scoped_lock lock(state_mutex_);
-    if (!active_session_) {
+    if (!session_lifecycle_.HasActiveSession()) {
       return;
     }
-    session = active_session_;
+    session = session_lifecycle_.ActiveSession();
 
     if (!first_non_silent_at_.has_value()) {
       std::vector<int16_t> gained_pcm;
@@ -608,14 +546,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
 
   while (streaming_mode && chunk_to_push.has_value()) {
     std::string push_error;
-    bool pushed = false;
-    {
-      const std::scoped_lock session_lock(session_io_mutex_);
-      pushed = session->PushAudio(*chunk_to_push, &push_error);
-    }
-    if (!pushed && push_error.empty()) {
-      push_error = kFailedToPushAudioError;
-    }
+    const bool pushed = session_lifecycle_.PushAudio(session, *chunk_to_push, &push_error);
 
     if (!pushed || !push_error.empty()) {
       FailActiveSession(session, push_error);
@@ -625,8 +556,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
     bool session_retired = false;
     {
       const std::scoped_lock lock(state_mutex_);
-      if (active_session_ != session) {
-        deferred_cancelled_sessions_.push_back(session);
+      if (!session_lifecycle_.IsActiveSession(session)) {
         session_retired = true;
       } else {
         chunk_to_push = audio_buffer_.PopStreamingChunk();
@@ -634,7 +564,7 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
     }
 
     if (session_retired) {
-      WakeMainThread();
+      session_lifecycle_.RetireSession(std::move(session));
       return;
     }
 
@@ -648,6 +578,15 @@ void DaemonRuntimeController::RestoreOutputIfDucked() {
   output_ducker_.Restore();
 }
 
+void DaemonRuntimeController::ResetRecordingStateLocked() {
+  audio_buffer_.Clear();
+  latest_final_text_.clear();
+  recording_started_at_.reset();
+  first_non_silent_at_.reset();
+  first_partial_logged_ = false;
+  active_backend_ = {};
+}
+
 void DaemonRuntimeController::WakeMainThread() const {
   if (notify_fd_ >= 0) {
     uint64_t value = 1;
@@ -655,48 +594,22 @@ void DaemonRuntimeController::WakeMainThread() const {
   }
 }
 
-void DaemonRuntimeController::RetireCancelledSession(
-    std::shared_ptr<vinput::daemon::asr::RecognitionSession> session) {
-  if (!session) {
-    return;
-  }
-  {
-    const std::scoped_lock lock(state_mutex_);
-    deferred_cancelled_sessions_.push_back(std::move(session));
-  }
-  // Wake only after the deferred vector owns the session: an earlier wake
-  // could let FlushDeferredActions clear it before the transfer, making the
-  // caller's thread the last owner again.
-  WakeMainThread();
-}
-
 bool DaemonRuntimeController::FailActiveSession(
     const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
     const std::string& error_message) {
-  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {
     const std::scoped_lock lock(state_mutex_);
-    if (active_session_ != session) {
+    if (!session_lifecycle_.IsActiveSession(session)) {
       return false;
     }
     VLOG_ERROR("failed to push audio chunk: {}", error_message);
     accepting_chunks_.store(false, std::memory_order_relaxed);
-    session_to_cancel = ReleaseActiveSessionLocked();
+    ResetRecordingStateLocked();
     phase_ = vinput::dbus::Status::Error;
   }
-  if (session_to_cancel) {
-    {
-      const std::scoped_lock session_lock(session_io_mutex_);
-      session_to_cancel->Cancel();
-    }
-    // Destroying the async session joins its worker; do that on the main
-    // thread (FlushDeferredActions), not on this capture callback.
-    const std::scoped_lock lock(state_mutex_);
-    deferred_cancelled_sessions_.push_back(std::move(session_to_cancel));
-  }
-  // phase_ is already Error and the session is no longer active, so a
-  // repeated wake-up for the same failure is discarded by the identity
-  // checks in PollActiveSessionEvents/FailActiveSession: notified once.
+
+  session_lifecycle_.CancelAndRetireActiveIfMatches(session);
+
   dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Error));
   dbus_->EmitDesktopNotification(
       vinput::daemon::notify::MakeDaemonErrorNotification(error_message));
@@ -707,75 +620,43 @@ bool DaemonRuntimeController::FailActiveSession(
 }
 
 void DaemonRuntimeController::PollActiveSessionEvents() {
-  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
+  {
+    const std::scoped_lock lock(state_mutex_);
+    if (phase_ != vinput::dbus::Status::Recording || !session_lifecycle_.HasActiveSession() ||
+        UsesBufferedDelivery(active_backend_)) {
+      return;
+    }
+  }
+
+  auto poll = session_lifecycle_.PollActiveEvents();
+  if (!poll.session_active || !poll.session) {
+    return;
+  }
+
   std::optional<std::chrono::steady_clock::time_point> recording_started_at;
   std::optional<std::chrono::steady_clock::time_point> first_non_silent_at;
   {
     const std::scoped_lock lock(state_mutex_);
-    if (phase_ != vinput::dbus::Status::Recording || !active_session_ ||
-        UsesBufferedDelivery(active_backend_)) {
-      return;
-    }
-    session = active_session_;
-    recording_started_at = recording_started_at_;
-    first_non_silent_at = first_non_silent_at_;
-  }
-
-  std::vector<vinput::daemon::asr::RecognitionEvent> events;
-  std::optional<std::string> failure;
-  {
-    // Hold state_mutex_ across the poll: StopRecording transfers
-    // active_session_ to WorkerMain under the same mutex, so validating
-    // identity only after PollEvents() could drain (and then discard)
-    // events that WorkerMain still needs for the final result. PollEvents()
-    // only briefly locks the session, so this state -> session lock order
-    // matches the short critical sections elsewhere and cannot deadlock
-    // with the stop path, which never holds session_io_mutex_ while
-    // acquiring state_mutex_.
-    const std::scoped_lock lock(state_mutex_);
-    if (active_session_ != session || phase_ != vinput::dbus::Status::Recording) {
+    if (!session_lifecycle_.IsActiveSession(poll.session) ||
+        phase_ != vinput::dbus::Status::Recording) {
       return;
     }
     recording_started_at = recording_started_at_;
     first_non_silent_at = first_non_silent_at_;
-    {
-      const std::scoped_lock session_lock(session_io_mutex_);
-      events = session->PollEvents();
-    }
-    // Re-read failure state after polling: a merged wake-up must not lose a
-    // backend failure that produced events (or no Error event at all).
-    if (auto* async_session =
-            dynamic_cast<vinput::daemon::asr::AsyncRecognitionSession*>(session.get())) {
-      failure = async_session->FailureError();
-    }
-    if (!failure.has_value()) {
-      for (const auto& event : events) {
-        if (event.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
-          failure = event.error.empty() ? _("ASR provider failed.") : event.error;
-          break;
-        }
-      }
-    }
-    if (failure.has_value()) {
-      // FailActiveSession below emits the single error notification; do not
-      // also emit one per Error event from the same failure.
-      std::erase_if(events, [](const vinput::daemon::asr::RecognitionEvent& event) {
-        return event.kind == vinput::daemon::asr::RecognitionEventKind::Error;
-      });
-    }
-    if (!events.empty()) {
-      ApplyRecognitionEvents(events, RecognitionDispatchContext{
-                                         .latest_final_text = &latest_final_text_,
-                                         .first_partial_logged = &first_partial_logged_,
-                                         .recording_started_at = recording_started_at,
-                                         .first_non_silent_at = first_non_silent_at,
-                                         .dbus = dbus_,
-                                     });
+
+    if (!poll.events.empty()) {
+      ApplyRecognitionEvents(poll.events, RecognitionDispatchContext{
+                                              .latest_final_text = &latest_final_text_,
+                                              .first_partial_logged = &first_partial_logged_,
+                                              .recording_started_at = recording_started_at,
+                                              .first_non_silent_at = first_non_silent_at,
+                                              .dbus = dbus_,
+                                          });
     }
   }
 
-  if (failure.has_value()) {
-    FailActiveSession(session, *failure);
+  if (poll.failure.has_value()) {
+    FailActiveSession(poll.session, *poll.failure);
   }
 }
 
@@ -819,7 +700,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
 
   {
     const std::scoped_lock lock(state_mutex_);
-    if (!active_session_) {
+    if (!session_lifecycle_.HasActiveSession()) {
       VLOG_DEBUG("recording stopped without active session");
       phase_ = vinput::dbus::Status::Idle;
       current_order_.reset();
@@ -836,7 +717,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
       if (!apply_pending_reload && total_samples < vinput::daemon::asr::kMinSamplesForRecognition) {
         VLOG_DEBUG("recording too short, skipping inference: {} samples ({:.1f} ms)", total_samples,
                    static_cast<double>(total_samples) * 1000.0 / 16000.0);
-        session_to_cancel = ReleaseActiveSessionLocked();
+        ResetRecordingStateLocked();
         phase_ = vinput::dbus::Status::Idle;
         current_order_.reset();
         dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
@@ -847,7 +728,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
       if (!apply_pending_reload) {
         current_order_ = RecognitionOrder{};
         current_order_->audio_delivery_mode = active_backend_.capabilities.audio_delivery_mode;
-        current_order_->session = std::move(active_session_);
+        current_order_->session = session_lifecycle_.DetachActive();
         current_order_->backend = active_backend_;
         if (UsesBufferedDelivery(active_backend_)) {
           current_order_->pcm = audio_buffer_.TakeBufferedPcm();
@@ -876,32 +757,11 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
     }
   }
 
-  if (session_to_cancel) {
-    {
-      const std::scoped_lock session_lock(session_io_mutex_);
-      session_to_cancel->Cancel();
-    }
-    // See CancelOperation: retire via the deferred main-thread path instead
-    // of joining the async worker here when the local reference is released.
-    RetireCancelledSession(std::move(session_to_cancel));
-  }
-
   if (apply_pending_reload) {
+    session_lifecycle_.CancelAndRetireActive();
     MaybeApplyPendingAsrBackendReload();
   }
   return DbusService::MethodResult::Success();
-}
-
-std::shared_ptr<vinput::daemon::asr::RecognitionSession>
-DaemonRuntimeController::ReleaseActiveSessionLocked() {
-  auto session = std::move(active_session_);
-  audio_buffer_.Clear();
-  latest_final_text_.clear();
-  recording_started_at_.reset();
-  first_non_silent_at_.reset();
-  first_partial_logged_ = false;
-  active_backend_ = {};
-  return session;
 }
 
 std::string DaemonRuntimeController::GetStatus() const {
@@ -942,14 +802,7 @@ void DaemonRuntimeController::FlushDeferredActions() {
     }
   }
 
-  {
-    std::vector<std::shared_ptr<vinput::daemon::asr::RecognitionSession>> deferred;
-    {
-      const std::scoped_lock lock(state_mutex_);
-      deferred.swap(deferred_cancelled_sessions_);
-    }
-    deferred.clear(); // Joins async workers on this (main) thread.
-  }
+  session_lifecycle_.FlushReapedSessions();
 
   DrainIncomingAudio();
 
@@ -1014,27 +867,18 @@ void DaemonRuntimeController::Shutdown() {
     capture_->Stop();
   }
   RestoreOutputIfDucked();
-  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {
     const std::scoped_lock lock(state_mutex_);
     start_recording_in_progress_ = false;
-    session_to_cancel = ReleaseActiveSessionLocked();
     worker_running_ = false;
   }
-  if (session_to_cancel) {
-    const std::scoped_lock session_lock(session_io_mutex_);
-    session_to_cancel->Cancel();
-  }
+  session_lifecycle_.CancelAndRetireActive();
   worker_cv_.notify_all();
   if (worker_.joinable()) {
     worker_.join();
   }
-  std::vector<std::shared_ptr<vinput::daemon::asr::RecognitionSession>> deferred;
-  {
-    const std::scoped_lock lock(state_mutex_);
-    deferred.swap(deferred_cancelled_sessions_);
-  }
-  deferred.clear();
+  session_lifecycle_.FlushReapedSessions();
+  session_lifecycle_.Clear();
 }
 
 void DaemonRuntimeController::EnterPostprocessing(bool command_mode) {
@@ -1062,13 +906,11 @@ void DaemonRuntimeController::ResetToIdle() {
     postprocessing_state_ = PostprocessingState::Inactive;
     postprocessing_cancel_requested_.store(false, std::memory_order_relaxed);
     current_order_.reset();
-    audio_buffer_.Clear();
+    ResetRecordingStateLocked();
     current_is_command_ = false;
     current_selected_text_.clear();
-    recording_started_at_.reset();
-    first_non_silent_at_.reset();
-    first_partial_logged_ = false;
   }
+  session_lifecycle_.CancelAndRetireActive();
   RestoreOutputIfDucked();
   dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
   VLOG_DEBUG("phase -> idle");
@@ -1106,28 +948,26 @@ void DaemonRuntimeController::WorkerMain() {
           vinput::audio::PeakNormalize(float_samples);
 
           std::string push_error;
-          const std::scoped_lock session_lock(session_io_mutex_);
-          if (!order.session->PushAudio(float_samples, &push_error)) {
-            throw std::runtime_error(push_error.empty() ? kFailedToPushAudioError : push_error);
+          if (!session_lifecycle_.PushAudio(order.session, float_samples, &push_error)) {
+            throw std::runtime_error(push_error);
           }
         } else if (!order.pcm.empty()) {
           std::string push_error;
-          const std::scoped_lock session_lock(session_io_mutex_);
-          if (!order.session->PushAudio(order.pcm, &push_error)) {
-            throw std::runtime_error(push_error.empty() ? kFailedToPushAudioError : push_error);
+          if (!session_lifecycle_.PushAudio(order.session, order.pcm, &push_error)) {
+            throw std::runtime_error(push_error);
           }
           order.pcm.clear();
         }
 
         std::string recognition_error;
         auto result =
-            FinishSessionAndCollectResult(order.session, &session_io_mutex_, &recognition_error);
+            session_lifecycle_.FinishSessionAndCollectResult(order.session, &recognition_error);
         if (!result.ok || !result.error.empty()) {
           // Preserve the structured error classification (as the previous
           // error path did) instead of routing this through the generic
           // exception handler, which would downgrade it to a raw error.
           const std::string failure =
-              result.error.empty() ? kFailedToFinishSessionError : result.error;
+              result.error.empty() ? "Failed to finish recognition session." : result.error;
           VLOG_ERROR("recognition error: {}", failure);
           dbus_->EmitDesktopNotification(
               vinput::daemon::notify::MakeDaemonErrorNotification(failure));
