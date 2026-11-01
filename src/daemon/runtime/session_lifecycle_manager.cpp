@@ -103,7 +103,7 @@ bool SessionLifecycleManager::PushAudio(
 }
 
 SessionPollResult SessionLifecycleManager::PollSessionEvents(
-    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session) {
+    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session) const {
   if (!session) {
     return SessionPollResult{
         .session = nullptr,
@@ -149,7 +149,7 @@ SessionPollResult SessionLifecycleManager::PollSessionEvents(
   };
 }
 
-SessionPollResult SessionLifecycleManager::PollActiveEvents() {
+SessionPollResult SessionLifecycleManager::PollActiveEvents() const {
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
   {
     const std::scoped_lock lock(lifecycle_mutex_);

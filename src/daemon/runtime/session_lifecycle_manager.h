@@ -51,9 +51,9 @@ public:
                  std::span<const float> samples, std::string* error = nullptr);
 
   [[nodiscard]] SessionPollResult
-  PollSessionEvents(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session);
+  PollSessionEvents(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session) const;
 
-  [[nodiscard]] SessionPollResult PollActiveEvents();
+  [[nodiscard]] SessionPollResult PollActiveEvents() const;
 
   [[nodiscard]] vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
       const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,

@@ -261,6 +261,7 @@ add_executable(test_session_lifecycle_manager
     ${CMAKE_SOURCE_DIR}/src/daemon/asr/runtime/async_recognition_session.cpp
 )
 target_include_directories(test_session_lifecycle_manager PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_session_lifecycle_manager PRIVATE common)
 add_test(NAME test_session_lifecycle_manager COMMAND test_session_lifecycle_manager)
 
 add_executable(test_audio_input_gain
