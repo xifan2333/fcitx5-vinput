@@ -59,6 +59,7 @@ add_executable(daemon
     runtime/daemon_runtime_controller.cpp
     runtime/recognition_pipeline.cpp
     runtime/audio_recording_buffer.cpp
+    runtime/session_lifecycle_manager.cpp
     postprocess/post_processor.cpp
     postprocess/prompt_template.cpp
 )
