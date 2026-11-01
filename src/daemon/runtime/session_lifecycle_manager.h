@@ -50,6 +50,9 @@ public:
   bool PushAudio(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
                  std::span<const float> samples, std::string* error = nullptr);
 
+  [[nodiscard]] SessionPollResult
+  PollSessionEvents(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session);
+
   [[nodiscard]] SessionPollResult PollActiveEvents();
 
   [[nodiscard]] vinput::daemon::asr::RecognitionRunResult FinishSessionAndCollectResult(
@@ -72,10 +75,6 @@ public:
   void Clear();
 
 private:
-  template <typename SampleSpan>
-  bool PushAudioInternal(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
-                         SampleSpan samples, std::string* error);
-
   mutable std::mutex lifecycle_mutex_;
   mutable std::mutex session_io_mutex_;
   WakeCallback wake_callback_;

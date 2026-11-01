@@ -7,6 +7,7 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -82,9 +83,9 @@ public:
 
   std::vector<RecognitionEvent> PollEvents() override {
     const std::scoped_lock lock(mutex_);
-    auto events = std::move(events_);
+    auto drained = std::move(events_);
     events_.clear();
-    return events;
+    return drained;
   }
 
   void SetFailPush(bool fail) {
@@ -97,14 +98,14 @@ public:
     fail_finish_ = fail;
   }
 
-  void SetFinishText(std::string text) {
+  void SetFinishText(const std::string& text) {
     const std::scoped_lock lock(mutex_);
-    finish_text_ = std::move(text);
+    finish_text_ = text;
   }
 
-  void QueueEvent(RecognitionEvent event) {
+  void QueueEvent(const RecognitionEvent& event) {
     const std::scoped_lock lock(mutex_);
-    events_.push_back(std::move(event));
+    events_.push_back(event);
   }
 
   [[nodiscard]] int PushCalls() const {
@@ -248,7 +249,7 @@ void TestPollActiveEvents() {
   poll = manager.PollActiveEvents();
   Expect(poll.session_active, "Session must still be active");
   Expect(poll.failure.has_value(), "Failure must be set from Error event");
-  Expect(*poll.failure == "backend died", "Failure message must match");
+  Expect(poll.failure.has_value() && *poll.failure == "backend died", "Failure message must match");
   Expect(poll.events.size() == 1, "Error event should be filtered from event list");
   Expect(poll.events[0].text == "tail", "Non-error event preserved");
 
@@ -258,6 +259,27 @@ void TestPollActiveEvents() {
   Expect(!poll.session_active, "Session must not be active");
   Expect(poll.session == nullptr, "Session pointer must be null");
   Expect(poll.events.empty(), "Events must be empty");
+}
+
+void TestPollSessionEventsExplicit() {
+  SessionLifecycleManager manager;
+  auto session = std::make_shared<MockSession>();
+  manager.InstallActiveSession(session);
+
+  session->QueueEvent({.kind = RecognitionEventKind::PartialText, .text = "direct", .error = {}});
+  auto poll = manager.PollSessionEvents(session);
+  Expect(poll.session_active, "Session must be reported active");
+  Expect(poll.session == session, "Polled session must match");
+  Expect(poll.events.size() == 1, "Must have 1 event");
+  Expect(poll.events[0].text == "direct", "Event text must match");
+
+  // Detach session: PollSessionEvents still drains events from session, but session_active is false
+  manager.DetachActive();
+  session->QueueEvent({.kind = RecognitionEventKind::FinalText, .text = "done", .error = {}});
+  poll = manager.PollSessionEvents(session);
+  Expect(!poll.session_active, "Session must no longer be active");
+  Expect(poll.events.size() == 1, "Must have 1 event");
+  Expect(poll.events[0].text == "done", "Event text must match");
 }
 
 void TestFinishSessionAndCollectResult() {
@@ -379,6 +401,7 @@ int main() {
   TestDetachActive();
   TestAudioPushing();
   TestPollActiveEvents();
+  TestPollSessionEventsExplicit();
   TestFinishSessionAndCollectResult();
   TestCancelAndRetirement();
   TestCancelAndRetireActiveIfMatches();

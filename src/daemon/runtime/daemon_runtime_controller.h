@@ -10,7 +10,6 @@
 #include <span>
 #include <string>
 #include <thread>
-#include <vector>
 
 #include "common/dbus/dbus_interface.h"
 

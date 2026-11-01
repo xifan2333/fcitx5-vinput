@@ -1,10 +1,20 @@
 #include "daemon/runtime/session_lifecycle_manager.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <span>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "common/i18n.h"
 
 #include "daemon/asr/runtime/async_recognition_session.h"
+#include "daemon/asr/runtime/recognition_contract.h"
+#include "daemon/asr/runtime/recognition_session_manager.h"
 
 namespace vinput::daemon::runtime {
 
@@ -13,6 +23,24 @@ namespace {
 constexpr const char* kSessionNotInitializedError = "Recognition session is not initialized.";
 constexpr const char* kFailedToPushAudioError = "Failed to push audio chunk.";
 constexpr const char* kFailedToFinishSessionError = "Failed to finish recognition session.";
+
+template <typename Fn>
+bool PushAudioWithLock(std::mutex& io_mutex,
+                       const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
+                       Fn&& push_fn, std::string* error) {
+  if (!session) {
+    if (error != nullptr) {
+      *error = kSessionNotInitializedError;
+    }
+    return false;
+  }
+  const std::scoped_lock lock(io_mutex);
+  const bool ok = std::forward<Fn>(push_fn)();
+  if (!ok && error != nullptr && error->empty()) {
+    *error = kFailedToPushAudioError;
+  }
+  return ok;
+}
 
 } // namespace
 
@@ -27,18 +55,6 @@ void SessionLifecycleManager::SetWakeCallback(WakeCallback callback) {
 
 void SessionLifecycleManager::InstallActiveSession(
     std::shared_ptr<vinput::daemon::asr::RecognitionSession> session) {
-  if (auto* async_session =
-          dynamic_cast<vinput::daemon::asr::AsyncRecognitionSession*>(session.get())) {
-    WakeCallback wake;
-    {
-      const std::scoped_lock lock(lifecycle_mutex_);
-      wake = wake_callback_;
-    }
-    if (wake) {
-      async_session->SetWakeCallback(wake);
-    }
-  }
-
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> old_session;
   {
     const std::scoped_lock lock(lifecycle_mutex_);
@@ -64,7 +80,7 @@ SessionLifecycleManager::ActiveSession() const {
 bool SessionLifecycleManager::IsActiveSession(
     const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session) const {
   const std::scoped_lock lock(lifecycle_mutex_);
-  return session && active_session_ == session;
+  return session != nullptr && active_session_ == session;
 }
 
 std::shared_ptr<vinput::daemon::asr::RecognitionSession> SessionLifecycleManager::DetachActive() {
@@ -72,42 +88,22 @@ std::shared_ptr<vinput::daemon::asr::RecognitionSession> SessionLifecycleManager
   return std::move(active_session_);
 }
 
-template <typename SampleSpan>
-bool SessionLifecycleManager::PushAudioInternal(
-    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session, SampleSpan samples,
-    std::string* error) {
-  if (!session) {
-    if (error != nullptr) {
-      *error = kSessionNotInitializedError;
-    }
-    return false;
-  }
-  const std::scoped_lock lock(session_io_mutex_);
-  const bool ok = session->PushAudio(samples, error);
-  if (!ok && error != nullptr && error->empty()) {
-    *error = kFailedToPushAudioError;
-  }
-  return ok;
-}
-
 bool SessionLifecycleManager::PushAudio(
     const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
     std::span<const int16_t> pcm, std::string* error) {
-  return PushAudioInternal(session, pcm, error);
+  return PushAudioWithLock(
+      session_io_mutex_, session, [&] { return session->PushAudio(pcm, error); }, error);
 }
 
 bool SessionLifecycleManager::PushAudio(
     const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
     std::span<const float> samples, std::string* error) {
-  return PushAudioInternal(session, samples, error);
+  return PushAudioWithLock(
+      session_io_mutex_, session, [&] { return session->PushAudio(samples, error); }, error);
 }
 
-SessionPollResult SessionLifecycleManager::PollActiveEvents() {
-  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
-  {
-    const std::scoped_lock lock(lifecycle_mutex_);
-    session = active_session_;
-  }
+SessionPollResult SessionLifecycleManager::PollSessionEvents(
+    const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session) {
   if (!session) {
     return SessionPollResult{
         .session = nullptr,
@@ -143,11 +139,7 @@ SessionPollResult SessionLifecycleManager::PollActiveEvents() {
     });
   }
 
-  bool still_active = false;
-  {
-    const std::scoped_lock lock(lifecycle_mutex_);
-    still_active = (active_session_ == session);
-  }
+  const bool still_active = IsActiveSession(session);
 
   return SessionPollResult{
       .session = session,
@@ -155,6 +147,15 @@ SessionPollResult SessionLifecycleManager::PollActiveEvents() {
       .failure = std::move(failure),
       .session_active = still_active,
   };
+}
+
+SessionPollResult SessionLifecycleManager::PollActiveEvents() {
+  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
+  {
+    const std::scoped_lock lock(lifecycle_mutex_);
+    session = active_session_;
+  }
+  return PollSessionEvents(session);
 }
 
 vinput::daemon::asr::RecognitionRunResult SessionLifecycleManager::FinishSessionAndCollectResult(

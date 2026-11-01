@@ -38,6 +38,7 @@
 #include "daemon/remote/remote_text_service.h"
 #include "daemon/runtime/dbus_service.h"
 #include "daemon/runtime/recognition_pipeline.h"
+#include "daemon/runtime/session_lifecycle_manager.h"
 
 namespace vinput::daemon::runtime {
 
@@ -222,6 +223,7 @@ DaemonRuntimeController::StartCommandRecording(const std::string& selected_text)
 DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_raw_text) {
   bool apply_pending_reload = false;
   bool stop_capture = false;
+  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
 
   {
     const std::scoped_lock lock(state_mutex_);
@@ -229,6 +231,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
       accepting_chunks_.store(false, std::memory_order_relaxed);
       stop_capture = true;
       ResetRecordingStateLocked();
+      session_to_cancel = session_lifecycle_.DetachActive();
       phase_ = vinput::dbus::Status::Idle;
       current_order_.reset();
       dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
@@ -260,7 +263,9 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
     RestoreOutputIfDucked();
   }
 
-  session_lifecycle_.CancelAndRetireActive();
+  if (session_to_cancel) {
+    session_lifecycle_.CancelAndRetireSession(std::move(session_to_cancel));
+  }
 
   if (apply_pending_reload) {
     MaybeApplyPendingAsrBackendReload();
@@ -620,30 +625,21 @@ bool DaemonRuntimeController::FailActiveSession(
 }
 
 void DaemonRuntimeController::PollActiveSessionEvents() {
+  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
+  std::optional<std::chrono::steady_clock::time_point> recording_started_at;
+  std::optional<std::chrono::steady_clock::time_point> first_non_silent_at;
+  SessionPollResult poll;
   {
     const std::scoped_lock lock(state_mutex_);
     if (phase_ != vinput::dbus::Status::Recording || !session_lifecycle_.HasActiveSession() ||
         UsesBufferedDelivery(active_backend_)) {
       return;
     }
-  }
-
-  auto poll = session_lifecycle_.PollActiveEvents();
-  if (!poll.session_active || !poll.session) {
-    return;
-  }
-
-  std::optional<std::chrono::steady_clock::time_point> recording_started_at;
-  std::optional<std::chrono::steady_clock::time_point> first_non_silent_at;
-  {
-    const std::scoped_lock lock(state_mutex_);
-    if (!session_lifecycle_.IsActiveSession(poll.session) ||
-        phase_ != vinput::dbus::Status::Recording) {
-      return;
-    }
+    session = session_lifecycle_.ActiveSession();
     recording_started_at = recording_started_at_;
     first_non_silent_at = first_non_silent_at_;
 
+    poll = session_lifecycle_.PollSessionEvents(session);
     if (!poll.events.empty()) {
       ApplyRecognitionEvents(poll.events, RecognitionDispatchContext{
                                               .latest_final_text = &latest_final_text_,
@@ -655,8 +651,8 @@ void DaemonRuntimeController::PollActiveSessionEvents() {
     }
   }
 
-  if (poll.failure.has_value()) {
-    FailActiveSession(poll.session, *poll.failure);
+  if (poll.failure.has_value() && session) {
+    FailActiveSession(session, *poll.failure);
   }
 }
 
@@ -718,6 +714,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
         VLOG_DEBUG("recording too short, skipping inference: {} samples ({:.1f} ms)", total_samples,
                    static_cast<double>(total_samples) * 1000.0 / 16000.0);
         ResetRecordingStateLocked();
+        session_to_cancel = session_lifecycle_.DetachActive();
         phase_ = vinput::dbus::Status::Idle;
         current_order_.reset();
         dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
@@ -757,8 +754,11 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
     }
   }
 
+  if (session_to_cancel) {
+    session_lifecycle_.CancelAndRetireSession(std::move(session_to_cancel));
+  }
+
   if (apply_pending_reload) {
-    session_lifecycle_.CancelAndRetireActive();
     MaybeApplyPendingAsrBackendReload();
   }
   return DbusService::MethodResult::Success();
@@ -910,7 +910,6 @@ void DaemonRuntimeController::ResetToIdle() {
     current_is_command_ = false;
     current_selected_text_.clear();
   }
-  session_lifecycle_.CancelAndRetireActive();
   RestoreOutputIfDucked();
   dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
   VLOG_DEBUG("phase -> idle");
@@ -926,6 +925,9 @@ void DaemonRuntimeController::WorkerMain() {
                       [&]() { return current_order_.has_value() || !worker_running_.load(); });
       if (!worker_running_ && !current_order_.has_value()) {
         break;
+      }
+      if (!current_order_.has_value()) {
+        continue;
       }
       order = std::move(*current_order_);
     }
