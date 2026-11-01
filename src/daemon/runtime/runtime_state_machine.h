@@ -14,7 +14,7 @@ struct StateTransitionResult {
   bool accepted = false;
   vinput::dbus::Status previous_phase = vinput::dbus::Status::Idle;
   vinput::dbus::Status new_phase = vinput::dbus::Status::Idle;
-  std::string rejection_reason;
+  std::string rejection_reason = {};
 
   bool should_start_capture = false;
   bool should_stop_capture = false;
@@ -35,7 +35,6 @@ public:
   [[nodiscard]] PostprocessingState CurrentPostprocessingState() const noexcept;
   [[nodiscard]] bool IsCommand() const noexcept;
   [[nodiscard]] const std::string& SelectedText() const noexcept;
-  [[nodiscard]] bool IsPostprocessingCancelRequested() const noexcept;
 
   StateTransitionResult OnStartRecording(bool is_command, const std::string& selected_text);
   StateTransitionResult OnStopRecording(std::size_t sample_count, std::size_t min_samples);
@@ -61,7 +60,6 @@ private:
   PostprocessingState postprocessing_state_ = PostprocessingState::Inactive;
   bool is_command_ = false;
   std::string selected_text_;
-  bool postprocessing_cancel_requested_ = false;
 };
 
 } // namespace vinput::daemon::runtime

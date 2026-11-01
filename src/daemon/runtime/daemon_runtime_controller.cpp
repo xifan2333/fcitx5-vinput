@@ -821,7 +821,9 @@ void DaemonRuntimeController::FlushDeferredActions() {
     phase_snapshot = state_machine_.CurrentPhase();
     start_in_progress = start_recording_in_progress_;
     skip_teardown = start_recording_in_progress_ || capture_->IsRecording() ||
-                    phase_snapshot != vinput::dbus::Status::Idle;
+                    phase_snapshot == vinput::dbus::Status::Recording ||
+                    phase_snapshot == vinput::dbus::Status::Inferring ||
+                    phase_snapshot == vinput::dbus::Status::Postprocessing;
   }
   if (skip_teardown) {
     VLOG_DEBUG("deferred capture stop skipped (start_in_progress={} recording={} phase={})",
@@ -977,7 +979,11 @@ void DaemonRuntimeController::WorkerMain() {
       auto pipeline_result = pipeline_->Process(
           order, runtime_settings, [&]() { EnterPostprocessing(order.is_command); },
           &postprocessing_cancel_requested_);
-      const auto postprocessing_action = state_machine_.TakePostprocessingState();
+      PostprocessingState postprocessing_action = PostprocessingState::Inactive;
+      {
+        const std::scoped_lock lock(state_mutex_);
+        postprocessing_action = state_machine_.TakePostprocessingState();
+      }
       if (postprocessing_action == PostprocessingState::CommitRaw) {
         pipeline_result.payload.commitText = order.recognized_text;
         pipeline_result.payload.candidates = {
@@ -994,16 +1000,18 @@ void DaemonRuntimeController::WorkerMain() {
         dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(error));
       }
       dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
+    } catch (const std::exception& e) {
       {
         const std::scoped_lock lock(state_mutex_);
-        state_machine_.OnPostprocessingComplete();
+        (void)state_machine_.TakePostprocessingState();
       }
-    } catch (const std::exception& e) {
-      (void)state_machine_.TakePostprocessingState();
       VLOG_ERROR("worker exception: {}", e.what());
       dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(e.what()));
     } catch (...) {
-      (void)state_machine_.TakePostprocessingState();
+      {
+        const std::scoped_lock lock(state_mutex_);
+        (void)state_machine_.TakePostprocessingState();
+      }
       VLOG_ERROR("worker unknown exception");
       dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(
           _("Unknown error during processing.")));

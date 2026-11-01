@@ -38,10 +38,6 @@ const std::string& RuntimeStateMachine::SelectedText() const noexcept {
   return selected_text_;
 }
 
-bool RuntimeStateMachine::IsPostprocessingCancelRequested() const noexcept {
-  return postprocessing_cancel_requested_;
-}
-
 StateTransitionResult RuntimeStateMachine::OnStartRecording(bool is_command,
                                                             const std::string& selected_text) {
   if (phase_ != vinput::dbus::Status::Idle) {
@@ -54,7 +50,6 @@ StateTransitionResult RuntimeStateMachine::OnStartRecording(bool is_command,
   postprocessing_state_ = PostprocessingState::Inactive;
   is_command_ = is_command;
   selected_text_ = selected_text;
-  postprocessing_cancel_requested_ = false;
 
   return StateTransitionResult{
       .accepted = true,
@@ -109,7 +104,6 @@ StateTransitionResult RuntimeStateMachine::OnCancel(bool commit_raw_text) {
 
     postprocessing_state_ =
         commit_raw_text ? PostprocessingState::CommitRaw : PostprocessingState::Discard;
-    postprocessing_cancel_requested_ = true;
 
     return StateTransitionResult{
         .accepted = true,
@@ -210,7 +204,6 @@ StateTransitionResult RuntimeStateMachine::AbortRecordingToIdle(vinput::dbus::St
 StateTransitionResult RuntimeStateMachine::CompleteToIdle(vinput::dbus::Status prev) {
   phase_ = vinput::dbus::Status::Idle;
   postprocessing_state_ = PostprocessingState::Inactive;
-  postprocessing_cancel_requested_ = false;
   is_command_ = false;
   selected_text_.clear();
   return StateTransitionResult{
@@ -232,7 +225,6 @@ void RuntimeStateMachine::Clear() noexcept {
   postprocessing_state_ = PostprocessingState::Inactive;
   is_command_ = false;
   selected_text_.clear();
-  postprocessing_cancel_requested_ = false;
 }
 
 } // namespace vinput::daemon::runtime

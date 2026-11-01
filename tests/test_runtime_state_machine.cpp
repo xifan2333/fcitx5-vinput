@@ -26,7 +26,6 @@ void TestInitialState() {
          "Initial postprocessing state must be Inactive");
   Expect(!sm.IsCommand(), "Initial is_command must be false");
   Expect(sm.SelectedText().empty(), "Initial selected text must be empty");
-  Expect(!sm.IsPostprocessingCancelRequested(), "Cancel requested must be false");
 }
 
 void TestHappyPathDictation() {
@@ -110,7 +109,6 @@ void TestCancellationFlows() {
 
     auto res = sm.OnCancel(/*commit_raw_text=*/true);
     Expect(res.accepted, "Cancel with commit raw in dictation must be accepted");
-    Expect(sm.IsPostprocessingCancelRequested(), "Cancel requested must be set");
     Expect(sm.CurrentPostprocessingState() == PostprocessingState::CommitRaw,
            "State must be CommitRaw");
 
