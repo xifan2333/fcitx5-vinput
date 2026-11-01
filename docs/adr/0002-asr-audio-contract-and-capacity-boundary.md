@@ -79,9 +79,11 @@ defined in `vinput-registry`, upstream `sherpa-onnx`, and modern C++ engineering
 
 5. **Orchestrator De-datafication & Zero-Fallback Invariant**:
    - `DaemonRuntimeController` completely divests itself of all raw PCM vectors and slicing algorithms.
-     Audio flows directly from `AudioCapture` into the active `RecognitionSession`. The controller only
-     manages D-Bus RPCs, high-level status transitions (`Idle`, `Recording`, `Inferring`, `Postprocessing`),
-     and session lifecycle.
+     Audio sample buffering, device-boundary gain scaling, startup pre-roll preservation, and streaming chunking
+     are fully delegated to the standalone `AudioRecordingBuffer` deep module. The controller manages D-Bus RPCs,
+     high-level status transitions (`Idle`, `Recording`, `Inferring`, `Postprocessing`), and session lifecycle,
+     without touching raw audio buffers (session orchestration will be further decoupled into `SessionLifecycleManager`
+     in Phase III).
    - **No Fallback Policy**: Internal architectural refactoring shall not introduce backward-compatibility
      aliases, double-buffering fallback layers, or multi-tier fallback chains. Clean, elegant, and unambiguous
      domain boundaries take absolute precedence over legacy workarounds.

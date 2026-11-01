@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -17,9 +18,9 @@
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
 #include "daemon/audio/output_ducker.h"
+#include "daemon/runtime/audio_recording_buffer.h"
 #include "daemon/runtime/dbus_service.h"
 #include "daemon/runtime/recognition_pipeline.h"
-#include "daemon/runtime/startup_pcm_buffer.h"
 
 namespace vinput::daemon::remote {
 class RemoteTextService;
@@ -34,6 +35,11 @@ public:
                           RecognitionPipeline* pipeline,
                           vinput::daemon::remote::RemoteTextService* remote_text_service = nullptr);
   ~DaemonRuntimeController();
+
+  DaemonRuntimeController(const DaemonRuntimeController&) = delete;
+  DaemonRuntimeController& operator=(const DaemonRuntimeController&) = delete;
+  DaemonRuntimeController(DaemonRuntimeController&&) = delete;
+  DaemonRuntimeController& operator=(DaemonRuntimeController&&) = delete;
 
   DbusService::MethodResult StartRecording();
   DbusService::MethodResult StartCommandRecording(const std::string& selected_text);
@@ -106,11 +112,7 @@ private:
   vinput::daemon::asr::BackendDescriptor active_backend_;
   bool current_is_command_ = false;
   std::string current_selected_text_;
-  StartupPcmBuffer startup_pcm_buffer_;
-  std::vector<int16_t> current_recording_pcm_;
-  std::vector<int16_t> pending_chunk_pcm_;
-  std::size_t current_sample_count_ = 0;
-  float current_input_gain_ = 1.0f;
+  AudioRecordingBuffer audio_buffer_;
   std::string latest_final_text_;
   std::optional<std::chrono::steady_clock::time_point> recording_started_at_;
   std::optional<std::chrono::steady_clock::time_point> first_non_silent_at_;
