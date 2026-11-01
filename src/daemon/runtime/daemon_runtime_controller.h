@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -34,6 +35,11 @@ public:
                           RecognitionPipeline* pipeline,
                           vinput::daemon::remote::RemoteTextService* remote_text_service = nullptr);
   ~DaemonRuntimeController();
+
+  DaemonRuntimeController(const DaemonRuntimeController&) = delete;
+  DaemonRuntimeController& operator=(const DaemonRuntimeController&) = delete;
+  DaemonRuntimeController(DaemonRuntimeController&&) = delete;
+  DaemonRuntimeController& operator=(DaemonRuntimeController&&) = delete;
 
   DbusService::MethodResult StartRecording();
   DbusService::MethodResult StartCommandRecording(const std::string& selected_text);
