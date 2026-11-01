@@ -20,6 +20,7 @@
 #include "daemon/runtime/audio_recording_buffer.h"
 #include "daemon/runtime/dbus_service.h"
 #include "daemon/runtime/recognition_pipeline.h"
+#include "daemon/runtime/runtime_state_machine.h"
 #include "daemon/runtime/session_lifecycle_manager.h"
 
 namespace vinput::daemon::remote {
@@ -55,26 +56,13 @@ public:
   void Shutdown();
 
 private:
-  enum class PostprocessingState : std::uint8_t {
-    Inactive,
-    Dictation,
-    Command,
-    Discard,
-    CommitRaw
-  };
-
   DbusService::MethodResult StartRecordingInternal(bool is_command,
                                                    const std::string& selected_text);
   bool SynchronizeAsrBackend(std::string* error = nullptr);
   void MaybeApplyPendingAsrBackendReload();
   void DrainIncomingAudio();
   void HandleIncomingAudio(std::span<const int16_t> pcm);
-  // Main-thread only: poll the still-recording active session after a worker
-  // wake-up, and surface a worker-side backend failure via FailActiveSession.
   void PollActiveSessionEvents();
-  // Existing push-failure transition (release active session, phase=Error,
-  // notify once, stop capture). Returns false when `session` is no longer
-  // the active one, in which case nothing is emitted for it.
   bool FailActiveSession(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
                          const std::string& error_message);
   void ScheduleCaptureStopOnMainThread();
@@ -82,7 +70,6 @@ private:
   void RestoreOutputIfDucked();
   void ResetRecordingStateLocked();
   void EnterPostprocessing(bool command_mode);
-  PostprocessingState TakePostprocessingState();
   void ResetToIdle();
   void WorkerMain();
 
@@ -95,14 +82,11 @@ private:
 
   mutable std::mutex state_mutex_;
   std::condition_variable worker_cv_;
-  vinput::dbus::Status phase_ = vinput::dbus::Status::Idle;
-  PostprocessingState postprocessing_state_ = PostprocessingState::Inactive;
+  RuntimeStateMachine state_machine_;
   std::atomic<bool> postprocessing_cancel_requested_{false};
   std::optional<RecognitionOrder> current_order_;
   SessionLifecycleManager session_lifecycle_;
   vinput::daemon::asr::BackendDescriptor active_backend_;
-  bool current_is_command_ = false;
-  std::string current_selected_text_;
   AudioRecordingBuffer audio_buffer_;
   std::string latest_final_text_;
   std::optional<std::chrono::steady_clock::time_point> recording_started_at_;
