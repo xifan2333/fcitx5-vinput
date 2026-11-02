@@ -4,6 +4,7 @@ set(VINPUT_CONFIG_SOURCES
     config/core_config_normalize.cpp
     config/core_config_validate.cpp
     config/core_config_resolve.cpp
+    config/core_config_view.cpp
     config/core_config_json.cpp
     config/config_router.cpp
     config/config_migration.cpp
