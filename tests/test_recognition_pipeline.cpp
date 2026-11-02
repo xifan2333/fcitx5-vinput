@@ -24,7 +24,8 @@ void Expect(bool condition, const char* message) {
 void TestUninitializedPipeline() {
   const RecognitionPipeline pipeline(nullptr);
   const CoreConfig config{};
-  const PostprocessRequest req{.text = "hello"};
+  PostprocessRequest req;
+  req.text = "hello";
   const auto res = pipeline.Process(req, config);
   Expect(!res.errors.empty(), "Uninitialized pipeline must return error");
   Expect(res.payload.commitText.empty(), "Uninitialized pipeline must return empty payload");
@@ -34,7 +35,8 @@ void TestEmptyText() {
   PostProcessor processor;
   const RecognitionPipeline pipeline(&processor);
   const CoreConfig config{};
-  const PostprocessRequest req{.text = ""};
+  PostprocessRequest req;
+  req.text = "";
   const auto res = pipeline.Process(req, config);
   Expect(res.errors.empty(), "Empty text must not produce error");
   Expect(res.payload.commitText.empty(), "Empty text must produce empty payload");
