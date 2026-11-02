@@ -22,6 +22,8 @@
 #if VINPUT_ENABLE_LOCAL_ASR
 #include "common/asr/model_manager.h"
 #endif
+#include <fmt/printf.h>
+
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
@@ -136,7 +138,7 @@ std::string PaletteMenuTitle(const ParsedPaletteQuery& parsed) {
   }
 
   if (!parsed.terms.empty()) {
-    return vinput::str::FmtStr(_("Search: %s"), parsed.terms.c_str());
+    return fmt::sprintf(_("Search: %s"), parsed.terms.c_str());
   }
 
   return _("Command Palette");
@@ -390,9 +392,8 @@ void VinputEngine::initializePaletteRegistry() {
               engine->notifyError(error.empty() ? _("Failed to set command model.") : error);
               return;
             }
-            engine->notifyInfo(vinput::str::FmtStr(_("Command model set to '%s / %s'."),
-                                                   item.provider_id.c_str(),
-                                                   item.model_id.c_str()));
+            engine->notifyInfo(fmt::sprintf(_("Command model set to '%s / %s'."),
+                                            item.provider_id.c_str(), item.model_id.c_str()));
           },
   });
 
@@ -487,9 +488,9 @@ void VinputEngine::initializePaletteRegistry() {
             const auto* target_provider = ResolveAsrProvider(core_config, item.provider_id);
             if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
               engine->notifyError(
-                  vinput::str::FmtStr(_("ASR provider '%s' is a local provider, which is not "
-                                        "supported in this Lite build."),
-                                      item.provider_id.c_str()));
+                  fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
+                                 "supported in this Lite build."),
+                               item.provider_id.c_str()));
               return;
             }
 #endif
@@ -514,7 +515,7 @@ void VinputEngine::initializePaletteRegistry() {
               }
             }
             engine->notifyInfo(
-                vinput::str::FmtStr(_("ASR switch requested for '%s'."), item.text.c_str()));
+                fmt::sprintf(_("ASR switch requested for '%s'."), item.text.c_str()));
           },
   });
 
@@ -562,8 +563,7 @@ void VinputEngine::initializePaletteRegistry() {
               return;
             }
             engine->active_scene_id_ = item.scene_id;
-            engine->notifyInfo(
-                vinput::str::FmtStr(_("Scene switched to '%s'."), item.text.c_str()));
+            engine->notifyInfo(fmt::sprintf(_("Scene switched to '%s'."), item.text.c_str()));
           },
   });
 
@@ -620,15 +620,13 @@ void VinputEngine::initializePaletteRegistry() {
                 engine->notifyError(error.empty() ? _("Failed to stop adapter.") : error);
                 return;
               }
-              engine->notifyInfo(
-                  vinput::str::FmtStr(_("Adapter '%s' stopped."), item.text.c_str()));
+              engine->notifyInfo(fmt::sprintf(_("Adapter '%s' stopped."), item.text.c_str()));
             } else {
               if (!engine->callStartAdapter(item.adapter_id, &error)) {
                 engine->notifyError(error.empty() ? _("Failed to start adapter.") : error);
                 return;
               }
-              engine->notifyInfo(
-                  vinput::str::FmtStr(_("Adapter '%s' started."), item.text.c_str()));
+              engine->notifyInfo(fmt::sprintf(_("Adapter '%s' started."), item.text.c_str()));
             }
           },
   });

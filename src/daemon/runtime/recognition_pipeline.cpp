@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <fmt/printf.h>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -12,7 +13,6 @@
 #include "common/i18n.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
-#include "common/utils/string_utils.h"
 
 #include "daemon/postprocess/post_processor.h"
 
@@ -100,8 +100,7 @@ RecognitionPipeline::Process(const PostprocessRequest& request, const CoreConfig
 
   if (target_scene == nullptr) {
     output.payload.commitText = request.text;
-    output.errors.push_back(
-        vinput::str::FmtStr(_("Scene '%s' not found."), std::string(target_scene_id).c_str()));
+    output.errors.push_back(fmt::sprintf(_("Scene '%s' not found."), target_scene_id));
     return output;
   }
 

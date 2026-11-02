@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <fstream>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
@@ -233,8 +234,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
     auto loaded = vinput::prompt_template::LoadFromFileUri(base_prompt, &load_err);
     if (!loaded) {
       if (error_out != nullptr) {
-        *error_out =
-            vinput::str::FmtStr(_("Failed to load prompt file '%s': %s"), base_prompt, load_err);
+        *error_out = fmt::sprintf(_("Failed to load prompt file '%s': %s"), base_prompt, load_err);
       }
       return std::nullopt;
     }
@@ -495,8 +495,7 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
     auto loaded = vinput::prompt_template::LoadFromFileUri(task_prompt, &load_err);
     if (!loaded) {
       if (error_out != nullptr) {
-        *error_out =
-            vinput::str::FmtStr(_("Failed to load prompt file '%s': %s"), task_prompt, load_err);
+        *error_out = fmt::sprintf(_("Failed to load prompt file '%s': %s"), task_prompt, load_err);
       }
       return fallback;
     }

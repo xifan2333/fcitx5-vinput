@@ -80,7 +80,7 @@ debian12)
   apt-get update
   apt-get install -y \
     bzip2 \
-    clang \
+    clang-16 \
     cmake \
     make \
     mold \
@@ -109,6 +109,8 @@ debian12)
     fcitx5-modules-dev \
     libcli11-dev \
     libspdlog-dev
+  update-alternatives --install /usr/bin/clang clang /usr/bin/clang-16 100 \
+    --slave /usr/bin/clang++ clang++ /usr/bin/clang++-16
   install_qt_apt
   ;;
 fedora43)

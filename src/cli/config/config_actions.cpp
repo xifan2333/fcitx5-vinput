@@ -1,6 +1,7 @@
 #include "cli/config/config_actions.h"
 
 #include <cstdio>
+#include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <iostream>
 #include <string>
@@ -105,12 +106,10 @@ int RunConfigMigrate(bool dry_run, Formatter& fmt, const CliContext& ctx) {
   }
 
   if (!report.config_backup.empty()) {
-    fmt.PrintInfo(
-        vinput::str::FmtStr(_("Backed up core config to: %s"), report.config_backup.c_str()));
+    fmt.PrintInfo(fmt::sprintf(_("Backed up core config to: %s"), report.config_backup.c_str()));
   }
   if (!report.conf_backup.empty()) {
-    fmt.PrintInfo(
-        vinput::str::FmtStr(_("Backed up addon config to: %s"), report.conf_backup.c_str()));
+    fmt.PrintInfo(fmt::sprintf(_("Backed up addon config to: %s"), report.conf_backup.c_str()));
   }
 
   const std::vector<std::string> headers = {_("FILE"), _("CHANGE")};

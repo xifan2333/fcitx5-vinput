@@ -45,7 +45,7 @@ Progressive operational guide, hard constraints, and routing index for AI coding
 20. **SSOT Infrastructure Mandate (Zero Ad-hoc Utils)**: Never re-implement generic utility functions (e.g. ad-hoc string trimming, file reading, subprocess execution, ad-hoc JSON parsing). Always reuse project canonical infrastructure in `src/common/`:
     - JSON serialization & reflection: `glaze` (`#include <glaze/glaze.hpp>`).
     - Logging & tracing: Internal `spdlog` wrappers (`VLOG_INFO`, `VLOG_DEBUG`, `VLOG_ERROR`). Raw `fprintf(stderr)` and `std::cout` are forbidden.
-    - String formatting & i18n: User-facing text must use `vinput::str::FmtStr(_("..."), ...)`; internal string construction must use `std::format`.
+    - String formatting & i18n: User-facing text must use `fmt::sprintf(_("..."), ...)`; internal string construction must use `fmt::format`.
     - Subprocess execution: `subprocess.hpp` and `src/common/utils/process_utils.h`.
     - Memory-mapped files: `mio`.
     - Real-time lock-free audio buffering: Single-producer single-consumer queue `readerwriterqueue`. Raw mutexes in the audio callback path are forbidden.

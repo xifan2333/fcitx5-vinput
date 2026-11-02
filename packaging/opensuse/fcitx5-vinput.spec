@@ -33,7 +33,6 @@ BuildRequires:  mold
 BuildRequires:  gettext-tools
 BuildRequires:  pkg-config
 BuildRequires:  fcitx5-devel
-BuildRequires:  nlohmann_json-devel
 BuildRequires:  qt6-base-devel
 BuildRequires:  qt6-tools-devel
 BuildRequires:  libcurl-devel

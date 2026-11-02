@@ -36,6 +36,15 @@ modules:
       - type: archive
         url: https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.4.2.tar.gz
         sha256: f2d893a65c3b1324c50d4e682c0cdc021dd0477ae2c048544f39eed6654b699a
+  - name: spdlog
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DSPDLOG_BUILD_TESTS=OFF
+      - -DSPDLOG_BUILD_EXAMPLE=OFF
+    sources:
+      - type: archive
+        url: https://github.com/gabime/spdlog/archive/refs/tags/v1.15.1.tar.gz
+        sha256: 25c843860f039a1600f232c6eb9e01e6627f7d030a2ae5e232bdd3c9205d26cc
   - name: fcitx5-vinput
     buildsystem: cmake-ninja
     build-options:
@@ -47,6 +56,7 @@ modules:
       - -DCMAKE_BUILD_TYPE=Release
       - -DVINPUT_BUNDLE_SHERPA_RUNTIME=OFF
       - -DVINPUT_FETCH_CLI11=OFF
+      - -DVINPUT_FETCH_SPDLOG=OFF
     sources:
       - type: git
         url: https://github.com/xifan2333/fcitx5-vinput

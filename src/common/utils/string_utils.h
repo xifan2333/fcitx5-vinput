@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
-#include <cstdio>
-#include <fmt/printf.h>
 #include <functional>
 #include <initializer_list>
 #include <optional>
@@ -19,22 +17,7 @@
 namespace vinput::str {
 
 // =========================================================================
-// 1. Formatting (i18n Gettext Bridge)
-// =========================================================================
-
-template <typename... Args> std::string FmtStr(const char* fmt, Args&&... args) {
-  if (fmt == nullptr) {
-    return {};
-  }
-  if constexpr (sizeof...(Args) == 0) {
-    return {fmt};
-  } else {
-    return fmt::sprintf(fmt, std::forward<Args>(args)...);
-  }
-}
-
-// =========================================================================
-// 2. Trimming (Zero-Copy)
+// 1. Trimming (Zero-Copy)
 // =========================================================================
 
 [[nodiscard]] inline std::string_view Trim(std::string_view text) noexcept {

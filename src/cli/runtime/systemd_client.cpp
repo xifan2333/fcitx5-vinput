@@ -1,6 +1,7 @@
 #include "cli/runtime/systemd_client.h"
 
 #include <exception>
+#include <fmt/printf.h>
 #include <string>
 #include <subprocess.hpp>
 #include <vector>
@@ -31,7 +32,7 @@ std::vector<std::string> BuildJournalctlCommand(bool follow, int lines) {
 int RunCommand(const std::vector<std::string>& args);
 
 std::string BuildFailureMessage(const char* fmt, int exit_code) {
-  std::string message = vinput::str::FmtStr(fmt, exit_code);
+  std::string message = fmt::sprintf(fmt, exit_code);
   const std::string logs = JournalctlLogsText(20);
   if (!logs.empty()) {
     message += "\n\n";

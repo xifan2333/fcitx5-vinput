@@ -33,7 +33,6 @@ BuildRequires:  pkgconfig
 BuildRequires:  gettext
 BuildRequires:  cmake(Fcitx5Core)
 BuildRequires:  cmake(Fcitx5Config)
-BuildRequires:  cmake(nlohmann_json) >= 3.2.0
 BuildRequires:  cmake(Qt6Core)
 BuildRequires:  cmake(Qt6Gui)
 BuildRequires:  cmake(Qt6Widgets)

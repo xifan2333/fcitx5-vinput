@@ -1,5 +1,6 @@
 #include "daemon/asr/local_asr_model_loader.h"
 
+#include <fmt/printf.h>
 #include <string>
 #include <utility>
 
@@ -8,21 +9,20 @@
 #include "common/config/core_config_types.h"
 #include "common/i18n.h"
 #include "common/utils/expected.h"
-#include "common/utils/string_utils.h"
 
 namespace vinput::daemon::asr {
 
 vinput::Expected<LocalAsrModelContext> LoadLocalAsrModelContext(const CoreConfig& config,
                                                                 const LocalAsrProvider& provider) {
   if (provider.model.empty()) {
-    return vinput::UnexpectedError(vinput::str::FmtStr(
+    return vinput::UnexpectedError(fmt::sprintf(
         _("Local ASR model configuration is missing for provider '%s'."), provider.id));
   }
 
   const ModelManager model_mgr(ResolveModelBaseDir(config).string(), provider.model);
   if (auto ensure_result = model_mgr.EnsureModels(); !ensure_result) {
     std::string message =
-        vinput::str::FmtStr(_("Local ASR model check failed for provider '%s'."), provider.id);
+        fmt::sprintf(_("Local ASR model check failed for provider '%s'."), provider.id);
     message += "\n";
     message += std::move(ensure_result).error();
     return vinput::UnexpectedError(std::move(message));
