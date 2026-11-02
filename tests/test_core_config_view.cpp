@@ -245,13 +245,13 @@ void TestCommandScene() {
   {
     vinput::scene::Definition cmd_scene;
     cmd_scene.id = vinput::scene::kCommandSceneId;
-    cmd_scene.name = "Command Mode";
+    cmd_scene.label = "Command Mode";
     config.scenes.definitions.push_back(cmd_scene);
 
     const vinput::config::CoreConfigView view(config);
     const auto* found = view.CommandScene();
     Expect(found != nullptr, "CommandScene must find registered command scene");
-    Expect(found->name == "Command Mode", "Command scene name must match");
+    Expect(found->label == "Command Mode", "Command scene label must match");
   }
 }
 

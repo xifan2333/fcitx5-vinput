@@ -1,9 +1,12 @@
+#include <filesystem>
 #include <string>
 #include <variant>
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
+#include "common/scene/postprocess_scene.h"
 
 const LlmProvider* ResolveLlmProvider(const CoreConfig& config, const std::string& provider_id) {
   return CoreConfigView(config).LlmProvider(provider_id);
@@ -51,16 +54,16 @@ std::vector<std::string> ResolveRegistryI18nUrls(const CoreConfig& config,
 }
 
 bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::string* error) {
-  if (!config) {
-    if (error) {
+  if (config == nullptr) {
+    if (error != nullptr) {
       *error = "Config is null.";
     }
     return false;
   }
 
   const AsrProvider* provider = CoreConfigView(*config).PreferredLocalAsrProvider();
-  if (!provider) {
-    if (error) {
+  if (provider == nullptr) {
+    if (error != nullptr) {
       *error = "No local ASR provider configured.";
     }
     return false;
@@ -76,7 +79,7 @@ bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::s
     }
   }
 
-  if (error) {
+  if (error != nullptr) {
     *error = "Local ASR provider not found.";
   }
   return false;
