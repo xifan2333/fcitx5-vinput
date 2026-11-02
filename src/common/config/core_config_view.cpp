@@ -1,7 +1,7 @@
 #include "common/config/core_config_view.h"
 
 #include <filesystem>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <set>
 #include <string>
 #include <string_view>

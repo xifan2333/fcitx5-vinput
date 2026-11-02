@@ -4,7 +4,7 @@
 #include <base64.hpp>
 #include <chrono>
 #include <cstdint>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
