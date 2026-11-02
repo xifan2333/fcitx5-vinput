@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <indicators/indicators.hpp>
 #include <iostream>
 #include <memory>
@@ -17,12 +17,12 @@ std::string FormatSpeed(double speed_bps) {
     return "";
   }
   if (speed_bps >= 1024.0 * 1024.0) {
-    return std::format("{:.1f}MB/s", speed_bps / (1024.0 * 1024.0));
+    return fmt::format("{:.1f}MB/s", speed_bps / (1024.0 * 1024.0));
   }
   if (speed_bps >= 1024.0) {
-    return std::format("{:.1f}KB/s", speed_bps / 1024.0);
+    return fmt::format("{:.1f}KB/s", speed_bps / 1024.0);
   }
-  return std::format("{:.0f}B/s", speed_bps);
+  return fmt::format("{:.0f}B/s", speed_bps);
 }
 
 } // namespace
@@ -67,7 +67,7 @@ void ProgressBar::Update(uint64_t current, double speed_bps) {
     const int bucket = (percent / 10) * 10;
     const int last_bucket = (last_percent_ < 0) ? -1 : (last_percent_ / 10) * 10;
     if (bucket > last_bucket) {
-      std::cerr << std::format("{}: {}%\n", label_, bucket) << std::flush;
+      std::cerr << fmt::format("{}: {}%\n", label_, bucket) << std::flush;
       last_percent_ = percent;
     }
   }

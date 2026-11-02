@@ -1,7 +1,7 @@
 #include "common/config/core_config_view.h"
 
 #include <filesystem>
-#include <format>
+#include <fmt/format.h>
 #include <set>
 #include <string>
 #include <string_view>
@@ -122,7 +122,7 @@ std::vector<std::string> CoreConfigView::LlmAdapterRegistryUrls() const {
 }
 
 std::vector<std::string> CoreConfigView::RegistryI18nUrls(std::string_view locale) const {
-  return ResolveRegistryUrlsForPath(*config_, std::format("i18n/{}.json", locale));
+  return ResolveRegistryUrlsForPath(*config_, fmt::format("i18n/{}.json", locale));
 }
 
 const vinput::scene::Definition* CoreConfigView::CommandScene() const noexcept {

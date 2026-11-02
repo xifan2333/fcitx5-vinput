@@ -4,7 +4,7 @@
 #include <base64.hpp>
 #include <chrono>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
@@ -48,7 +48,7 @@ int RemainingMs(Clock::time_point deadline, int fallback_ms) {
 
 std::string MakeSessionSourceId(std::string_view provider_id) {
   static std::atomic<std::uint64_t> s_session_counter{0};
-  return std::format("{}-{}", provider_id, ++s_session_counter);
+  return fmt::format("{}-{}", provider_id, ++s_session_counter);
 }
 
 class CommandStreamingSession : public RecognitionSession {
