@@ -1578,3 +1578,7 @@ msgstr "命令 ASR 提供商异常退出。"
 #: src/daemon/asr/backends/command_batch_backend.cpp:75
 msgid "Command ASR provider returned no text."
 msgstr "命令 ASR 提供商未返回任何文本。"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:430
+msgid "Recognition failed: audio is about %.1f seconds long, which exceeds what this offline model can reliably process. Please record in shorter segments or switch to a streaming model."
+msgstr "本轮语音未识别：录音约 %.1f 秒，当前离线模型无法可靠处理过长的连续音频。请分段录制，或在设置中改用流式模型。"

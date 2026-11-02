@@ -12,6 +12,7 @@
 #include <optional>
 #include <sherpa-onnx/c-api/cxx-api.h>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -21,9 +22,11 @@
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config_types.h"
+#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
+#include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
 #include "daemon/asr/hotword_utils.h"
@@ -419,11 +422,27 @@ std::string InferOffline(const sherpa_onnx::cxx::OfflineRecognizer* recognizer,
     return {};
   }
 
-  stream.AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
-  recognizer->Decode(&stream);
+  try {
+    stream.AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
+    recognizer->Decode(&stream);
 
-  const auto result = recognizer->GetResult(&stream);
-  return result.text;
+    const auto result = recognizer->GetResult(&stream);
+    return result.text;
+  } catch (const std::exception& e) {
+    const double duration_sec = static_cast<double>(samples.size()) / 16000.0;
+    VLOG_ERROR("sherpa-onnx offline decode exception on utterance ({:.1f}s): {}", duration_sec,
+               e.what());
+    const std::string_view err_msg(e.what());
+    if (err_msg.find("Reshape") != std::string_view::npos ||
+        err_msg.find("cannot be reshaped") != std::string_view::npos || duration_sec > 25.0) {
+      throw std::runtime_error(vinput::str::FmtStr(
+          _("Recognition failed: audio is about %.1f seconds long, which exceeds what this offline "
+            "model can reliably process. Please record in shorter segments or switch to a "
+            "streaming model."),
+          duration_sec));
+    }
+    throw;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -487,19 +506,34 @@ public:
       return true;
     }
 
-    if (vad_available_ && vad_ != nullptr) {
-      samples_ = vad_->Trim(samples_, 16000);
-      if (samples_.size() < kMinSamplesForInference) {
-        VLOG_DEBUG("audio too short after VAD trim, skipping");
+    std::string text;
+    if (vad_available_ && vad_ != nullptr && vad_->Available()) {
+      const auto segments = vad_->Segment(samples_, 16000);
+      if (segments.empty()) {
+        VLOG_DEBUG("VAD found no speech segments, skipping ASR");
         events_.push_back({RecognitionEventKind::Completed, {}, {}});
         if (error != nullptr) {
           error->clear();
         }
         return true;
       }
+
+      for (const auto& segment : segments) {
+        if (segment.size() < kMinSamplesForInference) {
+          continue;
+        }
+        std::string seg_text = InferOffline(recognizer_, segment);
+        if (!seg_text.empty()) {
+          if (!text.empty()) {
+            text += ' ';
+          }
+          text += seg_text;
+        }
+      }
+    } else {
+      text = InferOffline(recognizer_, samples_);
     }
 
-    std::string text = InferOffline(recognizer_, samples_);
     if (!text.empty()) {
       events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
     }

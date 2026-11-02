@@ -8,7 +8,8 @@
 struct VadTrimParams {
   float threshold = 0.35F;
   float min_speech_duration = 0.10F;
-  float min_silence_duration = 1.2F;
+  float min_silence_duration = 0.8F;
+  float max_speech_duration = 15.0F;
   int speech_pad_ms = 500;
 };
 
@@ -31,6 +32,11 @@ public:
   // Extract continuous speech audio between outer bounds, preserving internal pauses.
   // Returns empty if no speech found.
   std::vector<float> Trim(const std::vector<float>& samples, int sample_rate);
+
+  // Segment audio into speech utterances using VAD, respecting max_speech_duration.
+  // Returns empty if no speech is detected.
+  [[nodiscard]] std::vector<std::vector<float>> Segment(const std::vector<float>& samples,
+                                                        int sample_rate);
 
   [[nodiscard]] bool Available() const;
   void Shutdown();

@@ -9,6 +9,31 @@
 
 #include "common/utils/debug_log.h"
 
+namespace {
+
+void FeedWaveformToVad(sherpa_onnx::cxx::VoiceActivityDetector& vad,
+                       const std::vector<float>& samples) {
+  const int n = static_cast<int>(samples.size());
+  vad.Reset();
+
+  constexpr int kWindowSize = 512;
+  int offset = 0;
+  for (; offset + kWindowSize <= n; offset += kWindowSize) {
+    vad.AcceptWaveform(samples.data() + offset, kWindowSize);
+  }
+  if (offset < n) {
+    std::vector<float> padded_tail(kWindowSize, 0.0F);
+    const int remaining = n - offset;
+    for (int i = 0; i < remaining; ++i) {
+      padded_tail[i] = samples[offset + i];
+    }
+    vad.AcceptWaveform(padded_tail.data(), kWindowSize);
+  }
+  vad.Flush();
+}
+
+} // namespace
+
 VadTrimmer::VadTrimmer() = default;
 VadTrimmer::~VadTrimmer() = default;
 VadTrimmer::VadTrimmer(VadTrimmer&&) noexcept = default;
@@ -27,7 +52,7 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   config.silero_vad.min_silence_duration = params_.min_silence_duration;
   config.silero_vad.min_speech_duration = params_.min_speech_duration;
   config.silero_vad.window_size = 512;
-  config.silero_vad.max_speech_duration = 0.0F;
+  config.silero_vad.max_speech_duration = params_.max_speech_duration;
   config.sample_rate = sample_rate;
   config.num_threads = 1;
   config.provider = provider;
@@ -57,23 +82,7 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
 
   auto& vad = *vad_;
   const int n = static_cast<int>(samples.size());
-  vad.Reset();
-
-  // Feed audio in window_size chunks
-  constexpr int kWindowSize = 512;
-  int offset = 0;
-  for (; offset + kWindowSize <= n; offset += kWindowSize) {
-    vad.AcceptWaveform(samples.data() + offset, kWindowSize);
-  }
-  if (offset < n) {
-    std::vector<float> padded_tail(kWindowSize, 0.0F);
-    const int remaining = n - offset;
-    for (int i = 0; i < remaining; ++i) {
-      padded_tail[i] = samples[offset + i];
-    }
-    vad.AcceptWaveform(padded_tail.data(), kWindowSize);
-  }
-  vad.Flush();
+  FeedWaveformToVad(vad, samples);
 
   // Determine global speech bounds across all detected segments.
   // We trim only leading and trailing silence outside the outer speech bounds;
@@ -125,6 +134,33 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
              n, result.size(), leading_removed * 1000 / sample_rate_,
              trailing_removed * 1000 / sample_rate_, params_.speech_pad_ms);
   return result;
+}
+
+std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& samples,
+                                                    int /*sample_rate*/) {
+  if (!vad_.has_value() || vad_->Get() == nullptr || samples.empty()) {
+    return {samples};
+  }
+
+  auto& vad = *vad_;
+  const int n = static_cast<int>(samples.size());
+  FeedWaveformToVad(vad, samples);
+
+  std::vector<std::vector<float>> segments;
+  constexpr float kMinSegmentDurationSec = 0.10F;
+  const std::size_t min_segment_samples =
+      static_cast<std::size_t>(kMinSegmentDurationSec * static_cast<float>(sample_rate_));
+
+  while (!vad.IsEmpty()) {
+    auto seg = vad.Front();
+    if (seg.samples.size() >= min_segment_samples) {
+      segments.push_back(std::move(seg.samples));
+    }
+    vad.Pop();
+  }
+
+  VLOG_DEBUG("VAD segmented {} samples into {} speech segments", n, segments.size());
+  return segments;
 }
 
 bool VadTrimmer::Available() const {
