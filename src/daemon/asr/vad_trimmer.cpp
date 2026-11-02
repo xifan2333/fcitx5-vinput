@@ -10,6 +10,8 @@
 
 #include "common/utils/debug_log.h"
 
+#include "daemon/asr/vad_segmentation.h"
+
 namespace {
 
 void FeedWaveformToVad(sherpa_onnx::cxx::VoiceActivityDetector& vad,
@@ -181,8 +183,7 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
     const int64_t raw_end = detected[i].end;
 
     // Expand leading boundary with speech_pad_ms, preventing cross-segment overlap
-    const int64_t cut_start =
-        std::max(last_cut_end, std::max(int64_t{0}, raw_start - padding_samples));
+    const int64_t cut_start = std::max({last_cut_end, int64_t{0}, raw_start - padding_samples});
 
     // Expand trailing boundary with speech_pad_ms, fairly sharing inter-segment gaps
     int64_t cut_end = raw_end;

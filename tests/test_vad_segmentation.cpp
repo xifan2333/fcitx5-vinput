@@ -17,7 +17,7 @@ void Expect(bool condition, const char* message) {
 void TestExactMaxDurationNotSliced() {
   constexpr int kSampleRate = 16000;
   constexpr std::size_t kSamples15s = 240000;
-  std::vector<std::vector<float>> input = {std::vector<float>(kSamples15s, 0.1F)};
+  const std::vector<std::vector<float>> input = {std::vector<float>(kSamples15s, 0.1F)};
 
   auto result = CoalesceAndSliceSegments(input, kSampleRate, 15.0F, 0.50F);
   Expect(result.size() == 1, "Segment exactly at 15.0s must not be sliced");
@@ -28,7 +28,7 @@ void TestExactMaxDurationNotSliced() {
 void TestMaxDurationPlusOneSampleSliced() {
   constexpr int kSampleRate = 16000;
   constexpr std::size_t kSamples15sPlusOne = 240001;
-  std::vector<std::vector<float>> input = {std::vector<float>(kSamples15sPlusOne, 0.2F)};
+  const std::vector<std::vector<float>> input = {std::vector<float>(kSamples15sPlusOne, 0.2F)};
 
   auto result = CoalesceAndSliceSegments(input, kSampleRate, 15.0F, 0.50F);
   Expect(result.size() == 2, "Segment of 15.0s + 1 sample must be sliced into 2 segments");
@@ -40,7 +40,7 @@ void TestMaxDurationPlusOneSampleSliced() {
 void TestConsecutiveShortFragmentsCoalesced() {
   constexpr int kSampleRate = 16000;
   // Three fragments of 0.2s each (3,200 samples)
-  std::vector<std::vector<float>> input = {
+  const std::vector<std::vector<float>> input = {
       std::vector<float>(3200, 0.1F),
       std::vector<float>(3200, 0.2F),
       std::vector<float>(3200, 0.3F),
@@ -56,7 +56,7 @@ void TestConsecutiveShortFragmentsCoalesced() {
 void TestShortFragmentNextToMaxDurationNotExceedingMax() {
   constexpr int kSampleRate = 16000;
   // 0.2s (3,200 samples) + 14.9s (238,400 samples) = 241,600 samples > 240,000 (15.0s)
-  std::vector<std::vector<float>> input = {
+  const std::vector<std::vector<float>> input = {
       std::vector<float>(3200, 0.1F),
       std::vector<float>(238400, 0.2F),
   };
@@ -70,7 +70,7 @@ void TestShortFragmentNextToMaxDurationNotExceedingMax() {
 // 5. Empty segments must be completely filtered out.
 void TestEmptySegmentsFiltered() {
   constexpr int kSampleRate = 16000;
-  std::vector<std::vector<float>> input = {
+  const std::vector<std::vector<float>> input = {
       {}, std::vector<float>(16000, 0.1F), {}, std::vector<float>(32000, 0.2F), {},
   };
 
@@ -82,7 +82,7 @@ void TestEmptySegmentsFiltered() {
 
 // 6. Invalid sample rate or empty input returns input unchanged defensively.
 void TestDefensiveParameters() {
-  std::vector<std::vector<float>> input = {std::vector<float>(100, 0.1F)};
+  const std::vector<std::vector<float>> input = {std::vector<float>(100, 0.1F)};
   Expect(CoalesceAndSliceSegments(input, 0).size() == 1, "Zero sample rate returns input");
   Expect(CoalesceAndSliceSegments(input, -1).size() == 1, "Negative sample rate returns input");
   Expect(CoalesceAndSliceSegments({}, 16000).empty(), "Empty input returns empty");
