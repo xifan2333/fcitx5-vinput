@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "daemon/asr/vad_segmentation.h"
+
 struct VadTrimParams {
   float threshold = 0.35F;
   float min_speech_duration = 0.10F;
