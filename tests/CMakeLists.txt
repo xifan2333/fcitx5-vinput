@@ -352,6 +352,13 @@ target_include_directories(test_offline_error_format PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(test_offline_error_format PRIVATE config)
 add_test(NAME test_offline_error_format COMMAND test_offline_error_format)
 
+add_executable(test_vad_segmentation
+    test_vad_segmentation.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/asr/vad_segmentation.cpp
+)
+target_include_directories(test_vad_segmentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME test_vad_segmentation COMMAND test_vad_segmentation)
+
 add_executable(test_time_utils test_time_utils.cpp)
 target_include_directories(test_time_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_time_utils COMMAND test_time_utils)
