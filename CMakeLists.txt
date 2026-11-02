@@ -219,6 +219,14 @@ target_include_directories(3rdparty_tl_expected SYSTEM INTERFACE
 )
 add_library(tl::expected ALIAS 3rdparty_tl_expected)
 
+add_library(3rdparty_fmt INTERFACE)
+target_include_directories(3rdparty_fmt SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/fmt/include
+)
+target_compile_definitions(3rdparty_fmt INTERFACE FMT_HEADER_ONLY=1)
+add_library(fmt::fmt ALIAS 3rdparty_fmt)
+add_library(fmt::fmt-header-only ALIAS 3rdparty_fmt)
+
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit")

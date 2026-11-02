@@ -85,6 +85,12 @@ This file lists third-party software that this project depends on or bundles, an
     - Upstream: https://github.com/TartanLlama/expected
     - Version: v1.3.1 (commit 1770e3559f2f6ea4a5fb4f577ad22aeb30fbd8e4, imported 2026-10-22, vendored in `3rdparty/tl-expected/`)
 
+11. **fmtlib/fmt** (`3rdparty/fmt/`)
+    - Description: Fast and safe formatting library for C++.
+    - License: MIT
+    - Upstream: https://github.com/fmtlib/fmt
+    - Version: v11.1.4 (vendored in `3rdparty/fmt/`)
+
 ## Models / data downloaded by users (not bundled)
 
 1. **sherpa-onnx ASR models**
