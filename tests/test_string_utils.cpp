@@ -10,7 +10,9 @@
 
 #include "common/utils/string_utils.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -256,6 +258,8 @@ void TestJoinKeyValue() {
   };
   TEST_ASSERT(JoinKeyValue(pair_list, "&", "=") == "=val&key=");
 }
+
+} // namespace
 
 int main() {
   TestTrim();

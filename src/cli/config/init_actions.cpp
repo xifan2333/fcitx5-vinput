@@ -2,11 +2,15 @@
 
 #include <filesystem>
 #include <fmt/printf.h>
+#include <string>
 
 #include "common/config/core_config.h"
 #include "common/i18n.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
+
+#include "cli/utils/cli_context.h"
+#include "cli/utils/formatter.h"
 
 namespace fs = std::filesystem;
 

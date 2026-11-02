@@ -6,7 +6,6 @@
 
 #include "common/i18n.h"
 #include "common/utils/sandbox.h"
-#include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
 #include "cli/runtime/systemd_client.h"

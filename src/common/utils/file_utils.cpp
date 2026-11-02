@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <fmt/format.h>
+#include <fmt/core.h>
 #include <fstream>
 #include <ios>
 #include <iterator>

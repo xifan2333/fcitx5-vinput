@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fmt/format.h>
+#include <fmt/base.h>
 #include <fstream>
 #include <ios>
 #include <iterator>

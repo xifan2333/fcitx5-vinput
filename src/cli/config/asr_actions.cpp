@@ -17,7 +17,6 @@
 #include "common/registry/registry_scripts.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
-#include "common/utils/string_utils.h"
 
 #include "config.h"
 #if VINPUT_ENABLE_LOCAL_ASR

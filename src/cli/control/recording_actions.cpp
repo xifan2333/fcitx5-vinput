@@ -6,7 +6,6 @@
 
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
-#include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
 #include "cli/utils/cli_context.h"

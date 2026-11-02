@@ -91,7 +91,9 @@ jobs:
           step-summary: true
           file-annotations: true
           thread-comments: 'false'
-          ignore: '3rdparty|build'
+          ignore: '3rdparty|build|.github'
+          ignore-tidy: '3rdparty|build|.github'
+          ignore-format: '3rdparty|build|.github'
           summary-output-file: 'pr-report/summary.md'
 
       - name: Save PR info and report

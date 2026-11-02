@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <fmt/format.h>
+#include <fmt/core.h>
 #include <indicators/indicators.hpp>
 #include <iostream>
 #include <memory>

@@ -748,11 +748,11 @@ void VinputEngine::hidePaletteMenu() {
   const bool was_visible = palette_menu_visible_;
   resetPaletteMenuState();
 
-  if (!was_visible || !ic) {
+  if (!was_visible || ic == nullptr) {
     return;
   }
 
-  fcitx::Text empty;
+  const fcitx::Text empty;
   ic->inputPanel().setAuxUp(empty);
   ic->inputPanel().setCandidateList({});
   ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
@@ -847,14 +847,14 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
-  if (cursor_list && IsUpKey(keyEvent.key())) {
+  if (cursor_list != nullptr && IsUpKey(keyEvent.key())) {
     cursor_list->prevCandidate();
     palette_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (cursor_list && IsDownKey(keyEvent.key())) {
+  if (cursor_list != nullptr && IsDownKey(keyEvent.key())) {
     cursor_list->nextCandidate();
     palette_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     keyEvent.filterAndAccept();
@@ -862,11 +862,9 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (IsEnterKey(keyEvent.key())) {
-    int index = candidate_list ? candidate_list->cursorIndex() : -1;
-    if (index < 0) {
-      index = 0;
-    }
-    if (candidate_list && index >= 0 && index < candidate_list->size()) {
+    int index = candidate_list != nullptr ? candidate_list->cursorIndex() : -1;
+    index = std::max(index, 0);
+    if (candidate_list != nullptr && index >= 0 && index < candidate_list->size()) {
       candidate_list->candidate(index).select(palette_menu_ic_);
     } else {
       hidePaletteMenu();
@@ -902,7 +900,7 @@ void VinputEngine::selectPaletteItem(std::size_t index, fcitx::InputContext* ic)
 }
 
 void VinputEngine::showResultMenu(fcitx::InputContext* ic, const vinput::result::Payload& payload) {
-  if (!ic || payload.candidates.empty()) {
+  if (ic == nullptr || payload.candidates.empty()) {
     return;
   }
 
@@ -939,18 +937,18 @@ void VinputEngine::hideResultMenu() {
   const bool was_visible = result_menu_visible_;
   resetResultMenuState();
 
-  if (!was_visible || !ic) {
+  if (!was_visible || ic == nullptr) {
     return;
   }
 
-  fcitx::Text empty;
+  const fcitx::Text empty;
   ic->inputPanel().setAuxUp(empty);
   ic->inputPanel().setCandidateList({});
   ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
 }
 
 bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
-  if (!result_menu_visible_ || !result_menu_ic_) {
+  if (!result_menu_visible_ || result_menu_ic_ == nullptr) {
     return false;
   }
 
@@ -997,14 +995,14 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
-  if (cursor_list && keyEvent.key().check(FcitxKey_Up)) {
+  if (cursor_list != nullptr && keyEvent.key().check(FcitxKey_Up)) {
     cursor_list->prevCandidate();
     result_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (cursor_list && keyEvent.key().check(FcitxKey_Down)) {
+  if (cursor_list != nullptr && keyEvent.key().check(FcitxKey_Down)) {
     cursor_list->nextCandidate();
     result_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     keyEvent.filterAndAccept();
@@ -1012,11 +1010,9 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter)) {
-    int index = candidate_list ? candidate_list->cursorIndex() : -1;
-    if (index < 0) {
-      index = 0;
-    }
-    if (candidate_list && index >= 0 && index < candidate_list->size()) {
+    int index = candidate_list != nullptr ? candidate_list->cursorIndex() : -1;
+    index = std::max(index, 0);
+    if (candidate_list != nullptr && index >= 0 && index < candidate_list->size()) {
       candidate_list->candidate(index).select(result_menu_ic_);
     } else {
       hideResultMenu();
