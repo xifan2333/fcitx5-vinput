@@ -13,7 +13,6 @@
 #include <optional>
 #include <sherpa-onnx/c-api/cxx-api.h>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -23,11 +22,9 @@
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config_types.h"
-#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
-#include "common/utils/string_utils.h"
 
 #include "daemon/asr/asr_config.h"
 #include "daemon/asr/hotword_utils.h"
