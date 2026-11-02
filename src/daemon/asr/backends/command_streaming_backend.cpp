@@ -297,9 +297,10 @@ private:
       return true;
     }
 
+    auto& session = *session_;
     vinput::process::ChildEvent event;
     bool first = true;
-    while (session_->NextEvent(event, first ? wait : std::chrono::milliseconds(0))) {
+    while (session.NextEvent(event, first ? wait : std::chrono::milliseconds(0))) {
       first = false;
       switch (event.kind) {
       case vinput::process::ChildEventKind::StdoutChunk: {

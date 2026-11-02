@@ -10,7 +10,6 @@
 
 #include <cctype>
 #include <cstdlib>
-#include <fmt/xchar.h>
 #include <memory>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
