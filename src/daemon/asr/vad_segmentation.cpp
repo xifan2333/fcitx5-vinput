@@ -1,6 +1,7 @@
 #include "daemon/asr/vad_segmentation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <utility>
@@ -16,8 +17,8 @@ CoalesceAndSliceSegments(std::vector<std::vector<float>> raw_segments, int sampl
 
   const auto to_samples = [sample_rate](float duration_sec) -> std::size_t {
     const double samples = static_cast<double>(duration_sec) * static_cast<double>(sample_rate);
-    if (!(samples >= 0.0 &&
-          samples < static_cast<double>(std::numeric_limits<std::size_t>::max()))) {
+    if (!std::isfinite(samples) || samples <= 0.0 ||
+        samples >= static_cast<double>(std::numeric_limits<std::size_t>::max())) {
       return 0;
     }
     return static_cast<std::size_t>(samples);
