@@ -228,8 +228,19 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
 
   {
     const std::scoped_lock lock(state_mutex_);
+    if (start_recording_in_progress_) {
+      start_recording_in_progress_ = false;
+      accepting_chunks_.store(false, std::memory_order_relaxed);
+      audio_buffer_.Clear();
+      stop_capture = true;
+      VLOG_DEBUG("in-progress recording start cancelled");
+    }
+
     auto transition = state_machine_.OnCancel(commit_raw_text);
     if (!transition.accepted) {
+      if (stop_capture) {
+        return DbusService::MethodResult::Success();
+      }
       return DbusService::MethodResult::Failure(transition.rejection_reason);
     }
 
