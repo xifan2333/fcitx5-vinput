@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -487,19 +488,54 @@ public:
       return true;
     }
 
-    if (vad_available_ && vad_ != nullptr) {
-      samples_ = vad_->Trim(samples_, 16000);
-      if (samples_.size() < kMinSamplesForInference) {
-        VLOG_DEBUG("audio too short after VAD trim, skipping");
-        events_.push_back({RecognitionEventKind::Completed, {}, {}});
-        if (error != nullptr) {
-          error->clear();
+    std::string text;
+    try {
+      if (vad_available_ && vad_ != nullptr && vad_->Available()) {
+        const auto segments = vad_->Segment(samples_, 16000);
+        if (segments.empty()) {
+          VLOG_DEBUG("VAD found no speech segments, skipping ASR");
+          events_.push_back({RecognitionEventKind::Completed, {}, {}});
+          if (error != nullptr) {
+            error->clear();
+          }
+          return true;
         }
-        return true;
+
+        auto needs_space_between = [](char left, char right) {
+          auto is_ascii_alnum = [](char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+          };
+          return is_ascii_alnum(left) && is_ascii_alnum(right);
+        };
+
+        for (const auto& segment : segments) {
+          if (segment.empty()) {
+            continue;
+          }
+          const std::string seg_text = InferOffline(recognizer_, segment);
+          if (!seg_text.empty()) {
+            if (!text.empty() && needs_space_between(text.back(), seg_text.front())) {
+              text += ' ';
+            }
+            text += seg_text;
+          }
+        }
+      } else {
+        text = InferOffline(recognizer_, samples_);
       }
+    } catch (const std::exception& e) {
+      const double duration_sec = static_cast<double>(samples_.size()) / 16000.0;
+      VLOG_ERROR("sherpa-onnx offline decode exception on audio ({:.1f}s): {}", duration_sec,
+                 e.what());
+      const std::string friendly_err = FormatOfflineAsrError(e.what(), duration_sec);
+      if (error != nullptr) {
+        *error = friendly_err;
+      }
+      events_.push_back({RecognitionEventKind::Error, {}, friendly_err});
+      events_.push_back({RecognitionEventKind::Completed, {}, {}});
+      return false;
     }
 
-    std::string text = InferOffline(recognizer_, samples_);
     if (!text.empty()) {
       events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
     }

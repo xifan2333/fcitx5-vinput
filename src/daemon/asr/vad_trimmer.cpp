@@ -1,6 +1,8 @@
 #include "vad_trimmer.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <sherpa-onnx/c-api/cxx-api.h>
 #include <string>
@@ -8,6 +10,33 @@
 #include <vector>
 
 #include "common/utils/debug_log.h"
+
+#include "daemon/asr/vad_segmentation.h"
+
+namespace {
+
+void FeedWaveformToVad(sherpa_onnx::cxx::VoiceActivityDetector& vad,
+                       const std::vector<float>& samples) {
+  const int n = static_cast<int>(samples.size());
+  vad.Reset();
+
+  constexpr int kWindowSize = 512;
+  int offset = 0;
+  for (; offset + kWindowSize <= n; offset += kWindowSize) {
+    vad.AcceptWaveform(samples.data() + offset, kWindowSize);
+  }
+  if (offset < n) {
+    std::vector<float> padded_tail(kWindowSize, 0.0F);
+    const int remaining = n - offset;
+    for (int i = 0; i < remaining; ++i) {
+      padded_tail[i] = samples[offset + i];
+    }
+    vad.AcceptWaveform(padded_tail.data(), kWindowSize);
+  }
+  vad.Flush();
+}
+
+} // namespace
 
 VadTrimmer::VadTrimmer() = default;
 VadTrimmer::~VadTrimmer() = default;
@@ -21,13 +50,26 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   }
 
   params_ = params;
+  if (std::isnan(params_.max_speech_duration) || std::isinf(params_.max_speech_duration) ||
+      params_.max_speech_duration <= 0.0F) {
+    params_.max_speech_duration = 15.0F;
+  }
+  if (std::isnan(params_.min_silence_duration) || std::isinf(params_.min_silence_duration) ||
+      params_.min_silence_duration <= 0.0F) {
+    params_.min_silence_duration = 0.8F;
+  }
+  if (std::isnan(params_.min_speech_duration) || std::isinf(params_.min_speech_duration) ||
+      params_.min_speech_duration <= 0.0F) {
+    params_.min_speech_duration = 0.10F;
+  }
+
   sherpa_onnx::cxx::VadModelConfig config;
   config.silero_vad.model = model_path;
   config.silero_vad.threshold = params_.threshold;
   config.silero_vad.min_silence_duration = params_.min_silence_duration;
   config.silero_vad.min_speech_duration = params_.min_speech_duration;
   config.silero_vad.window_size = 512;
-  config.silero_vad.max_speech_duration = 0.0F;
+  config.silero_vad.max_speech_duration = params_.max_speech_duration;
   config.sample_rate = sample_rate;
   config.num_threads = 1;
   config.provider = provider;
@@ -57,23 +99,7 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
 
   auto& vad = *vad_;
   const int n = static_cast<int>(samples.size());
-  vad.Reset();
-
-  // Feed audio in window_size chunks
-  constexpr int kWindowSize = 512;
-  int offset = 0;
-  for (; offset + kWindowSize <= n; offset += kWindowSize) {
-    vad.AcceptWaveform(samples.data() + offset, kWindowSize);
-  }
-  if (offset < n) {
-    std::vector<float> padded_tail(kWindowSize, 0.0F);
-    const int remaining = n - offset;
-    for (int i = 0; i < remaining; ++i) {
-      padded_tail[i] = samples[offset + i];
-    }
-    vad.AcceptWaveform(padded_tail.data(), kWindowSize);
-  }
-  vad.Flush();
+  FeedWaveformToVad(vad, samples);
 
   // Determine global speech bounds across all detected segments.
   // We trim only leading and trailing silence outside the outer speech bounds;
@@ -125,6 +151,90 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
              n, result.size(), leading_removed * 1000 / sample_rate_,
              trailing_removed * 1000 / sample_rate_, params_.speech_pad_ms);
   return result;
+}
+
+std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& samples,
+                                                    int sample_rate) {
+  if (!vad_.has_value() || vad_->Get() == nullptr || samples.empty()) {
+    return {samples};
+  }
+
+  auto& vad = *vad_;
+  const auto total_n = static_cast<int64_t>(samples.size());
+  FeedWaveformToVad(vad, samples);
+
+  struct DetectedSegment {
+    int64_t start = 0;
+    int64_t end = 0;
+  };
+  std::vector<DetectedSegment> detected;
+  while (!vad.IsEmpty()) {
+    auto seg = vad.Front();
+    vad.Pop();
+    if (!seg.samples.empty()) {
+      const int64_t seg_start = seg.start;
+      const int64_t seg_end = seg_start + static_cast<int64_t>(seg.samples.size());
+      detected.push_back({seg_start, seg_end});
+    }
+  }
+
+  if (detected.empty()) {
+    VLOG_DEBUG("VAD found no speech segments in {} samples", total_n);
+    return {};
+  }
+
+  const int effective_sr = sample_rate > 0 ? sample_rate : sample_rate_;
+  const int64_t padding_samples =
+      std::max(int64_t{0}, static_cast<int64_t>(params_.speech_pad_ms) * effective_sr / 1000);
+
+  std::vector<std::vector<float>> raw_segments;
+  raw_segments.reserve(detected.size());
+
+  int64_t last_cut_end = 0;
+  const auto detected_count = detected.size();
+  for (std::size_t i = 0; i < detected_count; ++i) {
+    const int64_t raw_start = detected[i].start;
+    const int64_t raw_end = detected[i].end;
+
+    // Expand leading boundary with speech_pad_ms, preventing cross-segment overlap
+    const int64_t cut_start = std::max({last_cut_end, int64_t{0}, raw_start - padding_samples});
+
+    // Expand trailing boundary with speech_pad_ms, fairly sharing inter-segment gaps
+    int64_t cut_end = raw_end;
+    if (i + 1 < detected_count) {
+      const int64_t next_raw_start = detected[i + 1].start;
+      const int64_t gap = next_raw_start - raw_end;
+      if (gap >= 2 * padding_samples) {
+        cut_end = raw_end + padding_samples;
+      } else if (gap > 0) {
+        cut_end = raw_end + (gap / 2);
+      } else {
+        cut_end = raw_end;
+      }
+    } else {
+      cut_end = std::min(total_n, raw_end + padding_samples);
+    }
+
+    cut_end = std::clamp(cut_end, cut_start, total_n);
+    last_cut_end = cut_end;
+
+    if (cut_end > cut_start) {
+      raw_segments.emplace_back(samples.begin() + static_cast<std::ptrdiff_t>(cut_start),
+                                samples.begin() + static_cast<std::ptrdiff_t>(cut_end));
+    }
+  }
+
+  const float max_duration =
+      (params_.max_speech_duration > 0.0F && !std::isnan(params_.max_speech_duration) &&
+       !std::isinf(params_.max_speech_duration))
+          ? params_.max_speech_duration
+          : 15.0F;
+  auto final_segments =
+      CoalesceAndSliceSegments(std::move(raw_segments), effective_sr, max_duration, 0.50F);
+
+  VLOG_DEBUG("VAD segmented {} samples into {} raw, {} coalesced speech segments", total_n,
+             detected.size(), final_segments.size());
+  return final_segments;
 }
 
 bool VadTrimmer::Available() const {

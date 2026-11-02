@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/utils/expected.h"
 #include "common/utils/path_utils.h"
@@ -612,4 +613,18 @@ vinput::Expected<void> ModelManager::Remove(const std::string& model_id) const {
   }
 
   return {};
+}
+
+std::string FormatOfflineAsrError(std::string_view raw_error, double duration_sec) {
+  constexpr double kOfflineCapacityLimitSec = 20.0;
+  const bool is_reshape_error = raw_error.find("Reshape") != std::string_view::npos ||
+                                raw_error.find("cannot be reshaped") != std::string_view::npos;
+  if (is_reshape_error && duration_sec > kOfflineCapacityLimitSec) {
+    return vinput::str::FmtStr(
+        _("Recognition failed: audio is about %.1f seconds long, which exceeds what this offline "
+          "model can reliably process. Please record in shorter segments or switch to a "
+          "streaming model."),
+        duration_sec);
+  }
+  return std::string(raw_error);
 }
