@@ -90,7 +90,7 @@ int RunSceneConfigAdd(const std::string& id, const std::string& label, const std
     return 1;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("Scene '%s' added."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Scene '%s' added."), id));
   return 0;
 }
 
@@ -110,7 +110,7 @@ int RunSceneConfigUse(const std::string& id, Formatter& fmt, const CliContext& c
     return 1;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("Default scene set to '%s'."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Default scene set to '%s'."), id));
   return 0;
 }
 
@@ -130,7 +130,7 @@ int RunSceneConfigRemove(const std::string& id, bool force, Formatter& fmt, cons
     return 1;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("Scene '%s' removed."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Scene '%s' removed."), id));
   return 0;
 }
 
@@ -152,7 +152,7 @@ int RunSceneConfigEdit(const std::string& id, const std::string& label, const st
     }
   }
   if (existing == nullptr) {
-    fmt.PrintError(fmt::sprintf(_("Scene '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("Scene '%s' not found."), id));
     return 1;
   }
 
@@ -197,6 +197,6 @@ int RunSceneConfigEdit(const std::string& id, const std::string& label, const st
     return 1;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("Scene '%s' updated."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Scene '%s' updated."), id));
   return 0;
 }

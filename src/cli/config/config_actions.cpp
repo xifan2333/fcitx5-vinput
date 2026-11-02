@@ -105,10 +105,10 @@ int RunConfigMigrate(bool dry_run, Formatter& fmt, const CliContext& ctx) {
   }
 
   if (!report.config_backup.empty()) {
-    fmt.PrintInfo(fmt::sprintf(_("Backed up core config to: %s"), report.config_backup.c_str()));
+    fmt.PrintInfo(::fmt::sprintf(_("Backed up core config to: %s"), report.config_backup.c_str()));
   }
   if (!report.conf_backup.empty()) {
-    fmt.PrintInfo(fmt::sprintf(_("Backed up addon config to: %s"), report.conf_backup.c_str()));
+    fmt.PrintInfo(::fmt::sprintf(_("Backed up addon config to: %s"), report.conf_backup.c_str()));
   }
 
   const std::vector<std::string> headers = {_("FILE"), _("CHANGE")};

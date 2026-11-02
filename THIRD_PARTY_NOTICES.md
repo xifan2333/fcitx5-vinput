@@ -89,7 +89,7 @@ This file lists third-party software that this project depends on or bundles, an
     - Description: Fast and safe formatting library for C++.
     - License: MIT
     - Upstream: https://github.com/fmtlib/fmt
-    - Version: v11.1.4 (vendored in `3rdparty/fmt/`)
+    - Version: v11.1.4 (imported 2026-11-02, vendored in `3rdparty/fmt/`)
 
 ## Models / data downloaded by users (not bundled)
 

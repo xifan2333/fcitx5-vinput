@@ -224,8 +224,12 @@ target_include_directories(3rdparty_fmt SYSTEM INTERFACE
     ${CMAKE_SOURCE_DIR}/3rdparty/fmt/include
 )
 target_compile_definitions(3rdparty_fmt INTERFACE FMT_HEADER_ONLY=1)
-add_library(fmt::fmt ALIAS 3rdparty_fmt)
-add_library(fmt::fmt-header-only ALIAS 3rdparty_fmt)
+if(NOT TARGET fmt::fmt)
+    add_library(fmt::fmt ALIAS 3rdparty_fmt)
+endif()
+if(NOT TARGET fmt::fmt-header-only)
+    add_library(fmt::fmt-header-only ALIAS 3rdparty_fmt)
+endif()
 
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"

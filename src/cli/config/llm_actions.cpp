@@ -68,7 +68,7 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
   auto it = std::ranges::find_if(
       config.llm.adapters, [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
   if (it == config.llm.adapters.end()) {
-    fmt.PrintError(fmt::sprintf(_("Adapter '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found."), id));
     return 1;
   }
 
@@ -84,9 +84,9 @@ int SetAdapterAutostart(const std::string& id, bool enable, Formatter& fmt, cons
   }
 
   if (enable) {
-    fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' enabled to autostart with daemon."), id));
+    fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' enabled to autostart with daemon."), id));
   } else {
-    fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' disabled from autostart with daemon."), id));
+    fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' disabled from autostart with daemon."), id));
   }
   return 0;
 }
@@ -100,13 +100,13 @@ bool ParseExtraBody(const std::string& raw, glz::json_t* out, Formatter& fmt) {
     // Reuse the parse error message so no new translatable string is needed.
     const glz::error_ctx trailing{.ec = glz::error_code::syntax_error, .location = raw.size()};
     fmt.PrintError(
-        fmt::sprintf(_("Invalid --extra-body JSON: %s"), glz::format_error(trailing).c_str()));
+        ::fmt::sprintf(_("Invalid --extra-body JSON: %s"), glz::format_error(trailing).c_str()));
     return false;
   }
   glz::json_t parsed;
   if (const auto ec = glz::read_json(parsed, raw); bool(ec)) {
     fmt.PrintError(
-        fmt::sprintf(_("Invalid --extra-body JSON: %s"), glz::format_error(ec, raw).c_str()));
+        ::fmt::sprintf(_("Invalid --extra-body JSON: %s"), glz::format_error(ec, raw).c_str()));
     return false;
   }
   if (!parsed.is_object()) {
@@ -264,17 +264,17 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
         manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
     std::string status_text = _("available");
     if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status_text = fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
+      status_text = ::fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
     } else if (installed) {
       if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
         if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status_text = fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
-                                     ver_info.remote_version);
+          status_text = ::fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
+                                       ver_info.remote_version);
         } else {
           status_text = _("update available");
         }
       } else if (!ver_info.installed_version.empty()) {
-        status_text = fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
+        status_text = ::fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
       } else {
         status_text = _("installed");
       }
@@ -293,7 +293,7 @@ int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
   if (ResolveLlmProvider(config, id) != nullptr) {
-    fmt.PrintError(fmt::sprintf(_("LLM provider '%s' already exists."), id));
+    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' already exists."), id));
     return 1;
   }
 
@@ -312,7 +312,7 @@ int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std
   if (!SaveConfigOrFail(config, fmt)) {
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("LLM provider '%s' added."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("LLM provider '%s' added."), id));
   return 0;
 }
 
@@ -359,7 +359,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
   const auto it = std::ranges::find_if(
       entries, [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
   if (it == entries.end()) {
-    fmt.PrintError(fmt::sprintf(_("Adapter '%s' not found in registry."), id));
+    fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found in registry."), id));
     return 1;
   }
 
@@ -390,7 +390,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
       }
       const auto value = installed->env.find(spec.name);
       if (value == installed->env.end() || std::string(vinput::str::Trim(value->second)).empty()) {
-        fmt.PrintWarning(fmt::sprintf(
+        fmt.PrintWarning(::fmt::sprintf(
             _("Required env '%s' is empty; '%s' cannot start until it is set (re-run with -e "
               "%s=<value>)."),
             spec.name, selector, spec.name));
@@ -398,7 +398,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
     }
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' added."), selector));
+  fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' added."), selector));
   return 0;
 }
 
@@ -417,14 +417,14 @@ int RunLlmConfigRemoveAdapter(const std::string& id, Formatter& fmt, const CliCo
     vinput::cli::DbusClient dbus;
     std::string stop_err;
     if (!dbus.StopAdapter(resolved_id, &stop_err)) {
-      fmt.PrintWarning(fmt::sprintf(_("Failed to stop running adapter '%s': %s"), id, stop_err));
+      fmt.PrintWarning(::fmt::sprintf(_("Failed to stop running adapter '%s': %s"), id, stop_err));
     }
   }
 
   const auto removed = std::ranges::remove_if(
       config.llm.adapters, [&resolved_id](const LlmAdapter& a) { return a.id == resolved_id; });
   if (removed.empty()) {
-    fmt.PrintError(fmt::sprintf(_("Adapter '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found."), id));
     return 1;
   }
   config.llm.adapters.erase(removed.begin(), removed.end());
@@ -440,7 +440,7 @@ int RunLlmConfigRemoveAdapter(const std::string& id, Formatter& fmt, const CliCo
   if (!SaveConfigOrFail(config, fmt)) {
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' removed."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' removed."), id));
   return 0;
 }
 
@@ -478,7 +478,7 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
     const auto version_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kLlmAdapter, entry, true);
     if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
-      fmt.PrintInfo(fmt::sprintf(_("Adapter '%s' is already up to date."), entry.short_id));
+      fmt.PrintInfo(::fmt::sprintf(_("Adapter '%s' is already up to date."), entry.short_id));
       return true;
     }
 
@@ -486,37 +486,37 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
     if (was_running) {
       std::string stop_err;
       if (!dbus.StopAdapter(entry.id, &stop_err)) {
-        fmt.PrintWarning(fmt::sprintf(_("Could not stop adapter '%s' before update: %s"),
-                                      entry.short_id, stop_err));
+        fmt.PrintWarning(::fmt::sprintf(_("Could not stop adapter '%s' before update: %s"),
+                                        entry.short_id, stop_err));
       }
     }
 
     std::filesystem::path scriptPath;
     if (!vinput::script::DownloadScript(entry, vinput::script::Kind::kLlmAdapter, &scriptPath,
                                         &error)) {
-      fmt.PrintError(fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
+      fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
       return false;
     }
     if (!vinput::script::MaterializeLlmAdapter(&config, entry, scriptPath, &error)) {
-      fmt.PrintError(fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
+      fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
       return false;
     }
 
     if (was_running) {
       std::string start_err;
       if (dbus.StartAdapter(entry.id, &start_err)) {
-        fmt.PrintInfo(fmt::sprintf(_("Adapter '%s' restarted."), entry.short_id));
+        fmt.PrintInfo(::fmt::sprintf(_("Adapter '%s' restarted."), entry.short_id));
       } else {
         fmt.PrintWarning(
-            fmt::sprintf(_("Failed to restart adapter '%s': %s"), entry.short_id, start_err));
+            ::fmt::sprintf(_("Failed to restart adapter '%s': %s"), entry.short_id, start_err));
       }
     }
 
     if (!version_info.installed_version.empty() && !version_info.remote_version.empty()) {
-      fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' updated: %s -> %s"), entry.short_id,
-                                    version_info.installed_version, version_info.remote_version));
+      fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' updated: %s -> %s"), entry.short_id,
+                                      version_info.installed_version, version_info.remote_version));
     } else {
-      fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' updated."), entry.short_id));
+      fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' updated."), entry.short_id));
     }
     return true;
   };
@@ -540,13 +540,13 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
     }
     auto it = std::ranges::find_if(entries, [&id](const auto& e) { return e.id == id; });
     if (it == entries.end()) {
-      fmt.PrintError(fmt::sprintf(_("Adapter '%s' not found in registry."), selector));
+      fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found in registry."), selector));
       return 1;
     }
     const auto* existing = ResolveLlmAdapter(config, it->id);
     if (existing == nullptr) {
       fmt.PrintError(
-          fmt::sprintf(_("Adapter '%s' is not installed. Use 'add' instead."), selector));
+          ::fmt::sprintf(_("Adapter '%s' is not installed. Use 'add' instead."), selector));
       return 1;
     }
     if (!updateSingle(*it)) {
@@ -580,7 +580,7 @@ int RunLlmConfigStartAdapter(const std::string& id, Formatter& fmt, const CliCon
     fmt.PrintError(error);
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' started."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' started."), id));
   return 0;
 }
 
@@ -599,7 +599,7 @@ int RunLlmConfigStopAdapter(const std::string& id, Formatter& fmt, const CliCont
     fmt.PrintError(error);
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' stopped."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' stopped."), id));
   return 0;
 }
 
@@ -624,7 +624,7 @@ int RunLlmConfigRestartAdapter(const std::string& id, Formatter& fmt, const CliC
     fmt.PrintError(error);
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("Adapter '%s' restarted."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' restarted."), id));
   return 0;
 }
 
@@ -695,7 +695,7 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
 
   const auto* adapter = ResolveLlmAdapter(config, resolved_id);
   if (adapter == nullptr) {
-    fmt.PrintError(fmt::sprintf(_("Adapter '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found."), id));
     return 1;
   }
 
@@ -745,7 +745,7 @@ int RunLlmConfigRemove(const std::string& id, Formatter& fmt, const CliContext& 
   const auto it = std::ranges::find_if(
       providers, [&id](const LlmProvider& provider) { return provider.id == id; });
   if (it == providers.end()) {
-    fmt.PrintError(fmt::sprintf(_("LLM provider '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
     return 1;
   }
 
@@ -754,7 +754,7 @@ int RunLlmConfigRemove(const std::string& id, Formatter& fmt, const CliContext& 
   if (!SaveConfigOrFail(config, fmt)) {
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("LLM provider '%s' removed."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("LLM provider '%s' removed."), id));
   return 0;
 }
 
@@ -767,7 +767,7 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
   const auto it = std::ranges::find_if(
       providers, [&id](const LlmProvider& provider) { return provider.id == id; });
   if (it == providers.end()) {
-    fmt.PrintError(fmt::sprintf(_("LLM provider '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
     return 1;
   }
 
@@ -788,7 +788,7 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
   if (!SaveConfigOrFail(config, fmt)) {
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("LLM provider '%s' updated."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("LLM provider '%s' updated."), id));
   return 0;
 }
 
@@ -796,7 +796,7 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
   const CoreConfig config = LoadCoreConfig();
   const auto* provider = ResolveLlmProvider(config, id);
   if (provider == nullptr) {
-    fmt.PrintError(fmt::sprintf(_("LLM provider '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
     return 1;
   }
 
@@ -813,7 +813,7 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
 
   const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider->api_key);
   if (vinput::interpolate::HasInterpolation(provider->api_key) && resolved_api_key.empty()) {
-    fmt.PrintWarning(fmt::sprintf(
+    fmt.PrintWarning(::fmt::sprintf(
         _("Environment variable '%s' referenced in API key for provider '%s' is unset or empty."),
         provider->api_key, provider->id));
   }
@@ -833,9 +833,9 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
 
   if (!res.Ok()) {
     if (res.status_code == 0) {
-      fmt.PrintError(fmt::sprintf(_("Connection failed: %s"), res.error_message));
+      fmt.PrintError(::fmt::sprintf(_("Connection failed: %s"), res.error_message));
     } else {
-      fmt.PrintError(fmt::sprintf(_("HTTP %ld: %s"), res.status_code, res.body));
+      fmt.PrintError(::fmt::sprintf(_("HTTP %ld: %s"), res.status_code, res.body));
     }
     return 1;
   }
@@ -843,7 +843,7 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
   glz::json_t response;
   if (const auto ec = glz::read_json(response, res.body); bool(ec)) {
     fmt.PrintError(
-        fmt::sprintf(_("Invalid JSON response: %s"), glz::format_error(ec, res.body).c_str()));
+        ::fmt::sprintf(_("Invalid JSON response: %s"), glz::format_error(ec, res.body).c_str()));
     return 1;
   }
 
@@ -870,8 +870,8 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
     return 0;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("Connected to '%s'. Found %d model(s)."), id,
-                                static_cast<int>(models.size())));
+  fmt.PrintSuccess(::fmt::sprintf(_("Connected to '%s'. Found %d model(s)."), id,
+                                  static_cast<int>(models.size())));
   if (!models.empty()) {
     std::ranges::sort(models);
     const std::vector<std::string> headers_row = {_("MODEL")};

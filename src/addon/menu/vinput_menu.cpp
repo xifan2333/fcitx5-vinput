@@ -3,11 +3,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fcitx-utils/i18n.h>
+#include <fcitx-utils/key.h>
+#include <fcitx-utils/keysym.h>
+#include <fcitx-utils/keysymgen.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
+#include <fcitx/userinterface.h>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <sstream>
@@ -199,12 +204,7 @@ bool IsKeySym(const fcitx::Key& key, fcitx::KeySym sym) {
 }
 
 bool IsOneOfKeySyms(const fcitx::Key& key, std::initializer_list<fcitx::KeySym> syms) {
-  for (const auto sym : syms) {
-    if (IsKeySym(key, sym)) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(syms, [&](fcitx::KeySym sym) { return IsKeySym(key, sym); });
 }
 
 bool IsPagePrevKey(const fcitx::Key& key) {
@@ -255,7 +255,7 @@ bool IsPrintableMenuInput(const fcitx::Key& key) {
     return false;
   }
 
-  for (unsigned char ch : utf8) {
+  for (const unsigned char ch : utf8) {
     if (ch < 0x20 || ch == 0x7f) {
       return false;
     }
@@ -264,7 +264,7 @@ bool IsPrintableMenuInput(const fcitx::Key& key) {
 }
 
 void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
-  if (!candidate_list || candidate_list->totalSize() <= 0) {
+  if (candidate_list == nullptr || candidate_list->totalSize() <= 0) {
     return;
   }
 
@@ -272,13 +272,13 @@ void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
 }
 
 bool ChangeCandidatePage(fcitx::InputContext* ic, const std::string& base_title, bool next_page) {
-  if (!ic) {
+  if (ic == nullptr) {
     return false;
   }
 
   auto candidate_list = ic->inputPanel().candidateList();
-  auto* pageable = candidate_list ? candidate_list->toPageable() : nullptr;
-  if (!pageable) {
+  auto* pageable = candidate_list != nullptr ? candidate_list->toPageable() : nullptr;
+  if (pageable == nullptr) {
     return false;
   }
 

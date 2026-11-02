@@ -53,7 +53,7 @@ void ReportAsrRuntimeReloadStatus(const CoreConfig& config, Formatter& fmt,
   if (!dbus.GetAsrBackendState(&state, &error)) {
     if (!error.empty()) {
       fmt.PrintWarning(
-          fmt::sprintf(_("Config saved, but failed to confirm ASR runtime state: %s"), error));
+          ::fmt::sprintf(_("Config saved, but failed to confirm ASR runtime state: %s"), error));
     }
     return;
   }
@@ -89,12 +89,13 @@ bool SaveAsrConfigAndReload(const CoreConfig& config, Formatter& fmt) {
   if (!dbus.IsDaemonRunning(&error)) {
     if (!error.empty()) {
       fmt.PrintWarning(
-          fmt::sprintf(_("Config saved, but ASR backend reload was skipped: %s"), error));
+          ::fmt::sprintf(_("Config saved, but ASR backend reload was skipped: %s"), error));
     }
     return true;
   }
   if (!dbus.ReloadAsrBackend(&error)) {
-    fmt.PrintWarning(fmt::sprintf(_("Config saved, but failed to reload ASR backend: %s"), error));
+    fmt.PrintWarning(
+        ::fmt::sprintf(_("Config saved, but failed to reload ASR backend: %s"), error));
     return true;
   }
   ReportAsrRuntimeReloadStatus(config, fmt, dbus);
@@ -282,7 +283,7 @@ int RunAsrConfigRemove(const std::string& id, Formatter& fmt, const CliContext& 
     return AsrProviderId(provider) == resolved_id;
   });
   if (it == providers.end()) {
-    fmt.PrintError(fmt::sprintf(_("ASR provider '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found."), id));
     return 1;
   }
 
@@ -308,7 +309,7 @@ int RunAsrConfigRemove(const std::string& id, Formatter& fmt, const CliContext& 
   if (!SaveAsrConfigAndReload(config, fmt)) {
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("ASR provider '%s' removed."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' removed."), id));
   return 0;
 }
 
@@ -326,7 +327,7 @@ int RunAsrConfigUse(const std::string& id, Formatter& fmt, const CliContext& ctx
 #if !VINPUT_ENABLE_LOCAL_ASR
   const auto* target_provider = ResolveAsrProvider(config, resolved_id);
   if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
-    fmt.PrintError(fmt::sprintf(
+    fmt.PrintError(::fmt::sprintf(
         _("ASR provider '%s' is a local provider, which is not supported in this Lite build."),
         resolved_id));
     return 1;
@@ -337,7 +338,7 @@ int RunAsrConfigUse(const std::string& id, Formatter& fmt, const CliContext& ctx
   if (!SaveAsrConfigAndReload(config, fmt)) {
     return 1;
   }
-  fmt.PrintSuccess(fmt::sprintf(_("Configured ASR provider set to '%s'."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("Configured ASR provider set to '%s'."), id));
   return 0;
 }
 
@@ -419,17 +420,17 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
         manifest, vinput::script::Kind::kAsrProvider, entry, installed);
     std::string status_text = _("available");
     if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status_text = fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
+      status_text = ::fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
     } else if (installed) {
       if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
         if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status_text = fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
-                                     ver_info.remote_version);
+          status_text = ::fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
+                                       ver_info.remote_version);
         } else {
           status_text = _("update available");
         }
       } else if (!ver_info.installed_version.empty()) {
-        status_text = fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
+        status_text = ::fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
       } else {
         status_text = _("installed");
       }
@@ -475,7 +476,7 @@ int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt,
   const auto it = std::ranges::find_if(
       entries, [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
   if (it == entries.end()) {
-    fmt.PrintError(fmt::sprintf(_("ASR provider '%s' not found in registry."), id));
+    fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found in registry."), id));
     return 1;
   }
 
@@ -494,7 +495,7 @@ int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt,
     return 1;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("ASR provider '%s' added."), selector));
+  fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' added."), selector));
   return 0;
 }
 
@@ -531,26 +532,26 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
     const auto version_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kAsrProvider, entry, true);
     if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
-      fmt.PrintInfo(fmt::sprintf(_("Provider '%s' is already up to date."), entry.short_id));
+      fmt.PrintInfo(::fmt::sprintf(_("Provider '%s' is already up to date."), entry.short_id));
       return true;
     }
 
     std::filesystem::path scriptPath;
     if (!vinput::script::DownloadScript(entry, vinput::script::Kind::kAsrProvider, &scriptPath,
                                         &error)) {
-      fmt.PrintError(fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
+      fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
       return false;
     }
     if (!vinput::script::MaterializeAsrProvider(&config, entry, scriptPath, &error)) {
-      fmt.PrintError(fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
+      fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
       return false;
     }
 
     if (!version_info.installed_version.empty() && !version_info.remote_version.empty()) {
-      fmt.PrintSuccess(fmt::sprintf(_("ASR provider '%s' updated: %s -> %s"), entry.short_id,
-                                    version_info.installed_version, version_info.remote_version));
+      fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated: %s -> %s"), entry.short_id,
+                                      version_info.installed_version, version_info.remote_version));
     } else {
-      fmt.PrintSuccess(fmt::sprintf(_("ASR provider '%s' updated."), entry.short_id));
+      fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated."), entry.short_id));
     }
     return true;
   };
@@ -578,13 +579,13 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
     }
     auto it = std::ranges::find_if(entries, [&id](const auto& e) { return e.id == id; });
     if (it == entries.end()) {
-      fmt.PrintError(fmt::sprintf(_("ASR provider '%s' not found in registry."), selector));
+      fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found in registry."), selector));
       return 1;
     }
     const auto* existing = ResolveAsrProvider(config, it->id);
     if (existing == nullptr) {
       fmt.PrintError(
-          fmt::sprintf(_("ASR provider '%s' is not installed. Use 'add' instead."), selector));
+          ::fmt::sprintf(_("ASR provider '%s' is not installed. Use 'add' instead."), selector));
       return 1;
     }
     if (!updateSingle(*it)) {
@@ -615,19 +616,19 @@ int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ct
   }
   const AsrProvider* provider = ResolveAsrProvider(config, resolved_id);
   if (provider == nullptr) {
-    fmt.PrintError(fmt::sprintf(_("ASR provider '%s' not found."), id));
+    fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found."), id));
     return 1;
   }
   if (!IsCommandProvider(*provider)) {
     fmt.PrintError(
-        fmt::sprintf(_("ASR provider '%s' is not a command provider and cannot be edited."), id));
+        ::fmt::sprintf(_("ASR provider '%s' is not a command provider and cannot be edited."), id));
     return 1;
   }
 
   const std::filesystem::path scriptPath = ResolveEditableScriptPath(*provider);
   if (scriptPath.empty()) {
     fmt.PrintError(
-        fmt::sprintf(_("ASR provider '%s' does not reference an editable script file."), id));
+        ::fmt::sprintf(_("ASR provider '%s' does not reference an editable script file."), id));
     return 1;
   }
 
@@ -637,7 +638,7 @@ int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ct
     return ret;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("ASR provider '%s' updated."), id));
+  fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated."), id));
   return 0;
 }
 
@@ -813,7 +814,7 @@ int RunAsrConfigInstallModel(const std::string& selector, Formatter& fmt, const 
     return 1;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("Model '%s' added."), selector));
+  fmt.PrintSuccess(::fmt::sprintf(_("Model '%s' added."), selector));
   return 0;
 }
 
@@ -843,7 +844,7 @@ int RunAsrConfigRemoveModel(const std::string& selector, Formatter& fmt, const C
       return 1;
     }
   }
-  fmt.PrintSuccess(fmt::sprintf(_("Model '%s' removed."), selector));
+  fmt.PrintSuccess(::fmt::sprintf(_("Model '%s' removed."), selector));
   return 0;
 }
 
@@ -864,7 +865,7 @@ int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliC
   }
   if (auto validate_result = manager.Validate(id); !validate_result) {
     fmt.PrintError(
-        fmt::sprintf(_("Model '%s' is not valid: %s"), id, std::move(validate_result).error()));
+        ::fmt::sprintf(_("Model '%s' is not valid: %s"), id, std::move(validate_result).error()));
     return 1;
   }
   if (!SetPreferredLocalModel(&config, id, &error)) {
@@ -875,7 +876,7 @@ int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliC
     return 1;
   }
 
-  fmt.PrintSuccess(fmt::sprintf(_("Preferred local model set to '%s'."), selector));
+  fmt.PrintSuccess(::fmt::sprintf(_("Preferred local model set to '%s'."), selector));
   return 0;
 }
 
@@ -895,7 +896,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
   }
   if (auto validate_result = manager.Validate(id); !validate_result) {
     fmt.PrintError(
-        fmt::sprintf(_("Model '%s' is not valid: %s"), id, std::move(validate_result).error()));
+        ::fmt::sprintf(_("Model '%s' is not valid: %s"), id, std::move(validate_result).error()));
     return 1;
   }
 

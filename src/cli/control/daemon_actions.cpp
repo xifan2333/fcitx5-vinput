@@ -90,7 +90,7 @@ int RunDaemonControlStop(Formatter& fmt, const CliContext& ctx) {
     fmt.PrintSuccess(_("Daemon stopped."));
     return 0;
   }
-  fmt.PrintError(fmt::sprintf(_("systemctl stop failed (exit code: %d)"), r));
+  fmt.PrintError(::fmt::sprintf(_("systemctl stop failed (exit code: %d)"), r));
   return 1;
 }
 
