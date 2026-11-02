@@ -264,6 +264,14 @@ target_include_directories(test_session_lifecycle_manager PRIVATE ${CMAKE_SOURCE
 target_link_libraries(test_session_lifecycle_manager PRIVATE common)
 add_test(NAME test_session_lifecycle_manager COMMAND test_session_lifecycle_manager)
 
+add_executable(test_runtime_state_machine
+    test_runtime_state_machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/runtime/runtime_state_machine.cpp
+)
+target_include_directories(test_runtime_state_machine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_runtime_state_machine PRIVATE common)
+add_test(NAME test_runtime_state_machine COMMAND test_runtime_state_machine)
+
 add_executable(test_audio_input_gain
     test_audio_input_gain.cpp
     ${CMAKE_SOURCE_DIR}/src/daemon/audio/audio_utils.cpp
