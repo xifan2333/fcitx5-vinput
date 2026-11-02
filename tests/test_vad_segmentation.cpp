@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include "daemon/asr/vad_segmentation.h"
@@ -80,12 +81,34 @@ void TestEmptySegmentsFiltered() {
   Expect(result[1].size() == 32000, "Second valid segment preserved");
 }
 
-// 6. Invalid sample rate or empty input returns input unchanged defensively.
+// 6. Invalid sample rate or empty input returns input unchanged defensively, filtering empty
+// slices.
 void TestDefensiveParameters() {
   const std::vector<std::vector<float>> input = {std::vector<float>(100, 0.1F)};
   Expect(CoalesceAndSliceSegments(input, 0).size() == 1, "Zero sample rate returns input");
   Expect(CoalesceAndSliceSegments(input, -1).size() == 1, "Negative sample rate returns input");
   Expect(CoalesceAndSliceSegments({}, 16000).empty(), "Empty input returns empty");
+}
+
+// 7. Zero, negative, or NaN duration filters out empty segments without crashing.
+void TestZeroOrNegativeDurationFiltersEmpty() {
+  constexpr int kSampleRate = 16000;
+  const std::vector<std::vector<float>> input = {
+      {},
+      std::vector<float>(1000, 0.5F),
+      {},
+  };
+
+  auto res_zero = CoalesceAndSliceSegments(input, kSampleRate, 0.0F, 0.50F);
+  Expect(res_zero.size() == 1, "Zero duration must filter empty segments");
+  Expect(res_zero[0].size() == 1000, "Valid segment preserved under zero duration");
+
+  auto res_neg = CoalesceAndSliceSegments(input, kSampleRate, -5.0F, 0.50F);
+  Expect(res_neg.size() == 1, "Negative duration must filter empty segments");
+
+  const float nan_val = std::numeric_limits<float>::quiet_NaN();
+  auto res_nan = CoalesceAndSliceSegments(input, kSampleRate, nan_val, 0.50F);
+  Expect(res_nan.size() == 1, "NaN duration must filter empty segments");
 }
 
 } // namespace
@@ -97,6 +120,7 @@ int main() {
   TestShortFragmentNextToMaxDurationNotExceedingMax();
   TestEmptySegmentsFiltered();
   TestDefensiveParameters();
+  TestZeroOrNegativeDurationFiltersEmpty();
 
   std::cout << "All VAD segmentation unit tests passed!\n";
   return 0;

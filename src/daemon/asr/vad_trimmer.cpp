@@ -1,6 +1,7 @@
 #include "vad_trimmer.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <sherpa-onnx/c-api/cxx-api.h>
@@ -49,6 +50,19 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   }
 
   params_ = params;
+  if (std::isnan(params_.max_speech_duration) || std::isinf(params_.max_speech_duration) ||
+      params_.max_speech_duration <= 0.0F) {
+    params_.max_speech_duration = 15.0F;
+  }
+  if (std::isnan(params_.min_silence_duration) || std::isinf(params_.min_silence_duration) ||
+      params_.min_silence_duration <= 0.0F) {
+    params_.min_silence_duration = 0.8F;
+  }
+  if (std::isnan(params_.min_speech_duration) || std::isinf(params_.min_speech_duration) ||
+      params_.min_speech_duration <= 0.0F) {
+    params_.min_speech_duration = 0.10F;
+  }
+
   sherpa_onnx::cxx::VadModelConfig config;
   config.silero_vad.model = model_path;
   config.silero_vad.threshold = params_.threshold;
@@ -210,8 +224,13 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
     }
   }
 
-  auto final_segments = CoalesceAndSliceSegments(std::move(raw_segments), effective_sr,
-                                                 params_.max_speech_duration, 0.50F);
+  const float max_duration =
+      (params_.max_speech_duration > 0.0F && !std::isnan(params_.max_speech_duration) &&
+       !std::isinf(params_.max_speech_duration))
+          ? params_.max_speech_duration
+          : 15.0F;
+  auto final_segments =
+      CoalesceAndSliceSegments(std::move(raw_segments), effective_sr, max_duration, 0.50F);
 
   VLOG_DEBUG("VAD segmented {} samples into {} raw, {} coalesced speech segments", total_n,
              detected.size(), final_segments.size());
