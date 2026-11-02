@@ -14,7 +14,7 @@ struct StateTransitionResult {
   bool accepted = false;
   vinput::dbus::Status previous_phase = vinput::dbus::Status::Idle;
   vinput::dbus::Status new_phase = vinput::dbus::Status::Idle;
-  std::string rejection_reason = {};
+  std::string rejection_reason;
 
   bool should_start_capture = false;
   bool should_stop_capture = false;

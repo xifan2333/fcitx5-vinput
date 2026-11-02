@@ -12,12 +12,12 @@ namespace vinput::daemon::runtime {
 namespace {
 
 StateTransitionResult Reject(vinput::dbus::Status phase, std::string reason = {}) {
-  return StateTransitionResult{
-      .accepted = false,
-      .previous_phase = phase,
-      .new_phase = phase,
-      .rejection_reason = std::move(reason),
-  };
+  StateTransitionResult res;
+  res.accepted = false;
+  res.previous_phase = phase;
+  res.new_phase = phase;
+  res.rejection_reason = std::move(reason);
+  return res;
 }
 
 } // namespace
@@ -51,12 +51,12 @@ StateTransitionResult RuntimeStateMachine::OnStartRecording(bool is_command,
   is_command_ = is_command;
   selected_text_ = selected_text;
 
-  return StateTransitionResult{
-      .accepted = true,
-      .previous_phase = prev,
-      .new_phase = phase_,
-      .should_start_capture = true,
-  };
+  StateTransitionResult res;
+  res.accepted = true;
+  res.previous_phase = prev;
+  res.new_phase = phase_;
+  res.should_start_capture = true;
+  return res;
 }
 
 StateTransitionResult RuntimeStateMachine::OnStopRecording(std::size_t sample_count,
@@ -71,23 +71,23 @@ StateTransitionResult RuntimeStateMachine::OnStopRecording(std::size_t sample_co
   }
 
   phase_ = vinput::dbus::Status::Inferring;
-  return StateTransitionResult{
-      .accepted = true,
-      .previous_phase = prev,
-      .new_phase = phase_,
-      .should_stop_capture = true,
-      .should_submit_inference = true,
-  };
+  StateTransitionResult res;
+  res.accepted = true;
+  res.previous_phase = prev;
+  res.new_phase = phase_;
+  res.should_stop_capture = true;
+  res.should_submit_inference = true;
+  return res;
 }
 
 StateTransitionResult RuntimeStateMachine::OnCancel(bool commit_raw_text) {
   const auto prev = phase_;
   if (phase_ == vinput::dbus::Status::Idle) {
-    return StateTransitionResult{
-        .accepted = true,
-        .previous_phase = prev,
-        .new_phase = prev,
-    };
+    StateTransitionResult res;
+    res.accepted = true;
+    res.previous_phase = prev;
+    res.new_phase = prev;
+    return res;
   }
 
   if (phase_ == vinput::dbus::Status::Recording) {
@@ -105,13 +105,13 @@ StateTransitionResult RuntimeStateMachine::OnCancel(bool commit_raw_text) {
     postprocessing_state_ =
         commit_raw_text ? PostprocessingState::CommitRaw : PostprocessingState::Discard;
 
-    return StateTransitionResult{
-        .accepted = true,
-        .previous_phase = prev,
-        .new_phase = prev,
-        .should_commit_raw_text = commit_raw_text,
-        .should_discard_text = !commit_raw_text,
-    };
+    StateTransitionResult res;
+    res.accepted = true;
+    res.previous_phase = prev;
+    res.new_phase = prev;
+    res.should_commit_raw_text = commit_raw_text;
+    res.should_discard_text = !commit_raw_text;
+    return res;
   }
 
   return Reject(prev, _("No cancellable operation in current phase."));
@@ -124,13 +124,13 @@ StateTransitionResult RuntimeStateMachine::OnAudioError() {
 
   const auto prev = phase_;
   phase_ = vinput::dbus::Status::Error;
-  return StateTransitionResult{
-      .accepted = true,
-      .previous_phase = prev,
-      .new_phase = phase_,
-      .should_stop_capture = true,
-      .should_cancel_session = true,
-  };
+  StateTransitionResult res;
+  res.accepted = true;
+  res.previous_phase = prev;
+  res.new_phase = phase_;
+  res.should_stop_capture = true;
+  res.should_cancel_session = true;
+  return res;
 }
 
 StateTransitionResult RuntimeStateMachine::OnInferenceComplete(bool has_scene_to_postprocess) {
@@ -143,12 +143,12 @@ StateTransitionResult RuntimeStateMachine::OnInferenceComplete(bool has_scene_to
     phase_ = vinput::dbus::Status::Postprocessing;
     postprocessing_state_ =
         is_command_ ? PostprocessingState::Command : PostprocessingState::Dictation;
-    return StateTransitionResult{
-        .accepted = true,
-        .previous_phase = prev,
-        .new_phase = phase_,
-        .should_enter_postprocessing = true,
-    };
+    StateTransitionResult res;
+    res.accepted = true;
+    res.previous_phase = prev;
+    res.new_phase = phase_;
+    res.should_enter_postprocessing = true;
+    return res;
   }
 
   return CompleteToIdle(prev);
@@ -161,11 +161,11 @@ StateTransitionResult RuntimeStateMachine::OnInferenceError() {
 
   const auto prev = phase_;
   phase_ = vinput::dbus::Status::Error;
-  return StateTransitionResult{
-      .accepted = true,
-      .previous_phase = prev,
-      .new_phase = phase_,
-  };
+  StateTransitionResult res;
+  res.accepted = true;
+  res.previous_phase = prev;
+  res.new_phase = phase_;
+  return res;
 }
 
 StateTransitionResult RuntimeStateMachine::OnPostprocessingComplete() {
@@ -179,11 +179,11 @@ StateTransitionResult RuntimeStateMachine::OnPostprocessingComplete() {
 StateTransitionResult RuntimeStateMachine::OnResetToIdle() {
   const auto prev = phase_;
   Clear();
-  return StateTransitionResult{
-      .accepted = true,
-      .previous_phase = prev,
-      .new_phase = vinput::dbus::Status::Idle,
-  };
+  StateTransitionResult res;
+  res.accepted = true;
+  res.previous_phase = prev;
+  res.new_phase = vinput::dbus::Status::Idle;
+  return res;
 }
 
 StateTransitionResult RuntimeStateMachine::AbortRecordingToIdle(vinput::dbus::Status prev,
@@ -191,14 +191,14 @@ StateTransitionResult RuntimeStateMachine::AbortRecordingToIdle(vinput::dbus::St
   phase_ = vinput::dbus::Status::Idle;
   is_command_ = false;
   selected_text_.clear();
-  return StateTransitionResult{
-      .accepted = true,
-      .previous_phase = prev,
-      .new_phase = phase_,
-      .should_stop_capture = true,
-      .should_cancel_session = true,
-      .is_too_short = is_too_short,
-  };
+  StateTransitionResult res;
+  res.accepted = true;
+  res.previous_phase = prev;
+  res.new_phase = phase_;
+  res.should_stop_capture = true;
+  res.should_cancel_session = true;
+  res.is_too_short = is_too_short;
+  return res;
 }
 
 StateTransitionResult RuntimeStateMachine::CompleteToIdle(vinput::dbus::Status prev) {
@@ -206,12 +206,12 @@ StateTransitionResult RuntimeStateMachine::CompleteToIdle(vinput::dbus::Status p
   postprocessing_state_ = PostprocessingState::Inactive;
   is_command_ = false;
   selected_text_.clear();
-  return StateTransitionResult{
-      .accepted = true,
-      .previous_phase = prev,
-      .new_phase = phase_,
-      .should_commit_result = true,
-  };
+  StateTransitionResult res;
+  res.accepted = true;
+  res.previous_phase = prev;
+  res.new_phase = phase_;
+  res.should_commit_result = true;
+  return res;
 }
 
 PostprocessingState RuntimeStateMachine::TakePostprocessingState() noexcept {
