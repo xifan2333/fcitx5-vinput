@@ -303,6 +303,16 @@ target_include_directories(test_post_processor PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_post_processor PRIVATE common pthread)
 add_test(NAME test_post_processor COMMAND test_post_processor)
 
+add_executable(test_recognition_pipeline
+    test_recognition_pipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/runtime/recognition_pipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/post_processor.cpp
+    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/prompt_template.cpp
+)
+target_include_directories(test_recognition_pipeline PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_recognition_pipeline PRIVATE common pthread)
+add_test(NAME test_recognition_pipeline COMMAND test_recognition_pipeline)
+
 add_executable(test_http_client test_http_client.cpp)
 target_include_directories(test_http_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_http_client PRIVATE common pthread)

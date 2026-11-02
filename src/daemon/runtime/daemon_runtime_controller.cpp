@@ -748,10 +748,12 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
                 AudioRecordingBuffer::kStreamingChunkSamples);
           }
         }
-        current_order_->recognized_text = latest_final_text_;
-        current_order_->scene_id = scene_id;
-        current_order_->is_command = state_machine_.IsCommand();
-        current_order_->selected_text = state_machine_.SelectedText();
+        current_order_->postprocess_request = PostprocessRequest{
+            .text = latest_final_text_,
+            .scene_id = scene_id,
+            .is_command = state_machine_.IsCommand(),
+            .selected_text = state_machine_.SelectedText(),
+        };
         LogRecognitionRequest(active_backend_, total_samples);
         active_backend_ = {};
         dbus_->EmitStatusChanged(vinput::dbus::StatusToString(transition.new_phase));
@@ -973,9 +975,9 @@ void DaemonRuntimeController::WorkerMain() {
               vinput::daemon::notify::MakeDaemonErrorNotification(failure));
           recognition_failed = true;
         } else if (!result.text.empty()) {
-          order.recognized_text = std::move(result.text);
+          order.postprocess_request.text = std::move(result.text);
           // RecognitionPartial is also the protocol's transcript-update signal.
-          dbus_->EmitRecognitionPartial(order.recognized_text);
+          dbus_->EmitRecognitionPartial(order.postprocess_request.text);
         }
         order.pcm.clear();
         order.session.reset();
@@ -988,7 +990,8 @@ void DaemonRuntimeController::WorkerMain() {
 
       postprocessing_cancel_requested_.store(false, std::memory_order_relaxed);
       auto pipeline_result = pipeline_->Process(
-          order, runtime_settings, [&]() { EnterPostprocessing(order.is_command); },
+          order.postprocess_request, runtime_settings,
+          [&]() { EnterPostprocessing(order.postprocess_request.is_command); },
           &postprocessing_cancel_requested_);
       PostprocessingState postprocessing_action = PostprocessingState::Inactive;
       {
@@ -996,9 +999,9 @@ void DaemonRuntimeController::WorkerMain() {
         postprocessing_action = state_machine_.TakePostprocessingState();
       }
       if (postprocessing_action == PostprocessingState::CommitRaw) {
-        pipeline_result.payload.commitText = order.recognized_text;
+        pipeline_result.payload.commitText = order.postprocess_request.text;
         pipeline_result.payload.candidates = {
-            {.text = order.recognized_text, .source = vinput::result::kSourceRaw}};
+            {.text = order.postprocess_request.text, .source = vinput::result::kSourceRaw}};
         pipeline_result.errors.clear();
       } else if (postprocessing_action == PostprocessingState::Discard) {
         pipeline_result.payload = {};
