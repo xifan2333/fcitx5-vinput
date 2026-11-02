@@ -88,4 +88,16 @@ private:
   std::string model_id_;
 };
 
+/**
+ * @brief Formats raw offline ASR decoding errors into user-friendly actionable diagnostics.
+ *
+ * Checks if the underlying error is caused by ONNX tensor Reshape failure (characteristic of
+ * attention matrix overflow on excessive audio length in offline Zipformer architectures).
+ * If so, generates a localized error message reporting audio duration and actionable advice.
+ * Unrelated errors are preserved verbatim without false attribution to recording duration.
+ *
+ * @param raw_error Raw exception message string from offline ASR inference.
+ * @param duration_sec Approximate length of the audio recording in seconds.
+ * @return Localized actionable diagnostic string, or verbatim raw_error if unrelated.
+ */
 std::string FormatOfflineAsrError(std::string_view raw_error, double duration_sec);

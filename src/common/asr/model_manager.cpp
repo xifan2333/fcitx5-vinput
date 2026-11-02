@@ -617,7 +617,7 @@ vinput::Expected<void> ModelManager::Remove(const std::string& model_id) const {
 
 std::string FormatOfflineAsrError(std::string_view raw_error, double duration_sec) {
   if (raw_error.find("Reshape") != std::string_view::npos ||
-      raw_error.find("cannot be reshaped") != std::string_view::npos || duration_sec > 25.0) {
+      raw_error.find("cannot be reshaped") != std::string_view::npos) {
     return vinput::str::FmtStr(
         _("Recognition failed: audio is about %.1f seconds long, which exceeds what this offline "
           "model can reliably process. Please record in shorter segments or switch to a "
