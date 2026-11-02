@@ -262,7 +262,7 @@ void TestInfrastructureAndPassthrough() {
 
   const vinput::config::CoreConfigView view(config);
   Expect(&view.Config() == &config, "Config() must return reference to original config object");
-  Expect(view.ModelBaseDir() == vinput::path::DefaultModelBaseDir(),
+  Expect(vinput::config::CoreConfigView::ModelBaseDir() == vinput::path::DefaultModelBaseDir(),
          "ModelBaseDir() must match DefaultModelBaseDir()");
 }
 

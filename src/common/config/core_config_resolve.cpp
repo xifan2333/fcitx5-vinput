@@ -89,6 +89,6 @@ const vinput::scene::Definition* FindCommandScene(const CoreConfig& config) {
   return CoreConfigView(config).CommandScene();
 }
 
-std::filesystem::path ResolveModelBaseDir(const CoreConfig& config) {
-  return CoreConfigView(config).ModelBaseDir();
+std::filesystem::path ResolveModelBaseDir(const CoreConfig&) {
+  return CoreConfigView::ModelBaseDir();
 }

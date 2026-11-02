@@ -17,14 +17,11 @@ namespace vinput::config {
 
 namespace {
 
-std::vector<std::string> ResolveRegistryUrlsForPath(const CoreConfig* config,
+std::vector<std::string> ResolveRegistryUrlsForPath(const CoreConfig& config,
                                                     std::string_view suffix) {
-  if (config == nullptr) {
-    return {};
-  }
   std::vector<std::string> urls;
   std::set<std::string> seen;
-  for (const auto& baseUrl : config->registry.baseUrls) {
+  for (const auto& baseUrl : config.registry.baseUrls) {
     if (baseUrl.empty()) {
       continue;
     }
@@ -44,7 +41,7 @@ std::vector<std::string> ResolveRegistryUrlsForPath(const CoreConfig* config,
 } // namespace
 
 const ::LlmProvider* CoreConfigView::LlmProvider(std::string_view provider_id) const noexcept {
-  if (config_ == nullptr || provider_id.empty()) {
+  if (provider_id.empty()) {
     return nullptr;
   }
   for (const auto& provider : config_->llm.providers) {
@@ -56,7 +53,7 @@ const ::LlmProvider* CoreConfigView::LlmProvider(std::string_view provider_id) c
 }
 
 const ::LlmAdapter* CoreConfigView::LlmAdapter(std::string_view adapter_id) const noexcept {
-  if (config_ == nullptr || adapter_id.empty()) {
+  if (adapter_id.empty()) {
     return nullptr;
   }
   for (const auto& adapter : config_->llm.adapters) {
@@ -68,7 +65,7 @@ const ::LlmAdapter* CoreConfigView::LlmAdapter(std::string_view adapter_id) cons
 }
 
 const ::AsrProvider* CoreConfigView::AsrProvider(std::string_view provider_id) const noexcept {
-  if (config_ == nullptr || provider_id.empty()) {
+  if (provider_id.empty()) {
     return nullptr;
   }
   for (const auto& provider : config_->asr.providers) {
@@ -80,9 +77,6 @@ const ::AsrProvider* CoreConfigView::AsrProvider(std::string_view provider_id) c
 }
 
 const ::AsrProvider* CoreConfigView::ActiveAsrProvider() const noexcept {
-  if (config_ == nullptr) {
-    return nullptr;
-  }
   return AsrProvider(config_->asr.activeProvider);
 }
 
@@ -98,9 +92,6 @@ const ::AsrProvider* CoreConfigView::PreferredLocalAsrProvider() const noexcept 
   const ::AsrProvider* active_local = ActiveLocalAsrProvider();
   if (active_local != nullptr) {
     return active_local;
-  }
-  if (config_ == nullptr) {
-    return nullptr;
   }
   for (const auto& provider : config_->asr.providers) {
     if (std::holds_alternative<LocalAsrProvider>(provider)) {
@@ -119,25 +110,22 @@ std::string CoreConfigView::PreferredLocalModel() const {
 }
 
 std::vector<std::string> CoreConfigView::ModelRegistryUrls() const {
-  return ResolveRegistryUrlsForPath(config_, "registry/models.json");
+  return ResolveRegistryUrlsForPath(*config_, "registry/models.json");
 }
 
 std::vector<std::string> CoreConfigView::AsrProviderRegistryUrls() const {
-  return ResolveRegistryUrlsForPath(config_, "registry/providers.json");
+  return ResolveRegistryUrlsForPath(*config_, "registry/providers.json");
 }
 
 std::vector<std::string> CoreConfigView::LlmAdapterRegistryUrls() const {
-  return ResolveRegistryUrlsForPath(config_, "registry/adapters.json");
+  return ResolveRegistryUrlsForPath(*config_, "registry/adapters.json");
 }
 
 std::vector<std::string> CoreConfigView::RegistryI18nUrls(std::string_view locale) const {
-  return ResolveRegistryUrlsForPath(config_, std::format("i18n/{}.json", locale));
+  return ResolveRegistryUrlsForPath(*config_, std::format("i18n/{}.json", locale));
 }
 
 const vinput::scene::Definition* CoreConfigView::CommandScene() const noexcept {
-  if (config_ == nullptr) {
-    return nullptr;
-  }
   for (const auto& scene : config_->scenes.definitions) {
     if (scene.id == vinput::scene::kCommandSceneId) {
       return &scene;

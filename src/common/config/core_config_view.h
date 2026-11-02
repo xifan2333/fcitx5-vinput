@@ -13,7 +13,6 @@ namespace vinput::config {
 class CoreConfigView {
 public:
   explicit CoreConfigView(const CoreConfig& config) noexcept : config_(&config) {}
-  explicit CoreConfigView(const CoreConfig* config) noexcept : config_(config) {}
 
   // ASR derivation and fallback chain
   [[nodiscard]] const ::AsrProvider* ActiveAsrProvider() const noexcept;
