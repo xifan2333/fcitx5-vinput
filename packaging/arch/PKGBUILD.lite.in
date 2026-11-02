@@ -8,7 +8,7 @@ license=('GPL-3.0-only')
 options=(!debug !lto)
 depends=('curl' 'fcitx5' 'libarchive' 'openssl' 'pipewire' 'qt6-base')
 optdepends=('wireplumber: reduce system output volume while recording')
-makedepends=('clang' 'cli11' 'cmake' 'mold' 'ninja' 'pkgconf' 'qt6-tools')
+makedepends=('clang' 'cli11' 'cmake' 'mold' 'ninja' 'pkgconf' 'qt6-tools' 'spdlog')
 provides=('fcitx5-vinput')
 conflicts=('fcitx5-vinput')
 source=('@VINPUT_SOURCE_ARCHIVE@')
@@ -28,7 +28,9 @@ build() {
         -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=mold \
         -DVINPUT_PROJECT_VERSION="${pkgver}" \
         -DVINPUT_PACKAGE_RELEASE="${pkgrel}" \
-        -DVINPUT_PACKAGE_HOMEPAGE_URL="${url}"
+        -DVINPUT_PACKAGE_HOMEPAGE_URL="${url}" \
+        -DVINPUT_FETCH_SPDLOG=OFF \
+        -DVINPUT_FETCH_CLI11=OFF
     cmake --build "${srcdir}/build"
 }
 

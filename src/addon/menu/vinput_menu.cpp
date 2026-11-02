@@ -10,7 +10,6 @@
 #include <fcitx/text.h>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -27,13 +26,10 @@
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
-#include "common/i18n.h"
 #include "common/llm/adapter_manager.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
-#include "common/runtime/runtime_defaults.h"
 #include "common/scene/postprocess_scene.h"
-#include "common/utils/string_utils.h"
 
 #include "core/vinput.h"
 #include "menu/palette_command.h"
@@ -47,8 +43,8 @@ struct ParsedPaletteQuery {
 };
 
 std::string NormalizeSearchText(std::string text) {
-  std::transform(text.begin(), text.end(), text.begin(),
-                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  std::ranges::transform(text, text.begin(),
+                         [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   return text;
 }
 
@@ -68,12 +64,10 @@ bool MatchesAllTerms(const std::string& haystack, const std::string& query) {
   }
 
   const std::string normalized_haystack = NormalizeSearchText(haystack);
-  for (const auto& term : SplitSearchTerms(query)) {
-    if (normalized_haystack.find(term) == std::string::npos) {
-      return false;
-    }
-  }
-  return true;
+  const auto terms = SplitSearchTerms(query);
+  return std::ranges::all_of(terms, [&](const std::string& term) {
+    return normalized_haystack.find(term) != std::string::npos;
+  });
 }
 
 void PopLastUtf8Char(std::string* text) {
@@ -82,9 +76,12 @@ void PopLastUtf8Char(std::string* text) {
   }
 
   std::size_t pos = text->size();
-  do {
+  while (pos > 0) {
     --pos;
-  } while (pos > 0 && (static_cast<unsigned char>((*text)[pos]) & 0xC0) == 0x80);
+    if ((static_cast<unsigned char>((*text)[pos]) & 0xC0) != 0x80) {
+      break;
+    }
+  }
   text->erase(pos);
 }
 
@@ -162,8 +159,8 @@ std::string ResultCandidateComment(const vinput::result::Candidate& candidate) {
 
 std::string DecoratePagedMenuTitle(const std::string& base_title,
                                    fcitx::CandidateList* candidate_list) {
-  auto* pageable = candidate_list ? candidate_list->toPageable() : nullptr;
-  if (!pageable) {
+  auto* pageable = candidate_list != nullptr ? candidate_list->toPageable() : nullptr;
+  if (pageable == nullptr) {
     return base_title;
   }
 
