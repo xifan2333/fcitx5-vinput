@@ -1,4 +1,3 @@
-#include <atomic>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -94,6 +93,7 @@ void TestDictationWithLlmCallback() {
       pipeline.Process(req, config, [&entered_postprocessing]() { entered_postprocessing = true; });
 
   Expect(entered_postprocessing, "LLM scene must invoke on_enter_postprocessing");
+  Expect(!res.payload.commitText.empty(), "Result payload commitText should not be empty");
 }
 
 void TestCommandModeResolution() {
@@ -119,6 +119,7 @@ void TestCommandModeResolution() {
       pipeline.Process(req, config, [&entered_postprocessing]() { entered_postprocessing = true; });
 
   Expect(entered_postprocessing, "Command scene with LLM must invoke on_enter_postprocessing");
+  Expect(!res.payload.commitText.empty(), "Command result payload commitText should not be empty");
 }
 
 void TestFallbackSceneResolution() {

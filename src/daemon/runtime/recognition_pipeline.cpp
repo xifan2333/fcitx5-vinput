@@ -1,6 +1,8 @@
 #include "daemon/runtime/recognition_pipeline.h"
 
+#include <atomic>
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <utility>
