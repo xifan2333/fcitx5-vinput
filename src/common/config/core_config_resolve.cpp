@@ -1,117 +1,53 @@
-#include <set>
-#include <string_view>
+#include <string>
+#include <variant>
+#include <vector>
 
 #include "common/config/core_config.h"
-#include "common/utils/path_utils.h"
+#include "common/config/core_config_view.h"
 
 const LlmProvider* ResolveLlmProvider(const CoreConfig& config, const std::string& provider_id) {
-  if (provider_id.empty()) {
-    return nullptr;
-  }
-  for (const auto& provider : config.llm.providers) {
-    if (provider.id == provider_id) {
-      return &provider;
-    }
-  }
-  return nullptr;
+  return CoreConfigView(config).LlmProvider(provider_id);
 }
 
 const LlmAdapter* ResolveLlmAdapter(const CoreConfig& config, const std::string& adapter_id) {
-  if (adapter_id.empty()) {
-    return nullptr;
-  }
-  for (const auto& adapter : config.llm.adapters) {
-    if (adapter.id == adapter_id) {
-      return &adapter;
-    }
-  }
-  return nullptr;
+  return CoreConfigView(config).LlmAdapter(adapter_id);
 }
 
 const AsrProvider* ResolveAsrProvider(const CoreConfig& config, const std::string& provider_id) {
-  if (provider_id.empty()) {
-    return nullptr;
-  }
-  for (const auto& provider : config.asr.providers) {
-    if (AsrProviderId(provider) == provider_id) {
-      return &provider;
-    }
-  }
-  return nullptr;
+  return CoreConfigView(config).AsrProvider(provider_id);
 }
 
 const AsrProvider* ResolveActiveAsrProvider(const CoreConfig& config) {
-  return ResolveAsrProvider(config, config.asr.activeProvider);
+  return CoreConfigView(config).ActiveAsrProvider();
 }
 
 const AsrProvider* ResolveActiveLocalAsrProvider(const CoreConfig& config) {
-  const AsrProvider* provider = ResolveActiveAsrProvider(config);
-  if (!provider || !std::holds_alternative<LocalAsrProvider>(*provider)) {
-    return nullptr;
-  }
-  return provider;
+  return CoreConfigView(config).ActiveLocalAsrProvider();
 }
 
 const AsrProvider* ResolvePreferredLocalAsrProvider(const CoreConfig& config) {
-  if (const AsrProvider* provider = ResolveActiveLocalAsrProvider(config)) {
-    return provider;
-  }
-  for (const auto& provider : config.asr.providers) {
-    if (std::holds_alternative<LocalAsrProvider>(provider)) {
-      return &provider;
-    }
-  }
-  return nullptr;
+  return CoreConfigView(config).PreferredLocalAsrProvider();
 }
 
 std::string ResolvePreferredLocalModel(const CoreConfig& config) {
-  const AsrProvider* provider = ResolvePreferredLocalAsrProvider(config);
-  if (!provider) {
-    return {};
-  }
-  return std::get<LocalAsrProvider>(*provider).model;
+  return CoreConfigView(config).PreferredLocalModel();
 }
-
-namespace {
-
-std::vector<std::string> ResolveRegistryUrlsForPath(const CoreConfig& config,
-                                                    std::string_view suffix) {
-  std::vector<std::string> urls;
-  std::set<std::string> seen;
-  for (const auto& baseUrl : config.registry.baseUrls) {
-    if (baseUrl.empty()) {
-      continue;
-    }
-    std::string url = baseUrl;
-    while (!url.empty() && url.back() == '/') {
-      url.pop_back();
-    }
-    url += "/";
-    url += suffix;
-    if (seen.insert(url).second) {
-      urls.push_back(std::move(url));
-    }
-  }
-  return urls;
-}
-
-} // namespace
 
 std::vector<std::string> ResolveModelRegistryUrls(const CoreConfig& config) {
-  return ResolveRegistryUrlsForPath(config, "registry/models.json");
+  return CoreConfigView(config).ModelRegistryUrls();
 }
 
 std::vector<std::string> ResolveAsrProviderRegistryUrls(const CoreConfig& config) {
-  return ResolveRegistryUrlsForPath(config, "registry/providers.json");
+  return CoreConfigView(config).AsrProviderRegistryUrls();
 }
 
 std::vector<std::string> ResolveLlmAdapterRegistryUrls(const CoreConfig& config) {
-  return ResolveRegistryUrlsForPath(config, "registry/adapters.json");
+  return CoreConfigView(config).LlmAdapterRegistryUrls();
 }
 
 std::vector<std::string> ResolveRegistryI18nUrls(const CoreConfig& config,
                                                  const std::string& locale) {
-  return ResolveRegistryUrlsForPath(config, "i18n/" + locale + ".json");
+  return CoreConfigView(config).RegistryI18nUrls(locale);
 }
 
 bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::string* error) {
@@ -122,7 +58,7 @@ bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::s
     return false;
   }
 
-  const AsrProvider* provider = ResolvePreferredLocalAsrProvider(*config);
+  const AsrProvider* provider = CoreConfigView(*config).PreferredLocalAsrProvider();
   if (!provider) {
     if (error) {
       *error = "No local ASR provider configured.";
@@ -147,14 +83,9 @@ bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::s
 }
 
 const vinput::scene::Definition* FindCommandScene(const CoreConfig& config) {
-  for (const auto& scene : config.scenes.definitions) {
-    if (scene.id == vinput::scene::kCommandSceneId) {
-      return &scene;
-    }
-  }
-  return nullptr;
+  return CoreConfigView(config).CommandScene();
 }
 
-std::filesystem::path ResolveModelBaseDir(const CoreConfig&) {
-  return vinput::path::DefaultModelBaseDir();
+std::filesystem::path ResolveModelBaseDir(const CoreConfig& config) {
+  return CoreConfigView(config).ModelBaseDir();
 }
