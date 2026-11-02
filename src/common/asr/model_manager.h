@@ -87,3 +87,5 @@ private:
   std::string base_dir_;
   std::string model_id_;
 };
+
+std::string FormatOfflineAsrError(std::string_view raw_error, double duration_sec);

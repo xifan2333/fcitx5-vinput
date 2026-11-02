@@ -1,6 +1,7 @@
 #include "vad_trimmer.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <sherpa-onnx/c-api/cxx-api.h>
 #include <string>
@@ -147,16 +148,36 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
   FeedWaveformToVad(vad, samples);
 
   std::vector<std::vector<float>> segments;
-  constexpr float kMinSegmentDurationSec = 0.10F;
-  const std::size_t min_segment_samples =
-      static_cast<std::size_t>(kMinSegmentDurationSec * static_cast<float>(sample_rate_));
+  constexpr float kMaxSegmentDurationSec = 15.0F;
+  const auto max_segment_samples =
+      static_cast<std::size_t>(kMaxSegmentDurationSec * static_cast<float>(sample_rate_));
+  constexpr float kMinMergeDurationSec = 0.50F;
+  const auto min_merge_samples =
+      static_cast<std::size_t>(kMinMergeDurationSec * static_cast<float>(sample_rate_));
 
   while (!vad.IsEmpty()) {
     auto seg = vad.Front();
-    if (seg.samples.size() >= min_segment_samples) {
+    vad.Pop();
+    if (seg.samples.empty()) {
+      continue;
+    }
+
+    if (seg.samples.size() > max_segment_samples) {
+      for (std::size_t offset = 0; offset < seg.samples.size(); offset += max_segment_samples) {
+        const std::size_t slice_len = std::min(max_segment_samples, seg.samples.size() - offset);
+        segments.emplace_back(seg.samples.begin() + static_cast<std::ptrdiff_t>(offset),
+                              seg.samples.begin() +
+                                  static_cast<std::ptrdiff_t>(offset + slice_len));
+      }
+      continue;
+    }
+
+    if (!segments.empty() && segments.back().size() < min_merge_samples &&
+        segments.back().size() + seg.samples.size() <= max_segment_samples) {
+      segments.back().insert(segments.back().end(), seg.samples.begin(), seg.samples.end());
+    } else {
       segments.push_back(std::move(seg.samples));
     }
-    vad.Pop();
   }
 
   VLOG_DEBUG("VAD segmented {} samples into {} speech segments", n, segments.size());

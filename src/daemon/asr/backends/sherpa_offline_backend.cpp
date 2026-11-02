@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -422,27 +423,11 @@ std::string InferOffline(const sherpa_onnx::cxx::OfflineRecognizer* recognizer,
     return {};
   }
 
-  try {
-    stream.AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
-    recognizer->Decode(&stream);
+  stream.AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
+  recognizer->Decode(&stream);
 
-    const auto result = recognizer->GetResult(&stream);
-    return result.text;
-  } catch (const std::exception& e) {
-    const double duration_sec = static_cast<double>(samples.size()) / 16000.0;
-    VLOG_ERROR("sherpa-onnx offline decode exception on utterance ({:.1f}s): {}", duration_sec,
-               e.what());
-    const std::string_view err_msg(e.what());
-    if (err_msg.find("Reshape") != std::string_view::npos ||
-        err_msg.find("cannot be reshaped") != std::string_view::npos || duration_sec > 25.0) {
-      throw std::runtime_error(vinput::str::FmtStr(
-          _("Recognition failed: audio is about %.1f seconds long, which exceeds what this offline "
-            "model can reliably process. Please record in shorter segments or switch to a "
-            "streaming model."),
-          duration_sec));
-    }
-    throw;
-  }
+  const auto result = recognizer->GetResult(&stream);
+  return result.text;
 }
 
 // ---------------------------------------------------------------------------
@@ -507,31 +492,51 @@ public:
     }
 
     std::string text;
-    if (vad_available_ && vad_ != nullptr && vad_->Available()) {
-      const auto segments = vad_->Segment(samples_, 16000);
-      if (segments.empty()) {
-        VLOG_DEBUG("VAD found no speech segments, skipping ASR");
-        events_.push_back({RecognitionEventKind::Completed, {}, {}});
-        if (error != nullptr) {
-          error->clear();
-        }
-        return true;
-      }
-
-      for (const auto& segment : segments) {
-        if (segment.size() < kMinSamplesForInference) {
-          continue;
-        }
-        std::string seg_text = InferOffline(recognizer_, segment);
-        if (!seg_text.empty()) {
-          if (!text.empty()) {
-            text += ' ';
+    try {
+      if (vad_available_ && vad_ != nullptr && vad_->Available()) {
+        const auto segments = vad_->Segment(samples_, 16000);
+        if (segments.empty()) {
+          VLOG_DEBUG("VAD found no speech segments, skipping ASR");
+          events_.push_back({RecognitionEventKind::Completed, {}, {}});
+          if (error != nullptr) {
+            error->clear();
           }
-          text += seg_text;
+          return true;
         }
+
+        auto needs_space_between = [](char left, char right) {
+          auto is_ascii_alnum = [](char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+          };
+          return is_ascii_alnum(left) && is_ascii_alnum(right);
+        };
+
+        for (const auto& segment : segments) {
+          if (segment.empty()) {
+            continue;
+          }
+          const std::string seg_text = InferOffline(recognizer_, segment);
+          if (!seg_text.empty()) {
+            if (!text.empty() && needs_space_between(text.back(), seg_text.front())) {
+              text += ' ';
+            }
+            text += seg_text;
+          }
+        }
+      } else {
+        text = InferOffline(recognizer_, samples_);
       }
-    } else {
-      text = InferOffline(recognizer_, samples_);
+    } catch (const std::exception& e) {
+      const double duration_sec = static_cast<double>(samples_.size()) / 16000.0;
+      VLOG_ERROR("sherpa-onnx offline decode exception on audio ({:.1f}s): {}", duration_sec,
+                 e.what());
+      const std::string friendly_err = FormatOfflineAsrError(e.what(), duration_sec);
+      if (error != nullptr) {
+        *error = friendly_err;
+      }
+      events_.push_back({RecognitionEventKind::Error, {}, friendly_err});
+      events_.push_back({RecognitionEventKind::Completed, {}, {}});
+      return false;
     }
 
     if (!text.empty()) {
