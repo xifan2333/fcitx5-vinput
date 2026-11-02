@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <functional>
 #include <initializer_list>
 #include <optional>
@@ -17,61 +18,18 @@
 
 namespace vinput::str {
 
-namespace detail {
-
-template <typename T> auto PrepareStorage(const T& v) {
-  using RawT = std::decay_t<T>;
-  if constexpr (std::is_same_v<RawT, std::string_view>) {
-    return v.empty() ? std::string{} : std::string(v);
-  } else {
-    return std::cref(v);
-  }
-}
-
-template <typename T> auto ToCArg(const T& v) {
-  using RawT = std::decay_t<T>;
-  if constexpr (std::is_same_v<RawT, std::string>) {
-    return v.c_str();
-  } else {
-    static_assert(!std::is_same_v<RawT, std::string_view>,
-                  "std::string_view must be adapted via PrepareStorage before snprintf");
-    return v;
-  }
-}
-
-template <typename T> auto ToCArg(const std::reference_wrapper<T>& ref) {
-  return ToCArg(ref.get());
-}
-
-} // namespace detail
-
 // =========================================================================
 // 1. Formatting (i18n Gettext Bridge)
 // =========================================================================
 
-template <typename... Args> std::string FmtStr(const char* fmt, const Args&... args) {
+template <typename... Args> std::string FmtStr(const char* fmt, Args&&... args) {
   if (fmt == nullptr) {
     return {};
   }
   if constexpr (sizeof...(Args) == 0) {
-    // No substitution requested (common for plain gettext messages); returning the
-    // text verbatim also avoids passing a non-literal format to snprintf
-    // (-Wformat-security).
     return {fmt};
   } else {
-    const auto storage = std::make_tuple(detail::PrepareStorage(args)...);
-    return std::apply(
-        [fmt](const auto&... items) {
-          const int n = std::snprintf(nullptr, 0, fmt, detail::ToCArg(items)...);
-          if (n < 0) {
-            return std::string(fmt);
-          }
-          std::string buf(static_cast<std::size_t>(n) + 1, '\0');
-          std::snprintf(buf.data(), buf.size(), fmt, detail::ToCArg(items)...);
-          buf.resize(static_cast<std::size_t>(n));
-          return buf;
-        },
-        storage);
+    return fmt::sprintf(fmt, std::forward<Args>(args)...);
   }
 }
 
