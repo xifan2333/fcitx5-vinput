@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <fmt/core.h>
-#include <fmt/printf.h>
 #include <fstream>
 #include <functional>
 #include <map>

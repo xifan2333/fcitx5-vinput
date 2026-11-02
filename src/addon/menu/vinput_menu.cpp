@@ -4,7 +4,6 @@
 #include <cstdlib>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
-#include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/event.h>
@@ -255,12 +254,7 @@ bool IsPrintableMenuInput(const fcitx::Key& key) {
     return false;
   }
 
-  for (const unsigned char ch : utf8) {
-    if (ch < 0x20 || ch == 0x7f) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::all_of(utf8, [](unsigned char ch) { return ch >= 0x20 && ch != 0x7f; });
 }
 
 void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
