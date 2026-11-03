@@ -1,18 +1,15 @@
 #include "gui/utils/i18n_cache.h"
 
-#include <QMetaObject>
-#include <QMutexLocker>
-#include <QString>
-#include <QThreadPool>
-#include <QtCore/QMetaObject>
-#include <QtCore/QMutex>
-#include <QtCore/QString>
 #include <QtCore/qglobal.h>
+#include <QtCore/qmutex.h>
 #include <QtCore/qnamespace.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qthreadpool.h>
+#include <QtCore/qtmetamacros.h>
 #include <string>
 #include <utility>
 
-#include "common/registry/registry_cache.h"
 #include "common/registry/registry_i18n.h"
 
 namespace vinput::gui {

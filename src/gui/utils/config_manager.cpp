@@ -1,7 +1,7 @@
 #include "gui/utils/config_manager.h"
 
-#include <QMutexLocker>
-#include <QtCore/QMutexLocker>
+#include <QtCore/qmutex.h>
+#include <QtCore/qtmetamacros.h>
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"

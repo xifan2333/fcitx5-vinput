@@ -1,17 +1,15 @@
-#include <QtCore/QByteArray>
-#include <QtCore/QCoreApplication>
-#include <QtCore/QDir>
-#include <QtCore/QLibraryInfo>
-#include <QtCore/QLocale>
-#include <QtCore/QStandardPaths>
-#include <QtCore/QString>
-#include <QtCore/QStringList>
-#include <QtCore/QTranslator>
-#include <QtCore/qglobal.h>
+#include <QtCore/qbytearray.h>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qdir.h>
 #include <QtCore/qlibraryinfo.h>
+#include <QtCore/qlocale.h>
 #include <QtCore/qnamespace.h>
+#include <QtCore/qstandardpaths.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
 #include <QtCore/qstringliteral.h>
-#include <QtWidgets/QApplication>
+#include <QtCore/qtranslator.h>
+#include <QtWidgets/qapplication.h>
 #include <cstdlib>
 
 #include "mainwindow.h"

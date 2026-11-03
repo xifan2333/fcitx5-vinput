@@ -1,9 +1,8 @@
 #include "gui/utils/download_worker.h"
 
-#include <QObject>
-#include <QThread>
-#include <QtCore/QObject>
-#include <QtCore/QThread>
+#include <QtCore/qobject.h>
+#include <QtCore/qthread.h>
+#include <QtCore/qtmetamacros.h>
 #include <atomic>
 #include <chrono>
 #include <string>
