@@ -7,6 +7,7 @@
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 
 #include "daemon/asr/backends/command_batch_backend.h"
 #include "daemon/asr/backends/command_streaming_backend.h"
@@ -70,7 +71,8 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
 
 std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string* error,
                                           vinput::notify::NotificationBridge* notification_bridge) {
-  const AsrProvider* provider = ResolveActiveAsrProvider(config);
+  const CoreConfigView view(config);
+  const AsrProvider* provider = view.ActiveAsrProvider();
   if (provider == nullptr) {
     if (error != nullptr) {
       *error = "Active ASR provider not found.";

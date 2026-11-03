@@ -28,6 +28,7 @@
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 #include "common/json/json_access.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/interpolation.h"
@@ -155,7 +156,7 @@ bool RemoteTextService::ExtractSettings(const CoreConfig& config, Settings* sett
     *should_run = false;
   }
 
-  const AsrProvider* provider = ResolveActiveAsrProvider(config);
+  const AsrProvider* provider = CoreConfigView(config).ActiveAsrProvider();
   const auto* command = provider != nullptr ? std::get_if<CommandAsrProvider>(provider) : nullptr;
   if (command == nullptr) {
     if (error != nullptr) {

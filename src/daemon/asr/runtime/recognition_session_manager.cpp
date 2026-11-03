@@ -14,6 +14,7 @@
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 #include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/utils/debug_log.h"
@@ -89,7 +90,7 @@ private:
 };
 
 bool ShouldDisableAsr(const CoreConfig& config, std::string* reason) {
-  const AsrProvider* provider = ResolveActiveAsrProvider(config);
+  const AsrProvider* provider = CoreConfigView(config).ActiveAsrProvider();
   if (provider == nullptr) {
     if (reason != nullptr) {
       *reason = _("No active ASR provider configured.");
@@ -104,7 +105,7 @@ std::string BuildRuntimeSignature(const CoreConfig& config) {
   glz::json_t j = glz::json_t(glz::json_t::object_t{});
   j["active_provider"] = config.asr.activeProvider;
 
-  const AsrProvider* provider = ResolveActiveAsrProvider(config);
+  const AsrProvider* provider = CoreConfigView(config).ActiveAsrProvider();
   if (provider == nullptr) {
     return vinput::json::ToText(j);
   }
@@ -205,12 +206,13 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
   EnsureReloadWorkerStarted();
 
   const std::string signature = BuildRuntimeSignature(settings);
+  const CoreConfigView view(settings);
   {
     const std::scoped_lock lock(state_mutex_);
     if (effective_backend_ && effective_backend_signature_ == signature && !reload_in_progress_) {
-      const AsrProvider* provider = ResolveActiveAsrProvider(settings);
+      const AsrProvider* provider = view.ActiveAsrProvider();
       target_provider_id_ = provider != nullptr ? AsrProviderId(*provider) : std::string{};
-      target_model_id_ = ResolvePreferredLocalModel(settings);
+      target_model_id_ = view.PreferredLocalModel();
       target_backend_signature_ = signature;
       last_reload_error_.clear();
       if (error != nullptr) {
@@ -220,9 +222,9 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
     }
 
     pending_settings_ = settings;
-    const AsrProvider* provider = ResolveActiveAsrProvider(settings);
+    const AsrProvider* provider = view.ActiveAsrProvider();
     target_provider_id_ = provider != nullptr ? AsrProviderId(*provider) : std::string{};
-    target_model_id_ = ResolvePreferredLocalModel(settings);
+    target_model_id_ = view.PreferredLocalModel();
     target_backend_signature_ = signature;
     reload_requested_ = true;
     last_reload_error_.clear();
@@ -389,7 +391,7 @@ bool RecognitionSessionManager::CreatePreparedBackend(
   prepared->backend = std::move(backend);
   prepared->descriptor = descriptor;
   prepared->provider_id = descriptor.provider_id;
-  prepared->model_id = ResolvePreferredLocalModel(settings);
+  prepared->model_id = CoreConfigView(settings).PreferredLocalModel();
   prepared->signature = BuildRuntimeSignature(settings);
   if (error != nullptr) {
     error->clear();

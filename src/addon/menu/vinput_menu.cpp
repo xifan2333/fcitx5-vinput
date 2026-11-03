@@ -30,6 +30,7 @@
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 #include "common/llm/adapter_manager.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
@@ -409,7 +410,8 @@ void VinputEngine::initializePaletteRegistry() {
             const bool is_local_active =
                 (active_provider == "sherpa-onnx" || active_provider.empty());
             const ModelManager model_mgr;
-            const auto local_models = model_mgr.ListDetailed(ResolvePreferredLocalModel(config));
+            const auto local_models =
+                model_mgr.ListDetailed(CoreConfigView(config).PreferredLocalModel());
 
             for (const auto& m : local_models) {
               if (m.state == ModelState::Broken) {
@@ -476,7 +478,7 @@ void VinputEngine::initializePaletteRegistry() {
           [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
             auto core_config = LoadCoreConfig();
 #if !VINPUT_ENABLE_LOCAL_ASR
-            const auto* target_provider = ResolveAsrProvider(core_config, item.provider_id);
+            const auto* target_provider = CoreConfigView(core_config).AsrProvider(item.provider_id);
             if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
               engine->notifyError(
                   fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
