@@ -1,7 +1,14 @@
 #include "gui/utils/i18n_cache.h"
 
 #include <QMetaObject>
+#include <QMutexLocker>
+#include <QString>
 #include <QThreadPool>
+#include <string>
+#include <utility>
+
+#include "common/registry/registry_cache.h"
+#include "common/registry/registry_i18n.h"
 
 namespace vinput::gui {
 
@@ -10,14 +17,14 @@ I18nCache& I18nCache::Get() {
   return instance;
 }
 
-void I18nCache::ApplyLoadedMap(vinput::registry::I18nMap map, std::string error,
+void I18nCache::ApplyLoadedMap(vinput::registry::I18nMap map, const std::string& error,
                                quint64 generation) {
   if (!error.empty()) {
     emit reloadFailed(QString::fromStdString(error), generation);
     return;
   }
   {
-    QMutexLocker locker(&mutex_);
+    const QMutexLocker locker(&mutex_);
     map_ = std::move(map);
   }
   emit mapUpdated(generation);
@@ -53,7 +60,7 @@ quint64 I18nCache::ReloadFromDisk() {
 }
 
 vinput::registry::I18nMap I18nCache::GetMap() const {
-  QMutexLocker locker(&mutex_);
+  const QMutexLocker locker(&mutex_);
   return map_;
 }
 

@@ -34,7 +34,7 @@ private:
   I18nCache() = default;
   ~I18nCache() override = default;
 
-  void ApplyLoadedMap(vinput::registry::I18nMap map, std::string error, quint64 generation);
+  void ApplyLoadedMap(vinput::registry::I18nMap map, const std::string& error, quint64 generation);
 
   mutable QMutex mutex_;
   vinput::registry::I18nMap map_;

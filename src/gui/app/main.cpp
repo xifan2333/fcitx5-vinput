@@ -1,11 +1,15 @@
 #include <QApplication>
+#include <QByteArray>
+#include <QCoreApplication>
 #include <QDir>
 #include <QLibraryInfo>
 #include <QLocale>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QTranslator>
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qstringliteral.h>
+#include <cstdlib>
 
 #include "mainwindow.h"
 
@@ -83,5 +87,5 @@ int main(int argc, char* argv[]) {
   window.resize(600, 400);
   window.show();
 
-  return app.exec();
+  return QApplication::exec();
 }
