@@ -68,6 +68,7 @@ target_link_libraries(config PUBLIC
     Fcitx5::Config
     ${GETTEXT_LIBRARIES}
     OpenSSL::Crypto
+    3rdparty_fmt
     spdlog::spdlog_header_only
     subprocess::subprocess
     nonstd::scope

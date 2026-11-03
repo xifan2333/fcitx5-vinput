@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <format>
+#include <fmt/format.h>
 #include <fstream>
 #include <ios>
 #include <iterator>
@@ -545,15 +545,15 @@ bool IsDirectoryWritable(const std::filesystem::path& path) {
 
 std::string FormatFileSize(uint64_t bytes) {
   if (bytes >= 1024ULL * 1024 * 1024) {
-    return std::format("{:.1f} GB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024));
+    return fmt::format("{:.1f} GB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024));
   }
   if (bytes >= 1024ULL * 1024) {
-    return std::format("{:.1f} MB", static_cast<double>(bytes) / (1024.0 * 1024));
+    return fmt::format("{:.1f} MB", static_cast<double>(bytes) / (1024.0 * 1024));
   }
   if (bytes >= 1024) {
-    return std::format("{:.1f} KB", static_cast<double>(bytes) / 1024.0);
+    return fmt::format("{:.1f} KB", static_cast<double>(bytes) / 1024.0);
   }
-  return std::format("{} B", bytes);
+  return fmt::format("{} B", bytes);
 }
 
 } // namespace vinput::file

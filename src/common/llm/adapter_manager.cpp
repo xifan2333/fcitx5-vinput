@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <format>
+#include <fmt/format.h>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -41,7 +41,7 @@ constexpr auto kGracefulStopTimeout = std::chrono::milliseconds(2000);
 constexpr auto kForceKillTimeout = std::chrono::milliseconds(1000);
 
 std::string SourceId(std::string_view adapter_id) {
-  return std::format("llm:{}", adapter_id);
+  return fmt::format("llm:{}", adapter_id);
 }
 
 struct TrackedSession {
@@ -203,7 +203,7 @@ bool Start(std::string_view adapter_id, vinput::notify::NotificationBridge* brid
       bridge->RetireSource(source_id);
     }
     if (error != nullptr) {
-      *error = std::format("adapter exited immediately (code {})", immediate_exit);
+      *error = fmt::format("adapter exited immediately (code {})", immediate_exit);
     }
     return false;
   }

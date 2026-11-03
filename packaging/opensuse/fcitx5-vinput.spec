@@ -33,7 +33,6 @@ BuildRequires:  mold
 BuildRequires:  gettext-tools
 BuildRequires:  pkg-config
 BuildRequires:  fcitx5-devel
-BuildRequires:  nlohmann_json-devel
 BuildRequires:  qt6-base-devel
 BuildRequires:  qt6-tools-devel
 BuildRequires:  libcurl-devel
@@ -43,6 +42,7 @@ BuildRequires:  libopenblas_pthreads-devel
 BuildRequires:  pipewire-devel
 BuildRequires:  systemd-devel
 BuildRequires:  cli11-devel
+BuildRequires:  spdlog-devel
 BuildRequires:  lapack-devel
 BuildRequires:  openblas-common-devel
 
@@ -75,7 +75,9 @@ cmake -S . -B build -G Ninja \
     -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=mold \
     -DVINPUT_PROJECT_VERSION=%{version} \
     -DVINPUT_PACKAGE_RELEASE=%{release} \
-    -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url}
+    -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url} \
+    -DVINPUT_FETCH_SPDLOG=OFF \
+    -DVINPUT_FETCH_CLI11=OFF
 %else
 cmake -S . -B build -G Ninja \
     -DCMAKE_INSTALL_PREFIX=%{_prefix} \
@@ -87,7 +89,9 @@ cmake -S . -B build -G Ninja \
     -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=mold \
     -DVINPUT_PROJECT_VERSION=%{version} \
     -DVINPUT_PACKAGE_RELEASE=%{release} \
-    -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url}
+    -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url} \
+    -DVINPUT_FETCH_SPDLOG=OFF \
+    -DVINPUT_FETCH_CLI11=OFF
 %endif
 cmake --build build
 

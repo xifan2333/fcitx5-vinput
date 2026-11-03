@@ -1,5 +1,6 @@
 #include "cli/config/device_actions.h"
 
+#include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <string>
 #include <utility>
@@ -75,7 +76,7 @@ int RunDeviceConfigUse(const std::string& name, Formatter& fmt, const CliContext
     }
     if (!found) {
       fmt.PrintWarning(
-          vinput::str::FmtStr(_("Device '%s' not found in PipeWire. Setting it anyway."), name));
+          ::fmt::sprintf(_("Device '%s' not found in PipeWire. Setting it anyway."), name));
     }
   }
 
@@ -85,7 +86,7 @@ int RunDeviceConfigUse(const std::string& name, Formatter& fmt, const CliContext
     return 1;
   }
 
-  fmt.PrintSuccess(vinput::str::FmtStr(
-      _("Capture device set to '%s'. Restart daemon to apply changes."), target_to_save));
+  fmt.PrintSuccess(::fmt::sprintf(_("Capture device set to '%s'. Restart daemon to apply changes."),
+                                  target_to_save));
   return 0;
 }

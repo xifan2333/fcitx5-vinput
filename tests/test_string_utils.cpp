@@ -10,7 +10,9 @@
 
 #include "common/utils/string_utils.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -257,50 +259,6 @@ void TestJoinKeyValue() {
   TEST_ASSERT(JoinKeyValue(pair_list, "&", "=") == "=val&key=");
 }
 
-namespace {
-void TestFmtStr() {
-  using vinput::str::FmtStr;
-
-  // 1. Basic formatting: nullptr, no args, integers, floats, string literals
-  TEST_ASSERT(FmtStr(nullptr).empty());
-  TEST_ASSERT(FmtStr("hello world") == "hello world");
-  TEST_ASSERT(FmtStr("Number: %d, Float: %.2f", 42, 3.14159) == "Number: 42, Float: 3.14");
-  TEST_ASSERT(FmtStr("Literal: %s", "constant") == "Literal: constant");
-
-  // 2. std::string arguments (lvalue reference, temporary/rvalue)
-  const std::string s_lvalue = "my_string";
-  TEST_ASSERT(FmtStr("String: %s", s_lvalue) == "String: my_string");
-  TEST_ASSERT(FmtStr("Temp string: %s", std::string("temporary")) == "Temp string: temporary");
-
-  // 3. std::string_view normal arguments
-  const std::string_view sv_literal = "literal_view";
-  TEST_ASSERT(FmtStr("View: %s", sv_literal) == "View: literal_view");
-
-  // 4. Non null-terminated std::string_view slices (critical SIGSEGV & memory safety regression
-  // check)
-  const std::string base = "hello world from fcitx5";
-  const std::string_view slice(base.data(), 5); // "hello", followed by ' ', NOT null-terminated!
-  TEST_ASSERT(FmtStr("Result: [%s] Number: %d", slice, 42) == "Result: [hello] Number: 42");
-
-  const std::string_view mid_slice(base.data() + 6, 5); // "world"
-  TEST_ASSERT(FmtStr("[%s]-[%s]", slice, mid_slice) == "[hello]-[world]");
-
-  const std::string_view empty_view{};
-  TEST_ASSERT(FmtStr("Empty: [%s]", empty_view) == "Empty: []");
-  TEST_ASSERT(FmtStr("Direct default view: [%s]", std::string_view{}) == "Direct default view: []");
-
-  // 5. Interleaved multiple string_views, strings, numbers, and pointers (stack & register ABI
-  // alignment check)
-  const std::string text = "alpha_beta_gamma";
-  const std::string_view p1(text.data(), 5);      // "alpha"
-  const std::string_view p2(text.data() + 6, 4);  // "beta"
-  const std::string_view p3(text.data() + 11, 5); // "gamma"
-  const std::string mixed_str = "middle";
-
-  const std::string combined = FmtStr("%s-%d-%s-%s-%d-%s", p1, 10, mixed_str, p2, 20, p3);
-  TEST_ASSERT(combined == "alpha-10-middle-beta-20-gamma");
-}
-
 } // namespace
 
 int main() {
@@ -314,6 +272,5 @@ int main() {
   TestRSplitOnce();
   TestJoin();
   TestJoinKeyValue();
-  TestFmtStr();
   return 0;
 }

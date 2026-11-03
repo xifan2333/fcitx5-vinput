@@ -1,11 +1,11 @@
 #include "cli/control/daemon_actions.h"
 
 #include <cstdio>
+#include <fmt/printf.h>
 #include <string>
 
 #include "common/i18n.h"
 #include "common/utils/sandbox.h"
-#include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
 #include "cli/runtime/systemd_client.h"
@@ -90,7 +90,7 @@ int RunDaemonControlStop(Formatter& fmt, const CliContext& ctx) {
     fmt.PrintSuccess(_("Daemon stopped."));
     return 0;
   }
-  fmt.PrintError(vinput::str::FmtStr(_("systemctl stop failed (exit code: %d)"), r));
+  fmt.PrintError(::fmt::sprintf(_("systemctl stop failed (exit code: %d)"), r));
   return 1;
 }
 

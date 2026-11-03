@@ -3,80 +3,18 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
-#include <cstdio>
-#include <functional>
 #include <initializer_list>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
-#include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace vinput::str {
 
-namespace detail {
-
-template <typename T> auto PrepareStorage(const T& v) {
-  using RawT = std::decay_t<T>;
-  if constexpr (std::is_same_v<RawT, std::string_view>) {
-    return v.empty() ? std::string{} : std::string(v);
-  } else {
-    return std::cref(v);
-  }
-}
-
-template <typename T> auto ToCArg(const T& v) {
-  using RawT = std::decay_t<T>;
-  if constexpr (std::is_same_v<RawT, std::string>) {
-    return v.c_str();
-  } else {
-    static_assert(!std::is_same_v<RawT, std::string_view>,
-                  "std::string_view must be adapted via PrepareStorage before snprintf");
-    return v;
-  }
-}
-
-template <typename T> auto ToCArg(const std::reference_wrapper<T>& ref) {
-  return ToCArg(ref.get());
-}
-
-} // namespace detail
-
 // =========================================================================
-// 1. Formatting (i18n Gettext Bridge)
-// =========================================================================
-
-template <typename... Args> std::string FmtStr(const char* fmt, const Args&... args) {
-  if (fmt == nullptr) {
-    return {};
-  }
-  if constexpr (sizeof...(Args) == 0) {
-    // No substitution requested (common for plain gettext messages); returning the
-    // text verbatim also avoids passing a non-literal format to snprintf
-    // (-Wformat-security).
-    return {fmt};
-  } else {
-    const auto storage = std::make_tuple(detail::PrepareStorage(args)...);
-    return std::apply(
-        [fmt](const auto&... items) {
-          const int n = std::snprintf(nullptr, 0, fmt, detail::ToCArg(items)...);
-          if (n < 0) {
-            return std::string(fmt);
-          }
-          std::string buf(static_cast<std::size_t>(n) + 1, '\0');
-          std::snprintf(buf.data(), buf.size(), fmt, detail::ToCArg(items)...);
-          buf.resize(static_cast<std::size_t>(n));
-          return buf;
-        },
-        storage);
-  }
-}
-
-// =========================================================================
-// 2. Trimming (Zero-Copy)
+// 1. Trimming (Zero-Copy)
 // =========================================================================
 
 [[nodiscard]] inline std::string_view Trim(std::string_view text) noexcept {

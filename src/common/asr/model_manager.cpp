@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <fstream>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
@@ -620,7 +621,7 @@ std::string FormatOfflineAsrError(std::string_view raw_error, double duration_se
   const bool is_reshape_error = raw_error.find("Reshape") != std::string_view::npos ||
                                 raw_error.find("cannot be reshaped") != std::string_view::npos;
   if (is_reshape_error && duration_sec > kOfflineCapacityLimitSec) {
-    return vinput::str::FmtStr(
+    return fmt::sprintf(
         _("Recognition failed: audio is about %.1f seconds long, which exceeds what this offline "
           "model can reliably process. Please record in shorter segments or switch to a "
           "streaming model."),

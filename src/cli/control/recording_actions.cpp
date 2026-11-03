@@ -1,11 +1,11 @@
 #include "cli/control/recording_actions.h"
 
+#include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <string>
 
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
-#include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
 #include "cli/utils/cli_context.h"
@@ -81,7 +81,7 @@ int RunRecordingControlStop(const std::string& scene_id, Formatter& fmt, const C
   } else if (resolved.empty()) {
     fmt.PrintInfo(_("Recording stopped."));
   } else {
-    fmt.PrintInfo(vinput::str::FmtStr(_("Recording stopped (scene: %s)."), resolved.c_str()));
+    fmt.PrintInfo(::fmt::sprintf(_("Recording stopped (scene: %s)."), resolved.c_str()));
   }
   return 0;
 }
@@ -125,13 +125,13 @@ int RunRecordingControlToggle(const std::string& scene_id, Formatter& fmt, const
     } else if (resolved.empty()) {
       fmt.PrintInfo(_("Recording stopped."));
     } else {
-      fmt.PrintInfo(vinput::str::FmtStr(_("Recording stopped (scene: %s)."), resolved.c_str()));
+      fmt.PrintInfo(::fmt::sprintf(_("Recording stopped (scene: %s)."), resolved.c_str()));
     }
     return 0;
   }
 
   if (status == vinput::dbus::kStatusInferring || status == vinput::dbus::kStatusPostprocessing) {
-    std::string msg = vinput::str::FmtStr(_("Daemon is busy (status: %s)."), status.c_str());
+    std::string msg = ::fmt::sprintf(_("Daemon is busy (status: %s)."), status.c_str());
     if (ctx.json_output) {
       fmt.PrintJson({{"ok", false}, {"error", msg}});
     } else {

@@ -13,6 +13,7 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
 #include <fcitx/userinterface.h>
+#include <fmt/printf.h>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,7 +29,6 @@
 #include "common/runtime/runtime_defaults.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
-#include "common/utils/string_utils.h"
 
 #include "core/vinput.h"
 #include "notifications_public.h"
@@ -69,7 +69,7 @@ std::string ApplyingCommandPreeditText() {
 }
 
 std::string CommandTranscriptPreeditText(const std::string& text) {
-  return vinput::str::FmtStr(_("Command: %s"), text.c_str());
+  return fmt::sprintf(_("Command: %s"), text);
 }
 
 std::string DaemonUnavailablePreeditText() {

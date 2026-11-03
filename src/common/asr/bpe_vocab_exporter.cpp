@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <format>
+#include <fmt/base.h>
 #include <fstream>
 #include <ios>
 #include <iterator>
@@ -207,7 +207,7 @@ vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path
         return vinput::UnexpectedError("unsupported SentencePiece piece record in: " +
                                        model_path.string());
       }
-      std::format_to(std::back_inserter(output_buffer), "{}\t{}\n", record->piece, record->score);
+      fmt::format_to(std::back_inserter(output_buffer), "{}\t{}\n", record->piece, record->score);
       ++piece_count;
       if (piece_count > kMaxPieceCount || output_buffer.size() > kMaxBpeVocabularyBytes) {
         return vinput::UnexpectedError("SentencePiece vocabulary exceeds safety limits: " +

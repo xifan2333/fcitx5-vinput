@@ -3,14 +3,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fcitx-utils/i18n.h>
+#include <fcitx-utils/key.h>
+#include <fcitx-utils/keysymgen.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
+#include <fcitx/userinterface.h>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -22,16 +25,15 @@
 #if VINPUT_ENABLE_LOCAL_ASR
 #include "common/asr/model_manager.h"
 #endif
+#include <fmt/printf.h>
+
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
-#include "common/i18n.h"
 #include "common/llm/adapter_manager.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
-#include "common/runtime/runtime_defaults.h"
 #include "common/scene/postprocess_scene.h"
-#include "common/utils/string_utils.h"
 
 #include "core/vinput.h"
 #include "menu/palette_command.h"
@@ -45,8 +47,8 @@ struct ParsedPaletteQuery {
 };
 
 std::string NormalizeSearchText(std::string text) {
-  std::transform(text.begin(), text.end(), text.begin(),
-                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  std::ranges::transform(text, text.begin(),
+                         [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   return text;
 }
 
@@ -66,12 +68,10 @@ bool MatchesAllTerms(const std::string& haystack, const std::string& query) {
   }
 
   const std::string normalized_haystack = NormalizeSearchText(haystack);
-  for (const auto& term : SplitSearchTerms(query)) {
-    if (normalized_haystack.find(term) == std::string::npos) {
-      return false;
-    }
-  }
-  return true;
+  const auto terms = SplitSearchTerms(query);
+  return std::ranges::all_of(terms, [&](const std::string& term) {
+    return normalized_haystack.find(term) != std::string::npos;
+  });
 }
 
 void PopLastUtf8Char(std::string* text) {
@@ -80,9 +80,12 @@ void PopLastUtf8Char(std::string* text) {
   }
 
   std::size_t pos = text->size();
-  do {
+  while (pos > 0) {
     --pos;
-  } while (pos > 0 && (static_cast<unsigned char>((*text)[pos]) & 0xC0) == 0x80);
+    if ((static_cast<unsigned char>((*text)[pos]) & 0xC0) != 0x80) {
+      break;
+    }
+  }
   text->erase(pos);
 }
 
@@ -136,7 +139,7 @@ std::string PaletteMenuTitle(const ParsedPaletteQuery& parsed) {
   }
 
   if (!parsed.terms.empty()) {
-    return vinput::str::FmtStr(_("Search: %s"), parsed.terms.c_str());
+    return fmt::sprintf(_("Search: %s"), parsed.terms.c_str());
   }
 
   return _("Command Palette");
@@ -160,8 +163,8 @@ std::string ResultCandidateComment(const vinput::result::Candidate& candidate) {
 
 std::string DecoratePagedMenuTitle(const std::string& base_title,
                                    fcitx::CandidateList* candidate_list) {
-  auto* pageable = candidate_list ? candidate_list->toPageable() : nullptr;
-  if (!pageable) {
+  auto* pageable = candidate_list != nullptr ? candidate_list->toPageable() : nullptr;
+  if (pageable == nullptr) {
     return base_title;
   }
 
@@ -200,12 +203,7 @@ bool IsKeySym(const fcitx::Key& key, fcitx::KeySym sym) {
 }
 
 bool IsOneOfKeySyms(const fcitx::Key& key, std::initializer_list<fcitx::KeySym> syms) {
-  for (const auto sym : syms) {
-    if (IsKeySym(key, sym)) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(syms, [&](fcitx::KeySym sym) { return IsKeySym(key, sym); });
 }
 
 bool IsPagePrevKey(const fcitx::Key& key) {
@@ -256,16 +254,11 @@ bool IsPrintableMenuInput(const fcitx::Key& key) {
     return false;
   }
 
-  for (unsigned char ch : utf8) {
-    if (ch < 0x20 || ch == 0x7f) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::all_of(utf8, [](unsigned char ch) { return ch >= 0x20 && ch != 0x7f; });
 }
 
 void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
-  if (!candidate_list || candidate_list->totalSize() <= 0) {
+  if (candidate_list == nullptr || candidate_list->totalSize() <= 0) {
     return;
   }
 
@@ -273,13 +266,13 @@ void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
 }
 
 bool ChangeCandidatePage(fcitx::InputContext* ic, const std::string& base_title, bool next_page) {
-  if (!ic) {
+  if (ic == nullptr) {
     return false;
   }
 
   auto candidate_list = ic->inputPanel().candidateList();
-  auto* pageable = candidate_list ? candidate_list->toPageable() : nullptr;
-  if (!pageable) {
+  auto* pageable = candidate_list != nullptr ? candidate_list->toPageable() : nullptr;
+  if (pageable == nullptr) {
     return false;
   }
 
@@ -390,9 +383,8 @@ void VinputEngine::initializePaletteRegistry() {
               engine->notifyError(error.empty() ? _("Failed to set command model.") : error);
               return;
             }
-            engine->notifyInfo(vinput::str::FmtStr(_("Command model set to '%s / %s'."),
-                                                   item.provider_id.c_str(),
-                                                   item.model_id.c_str()));
+            engine->notifyInfo(fmt::sprintf(_("Command model set to '%s / %s'."),
+                                            item.provider_id.c_str(), item.model_id.c_str()));
           },
   });
 
@@ -487,9 +479,9 @@ void VinputEngine::initializePaletteRegistry() {
             const auto* target_provider = ResolveAsrProvider(core_config, item.provider_id);
             if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
               engine->notifyError(
-                  vinput::str::FmtStr(_("ASR provider '%s' is a local provider, which is not "
-                                        "supported in this Lite build."),
-                                      item.provider_id.c_str()));
+                  fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
+                                 "supported in this Lite build."),
+                               item.provider_id.c_str()));
               return;
             }
 #endif
@@ -514,7 +506,7 @@ void VinputEngine::initializePaletteRegistry() {
               }
             }
             engine->notifyInfo(
-                vinput::str::FmtStr(_("ASR switch requested for '%s'."), item.text.c_str()));
+                fmt::sprintf(_("ASR switch requested for '%s'."), item.text.c_str()));
           },
   });
 
@@ -562,8 +554,7 @@ void VinputEngine::initializePaletteRegistry() {
               return;
             }
             engine->active_scene_id_ = item.scene_id;
-            engine->notifyInfo(
-                vinput::str::FmtStr(_("Scene switched to '%s'."), item.text.c_str()));
+            engine->notifyInfo(fmt::sprintf(_("Scene switched to '%s'."), item.text.c_str()));
           },
   });
 
@@ -620,15 +611,13 @@ void VinputEngine::initializePaletteRegistry() {
                 engine->notifyError(error.empty() ? _("Failed to stop adapter.") : error);
                 return;
               }
-              engine->notifyInfo(
-                  vinput::str::FmtStr(_("Adapter '%s' stopped."), item.text.c_str()));
+              engine->notifyInfo(fmt::sprintf(_("Adapter '%s' stopped."), item.text.c_str()));
             } else {
               if (!engine->callStartAdapter(item.adapter_id, &error)) {
                 engine->notifyError(error.empty() ? _("Failed to start adapter.") : error);
                 return;
               }
-              engine->notifyInfo(
-                  vinput::str::FmtStr(_("Adapter '%s' started."), item.text.c_str()));
+              engine->notifyInfo(fmt::sprintf(_("Adapter '%s' started."), item.text.c_str()));
             }
           },
   });
@@ -750,11 +739,11 @@ void VinputEngine::hidePaletteMenu() {
   const bool was_visible = palette_menu_visible_;
   resetPaletteMenuState();
 
-  if (!was_visible || !ic) {
+  if (!was_visible || ic == nullptr) {
     return;
   }
 
-  fcitx::Text empty;
+  const fcitx::Text empty;
   ic->inputPanel().setAuxUp(empty);
   ic->inputPanel().setCandidateList({});
   ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
@@ -849,14 +838,14 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
-  if (cursor_list && IsUpKey(keyEvent.key())) {
+  if (cursor_list != nullptr && IsUpKey(keyEvent.key())) {
     cursor_list->prevCandidate();
     palette_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (cursor_list && IsDownKey(keyEvent.key())) {
+  if (cursor_list != nullptr && IsDownKey(keyEvent.key())) {
     cursor_list->nextCandidate();
     palette_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     keyEvent.filterAndAccept();
@@ -864,11 +853,9 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (IsEnterKey(keyEvent.key())) {
-    int index = candidate_list ? candidate_list->cursorIndex() : -1;
-    if (index < 0) {
-      index = 0;
-    }
-    if (candidate_list && index >= 0 && index < candidate_list->size()) {
+    int index = candidate_list != nullptr ? candidate_list->cursorIndex() : -1;
+    index = std::max(index, 0);
+    if (candidate_list != nullptr && index >= 0 && index < candidate_list->size()) {
       candidate_list->candidate(index).select(palette_menu_ic_);
     } else {
       hidePaletteMenu();
@@ -904,7 +891,7 @@ void VinputEngine::selectPaletteItem(std::size_t index, fcitx::InputContext* ic)
 }
 
 void VinputEngine::showResultMenu(fcitx::InputContext* ic, const vinput::result::Payload& payload) {
-  if (!ic || payload.candidates.empty()) {
+  if (ic == nullptr || payload.candidates.empty()) {
     return;
   }
 
@@ -941,18 +928,18 @@ void VinputEngine::hideResultMenu() {
   const bool was_visible = result_menu_visible_;
   resetResultMenuState();
 
-  if (!was_visible || !ic) {
+  if (!was_visible || ic == nullptr) {
     return;
   }
 
-  fcitx::Text empty;
+  const fcitx::Text empty;
   ic->inputPanel().setAuxUp(empty);
   ic->inputPanel().setCandidateList({});
   ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
 }
 
 bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
-  if (!result_menu_visible_ || !result_menu_ic_) {
+  if (!result_menu_visible_ || result_menu_ic_ == nullptr) {
     return false;
   }
 
@@ -999,14 +986,14 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
-  if (cursor_list && keyEvent.key().check(FcitxKey_Up)) {
+  if (cursor_list != nullptr && keyEvent.key().check(FcitxKey_Up)) {
     cursor_list->prevCandidate();
     result_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (cursor_list && keyEvent.key().check(FcitxKey_Down)) {
+  if (cursor_list != nullptr && keyEvent.key().check(FcitxKey_Down)) {
     cursor_list->nextCandidate();
     result_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     keyEvent.filterAndAccept();
@@ -1014,11 +1001,9 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   if (keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter)) {
-    int index = candidate_list ? candidate_list->cursorIndex() : -1;
-    if (index < 0) {
-      index = 0;
-    }
-    if (candidate_list && index >= 0 && index < candidate_list->size()) {
+    int index = candidate_list != nullptr ? candidate_list->cursorIndex() : -1;
+    index = std::max(index, 0);
+    if (candidate_list != nullptr && index >= 0 && index < candidate_list->size()) {
       candidate_list->candidate(index).select(result_menu_ic_);
     } else {
       hideResultMenu();

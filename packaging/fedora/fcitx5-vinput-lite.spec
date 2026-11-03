@@ -17,7 +17,6 @@ BuildRequires:  pkgconfig
 BuildRequires:  gettext
 BuildRequires:  cmake(Fcitx5Core)
 BuildRequires:  cmake(Fcitx5Config)
-BuildRequires:  cmake(nlohmann_json) >= 3.2.0
 BuildRequires:  cmake(Qt6Core)
 BuildRequires:  cmake(Qt6Gui)
 BuildRequires:  cmake(Qt6Widgets)
@@ -29,6 +28,7 @@ BuildRequires:  pkgconfig(libarchive)
 BuildRequires:  pkgconfig(libpipewire-0.3)
 BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  cli11-devel
+BuildRequires:  spdlog-devel
 
 Requires:       fcitx5
 Requires:       pipewire
@@ -53,7 +53,9 @@ export CXX=clang++
     -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=mold \
     -DVINPUT_PROJECT_VERSION=%{version} \
     -DVINPUT_PACKAGE_RELEASE=%{release} \
-    -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url}
+    -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url} \
+    -DVINPUT_FETCH_SPDLOG=OFF \
+    -DVINPUT_FETCH_CLI11=OFF
 %cmake_build
 
 %install

@@ -84,29 +84,6 @@ if(VINPUT_ENABLE_WERROR)
 endif()
 find_package(PkgConfig REQUIRED)
 
-option(VINPUT_FETCH_SPDLOG "Fetch spdlog with FetchContent when not found" ON)
-find_package(spdlog QUIET)
-if(NOT spdlog_FOUND)
-    if(VINPUT_FETCH_SPDLOG)
-        include(FetchContent)
-        set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-        set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
-        set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
-        FetchContent_Declare(
-            spdlog
-            GIT_REPOSITORY https://github.com/gabime/spdlog.git
-            GIT_TAG v1.15.1
-        )
-        FetchContent_MakeAvailable(spdlog)
-    else()
-        message(FATAL_ERROR
-            "spdlog was not found. Install spdlog or enable VINPUT_FETCH_SPDLOG.")
-    endif()
-endif()
-if(NOT TARGET spdlog::spdlog_header_only AND TARGET spdlog_header_only)
-    add_library(spdlog::spdlog_header_only ALIAS spdlog_header_only)
-endif()
 option(VINPUT_FETCH_CLI11 "Fetch CLI11 with FetchContent when not found" ON)
 find_package(CLI11 QUIET)
 if(NOT CLI11_FOUND)
@@ -218,6 +195,30 @@ target_include_directories(3rdparty_tl_expected SYSTEM INTERFACE
     ${CMAKE_SOURCE_DIR}/3rdparty/tl-expected/include
 )
 add_library(tl::expected ALIAS 3rdparty_tl_expected)
+
+add_library(3rdparty_fmt INTERFACE)
+target_include_directories(3rdparty_fmt SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/fmt/include
+)
+target_compile_definitions(3rdparty_fmt INTERFACE FMT_HEADER_ONLY=1)
+if(NOT TARGET fmt::fmt)
+    add_library(fmt::fmt ALIAS 3rdparty_fmt)
+endif()
+if(NOT TARGET fmt::fmt-header-only)
+    add_library(fmt::fmt-header-only ALIAS 3rdparty_fmt)
+endif()
+
+add_library(3rdparty_spdlog INTERFACE)
+target_include_directories(3rdparty_spdlog SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/spdlog/include
+)
+target_compile_definitions(3rdparty_spdlog INTERFACE
+    SPDLOG_HEADER_ONLY=1
+    SPDLOG_FMT_EXTERNAL=1
+)
+target_link_libraries(3rdparty_spdlog INTERFACE 3rdparty_fmt)
+add_library(spdlog::spdlog_header_only ALIAS 3rdparty_spdlog)
+add_library(spdlog::spdlog ALIAS 3rdparty_spdlog)
 
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
