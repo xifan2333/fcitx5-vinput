@@ -2,12 +2,14 @@
 #include <chrono>
 #include <cstdint>
 #include <ctime>
+#include <fcitx-utils/event.h>
+#if __has_include(<fcitx-utils/eventloopinterface.h>)
 #include <fcitx-utils/eventloopinterface.h>
+#endif
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/log.h>
-#include <fcitx-utils/trackableobject.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
@@ -178,9 +180,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   if (session_ && session_->phase == Session::Phase::Postprocessing &&
       last_known_daemon_status_ == vinput::dbus::kStatusPostprocessing) {
     const bool discard = keyEvent.key().check(FcitxKey_Escape);
-    const bool commit_raw =
-        session_->raw_prev && !session_->command_mode &&
-        (keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter));
+    bool commit_raw = false;
+    if (session_->raw_prev && !session_->command_mode) {
+      commit_raw = keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter);
+    }
     if (discard || commit_raw) {
       if (!keyEvent.isRelease()) {
         pending_postprocessing_release_ = keyEvent.key();
@@ -239,14 +242,9 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  fcitx::Key matched_key;
-  if (is_trigger) {
-    matched_key = trigger_keys_[trigger_index];
-  } else if (is_command) {
-    matched_key = command_keys_[command_index];
-  } else {
-    matched_key = menu_keys_[menu_index];
-  }
+  const fcitx::Key matched_key = is_trigger   ? trigger_keys_[trigger_index]
+                                 : is_command ? command_keys_[command_index]
+                                              : menu_keys_[menu_index];
 
   // 5. Press Phase
   if (!keyEvent.isRelease()) {
@@ -316,8 +314,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
 
   // 6. Release Phase
   if (keyEvent.isRelease()) {
-    const bool matches_active =
-        (held_role_ == role) && held_key_sym_.has_value() && *held_key_sym_ == event_key.sym();
+    bool matches_active = false;
+    if (held_role_ == role && held_key_sym_.has_value()) {
+      matches_active = (*held_key_sym_ == event_key.sym());
+    }
 
     if (matches_active) {
       const auto active_role = held_role_;
