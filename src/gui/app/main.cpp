@@ -1,14 +1,17 @@
-#include <QApplication>
-#include <QByteArray>
-#include <QCoreApplication>
-#include <QDir>
-#include <QLibraryInfo>
-#include <QLocale>
-#include <QStandardPaths>
-#include <QStringList>
-#include <QTranslator>
+#include <QtCore/QByteArray>
+#include <QtCore/QCoreApplication>
+#include <QtCore/QDir>
+#include <QtCore/QLibraryInfo>
+#include <QtCore/QLocale>
+#include <QtCore/QStandardPaths>
+#include <QtCore/QString>
+#include <QtCore/QStringList>
+#include <QtCore/QTranslator>
+#include <QtCore/qglobal.h>
 #include <QtCore/qlibraryinfo.h>
+#include <QtCore/qnamespace.h>
 #include <QtCore/qstringliteral.h>
+#include <QtWidgets/QApplication>
 #include <cstdlib>
 
 #include "mainwindow.h"
@@ -68,7 +71,7 @@ int main(int argc, char* argv[]) {
 
   // Defer widget styling to the active Qt platform theme and system palette.
   QApplication::setDesktopSettingsAware(true);
-  QApplication app(argc, argv);
+  const QApplication app(argc, argv);
 
   QTranslator translator;
   if (TryLoadTranslation(translator, "vinput-gui")) {

@@ -10,6 +10,17 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QtCore/QIODevice>
+#include <QtCore/QString>
+#include <QtCore/QTimer>
+#include <QtWidgets/QFileDialog>
+#include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QLineEdit>
+#include <QtWidgets/QPushButton>
+#include <QtWidgets/QTextEdit>
+#include <QtWidgets/QVBoxLayout>
+#include <QtWidgets/QWidget>
 #include <variant>
 
 #include "common/config/core_config_types.h"
@@ -19,8 +30,8 @@
 namespace vinput::gui {
 
 HotwordPage::HotwordPage(QWidget* parent)
-    : QWidget(parent), editFile_(new QLineEdit()), btnBrowse_(new QPushButton(tr("Browse..."))),
-      textContent_(new QTextEdit()) {
+    : QWidget(parent), editFile_(new QLineEdit()), textContent_(new QTextEdit()),
+      btnBrowse_(new QPushButton(tr("Browse..."))) {
   auto* layout = new QVBoxLayout(this);
 
   auto* fileLayout = new QHBoxLayout();

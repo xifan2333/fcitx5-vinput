@@ -1,4 +1,5 @@
 #include <CLI/App.hpp>
+#include <memory>
 
 #include "common/i18n.h"
 

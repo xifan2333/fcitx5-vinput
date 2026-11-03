@@ -3,6 +3,10 @@
 #include <QMutex>
 #include <QObject>
 #include <QString>
+#include <QtCore/QMutex>
+#include <QtCore/QObject>
+#include <QtCore/QString>
+#include <QtCore/qglobal.h>
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -15,6 +19,7 @@ class I18nCache : public QObject {
   Q_OBJECT
 public:
   static I18nCache& Get();
+  ~I18nCache() override = default;
 
   // Synchronously load the merged disk i18n map on the calling thread.
   // Invalidates any in-flight async reload and emits mapUpdated on success
@@ -32,7 +37,6 @@ signals:
 
 private:
   I18nCache() = default;
-  ~I18nCache() override = default;
 
   void ApplyLoadedMap(vinput::registry::I18nMap map, const std::string& error, quint64 generation);
 

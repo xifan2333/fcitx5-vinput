@@ -2,6 +2,8 @@
 
 #include <QObject>
 #include <QThread>
+#include <QtCore/QObject>
+#include <QtCore/QThread>
 #include <atomic>
 #include <chrono>
 #include <string>

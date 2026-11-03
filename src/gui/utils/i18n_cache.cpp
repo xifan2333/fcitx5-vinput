@@ -4,6 +4,11 @@
 #include <QMutexLocker>
 #include <QString>
 #include <QThreadPool>
+#include <QtCore/QMetaObject>
+#include <QtCore/QMutex>
+#include <QtCore/QString>
+#include <QtCore/qglobal.h>
+#include <QtCore/qnamespace.h>
 #include <string>
 #include <utility>
 
@@ -35,7 +40,7 @@ quint64 I18nCache::LoadFromDiskSync() {
   const std::string locale = vinput::registry::DetectPreferredLocale();
   std::string error;
   auto map = vinput::registry::LoadMergedCachedI18nMap(locale, &error);
-  ApplyLoadedMap(std::move(map), std::move(error), generation);
+  ApplyLoadedMap(std::move(map), error, generation);
   return generation;
 }
 
@@ -52,7 +57,7 @@ quint64 I18nCache::ReloadFromDisk() {
           if (generation != generation_.load()) {
             return;
           }
-          ApplyLoadedMap(std::move(map), std::move(error), generation);
+          ApplyLoadedMap(std::move(map), error, generation);
         },
         Qt::QueuedConnection);
   });
