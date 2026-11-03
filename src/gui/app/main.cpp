@@ -1,6 +1,9 @@
+#include <QStringList>
 #include <QtCore/qbytearray.h>
+#include <QtCore/qcontainerfwd.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qdir.h>
+#include <QtCore/qglobal.h>
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qlocale.h>
 #include <QtCore/qnamespace.h>
@@ -11,6 +14,7 @@
 #include <QtCore/qtranslator.h>
 #include <QtWidgets/qapplication.h>
 #include <cstdlib>
+#include <stdlib.h>
 
 #include "mainwindow.h"
 

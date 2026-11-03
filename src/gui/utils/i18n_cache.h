@@ -17,6 +17,11 @@ class I18nCache : public QObject {
   Q_OBJECT
 public:
   static I18nCache& Get();
+
+  I18nCache(const I18nCache&) = delete;
+  I18nCache& operator=(const I18nCache&) = delete;
+  I18nCache(I18nCache&&) = delete;
+  I18nCache& operator=(I18nCache&&) = delete;
   ~I18nCache() override = default;
 
   // Synchronously load the merged disk i18n map on the calling thread.
