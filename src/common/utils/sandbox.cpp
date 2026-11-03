@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -64,8 +65,9 @@ bool IsInSandbox() {
 }
 
 std::vector<std::string> WrapHostCommand(std::vector<std::string> args) {
-  if (!IsInSandbox())
+  if (!IsInSandbox()) {
     return args;
+  }
   std::vector<std::string> wrapped = {"flatpak-spawn", "--host"};
   wrapped.insert(wrapped.end(), std::make_move_iterator(args.begin()),
                  std::make_move_iterator(args.end()));
@@ -80,8 +82,9 @@ std::vector<std::string> DaemonLogFilter() {
 }
 
 std::vector<std::string> MissingSandboxPermissions() {
-  if (!IsInSandbox())
+  if (!IsInSandbox()) {
     return {};
+  }
 
   static const std::vector<std::string> missing = []() {
     detail::ProbeOptions options;
@@ -128,13 +131,15 @@ std::string FormatOverrideCommands(const std::vector<std::string>& missing_permi
 }
 
 std::string RewriteServiceUnit(const std::string& content) {
-  if (!IsInSandbox())
+  if (!IsInSandbox()) {
     return content;
+  }
 
   std::string result = content;
   auto pos = result.find("ExecStart=");
-  if (pos == std::string::npos)
+  if (pos == std::string::npos) {
     return result;
+  }
 
   auto end = result.find('\n', pos);
   const auto daemon_path = vinput::path::DaemonExecutablePath();

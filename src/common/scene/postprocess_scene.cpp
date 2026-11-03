@@ -1,7 +1,9 @@
 #include "common/scene/postprocess_scene.h"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "common/i18n.h"
 
@@ -18,7 +20,7 @@ bool HasModel(const Definition& scene) {
 }
 
 bool SetValidationError(std::string* error, std::string message) {
-  if (error) {
+  if (error != nullptr) {
     *error = std::move(message);
   }
   return false;
@@ -65,7 +67,7 @@ bool IsBuiltinSceneLabelKey(std::string_view label) {
 }
 
 void NormalizeDefinition(Definition* scene) {
-  if (!scene) {
+  if (scene == nullptr) {
     return;
   }
   if (IsBuiltinSceneId(scene->id)) {
@@ -75,9 +77,7 @@ void NormalizeDefinition(Definition* scene) {
   if (scene->timeout_ms <= 0) {
     scene->timeout_ms = kDefaultTimeoutMs;
   }
-  if (scene->context_lines < 0) {
-    scene->context_lines = 0;
-  }
+  scene->context_lines = std::max(scene->context_lines, 0);
 }
 
 bool ValidateDefinition(const Definition& scene, std::string* error, bool require_id) {
@@ -109,10 +109,10 @@ const Definition* Find(const Config& config, std::string_view scene_id) {
 }
 
 const Definition& Resolve(const Config& config, std::string_view scene_id) {
-  if (const auto* scene = Find(config, scene_id)) {
+  if (const auto* scene = Find(config, scene_id); scene != nullptr) {
     return *scene;
   }
-  if (const auto* scene = Find(config, config.activeSceneId)) {
+  if (const auto* scene = Find(config, config.activeSceneId); scene != nullptr) {
     return *scene;
   }
   static const Definition empty;
@@ -138,9 +138,10 @@ bool AddScene(Config* config, const Definition& def, std::string* error) {
   if (!ValidateDefinition(normalized, error)) {
     return false;
   }
-  if (Find(*config, normalized.id)) {
-    if (error)
+  if (Find(*config, normalized.id) != nullptr) {
+    if (error != nullptr) {
       *error = "Scene id '" + normalized.id + "' already exists.";
+    }
     return false;
   }
   config->scenes.push_back(std::move(normalized));
@@ -168,21 +169,24 @@ bool UpdateScene(Config* config, const std::string& id, const Definition& def, s
       return true;
     }
   }
-  if (error)
+  if (error != nullptr) {
     *error = "Scene id '" + id + "' not found.";
+  }
   return false;
 }
 
 bool RemoveScene(Config* config, const std::string& id, bool force, std::string* error) {
-  if (const auto* scene = Find(*config, id); scene && scene->builtin) {
-    if (error)
+  if (const auto* scene = Find(*config, id); scene != nullptr && scene->builtin) {
+    if (error != nullptr) {
       *error = "Cannot remove built-in scene '" + id + "'.";
+    }
     return false;
   }
   if (!force) {
     if (config->activeSceneId == id) {
-      if (error)
+      if (error != nullptr) {
         *error = "Cannot remove active scene '" + id + "'.";
+      }
       return false;
     }
   }
@@ -195,15 +199,17 @@ bool RemoveScene(Config* config, const std::string& id, bool force, std::string*
       return true;
     }
   }
-  if (error)
+  if (error != nullptr) {
     *error = "Scene id '" + id + "' not found.";
+  }
   return false;
 }
 
 bool SetActiveScene(Config* config, const std::string& id, std::string* error) {
-  if (!Find(*config, id)) {
-    if (error)
+  if (Find(*config, id) == nullptr) {
+    if (error != nullptr) {
       *error = "Scene id '" + id + "' not found.";
+    }
     return false;
   }
   config->activeSceneId = id;
@@ -211,7 +217,7 @@ bool SetActiveScene(Config* config, const std::string& id, std::string* error) {
 }
 
 int ClearProviderReferences(Config* config, std::string_view provider_id) {
-  if (!config || provider_id.empty()) {
+  if (config == nullptr || provider_id.empty()) {
     return 0;
   }
 
