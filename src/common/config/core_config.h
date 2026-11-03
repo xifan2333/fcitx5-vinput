@@ -24,18 +24,4 @@ bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* 
 
 void NormalizeCoreConfig(CoreConfig* config);
 bool ValidateCoreConfig(const CoreConfig& config, std::string* error);
-const LlmProvider* ResolveLlmProvider(const CoreConfig& config, const std::string& provider_id);
-const LlmAdapter* ResolveLlmAdapter(const CoreConfig& config, const std::string& adapter_id);
-const AsrProvider* ResolveAsrProvider(const CoreConfig& config, const std::string& provider_id);
-const AsrProvider* ResolveActiveAsrProvider(const CoreConfig& config);
-const AsrProvider* ResolveActiveLocalAsrProvider(const CoreConfig& config);
-const AsrProvider* ResolvePreferredLocalAsrProvider(const CoreConfig& config);
-std::string ResolvePreferredLocalModel(const CoreConfig& config);
-std::vector<std::string> ResolveModelRegistryUrls(const CoreConfig& config);
-std::vector<std::string> ResolveAsrProviderRegistryUrls(const CoreConfig& config);
-std::vector<std::string> ResolveLlmAdapterRegistryUrls(const CoreConfig& config);
-std::vector<std::string> ResolveRegistryI18nUrls(const CoreConfig& config,
-                                                 const std::string& locale);
 bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::string* error);
-const vinput::scene::Definition* FindCommandScene(const CoreConfig& config);
-std::filesystem::path ResolveModelBaseDir(const CoreConfig& config);

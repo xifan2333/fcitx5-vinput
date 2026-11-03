@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_view.h"
 
 namespace {
 
@@ -202,7 +203,7 @@ void NormalizeCoreConfig(CoreConfig* config) {
   }
 
   if (!config->asr.activeProvider.empty() &&
-      ResolveAsrProvider(*config, config->asr.activeProvider) == nullptr) {
+      CoreConfigView(*config).AsrProvider(config->asr.activeProvider) == nullptr) {
     config->asr.activeProvider.clear();
   }
 

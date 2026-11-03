@@ -1,6 +1,7 @@
 #include <set>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_view.h"
 
 namespace {
 
@@ -57,7 +58,7 @@ bool ValidateCoreConfig(const CoreConfig& config, std::string* error) {
   }
 
   if (!config.asr.activeProvider.empty() &&
-      ResolveAsrProvider(config, config.asr.activeProvider) == nullptr) {
+      CoreConfigView(config).AsrProvider(config.asr.activeProvider) == nullptr) {
     return SetError(error,
                     "Active ASR provider '" + config.asr.activeProvider + "' does not exist.");
   }
