@@ -27,7 +27,7 @@ bool RefreshLocaleCache(const CoreConfig& config, const std::string& locale, std
                         std::vector<std::string>* warnings) {
   const auto urls = CoreConfigView(config).RegistryI18nUrls(locale);
   if (urls.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "no i18n URLs configured";
     }
     return false;
@@ -40,14 +40,14 @@ bool RefreshLocaleCache(const CoreConfig& config, const std::string& locale, std
   cache::FetchStatus status;
   const bool ok = vinput::registry::cache::FetchText(
       urls, vinput::registry::cache::I18nPath(locale), options, &content, nullptr, error, &status);
-  if (ok && status.used_cache && warnings) {
+  if (ok && status.used_cache && warnings != nullptr) {
     warnings->push_back(CacheFallbackWarning("i18n " + locale, status));
   }
   return ok;
 }
 
 void RefreshI18nAfterOnlineFetch(const CoreConfig* config, std::vector<std::string>* warnings) {
-  if (!config) {
+  if (config == nullptr) {
     return;
   }
 
@@ -71,21 +71,21 @@ bool FetchRegistryText(const CoreConfig* config, const std::vector<std::string>&
   const bool ok = vinput::registry::cache::FetchText(urls, cache_path, options, content,
                                                      &local_result, error, &status);
   if (!ok) {
-    if (result) {
+    if (result != nullptr) {
       *result = std::move(local_result);
     }
     return false;
   }
 
   if (status.used_cache) {
-    if (warnings) {
+    if (warnings != nullptr) {
       warnings->push_back(CacheFallbackWarning(cache_path.filename().string(), status));
     }
   } else {
     RefreshI18nAfterOnlineFetch(config, warnings);
   }
 
-  if (result) {
+  if (result != nullptr) {
     *result = std::move(local_result);
   }
   return true;

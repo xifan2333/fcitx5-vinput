@@ -3,7 +3,14 @@
 #include <string>
 #include <vector>
 
+#include "common/asr/model_manager.h"
+#include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
+#include "common/registry/registry_i18n.h"
+#include "common/registry/registry_models.h"
+#include "common/registry/registry_scripts.h"
+
+#include "cli/utils/cli_context.h"
 
 namespace vinput::cli {
 
@@ -98,9 +105,8 @@ ResourceDisplayMap FetchModelDisplayMap(const CoreConfig& config) {
   if (urls.empty()) {
     return {};
   }
-  ModelRepository repository(CoreConfigView::ModelBaseDir().string());
   std::string error;
-  const auto models = repository.FetchRegistry(config, urls, &error);
+  const auto models = ModelRepository::FetchRegistry(config, urls, &error);
   if (!error.empty()) {
     return {};
   }

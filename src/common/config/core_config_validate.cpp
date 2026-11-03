@@ -12,7 +12,7 @@
 namespace {
 
 bool SetError(std::string* error, std::string message) {
-  if (error) {
+  if (error != nullptr) {
     *error = std::move(message);
   }
   return false;
@@ -104,7 +104,7 @@ bool ValidateCoreConfig(const CoreConfig& config, std::string* error) {
     return SetError(error, "Active scene '" + config.scenes.activeScene + "' does not exist.");
   }
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;

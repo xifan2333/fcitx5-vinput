@@ -91,7 +91,7 @@ template <typename T> void EraseEmptyEnvKeys(T* entry) {
 } // namespace
 
 void NormalizeCoreConfig(CoreConfig* config) {
-  if (!config) {
+  if (config == nullptr) {
     return;
   }
 
@@ -196,11 +196,11 @@ void NormalizeCoreConfig(CoreConfig* config) {
       normalized.push_back(std::move(scene));
     }
 
-    if (!seen.count(std::string(vinput::scene::kRawSceneId))) {
+    if (!seen.contains(std::string(vinput::scene::kRawSceneId))) {
       normalized.push_back(MakeBuiltinScene(vinput::scene::kRawSceneId));
       seen.insert(std::string(vinput::scene::kRawSceneId));
     }
-    if (!seen.count(std::string(vinput::scene::kCommandSceneId))) {
+    if (!seen.contains(std::string(vinput::scene::kCommandSceneId))) {
       normalized.push_back(MakeBuiltinScene(vinput::scene::kCommandSceneId));
       seen.insert(std::string(vinput::scene::kCommandSceneId));
     }

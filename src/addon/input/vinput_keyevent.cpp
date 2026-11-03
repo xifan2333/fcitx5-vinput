@@ -2,24 +2,23 @@
 #include <chrono>
 #include <cstdint>
 #include <ctime>
-#include <fcitx-utils/event.h>
+#include <fcitx-utils/eventloopinterface.h>
+#include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
-#include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/trackableobject.h>
 #include <fcitx-utils/utf8.h>
+#include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "common/config/core_config.h"
 #include "common/config/core_config_view.h"
 #include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
-#include "common/i18n.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
 
@@ -164,7 +163,7 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
 }
 
 void VinputEngine::handleKeyEvent(fcitx::Event& event) {
-  auto& keyEvent = static_cast<fcitx::KeyEvent&>(event);
+  auto& keyEvent = dynamic_cast<fcitx::KeyEvent&>(event);
   auto* ic = keyEvent.inputContext();
   rememberInputContext(ic);
 
