@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_view.h"
 #include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/llm/adapter_manager.h"
@@ -194,7 +195,7 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
     return 0;
   }
 
-  const auto registryUrls = ResolveLlmAdapterRegistryUrls(config);
+  const auto registryUrls = CoreConfigView(config).LlmAdapterRegistryUrls();
   if (registryUrls.empty()) {
     fmt.PrintError(_("No LLM adapter registry base URLs configured. Edit config.json and set "
                      "registry.base_urls."));
@@ -215,7 +216,7 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
   const auto manifest = vinput::registry::InstalledManifest::Load();
 
   auto isInstalled = [&config](const std::string& id) {
-    return ResolveLlmAdapter(config, id) != nullptr;
+    return CoreConfigView(config).LlmAdapter(id) != nullptr;
   };
 
   if (ctx.json_output) {
@@ -292,7 +293,7 @@ int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std
                     const std::string& extraBody, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  if (ResolveLlmProvider(config, id) != nullptr) {
+  if (CoreConfigView(config).LlmProvider(id) != nullptr) {
     fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' already exists."), id));
     return 1;
   }
@@ -334,7 +335,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
 
-  const auto registryUrls = ResolveLlmAdapterRegistryUrls(config);
+  const auto registryUrls = CoreConfigView(config).LlmAdapterRegistryUrls();
   if (registryUrls.empty()) {
     fmt.PrintError(_("No LLM adapter registry base URLs configured. Edit config.json and set "
                      "registry.base_urls."));
@@ -382,7 +383,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
   // the ones still blank instead of saving an adapter that cannot start. A
   // whitespace-only value counts as blank: the adapter scripts strip whitespace
   // before testing the value and then reject it at startup.
-  const LlmAdapter* installed = ResolveLlmAdapter(config, it->id);
+  const LlmAdapter* installed = CoreConfigView(config).LlmAdapter(it->id);
   if (installed != nullptr) {
     for (const auto& spec : it->envs) {
       if (!spec.required) {
@@ -456,7 +457,7 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
 
-  const auto registryUrls = ResolveLlmAdapterRegistryUrls(config);
+  const auto registryUrls = CoreConfigView(config).LlmAdapterRegistryUrls();
   if (registryUrls.empty()) {
     fmt.PrintError(_("No LLM adapter registry base URLs configured. Edit config.json and set "
                      "registry.base_urls."));
@@ -543,7 +544,7 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
       fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found in registry."), selector));
       return 1;
     }
-    const auto* existing = ResolveLlmAdapter(config, it->id);
+    const auto* existing = CoreConfigView(config).LlmAdapter(it->id);
     if (existing == nullptr) {
       fmt.PrintError(
           ::fmt::sprintf(_("Adapter '%s' is not installed. Use 'add' instead."), selector));
@@ -693,7 +694,7 @@ int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliCo
     return 1;
   }
 
-  const auto* adapter = ResolveLlmAdapter(config, resolved_id);
+  const auto* adapter = CoreConfigView(config).LlmAdapter(resolved_id);
   if (adapter == nullptr) {
     fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found."), id));
     return 1;
@@ -794,7 +795,7 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
 
 int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
-  const auto* provider = ResolveLlmProvider(config, id);
+  const auto* provider = CoreConfigView(config).LlmProvider(id);
   if (provider == nullptr) {
     fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
     return 1;

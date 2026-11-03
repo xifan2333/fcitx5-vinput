@@ -1,8 +1,8 @@
 #include "cli/utils/resource_utils.h"
 
-#include <algorithm>
+#include <string>
+#include <vector>
 
-#include "common/config/core_config.h"
 #include "common/config/core_config_view.h"
 
 namespace vinput::cli {
@@ -93,11 +93,12 @@ ResourceDisplayMap BuildScriptDisplayMap(const std::vector<vinput::script::Regis
 }
 
 ResourceDisplayMap FetchModelDisplayMap(const CoreConfig& config) {
-  const auto urls = ResolveModelRegistryUrls(config);
+  const CoreConfigView view(config);
+  const auto urls = view.ModelRegistryUrls();
   if (urls.empty()) {
     return {};
   }
-  ModelRepository repository(ResolveModelBaseDir(config).string());
+  ModelRepository repository(CoreConfigView::ModelBaseDir().string());
   std::string error;
   const auto models = repository.FetchRegistry(config, urls, &error);
   if (!error.empty()) {

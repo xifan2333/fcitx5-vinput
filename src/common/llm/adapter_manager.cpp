@@ -24,6 +24,7 @@ extern "C" {
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
@@ -154,7 +155,7 @@ bool Start(std::string_view adapter_id, vinput::notify::NotificationBridge* brid
            std::string* error) {
   auto config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
-  const auto* adapter = ResolveLlmAdapter(config, std::string(adapter_id));
+  const auto* adapter = CoreConfigView(config).LlmAdapter(adapter_id);
   if (adapter == nullptr) {
     if (error != nullptr) {
       *error = "adapter not found";

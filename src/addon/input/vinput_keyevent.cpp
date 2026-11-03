@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_view.h"
 #include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
@@ -89,14 +90,14 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
   if (is_command) {
     {
       auto core_config = LoadCoreConfig();
-      const auto* cmd_scene = FindCommandScene(core_config);
+      const CoreConfigView view(core_config);
+      const auto* cmd_scene = view.CommandScene();
       if (cmd_scene == nullptr || cmd_scene->llm_max_candidates <= 0) {
         finishFrontendSession(ic);
         updateVoicePresentation(ic, CommandDisabledPreeditText());
         return;
       }
-      if (cmd_scene->provider_id.empty() ||
-          ResolveLlmProvider(core_config, cmd_scene->provider_id) == nullptr) {
+      if (cmd_scene->provider_id.empty() || view.LlmProvider(cmd_scene->provider_id) == nullptr) {
         finishFrontendSession(ic);
         updateVoicePresentation(ic, CommandNoProviderPreeditText());
         return;

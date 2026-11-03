@@ -768,8 +768,8 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
 int RunAsrConfigInstallModel(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
-  const auto baseDir = ResolveModelBaseDir(config);
-  const auto registryUrls = ResolveModelRegistryUrls(config);
+  const auto baseDir = CoreConfigView::ModelBaseDir();
+  const auto registryUrls = CoreConfigView(config).ModelRegistryUrls();
   if (registryUrls.empty()) {
     fmt.PrintError(
         _("No model registry base URLs configured. Edit config.json and set registry.base_urls."));

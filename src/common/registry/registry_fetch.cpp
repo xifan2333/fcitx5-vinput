@@ -1,6 +1,7 @@
 #include "common/registry/registry_fetch.h"
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_view.h"
 #include "common/registry/registry_cache.h"
 #include "common/registry/registry_i18n.h"
 
@@ -18,7 +19,7 @@ std::string CacheFallbackWarning(const std::string& name, const cache::FetchStat
 
 bool RefreshLocaleCache(const CoreConfig& config, const std::string& locale, std::string* error,
                         std::vector<std::string>* warnings) {
-  const auto urls = ResolveRegistryI18nUrls(config, locale);
+  const auto urls = CoreConfigView(config).RegistryI18nUrls(locale);
   if (urls.empty()) {
     if (error) {
       *error = "no i18n URLs configured";
@@ -109,17 +110,18 @@ I18nMap FetchMergedI18nMap(const CoreConfig& config, const std::string& preferre
   I18nMap merged;
   std::string fetch_error;
 
-  const auto primary_urls = ResolveRegistryI18nUrls(config, preferred_locale);
+  const CoreConfigView view(config);
+  const auto primary_urls = view.RegistryI18nUrls(preferred_locale);
   if (!primary_urls.empty()) {
     merged = FetchI18nMap(preferred_locale, primary_urls, &fetch_error);
   }
 
   if (merged.empty() && preferred_locale != "en_US") {
-    const auto fallback_urls = ResolveRegistryI18nUrls(config, "en_US");
+    const auto fallback_urls = view.RegistryI18nUrls("en_US");
     auto fallback = FetchI18nMap("en_US", fallback_urls, &fetch_error);
     merged.insert(fallback.begin(), fallback.end());
   } else if (preferred_locale != "en_US") {
-    const auto fallback_urls = ResolveRegistryI18nUrls(config, "en_US");
+    const auto fallback_urls = view.RegistryI18nUrls("en_US");
     auto fallback = FetchI18nMap("en_US", fallback_urls, nullptr);
     for (auto& [key, value] : fallback) {
       merged.emplace(key, std::move(value));

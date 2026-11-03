@@ -1,12 +1,9 @@
 #pragma once
 
-#include <filesystem>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "common/config/core_config_types.h"
-#include "common/scene/postprocess_scene.h"
 
 // API Functions
 CoreConfig LoadCoreConfig();
