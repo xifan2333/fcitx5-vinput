@@ -1,9 +1,15 @@
 #include "common/registry/registry_fetch.h"
 
-#include "common/config/core_config.h"
+#include <cstddef>
+#include <filesystem>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "common/config/core_config_view.h"
 #include "common/registry/registry_cache.h"
 #include "common/registry/registry_i18n.h"
+#include "common/utils/downloader.h"
 
 namespace vinput::registry {
 
@@ -30,7 +36,7 @@ bool RefreshLocaleCache(const CoreConfig& config, const std::string& locale, std
   std::string content;
   vinput::download::Options options;
   options.timeout_seconds = 20;
-  options.max_bytes = 1024 * 1024;
+  options.max_bytes = static_cast<std::size_t>(1024) * 1024;
   cache::FetchStatus status;
   const bool ok = vinput::registry::cache::FetchText(
       urls, vinput::registry::cache::I18nPath(locale), options, &content, nullptr, error, &status);

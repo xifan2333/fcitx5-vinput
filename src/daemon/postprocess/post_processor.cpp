@@ -18,7 +18,6 @@
 #include <vector>
 
 #include "common/asr/recognition_result.h"
-#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
 #include "common/i18n.h"

@@ -5,7 +5,6 @@
 #include <utility>
 
 #include "common/asr/model_manager.h"
-#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
 #include "common/i18n.h"
@@ -13,7 +12,7 @@
 
 namespace vinput::daemon::asr {
 
-vinput::Expected<LocalAsrModelContext> LoadLocalAsrModelContext(const CoreConfig& config,
+vinput::Expected<LocalAsrModelContext> LoadLocalAsrModelContext(const CoreConfig& /*config*/,
                                                                 const LocalAsrProvider& provider) {
   if (provider.model.empty()) {
     return vinput::UnexpectedError(fmt::sprintf(

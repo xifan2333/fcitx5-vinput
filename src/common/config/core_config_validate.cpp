@@ -1,7 +1,13 @@
 #include <set>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
+#include "common/scene/postprocess_scene.h"
 
 namespace {
 
@@ -92,8 +98,9 @@ bool ValidateCoreConfig(const CoreConfig& config, std::string* error) {
   }
 
   if (!config.scenes.activeScene.empty() &&
-      vinput::scene::Find({config.scenes.activeScene, config.scenes.definitions},
-                          config.scenes.activeScene) == nullptr) {
+      vinput::scene::Find(
+          {.activeSceneId = config.scenes.activeScene, .scenes = config.scenes.definitions},
+          config.scenes.activeScene) == nullptr) {
     return SetError(error, "Active scene '" + config.scenes.activeScene + "' does not exist.");
   }
 
