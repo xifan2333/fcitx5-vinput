@@ -1,11 +1,15 @@
-#include <CLI/CLI.hpp>
+#include <CLI/App.hpp>
 #include <memory>
+#include <string>
 
 #include "common/i18n.h"
 #include "common/scene/postprocess_scene.h"
 
 #include "cli/config/action.h"
+#include "cli/config/register.h"
 #include "cli/config/scene_actions.h"
+#include "cli/utils/cli_context.h"
+#include "cli/utils/formatter.h"
 
 namespace vinput::cli::config {
 

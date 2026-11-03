@@ -1,10 +1,14 @@
-#include <CLI/CLI.hpp>
+#include <CLI/App.hpp>
 #include <memory>
+#include <string>
 
 #include "common/i18n.h"
 
 #include "cli/control/action.h"
 #include "cli/control/recording_actions.h"
+#include "cli/control/register.h"
+#include "cli/utils/cli_context.h"
+#include "cli/utils/formatter.h"
 
 namespace vinput::cli::control {
 
