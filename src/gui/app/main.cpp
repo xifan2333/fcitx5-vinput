@@ -13,8 +13,6 @@
 #include <QtCore/qstringliteral.h>
 #include <QtCore/qtranslator.h>
 #include <QtWidgets/qapplication.h>
-#include <cstdlib>
-#include <stdlib.h>
 
 #include "mainwindow.h"
 
@@ -68,8 +66,12 @@ bool TryLoadTranslation(QTranslator& translator, const QString& base_name) {
 
 int main(int argc, char* argv[]) {
   // Set IM environment for this process only, so Chinese input works in the GUI
-  setenv("QT_IM_MODULE", "fcitx", 0);
-  setenv("XMODIFIERS", "@im=fcitx", 0);
+  if (qEnvironmentVariableIsEmpty("QT_IM_MODULE")) {
+    qputenv("QT_IM_MODULE", "fcitx");
+  }
+  if (qEnvironmentVariableIsEmpty("XMODIFIERS")) {
+    qputenv("XMODIFIERS", "@im=fcitx");
+  }
 
   // Defer widget styling to the active Qt platform theme and system palette.
   QApplication::setDesktopSettingsAware(true);
