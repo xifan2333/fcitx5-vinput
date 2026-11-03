@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "common/config/core_config.h"
 #include "common/config/core_config_view.h"
 #include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
@@ -242,9 +243,15 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  const fcitx::Key matched_key = is_trigger   ? trigger_keys_[trigger_index]
-                                 : is_command ? command_keys_[command_index]
-                                              : menu_keys_[menu_index];
+  const fcitx::Key matched_key = [&]() {
+    if (is_trigger) {
+      return trigger_keys_[trigger_index];
+    }
+    if (is_command) {
+      return command_keys_[command_index];
+    }
+    return menu_keys_[menu_index];
+  }();
 
   // 5. Press Phase
   if (!keyEvent.isRelease()) {
