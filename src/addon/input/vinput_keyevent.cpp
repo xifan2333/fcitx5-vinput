@@ -3,12 +3,15 @@
 #include <cstdint>
 #include <ctime>
 #include <fcitx-utils/event.h>
+#if __has_include(<fcitx-utils/eventloopinterface.h>)
+#include <fcitx-utils/eventloopinterface.h>
+#endif
+#include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
-#include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/log.h>
-#include <fcitx-utils/trackableobject.h>
 #include <fcitx-utils/utf8.h>
+#include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <iterator>
 #include <memory>
@@ -16,9 +19,9 @@
 #include <utility>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_view.h"
 #include "common/config/vinput_config.h"
 #include "common/dbus/dbus_interface.h"
-#include "common/i18n.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
 
@@ -89,14 +92,14 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
   if (is_command) {
     {
       auto core_config = LoadCoreConfig();
-      const auto* cmd_scene = FindCommandScene(core_config);
+      const CoreConfigView view(core_config);
+      const auto* cmd_scene = view.CommandScene();
       if (cmd_scene == nullptr || cmd_scene->llm_max_candidates <= 0) {
         finishFrontendSession(ic);
         updateVoicePresentation(ic, CommandDisabledPreeditText());
         return;
       }
-      if (cmd_scene->provider_id.empty() ||
-          ResolveLlmProvider(core_config, cmd_scene->provider_id) == nullptr) {
+      if (cmd_scene->provider_id.empty() || view.LlmProvider(cmd_scene->provider_id) == nullptr) {
         finishFrontendSession(ic);
         updateVoicePresentation(ic, CommandNoProviderPreeditText());
         return;
@@ -163,7 +166,7 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
 }
 
 void VinputEngine::handleKeyEvent(fcitx::Event& event) {
-  auto& keyEvent = static_cast<fcitx::KeyEvent&>(event);
+  auto& keyEvent = dynamic_cast<fcitx::KeyEvent&>(event);
   auto* ic = keyEvent.inputContext();
   rememberInputContext(ic);
 
@@ -178,9 +181,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
   if (session_ && session_->phase == Session::Phase::Postprocessing &&
       last_known_daemon_status_ == vinput::dbus::kStatusPostprocessing) {
     const bool discard = keyEvent.key().check(FcitxKey_Escape);
-    const bool commit_raw =
-        session_->raw_prev && !session_->command_mode &&
-        (keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter));
+    bool commit_raw = false;
+    if (session_->raw_prev && !session_->command_mode) {
+      commit_raw = keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter);
+    }
     if (discard || commit_raw) {
       if (!keyEvent.isRelease()) {
         pending_postprocessing_release_ = keyEvent.key();
@@ -239,14 +243,15 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
     return;
   }
 
-  fcitx::Key matched_key;
-  if (is_trigger) {
-    matched_key = trigger_keys_[trigger_index];
-  } else if (is_command) {
-    matched_key = command_keys_[command_index];
-  } else {
-    matched_key = menu_keys_[menu_index];
-  }
+  const fcitx::Key matched_key = [&]() {
+    if (is_trigger) {
+      return trigger_keys_[trigger_index];
+    }
+    if (is_command) {
+      return command_keys_[command_index];
+    }
+    return menu_keys_[menu_index];
+  }();
 
   // 5. Press Phase
   if (!keyEvent.isRelease()) {
@@ -316,8 +321,10 @@ void VinputEngine::handleKeyEvent(fcitx::Event& event) {
 
   // 6. Release Phase
   if (keyEvent.isRelease()) {
-    const bool matches_active =
-        (held_role_ == role) && held_key_sym_.has_value() && *held_key_sym_ == event_key.sym();
+    bool matches_active = false;
+    if (held_role_ == role && held_key_sym_.has_value()) {
+      matches_active = (*held_key_sym_ == event_key.sym());
+    }
 
     if (matches_active) {
       const auto active_role = held_role_;

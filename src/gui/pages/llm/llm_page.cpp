@@ -59,8 +59,8 @@
 #include <utility>
 #include <vector>
 
-#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 #include "common/json/json_access.h"
 #include "common/llm/adapter_manager.h"
 #include "common/llm/provider_model_cache.h"
@@ -499,7 +499,7 @@ void LlmPage::onLlmAdd() {
   }
 
   CoreConfig config = ConfigManager::Get().Load();
-  if (ResolveLlmProvider(config, result->id) != nullptr) {
+  if (CoreConfigView(config).LlmProvider(result->id) != nullptr) {
     QMessageBox::warning(
         this, tr("Error"),
         tr("LLM provider '%1' already exists.").arg(QString::fromStdString(result->id)));
@@ -530,7 +530,7 @@ void LlmPage::onLlmEdit() {
   const QString provider_name = item->data(Qt::UserRole).toString();
 
   CoreConfig config = ConfigManager::Get().Load();
-  const LlmProvider* prov = ResolveLlmProvider(config, provider_name.toStdString());
+  const LlmProvider* prov = CoreConfigView(config).LlmProvider(provider_name.toStdString());
   if (prov == nullptr) {
     return;
   }
@@ -611,7 +611,7 @@ void LlmPage::onLlmTest() {
 
   const QString provider_id = item->data(Qt::UserRole).toString();
   const CoreConfig config = ConfigManager::Get().Load();
-  const LlmProvider* provider = ResolveLlmProvider(config, provider_id.toStdString());
+  const LlmProvider* provider = CoreConfigView(config).LlmProvider(provider_id.toStdString());
   if (provider == nullptr) {
     QMessageBox::warning(this, tr("Error"), tr("Provider '%1' not found.").arg(provider_id));
     return;

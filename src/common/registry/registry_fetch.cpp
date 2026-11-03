@@ -1,8 +1,15 @@
 #include "common/registry/registry_fetch.h"
 
-#include "common/config/core_config.h"
+#include <cstddef>
+#include <filesystem>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "common/config/core_config_view.h"
 #include "common/registry/registry_cache.h"
 #include "common/registry/registry_i18n.h"
+#include "common/utils/downloader.h"
 
 namespace vinput::registry {
 
@@ -18,9 +25,9 @@ std::string CacheFallbackWarning(const std::string& name, const cache::FetchStat
 
 bool RefreshLocaleCache(const CoreConfig& config, const std::string& locale, std::string* error,
                         std::vector<std::string>* warnings) {
-  const auto urls = ResolveRegistryI18nUrls(config, locale);
+  const auto urls = CoreConfigView(config).RegistryI18nUrls(locale);
   if (urls.empty()) {
-    if (error) {
+    if (error != nullptr) {
       *error = "no i18n URLs configured";
     }
     return false;
@@ -29,18 +36,18 @@ bool RefreshLocaleCache(const CoreConfig& config, const std::string& locale, std
   std::string content;
   vinput::download::Options options;
   options.timeout_seconds = 20;
-  options.max_bytes = 1024 * 1024;
+  options.max_bytes = static_cast<std::size_t>(1024) * 1024;
   cache::FetchStatus status;
   const bool ok = vinput::registry::cache::FetchText(
       urls, vinput::registry::cache::I18nPath(locale), options, &content, nullptr, error, &status);
-  if (ok && status.used_cache && warnings) {
+  if (ok && status.used_cache && warnings != nullptr) {
     warnings->push_back(CacheFallbackWarning("i18n " + locale, status));
   }
   return ok;
 }
 
 void RefreshI18nAfterOnlineFetch(const CoreConfig* config, std::vector<std::string>* warnings) {
-  if (!config) {
+  if (config == nullptr) {
     return;
   }
 
@@ -64,21 +71,21 @@ bool FetchRegistryText(const CoreConfig* config, const std::vector<std::string>&
   const bool ok = vinput::registry::cache::FetchText(urls, cache_path, options, content,
                                                      &local_result, error, &status);
   if (!ok) {
-    if (result) {
+    if (result != nullptr) {
       *result = std::move(local_result);
     }
     return false;
   }
 
   if (status.used_cache) {
-    if (warnings) {
+    if (warnings != nullptr) {
       warnings->push_back(CacheFallbackWarning(cache_path.filename().string(), status));
     }
   } else {
     RefreshI18nAfterOnlineFetch(config, warnings);
   }
 
-  if (result) {
+  if (result != nullptr) {
     *result = std::move(local_result);
   }
   return true;
@@ -109,17 +116,18 @@ I18nMap FetchMergedI18nMap(const CoreConfig& config, const std::string& preferre
   I18nMap merged;
   std::string fetch_error;
 
-  const auto primary_urls = ResolveRegistryI18nUrls(config, preferred_locale);
+  const CoreConfigView view(config);
+  const auto primary_urls = view.RegistryI18nUrls(preferred_locale);
   if (!primary_urls.empty()) {
     merged = FetchI18nMap(preferred_locale, primary_urls, &fetch_error);
   }
 
   if (merged.empty() && preferred_locale != "en_US") {
-    const auto fallback_urls = ResolveRegistryI18nUrls(config, "en_US");
+    const auto fallback_urls = view.RegistryI18nUrls("en_US");
     auto fallback = FetchI18nMap("en_US", fallback_urls, &fetch_error);
     merged.insert(fallback.begin(), fallback.end());
   } else if (preferred_locale != "en_US") {
-    const auto fallback_urls = ResolveRegistryI18nUrls(config, "en_US");
+    const auto fallback_urls = view.RegistryI18nUrls("en_US");
     auto fallback = FetchI18nMap("en_US", fallback_urls, nullptr);
     for (auto& [key, value] : fallback) {
       merged.emplace(key, std::move(value));

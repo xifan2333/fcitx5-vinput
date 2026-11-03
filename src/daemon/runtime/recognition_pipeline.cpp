@@ -8,8 +8,8 @@
 #include <string_view>
 #include <utility>
 
-#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 #include "common/i18n.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
@@ -66,7 +66,7 @@ RecognitionPipeline::Process(const PostprocessRequest& request, const CoreConfig
   };
 
   if (request.is_command) {
-    const auto* cmd_scene = FindCommandScene(settings);
+    const auto* cmd_scene = CoreConfigView(settings).CommandScene();
     vinput::scene::Definition fallback_cmd;
     fallback_cmd.id = std::string(vinput::scene::kCommandSceneId);
     fallback_cmd.builtin = true;

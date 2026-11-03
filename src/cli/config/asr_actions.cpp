@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_view.h"
 #include "common/dbus/asr_backend_state_utils.h"
 #include "common/i18n.h"
 #include "common/json/json_access.h"
@@ -59,7 +60,7 @@ void ReportAsrRuntimeReloadStatus(const CoreConfig& config, Formatter& fmt,
   }
 
   switch (vinput::dbus::ClassifyRequestedAsrBackend(state, config.asr.activeProvider,
-                                                    ResolvePreferredLocalModel(config))) {
+                                                    CoreConfigView(config).PreferredLocalModel())) {
   case vinput::dbus::RequestedAsrBackendStatus::kReloadInProgress:
     fmt.PrintInfo(_("Config saved and ASR backend reload is in progress."));
     break;
@@ -104,7 +105,7 @@ bool SaveAsrConfigAndReload(const CoreConfig& config, Formatter& fmt) {
 
 #if VINPUT_ENABLE_LOCAL_ASR
 const LocalAsrProvider* PreferredLocalProvider(const CoreConfig& config) {
-  const AsrProvider* provider = ResolvePreferredLocalAsrProvider(config);
+  const AsrProvider* provider = CoreConfigView(config).PreferredLocalAsrProvider();
   if (provider == nullptr) {
     return nullptr;
   }
@@ -115,7 +116,7 @@ LocalAsrProvider* PreferredLocalProvider(CoreConfig* config) {
   if (config == nullptr) {
     return nullptr;
   }
-  const AsrProvider* provider = ResolvePreferredLocalAsrProvider(*config);
+  const AsrProvider* provider = CoreConfigView(*config).PreferredLocalAsrProvider();
   if (provider == nullptr) {
     return nullptr;
   }
@@ -325,7 +326,7 @@ int RunAsrConfigUse(const std::string& id, Formatter& fmt, const CliContext& ctx
   }
 
 #if !VINPUT_ENABLE_LOCAL_ASR
-  const auto* target_provider = ResolveAsrProvider(config, resolved_id);
+  const auto* target_provider = CoreConfigView(config).AsrProvider(resolved_id);
   if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
     fmt.PrintError(::fmt::sprintf(
         _("ASR provider '%s' is a local provider, which is not supported in this Lite build."),
@@ -348,7 +349,7 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
   }
 
   CoreConfig config = LoadCoreConfig();
-  const auto registryUrls = ResolveAsrProviderRegistryUrls(config);
+  const auto registryUrls = CoreConfigView(config).AsrProviderRegistryUrls();
   if (registryUrls.empty()) {
     fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
                      "registry.base_urls."));
@@ -369,7 +370,7 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
   const auto manifest = vinput::registry::InstalledManifest::Load();
 
   auto isInstalled = [&config](const std::string& id) {
-    return ResolveAsrProvider(config, id) != nullptr;
+    return CoreConfigView(config).AsrProvider(id) != nullptr;
   };
 
   if (ctx.json_output) {
@@ -451,7 +452,7 @@ int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt,
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
 
-  const auto registryUrls = ResolveAsrProviderRegistryUrls(config);
+  const auto registryUrls = CoreConfigView(config).AsrProviderRegistryUrls();
   if (registryUrls.empty()) {
     fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
                      "registry.base_urls."));
@@ -511,7 +512,7 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
 
-  const auto registryUrls = ResolveAsrProviderRegistryUrls(config);
+  const auto registryUrls = CoreConfigView(config).AsrProviderRegistryUrls();
   if (registryUrls.empty()) {
     fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
                      "registry.base_urls."));
@@ -582,7 +583,7 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
       fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found in registry."), selector));
       return 1;
     }
-    const auto* existing = ResolveAsrProvider(config, it->id);
+    const auto* existing = CoreConfigView(config).AsrProvider(it->id);
     if (existing == nullptr) {
       fmt.PrintError(
           ::fmt::sprintf(_("ASR provider '%s' is not installed. Use 'add' instead."), selector));
@@ -614,7 +615,7 @@ int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ct
     fmt.PrintError(error);
     return 1;
   }
-  const AsrProvider* provider = ResolveAsrProvider(config, resolved_id);
+  const AsrProvider* provider = CoreConfigView(config).AsrProvider(resolved_id);
   if (provider == nullptr) {
     fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found."), id));
     return 1;
@@ -645,19 +646,19 @@ int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ct
 #if VINPUT_ENABLE_LOCAL_ASR
 int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
-  const ModelManager manager(ResolveModelBaseDir(config).string());
-  const std::string activeModel = ResolvePreferredLocalModel(config);
+  const ModelManager manager(CoreConfigView::ModelBaseDir().string());
+  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
   const auto installed_display_map = vinput::cli::FetchModelDisplayMap(config);
 
   if (available) {
-    const auto registryUrls = ResolveModelRegistryUrls(config);
+    const auto registryUrls = CoreConfigView(config).ModelRegistryUrls();
     if (registryUrls.empty()) {
       fmt.PrintError(_(
           "No model registry base URLs configured. Edit config.json and set registry.base_urls."));
       return 1;
     }
 
-    const ModelRepository repository(ResolveModelBaseDir(config).string());
+    const ModelRepository repository(CoreConfigView::ModelBaseDir().string());
     std::string error;
     const auto remoteModels = ModelRepository::FetchRegistry(config, registryUrls, &error);
     if (!error.empty()) {
@@ -767,8 +768,8 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
 int RunAsrConfigInstallModel(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
-  const auto baseDir = ResolveModelBaseDir(config);
-  const auto registryUrls = ResolveModelRegistryUrls(config);
+  const auto baseDir = CoreConfigView::ModelBaseDir();
+  const auto registryUrls = CoreConfigView(config).ModelRegistryUrls();
   if (registryUrls.empty()) {
     fmt.PrintError(
         _("No model registry base URLs configured. Edit config.json and set registry.base_urls."));
@@ -821,8 +822,8 @@ int RunAsrConfigInstallModel(const std::string& selector, Formatter& fmt, const 
 int RunAsrConfigRemoveModel(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  const ModelManager manager(ResolveModelBaseDir(config).string());
-  const std::string activeModel = ResolvePreferredLocalModel(config);
+  const ModelManager manager(CoreConfigView::ModelBaseDir().string());
+  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
   const auto models = manager.ListDetailed(activeModel);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
 
@@ -851,8 +852,8 @@ int RunAsrConfigRemoveModel(const std::string& selector, Formatter& fmt, const C
 int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  const ModelManager manager(ResolveModelBaseDir(config).string());
-  const std::string activeModel = ResolvePreferredLocalModel(config);
+  const ModelManager manager(CoreConfigView::ModelBaseDir().string());
+  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
   const auto models = manager.ListDetailed(activeModel);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
 
@@ -882,9 +883,9 @@ int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliC
 
 int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
-  const std::string baseDir = ResolveModelBaseDir(config).string();
+  const std::string baseDir = CoreConfigView::ModelBaseDir().string();
   const ModelManager manager(baseDir);
-  const std::string activeModel = ResolvePreferredLocalModel(config);
+  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
   const auto models = manager.ListDetailed(activeModel);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
   std::string error;

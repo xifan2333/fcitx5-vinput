@@ -16,8 +16,8 @@
 #include <utility>
 #include <vector>
 
-#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 
 #include "config.h"
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -54,7 +54,7 @@ QStringList LoadLocalModelIds() {
   return {};
 #else
   const CoreConfig config = ConfigManager::Get().Load();
-  const ModelManager manager(ResolveModelBaseDir(config).string());
+  const ModelManager manager(CoreConfigView::ModelBaseDir().string());
   auto models = manager.ListDetailed("");
   QStringList ids;
   for (const auto& m : models) {

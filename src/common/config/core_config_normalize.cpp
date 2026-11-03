@@ -2,9 +2,16 @@
 #include <iostream>
 #include <iterator>
 #include <set>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
+#include "common/scene/postprocess_scene.h"
 
 namespace {
 
@@ -84,7 +91,7 @@ template <typename T> void EraseEmptyEnvKeys(T* entry) {
 } // namespace
 
 void NormalizeCoreConfig(CoreConfig* config) {
-  if (!config) {
+  if (config == nullptr) {
     return;
   }
 
@@ -189,11 +196,11 @@ void NormalizeCoreConfig(CoreConfig* config) {
       normalized.push_back(std::move(scene));
     }
 
-    if (!seen.count(std::string(vinput::scene::kRawSceneId))) {
+    if (!seen.contains(std::string(vinput::scene::kRawSceneId))) {
       normalized.push_back(MakeBuiltinScene(vinput::scene::kRawSceneId));
       seen.insert(std::string(vinput::scene::kRawSceneId));
     }
-    if (!seen.count(std::string(vinput::scene::kCommandSceneId))) {
+    if (!seen.contains(std::string(vinput::scene::kCommandSceneId))) {
       normalized.push_back(MakeBuiltinScene(vinput::scene::kCommandSceneId));
       seen.insert(std::string(vinput::scene::kCommandSceneId));
     }
@@ -202,13 +209,14 @@ void NormalizeCoreConfig(CoreConfig* config) {
   }
 
   if (!config->asr.activeProvider.empty() &&
-      ResolveAsrProvider(*config, config->asr.activeProvider) == nullptr) {
+      CoreConfigView(*config).AsrProvider(config->asr.activeProvider) == nullptr) {
     config->asr.activeProvider.clear();
   }
 
   if (!config->scenes.activeScene.empty() &&
-      vinput::scene::Find({config->scenes.activeScene, config->scenes.definitions},
-                          config->scenes.activeScene) == nullptr) {
+      vinput::scene::Find(
+          {.activeSceneId = config->scenes.activeScene, .scenes = config->scenes.definitions},
+          config->scenes.activeScene) == nullptr) {
     config->scenes.activeScene.clear();
   }
 }

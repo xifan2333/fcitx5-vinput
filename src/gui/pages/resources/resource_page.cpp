@@ -59,6 +59,7 @@
 #include "common/asr/model_manager.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
 #include "common/llm/adapter_manager.h"
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_i18n.h"
@@ -453,8 +454,8 @@ ResourcePage::ResourcePage(QWidget* parent)
   // Show installed models immediately; remote lists fill after refreshAll.
   {
     const CoreConfig config = ConfigManager::Get().Load();
-    const ModelManager manager(ResolveModelBaseDir(config).string());
-    populateLocalModels(manager.ListDetailed(ResolvePreferredLocalModel(config)));
+    const ModelManager manager(CoreConfigView::ModelBaseDir().string());
+    populateLocalModels(manager.ListDetailed(CoreConfigView(config).PreferredLocalModel()));
   }
 #endif
 
@@ -478,8 +479,8 @@ void ResourcePage::reload() {
 void ResourcePage::refreshLocalizedTables() {
 #if VINPUT_ENABLE_LOCAL_ASR
   const CoreConfig config = ConfigManager::Get().Load();
-  const ModelManager manager(ResolveModelBaseDir(config).string());
-  populateLocalModels(manager.ListDetailed(ResolvePreferredLocalModel(config)));
+  const ModelManager manager(CoreConfigView::ModelBaseDir().string());
+  populateLocalModels(manager.ListDetailed(CoreConfigView(config).PreferredLocalModel()));
   populateRemoteModels(remoteModels_);
 #endif
   populateRemoteProviders(remoteProviders_);
@@ -599,7 +600,7 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
   tableAvailableModels_->setRowCount(0);
 
   const CoreConfig config = ConfigManager::Get().Load();
-  const ModelManager manager(ResolveModelBaseDir(config).string());
+  const ModelManager manager(CoreConfigView::ModelBaseDir().string());
   auto localModels = manager.ListDetailed("");
   auto i18n_map = I18nCache::Get().GetMap();
 
@@ -668,7 +669,7 @@ void ResourcePage::populateRemoteProviders(
     tableAvailableProviders_->setItem(row, 2,
                                       MakeCell(entry.stream ? tr("stream") : tr("non-stream")));
 
-    const bool installed = ResolveAsrProvider(config, entry.id) != nullptr;
+    const bool installed = CoreConfigView(config).AsrProvider(entry.id) != nullptr;
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kAsrProvider, entry, installed);
 
@@ -715,7 +716,7 @@ void ResourcePage::populateRemoteAdapters(
     tableAvailableAdapters_->setItem(row, 0, MakeCell(title, id));
     tableAvailableAdapters_->setItem(row, 1, MakeCell(desc));
 
-    const bool installed = ResolveLlmAdapter(config, entry.id) != nullptr;
+    const bool installed = CoreConfigView(config).LlmAdapter(entry.id) != nullptr;
     const auto ver_info = vinput::script::CheckResourceVersion(
         manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
 
@@ -744,7 +745,7 @@ void ResourcePage::populateRemoteAdapters(
 void ResourcePage::refreshAll() {
   const CoreConfig config = ConfigManager::Get().Load();
 #if VINPUT_ENABLE_LOCAL_ASR
-  const QString baseDir = QString::fromStdString(ResolveModelBaseDir(config).string());
+  const QString baseDir = QString::fromStdString(CoreConfigView::ModelBaseDir().string());
 #endif
   const QPointer<ResourcePage> self(this);
   const uint64_t generation = ++refreshGeneration_;
@@ -754,7 +755,7 @@ void ResourcePage::refreshAll() {
   // Keep installed models visible during the network round-trip.
 #if VINPUT_ENABLE_LOCAL_ASR
   const ModelManager local_manager(baseDir.toStdString());
-  populateLocalModels(local_manager.ListDetailed(ResolvePreferredLocalModel(config)));
+  populateLocalModels(local_manager.ListDetailed(CoreConfigView(config).PreferredLocalModel()));
 #endif
 
   btnRefreshResources_->setEnabled(false);
@@ -771,17 +772,17 @@ void ResourcePage::refreshAll() {
     std::string adapters_error;
 
 #if VINPUT_ENABLE_LOCAL_ASR
-    auto remote_models = ModelRepository::FetchRegistry(config, ResolveModelRegistryUrls(config),
-                                                        &models_error, nullptr, &warnings);
+    auto remote_models = ModelRepository::FetchRegistry(
+        config, CoreConfigView(config).ModelRegistryUrls(), &models_error, nullptr, &warnings);
 #else
     std::vector<RemoteModelEntry> remote_models;
 #endif
     auto remote_providers = vinput::script::FetchRegistry(
-        config, vinput::script::Kind::kAsrProvider, ResolveAsrProviderRegistryUrls(config),
-        &providers_error, nullptr, &warnings);
-    auto remote_adapters = vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter,
-                                                         ResolveLlmAdapterRegistryUrls(config),
-                                                         &adapters_error, nullptr, &warnings);
+        config, vinput::script::Kind::kAsrProvider,
+        CoreConfigView(config).AsrProviderRegistryUrls(), &providers_error, nullptr, &warnings);
+    auto remote_adapters = vinput::script::FetchRegistry(
+        config, vinput::script::Kind::kLlmAdapter, CoreConfigView(config).LlmAdapterRegistryUrls(),
+        &adapters_error, nullptr, &warnings);
 
     std::ranges::sort(warnings);
     warnings.erase(std::ranges::unique(warnings).begin(), warnings.end());
@@ -915,8 +916,9 @@ void ResourcePage::onRemoveModelClicked() {
       this, tr("Confirm"), tr("Are you sure you want to remove model '%1'?").arg(model_title));
   if (response == QMessageBox::Yes) {
     CoreConfig config = ConfigManager::Get().Load();
-    const bool reload_backend = ResolvePreferredLocalModel(config) == model_id.toStdString();
-    const ModelManager manager(ResolveModelBaseDir(config).string());
+    const bool reload_backend =
+        CoreConfigView(config).PreferredLocalModel() == model_id.toStdString();
+    const ModelManager manager(CoreConfigView::ModelBaseDir().string());
     std::string err;
     if (auto remove_result = manager.Remove(model_id.toStdString()); !remove_result) {
       QMessageBox::warning(this, tr("Error"),
@@ -1027,8 +1029,8 @@ void ResourcePage::onDownloadModelClicked() {
 
   downloadWorker_->SetTask([config, model_id, worker = downloadWorker_](
                                std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const ModelRepository repo(ResolveModelBaseDir(config).string());
-    auto urls = ResolveModelRegistryUrls(config);
+    const ModelRepository repo(CoreConfigView::ModelBaseDir().string());
+    auto urls = CoreConfigView(config).ModelRegistryUrls();
     return repo.InstallModel(
         config, urls, model_id.toStdString(),
         [worker](const InstallProgress& p) {
@@ -1065,7 +1067,7 @@ void ResourcePage::onAddProviderClicked() {
 
   downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
     const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = ResolveAsrProviderRegistryUrls(config);
+    auto urls = CoreConfigView(config).AsrProviderRegistryUrls();
     return ExecuteScriptInstallOrUpdateTask(
         vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
         [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
@@ -1110,7 +1112,7 @@ void ResourcePage::onUpdateProviderClicked() {
   downloadWorker_->SetTask(
       [id, updateSucceeded](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
         const CoreConfig config = ConfigManager::Get().Load();
-        auto urls = ResolveAsrProviderRegistryUrls(config);
+        auto urls = CoreConfigView(config).AsrProviderRegistryUrls();
         const bool saved = ExecuteScriptInstallOrUpdateTask(
             vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
             [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
@@ -1142,7 +1144,7 @@ void ResourcePage::onAddAdapterClicked() {
 
   downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
     const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = ResolveLlmAdapterRegistryUrls(config);
+    auto urls = CoreConfigView(config).LlmAdapterRegistryUrls();
     return ExecuteScriptInstallOrUpdateTask(
         vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
         [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
@@ -1171,7 +1173,7 @@ void ResourcePage::onUpdateAdapterClicked() {
 
   downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
     const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = ResolveLlmAdapterRegistryUrls(config);
+    auto urls = CoreConfigView(config).LlmAdapterRegistryUrls();
     return ExecuteScriptInstallOrUpdateTask(
         vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
         [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
@@ -1192,7 +1194,7 @@ void ResourcePage::updateProviderButtons() {
     return;
   }
   const CoreConfig config = ConfigManager::Get().Load();
-  const bool installed = ResolveAsrProvider(config, selected->id.toStdString()) != nullptr;
+  const bool installed = CoreConfigView(config).AsrProvider(selected->id.toStdString()) != nullptr;
   auto* stCell = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 3);
   const bool incompatible =
       stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
@@ -1211,7 +1213,7 @@ void ResourcePage::updateAdapterButtons() {
     return;
   }
   const CoreConfig config = ConfigManager::Get().Load();
-  const bool installed = ResolveLlmAdapter(config, selected->id.toStdString()) != nullptr;
+  const bool installed = CoreConfigView(config).LlmAdapter(selected->id.toStdString()) != nullptr;
   auto* stCell = tableAvailableAdapters_->item(tableAvailableAdapters_->currentRow(), 2);
   const bool incompatible =
       stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==

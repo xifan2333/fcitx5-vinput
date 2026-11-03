@@ -1,11 +1,18 @@
 #include <set>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
+#include "common/scene/postprocess_scene.h"
 
 namespace {
 
 bool SetError(std::string* error, std::string message) {
-  if (error) {
+  if (error != nullptr) {
     *error = std::move(message);
   }
   return false;
@@ -57,7 +64,7 @@ bool ValidateCoreConfig(const CoreConfig& config, std::string* error) {
   }
 
   if (!config.asr.activeProvider.empty() &&
-      ResolveAsrProvider(config, config.asr.activeProvider) == nullptr) {
+      CoreConfigView(config).AsrProvider(config.asr.activeProvider) == nullptr) {
     return SetError(error,
                     "Active ASR provider '" + config.asr.activeProvider + "' does not exist.");
   }
@@ -91,12 +98,13 @@ bool ValidateCoreConfig(const CoreConfig& config, std::string* error) {
   }
 
   if (!config.scenes.activeScene.empty() &&
-      vinput::scene::Find({config.scenes.activeScene, config.scenes.definitions},
-                          config.scenes.activeScene) == nullptr) {
+      vinput::scene::Find(
+          {.activeSceneId = config.scenes.activeScene, .scenes = config.scenes.definitions},
+          config.scenes.activeScene) == nullptr) {
     return SetError(error, "Active scene '" + config.scenes.activeScene + "' does not exist.");
   }
 
-  if (error) {
+  if (error != nullptr) {
     error->clear();
   }
   return true;

@@ -1,8 +1,16 @@
 #include "cli/utils/resource_utils.h"
 
-#include <algorithm>
+#include <string>
+#include <vector>
 
-#include "common/config/core_config.h"
+#include "common/asr/model_manager.h"
+#include "common/config/core_config_types.h"
+#include "common/config/core_config_view.h"
+#include "common/registry/registry_i18n.h"
+#include "common/registry/registry_models.h"
+#include "common/registry/registry_scripts.h"
+
+#include "cli/utils/cli_context.h"
 
 namespace vinput::cli {
 
@@ -92,13 +100,13 @@ ResourceDisplayMap BuildScriptDisplayMap(const std::vector<vinput::script::Regis
 }
 
 ResourceDisplayMap FetchModelDisplayMap(const CoreConfig& config) {
-  const auto urls = ResolveModelRegistryUrls(config);
+  const CoreConfigView view(config);
+  const auto urls = view.ModelRegistryUrls();
   if (urls.empty()) {
     return {};
   }
-  ModelRepository repository(ResolveModelBaseDir(config).string());
   std::string error;
-  const auto models = repository.FetchRegistry(config, urls, &error);
+  const auto models = ModelRepository::FetchRegistry(config, urls, &error);
   if (!error.empty()) {
     return {};
   }
@@ -106,9 +114,9 @@ ResourceDisplayMap FetchModelDisplayMap(const CoreConfig& config) {
 }
 
 ResourceDisplayMap FetchScriptDisplayMap(const CoreConfig& config, vinput::script::Kind kind) {
-  const auto urls = kind == vinput::script::Kind::kAsrProvider
-                        ? ResolveAsrProviderRegistryUrls(config)
-                        : ResolveLlmAdapterRegistryUrls(config);
+  const CoreConfigView view(config);
+  const auto urls = kind == vinput::script::Kind::kAsrProvider ? view.AsrProviderRegistryUrls()
+                                                               : view.LlmAdapterRegistryUrls();
   if (urls.empty()) {
     return {};
   }
