@@ -1,11 +1,14 @@
 #include "common/config/vinput_config.h"
 
+#include <fcitx-config/option.h>
+#include <fcitx-utils/i18n.h>
+#include <fcitx-utils/key.h>
 #include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/standardpath.h>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <string>
-
-#include "common/i18n.h"
+#include <string_view>
 
 namespace {
 
@@ -36,13 +39,10 @@ std::string TriggerKeyLabel() {
 
 std::string TriggerKeyTooltip() {
   const std::string path = UserPkgConfigPath(kVinputConfigPath);
-  char buf[1024];
-  std::snprintf(buf, sizeof(buf),
-                _("Press and hold this key to record. Release it to start recognition. "
-                  "Supports regular keys, modifier keys, and modified key combinations. "
-                  "You can configure multiple trigger keys. The config is stored at %s."),
-                path.c_str());
-  return buf;
+  return fmt::sprintf(_("Press and hold this key to record. Release it to start recognition. "
+                        "Supports regular keys, modifier keys, and modified key combinations. "
+                        "You can configure multiple trigger keys. The config is stored at %s."),
+                      path);
 }
 
 std::string CommandKeysLabel() {

@@ -1,8 +1,10 @@
 #pragma once
 
-#include <QMutex>
-#include <QObject>
-#include <QString>
+#include <QtCore/qglobal.h>
+#include <QtCore/qmutex.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qtmetamacros.h>
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -15,6 +17,12 @@ class I18nCache : public QObject {
   Q_OBJECT
 public:
   static I18nCache& Get();
+
+  I18nCache(const I18nCache&) = delete;
+  I18nCache& operator=(const I18nCache&) = delete;
+  I18nCache(I18nCache&&) = delete;
+  I18nCache& operator=(I18nCache&&) = delete;
+  ~I18nCache() override = default;
 
   // Synchronously load the merged disk i18n map on the calling thread.
   // Invalidates any in-flight async reload and emits mapUpdated on success
@@ -32,9 +40,8 @@ signals:
 
 private:
   I18nCache() = default;
-  ~I18nCache() override = default;
 
-  void ApplyLoadedMap(vinput::registry::I18nMap map, std::string error, quint64 generation);
+  void ApplyLoadedMap(vinput::registry::I18nMap map, const std::string& error, quint64 generation);
 
   mutable QMutex mutex_;
   vinput::registry::I18nMap map_;

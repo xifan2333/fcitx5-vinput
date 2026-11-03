@@ -762,7 +762,7 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   auto candidate_list = palette_menu_ic_->inputPanel().candidateList();
-  auto* cursor_list = candidate_list ? candidate_list->toCursorMovable() : nullptr;
+  auto* cursor_list = candidate_list != nullptr ? candidate_list->toCursorMovable() : nullptr;
   const auto normalized_key = keyEvent.key().normalize();
   const bool printable_filter_input = IsPrintableMenuInput(keyEvent.key());
   const bool handled_key = IsPagePrevKey(keyEvent.key()) || IsPageNextKey(keyEvent.key()) ||
@@ -834,7 +834,7 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   const int digit = keyEvent.key().digitSelection();
-  if (candidate_list && digit >= 0 && digit < candidate_list->size()) {
+  if (candidate_list != nullptr && digit >= 0 && digit < candidate_list->size()) {
     candidate_list->candidate(digit).select(palette_menu_ic_);
     keyEvent.filterAndAccept();
     return true;
@@ -946,7 +946,7 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   auto candidate_list = result_menu_ic_->inputPanel().candidateList();
-  auto* cursor_list = candidate_list ? candidate_list->toCursorMovable() : nullptr;
+  auto* cursor_list = candidate_list != nullptr ? candidate_list->toCursorMovable() : nullptr;
   if (keyEvent.isRelease()) {
     if (keyEvent.key().digitSelection() >= 0 || keyEvent.key().checkKeyList(page_prev_keys_) ||
         keyEvent.key().checkKeyList(page_next_keys_) || keyEvent.key().check(FcitxKey_Up) ||
@@ -964,7 +964,7 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
-  if (!candidate_list || candidate_list->empty() || result_candidates_.empty()) {
+  if (candidate_list == nullptr || candidate_list->empty() || result_candidates_.empty()) {
     hideResultMenu();
     return false;
   }
@@ -982,7 +982,7 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
   }
 
   const int digit = keyEvent.key().digitSelection();
-  if (candidate_list && digit >= 0 && digit < candidate_list->size()) {
+  if (candidate_list != nullptr && digit >= 0 && digit < candidate_list->size()) {
     candidate_list->candidate(digit).select(result_menu_ic_);
     keyEvent.filterAndAccept();
     return true;

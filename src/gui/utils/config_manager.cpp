@@ -1,5 +1,11 @@
 #include "gui/utils/config_manager.h"
 
+#include <QtCore/qmutex.h>
+#include <QtCore/qtmetamacros.h>
+
+#include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
+
 namespace vinput::gui {
 
 ConfigManager& ConfigManager::Get() {
@@ -8,13 +14,13 @@ ConfigManager& ConfigManager::Get() {
 }
 
 CoreConfig ConfigManager::Load() {
-  QMutexLocker locker(&mutex_);
+  const QMutexLocker locker(&mutex_);
   return LoadCoreConfig();
 }
 
 bool ConfigManager::Save(const CoreConfig& config) {
-  QMutexLocker locker(&mutex_);
-  bool success = SaveCoreConfig(config);
+  const QMutexLocker locker(&mutex_);
+  const bool success = SaveCoreConfig(config);
   if (success) {
     emit configChanged();
   }

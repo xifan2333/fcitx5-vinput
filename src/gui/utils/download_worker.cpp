@@ -1,6 +1,10 @@
 #include "gui/utils/download_worker.h"
 
+#include <QtCore/qobject.h>
+#include <QtCore/qthread.h>
+#include <QtCore/qtmetamacros.h>
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <utility>
 
@@ -64,8 +68,9 @@ void DownloadWorker::ReportProgress(int percent, const QString& speed) {
 }
 
 void DownloadWorker::run() {
-  if (!task_)
+  if (!task_) {
     return;
+  }
   std::string error_msg;
   const bool ok = task_(&error_msg, &cancel_token_);
   if (!ok && !IsCancelled()) {

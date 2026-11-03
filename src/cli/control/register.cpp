@@ -1,13 +1,10 @@
 #include "cli/control/register.h"
 
-#include <CLI/CLI.hpp>
+#include <CLI/App.hpp>
 
 #include "cli/control/action.h"
 
 namespace vinput::cli::control {
-
-void RegisterDaemonCommands(CLI::App& app, CliAction* action);
-void RegisterRecordingCommands(CLI::App& app, CliAction* action);
 
 void RegisterControlCli(CLI::App& app, CliAction* action) {
   RegisterDaemonCommands(app, action);

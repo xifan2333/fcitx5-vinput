@@ -1,26 +1,32 @@
 #include "pages/hotwords/hotword_page.h"
 
-#include <QFile>
-#include <QFileDialog>
-#include <QHBoxLayout>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QLabel>
-#include <QTextStream>
-#include <QTimer>
-#include <QVBoxLayout>
+#include <QtCore/qfile.h>
+#include <QtCore/qiodevice.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qtextstream.h>
+#include <QtCore/qtimer.h>
+#include <QtWidgets/qboxlayout.h>
+#include <QtWidgets/qfiledialog.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qtextedit.h>
+#include <QtWidgets/qwidget.h>
+#include <variant>
+
+#include "common/config/core_config_types.h"
 
 #include "gui/utils/config_manager.h"
 
 namespace vinput::gui {
 
-HotwordPage::HotwordPage(QWidget* parent) : QWidget(parent) {
+HotwordPage::HotwordPage(QWidget* parent)
+    : QWidget(parent), editFile_(new QLineEdit()), textContent_(new QTextEdit()),
+      btnBrowse_(new QPushButton(tr("Browse..."))) {
   auto* layout = new QVBoxLayout(this);
 
   auto* fileLayout = new QHBoxLayout();
-  editFile_ = new QLineEdit();
   editFile_->setPlaceholderText(tr("Path to hotwords file..."));
-  btnBrowse_ = new QPushButton(tr("Browse..."));
   fileLayout->addWidget(editFile_);
   fileLayout->addWidget(btnBrowse_);
   layout->addLayout(fileLayout);
@@ -29,7 +35,6 @@ HotwordPage::HotwordPage(QWidget* parent) : QWidget(parent) {
       new QLabel(tr("Hotwords (one per line, optional transducer score: \"word:2.0\"):"));
   layout->addWidget(lblWords);
 
-  textContent_ = new QTextEdit();
   layout->addWidget(textContent_);
 
   connect(btnBrowse_, &QPushButton::clicked, this, &HotwordPage::onBrowseClicked);
@@ -49,7 +54,7 @@ HotwordPage::HotwordPage(QWidget* parent) : QWidget(parent) {
 }
 
 void HotwordPage::reload() {
-  CoreConfig config = vinput::gui::ConfigManager::Get().Load();
+  const CoreConfig config = vinput::gui::ConfigManager::Get().Load();
   QString path;
   for (const auto& prov : config.asr.providers) {
     if (const auto* local = std::get_if<LocalAsrProvider>(&prov)) {
@@ -77,14 +82,16 @@ QString HotwordPage::hotwordsContent() const {
 }
 
 void HotwordPage::onBrowseClicked() {
-  QString fileName = QFileDialog::getOpenFileName(this, tr("Select Hotwords File"), "",
-                                                  tr("Text Files (*.txt);;All Files (*)"));
-  if (fileName.isEmpty())
+  const QString fileName = QFileDialog::getOpenFileName(this, tr("Select Hotwords File"), "",
+                                                        tr("Text Files (*.txt);;All Files (*)"));
+  if (fileName.isEmpty()) {
     return;
+  }
   editFile_->setText(fileName);
   QFile f(fileName);
-  if (f.open(QIODevice::ReadOnly | QIODevice::Text))
+  if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
     textContent_->setPlainText(QTextStream(&f).readAll());
+  }
 }
 
 } // namespace vinput::gui

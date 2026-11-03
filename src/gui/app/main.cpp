@@ -1,11 +1,18 @@
-#include <QApplication>
-#include <QDir>
-#include <QLibraryInfo>
-#include <QLocale>
-#include <QStandardPaths>
-#include <QTranslator>
+#include <QStringList>
+#include <QtCore/qbytearray.h>
+#include <QtCore/qcontainerfwd.h>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qdir.h>
+#include <QtCore/qglobal.h>
 #include <QtCore/qlibraryinfo.h>
+#include <QtCore/qlocale.h>
+#include <QtCore/qnamespace.h>
+#include <QtCore/qstandardpaths.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
 #include <QtCore/qstringliteral.h>
+#include <QtCore/qtranslator.h>
+#include <QtWidgets/qapplication.h>
 
 #include "mainwindow.h"
 
@@ -59,12 +66,16 @@ bool TryLoadTranslation(QTranslator& translator, const QString& base_name) {
 
 int main(int argc, char* argv[]) {
   // Set IM environment for this process only, so Chinese input works in the GUI
-  setenv("QT_IM_MODULE", "fcitx", 0);
-  setenv("XMODIFIERS", "@im=fcitx", 0);
+  if (qEnvironmentVariableIsEmpty("QT_IM_MODULE")) {
+    qputenv("QT_IM_MODULE", "fcitx");
+  }
+  if (qEnvironmentVariableIsEmpty("XMODIFIERS")) {
+    qputenv("XMODIFIERS", "@im=fcitx");
+  }
 
   // Defer widget styling to the active Qt platform theme and system palette.
   QApplication::setDesktopSettingsAware(true);
-  QApplication app(argc, argv);
+  const QApplication app(argc, argv);
 
   QTranslator translator;
   if (TryLoadTranslation(translator, "vinput-gui")) {
@@ -83,5 +94,5 @@ int main(int argc, char* argv[]) {
   window.resize(600, 400);
   window.show();
 
-  return app.exec();
+  return QApplication::exec();
 }
