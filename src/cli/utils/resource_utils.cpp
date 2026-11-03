@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_view.h"
 
 namespace vinput::cli {
 
@@ -106,9 +107,9 @@ ResourceDisplayMap FetchModelDisplayMap(const CoreConfig& config) {
 }
 
 ResourceDisplayMap FetchScriptDisplayMap(const CoreConfig& config, vinput::script::Kind kind) {
-  const auto urls = kind == vinput::script::Kind::kAsrProvider
-                        ? ResolveAsrProviderRegistryUrls(config)
-                        : ResolveLlmAdapterRegistryUrls(config);
+  const CoreConfigView view(config);
+  const auto urls = kind == vinput::script::Kind::kAsrProvider ? view.AsrProviderRegistryUrls()
+                                                               : view.LlmAdapterRegistryUrls();
   if (urls.empty()) {
     return {};
   }
