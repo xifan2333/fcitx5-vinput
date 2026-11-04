@@ -138,26 +138,32 @@ inline std::map<std::string, std::string> StringMap(const glz::json_t& object,
 
 // Builds a JSON array out of a string container.
 template <typename Container> glz::json_t FromStrings(const Container& values) {
-  glz::json_t::array_t array;
+  glz::json_t result;
+  auto& array = result.data.emplace<glz::json_t::array_t>();
   array.reserve(values.size());
   for (const auto& value : values) {
     array.emplace_back(value);
   }
-  return {std::move(array)};
+  return result;
 }
 
 // Builds a JSON object out of a string map.
 inline glz::json_t FromStringMap(const std::map<std::string, std::string>& values) {
-  glz::json_t::object_t object;
+  glz::json_t result;
+  auto& object = result.data.emplace<glz::json_t::object_t>();
   for (const auto& [key, value] : values) {
-    object.emplace(key, glz::json_t(value));
+    object.emplace(key, value);
   }
-  return {std::move(object)};
+  return result;
 }
 
 // Shared empty object, used as the fallback of Object().
 inline const glz::json_t& EmptyObject() {
-  static const glz::json_t value = glz::json_t(glz::json_t::object_t{});
+  static const glz::json_t value = [] {
+    glz::json_t out;
+    out.data.emplace<glz::json_t::object_t>();
+    return out;
+  }();
   return value;
 }
 
