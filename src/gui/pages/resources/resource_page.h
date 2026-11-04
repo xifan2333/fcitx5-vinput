@@ -52,7 +52,7 @@ private:
   template <typename MutateFn, typename PostRemoveFn>
   void removeScriptItem(QTableWidget* table, vinput::script::Kind kind,
                         const QString& confirm_question, const QString& removed_log,
-                        MutateFn&& mutate_fn, PostRemoveFn&& post_remove_fn);
+                        const MutateFn& mutate_fn, const PostRemoveFn& post_remove_fn);
 
   QLineEdit* filterInstalledModels_;
   QLineEdit* filterAvailableModels_;
