@@ -258,6 +258,33 @@ bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::stri
   return restart();
 }
 
+struct ScriptActionButtons {
+  QPushButton* add = nullptr;
+  QPushButton* update = nullptr;
+  QPushButton* remove = nullptr;
+};
+
+template <typename IsInstalledFn>
+void UpdateScriptActionButtons(QTableWidget* table, int status_column,
+                               const ScriptActionButtons& buttons,
+                               const IsInstalledFn& is_installed) {
+  const auto selected = GetSelectedResourceItem(table);
+  if (!selected) {
+    buttons.add->setEnabled(false);
+    buttons.update->setEnabled(false);
+    buttons.remove->setEnabled(false);
+    return;
+  }
+  const bool installed = is_installed(selected->id.toStdString());
+  auto* stCell = table->item(table->currentRow(), status_column);
+  const bool incompatible =
+      stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
+                               static_cast<int>(vinput::script::UpdateStatus::kIncompatible);
+  buttons.add->setEnabled(!installed && !incompatible);
+  buttons.update->setEnabled(installed && !incompatible);
+  buttons.remove->setEnabled(installed);
+}
+
 } // namespace
 
 ResourcePage::ResourcePage(QWidget* parent)
@@ -1186,41 +1213,23 @@ void ResourcePage::onUpdateAdapterClicked() {
 }
 
 void ResourcePage::updateProviderButtons() {
-  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
-  if (!selected) {
-    btnAddProvider_->setEnabled(false);
-    btnUpdateProvider_->setEnabled(false);
-    btnRemoveProvider_->setEnabled(false);
-    return;
-  }
-  const CoreConfig config = ConfigManager::Get().Load();
-  const bool installed = CoreConfigView(config).AsrProvider(selected->id.toStdString()) != nullptr;
-  auto* stCell = tableAvailableProviders_->item(tableAvailableProviders_->currentRow(), 3);
-  const bool incompatible =
-      stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
-                               static_cast<int>(vinput::script::UpdateStatus::kIncompatible);
-  btnAddProvider_->setEnabled(!installed && !incompatible);
-  btnUpdateProvider_->setEnabled(installed && !incompatible);
-  btnRemoveProvider_->setEnabled(installed);
+  UpdateScriptActionButtons(
+      tableAvailableProviders_, 3,
+      ScriptActionButtons{btnAddProvider_, btnUpdateProvider_, btnRemoveProvider_},
+      [](const std::string& id) {
+        const CoreConfig config = ConfigManager::Get().Load();
+        return CoreConfigView(config).AsrProvider(id) != nullptr;
+      });
 }
 
 void ResourcePage::updateAdapterButtons() {
-  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
-  if (!selected) {
-    btnAddAdapter_->setEnabled(false);
-    btnUpdateAdapter_->setEnabled(false);
-    btnRemoveAdapter_->setEnabled(false);
-    return;
-  }
-  const CoreConfig config = ConfigManager::Get().Load();
-  const bool installed = CoreConfigView(config).LlmAdapter(selected->id.toStdString()) != nullptr;
-  auto* stCell = tableAvailableAdapters_->item(tableAvailableAdapters_->currentRow(), 2);
-  const bool incompatible =
-      stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
-                               static_cast<int>(vinput::script::UpdateStatus::kIncompatible);
-  btnAddAdapter_->setEnabled(!installed && !incompatible);
-  btnUpdateAdapter_->setEnabled(installed && !incompatible);
-  btnRemoveAdapter_->setEnabled(installed);
+  UpdateScriptActionButtons(
+      tableAvailableAdapters_, 2,
+      ScriptActionButtons{btnAddAdapter_, btnUpdateAdapter_, btnRemoveAdapter_},
+      [](const std::string& id) {
+        const CoreConfig config = ConfigManager::Get().Load();
+        return CoreConfigView(config).LlmAdapter(id) != nullptr;
+      });
 }
 
 void ResourcePage::onRemoveProviderClicked() {
