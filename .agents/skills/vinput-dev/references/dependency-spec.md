@@ -19,15 +19,21 @@
 
 ---
 
-## 2. Three-Tier Priority Hierarchy & Admission
+## 2. Two-Tier Dependency Governance (Host Shared Libraries vs. Self-Contained Header-Only)
 
-Select dependency tiers sequentially from Tier 1 to Tier 3:
+Dependencies are governed by a strict binary boundary based on **runtime ABI presence**, rather than whether a Linux distribution happens to package a header-only snapshot:
 
 | Tier | Policy & Role | Scope & Examples | Build & Packaging Standard |
 | :--- | :--- | :--- | :--- |
-| **Tier 1: Core System Services** | Host-only; never vendor. | `fcitx5`, `pipewire`, `libsystemd`, `qt6`, `openssl` | CMake single-line `find_package(... REQUIRED)` or `pkg_check_modules`. |
-| **Tier 2: Universal Modern Libraries** | Universally packaged across all target distros. | `spdlog`, `CLI11`, `reproc` | 1. Declare distro package in `scripts/ci-install-build-deps.sh`;<br>2. Declare package in `flake.nix` `buildInputs`;<br>3. CMake single-line `find_package(... REQUIRED)`. |
-| **Tier 3: Specialized / Missing Libraries** | Missing or inconsistent across distros; lightweight header-only. | `httplib`, `base64`, `unicodelib`, `readerwriterqueue`, `mio` | Vendor under `3rdparty/`, managed via `3rdparty/CMakeLists.txt` with `SYSTEM INTERFACE`. |
+| **Tier 1: System ABI & Shared Libraries (`*.so`)** | Host-only; never vendor. | `fcitx5`, `pipewire`, `libsystemd`, `qt6`, `openssl`, `libarchive`, `gettext` | 1. Declare distro package in `scripts/ci-install-build-deps.sh`, `packaging/`, and `flake.nix`;<br>2. CMake single-line `find_package(... REQUIRED)` or `pkg_check_modules(... REQUIRED)`. |
+| **Tier 2: Pure C++ Header-Only Libraries** | Self-contained in `3rdparty/`; never consume from host or `FetchContent`. | `fmt`, `spdlog`, `CLI11`, `httplib`, `glaze`, `tl-expected`, `mio`, `readerwriterqueue`, `subprocess`, `scope`, `tabulate`, `indicators`, `base64`, `unicodelib` | 1. Vendor pristine upstream snapshot under `3rdparty/<lib_name>/`;<br>2. Expose via `SYSTEM INTERFACE` in `CMakeLists.txt`;<br>3. Register license and version in `THIRD_PARTY_NOTICES.md`. |
+
+### Rationale for Self-Contained Header-Only Policy
+
+Consuming header-only C++ libraries from host distribution packages introduces severe cross-distro version skew (e.g., Debian 12 vs. Ubuntu 24.04 vs. Arch rolling), leading to C++20 `consteval` incompatibilities, missing features (such as WebSocket support in older `cpp-httplib`), and conflicting `IWYU pragma` / `clang-tidy` behavior. Self-containing all header-only libraries under `3rdparty/` guarantees:
+1. **100% Deterministic C++20 Compilation & Static Analysis** across all target distributions;
+2. **Zero Version Fallbacks & Zero `FetchContent`** in `CMakeLists.txt`;
+3. **Minimal Packaging Surface** (`Build-Depends` / `makedepends` only track true Tier 1 shared libraries).
 
 ### Admission Decision Tree
 
@@ -35,56 +41,45 @@ Select dependency tiers sequentially from Tier 1 to Tier 3:
 Introduce New Dependency
        │
        ▼
-Packaged across all target distributions (Debian, Ubuntu, Fedora, openSUSE, Arch, Nixpkgs)?
+Does it cross a runtime shared-library (.so), IPC, kernel, or plugin ABI boundary?
        │
-       ├─────► YES ──────► Tier 2: Universal Modern Library
-       │                   1. Declare in ci-install-build-deps.sh and flake.nix
-       │                   2. CMake single-line find_package(xxx REQUIRED)
-       │                   3. Never copy code into repo; never use FetchContent fallback
+       ├─────► YES ──────► Tier 1: System ABI & Shared Library
+       │                   1. Declare in ci-install-build-deps.sh, packaging/, and flake.nix
+       │                   2. CMake single-line find_package(xxx REQUIRED) or pkg_check_modules
+       │                   3. Never copy into repo; never use FetchContent
        │
-       ▼ NO: Missing in one or more distributions
-Must satisfy Tier 3 admission criteria:
-1. Lightweight, focused single-header (Header-Only) or micro-library
-2. Permissive open-source license (MIT, Apache-2.0, BSD)
+       ▼ NO: Pure C++ Header-Only Library
+Must satisfy Tier 2 admission criteria:
+1. Header-only library with zero compiled shared library runtime
+2. Permissive open-source license (MIT, Apache-2.0, BSD, BSL-1.0, CC0)
        │
-       └────────────────► Tier 3: Vendored in 3rdparty/
-                          1. Store under 3rdparty/<lib_name>/
-                          2. Wrap with SYSTEM INTERFACE in 3rdparty/CMakeLists.txt
+       └────────────────► Tier 2: Self-Contained in 3rdparty/
+                          1. Store pristine upstream headers + LICENSE under 3rdparty/<lib_name>/
+                          2. Wrap with SYSTEM INTERFACE in CMakeLists.txt (no find_package/FetchContent)
                           3. Register audit in THIRD_PARTY_NOTICES.md
 ```
 
 ---
 
-## 3. Tier 3 Vendoring SOP
+## 3. Tier 2 Header-Only Vendoring SOP
 
 ### 3.1 Directory Layout
 ```text
 3rdparty/
-├── CMakeLists.txt
 └── <lib_name>/
-    ├── <lib_name>.hpp (or .h, strictly pristine upstream)
+    ├── include/ or <lib_name>.hpp (strictly pristine upstream headers)
     └── LICENSE (original upstream license text)
 ```
 
-### 3.2 `3rdparty/CMakeLists.txt` Isolation Pattern
-Use `SYSTEM INTERFACE` to insulate vendored code:
+### 3.2 `CMakeLists.txt` `SYSTEM INTERFACE` Isolation Pattern
+Use `SYSTEM INTERFACE` unconditionally (without `find_package` or `FetchContent` fallbacks) to guarantee identical headers across all builds and insulate vendored code from project `clang-tidy` checks:
 
 ```cmake
-# Pure header-only library (e.g. base64, unicodelib)
 add_library(3rdparty_<name> INTERFACE)
-target_include_directories(3rdparty_<name> SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/<name>)
+target_include_directories(3rdparty_<name> SYSTEM INTERFACE
+    ${CMAKE_SOURCE_DIR}/3rdparty/<name>/include
+)
 add_library(<name>::<name> ALIAS 3rdparty_<name>)
-
-# Library with optional system-first detection and vendored fallback (e.g. httplib)
-find_package(<name> QUIET)
-if(<name>_FOUND)
-    message(STATUS "Using system <name>")
-else()
-    message(STATUS "Using bundled <name> from 3rdparty")
-    add_library(3rdparty_<name> INTERFACE)
-    target_include_directories(3rdparty_<name> SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/<name>)
-    add_library(<name>::<name> ALIAS 3rdparty_<name>)
-endif()
 ```
 
 ### 3.3 License Compliance (`THIRD_PARTY_NOTICES.md`)
