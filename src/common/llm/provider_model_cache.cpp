@@ -25,7 +25,7 @@ namespace {
 constexpr auto kCacheWriteOpts = glz::opts{.prettify = uint8_t{1}, .indentation_width = 2};
 
 glz::json_t EmptyObject() {
-  return {glz::json_t::object_t{}};
+  return glz::json_t(glz::json_t::object_t{});
 }
 
 bool ReadCacheFile(glz::json_t* out) {
