@@ -42,7 +42,6 @@ private:
   void populateRemoteModels(const std::vector<RemoteModelEntry>& models);
   void populateRemoteProviders(const std::vector<vinput::script::RegistryEntry>& providers);
   void populateRemoteAdapters(const std::vector<vinput::script::RegistryEntry>& adapters);
-  static void applyTableFilter(QTableWidget* table, const QString& filter_text);
   void refreshLocalizedTables();
   void finishRefreshAfterI18n(const QString& error = {}, uint64_t generation = 0);
 
