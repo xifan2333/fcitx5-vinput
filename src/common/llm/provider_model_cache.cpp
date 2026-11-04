@@ -24,15 +24,11 @@ namespace {
 // The cache is keyed by runtime provider ids, so its shape stays dynamic.
 constexpr auto kCacheWriteOpts = glz::opts{.prettify = uint8_t{1}, .indentation_width = 2};
 
-glz::json_t EmptyObject() {
-  return {glz::json_t::object_t{}};
-}
-
 bool ReadCacheFile(glz::json_t* out) {
   if (out == nullptr) {
     return false;
   }
-  *out = EmptyObject();
+  *out = vinput::json::EmptyObject();
 
   const auto path = vinput::path::ProviderModelCachePath();
   const auto content = vinput::file::ReadTextFile(path);
@@ -40,7 +36,7 @@ bool ReadCacheFile(glz::json_t* out) {
     return false;
   }
   if (bool(glz::read_json(*out, *content)) || !out->is_object()) {
-    *out = EmptyObject();
+    *out = vinput::json::EmptyObject();
     return false;
   }
   return true;
@@ -81,7 +77,7 @@ bool SaveProviderModels(const std::string& provider_id, const std::vector<std::s
 
   auto* providers = vinput::json::Find(cache, "providers");
   if (providers == nullptr || !providers->is_object()) {
-    cache["providers"] = EmptyObject();
+    cache["providers"] = vinput::json::EmptyObject();
     providers = vinput::json::Find(cache, "providers");
   }
   if (providers == nullptr) {
