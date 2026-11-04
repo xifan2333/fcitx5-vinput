@@ -37,6 +37,11 @@ void TestFromStringsIsFlat() {
   TEST_EXPECT(ToJson(value) == R"(["a","b"])");
   const auto round_tripped = vinput::json::Strings(value);
   TEST_EXPECT(round_tripped == std::vector<std::string>({"a", "b"}));
+
+  const auto empty_array = vinput::json::FromStrings(std::vector<std::string>{});
+  TEST_EXPECT(empty_array.is_array());
+  TEST_EXPECT(empty_array.empty());
+  TEST_EXPECT(ToJson(empty_array) == R"([])");
 }
 
 // `FromStringMap` must produce `{"k":"v"}`, never the double-wrapped `[{"k":"v"}]`.
@@ -47,13 +52,18 @@ void TestFromStringMapIsFlat() {
   const auto round_tripped = vinput::json::StringMap(value);
   TEST_EXPECT(round_tripped.size() == 1);
   TEST_EXPECT(round_tripped.at("k") == "v");
+
+  const auto empty_object = vinput::json::FromStringMap({});
+  TEST_EXPECT(empty_object.is_object());
+  TEST_EXPECT(empty_object.empty());
+  TEST_EXPECT(ToJson(empty_object) == R"({})");
 }
 
 // `EmptyObject` must produce a valid empty JSON object, not an array.
 void TestEmptyObjectIsObject() {
   const auto& empty = vinput::json::EmptyObject();
   TEST_EXPECT(empty.is_object());
-  TEST_EXPECT(empty.size() == 0);
+  TEST_EXPECT(empty.empty());
   TEST_EXPECT(ToJson(empty) == R"({})");
 }
 
