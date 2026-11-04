@@ -219,73 +219,8 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
     return CoreConfigView(config).LlmAdapter(id) != nullptr;
   };
 
-  if (ctx.json_output) {
-    glz::json_t::array_t arr;
-    for (const auto& entry : entries) {
-      glz::json_t::array_t envs;
-      for (const auto& env : entry.envs) {
-        glz::json_t json_entry = {{"name", env.name}, {"required", env.required}};
-        envs.emplace_back(std::move(json_entry));
-      }
-      const bool installed = isInstalled(entry.id);
-      const auto ver_info = vinput::script::CheckResourceVersion(
-          manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
-      std::string status_str = "available";
-      if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-        status_str = "incompatible";
-      } else if (installed) {
-        status_str = ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable
-                         ? "update_available"
-                         : "installed";
-      }
-
-      glz::json_t json_entry = {
-          {"id", vinput::cli::HumanizeResourceId(entry.id, entry.short_id)},
-          {"machine_id", entry.id},
-          {"title", display_map.at(entry.id).title},
-          {"description", display_map.at(entry.id).description},
-          {"readme_url", entry.readme_url},
-          {"envs", glz::json_t(std::move(envs))},
-          {"status", status_str},
-          {"installed_version", ver_info.installed_version},
-          {"remote_version", ver_info.remote_version},
-          {"vinput_version", ver_info.vinput_version},
-      };
-      arr.emplace_back(std::move(json_entry));
-    }
-    fmt.PrintJson(glz::json_t(std::move(arr)));
-    return 0;
-  }
-
-  const std::vector<std::string> headers = {_("ID"), _("TITLE"), _("STATUS"), _("README")};
-  std::vector<std::vector<std::string>> rows;
-  for (const auto& entry : entries) {
-    const bool installed = isInstalled(entry.id);
-    const auto ver_info = vinput::script::CheckResourceVersion(
-        manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
-    std::string status_text = _("available");
-    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status_text = ::fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
-    } else if (installed) {
-      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
-        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status_text = ::fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
-                                       ver_info.remote_version);
-        } else {
-          status_text = _("update available");
-        }
-      } else if (!ver_info.installed_version.empty()) {
-        status_text = ::fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
-      } else {
-        status_text = _("installed");
-      }
-    }
-
-    rows.push_back({vinput::cli::HumanizeResourceId(entry.id, entry.short_id),
-                    display_map.at(entry.id).title, status_text,
-                    vinput::cli::FormatTerminalLink(ctx, _("Open README"), entry.readme_url)});
-  }
-  fmt.PrintTable(headers, rows);
+  vinput::cli::RenderRegistryScriptList(entries, display_map, manifest, isInstalled,
+                                        vinput::script::Kind::kLlmAdapter, fmt, ctx);
   return 0;
 }
 
@@ -322,14 +257,8 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
                                const CliContext& ctx) {
   (void)ctx;
   std::map<std::string, std::string> overrides;
-  for (const auto& item : envOverrides) {
-    const auto pair = vinput::str::SplitOnce(item, '=');
-    if (!pair || pair->first.empty()) {
-      // A malformed value may be a token pasted without its key, so never echo it back.
-      fmt.PrintError(_("Invalid --env: expected KEY=VALUE."));
-      return 1;
-    }
-    overrides[std::string(pair->first)] = std::string(pair->second);
+  if (!vinput::cli::ParseEnvOverrides(envOverrides, &overrides, fmt)) {
+    return 1;
   }
 
   CoreConfig config = LoadCoreConfig();

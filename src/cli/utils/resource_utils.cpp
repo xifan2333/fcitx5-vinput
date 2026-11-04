@@ -1,16 +1,25 @@
 #include "cli/utils/resource_utils.h"
 
+#include <fmt/printf.h>
+#include <functional>
+#include <glaze/json/json_t.hpp>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
+#include "common/i18n.h"
+#include "common/registry/installed_manifest.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_models.h"
 #include "common/registry/registry_scripts.h"
+#include "common/utils/string_utils.h"
 
 #include "cli/utils/cli_context.h"
+#include "cli/utils/formatter.h"
 
 namespace vinput::cli {
 
@@ -208,6 +217,115 @@ std::string ResolveInstalledLlmAdapterSelector(const CoreConfig& config,
         return it->second.short_id;
       },
       error);
+}
+
+bool ParseEnvOverrides(const std::vector<std::string>& env_overrides,
+                       std::map<std::string, std::string>* out_env, Formatter& fmt) {
+  if (out_env == nullptr) {
+    return false;
+  }
+  out_env->clear();
+  for (const auto& item : env_overrides) {
+    const auto pair = vinput::str::SplitOnce(item, '=');
+    if (!pair || pair->first.empty()) {
+      // A malformed value may be a token pasted without its key, so never echo it back.
+      fmt.PrintError(_("Invalid --env: expected KEY=VALUE."));
+      return false;
+    }
+    (*out_env)[std::string(pair->first)] = std::string(pair->second);
+  }
+  return true;
+}
+
+void RenderRegistryScriptList(const std::vector<vinput::script::RegistryEntry>& entries,
+                              const ResourceDisplayMap& display_map,
+                              const vinput::registry::InstalledManifest& manifest,
+                              const std::function<bool(const std::string&)>& is_installed,
+                              vinput::script::Kind kind, Formatter& fmt, const CliContext& ctx) {
+  const bool is_asr = kind == vinput::script::Kind::kAsrProvider;
+
+  if (ctx.json_output) {
+    glz::json_t::array_t arr;
+    arr.reserve(entries.size());
+    for (const auto& entry : entries) {
+      glz::json_t::array_t envs;
+      envs.reserve(entry.envs.size());
+      for (const auto& env : entry.envs) {
+        glz::json_t json_entry = {{"name", env.name}, {"required", env.required}};
+        envs.emplace_back(std::move(json_entry));
+      }
+      const bool installed = is_installed(entry.id);
+      const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
+      std::string status_str = "available";
+      if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
+        status_str = "incompatible";
+      } else if (installed) {
+        status_str = ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable
+                         ? "update_available"
+                         : "installed";
+      }
+
+      glz::json_t json_entry = {
+          {"id", HumanizeResourceId(entry.id, entry.short_id)},
+          {"machine_id", entry.id},
+          {"title", display_map.at(entry.id).title},
+          {"description", display_map.at(entry.id).description},
+          {"readme_url", entry.readme_url},
+          {"envs", glz::json_t(std::move(envs))},
+          {"status", status_str},
+          {"installed_version", ver_info.installed_version},
+          {"remote_version", ver_info.remote_version},
+          {"vinput_version", ver_info.vinput_version},
+      };
+      if (is_asr) {
+        json_entry["stream"] = entry.stream;
+      }
+      arr.emplace_back(std::move(json_entry));
+    }
+    fmt.PrintJson(glz::json_t(std::move(arr)));
+    return;
+  }
+
+  std::vector<std::string> headers;
+  if (is_asr) {
+    headers = {_("ID"), _("TITLE"), _("MODE"), _("STATUS"), _("README")};
+  } else {
+    headers = {_("ID"), _("TITLE"), _("STATUS"), _("README")};
+  }
+
+  std::vector<std::vector<std::string>> rows;
+  rows.reserve(entries.size());
+  for (const auto& entry : entries) {
+    const bool installed = is_installed(entry.id);
+    const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
+    std::string status_text = _("available");
+    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
+      status_text = ::fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
+    } else if (installed) {
+      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
+        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
+          status_text = ::fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
+                                       ver_info.remote_version);
+        } else {
+          status_text = _("update available");
+        }
+      } else if (!ver_info.installed_version.empty()) {
+        status_text = ::fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
+      } else {
+        status_text = _("installed");
+      }
+    }
+
+    if (is_asr) {
+      rows.push_back({HumanizeResourceId(entry.id, entry.short_id), display_map.at(entry.id).title,
+                      entry.stream ? _("stream") : _("batch"), status_text,
+                      FormatTerminalLink(ctx, _("Open README"), entry.readme_url)});
+    } else {
+      rows.push_back({HumanizeResourceId(entry.id, entry.short_id), display_map.at(entry.id).title,
+                      status_text, FormatTerminalLink(ctx, _("Open README"), entry.readme_url)});
+    }
+  }
+  fmt.PrintTable(headers, rows);
 }
 
 } // namespace vinput::cli

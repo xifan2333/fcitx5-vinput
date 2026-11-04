@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
+#include <optional>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -127,6 +128,23 @@ LocalAsrProvider* PreferredLocalProvider(CoreConfig* config) {
     }
   }
   return nullptr;
+}
+
+std::optional<std::string> ResolveInstalledModelOrReport(const CoreConfig& config,
+                                                         const ModelManager& manager,
+                                                         const std::string& selector,
+                                                         Formatter& fmt) {
+  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
+  const auto models = manager.ListDetailed(activeModel);
+  const auto display_map = vinput::cli::FetchModelDisplayMap(config);
+  std::string error;
+  std::string id =
+      vinput::cli::ResolveModelSelectorByShortId(selector, models, display_map, &error);
+  if (id.empty()) {
+    fmt.PrintError(error);
+    return std::nullopt;
+  }
+  return std::move(id);
 }
 #endif
 
@@ -373,76 +391,8 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
     return CoreConfigView(config).AsrProvider(id) != nullptr;
   };
 
-  if (ctx.json_output) {
-    glz::json_t::array_t arr;
-    for (const auto& entry : entries) {
-      glz::json_t::array_t envs;
-      for (const auto& env : entry.envs) {
-        glz::json_t json_entry = {{"name", env.name}, {"required", env.required}};
-        envs.emplace_back(std::move(json_entry));
-      }
-      const bool installed = isInstalled(entry.id);
-      const auto ver_info = vinput::script::CheckResourceVersion(
-          manifest, vinput::script::Kind::kAsrProvider, entry, installed);
-      std::string status_str = "available";
-      if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-        status_str = "incompatible";
-      } else if (installed) {
-        status_str = ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable
-                         ? "update_available"
-                         : "installed";
-      }
-
-      glz::json_t json_entry = {
-          {"id", vinput::cli::HumanizeResourceId(entry.id, entry.short_id)},
-          {"machine_id", entry.id},
-          {"title", display_map.at(entry.id).title},
-          {"description", display_map.at(entry.id).description},
-          {"readme_url", entry.readme_url},
-          {"stream", entry.stream},
-          {"envs", glz::json_t(std::move(envs))},
-          {"status", status_str},
-          {"installed_version", ver_info.installed_version},
-          {"remote_version", ver_info.remote_version},
-          {"vinput_version", ver_info.vinput_version},
-      };
-      arr.emplace_back(std::move(json_entry));
-    }
-    fmt.PrintJson(glz::json_t(std::move(arr)));
-    return 0;
-  }
-
-  const std::vector<std::string> headers = {_("ID"), _("TITLE"), _("MODE"), _("STATUS"),
-                                            _("README")};
-  std::vector<std::vector<std::string>> rows;
-  for (const auto& entry : entries) {
-    const bool installed = isInstalled(entry.id);
-    const auto ver_info = vinput::script::CheckResourceVersion(
-        manifest, vinput::script::Kind::kAsrProvider, entry, installed);
-    std::string status_text = _("available");
-    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status_text = ::fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
-    } else if (installed) {
-      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
-        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status_text = ::fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
-                                       ver_info.remote_version);
-        } else {
-          status_text = _("update available");
-        }
-      } else if (!ver_info.installed_version.empty()) {
-        status_text = ::fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
-      } else {
-        status_text = _("installed");
-      }
-    }
-
-    rows.push_back({vinput::cli::HumanizeResourceId(entry.id, entry.short_id),
-                    display_map.at(entry.id).title, entry.stream ? _("stream") : _("batch"),
-                    status_text,
-                    vinput::cli::FormatTerminalLink(ctx, _("Open README"), entry.readme_url)});
-  }
-  fmt.PrintTable(headers, rows);
+  vinput::cli::RenderRegistryScriptList(entries, display_map, manifest, isInstalled,
+                                        vinput::script::Kind::kAsrProvider, fmt, ctx);
   return 0;
 }
 
@@ -823,22 +773,18 @@ int RunAsrConfigRemoveModel(const std::string& selector, Formatter& fmt, const C
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
   const ModelManager manager(CoreConfigView::ModelBaseDir().string());
-  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
-  const auto models = manager.ListDetailed(activeModel);
-  const auto display_map = vinput::cli::FetchModelDisplayMap(config);
-
-  std::string error;
-  const std::string id =
-      vinput::cli::ResolveModelSelectorByShortId(selector, models, display_map, &error);
-  if (id.empty()) {
-    fmt.PrintError(error);
+  const auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
+  if (!id_opt) {
     return 1;
   }
+  const std::string& id = *id_opt;
   if (auto remove_result = manager.Remove(id); !remove_result) {
     fmt.PrintError(std::move(remove_result).error());
     return 1;
   }
+  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
   if (activeModel == id) {
+    std::string error;
     if (!SetPreferredLocalModel(&config, "", &error)) {
       fmt.PrintWarning(error);
     } else if (!SaveAsrConfigAndReload(config, fmt)) {
@@ -853,22 +799,17 @@ int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliC
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
   const ModelManager manager(CoreConfigView::ModelBaseDir().string());
-  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
-  const auto models = manager.ListDetailed(activeModel);
-  const auto display_map = vinput::cli::FetchModelDisplayMap(config);
-
-  std::string error;
-  const std::string id =
-      vinput::cli::ResolveModelSelectorByShortId(selector, models, display_map, &error);
-  if (id.empty()) {
-    fmt.PrintError(error);
+  const auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
+  if (!id_opt) {
     return 1;
   }
+  const std::string& id = *id_opt;
   if (auto validate_result = manager.Validate(id); !validate_result) {
     fmt.PrintError(
         ::fmt::sprintf(_("Model '%s' is not valid: %s"), id, std::move(validate_result).error()));
     return 1;
   }
+  std::string error;
   if (!SetPreferredLocalModel(&config, id, &error)) {
     fmt.PrintError(error);
     return 1;
@@ -885,16 +826,12 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
   const CoreConfig config = LoadCoreConfig();
   const std::string baseDir = CoreConfigView::ModelBaseDir().string();
   const ModelManager manager(baseDir);
-  const std::string activeModel = CoreConfigView(config).PreferredLocalModel();
-  const auto models = manager.ListDetailed(activeModel);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
-  std::string error;
-  const std::string id =
-      vinput::cli::ResolveModelSelectorByShortId(selector, models, display_map, &error);
-  if (id.empty()) {
-    fmt.PrintError(error);
+  const auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
+  if (!id_opt) {
     return 1;
   }
+  const std::string& id = *id_opt;
   if (auto validate_result = manager.Validate(id); !validate_result) {
     fmt.PrintError(
         ::fmt::sprintf(_("Model '%s' is not valid: %s"), id, std::move(validate_result).error()));
