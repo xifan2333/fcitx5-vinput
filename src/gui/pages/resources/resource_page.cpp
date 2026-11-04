@@ -48,6 +48,7 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -283,6 +284,62 @@ void UpdateScriptActionButtons(QTableWidget* table, int status_column,
   buttons.add->setEnabled(!installed && !incompatible);
   buttons.update->setEnabled(installed && !incompatible);
   buttons.remove->setEnabled(installed);
+}
+
+template <typename IsInstalledFn, typename UpdateButtonsFn>
+void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
+                           const std::vector<vinput::script::RegistryEntry>& entries,
+                           vinput::script::Kind kind, const IsInstalledFn& is_installed,
+                           const UpdateButtonsFn& update_buttons) {
+  table->setRowCount(0);
+  const CoreConfig config = ConfigManager::Get().Load();
+  auto i18n_map = I18nCache::Get().GetMap();
+  const auto manifest = vinput::registry::InstalledManifest::Load();
+  const bool is_asr = (kind == vinput::script::Kind::kAsrProvider);
+
+  for (const auto& entry : entries) {
+    const QString id = QString::fromStdString(entry.id);
+
+    const QString titleStr =
+        QString::fromStdString(vinput::registry::LookupI18n(i18n_map, entry.id + ".title", ""));
+    const QString title = titleStr.isEmpty() ? id : titleStr;
+    const QString desc = QString::fromStdString(
+        vinput::registry::LookupI18n(i18n_map, entry.id + ".description", ""));
+
+    const int row = table->rowCount();
+    table->insertRow(row);
+    table->setItem(row, 0, MakeCell(title, id));
+    table->setItem(row, 1, MakeCell(desc));
+
+    int col = 2;
+    if (is_asr) {
+      table->setItem(row, col++,
+                     MakeCell(entry.stream ? QObject::tr("stream") : QObject::tr("non-stream")));
+    }
+
+    const bool installed = is_installed(config, entry.id);
+    const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
+
+    const QString status = FormatScriptUpdateStatus(ver_info, installed);
+
+    auto* stCell = MakeCell(status);
+    stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
+    table->setItem(row, col++, stCell);
+
+    const QString readme_url = QString::fromStdString(entry.readme_url);
+    if (!readme_url.isEmpty()) {
+      auto* item = MakeCell(QObject::tr("Open README"), readme_url);
+      item->setTextAlignment(Qt::AlignCenter);
+      table->setItem(row, col, item);
+    } else {
+      auto* emptyCell = MakeCell(QString::fromLatin1("-"));
+      emptyCell->setTextAlignment(Qt::AlignCenter);
+      table->setItem(row, col, emptyCell);
+    }
+  }
+
+  ResourcePage::applyTableFilter(table, filter->text());
+  update_buttons();
 }
 
 } // namespace
@@ -673,67 +730,12 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
 #endif
 }
 
-void ResourcePage::populateRemoteScripts(
-    QTableWidget* table, QLineEdit* filter,
-    const std::vector<vinput::script::RegistryEntry>& entries, vinput::script::Kind kind,
-    const std::function<bool(const std::string&)>& is_installed,
-    const std::function<void()>& update_buttons) {
-  table->setRowCount(0);
-  auto i18n_map = I18nCache::Get().GetMap();
-  const auto manifest = vinput::registry::InstalledManifest::Load();
-  const bool is_asr = (kind == vinput::script::Kind::kAsrProvider);
-
-  for (const auto& entry : entries) {
-    const QString id = QString::fromStdString(entry.id);
-
-    const QString titleStr =
-        QString::fromStdString(vinput::registry::LookupI18n(i18n_map, entry.id + ".title", ""));
-    const QString title = titleStr.isEmpty() ? id : titleStr;
-    const QString desc = QString::fromStdString(
-        vinput::registry::LookupI18n(i18n_map, entry.id + ".description", ""));
-
-    const int row = table->rowCount();
-    table->insertRow(row);
-    table->setItem(row, 0, MakeCell(title, id));
-    table->setItem(row, 1, MakeCell(desc));
-
-    int col = 2;
-    if (is_asr) {
-      table->setItem(row, col++, MakeCell(entry.stream ? tr("stream") : tr("non-stream")));
-    }
-
-    const bool installed = is_installed(entry.id);
-    const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
-
-    const QString status = FormatScriptUpdateStatus(ver_info, installed);
-
-    auto* stCell = MakeCell(status);
-    stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
-    table->setItem(row, col++, stCell);
-
-    const QString readme_url = QString::fromStdString(entry.readme_url);
-    if (!readme_url.isEmpty()) {
-      auto* item = MakeCell(tr("Open README"), readme_url);
-      item->setTextAlignment(Qt::AlignCenter);
-      table->setItem(row, col, item);
-    } else {
-      auto* emptyCell = MakeCell(QString::fromLatin1("-"));
-      emptyCell->setTextAlignment(Qt::AlignCenter);
-      table->setItem(row, col, emptyCell);
-    }
-  }
-
-  applyTableFilter(table, filter->text());
-  update_buttons();
-}
-
 void ResourcePage::populateRemoteProviders(
     const std::vector<vinput::script::RegistryEntry>& providers) {
-  populateRemoteScripts(
+  PopulateRemoteScripts(
       tableAvailableProviders_, filterAvailableProviders_, providers,
       vinput::script::Kind::kAsrProvider,
-      [](const std::string& id) {
-        const CoreConfig config = ConfigManager::Get().Load();
+      [](const CoreConfig& config, const std::string& id) {
         return CoreConfigView(config).AsrProvider(id) != nullptr;
       },
       [this]() { updateProviderButtons(); });
@@ -741,11 +743,10 @@ void ResourcePage::populateRemoteProviders(
 
 void ResourcePage::populateRemoteAdapters(
     const std::vector<vinput::script::RegistryEntry>& adapters) {
-  populateRemoteScripts(
+  PopulateRemoteScripts(
       tableAvailableAdapters_, filterAvailableAdapters_, adapters,
       vinput::script::Kind::kLlmAdapter,
-      [](const std::string& id) {
-        const CoreConfig config = ConfigManager::Get().Load();
+      [](const CoreConfig& config, const std::string& id) {
         return CoreConfigView(config).LlmAdapter(id) != nullptr;
       },
       [this]() { updateAdapterButtons(); });
@@ -1195,23 +1196,25 @@ void ResourcePage::onUpdateAdapterClicked() {
 }
 
 void ResourcePage::updateProviderButtons() {
-  UpdateScriptActionButtons(
-      tableAvailableProviders_, 3,
-      ScriptActionButtons{btnAddProvider_, btnUpdateProvider_, btnRemoveProvider_},
-      [](const std::string& id) {
-        const CoreConfig config = ConfigManager::Get().Load();
-        return CoreConfigView(config).AsrProvider(id) != nullptr;
-      });
+  UpdateScriptActionButtons(tableAvailableProviders_, 3,
+                            ScriptActionButtons{.add = btnAddProvider_,
+                                                .update = btnUpdateProvider_,
+                                                .remove = btnRemoveProvider_},
+                            [](const std::string& id) {
+                              const CoreConfig config = ConfigManager::Get().Load();
+                              return CoreConfigView(config).AsrProvider(id) != nullptr;
+                            });
 }
 
 void ResourcePage::updateAdapterButtons() {
-  UpdateScriptActionButtons(
-      tableAvailableAdapters_, 2,
-      ScriptActionButtons{btnAddAdapter_, btnUpdateAdapter_, btnRemoveAdapter_},
-      [](const std::string& id) {
-        const CoreConfig config = ConfigManager::Get().Load();
-        return CoreConfigView(config).LlmAdapter(id) != nullptr;
-      });
+  UpdateScriptActionButtons(tableAvailableAdapters_, 2,
+                            ScriptActionButtons{.add = btnAddAdapter_,
+                                                .update = btnUpdateAdapter_,
+                                                .remove = btnRemoveAdapter_},
+                            [](const std::string& id) {
+                              const CoreConfig config = ConfigManager::Get().Load();
+                              return CoreConfigView(config).LlmAdapter(id) != nullptr;
+                            });
 }
 
 void ResourcePage::onRemoveProviderClicked() {
