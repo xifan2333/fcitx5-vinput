@@ -8,7 +8,6 @@
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <exception>
 #include <fcntl.h>
@@ -32,7 +31,6 @@
 
 extern "C" {
 #include <signal.h> // SIGKILL
-#include <time.h>   // pid_t
 }
 
 #include "common/utils/debug_log.h"
