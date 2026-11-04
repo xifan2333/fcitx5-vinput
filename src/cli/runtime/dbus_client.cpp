@@ -11,6 +11,92 @@
 
 namespace vinput::cli {
 
+namespace {
+
+struct ScopedMessage {
+  sd_bus_message* msg = nullptr;
+  ~ScopedMessage() {
+    if (msg != nullptr) {
+      sd_bus_message_unref(msg);
+    }
+  }
+
+  ScopedMessage() = default;
+  ScopedMessage(const ScopedMessage&) = delete;
+  ScopedMessage& operator=(const ScopedMessage&) = delete;
+  ScopedMessage(ScopedMessage&& other) noexcept : msg(other.msg) { other.msg = nullptr; }
+  ScopedMessage& operator=(ScopedMessage&& other) noexcept {
+    if (this != &other) {
+      if (msg != nullptr) {
+        sd_bus_message_unref(msg);
+      }
+      msg = other.msg;
+      other.msg = nullptr;
+    }
+    return *this;
+  }
+
+  [[nodiscard]] sd_bus_message* get() const noexcept { return msg; }
+};
+
+struct ScopedError {
+  sd_bus_error error = SD_BUS_ERROR_NULL;
+  ~ScopedError() { sd_bus_error_free(&error); }
+  ScopedError() = default;
+  ScopedError(const ScopedError&) = delete;
+  ScopedError& operator=(const ScopedError&) = delete;
+  ScopedError(ScopedError&&) = delete;
+  ScopedError& operator=(ScopedError&&) = delete;
+};
+
+template <typename... Args>
+bool CallBusMethod(sd_bus* bus, const char* destination, const char* path, const char* interface,
+                   const char* member, ScopedMessage* reply, std::string* error, const char* types,
+                   Args... args) {
+  if (bus == nullptr) {
+    if (error != nullptr) {
+      *error = "D-Bus not connected";
+    }
+    return false;
+  }
+
+  ScopedError err;
+  sd_bus_message* raw_reply = nullptr;
+  const int r = sd_bus_call_method(bus, destination, path, interface, member, &err.error,
+                                   &raw_reply, types, args...);
+  if (reply != nullptr) {
+    reply->msg = raw_reply;
+  } else if (raw_reply != nullptr) {
+    sd_bus_message_unref(raw_reply);
+  }
+
+  if (r < 0) {
+    if (error != nullptr) {
+      *error = (err.error.message != nullptr) ? err.error.message : "D-Bus call failed";
+    }
+    return false;
+  }
+  return true;
+}
+
+template <typename... Args>
+bool CallDaemonMethod(sd_bus* bus, const char* member, ScopedMessage* reply, std::string* error,
+                      const char* types, Args... args) {
+  return CallBusMethod(bus, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
+                       vinput::dbus::kInterface, member, reply, error, types, args...);
+}
+
+bool CallDaemonVoid(sd_bus* bus, const char* member, std::string* error) {
+  return CallDaemonMethod(bus, member, nullptr, error, "");
+}
+
+bool CallDaemonStringArg(sd_bus* bus, const char* member, const std::string& arg,
+                         std::string* error) {
+  return CallDaemonMethod(bus, member, nullptr, error, "s", arg.c_str());
+}
+
+} // namespace
+
 DbusClient::DbusClient() {
   const int r = sd_bus_open_user(&bus_);
   if (r < 0) {
@@ -28,100 +114,34 @@ DbusClient::~DbusClient() {
 }
 
 bool DbusClient::IsDaemonRunning(std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(bus_, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-                                   "org.freedesktop.DBus", "NameHasOwner", &err, &reply, "s",
-                                   vinput::dbus::kBusName);
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
+  ScopedMessage reply;
+  if (!CallBusMethod(bus_, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                     "NameHasOwner", &reply, error, "s", vinput::dbus::kBusName)) {
     return false;
   }
 
   int result = 0;
-  sd_bus_message_read(reply, "b", &result);
-  sd_bus_message_unref(reply);
-  sd_bus_error_free(&err);
-
+  sd_bus_message_read(reply.get(), "b", &result);
   return result != 0;
 }
 
 bool DbusClient::GetDaemonStatus(std::string* status, std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(bus_, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                                   vinput::dbus::kInterface, vinput::dbus::kMethodGetStatus, &err,
-                                   &reply, "");
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
+  ScopedMessage reply;
+  if (!CallDaemonMethod(bus_, vinput::dbus::kMethodGetStatus, &reply, error, "")) {
     return false;
   }
 
   const char* str = nullptr;
-  sd_bus_message_read(reply, "s", &str);
+  sd_bus_message_read(reply.get(), "s", &str);
   if ((status != nullptr) && (str != nullptr)) {
     *status = str;
   }
-
-  sd_bus_message_unref(reply);
-  sd_bus_error_free(&err);
-
   return true;
 }
 
 bool DbusClient::GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(bus_, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                                   vinput::dbus::kInterface,
-                                   vinput::dbus::kMethodGetAsrBackendState, &err, &reply, "");
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
+  ScopedMessage reply;
+  if (!CallDaemonMethod(bus_, vinput::dbus::kMethodGetAsrBackendState, &reply, error, "")) {
     return false;
   }
 
@@ -132,17 +152,17 @@ bool DbusClient::GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::s
   const char* last_error = "";
   int reload_in_progress = 0;
   int has_effective_backend = 0;
-  sd_bus_message_read(reply, "sssssbb", static_cast<void*>(&target_provider),
+  sd_bus_message_read(reply.get(), "sssssbb", static_cast<void*>(&target_provider),
                       static_cast<void*>(&target_model), static_cast<void*>(&effective_provider),
                       static_cast<void*>(&effective_model), static_cast<void*>(&last_error),
                       &reload_in_progress, &has_effective_backend);
   std::vector<std::string> endpoints;
-  if (sd_bus_message_enter_container(reply, 'a', "s") >= 0) {
+  if (sd_bus_message_enter_container(reply.get(), 'a', "s") >= 0) {
     const char* endpoint = nullptr;
-    while (sd_bus_message_read_basic(reply, 's', static_cast<void*>(&endpoint)) > 0) {
+    while (sd_bus_message_read_basic(reply.get(), 's', static_cast<void*>(&endpoint)) > 0) {
       endpoints.emplace_back((endpoint != nullptr) ? endpoint : "");
     }
-    sd_bus_message_exit_container(reply);
+    sd_bus_message_exit_container(reply.get());
   }
   if (state != nullptr) {
     state->target_provider_id = (target_provider != nullptr) ? target_provider : "";
@@ -155,8 +175,6 @@ bool DbusClient::GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::s
     state->remote_endpoints = std::move(endpoints);
   }
 
-  sd_bus_message_unref(reply);
-  sd_bus_error_free(&err);
   if (error != nullptr) {
     error->clear();
   }
@@ -164,201 +182,28 @@ bool DbusClient::GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::s
 }
 
 bool DbusClient::StartRecording(std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(bus_, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                                   vinput::dbus::kInterface, vinput::dbus::kMethodStartRecording,
-                                   &err, &reply, "");
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
-    return false;
-  }
-
-  if (reply != nullptr) {
-    sd_bus_message_unref(reply);
-  }
-  sd_bus_error_free(&err);
-  return true;
+  return CallDaemonVoid(bus_, vinput::dbus::kMethodStartRecording, error);
 }
 
 bool DbusClient::StartCommandRecording(const std::string& selected_text, std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(
-      bus_, vinput::dbus::kBusName, vinput::dbus::kObjectPath, vinput::dbus::kInterface,
-      vinput::dbus::kMethodStartCommandRecording, &err, &reply, "s", selected_text.c_str());
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
-    return false;
-  }
-
-  if (reply != nullptr) {
-    sd_bus_message_unref(reply);
-  }
-  sd_bus_error_free(&err);
-  return true;
+  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStartCommandRecording, selected_text,
+                             error);
 }
 
 bool DbusClient::StopRecording(const std::string& scene_id, std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(bus_, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                                   vinput::dbus::kInterface, vinput::dbus::kMethodStopRecording,
-                                   &err, &reply, "s", scene_id.c_str());
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
-    return false;
-  }
-
-  if (reply != nullptr) {
-    sd_bus_message_unref(reply);
-  }
-  sd_bus_error_free(&err);
-  return true;
+  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStopRecording, scene_id, error);
 }
 
 bool DbusClient::ReloadAsrBackend(std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(bus_, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                                   vinput::dbus::kInterface, vinput::dbus::kMethodReloadAsrBackend,
-                                   &err, &reply, "");
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
-    return false;
-  }
-
-  if (reply != nullptr) {
-    sd_bus_message_unref(reply);
-  }
-  sd_bus_error_free(&err);
-  return true;
+  return CallDaemonVoid(bus_, vinput::dbus::kMethodReloadAsrBackend, error);
 }
 
 bool DbusClient::StartAdapter(const std::string& adapter_id, std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(bus_, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                                   vinput::dbus::kInterface, vinput::dbus::kMethodStartAdapter,
-                                   &err, &reply, "s", adapter_id.c_str());
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
-    return false;
-  }
-
-  if (reply != nullptr) {
-    sd_bus_message_unref(reply);
-  }
-  sd_bus_error_free(&err);
-  return true;
+  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStartAdapter, adapter_id, error);
 }
 
 bool DbusClient::StopAdapter(const std::string& adapter_id, std::string* error) {
-  if (bus_ == nullptr) {
-    if (error != nullptr) {
-      *error = "D-Bus not connected";
-    }
-    return false;
-  }
-
-  sd_bus_error err = SD_BUS_ERROR_NULL;
-  sd_bus_message* reply = nullptr;
-
-  const int r = sd_bus_call_method(bus_, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                                   vinput::dbus::kInterface, vinput::dbus::kMethodStopAdapter, &err,
-                                   &reply, "s", adapter_id.c_str());
-
-  if (r < 0) {
-    if (error != nullptr) {
-      *error = (err.message != nullptr) ? err.message : "D-Bus call failed";
-    }
-    sd_bus_error_free(&err);
-    if (reply != nullptr) {
-      sd_bus_message_unref(reply);
-    }
-    return false;
-  }
-
-  if (reply != nullptr) {
-    sd_bus_message_unref(reply);
-  }
-  sd_bus_error_free(&err);
-  return true;
+  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStopAdapter, adapter_id, error);
 }
 
 } // namespace vinput::cli
