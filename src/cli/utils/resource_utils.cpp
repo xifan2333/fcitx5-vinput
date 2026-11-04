@@ -1,6 +1,7 @@
 #include "cli/utils/resource_utils.h"
 
 #include <fmt/printf.h>
+#include <functional>
 #include <glaze/json/json_t.hpp>
 #include <map>
 #include <string>
@@ -18,6 +19,7 @@
 #include "common/utils/string_utils.h"
 
 #include "cli/utils/cli_context.h"
+#include "cli/utils/formatter.h"
 
 namespace vinput::cli {
 

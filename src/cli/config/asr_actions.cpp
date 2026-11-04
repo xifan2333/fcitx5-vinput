@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
+#include <optional>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -137,13 +138,13 @@ std::optional<std::string> ResolveInstalledModelOrReport(const CoreConfig& confi
   const auto models = manager.ListDetailed(activeModel);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
   std::string error;
-  const std::string id =
+  std::string id =
       vinput::cli::ResolveModelSelectorByShortId(selector, models, display_map, &error);
   if (id.empty()) {
     fmt.PrintError(error);
     return std::nullopt;
   }
-  return id;
+  return std::move(id);
 }
 #endif
 
@@ -825,6 +826,7 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
   const CoreConfig config = LoadCoreConfig();
   const std::string baseDir = CoreConfigView::ModelBaseDir().string();
   const ModelManager manager(baseDir);
+  const auto display_map = vinput::cli::FetchModelDisplayMap(config);
   const auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
   if (!id_opt) {
     return 1;
