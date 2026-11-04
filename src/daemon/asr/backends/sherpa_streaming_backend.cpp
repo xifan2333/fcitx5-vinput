@@ -30,6 +30,12 @@ namespace vinput::daemon::asr {
 
 namespace {
 
+constexpr int32_t kStreamingSampleRate = 16000;
+// Streaming encoders (Zipformer / Paraformer / CTC) require ~0.66s of trailing
+// silence before InputFinished() to flush final tokens out of their right-context
+// lookahead window (see upstream sherpa-onnx online-decode-files examples).
+constexpr std::size_t kTailPaddingSamples = (std::size_t{16000} * 66) / 100;
+
 int ChooseNumThreads(const glz::json_t& model_cfg, int runtime_default) {
   if (runtime_default > 0) {
     return runtime_default;
@@ -113,6 +119,11 @@ public:
 
     auto& stream = *stream_;
     finished_ = true;
+    if (total_samples_ > 0) {
+      const std::vector<float> tail_padding(kTailPaddingSamples, 0.0F);
+      stream.AcceptWaveform(kStreamingSampleRate, tail_padding.data(),
+                            static_cast<int32_t>(tail_padding.size()));
+    }
     stream.InputFinished();
     DecodeAvailable();
 
