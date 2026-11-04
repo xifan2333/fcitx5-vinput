@@ -1,4 +1,4 @@
-#include <CLI/App.hpp>
+#include <CLI/CLI.hpp>
 #include <iostream>
 #include <string>
 #include <unistd.h>
