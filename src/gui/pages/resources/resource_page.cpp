@@ -1161,35 +1161,25 @@ void ResourcePage::updateAdapterButtons() {
                             });
 }
 
-void ResourcePage::onRemoveProviderClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
+template <typename MutateFn, typename PostRemoveFn>
+void ResourcePage::removeScriptItem(QTableWidget* table, vinput::script::Kind kind,
+                                    const QString& confirm_question, const QString& removed_log,
+                                    MutateFn&& mutate_fn, PostRemoveFn&& post_remove_fn) {
+  const auto selected = GetSelectedResourceItem(table);
   if (!selected) {
     return;
   }
   const QString id = selected->id;
   const QString title = selected->title;
 
-  const auto response = QMessageBox::question(
-      this, tr("Confirm"), tr("Are you sure you want to remove ASR provider '%1'?").arg(title));
+  const auto response = QMessageBox::question(this, tr("Confirm"), confirm_question.arg(title));
   if (response != QMessageBox::Yes) {
     return;
   }
 
   CoreConfig config = ConfigManager::Get().Load();
-  auto it = std::ranges::remove_if(config.asr.providers, [&](const AsrProvider& p) {
-    return AsrProviderId(p) == id.toStdString();
-  });
-  if (it.begin() == config.asr.providers.end()) {
+  if (!mutate_fn(config, id.toStdString())) {
     return;
-  }
-  if (std::holds_alternative<LocalAsrProvider>(*it.begin())) {
-    QMessageBox::warning(this, tr("Error"), tr("The local ASR provider cannot be removed."));
-    return;
-  }
-  config.asr.providers.erase(it.begin(), config.asr.providers.end());
-  const bool was_active = (config.asr.activeProvider == id.toStdString());
-  if (was_active) {
-    config.asr.activeProvider.clear();
   }
 
   if (!ConfigManager::Get().Save(config)) {
@@ -1197,58 +1187,67 @@ void ResourcePage::onRemoveProviderClicked() {
     return;
   }
 
-  CleanupInstalledScript(vinput::script::Kind::kAsrProvider, id.toStdString());
-  textLog_->append(tr("Removed ASR provider %1.").arg(title));
+  CleanupInstalledScript(kind, id.toStdString());
+  textLog_->append(removed_log.arg(title));
   refreshAll();
   emit configChanged();
-  if (was_active) {
-    RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-      if (!ok) {
-        QMessageBox::warning(this, tr("Warning"),
-                             tr("Config saved, but failed to reload ASR backend: %1")
-                                 .arg(QString::fromStdString(err)));
-      }
-    });
-  }
+  post_remove_fn();
+}
+
+void ResourcePage::onRemoveProviderClicked() {
+  bool was_active = false;
+  removeScriptItem(
+      tableAvailableProviders_, vinput::script::Kind::kAsrProvider,
+      tr("Are you sure you want to remove ASR provider '%1'?"), tr("Removed ASR provider %1."),
+      [this, &was_active](CoreConfig& config, const std::string& id) {
+        auto it = std::ranges::remove_if(
+            config.asr.providers, [&](const AsrProvider& p) { return AsrProviderId(p) == id; });
+        if (it.begin() == config.asr.providers.end()) {
+          return false;
+        }
+        if (std::holds_alternative<LocalAsrProvider>(*it.begin())) {
+          QMessageBox::warning(this, tr("Error"), tr("The local ASR provider cannot be removed."));
+          return false;
+        }
+        config.asr.providers.erase(it.begin(), config.asr.providers.end());
+        was_active = (config.asr.activeProvider == id);
+        if (was_active) {
+          config.asr.activeProvider.clear();
+        }
+        return true;
+      },
+      [this, &was_active]() {
+        if (was_active) {
+          RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
+            if (!ok) {
+              QMessageBox::warning(this, tr("Warning"),
+                                   tr("Config saved, but failed to reload ASR backend: %1")
+                                       .arg(QString::fromStdString(err)));
+            }
+          });
+        }
+      });
 }
 
 void ResourcePage::onRemoveAdapterClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
-  if (!selected) {
-    return;
-  }
-  const QString id = selected->id;
-  const QString title = selected->title;
-
-  const auto response = QMessageBox::question(
-      this, tr("Confirm"), tr("Are you sure you want to remove LLM adapter '%1'?").arg(title));
-  if (response != QMessageBox::Yes) {
-    return;
-  }
-
-  if (vinput::adapter::IsRunning(id.toStdString())) {
-    vinput::cli::DbusClient dbus;
-    std::string err;
-    dbus.StopAdapter(id.toStdString(), &err);
-  }
-
-  CoreConfig config = ConfigManager::Get().Load();
-  auto it = std::ranges::remove_if(config.llm.adapters,
-                                   [&](const LlmAdapter& a) { return a.id == id.toStdString(); });
-  if (it.begin() == config.llm.adapters.end()) {
-    return;
-  }
-  config.llm.adapters.erase(it.begin(), config.llm.adapters.end());
-
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-
-  CleanupInstalledScript(vinput::script::Kind::kLlmAdapter, id.toStdString());
-  textLog_->append(tr("Removed LLM adapter %1.").arg(title));
-  refreshAll();
-  emit configChanged();
+  removeScriptItem(
+      tableAvailableAdapters_, vinput::script::Kind::kLlmAdapter,
+      tr("Are you sure you want to remove LLM adapter '%1'?"), tr("Removed LLM adapter %1."),
+      [](CoreConfig& config, const std::string& id) {
+        if (vinput::adapter::IsRunning(id)) {
+          vinput::cli::DbusClient dbus;
+          std::string err;
+          dbus.StopAdapter(id, &err);
+        }
+        auto it = std::ranges::remove_if(config.llm.adapters,
+                                         [&](const LlmAdapter& a) { return a.id == id; });
+        if (it.begin() == config.llm.adapters.end()) {
+          return false;
+        }
+        config.llm.adapters.erase(it.begin(), config.llm.adapters.end());
+        return true;
+      },
+      []() {});
 }
 
 } // namespace vinput::gui
