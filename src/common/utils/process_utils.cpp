@@ -31,6 +31,7 @@
 
 extern "C" {
 #include <signal.h> // SIGKILL
+#include <time.h>   // pid_t
 }
 
 #include "common/utils/debug_log.h"
@@ -645,6 +646,11 @@ CommandResult Run(const CommandSpec& spec, std::span<const std::byte> stdin_byte
   try {
     std::optional<subprocess::Popen> proc;
     detail::SpawnMonitored(spec, proc);
+    if (!proc.has_value()) {
+      result.launch_failed = true;
+      result.stderr_text = "Failed to spawn child process.";
+      return result;
+    }
 
     const auto deadline = spec.timeout_ms > 0 ? std::chrono::steady_clock::now() +
                                                     std::chrono::milliseconds(spec.timeout_ms)
