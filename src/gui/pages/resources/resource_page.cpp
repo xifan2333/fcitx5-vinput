@@ -1161,6 +1161,10 @@ void ResourcePage::updateAdapterButtons() {
                             });
 }
 
+// Confirms removal of a registry script (ASR provider or LLM adapter), mutates the
+// configuration through mutate_fn, persists it, cleans up the installed script, and refreshes
+// the UI. Running LLM adapters are stopped up-front; if the config save fails, a previously
+// stopped adapter is restarted to restore its prior state.
 template <typename MutateFn, typename PostRemoveFn>
 void ResourcePage::removeScriptItem(QTableWidget* table, vinput::script::Kind kind,
                                     const QString& confirm_question, const QString& removed_log,
@@ -1177,17 +1181,34 @@ void ResourcePage::removeScriptItem(QTableWidget* table, vinput::script::Kind ki
     return;
   }
 
+  const std::string script_id = id.toStdString();
+  bool stopped_adapter = false;
+  if (kind == vinput::script::Kind::kLlmAdapter && vinput::adapter::IsRunning(script_id)) {
+    vinput::cli::DbusClient dbus;
+    std::string err;
+    if (!dbus.StopAdapter(script_id, &err)) {
+      QMessageBox::warning(this, tr("Error"), tr("Failed to stop adapter."));
+      return;
+    }
+    stopped_adapter = true;
+  }
+
   CoreConfig config = ConfigManager::Get().Load();
-  if (!mutate_fn(config, id.toStdString())) {
+  if (!mutate_fn(config, script_id)) {
     return;
   }
 
   if (!ConfigManager::Get().Save(config)) {
+    if (stopped_adapter) {
+      vinput::cli::DbusClient dbus;
+      std::string err;
+      dbus.StartAdapter(script_id, &err);
+    }
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
 
-  CleanupInstalledScript(kind, id.toStdString());
+  CleanupInstalledScript(kind, script_id);
   textLog_->append(removed_log.arg(title));
   refreshAll();
   emit configChanged();
@@ -1200,16 +1221,16 @@ void ResourcePage::onRemoveProviderClicked() {
       tableAvailableProviders_, vinput::script::Kind::kAsrProvider,
       tr("Are you sure you want to remove ASR provider '%1'?"), tr("Removed ASR provider %1."),
       [this, &was_active](CoreConfig& config, const std::string& id) {
-        auto it = std::ranges::remove_if(
+        auto it = std::ranges::find_if(
             config.asr.providers, [&](const AsrProvider& p) { return AsrProviderId(p) == id; });
-        if (it.begin() == config.asr.providers.end()) {
+        if (it == config.asr.providers.end()) {
           return false;
         }
-        if (std::holds_alternative<LocalAsrProvider>(*it.begin())) {
+        if (std::holds_alternative<LocalAsrProvider>(*it)) {
           QMessageBox::warning(this, tr("Error"), tr("The local ASR provider cannot be removed."));
           return false;
         }
-        config.asr.providers.erase(it.begin(), config.asr.providers.end());
+        config.asr.providers.erase(it);
         was_active = (config.asr.activeProvider == id);
         if (was_active) {
           config.asr.activeProvider.clear();
@@ -1234,17 +1255,12 @@ void ResourcePage::onRemoveAdapterClicked() {
       tableAvailableAdapters_, vinput::script::Kind::kLlmAdapter,
       tr("Are you sure you want to remove LLM adapter '%1'?"), tr("Removed LLM adapter %1."),
       [](CoreConfig& config, const std::string& id) {
-        if (vinput::adapter::IsRunning(id)) {
-          vinput::cli::DbusClient dbus;
-          std::string err;
-          dbus.StopAdapter(id, &err);
-        }
-        auto it = std::ranges::remove_if(config.llm.adapters,
-                                         [&](const LlmAdapter& a) { return a.id == id; });
-        if (it.begin() == config.llm.adapters.end()) {
+        auto it = std::ranges::find_if(config.llm.adapters,
+                                       [&](const LlmAdapter& a) { return a.id == id; });
+        if (it == config.llm.adapters.end()) {
           return false;
         }
-        config.llm.adapters.erase(it.begin(), config.llm.adapters.end());
+        config.llm.adapters.erase(it);
         return true;
       },
       []() {});
