@@ -1059,8 +1059,10 @@ void ResourcePage::onDownloadModelClicked() {
 #endif
 }
 
-void ResourcePage::onAddProviderClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
+void ResourcePage::startScriptDownloadTask(QTableWidget* table, QPushButton* action_button,
+                                           vinput::script::Kind kind, bool is_update,
+                                           const QString& log_format) {
+  const auto selected = GetSelectedResourceItem(table);
   if (!selected) {
     return;
   }
@@ -1068,44 +1070,18 @@ void ResourcePage::onAddProviderClicked() {
   const QString title = selected->title;
 
   abortDownload();
-  btnAddProvider_->setEnabled(false);
+  action_button->setEnabled(false);
 
   downloadWorker_ = new DownloadWorker(this);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this,
-          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
 
-  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = CoreConfigView(config).AsrProviderRegistryUrls();
-    return ExecuteScriptInstallOrUpdateTask(
-        vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
-        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-          return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
-        });
-  });
-  textLog_->append(tr("Installing provider %1...").arg(title));
-  downloadWorker_->start();
-}
-
-void ResourcePage::onUpdateProviderClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
-  if (!selected) {
-    return;
-  }
-  const QString id = selected->id;
-  const QString title = selected->title;
-
-  abortDownload();
-  btnUpdateProvider_->setEnabled(false);
-
-  downloadWorker_ = new DownloadWorker(this);
-  connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
+  const bool is_asr = (kind == vinput::script::Kind::kAsrProvider);
   auto updateSucceeded = std::make_shared<std::atomic_bool>(false);
+
   connect(downloadWorker_, &QThread::finished, this,
-          [this, id, updateSucceeded, worker = downloadWorker_]() {
+          [this, id, is_asr, is_update, updateSucceeded, worker = downloadWorker_]() {
             onDownloadFinished(worker);
-            if (!updateSucceeded->load()) {
+            if (!is_update || !is_asr || !updateSucceeded->load()) {
               return;
             }
             const CoreConfig config = ConfigManager::Get().Load();
@@ -1119,80 +1095,48 @@ void ResourcePage::onUpdateProviderClicked() {
             }
           });
 
-  downloadWorker_->SetTask(
-      [id, updateSucceeded](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-        const CoreConfig config = ConfigManager::Get().Load();
-        auto urls = CoreConfigView(config).AsrProviderRegistryUrls();
-        const bool saved = ExecuteScriptInstallOrUpdateTask(
-            vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
-            [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-              return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
-            },
-            /*is_update=*/true);
-        updateSucceeded->store(saved);
-        return saved;
-      });
-  textLog_->append(tr("Updating provider %1...").arg(title));
+  downloadWorker_->SetTask([id, kind, is_update, updateSucceeded](
+                               std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+    const CoreConfig config = ConfigManager::Get().Load();
+    const auto urls = (kind == vinput::script::Kind::kAsrProvider)
+                          ? CoreConfigView(config).AsrProviderRegistryUrls()
+                          : CoreConfigView(config).LlmAdapterRegistryUrls();
+    const bool saved = ExecuteScriptInstallOrUpdateTask(
+        kind, id.toStdString(), urls, err, cancel_token,
+        [kind](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+          if (kind == vinput::script::Kind::kAsrProvider) {
+            return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
+          }
+          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
+        },
+        is_update);
+    updateSucceeded->store(saved);
+    return saved;
+  });
+
+  textLog_->append(log_format.arg(title));
   downloadWorker_->start();
+}
+
+void ResourcePage::onAddProviderClicked() {
+  startScriptDownloadTask(tableAvailableProviders_, btnAddProvider_,
+                          vinput::script::Kind::kAsrProvider, false,
+                          tr("Installing provider %1..."));
+}
+
+void ResourcePage::onUpdateProviderClicked() {
+  startScriptDownloadTask(tableAvailableProviders_, btnUpdateProvider_,
+                          vinput::script::Kind::kAsrProvider, true, tr("Updating provider %1..."));
 }
 
 void ResourcePage::onAddAdapterClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
-  if (!selected) {
-    return;
-  }
-  const QString id = selected->id;
-  const QString title = selected->title;
-
-  abortDownload();
-  btnAddAdapter_->setEnabled(false);
-
-  downloadWorker_ = new DownloadWorker(this);
-  connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this,
-          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
-
-  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = CoreConfigView(config).LlmAdapterRegistryUrls();
-    return ExecuteScriptInstallOrUpdateTask(
-        vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
-        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-        });
-  });
-  textLog_->append(tr("Installing adapter %1...").arg(title));
-  downloadWorker_->start();
+  startScriptDownloadTask(tableAvailableAdapters_, btnAddAdapter_,
+                          vinput::script::Kind::kLlmAdapter, false, tr("Installing adapter %1..."));
 }
 
 void ResourcePage::onUpdateAdapterClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
-  if (!selected) {
-    return;
-  }
-  const QString id = selected->id;
-  const QString title = selected->title;
-
-  abortDownload();
-  btnUpdateAdapter_->setEnabled(false);
-
-  downloadWorker_ = new DownloadWorker(this);
-  connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this,
-          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
-
-  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = CoreConfigView(config).LlmAdapterRegistryUrls();
-    return ExecuteScriptInstallOrUpdateTask(
-        vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
-        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-        },
-        /*is_update=*/true);
-  });
-  textLog_->append(tr("Updating adapter %1...").arg(title));
-  downloadWorker_->start();
+  startScriptDownloadTask(tableAvailableAdapters_, btnUpdateAdapter_,
+                          vinput::script::Kind::kLlmAdapter, true, tr("Updating adapter %1..."));
 }
 
 void ResourcePage::updateProviderButtons() {

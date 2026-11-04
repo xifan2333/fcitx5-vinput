@@ -46,6 +46,9 @@ private:
   void finishRefreshAfterI18n(const QString& error = {}, uint64_t generation = 0);
 
   void abortDownload();
+  void startScriptDownloadTask(QTableWidget* table, QPushButton* action_button,
+                               vinput::script::Kind kind, bool is_update,
+                               const QString& log_format);
 
   QLineEdit* filterInstalledModels_;
   QLineEdit* filterAvailableModels_;
