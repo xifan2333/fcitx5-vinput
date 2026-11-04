@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 namespace vinput::audio {
 

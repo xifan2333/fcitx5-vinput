@@ -7,8 +7,8 @@
 #include "common/utils/string_utils.h"
 
 void PaletteCommandRegistry::registerCommand(PaletteCommand command) {
-  auto it = std::find_if(commands_.begin(), commands_.end(),
-                         [&](const PaletteCommand& c) { return c.id == command.id; });
+  auto it =
+      std::ranges::find_if(commands_, [&](const PaletteCommand& c) { return c.id == command.id; });
   if (it != commands_.end()) {
     *it = std::move(command);
   } else {
