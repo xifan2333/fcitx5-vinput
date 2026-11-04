@@ -31,6 +31,8 @@ public:
 
   OutputDucker(const OutputDucker&) = delete;
   OutputDucker& operator=(const OutputDucker&) = delete;
+  OutputDucker(OutputDucker&&) = delete;
+  OutputDucker& operator=(OutputDucker&&) = delete;
 
   // Asynchronously lowers the default sink to (current_volume * scale).
   // scale is clamped to [0.0, 1.0]. Idempotent: a second call while already ducked is a no-op.
@@ -43,7 +45,7 @@ public:
   void Flush();
 
   // Returns true if logically ducked or ducking task is active/queued.
-  bool IsDucked() const;
+  [[nodiscard]] bool IsDucked() const;
 
 private:
   void WorkerLoop();

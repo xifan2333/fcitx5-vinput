@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
