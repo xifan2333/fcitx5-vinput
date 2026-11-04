@@ -143,7 +143,7 @@ template <typename Container> glz::json_t FromStrings(const Container& values) {
   for (const auto& value : values) {
     array.emplace_back(value);
   }
-  return {std::move(array)};
+  return glz::json_t(std::move(array));
 }
 
 // Builds a JSON object out of a string map.
@@ -152,7 +152,7 @@ inline glz::json_t FromStringMap(const std::map<std::string, std::string>& value
   for (const auto& [key, value] : values) {
     object.emplace(key, glz::json_t(value));
   }
-  return {std::move(object)};
+  return glz::json_t(std::move(object));
 }
 
 // Shared empty object, used as the fallback of Object().
