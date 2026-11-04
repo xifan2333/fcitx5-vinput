@@ -27,8 +27,6 @@ BuildRequires:  pkgconfig(openssl)
 BuildRequires:  pkgconfig(libarchive)
 BuildRequires:  pkgconfig(libpipewire-0.3)
 BuildRequires:  pkgconfig(libsystemd)
-BuildRequires:  cli11-devel
-BuildRequires:  spdlog-devel
 
 Requires:       fcitx5
 Requires:       pipewire
@@ -53,9 +51,7 @@ export CXX=clang++
     -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=mold \
     -DVINPUT_PROJECT_VERSION=%{version} \
     -DVINPUT_PACKAGE_RELEASE=%{release} \
-    -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url} \
-    -DVINPUT_FETCH_SPDLOG=OFF \
-    -DVINPUT_FETCH_CLI11=OFF
+    -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url}
 %cmake_build
 
 %install
