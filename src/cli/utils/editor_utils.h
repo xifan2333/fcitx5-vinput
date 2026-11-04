@@ -1,6 +1,6 @@
 #pragma once
 
-#include <CLI/StringTools.hpp>
+#include <CLI/CLI.hpp>
 #include <filesystem>
 #include <string>
 #include <utility>

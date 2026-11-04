@@ -71,9 +71,7 @@ ubuntu24.04)
     libfcitx5core-dev \
     libfcitx5config-dev \
     libfcitx5utils-dev \
-    fcitx5-modules-dev \
-    libcli11-dev \
-    libspdlog-dev
+    fcitx5-modules-dev
   install_qt_apt
   ;;
 debian12)
@@ -106,9 +104,7 @@ debian12)
     libfcitx5core-dev \
     libfcitx5config-dev \
     libfcitx5utils-dev \
-    fcitx5-modules-dev \
-    libcli11-dev \
-    libspdlog-dev
+    fcitx5-modules-dev
   update-alternatives --install /usr/bin/clang clang /usr/bin/clang-16 100 \
     --slave /usr/bin/clang++ clang++ /usr/bin/clang++-16
   install_qt_apt
@@ -131,9 +127,7 @@ fedora43)
     libarchive-devel \
     pipewire-devel \
     systemd-devel \
-    fcitx5-devel \
-    cli11-devel \
-    spdlog-devel
+    fcitx5-devel
   install_qt_dnf
   ;;
 opensuse-leap)
@@ -164,14 +158,11 @@ opensuse-leap)
     sccache \
     systemd-devel \
     zstd \
-    fcitx5-devel \
-    cli11-devel \
-    spdlog-devel
+    fcitx5-devel
   install_qt_zypper
   ;;
 archlinux)
   pacman -Syu --noconfirm --needed \
-    cli11 \
     clang \
     cmake \
     curl \
@@ -184,7 +175,6 @@ archlinux)
     pipewire \
     pkgconf \
     sccache \
-    spdlog \
     systemd
   install_qt_pacman
   ;;

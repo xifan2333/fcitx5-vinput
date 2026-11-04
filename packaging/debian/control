@@ -18,8 +18,6 @@ Build-Depends: debhelper-compat (= 13),
                libfcitx5config-dev,
                libfcitx5utils-dev,
                fcitx5-modules-dev,
-               libcli11-dev,
-               libspdlog-dev,
                qt6-base-dev,
                qt6-tools-dev,
                qt6-tools-dev-tools

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <CLI/App.hpp>
+#include <CLI/CLI.hpp>
 
 #include "cli/control/action.h"
 

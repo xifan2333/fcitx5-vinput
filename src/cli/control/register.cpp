@@ -1,6 +1,6 @@
 #include "cli/control/register.h"
 
-#include <CLI/App.hpp>
+#include <CLI/CLI.hpp>
 
 #include "cli/control/action.h"
 

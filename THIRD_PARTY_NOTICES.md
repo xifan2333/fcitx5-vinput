@@ -147,6 +147,66 @@ This file lists third-party software that this project depends on or bundles, an
     - Upstream: https://github.com/gabime/spdlog
     - Version: v1.15.1 (imported 2026-11-03, vendored in `3rdparty/spdlog/`)
 
+13. **CLIUtils/CLI11** (`3rdparty/cli11/`)
+    - Description: Command line parser for C++11 and beyond.
+    - License: BSD-3-Clause
+    - License text:
+      CLI11 2.2 Copyright (c) 2017-2024 University of Cincinnati, developed by Henry
+      Schreiner under NSF AWARD 1414736. All rights reserved.
+
+      Redistribution and use in source and binary forms of CLI11, with or without
+      modification, are permitted provided that the following conditions are met:
+
+      1. Redistributions of source code must retain the above copyright notice, this
+         list of conditions and the following disclaimer.
+      2. Redistributions in binary form must reproduce the above copyright notice,
+         this list of conditions and the following disclaimer in the documentation
+         and/or other materials provided with the distribution.
+      3. Neither the name of the copyright holder nor the names of its contributors
+         may be used to endorse or promote products derived from this software without
+         specific prior written permission.
+
+      THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+      ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+      WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+      DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+      ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+      (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+      LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+      ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+      (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+      SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+    - Upstream: https://github.com/CLIUtils/CLI11
+    - Version: v2.4.2 (commit 6c7b07a878ad834957b98d0f9ce1dbe0cb204fc9, imported 2026-11-04, vendored in `3rdparty/cli11/`)
+
+14. **yhirose/cpp-httplib** (`3rdparty/httplib/`)
+    - Description: A C++11 single-file header-only cross-platform HTTP/HTTPS and WebSocket library.
+    - License: MIT
+    - License text:
+      The MIT License (MIT)
+
+      Copyright (c) 2017 yhirose
+
+      Permission is hereby granted, free of charge, to any person obtaining a copy
+      of this software and associated documentation files (the "Software"), to deal
+      in the Software without restriction, including without limitation the rights
+      to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+      copies of the Software, and to permit persons to whom the Software is
+      furnished to do so, subject to the following conditions:
+
+      The above copyright notice and this permission notice shall be included in all
+      copies or substantial portions of the Software.
+
+      THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+      IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+      FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+      AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+      LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+      OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+      SOFTWARE.
+    - Upstream: https://github.com/yhirose/cpp-httplib
+    - Version: v0.62.0 (commit 74ef3c42188acd6391f027c4337fb0e1a68c0024, imported 2026-11-04, vendored in `3rdparty/httplib/`)
+
 ## Models / data downloaded by users (not bundled)
 
 1. **sherpa-onnx ASR models**
