@@ -13,6 +13,7 @@
 #include <QtWidgets/qtextedit.h>
 #include <QtWidgets/qwidget.h>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 #include "common/asr/model_manager.h"
@@ -42,6 +43,11 @@ private:
   void populateRemoteModels(const std::vector<RemoteModelEntry>& models);
   void populateRemoteProviders(const std::vector<vinput::script::RegistryEntry>& providers);
   void populateRemoteAdapters(const std::vector<vinput::script::RegistryEntry>& adapters);
+  void populateRemoteScripts(QTableWidget* table, QLineEdit* filter,
+                             const std::vector<vinput::script::RegistryEntry>& entries,
+                             vinput::script::Kind kind,
+                             const std::function<bool(const std::string&)>& is_installed,
+                             const std::function<void()>& update_buttons);
   static void applyTableFilter(QTableWidget* table, const QString& filter_text);
   void refreshLocalizedTables();
   void finishRefreshAfterI18n(const QString& error = {}, uint64_t generation = 0);

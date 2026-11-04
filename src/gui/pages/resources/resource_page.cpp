@@ -673,14 +673,17 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
 #endif
 }
 
-void ResourcePage::populateRemoteProviders(
-    const std::vector<vinput::script::RegistryEntry>& providers) {
-  tableAvailableProviders_->setRowCount(0);
-  const CoreConfig config = ConfigManager::Get().Load();
+void ResourcePage::populateRemoteScripts(
+    QTableWidget* table, QLineEdit* filter,
+    const std::vector<vinput::script::RegistryEntry>& entries, vinput::script::Kind kind,
+    const std::function<bool(const std::string&)>& is_installed,
+    const std::function<void()>& update_buttons) {
+  table->setRowCount(0);
   auto i18n_map = I18nCache::Get().GetMap();
   const auto manifest = vinput::registry::InstalledManifest::Load();
+  const bool is_asr = (kind == vinput::script::Kind::kAsrProvider);
 
-  for (const auto& entry : providers) {
+  for (const auto& entry : entries) {
     const QString id = QString::fromStdString(entry.id);
 
     const QString titleStr =
@@ -689,84 +692,63 @@ void ResourcePage::populateRemoteProviders(
     const QString desc = QString::fromStdString(
         vinput::registry::LookupI18n(i18n_map, entry.id + ".description", ""));
 
-    const int row = tableAvailableProviders_->rowCount();
-    tableAvailableProviders_->insertRow(row);
-    tableAvailableProviders_->setItem(row, 0, MakeCell(title, id));
-    tableAvailableProviders_->setItem(row, 1, MakeCell(desc));
-    tableAvailableProviders_->setItem(row, 2,
-                                      MakeCell(entry.stream ? tr("stream") : tr("non-stream")));
+    const int row = table->rowCount();
+    table->insertRow(row);
+    table->setItem(row, 0, MakeCell(title, id));
+    table->setItem(row, 1, MakeCell(desc));
 
-    const bool installed = CoreConfigView(config).AsrProvider(entry.id) != nullptr;
-    const auto ver_info = vinput::script::CheckResourceVersion(
-        manifest, vinput::script::Kind::kAsrProvider, entry, installed);
+    int col = 2;
+    if (is_asr) {
+      table->setItem(row, col++, MakeCell(entry.stream ? tr("stream") : tr("non-stream")));
+    }
+
+    const bool installed = is_installed(entry.id);
+    const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
 
     const QString status = FormatScriptUpdateStatus(ver_info, installed);
 
     auto* stCell = MakeCell(status);
     stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
-    tableAvailableProviders_->setItem(row, 3, stCell);
+    table->setItem(row, col++, stCell);
 
     const QString readme_url = QString::fromStdString(entry.readme_url);
     if (!readme_url.isEmpty()) {
       auto* item = MakeCell(tr("Open README"), readme_url);
       item->setTextAlignment(Qt::AlignCenter);
-      tableAvailableProviders_->setItem(row, 4, item);
+      table->setItem(row, col, item);
     } else {
       auto* emptyCell = MakeCell(QString::fromLatin1("-"));
       emptyCell->setTextAlignment(Qt::AlignCenter);
-      tableAvailableProviders_->setItem(row, 4, emptyCell);
+      table->setItem(row, col, emptyCell);
     }
   }
 
-  applyTableFilter(tableAvailableProviders_, filterAvailableProviders_->text());
-  updateProviderButtons();
+  applyTableFilter(table, filter->text());
+  update_buttons();
+}
+
+void ResourcePage::populateRemoteProviders(
+    const std::vector<vinput::script::RegistryEntry>& providers) {
+  populateRemoteScripts(
+      tableAvailableProviders_, filterAvailableProviders_, providers,
+      vinput::script::Kind::kAsrProvider,
+      [](const std::string& id) {
+        const CoreConfig config = ConfigManager::Get().Load();
+        return CoreConfigView(config).AsrProvider(id) != nullptr;
+      },
+      [this]() { updateProviderButtons(); });
 }
 
 void ResourcePage::populateRemoteAdapters(
     const std::vector<vinput::script::RegistryEntry>& adapters) {
-  tableAvailableAdapters_->setRowCount(0);
-  const CoreConfig config = ConfigManager::Get().Load();
-  auto i18n_map = I18nCache::Get().GetMap();
-  const auto manifest = vinput::registry::InstalledManifest::Load();
-
-  for (const auto& entry : adapters) {
-    const QString id = QString::fromStdString(entry.id);
-
-    const QString titleStr =
-        QString::fromStdString(vinput::registry::LookupI18n(i18n_map, entry.id + ".title", ""));
-    const QString title = titleStr.isEmpty() ? id : titleStr;
-    const QString desc = QString::fromStdString(
-        vinput::registry::LookupI18n(i18n_map, entry.id + ".description", ""));
-
-    const int row = tableAvailableAdapters_->rowCount();
-    tableAvailableAdapters_->insertRow(row);
-    tableAvailableAdapters_->setItem(row, 0, MakeCell(title, id));
-    tableAvailableAdapters_->setItem(row, 1, MakeCell(desc));
-
-    const bool installed = CoreConfigView(config).LlmAdapter(entry.id) != nullptr;
-    const auto ver_info = vinput::script::CheckResourceVersion(
-        manifest, vinput::script::Kind::kLlmAdapter, entry, installed);
-
-    const QString status = FormatScriptUpdateStatus(ver_info, installed);
-
-    auto* stCell = MakeCell(status);
-    stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
-    tableAvailableAdapters_->setItem(row, 2, stCell);
-
-    const QString readme_url = QString::fromStdString(entry.readme_url);
-    if (!readme_url.isEmpty()) {
-      auto* item = MakeCell(tr("Open README"), readme_url);
-      item->setTextAlignment(Qt::AlignCenter);
-      tableAvailableAdapters_->setItem(row, 3, item);
-    } else {
-      auto* emptyCell = MakeCell(QString::fromLatin1("-"));
-      emptyCell->setTextAlignment(Qt::AlignCenter);
-      tableAvailableAdapters_->setItem(row, 3, emptyCell);
-    }
-  }
-
-  applyTableFilter(tableAvailableAdapters_, filterAvailableAdapters_->text());
-  updateAdapterButtons();
+  populateRemoteScripts(
+      tableAvailableAdapters_, filterAvailableAdapters_, adapters,
+      vinput::script::Kind::kLlmAdapter,
+      [](const std::string& id) {
+        const CoreConfig config = ConfigManager::Get().Load();
+        return CoreConfigView(config).LlmAdapter(id) != nullptr;
+      },
+      [this]() { updateAdapterButtons(); });
 }
 
 void ResourcePage::refreshAll() {
