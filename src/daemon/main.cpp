@@ -1,5 +1,6 @@
 #include <atomic>
 #include <cerrno>
+#include <cstddef>
 #include <cstring>
 #include <span>
 #include <string>
@@ -11,6 +12,7 @@ extern "C" {
 }
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
 #include "common/llm/adapter_manager.h"
@@ -87,9 +89,6 @@ int main(int argc, char* argv[]) {
   }
 
   PostProcessor post_processor;
-
-  using vinput::dbus::Status;
-  using vinput::dbus::StatusToString;
 
   // --- Single-slot state (all protected by state_mutex) ---
   vinput::daemon::remote::RemoteTextService remote_text_service;
