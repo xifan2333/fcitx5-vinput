@@ -1,5 +1,6 @@
 #include <atomic>
 #include <cerrno>
+#include <cstddef>
 #include <cstring>
 #include <span>
 #include <string>
@@ -87,9 +88,6 @@ int main(int argc, char* argv[]) {
   }
 
   PostProcessor post_processor;
-
-  using vinput::dbus::Status;
-  using vinput::dbus::StatusToString;
 
   // --- Single-slot state (all protected by state_mutex) ---
   vinput::daemon::remote::RemoteTextService remote_text_service;

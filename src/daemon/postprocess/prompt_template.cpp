@@ -1,7 +1,6 @@
 #include "daemon/postprocess/prompt_template.h"
 
-#include <cerrno>
-#include <cstring>
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>

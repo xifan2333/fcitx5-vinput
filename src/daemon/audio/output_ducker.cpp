@@ -3,14 +3,16 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <condition_variable>
+#include <cstddef>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <mutex>
 #include <optional>
+#include <queue>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 
 #include "common/utils/debug_log.h"
 #include "common/utils/process_utils.h"
@@ -93,9 +95,7 @@ bool SetDefaultSinkVolume(double volume) {
 
 } // namespace
 
-OutputDucker::OutputDucker() {
-  worker_ = std::thread([this]() { WorkerLoop(); });
-}
+OutputDucker::OutputDucker() : worker_([this]() { WorkerLoop(); }) {}
 
 OutputDucker::~OutputDucker() {
   {

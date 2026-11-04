@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -16,12 +17,14 @@
 #include <stdexcept>
 #include <string>
 #include <sys/eventfd.h>
+#include <thread>
 #include <unistd.h>
 #include <utility>
 #include <vector>
 
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
 #include "common/utils/debug_log.h"
@@ -174,7 +177,7 @@ DaemonRuntimeController::DaemonRuntimeController(
       if (success) {
         return;
       }
-      if (!dbus_ || message.empty()) {
+      if (dbus_ == nullptr || message.empty()) {
         return;
       }
       dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(
