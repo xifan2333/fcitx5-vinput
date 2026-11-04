@@ -9,7 +9,7 @@
 1. **Zero Network during Build**:
    CMake must never act as a package downloader. `FetchContent`, `git clone`, or HTTP downloads at build time are strictly prohibited. All dependencies must be provided either by host system development packages or vendored locally in the repository. Guarantees 100% deterministic builds in Nix sandboxes, Flatpak offline builders, and Arch clean chroots.
 2. **Host-First Distribution (No Unbundling)**:
-   Any library packaged by target Linux distributions (Ubuntu, Debian, Fedora, openSUSE, Arch, Nixpkgs) must be consumed via host packages. Never duplicate system libraries into the repository.
+   Any shared library (`*.so`) packaged by target Linux distributions (Ubuntu, Debian, Fedora, openSUSE, Arch, Nixpkgs) must be consumed via host packages. Never duplicate system shared libraries into the repository. Pure header-only libraries follow Section 2.
 3. **CMake `SYSTEM INTERFACE` Isolation**:
    Vendored libraries must be declared as `SYSTEM INTERFACE` in CMake, directing the compiler and static analyzers to treat them as system headers. Exempts vendored code from `clang-tidy` diagnostics and compiler warnings without suppressing diagnostics in project code.
 4. **Pristine Vendoring (Zero-Modification Iron Rule)**:
@@ -41,7 +41,7 @@ Consuming header-only C++ libraries from host distribution packages introduces s
 Introduce New Dependency
        │
        ▼
-Does it cross a runtime shared-library (.so), IPC, kernel, or plugin ABI boundary?
+Does it require a separately installed runtime shared library (`.so`) or plugin ABI?
        │
        ├─────► YES ──────► Tier 1: System ABI & Shared Library
        │                   1. Declare in ci-install-build-deps.sh, packaging/, and flake.nix
@@ -77,7 +77,7 @@ Use `SYSTEM INTERFACE` unconditionally (without `find_package` or `FetchContent`
 ```cmake
 add_library(3rdparty_<name> INTERFACE)
 target_include_directories(3rdparty_<name> SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/<name>/include
+    ${CMAKE_SOURCE_DIR}/3rdparty/<name>/include  # Use ${CMAKE_SOURCE_DIR}/3rdparty/<name> when headers live directly in 3rdparty/<name>/
 )
 add_library(<name>::<name> ALIAS 3rdparty_<name>)
 ```
