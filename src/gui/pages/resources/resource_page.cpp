@@ -130,6 +130,31 @@ QLineEdit* CreateFilterEdit(const QString& placeholder, QWidget* parent) {
   return edit;
 }
 
+void ApplyTableFilter(QTableWidget* table, const QString& filter_text) {
+  if (table == nullptr) {
+    return;
+  }
+
+  const QString needle = filter_text.trimmed();
+  for (int row = 0; row < table->rowCount(); ++row) {
+    bool matches = needle.isEmpty();
+    if (!matches) {
+      for (int col = 0; col < table->columnCount(); ++col) {
+        const auto* item = table->item(row, col);
+        if (item == nullptr) {
+          continue;
+        }
+        const QString haystack = item->text() + '\n' + item->data(Qt::UserRole).toString();
+        if (haystack.contains(needle, Qt::CaseInsensitive)) {
+          matches = true;
+          break;
+        }
+      }
+    }
+    table->setRowHidden(row, !matches);
+  }
+}
+
 bool ReloadAsrBackend(std::string* error = nullptr) {
   vinput::cli::DbusClient dbus;
   std::string daemon_error;
@@ -338,7 +363,7 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
     }
   }
 
-  ResourcePage::applyTableFilter(table, filter->text());
+  ApplyTableFilter(table, filter->text());
   update_buttons();
 }
 
@@ -479,9 +504,9 @@ ResourcePage::ResourcePage(QWidget* parent)
   connect(btnRemoveModel_, &QPushButton::clicked, this, &ResourcePage::onRemoveModelClicked);
   connect(btnDownloadModel_, &QPushButton::clicked, this, &ResourcePage::onDownloadModelClicked);
   connect(filterInstalledModels_, &QLineEdit::textChanged, this,
-          [this](const QString& text) { applyTableFilter(tableInstalledModels_, text); });
+          [this](const QString& text) { ApplyTableFilter(tableInstalledModels_, text); });
   connect(filterAvailableModels_, &QLineEdit::textChanged, this,
-          [this](const QString& text) { applyTableFilter(tableAvailableModels_, text); });
+          [this](const QString& text) { ApplyTableFilter(tableAvailableModels_, text); });
 #endif
   connect(btnRefreshResources_, &QPushButton::clicked, this, &ResourcePage::refreshAll);
   connect(btnAddProvider_, &QPushButton::clicked, this, &ResourcePage::onAddProviderClicked);
@@ -519,9 +544,9 @@ ResourcePage::ResourcePage(QWidget* parent)
             }
           });
   connect(filterAvailableProviders_, &QLineEdit::textChanged, this,
-          [this](const QString& text) { applyTableFilter(tableAvailableProviders_, text); });
+          [this](const QString& text) { ApplyTableFilter(tableAvailableProviders_, text); });
   connect(filterAvailableAdapters_, &QLineEdit::textChanged, this,
-          [this](const QString& text) { applyTableFilter(tableAvailableAdapters_, text); });
+          [this](const QString& text) { ApplyTableFilter(tableAvailableAdapters_, text); });
 
   btnAddProvider_->setEnabled(false);
   btnUpdateProvider_->setEnabled(false);
@@ -595,31 +620,6 @@ void ResourcePage::finishRefreshAfterI18n(const QString& error, uint64_t generat
 // Populate helpers
 // ---------------------------------------------------------------------------
 
-void ResourcePage::applyTableFilter(QTableWidget* table, const QString& filter_text) {
-  if (table == nullptr) {
-    return;
-  }
-
-  const QString needle = filter_text.trimmed();
-  for (int row = 0; row < table->rowCount(); ++row) {
-    bool matches = needle.isEmpty();
-    if (!matches) {
-      for (int col = 0; col < table->columnCount(); ++col) {
-        const auto* item = table->item(row, col);
-        if (item == nullptr) {
-          continue;
-        }
-        const QString haystack = item->text() + '\n' + item->data(Qt::UserRole).toString();
-        if (haystack.contains(needle, Qt::CaseInsensitive)) {
-          matches = true;
-          break;
-        }
-      }
-    }
-    table->setRowHidden(row, !matches);
-  }
-}
-
 void ResourcePage::populateLocalModels(const std::vector<ModelSummary>& models) {
 #if !VINPUT_ENABLE_LOCAL_ASR
   (void)models;
@@ -669,7 +669,7 @@ void ResourcePage::populateLocalModels(const std::vector<ModelSummary>& models) 
     tableInstalledModels_->setItem(row, 5, stCell);
   }
 
-  applyTableFilter(tableInstalledModels_, filterInstalledModels_->text());
+  ApplyTableFilter(tableInstalledModels_, filterInstalledModels_->text());
 #endif
 }
 
@@ -726,7 +726,7 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
     tableAvailableModels_->setItem(row, 6, stCell);
   }
 
-  applyTableFilter(tableAvailableModels_, filterAvailableModels_->text());
+  ApplyTableFilter(tableAvailableModels_, filterAvailableModels_->text());
 #endif
 }
 
