@@ -561,7 +561,8 @@ std::string VinputEngine::queryDaemonStatus() const {
   return status;
 }
 
-bool VinputEngine::callReloadAsrBackend(std::string* error) {
+bool VinputEngine::callSyncRpc(const char* member, const std::string& fallback_error,
+                               std::string* error, const std::string* arg) {
   if (bus_ == nullptr || !daemonSyncAllowed()) {
     if (error != nullptr) {
       *error = (bus_ != nullptr) ? _("Daemon access is temporarily throttled.")
@@ -571,10 +572,13 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
     return false;
   }
 
-  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodReloadAsrBackend);
+  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, member);
+  if (arg != nullptr) {
+    msg << *arg;
+  }
   auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
   if (!reply) {
-    VLOG_DEBUG("ASR backend reload RPC failed: no reply");
+    VLOG_DEBUG("D-Bus RPC '{}' failed: no reply", member);
     noteDaemonSyncFailure();
     if (error != nullptr) {
       *error = _("Failed to contact vinput-daemon.");
@@ -583,13 +587,13 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
   }
 
   if (reply.isError()) {
-    VLOG_DEBUG("ASR backend reload RPC failed reply={} error={}", reply.errorName(),
+    VLOG_DEBUG("D-Bus RPC '{}' failed reply={} error={}", member, reply.errorName(),
                reply.errorMessage());
     noteDaemonSyncFailure();
     if (error != nullptr) {
       *error = reply.errorMessage();
       if (error->empty()) {
-        *error = _("Failed to reload ASR backend.");
+        *error = fallback_error;
       }
     }
     return false;
@@ -602,76 +606,18 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
   return true;
 }
 
+bool VinputEngine::callReloadAsrBackend(std::string* error) {
+  return callSyncRpc(kMethodReloadAsrBackend, _("Failed to reload ASR backend."), error);
+}
+
 bool VinputEngine::callStartAdapter(const std::string& adapter_id, std::string* error) {
-  if (bus_ == nullptr || !daemonSyncAllowed()) {
-    if (error != nullptr) {
-      *error = (bus_ != nullptr) ? _("Daemon access is temporarily throttled.")
-                                 : "D-Bus is unavailable.";
-    }
-    noteDaemonSyncFailure();
-    return false;
-  }
-
-  auto msg =
-      bus_->createMethodCall(kBusName, kObjectPath, kInterface, vinput::dbus::kMethodStartAdapter);
-  msg << adapter_id;
-  auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
-  if (!reply) {
-    noteDaemonSyncFailure();
-    if (error != nullptr) {
-      *error = _("Failed to contact vinput-daemon.");
-    }
-    return false;
-  }
-
-  if (reply.isError()) {
-    noteDaemonSyncFailure();
-    if (error != nullptr) {
-      *error = reply.errorMessage();
-      if (error->empty()) {
-        *error = _("Failed to start adapter.");
-      }
-    }
-    return false;
-  }
-  clearDaemonSyncFailure();
-  return true;
+  return callSyncRpc(vinput::dbus::kMethodStartAdapter, _("Failed to start adapter."), error,
+                     &adapter_id);
 }
 
 bool VinputEngine::callStopAdapter(const std::string& adapter_id, std::string* error) {
-  if (bus_ == nullptr || !daemonSyncAllowed()) {
-    if (error != nullptr) {
-      *error = (bus_ != nullptr) ? _("Daemon access is temporarily throttled.")
-                                 : "D-Bus is unavailable.";
-    }
-    noteDaemonSyncFailure();
-    return false;
-  }
-
-  auto msg =
-      bus_->createMethodCall(kBusName, kObjectPath, kInterface, vinput::dbus::kMethodStopAdapter);
-  msg << adapter_id;
-  auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
-  if (!reply) {
-    noteDaemonSyncFailure();
-    if (error != nullptr) {
-      *error = _("Failed to contact vinput-daemon.");
-    }
-    return false;
-  }
-
-  if (reply.isError()) {
-    noteDaemonSyncFailure();
-    if (error != nullptr) {
-      *error = reply.errorMessage();
-      if (error->empty()) {
-        *error = _("Failed to stop adapter.");
-      }
-    }
-    return false;
-  }
-  clearDaemonSyncFailure();
-  return true;
+  return callSyncRpc(vinput::dbus::kMethodStopAdapter, _("Failed to stop adapter."), error,
+                     &adapter_id);
 }
 
 bool VinputEngine::daemonSyncAllowed() const {
