@@ -38,9 +38,7 @@ target_link_libraries(addon_core PUBLIC
     Threads::Threads
 )
 
-add_library(addon MODULE
-    $<TARGET_OBJECTS:addon_core>
-)
+add_library(addon MODULE)
 
 target_link_libraries(addon PRIVATE
     addon_core

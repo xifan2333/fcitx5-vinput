@@ -6,13 +6,13 @@ vinput_add_test(test_pipewire_target LIBS pipewire_device)
 
 # 2. Addon integration & modifier key tests
 vinput_add_test(modifier_key_tests
-    SOURCES modifier_key_tests.cpp $<TARGET_OBJECTS:addon_core>
     LIBS addon_core
     ENV "XDG_CONFIG_HOME=/tmp/vinput_test_cfg"
 )
 vinput_add_test(test_status_poll_gate)
+target_include_directories(test_status_poll_gate PRIVATE ${CMAKE_SOURCE_DIR}/src/addon)
+
 vinput_add_test(test_async_context_writer
-    SOURCES test_async_context_writer.cpp $<TARGET_OBJECTS:addon_core>
     LIBS addon_core
 )
 
@@ -31,9 +31,11 @@ vinput_add_test(test_audio_input_gain LIBS daemon_core)
 vinput_add_test(test_post_processor LIBS daemon_core)
 vinput_add_test(test_recognition_pipeline LIBS daemon_core)
 vinput_add_test(test_remote_text_service LIBS daemon_core)
-vinput_add_test(test_vad_segmentation LIBS daemon_core)
-vinput_add_test(test_hotword_utils LIBS daemon_core)
 vinput_add_test(test_output_ducker LIBS daemon_core)
+if(VINPUT_ENABLE_LOCAL_ASR)
+    vinput_add_test(test_vad_segmentation LIBS daemon_core)
+    vinput_add_test(test_hotword_utils LIBS daemon_core)
+endif()
 
 # 4. Common & Config core tests
 vinput_add_test(test_installed_manifest)
