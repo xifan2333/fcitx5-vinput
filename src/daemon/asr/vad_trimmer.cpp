@@ -14,7 +14,8 @@
 
 namespace {
 
-void FeedWaveformToVad(sherpa::VoiceActivityDetector& vad, const std::vector<float>& samples) {
+void FeedWaveformToVad(vinput::daemon::asr::sherpa::VoiceActivityDetector& vad,
+                       const std::vector<float>& samples) {
   const int n = static_cast<int>(samples.size());
   vad.Reset();
 
@@ -73,7 +74,7 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   config.provider = provider.c_str();
   config.debug = 0;
 
-  auto vad = sherpa::VoiceActivityDetector::Create(config, 30.0F);
+  auto vad = vinput::daemon::asr::sherpa::VoiceActivityDetector::Create(config, 30.0F);
   if (!vad.has_value()) {
     if (error != nullptr) {
       *error = "failed to create VAD from '" + model_path + "'";

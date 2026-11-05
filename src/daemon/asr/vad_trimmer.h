@@ -43,7 +43,7 @@ public:
   void Shutdown();
 
 private:
-  std::optional<sherpa::VoiceActivityDetector> vad_;
+  std::optional<vinput::daemon::asr::sherpa::VoiceActivityDetector> vad_;
   int sample_rate_ = 16000;
   VadTrimParams params_{};
 };
