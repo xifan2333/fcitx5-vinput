@@ -26,7 +26,7 @@ find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Config REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 
-# Override and extend compiler settings (C++20, ccache, mold, warnings, LTO)
+# Compiler behavior, C++20 enforcement, diagnostics, and LTO
 include(cmake/CompilerSettings.cmake)
 find_package(PkgConfig REQUIRED)
 find_package(Gettext REQUIRED)
