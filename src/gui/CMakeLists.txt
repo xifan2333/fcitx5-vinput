@@ -4,8 +4,6 @@ find_package(Qt6 COMPONENTS Core Gui Widgets Network REQUIRED)
 find_package(Qt6LinguistTools QUIET)
 set(QT_LINGUIST_FOUND ${Qt6LinguistTools_FOUND})
 
-pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
-
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
@@ -90,8 +88,6 @@ target_compile_definitions(gui PRIVATE
 target_include_directories(gui PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
-    ${PIPEWIRE_INCLUDE_DIRS}
-    ${SDBUS_INCLUDE_DIRS}
 )
 
 target_link_libraries(gui
@@ -103,8 +99,6 @@ target_link_libraries(gui
     common
     pipewire_device
     client_runtime
-    ${PIPEWIRE_LIBRARIES}
-    ${SDBUS_LIBRARIES}
 )
 
 install(TARGETS gui
