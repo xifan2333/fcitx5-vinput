@@ -40,8 +40,7 @@ endif()
 
 set(VINPUT_VAD_MODEL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/fcitx5-vinput/vad")
 
-add_executable(daemon
-    main.cpp
+add_library(daemon_core STATIC
     asr/local_asr_model_loader.cpp
     asr/runtime/backend_factory.cpp
     asr/runtime/recognition_session_manager.cpp
@@ -65,18 +64,21 @@ add_executable(daemon
     postprocess/prompt_template.cpp
 )
 
-set_target_properties(daemon PROPERTIES OUTPUT_NAME "vinput-daemon")
+set_target_properties(daemon_core PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    OUTPUT_NAME "vinput-daemon-core"
+)
 
-target_compile_definitions(daemon PRIVATE
+target_compile_definitions(daemon_core PUBLIC
     VINPUT_VAD_MODEL_PATH="${VINPUT_VAD_MODEL_DIR}/silero_vad.onnx"
 )
 
-target_include_directories(daemon PRIVATE
+target_include_directories(daemon_core PUBLIC
     ${CMAKE_SOURCE_DIR}/src
     ${VINPUT_LOCAL_ASR_INCLUDES}
 )
 
-target_link_libraries(daemon PRIVATE
+target_link_libraries(daemon_core PUBLIC
     common
     pipewire_device
     base64::base64
@@ -84,6 +86,16 @@ target_link_libraries(daemon PRIVATE
     PkgConfig::SDBUS
     ${VINPUT_LOCAL_ASR_LIBS}
     Threads::Threads
+)
+
+add_executable(daemon
+    main.cpp
+)
+
+set_target_properties(daemon PROPERTIES OUTPUT_NAME "vinput-daemon")
+
+target_link_libraries(daemon PRIVATE
+    daemon_core
 )
 
 if(VINPUT_ENABLE_LOCAL_ASR)

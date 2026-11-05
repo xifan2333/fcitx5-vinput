@@ -35,6 +35,9 @@ include(cmake/Dependencies.cmake)
 # 3rdparty vendored header-only libraries (SYSTEM INTERFACE)
 include(cmake/ThirdParty.cmake)
 
+# Helper functions and test macros
+include(cmake/VinputHelpers.cmake)
+
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit")

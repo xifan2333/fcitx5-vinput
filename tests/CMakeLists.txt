@@ -1,440 +1,85 @@
-add_executable(test_pipewire_target
-    test_pipewire_target.cpp
+# tests/CMakeLists.txt
+# Unit tests powered by vinput_add_test helper and reusable core libraries.
+
+# 1. PipeWire device tests
+vinput_add_test(test_pipewire_target LIBS pipewire_device)
+
+# 2. Addon integration & modifier key tests
+vinput_add_test(modifier_key_tests
+    LIBS addon_core
+    ENV "XDG_CONFIG_HOME=/tmp/vinput_test_cfg"
+)
+vinput_add_test(test_status_poll_gate)
+target_include_directories(test_status_poll_gate PRIVATE ${CMAKE_SOURCE_DIR}/src/addon)
+
+vinput_add_test(test_async_context_writer
+    LIBS addon_core
 )
 
-target_include_directories(test_pipewire_target PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_pipewire_target PRIVATE
-    pipewire_device
-)
-
-add_test(NAME test_pipewire_target COMMAND test_pipewire_target)
-
-find_package(Fcitx5ModuleDBus REQUIRED)
-find_package(Fcitx5ModuleClipboard REQUIRED)
-find_package(Fcitx5ModuleNotifications REQUIRED)
-
-add_executable(modifier_key_tests
-    modifier_key_tests.cpp
-    ${CMAKE_SOURCE_DIR}/src/addon/core/vinput.cpp
-    ${CMAKE_SOURCE_DIR}/src/addon/core/context_writer.cpp
-    ${CMAKE_SOURCE_DIR}/src/addon/dbus/vinput_dbus.cpp
-    ${CMAKE_SOURCE_DIR}/src/addon/input/vinput_keyevent.cpp
-    ${CMAKE_SOURCE_DIR}/src/addon/menu/palette_command.cpp
-    ${CMAKE_SOURCE_DIR}/src/addon/menu/vinput_menu.cpp
-)
-
-target_include_directories(modifier_key_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/addon
-)
-
-find_package(Fcitx5Core REQUIRED)
-if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.12")
-    target_compile_definitions(modifier_key_tests PRIVATE VINPUT_FCITX5_CORE_HAVE_ADDON_FACTORY_V2)
-endif()
-if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.9")
-    target_compile_definitions(modifier_key_tests PRIVATE VINPUT_FCITX5_CORE_HAVE_SET_COMMENT)
+# 3. Daemon core component tests (linked against daemon_core static library)
+vinput_add_test(test_interpolation LIBS daemon_core)
+vinput_add_test(test_command_batch LIBS daemon_core)
+vinput_add_test(test_command_streaming LIBS daemon_core)
+vinput_add_test(test_command_streaming_time)
+vinput_add_test(test_desktop_notification_sender LIBS daemon_core)
+vinput_add_test(test_unity_input_gain LIBS daemon_core)
+vinput_add_test(test_async_recognition_session LIBS daemon_core)
+vinput_add_test(test_audio_recording_buffer LIBS daemon_core)
+vinput_add_test(test_session_lifecycle_manager LIBS daemon_core)
+vinput_add_test(test_runtime_state_machine LIBS daemon_core)
+vinput_add_test(test_audio_input_gain LIBS daemon_core)
+vinput_add_test(test_post_processor LIBS daemon_core)
+vinput_add_test(test_recognition_pipeline LIBS daemon_core)
+vinput_add_test(test_remote_text_service LIBS daemon_core)
+vinput_add_test(test_output_ducker LIBS daemon_core)
+if(VINPUT_ENABLE_LOCAL_ASR)
+    vinput_add_test(test_vad_segmentation LIBS daemon_core)
+    vinput_add_test(test_hotword_utils LIBS daemon_core)
 endif()
 
-target_link_libraries(modifier_key_tests PRIVATE
-    config
-    Fcitx5::Core
-    Fcitx5::Module::DBus
-    Fcitx5::Module::Clipboard
-    Fcitx5::Module::Notifications
-    PkgConfig::SDBUS
-    Threads::Threads
+# 4. Common & Config core tests
+vinput_add_test(test_installed_manifest)
+vinput_add_test(test_process_utils)
+vinput_add_test(test_process_session)
+vinput_add_test(test_adapter_manager)
+vinput_add_test(test_notification_bridge)
+vinput_add_test(test_http_client)
+vinput_add_test(test_downloader)
+vinput_add_test(test_string_utils)
+vinput_add_test(test_expected)
+vinput_add_test(test_recognition_result)
+vinput_add_test(test_offline_error_format)
+vinput_add_test(test_core_config_view)
+vinput_add_test(test_json_access)
+vinput_add_test(test_time_utils)
+vinput_add_test(test_file_utils)
+vinput_add_test(test_sandbox)
+vinput_add_test(test_bpe_vocab_exporter)
+vinput_add_test(test_model_manager)
+vinput_add_test(test_locale_utils)
+vinput_add_test(test_logging)
+vinput_add_test(test_audio_realtime_queue LIBS readerwriterqueue::readerwriterqueue)
+
+# 5. CLI utility tests
+vinput_add_test(test_editor_utils
+    SOURCES test_editor_utils.cpp ${CMAKE_SOURCE_DIR}/src/cli/utils/editor_utils.cpp
+    LIBS subprocess::subprocess CLI11::CLI11
 )
+target_include_directories(test_editor_utils PRIVATE ${CMAKE_SOURCE_DIR}/src/cli)
 
-add_test(NAME modifier_key_tests COMMAND modifier_key_tests)
-set_tests_properties(modifier_key_tests PROPERTIES
-    ENVIRONMENT "XDG_CONFIG_HOME=/tmp/vinput_test_cfg"
-)
-
-add_executable(test_interpolation
-    test_interpolation.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/prompt_template.cpp
-)
-
-target_include_directories(test_interpolation PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_interpolation PRIVATE
-    common
-)
-
-add_test(NAME test_interpolation COMMAND test_interpolation)
-
-add_executable(test_command_batch
-    test_command_batch.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/asr/backends/command_batch_backend.cpp
-)
-
-target_include_directories(test_command_batch PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_command_batch PRIVATE
-    common
-)
-
-add_test(NAME test_command_batch COMMAND test_command_batch)
-
-add_executable(test_command_streaming
-    test_command_streaming.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/asr/backends/command_streaming_backend.cpp
-)
-
-target_include_directories(test_command_streaming PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_command_streaming PRIVATE
-    common
-    base64::base64
-)
-
-add_test(NAME test_command_streaming COMMAND test_command_streaming)
-
-add_executable(test_command_streaming_time test_command_streaming_time.cpp)
-target_include_directories(test_command_streaming_time PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_command_streaming_time COMMAND test_command_streaming_time)
-
-add_executable(test_installed_manifest
-    test_installed_manifest.cpp
-)
-
-target_include_directories(test_installed_manifest PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_installed_manifest PRIVATE
-    common
-)
-
-add_test(NAME test_installed_manifest COMMAND test_installed_manifest)
-
-add_executable(test_process_utils
-    test_process_utils.cpp
-)
-
-target_include_directories(test_process_utils PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_process_utils PRIVATE
-    common
-)
-
-add_test(NAME test_process_utils COMMAND test_process_utils)
-
-add_executable(test_process_session
-    test_process_session.cpp
-)
-
-target_include_directories(test_process_session PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_process_session PRIVATE
-    common
-    Threads::Threads
-)
-
-add_test(NAME test_process_session COMMAND test_process_session)
-
-add_executable(test_adapter_manager
-    test_adapter_manager.cpp
-)
-
-target_include_directories(test_adapter_manager PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_adapter_manager PRIVATE
-    common
-    Threads::Threads
-)
-
-add_test(NAME test_adapter_manager COMMAND test_adapter_manager)
-
-add_executable(test_notification_bridge
-    test_notification_bridge.cpp
-)
-
-target_include_directories(test_notification_bridge PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_notification_bridge PRIVATE
-    common
-    Threads::Threads
-)
-
-add_test(NAME test_notification_bridge COMMAND test_notification_bridge)
-
-add_executable(test_desktop_notification_sender
-    test_desktop_notification_sender.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/notify/desktop_notification_sender.cpp
-)
-
-target_include_directories(test_desktop_notification_sender PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(test_desktop_notification_sender PRIVATE
-    common
-    Threads::Threads
-    PkgConfig::SDBUS
-)
-
-add_test(NAME test_desktop_notification_sender COMMAND test_desktop_notification_sender)
-
-add_executable(test_editor_utils
-    test_editor_utils.cpp
-    ${CMAKE_SOURCE_DIR}/src/cli/utils/editor_utils.cpp
-)
-
-target_include_directories(test_editor_utils PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/cli
-)
-
-target_link_libraries(test_editor_utils PRIVATE
-    subprocess::subprocess
-    CLI11::CLI11
-)
-
-add_test(NAME test_editor_utils COMMAND test_editor_utils)
-
-add_executable(test_config_migration
-    test_config_migration.cpp
-)
-
-target_include_directories(test_config_migration PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
+# 6. Config migration test (needs CMAKE_SOURCE_DIR definition)
+vinput_add_test(test_config_migration)
 target_compile_definitions(test_config_migration PRIVATE
     CMAKE_SOURCE_DIR_STR="${CMAKE_SOURCE_DIR}"
 )
 
-target_link_libraries(test_config_migration PRIVATE
-    common
-)
-
-add_test(NAME test_config_migration COMMAND test_config_migration)
-
-add_executable(test_unity_input_gain
-    test_unity_input_gain.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/audio/audio_utils.cpp
-)
-target_include_directories(test_unity_input_gain PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_unity_input_gain COMMAND test_unity_input_gain)
-
-add_executable(test_async_recognition_session
-    test_async_recognition_session.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/asr/runtime/async_recognition_session.cpp
-)
-target_include_directories(test_async_recognition_session PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_async_recognition_session COMMAND test_async_recognition_session)
-
-add_executable(test_audio_recording_buffer
-    test_audio_recording_buffer.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/runtime/audio_recording_buffer.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/audio/audio_utils.cpp
-)
-target_include_directories(test_audio_recording_buffer PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_audio_recording_buffer COMMAND test_audio_recording_buffer)
-
-add_executable(test_session_lifecycle_manager
-    test_session_lifecycle_manager.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/runtime/session_lifecycle_manager.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/asr/runtime/async_recognition_session.cpp
-)
-target_include_directories(test_session_lifecycle_manager PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_session_lifecycle_manager PRIVATE common)
-add_test(NAME test_session_lifecycle_manager COMMAND test_session_lifecycle_manager)
-
-add_executable(test_runtime_state_machine
-    test_runtime_state_machine.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/runtime/runtime_state_machine.cpp
-)
-target_include_directories(test_runtime_state_machine PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_runtime_state_machine PRIVATE common)
-add_test(NAME test_runtime_state_machine COMMAND test_runtime_state_machine)
-
-add_executable(test_audio_input_gain
-    test_audio_input_gain.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/audio/audio_utils.cpp
-)
-target_include_directories(test_audio_input_gain PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_audio_input_gain COMMAND test_audio_input_gain)
-
-add_executable(test_status_poll_gate test_status_poll_gate.cpp)
-target_include_directories(test_status_poll_gate PRIVATE ${CMAKE_SOURCE_DIR}/src/addon)
-add_test(NAME test_status_poll_gate COMMAND test_status_poll_gate)
-
-add_executable(test_async_context_writer
-    test_async_context_writer.cpp
-    ${CMAKE_SOURCE_DIR}/src/addon/core/context_writer.cpp
-)
-target_include_directories(test_async_context_writer PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/addon
-)
-target_link_libraries(test_async_context_writer PRIVATE common Threads::Threads)
-add_test(NAME test_async_context_writer COMMAND test_async_context_writer)
-
-add_executable(test_post_processor
-    test_post_processor.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/post_processor.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/prompt_template.cpp
-)
-target_include_directories(test_post_processor PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_post_processor PRIVATE common Threads::Threads)
-add_test(NAME test_post_processor COMMAND test_post_processor)
-
-add_executable(test_recognition_pipeline
-    test_recognition_pipeline.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/runtime/recognition_pipeline.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/post_processor.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/prompt_template.cpp
-)
-target_include_directories(test_recognition_pipeline PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_recognition_pipeline PRIVATE common Threads::Threads)
-add_test(NAME test_recognition_pipeline COMMAND test_recognition_pipeline)
-
-add_executable(test_http_client test_http_client.cpp)
-target_include_directories(test_http_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_http_client PRIVATE common Threads::Threads)
-add_test(NAME test_http_client COMMAND test_http_client)
-
-add_executable(test_remote_text_service
-    test_remote_text_service.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/remote/remote_assets.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/remote/remote_text_service.cpp
-)
-target_include_directories(test_remote_text_service PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_remote_text_service PRIVATE common Threads::Threads)
-add_test(NAME test_remote_text_service COMMAND test_remote_text_service)
-
-add_executable(test_downloader test_downloader.cpp)
-target_include_directories(test_downloader PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_downloader PRIVATE common Threads::Threads)
-add_test(NAME test_downloader COMMAND test_downloader)
-
-add_executable(test_string_utils test_string_utils.cpp)
-target_include_directories(test_string_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_string_utils PRIVATE config)
-add_test(NAME test_string_utils COMMAND test_string_utils)
-
-add_executable(test_expected test_expected.cpp)
-target_include_directories(test_expected PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_expected PRIVATE config)
-add_test(NAME test_expected COMMAND test_expected)
-
-add_executable(test_recognition_result test_recognition_result.cpp)
-target_include_directories(test_recognition_result PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_recognition_result PRIVATE config)
-add_test(NAME test_recognition_result COMMAND test_recognition_result)
-
-add_executable(test_offline_error_format test_offline_error_format.cpp)
-target_include_directories(test_offline_error_format PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_offline_error_format PRIVATE config)
-add_test(NAME test_offline_error_format COMMAND test_offline_error_format)
-
-add_executable(test_core_config_view test_core_config_view.cpp)
-target_include_directories(test_core_config_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_core_config_view PRIVATE config)
-add_test(NAME test_core_config_view COMMAND test_core_config_view)
-
-add_executable(test_json_access test_json_access.cpp)
-target_include_directories(test_json_access PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_json_access PRIVATE config)
-add_test(NAME test_json_access COMMAND test_json_access)
-
-add_executable(test_vad_segmentation
-    test_vad_segmentation.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/asr/vad_segmentation.cpp
-)
-target_include_directories(test_vad_segmentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_vad_segmentation COMMAND test_vad_segmentation)
-
-add_executable(test_time_utils test_time_utils.cpp)
-target_include_directories(test_time_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_time_utils COMMAND test_time_utils)
-
-add_executable(test_file_utils test_file_utils.cpp)
-target_include_directories(test_file_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_file_utils PRIVATE common Threads::Threads)
-add_test(NAME test_file_utils COMMAND test_file_utils)
-
-add_executable(test_sandbox test_sandbox.cpp)
-target_include_directories(test_sandbox PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_sandbox PRIVATE common Threads::Threads)
-add_test(NAME test_sandbox COMMAND test_sandbox)
-
-add_executable(test_bpe_vocab_exporter
-    test_bpe_vocab_exporter.cpp
-)
-target_include_directories(test_bpe_vocab_exporter PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_bpe_vocab_exporter PRIVATE common Threads::Threads)
-add_test(NAME test_bpe_vocab_exporter COMMAND test_bpe_vocab_exporter)
-
-add_executable(test_hotword_utils
-    test_hotword_utils.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/asr/hotword_utils.cpp
-)
-target_include_directories(test_hotword_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_hotword_utils PRIVATE common Threads::Threads)
-add_test(NAME test_hotword_utils COMMAND test_hotword_utils)
-
-add_executable(test_model_manager test_model_manager.cpp)
-target_include_directories(test_model_manager PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_model_manager PRIVATE common Threads::Threads)
-add_test(NAME test_model_manager COMMAND test_model_manager)
-
-add_executable(test_output_ducker
-    test_output_ducker.cpp
-    ${CMAKE_SOURCE_DIR}/src/daemon/audio/output_ducker.cpp
-)
-target_include_directories(test_output_ducker PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_output_ducker PRIVATE common Threads::Threads)
-add_test(NAME test_output_ducker COMMAND test_output_ducker)
-
-add_executable(test_locale_utils test_locale_utils.cpp)
-target_include_directories(test_locale_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
-add_test(NAME test_locale_utils COMMAND test_locale_utils)
-
-add_executable(test_logging test_logging.cpp)
-target_include_directories(test_logging PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_logging PRIVATE common Threads::Threads)
-add_test(NAME test_logging COMMAND test_logging)
-
-add_executable(test_audio_realtime_queue test_audio_realtime_queue.cpp)
-target_include_directories(test_audio_realtime_queue PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_audio_realtime_queue PRIVATE readerwriterqueue::readerwriterqueue Threads::Threads)
-add_test(NAME test_audio_realtime_queue COMMAND test_audio_realtime_queue)
-
+# 7. GUI utility tests (optional on Qt6)
 find_package(Qt6 COMPONENTS Core QUIET)
 if(Qt6_FOUND)
-    add_executable(test_download_worker
-        test_download_worker.cpp
-        ${CMAKE_SOURCE_DIR}/src/gui/utils/download_worker.cpp
+    vinput_add_test(test_download_worker
+        SOURCES test_download_worker.cpp ${CMAKE_SOURCE_DIR}/src/gui/utils/download_worker.cpp
+        LIBS Qt6::Core
     )
-    target_include_directories(test_download_worker PRIVATE
-        ${CMAKE_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/src/gui
-    )
-    target_link_libraries(test_download_worker PRIVATE
-        Qt6::Core
-        Threads::Threads
-    )
+    target_include_directories(test_download_worker PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
     set_target_properties(test_download_worker PROPERTIES AUTOMOC ON)
-    add_test(NAME test_download_worker COMMAND test_download_worker)
 endif()
