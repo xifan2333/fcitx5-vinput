@@ -19,16 +19,6 @@ endif()
 
 include(GNUInstallDirs)
 
-set(VINPUT_PACKAGE_RELEASE "1"
-    CACHE STRING "Package release revision for distro packages")
-set(VINPUT_PACKAGE_CONTACT "fcitx5-vinput maintainers <noreply@github.com>"
-    CACHE STRING "Contact metadata used by generated distro packages")
-set(VINPUT_PACKAGE_HOMEPAGE_URL ""
-    CACHE STRING "Homepage URL used by generated distro packages")
-set(VINPUT_PACKAGE_DESCRIPTION_SUMMARY
-    "Offline voice input addon for Fcitx5 with optional OpenAI-compatible postprocess"
-    CACHE STRING "Short description used by generated distro packages")
-
 option(VINPUT_ENABLE_LOCAL_ASR "Build with sherpa-onnx local ASR support" ON)
 option(VINPUT_ENABLE_WERROR "Treat compiler warnings as errors" OFF)
 
@@ -92,110 +82,7 @@ find_package(LibArchive REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 # 3rdparty vendored header-only libraries (SYSTEM INTERFACE)
-add_library(3rdparty_cli11 INTERFACE)
-target_include_directories(3rdparty_cli11 SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/cli11/include
-)
-add_library(CLI11::CLI11 ALIAS 3rdparty_cli11)
-
-add_library(3rdparty_httplib INTERFACE)
-target_include_directories(3rdparty_httplib SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/httplib
-)
-target_compile_definitions(3rdparty_httplib INTERFACE
-    CPPHTTPLIB_OPENSSL_SUPPORT=1
-    CPPHTTPLIB_USE_NON_BLOCKING_GETADDRINFO=1
-)
-target_link_libraries(3rdparty_httplib INTERFACE
-    Threads::Threads
-    OpenSSL::SSL
-    OpenSSL::Crypto
-)
-add_library(httplib::httplib ALIAS 3rdparty_httplib)
-
-add_library(3rdparty_subprocess INTERFACE)
-target_include_directories(3rdparty_subprocess SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/subprocess
-)
-add_library(subprocess::subprocess ALIAS 3rdparty_subprocess)
-
-add_library(3rdparty_scope INTERFACE)
-target_include_directories(3rdparty_scope SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/scope
-)
-add_library(nonstd::scope ALIAS 3rdparty_scope)
-
-add_library(3rdparty_base64 INTERFACE)
-target_include_directories(3rdparty_base64 SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/base64
-)
-add_library(base64::base64 ALIAS 3rdparty_base64)
-
-add_library(3rdparty_unicodelib INTERFACE)
-target_include_directories(3rdparty_unicodelib SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/unicodelib
-)
-add_library(unicodelib::unicodelib ALIAS 3rdparty_unicodelib)
-
-add_library(3rdparty_readerwriterqueue INTERFACE)
-target_include_directories(3rdparty_readerwriterqueue SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/readerwriterqueue
-)
-add_library(readerwriterqueue::readerwriterqueue ALIAS 3rdparty_readerwriterqueue)
-
-add_library(3rdparty_mio INTERFACE)
-target_include_directories(3rdparty_mio SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/mio/include
-)
-add_library(mio::mio ALIAS 3rdparty_mio)
-
-add_library(3rdparty_glaze INTERFACE)
-target_include_directories(3rdparty_glaze SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/glaze/include
-)
-add_library(glaze::glaze ALIAS 3rdparty_glaze)
-
-add_library(3rdparty_tabulate INTERFACE)
-target_include_directories(3rdparty_tabulate SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/tabulate/include
-)
-add_library(tabulate::tabulate ALIAS 3rdparty_tabulate)
-
-add_library(3rdparty_indicators INTERFACE)
-target_include_directories(3rdparty_indicators SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/indicators/include
-)
-add_library(indicators::indicators ALIAS 3rdparty_indicators)
-
-add_library(3rdparty_tl_expected INTERFACE)
-target_include_directories(3rdparty_tl_expected SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/tl-expected/include
-)
-add_library(tl::expected ALIAS 3rdparty_tl_expected)
-
-add_library(3rdparty_fmt INTERFACE)
-target_include_directories(3rdparty_fmt SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/fmt/include
-)
-target_compile_definitions(3rdparty_fmt INTERFACE FMT_HEADER_ONLY=1)
-if(NOT TARGET fmt::fmt)
-    add_library(fmt::fmt ALIAS 3rdparty_fmt)
-endif()
-if(NOT TARGET fmt::fmt-header-only)
-    add_library(fmt::fmt-header-only ALIAS 3rdparty_fmt)
-endif()
-
-add_library(3rdparty_spdlog INTERFACE)
-target_include_directories(3rdparty_spdlog SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/spdlog/include
-)
-target_compile_definitions(3rdparty_spdlog INTERFACE
-    SPDLOG_HEADER_ONLY=1
-    SPDLOG_FMT_EXTERNAL=1
-)
-target_link_libraries(3rdparty_spdlog INTERFACE 3rdparty_fmt)
-add_library(spdlog::spdlog_header_only ALIAS 3rdparty_spdlog)
-add_library(spdlog::spdlog ALIAS 3rdparty_spdlog)
+include(cmake/ThirdParty.cmake)
 
 set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
@@ -228,64 +115,7 @@ configure_file(
     ${CMAKE_BINARY_DIR}/config.h
     @ONLY)
 
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/default-config.json
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput
-)
-
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/web/remote/index.html
-    ${CMAKE_SOURCE_DIR}/data/web/remote/favicon.svg
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/web/remote
-)
-
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/man/en/vinput.1
-    ${CMAKE_SOURCE_DIR}/data/man/en/vinput-daemon.1
-    ${CMAKE_SOURCE_DIR}/data/man/en/vinput-gui.1
-    DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
-)
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/man/en/vinput-config.5
-    DESTINATION ${CMAKE_INSTALL_MANDIR}/man5
-)
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/man/en/fcitx5-vinput.7
-    DESTINATION ${CMAKE_INSTALL_MANDIR}/man7
-)
-
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/man/zh_CN/vinput.1
-    ${CMAKE_SOURCE_DIR}/data/man/zh_CN/vinput-daemon.1
-    ${CMAKE_SOURCE_DIR}/data/man/zh_CN/vinput-gui.1
-    DESTINATION ${CMAKE_INSTALL_MANDIR}/zh_CN/man1
-)
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/man/zh_CN/vinput-config.5
-    DESTINATION ${CMAKE_INSTALL_MANDIR}/zh_CN/man5
-)
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/man/zh_CN/fcitx5-vinput.7
-    DESTINATION ${CMAKE_INSTALL_MANDIR}/zh_CN/man7
-)
-
-# Install shell completions
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/completions/bash/vinput
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions
-)
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/completions/zsh/_vinput
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/zsh/site-functions
-)
-install(FILES
-    ${CMAKE_SOURCE_DIR}/data/completions/fish/vinput.fish
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/fish/vendor_completions.d
-)
-
-include_directories(${CMAKE_BINARY_DIR})
-
-
+add_subdirectory(data)
 add_subdirectory(src/common)
 add_subdirectory(src/daemon)
 add_subdirectory(src/addon)
@@ -305,41 +135,4 @@ if(TARGET qt-translations)
 endif()
 add_custom_target(translations ALL DEPENDS ${VINPUT_TRANSLATIONS_DEPS})
 
-string(REPLACE "-" "~" VINPUT_DEBIAN_UPSTREAM_VERSION "${PROJECT_VERSION}")
-
-if(NOT VINPUT_ENABLE_LOCAL_ASR)
-    set(CPACK_PACKAGE_NAME "fcitx5-vinput-lite")
-    set(CPACK_DEBIAN_PACKAGE_NAME "fcitx5-vinput-lite")
-    set(CPACK_DEBIAN_PACKAGE_PROVIDES "fcitx5-vinput (= ${VINPUT_DEBIAN_UPSTREAM_VERSION}-${VINPUT_PACKAGE_RELEASE})")
-    set(CPACK_DEBIAN_PACKAGE_CONFLICTS "fcitx5-vinput")
-    set(CPACK_RPM_PACKAGE_NAME "fcitx5-vinput-lite")
-    set(CPACK_RPM_PACKAGE_PROVIDES "fcitx5-vinput = ${PROJECT_VERSION}-${VINPUT_PACKAGE_RELEASE}")
-    set(CPACK_RPM_PACKAGE_CONFLICTS "fcitx5-vinput")
-else()
-    set(CPACK_PACKAGE_NAME "fcitx5-vinput")
-    set(CPACK_DEBIAN_PACKAGE_NAME "fcitx5-vinput")
-    set(CPACK_DEBIAN_PACKAGE_CONFLICTS "fcitx5-vinput-lite")
-    set(CPACK_RPM_PACKAGE_NAME "fcitx5-vinput")
-    set(CPACK_RPM_PACKAGE_CONFLICTS "fcitx5-vinput-lite")
-endif()
-
-set(CPACK_PACKAGE_VENDOR "fcitx5-vinput")
-set(CPACK_PACKAGE_CONTACT "${VINPUT_PACKAGE_CONTACT}")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${VINPUT_PACKAGE_DESCRIPTION_SUMMARY}")
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "fcitx5-vinput")
-set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-if(VINPUT_PACKAGE_HOMEPAGE_URL)
-    set(CPACK_PACKAGE_HOMEPAGE_URL "${VINPUT_PACKAGE_HOMEPAGE_URL}")
-endif()
-
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${VINPUT_PACKAGE_CONTACT}")
-set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
-set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-list(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS
-    fcitx5
-)
-set(CPACK_DEBIAN_PACKAGE_VERSION "${VINPUT_DEBIAN_UPSTREAM_VERSION}")
-set(CPACK_DEBIAN_PACKAGE_RELEASE "${VINPUT_PACKAGE_RELEASE}")
-set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
-
-include(CPack)
+include(cmake/Packaging.cmake)
