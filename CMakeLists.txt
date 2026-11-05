@@ -26,52 +26,8 @@ find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Config REQUIRED)
 include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cmake")
 
-# Override to C++20 after Fcitx5CompilerSettings (which may set an older standard)
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-set(CMAKE_CXX_VISIBILITY_PRESET hidden)
-set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-
-add_compile_options(-ffunction-sections -fdata-sections)
-add_link_options(-Wl,--gc-sections -Wl,--as-needed)
-
-include(CheckIPOSupported)
-check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
-if(ipo_supported)
-    if(NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
-    endif()
-    if(NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
-    endif()
-    message(STATUS "Interprocedural Optimization (LTO) enabled for Release builds")
-else()
-    message(STATUS "Interprocedural Optimization (LTO) not supported: ${ipo_error}")
-endif()
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    add_compile_options(
-        -Wall
-        -Wextra
-        -Wunused
-        -Wunneeded-internal-declaration
-        -Wunneeded-member-function
-        -Wunreachable-code
-        -Wredundant-decls
-    )
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    add_compile_options(
-        -Wall
-        -Wextra
-        -Wunused
-        -Wredundant-decls
-    )
-endif()
-
-if(VINPUT_ENABLE_WERROR)
-    add_compile_options(-Werror)
-endif()
+# Compiler behavior, C++20 enforcement, diagnostics, and LTO
+include(cmake/CompilerSettings.cmake)
 find_package(PkgConfig REQUIRED)
 find_package(Gettext REQUIRED)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
