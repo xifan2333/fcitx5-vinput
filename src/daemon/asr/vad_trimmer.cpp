@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <sherpa-onnx/c-api/c-api.h>
 #include <string>
 #include <utility>
 #include <vector>
@@ -200,20 +201,20 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
     const int64_t cut_start = std::max({last_cut_end, int64_t{0}, raw_start - padding_samples});
 
     // Expand trailing boundary with speech_pad_ms, fairly sharing inter-segment gaps
-    int64_t cut_end = raw_end;
-    if (i + 1 < detected_count) {
+    int64_t cut_end = [&] {
+      if (i + 1 >= detected_count) {
+        return std::min(total_n, raw_end + padding_samples);
+      }
       const int64_t next_raw_start = detected[i + 1].start;
       const int64_t gap = next_raw_start - raw_end;
       if (gap >= 2 * padding_samples) {
-        cut_end = raw_end + padding_samples;
-      } else if (gap > 0) {
-        cut_end = raw_end + (gap / 2);
-      } else {
-        cut_end = raw_end;
+        return raw_end + padding_samples;
       }
-    } else {
-      cut_end = std::min(total_n, raw_end + padding_samples);
-    }
+      if (gap > 0) {
+        return raw_end + (gap / 2);
+      }
+      return raw_end;
+    }();
 
     cut_end = std::clamp(cut_end, cut_start, total_n);
     last_cut_end = cut_end;

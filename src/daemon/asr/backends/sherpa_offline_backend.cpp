@@ -439,7 +439,7 @@ std::string InferOffline(const sherpa::OfflineRecognizer* recognizer,
   stream.AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
   recognizer->Decode(stream);
 
-  return recognizer->GetText(stream);
+  return sherpa::OfflineRecognizer::GetText(stream);
 }
 
 // ---------------------------------------------------------------------------
