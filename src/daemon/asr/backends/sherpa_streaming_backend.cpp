@@ -196,7 +196,7 @@ private:
       return {};
     }
 
-    std::string text = vinput::str::Trim(recognizer_->GetText(stream_));
+    std::string text = std::string(vinput::str::Trim(recognizer_->GetText(stream_)));
     VLOG_DEBUG("streaming current result bytes={}", text.size());
     return text;
   }

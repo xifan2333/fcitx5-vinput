@@ -102,13 +102,13 @@ public:
 
   [[nodiscard]] bool Valid() const { return handle_ != nullptr; }
 
-  OfflineStream CreateStream() const {
+  [[nodiscard]] OfflineStream CreateStream() const {
     return OfflineStream(SherpaOnnxCreateOfflineStream(handle_));
   }
   void Decode(const OfflineStream& stream) const {
     SherpaOnnxDecodeOfflineStream(handle_, stream.handle_);
   }
-  [[nodiscard]] std::string GetText(const OfflineStream& stream) const {
+  [[nodiscard]] static std::string GetText(const OfflineStream& stream) {
     const auto* result = SherpaOnnxGetOfflineStreamResult(stream.handle_);
     std::string text;
     if (result != nullptr && result->text != nullptr) {
@@ -198,8 +198,10 @@ public:
 
   [[nodiscard]] bool Valid() const { return handle_ != nullptr; }
 
-  OnlineStream CreateStream() const { return OnlineStream(SherpaOnnxCreateOnlineStream(handle_)); }
-  bool IsReady(const OnlineStream& stream) const {
+  [[nodiscard]] OnlineStream CreateStream() const {
+    return OnlineStream(SherpaOnnxCreateOnlineStream(handle_));
+  }
+  [[nodiscard]] bool IsReady(const OnlineStream& stream) const {
     return SherpaOnnxIsOnlineStreamReady(handle_, stream.handle_) != 0;
   }
   void Decode(const OnlineStream& stream) const {
