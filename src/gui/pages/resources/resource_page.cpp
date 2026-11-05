@@ -155,6 +155,27 @@ void ApplyTableFilter(QTableWidget* table, const QString& filter_text) {
   }
 }
 
+void AttachTableLinkDoubleClickHandler(QTableWidget* table, int target_col) {
+  QObject::connect(table, &QTableWidget::cellDoubleClicked, table,
+                   [table, target_col](int row, int col) {
+                     if (col == target_col) {
+                       const auto* item = table->item(row, col);
+                       if (item != nullptr) {
+                         const QString url = item->data(Qt::UserRole).toString();
+                         if (!url.isEmpty()) {
+                           QDesktopServices::openUrl(QUrl(url));
+                         }
+                       }
+                     }
+                   });
+}
+
+QString ResolveLocalizedTitle(const vinput::registry::I18nMap& i18n_map, const std::string& id) {
+  const QString title =
+      QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id + ".title", ""));
+  return title.isEmpty() ? QString::fromStdString(id) : title;
+}
+
 bool ReloadAsrBackend(std::string* error = nullptr) {
   vinput::cli::DbusClient dbus;
   std::string daemon_error;
@@ -324,10 +345,7 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
 
   for (const auto& entry : entries) {
     const QString id = QString::fromStdString(entry.id);
-
-    const QString titleStr =
-        QString::fromStdString(vinput::registry::LookupI18n(i18n_map, entry.id + ".title", ""));
-    const QString title = titleStr.isEmpty() ? id : titleStr;
+    const QString title = ResolveLocalizedTitle(i18n_map, entry.id);
     const QString desc = QString::fromStdString(
         vinput::registry::LookupI18n(i18n_map, entry.id + ".description", ""));
 
@@ -519,30 +537,8 @@ ResourcePage::ResourcePage(QWidget* parent)
           &ResourcePage::updateProviderButtons);
   connect(tableAvailableAdapters_, &QTableWidget::itemSelectionChanged, this,
           &ResourcePage::updateAdapterButtons);
-  connect(tableAvailableProviders_, &QTableWidget::cellDoubleClicked, this,
-          [this](int row, int col) {
-            if (col == 4) {
-              const auto* item = tableAvailableProviders_->item(row, col);
-              if (item != nullptr) {
-                const QString url = item->data(Qt::UserRole).toString();
-                if (!url.isEmpty()) {
-                  QDesktopServices::openUrl(QUrl(url));
-                }
-              }
-            }
-          });
-  connect(tableAvailableAdapters_, &QTableWidget::cellDoubleClicked, this,
-          [this](int row, int col) {
-            if (col == 3) {
-              const auto* item = tableAvailableAdapters_->item(row, col);
-              if (item != nullptr) {
-                const QString url = item->data(Qt::UserRole).toString();
-                if (!url.isEmpty()) {
-                  QDesktopServices::openUrl(QUrl(url));
-                }
-              }
-            }
-          });
+  AttachTableLinkDoubleClickHandler(tableAvailableProviders_, 4);
+  AttachTableLinkDoubleClickHandler(tableAvailableAdapters_, 3);
   connect(filterAvailableProviders_, &QLineEdit::textChanged, this,
           [this](const QString& text) { ApplyTableFilter(tableAvailableProviders_, text); });
   connect(filterAvailableAdapters_, &QLineEdit::textChanged, this,
@@ -634,9 +630,7 @@ void ResourcePage::populateLocalModels(const std::vector<ModelSummary>& models) 
 
   for (const auto& model : models) {
     const QString id = QString::fromStdString(model.id);
-    const QString titleStr =
-        QString::fromStdString(vinput::registry::LookupI18n(i18n_map, model.id + ".title", ""));
-    const QString title = titleStr.isEmpty() ? id : titleStr;
+    const QString title = ResolveLocalizedTitle(i18n_map, model.id);
 
     const int row = tableInstalledModels_->rowCount();
     tableInstalledModels_->insertRow(row);
@@ -690,10 +684,7 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
 
   for (const auto& model : models) {
     const QString id = QString::fromStdString(model.id);
-
-    const QString titleStr =
-        QString::fromStdString(vinput::registry::LookupI18n(i18n_map, model.id + ".title", ""));
-    const QString title = titleStr.isEmpty() ? id : titleStr;
+    const QString title = ResolveLocalizedTitle(i18n_map, model.id);
     const QString desc = QString::fromStdString(
         vinput::registry::LookupI18n(i18n_map, model.id + ".description", ""));
 
