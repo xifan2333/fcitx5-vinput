@@ -10,6 +10,7 @@
 
 #include "common/utils/debug_log.h"
 
+#include "daemon/asr/sherpa_capi.h"
 #include "daemon/asr/vad_segmentation.h"
 
 namespace {
