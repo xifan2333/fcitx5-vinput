@@ -1,9 +1,10 @@
 #pragma once
 
 #include <optional>
-#include <sherpa-onnx/c-api/cxx-api.h>
 #include <string>
 #include <vector>
+
+#include "daemon/asr/sherpa_capi.h"
 
 struct VadTrimParams {
   float threshold = 0.35F;
@@ -42,7 +43,7 @@ public:
   void Shutdown();
 
 private:
-  std::optional<sherpa_onnx::cxx::VoiceActivityDetector> vad_;
+  std::optional<vinput::daemon::asr::sherpa::VoiceActivityDetector> vad_;
   int sample_rate_ = 16000;
   VadTrimParams params_{};
 };

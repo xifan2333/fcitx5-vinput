@@ -8,7 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <sherpa-onnx/c-api/cxx-api.h>
+#include <sherpa-onnx/c-api/c-api.h>
 #include <span>
 #include <string>
 #include <utility>
@@ -24,6 +24,7 @@
 #include "daemon/asr/hotword_utils.h"
 #include "daemon/asr/local_asr_model_loader.h"
 #include "daemon/asr/runtime/recognition_contract.h"
+#include "daemon/asr/sherpa_capi.h"
 #include "daemon/asr/sherpa_json_helpers.h"
 
 namespace vinput::daemon::asr {
@@ -45,8 +46,7 @@ int ChooseNumThreads(const glz::json_t& model_cfg, int runtime_default) {
 
 class SherpaStreamingSession : public RecognitionSession {
 public:
-  SherpaStreamingSession(const sherpa_onnx::cxx::OnlineRecognizer* recognizer,
-                         sherpa_onnx::cxx::OnlineStream stream)
+  SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer, sherpa::OnlineStream stream)
       : recognizer_(recognizer), stream_(std::move(stream)) {}
 
   SherpaStreamingSession(const SherpaStreamingSession&) = delete;
@@ -66,8 +66,7 @@ public:
       return false;
     }
 
-    if (!stream_.has_value() || stream_->Get() == nullptr || recognizer_ == nullptr ||
-        recognizer_->Get() == nullptr) {
+    if (!stream_.Valid() || recognizer_ == nullptr || !recognizer_->Valid()) {
       if (error != nullptr) {
         *error = "Streaming recognizer is not initialized.";
       }
@@ -81,10 +80,9 @@ public:
       return true;
     }
 
-    auto& stream = *stream_;
     UpdateAudioStats(samples);
 
-    stream.AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
+    stream_.AcceptWaveform(16000, samples.data(), static_cast<int32_t>(samples.size()));
     DecodeAvailable();
 
     if (error != nullptr) {
@@ -109,22 +107,20 @@ public:
       return true;
     }
 
-    if (!stream_.has_value() || stream_->Get() == nullptr || recognizer_ == nullptr ||
-        recognizer_->Get() == nullptr) {
+    if (!stream_.Valid() || recognizer_ == nullptr || !recognizer_->Valid()) {
       if (error != nullptr) {
         *error = "Streaming recognizer is not initialized.";
       }
       return false;
     }
 
-    auto& stream = *stream_;
     finished_ = true;
     if (total_samples_ > 0) {
       const std::vector<float> tail_padding(kTailPaddingSamples, 0.0F);
-      stream.AcceptWaveform(kStreamingSampleRate, tail_padding.data(),
-                            static_cast<int32_t>(tail_padding.size()));
+      stream_.AcceptWaveform(kStreamingSampleRate, tail_padding.data(),
+                             static_cast<int32_t>(tail_padding.size()));
     }
-    stream.InputFinished();
+    stream_.InputFinished();
     DecodeAvailable();
 
     std::string text = GetCurrentText();
@@ -174,16 +170,14 @@ private:
   }
 
   void DecodeAvailable() {
-    if (!stream_.has_value() || stream_->Get() == nullptr || recognizer_ == nullptr ||
-        recognizer_->Get() == nullptr) {
+    if (!stream_.Valid() || recognizer_ == nullptr || !recognizer_->Valid()) {
       return;
     }
 
-    auto& stream = *stream_;
     int decode_iterations = 0;
-    while (recognizer_->IsReady(&stream)) {
+    while (recognizer_->IsReady(stream_)) {
       ++decode_iterations;
-      recognizer_->Decode(&stream);
+      recognizer_->Decode(stream_);
       const std::string text = GetCurrentText();
       if (!text.empty() && text != last_partial_text_) {
         last_partial_text_ = text;
@@ -198,26 +192,22 @@ private:
   }
 
   [[nodiscard]] std::string GetCurrentText() const {
-    if (!stream_.has_value() || stream_->Get() == nullptr || recognizer_ == nullptr ||
-        recognizer_->Get() == nullptr) {
+    if (!stream_.Valid() || recognizer_ == nullptr || !recognizer_->Valid()) {
       return {};
     }
 
-    const auto& stream = *stream_;
-    const auto result = recognizer_->GetResult(&stream);
-    std::string text = std::string(vinput::str::Trim(result.text));
-    VLOG_DEBUG("streaming current result bytes={} token_count={}", text.size(),
-               result.tokens.size());
+    std::string text = std::string(vinput::str::Trim(recognizer_->GetText(stream_)));
+    VLOG_DEBUG("streaming current result bytes={}", text.size());
     return text;
   }
 
   void Reset() {
-    stream_.reset();
+    stream_ = sherpa::OnlineStream{};
     recognizer_ = nullptr;
   }
 
-  const sherpa_onnx::cxx::OnlineRecognizer* recognizer_ = nullptr;
-  std::optional<sherpa_onnx::cxx::OnlineStream> stream_;
+  const sherpa::OnlineRecognizer* recognizer_ = nullptr;
+  sherpa::OnlineStream stream_;
   bool finished_ = false;
   std::size_t total_samples_ = 0;
   double peak_abs_ = 0.0;
@@ -253,13 +243,12 @@ public:
 
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
     const std::scoped_lock lock(recognizer_mutex_);
-    if (!InitializeRecognizerLocked(error) || !recognizer_.has_value() ||
-        recognizer_->Get() == nullptr) {
+    if (!InitializeRecognizerLocked(error) || !recognizer_.has_value() || !recognizer_->Valid()) {
       return nullptr;
     }
 
     auto stream = recognizer_->CreateStream();
-    if (stream.Get() == nullptr) {
+    if (!stream.Valid()) {
       if (error != nullptr) {
         *error = "failed to create sherpa-streaming stream";
       }
@@ -274,14 +263,14 @@ public:
 
 private:
   bool InitializeRecognizerLocked(std::string* error) {
-    if (recognizer_.has_value() && recognizer_->Get() != nullptr) {
+    if (recognizer_.has_value() && recognizer_->Valid()) {
       if (error != nullptr) {
         error->clear();
       }
       return true;
     }
 
-    sherpa_onnx::cxx::OnlineRecognizerConfig config;
+    SherpaOnnxOnlineRecognizerConfig config = {};
     const auto& recognizer_cfg = model_info_.recognizer_config;
     const auto& model_cfg = model_info_.model_config;
     const auto& feat_cfg = vinput::json::Object(recognizer_cfg, "feat_config");
@@ -306,6 +295,8 @@ private:
     const std::string hotwords_buf = JsonString(recognizer_cfg, "hotwords_buf");
     std::string selected_hotwords_file;
     std::string normalized_transducer_hotwords;
+    std::string p_provider;
+    std::string p_decoding_method;
     bool use_hotwords_buf = false;
 
     const bool provider_hotwords_configured =
@@ -336,13 +327,15 @@ private:
       }
     }
 
-    config.model_config.tokens = tokens_path;
+    config.model_config.tokens = tokens_path.c_str();
     config.model_config.num_threads = ChooseNumThreads(model_cfg, asr_config_.thread_num);
-    config.model_config.provider = JsonString(model_cfg, "provider", "cpu");
-    config.decoding_method = JsonString(recognizer_cfg, "decoding_method", "greedy_search");
+    p_provider = JsonString(model_cfg, "provider", "cpu");
+    config.model_config.provider = p_provider.c_str();
+    p_decoding_method = JsonString(recognizer_cfg, "decoding_method", "greedy_search");
+    config.decoding_method = p_decoding_method.c_str();
     config.max_active_paths = JsonInt(recognizer_cfg, "max_active_paths", 4);
     config.blank_penalty = JsonFloat(recognizer_cfg, "blank_penalty", 0.0F);
-    config.enable_endpoint = JsonBool(recognizer_cfg, "enable_endpoint", true);
+    config.enable_endpoint = JsonBool(recognizer_cfg, "enable_endpoint", true) ? 1 : 0;
     config.rule1_min_trailing_silence =
         JsonFloat(recognizer_cfg, "rule1_min_trailing_silence", 2.4F);
     config.rule2_min_trailing_silence =
@@ -351,55 +344,58 @@ private:
         JsonFloat(recognizer_cfg, "rule3_min_utterance_length", 20.0F);
     config.hotwords_score = JsonFloat(recognizer_cfg, "hotwords_score", 1.5F);
     if (!explicit_model_type.empty()) {
-      config.model_config.model_type = explicit_model_type;
+      config.model_config.model_type = explicit_model_type.c_str();
     }
     if (!modeling_unit.empty()) {
-      config.model_config.modeling_unit = modeling_unit;
+      config.model_config.modeling_unit = modeling_unit.c_str();
     }
     if (!f_bpe_vocab.empty()) {
-      config.model_config.bpe_vocab = f_bpe_vocab;
+      config.model_config.bpe_vocab = f_bpe_vocab.c_str();
     }
     if (!tokens_buf.empty()) {
-      config.model_config.tokens_buf = tokens_buf;
+      config.model_config.tokens_buf = tokens_buf.c_str();
+      config.model_config.tokens_buf_size = static_cast<int32_t>(tokens_buf.size());
     }
     if (!f_rule_fsts.empty()) {
-      config.rule_fsts = f_rule_fsts;
+      config.rule_fsts = f_rule_fsts.c_str();
     }
     if (!f_rule_fars.empty()) {
-      config.rule_fars = f_rule_fars;
+      config.rule_fars = f_rule_fars.c_str();
     }
     if (!f_graph.empty()) {
-      config.ctc_fst_decoder_config.graph = f_graph;
+      config.ctc_fst_decoder_config.graph = f_graph.c_str();
       config.ctc_fst_decoder_config.max_active = JsonInt(
           vinput::json::Object(recognizer_cfg, "ctc_fst_decoder_config"), "max_active", 3000);
     }
     if (!normalized_transducer_hotwords.empty()) {
-      config.hotwords_buf = normalized_transducer_hotwords;
+      config.hotwords_buf = normalized_transducer_hotwords.c_str();
+      config.hotwords_buf_size = static_cast<int32_t>(normalized_transducer_hotwords.size());
       config.decoding_method = "modified_beam_search";
     } else if (use_hotwords_buf) {
-      config.hotwords_buf = hotwords_buf;
+      config.hotwords_buf = hotwords_buf.c_str();
+      config.hotwords_buf_size = static_cast<int32_t>(hotwords_buf.size());
       config.decoding_method = "modified_beam_search";
     }
     if (!f_hr_lexicon.empty()) {
-      config.hr.lexicon = f_hr_lexicon;
+      config.hr.lexicon = f_hr_lexicon.c_str();
     }
     if (!f_hr_rule_fsts.empty()) {
-      config.hr.rule_fsts = f_hr_rule_fsts;
+      config.hr.rule_fsts = f_hr_rule_fsts.c_str();
     }
 
     if (model_info_.family == "transducer") {
-      config.model_config.transducer.encoder = f_encoder;
-      config.model_config.transducer.decoder = f_decoder;
-      config.model_config.transducer.joiner = f_joiner;
+      config.model_config.transducer.encoder = f_encoder.c_str();
+      config.model_config.transducer.decoder = f_decoder.c_str();
+      config.model_config.transducer.joiner = f_joiner.c_str();
     } else if (model_info_.family == "zipformer2_ctc") {
-      config.model_config.zipformer2_ctc.model = f_model;
+      config.model_config.zipformer2_ctc.model = f_model.c_str();
     } else if (model_info_.family == "paraformer") {
-      config.model_config.paraformer.encoder = f_encoder;
-      config.model_config.paraformer.decoder = f_decoder;
+      config.model_config.paraformer.encoder = f_encoder.c_str();
+      config.model_config.paraformer.decoder = f_decoder.c_str();
     } else if (model_info_.family == "nemo_ctc") {
-      config.model_config.nemo_ctc.model = f_model;
+      config.model_config.nemo_ctc.model = f_model.c_str();
     } else if (model_info_.family == "t_one_ctc") {
-      config.model_config.t_one_ctc.model = f_model;
+      config.model_config.t_one_ctc.model = f_model.c_str();
     } else {
       if (error != nullptr) {
         *error = "Unsupported sherpa-streaming model family '" + model_info_.family + "'";
@@ -407,8 +403,8 @@ private:
       return false;
     }
 
-    auto recognizer = sherpa_onnx::cxx::OnlineRecognizer::Create(config);
-    if (recognizer.Get() == nullptr) {
+    auto recognizer = sherpa::OnlineRecognizer::Create(config);
+    if (!recognizer.has_value()) {
       if (error != nullptr) {
         *error =
             "failed to create sherpa-streaming recognizer for family '" + model_info_.family + "'";
@@ -431,24 +427,24 @@ private:
   }
 
   void WarmupRecognizerLocked() {
-    if (!recognizer_.has_value() || recognizer_->Get() == nullptr) {
+    if (!recognizer_.has_value() || !recognizer_->Valid()) {
       return;
     }
 
     auto stream = recognizer_->CreateStream();
-    if (stream.Get() == nullptr) {
+    if (!stream.Valid()) {
       VLOG_WARN("streaming warmup skipped (stream create failed)");
       return;
     }
 
     std::vector<float> silence(16000 / 5, 0.0F);
     stream.AcceptWaveform(16000, silence.data(), static_cast<int32_t>(silence.size()));
-    while (recognizer_->IsReady(&stream)) {
-      recognizer_->Decode(&stream);
+    while (recognizer_->IsReady(stream)) {
+      recognizer_->Decode(stream);
     }
     stream.InputFinished();
-    while (recognizer_->IsReady(&stream)) {
-      recognizer_->Decode(&stream);
+    while (recognizer_->IsReady(stream)) {
+      recognizer_->Decode(stream);
     }
 
     VLOG_DEBUG("streaming recognizer warmup completed");
@@ -458,7 +454,7 @@ private:
   AsrConfig asr_config_;
   std::string provider_id_;
   std::mutex recognizer_mutex_;
-  std::optional<sherpa_onnx::cxx::OnlineRecognizer> recognizer_;
+  std::optional<sherpa::OnlineRecognizer> recognizer_;
 };
 
 } // namespace
