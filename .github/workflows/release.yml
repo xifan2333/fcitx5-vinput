@@ -475,6 +475,19 @@ jobs:
             -e "s|@VINPUT_RELEASE_COMMIT@|${GITHUB_SHA}|g" \
             packaging/flatpak/release-manifest-lite.yaml
 
+          # Branch dispatches (workflow_dispatch) render tag=main, a moving
+          # pointer: flatpak-builder re-resolves the branch at build time and
+          # fails if main advanced since dispatch. Drop `tag:` so the module
+          # pins only the commit, which is checked out directly without any
+          # branch resolution. Tag pushes keep tag+commit (both immutable).
+          if [[ "${{ github.ref_type }}" != "tag" ]]; then
+            sed -i -e '/^[[:space:]]*tag:/d' packaging/flatpak/release-manifest.yaml
+            sed -i -e '/^[[:space:]]*tag:/d' packaging/flatpak/release-manifest-lite.yaml
+          fi
+
+          grep -nE 'tag:|commit:' packaging/flatpak/release-manifest.yaml \
+            packaging/flatpak/release-manifest-lite.yaml
+
       - name: Build Full Flatpak bundle
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
