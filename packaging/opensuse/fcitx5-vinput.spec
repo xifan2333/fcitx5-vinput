@@ -35,7 +35,6 @@ BuildRequires:  pkg-config
 BuildRequires:  fcitx5-devel
 BuildRequires:  qt6-base-devel
 BuildRequires:  qt6-tools-devel
-BuildRequires:  libcurl-devel
 BuildRequires:  libopenssl-devel
 BuildRequires:  libarchive-devel
 BuildRequires:  libopenblas_pthreads-devel
@@ -46,7 +45,6 @@ BuildRequires:  openblas-common-devel
 
 Requires:       fcitx5
 Requires:       pipewire
-Requires:       curl
 Requires:       systemd
 Recommends:     wireplumber
 

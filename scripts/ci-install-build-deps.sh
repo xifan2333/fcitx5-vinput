@@ -61,7 +61,6 @@ ubuntu24.04)
     python3 \
     zstd \
     libblas-dev \
-    libcurl4-openssl-dev \
     liblapack-dev \
     libopenblas-dev \
     libssl-dev \
@@ -94,7 +93,6 @@ debian12)
     python3 \
     zstd \
     libblas-dev \
-    libcurl4-openssl-dev \
     liblapack-dev \
     libopenblas-dev \
     libssl-dev \
@@ -122,7 +120,6 @@ fedora43)
     gettext \
     curl \
     zstd \
-    libcurl-devel \
     openssl-devel \
     libarchive-devel \
     pipewire-devel \
@@ -143,7 +140,6 @@ opensuse-leap)
     jq \
     lapack-devel \
     libarchive-devel \
-    libcurl-devel \
     libopenblas_pthreads-devel \
     libopenssl-devel \
     make \

@@ -63,7 +63,6 @@
                 (with pkgs; [
                   fcitx5
                   systemdLibs
-                  curl
                   libarchive
                   openssl
                   pipewire
