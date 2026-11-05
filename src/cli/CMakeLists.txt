@@ -1,5 +1,3 @@
-pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
-
 add_library(client_runtime STATIC
     runtime/dbus_client.cpp
     runtime/systemd_client.cpp
@@ -12,12 +10,11 @@ set_target_properties(client_runtime PROPERTIES
 
 target_include_directories(client_runtime PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${SDBUS_INCLUDE_DIRS}
 )
 
 target_link_libraries(client_runtime PUBLIC
     config
-    ${SDBUS_LIBRARIES}
+    PkgConfig::SDBUS
 )
 
 add_executable(cli
@@ -49,8 +46,6 @@ set_target_properties(cli PROPERTIES OUTPUT_NAME "vinput")
 
 target_include_directories(cli PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${PIPEWIRE_INCLUDE_DIRS}
-    ${SDBUS_INCLUDE_DIRS}
 )
 
 target_link_libraries(cli PRIVATE
@@ -59,8 +54,6 @@ target_link_libraries(cli PRIVATE
     client_runtime
     CLI11::CLI11
     tabulate::tabulate
-    ${PIPEWIRE_LIBRARIES}
-    ${SDBUS_LIBRARIES}
 )
 
 install(TARGETS cli

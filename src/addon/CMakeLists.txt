@@ -24,13 +24,12 @@ target_link_libraries(addon PRIVATE
     Fcitx5::Module::DBus
     Fcitx5::Module::Clipboard
     Fcitx5::Module::Notifications
-    ${SDBUS_LIBRARIES}
-    pthread
+    PkgConfig::SDBUS
+    Threads::Threads
 )
 target_include_directories(addon PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${SDBUS_INCLUDE_DIRS}
 )
 set_target_properties(addon PROPERTIES
     PREFIX ""

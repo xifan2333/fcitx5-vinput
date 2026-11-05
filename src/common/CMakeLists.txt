@@ -88,8 +88,6 @@ target_link_libraries(common PUBLIC
     indicators::indicators
 )
 
-pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
-
 add_library(pipewire_device STATIC
     audio/pipewire_device.cpp
 )
@@ -101,10 +99,9 @@ set_target_properties(pipewire_device PROPERTIES
 
 target_include_directories(pipewire_device PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${PIPEWIRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(pipewire_device PUBLIC
     config
-    ${PIPEWIRE_LIBRARIES}
+    PkgConfig::PIPEWIRE
 )

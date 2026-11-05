@@ -28,14 +28,9 @@ include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cma
 
 # Compiler behavior, C++20 enforcement, diagnostics, and LTO
 include(cmake/CompilerSettings.cmake)
-find_package(PkgConfig REQUIRED)
-find_package(Gettext REQUIRED)
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-find_package(Threads REQUIRED)
 
-pkg_check_modules(SDBUS REQUIRED libsystemd)
-find_package(LibArchive REQUIRED)
-find_package(OpenSSL REQUIRED)
+# System dependencies (PkgConfig, Threads, Gettext, LibArchive, OpenSSL, SDBUS, PIPEWIRE)
+include(cmake/Dependencies.cmake)
 
 # 3rdparty vendored header-only libraries (SYSTEM INTERFACE)
 include(cmake/ThirdParty.cmake)

@@ -1,6 +1,3 @@
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
-
 add_executable(test_pipewire_target
     test_pipewire_target.cpp
 )
@@ -48,8 +45,8 @@ target_link_libraries(modifier_key_tests PRIVATE
     Fcitx5::Module::DBus
     Fcitx5::Module::Clipboard
     Fcitx5::Module::Notifications
-    ${SDBUS_LIBRARIES}
-    pthread
+    PkgConfig::SDBUS
+    Threads::Threads
 )
 
 add_test(NAME modifier_key_tests COMMAND modifier_key_tests)
@@ -145,7 +142,7 @@ target_include_directories(test_process_session PRIVATE
 
 target_link_libraries(test_process_session PRIVATE
     common
-    pthread
+    Threads::Threads
 )
 
 add_test(NAME test_process_session COMMAND test_process_session)
@@ -160,7 +157,7 @@ target_include_directories(test_adapter_manager PRIVATE
 
 target_link_libraries(test_adapter_manager PRIVATE
     common
-    pthread
+    Threads::Threads
 )
 
 add_test(NAME test_adapter_manager COMMAND test_adapter_manager)
@@ -175,7 +172,7 @@ target_include_directories(test_notification_bridge PRIVATE
 
 target_link_libraries(test_notification_bridge PRIVATE
     common
-    pthread
+    Threads::Threads
 )
 
 add_test(NAME test_notification_bridge COMMAND test_notification_bridge)
@@ -187,13 +184,12 @@ add_executable(test_desktop_notification_sender
 
 target_include_directories(test_desktop_notification_sender PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${SDBUS_INCLUDE_DIRS}
 )
 
 target_link_libraries(test_desktop_notification_sender PRIVATE
     common
-    pthread
-    ${SDBUS_LIBRARIES}
+    Threads::Threads
+    PkgConfig::SDBUS
 )
 
 add_test(NAME test_desktop_notification_sender COMMAND test_desktop_notification_sender)
@@ -291,7 +287,7 @@ target_include_directories(test_async_context_writer PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/addon
 )
-target_link_libraries(test_async_context_writer PRIVATE common pthread)
+target_link_libraries(test_async_context_writer PRIVATE common Threads::Threads)
 add_test(NAME test_async_context_writer COMMAND test_async_context_writer)
 
 add_executable(test_post_processor
@@ -300,7 +296,7 @@ add_executable(test_post_processor
     ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/prompt_template.cpp
 )
 target_include_directories(test_post_processor PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_post_processor PRIVATE common pthread)
+target_link_libraries(test_post_processor PRIVATE common Threads::Threads)
 add_test(NAME test_post_processor COMMAND test_post_processor)
 
 add_executable(test_recognition_pipeline
@@ -310,12 +306,12 @@ add_executable(test_recognition_pipeline
     ${CMAKE_SOURCE_DIR}/src/daemon/postprocess/prompt_template.cpp
 )
 target_include_directories(test_recognition_pipeline PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_recognition_pipeline PRIVATE common pthread)
+target_link_libraries(test_recognition_pipeline PRIVATE common Threads::Threads)
 add_test(NAME test_recognition_pipeline COMMAND test_recognition_pipeline)
 
 add_executable(test_http_client test_http_client.cpp)
 target_include_directories(test_http_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_http_client PRIVATE common pthread)
+target_link_libraries(test_http_client PRIVATE common Threads::Threads)
 add_test(NAME test_http_client COMMAND test_http_client)
 
 add_executable(test_remote_text_service
@@ -324,12 +320,12 @@ add_executable(test_remote_text_service
     ${CMAKE_SOURCE_DIR}/src/daemon/remote/remote_text_service.cpp
 )
 target_include_directories(test_remote_text_service PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_remote_text_service PRIVATE common pthread)
+target_link_libraries(test_remote_text_service PRIVATE common Threads::Threads)
 add_test(NAME test_remote_text_service COMMAND test_remote_text_service)
 
 add_executable(test_downloader test_downloader.cpp)
 target_include_directories(test_downloader PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_downloader PRIVATE common pthread)
+target_link_libraries(test_downloader PRIVATE common Threads::Threads)
 add_test(NAME test_downloader COMMAND test_downloader)
 
 add_executable(test_string_utils test_string_utils.cpp)
@@ -375,19 +371,19 @@ add_test(NAME test_time_utils COMMAND test_time_utils)
 
 add_executable(test_file_utils test_file_utils.cpp)
 target_include_directories(test_file_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_file_utils PRIVATE common pthread)
+target_link_libraries(test_file_utils PRIVATE common Threads::Threads)
 add_test(NAME test_file_utils COMMAND test_file_utils)
 
 add_executable(test_sandbox test_sandbox.cpp)
 target_include_directories(test_sandbox PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_sandbox PRIVATE common pthread)
+target_link_libraries(test_sandbox PRIVATE common Threads::Threads)
 add_test(NAME test_sandbox COMMAND test_sandbox)
 
 add_executable(test_bpe_vocab_exporter
     test_bpe_vocab_exporter.cpp
 )
 target_include_directories(test_bpe_vocab_exporter PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_bpe_vocab_exporter PRIVATE common pthread)
+target_link_libraries(test_bpe_vocab_exporter PRIVATE common Threads::Threads)
 add_test(NAME test_bpe_vocab_exporter COMMAND test_bpe_vocab_exporter)
 
 add_executable(test_hotword_utils
@@ -395,12 +391,12 @@ add_executable(test_hotword_utils
     ${CMAKE_SOURCE_DIR}/src/daemon/asr/hotword_utils.cpp
 )
 target_include_directories(test_hotword_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_hotword_utils PRIVATE common pthread)
+target_link_libraries(test_hotword_utils PRIVATE common Threads::Threads)
 add_test(NAME test_hotword_utils COMMAND test_hotword_utils)
 
 add_executable(test_model_manager test_model_manager.cpp)
 target_include_directories(test_model_manager PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_model_manager PRIVATE common pthread)
+target_link_libraries(test_model_manager PRIVATE common Threads::Threads)
 add_test(NAME test_model_manager COMMAND test_model_manager)
 
 add_executable(test_output_ducker
@@ -408,7 +404,7 @@ add_executable(test_output_ducker
     ${CMAKE_SOURCE_DIR}/src/daemon/audio/output_ducker.cpp
 )
 target_include_directories(test_output_ducker PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_output_ducker PRIVATE common pthread)
+target_link_libraries(test_output_ducker PRIVATE common Threads::Threads)
 add_test(NAME test_output_ducker COMMAND test_output_ducker)
 
 add_executable(test_locale_utils test_locale_utils.cpp)
@@ -417,12 +413,12 @@ add_test(NAME test_locale_utils COMMAND test_locale_utils)
 
 add_executable(test_logging test_logging.cpp)
 target_include_directories(test_logging PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_logging PRIVATE common pthread)
+target_link_libraries(test_logging PRIVATE common Threads::Threads)
 add_test(NAME test_logging COMMAND test_logging)
 
 add_executable(test_audio_realtime_queue test_audio_realtime_queue.cpp)
 target_include_directories(test_audio_realtime_queue PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(test_audio_realtime_queue PRIVATE readerwriterqueue::readerwriterqueue pthread)
+target_link_libraries(test_audio_realtime_queue PRIVATE readerwriterqueue::readerwriterqueue Threads::Threads)
 add_test(NAME test_audio_realtime_queue COMMAND test_audio_realtime_queue)
 
 find_package(Qt6 COMPONENTS Core QUIET)
@@ -437,7 +433,7 @@ if(Qt6_FOUND)
     )
     target_link_libraries(test_download_worker PRIVATE
         Qt6::Core
-        pthread
+        Threads::Threads
     )
     set_target_properties(test_download_worker PROPERTIES AUTOMOC ON)
     add_test(NAME test_download_worker COMMAND test_download_worker)

@@ -25,7 +25,6 @@ else()
     set(VINPUT_LOCAL_ASR_INCLUDES)
 endif()
 
-pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 set(VINPUT_SYSTEMD_SERVICE_FILE
     "${CMAKE_CURRENT_BINARY_DIR}/vinput-daemon.service")
 set(VINPUT_DBUS_SERVICE_FILE
@@ -74,7 +73,6 @@ target_compile_definitions(daemon PRIVATE
 
 target_include_directories(daemon PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${PIPEWIRE_INCLUDE_DIRS}
     ${VINPUT_LOCAL_ASR_INCLUDES}
 )
 
@@ -83,10 +81,9 @@ target_link_libraries(daemon PRIVATE
     pipewire_device
     base64::base64
     readerwriterqueue::readerwriterqueue
-    ${PIPEWIRE_LIBRARIES}
-    ${SDBUS_LIBRARIES}
+    PkgConfig::SDBUS
     ${VINPUT_LOCAL_ASR_LIBS}
-    pthread
+    Threads::Threads
 )
 
 if(VINPUT_ENABLE_LOCAL_ASR)
