@@ -1059,8 +1059,10 @@ void ResourcePage::onDownloadModelClicked() {
 #endif
 }
 
-void ResourcePage::onAddProviderClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
+void ResourcePage::startScriptDownloadTask(QTableWidget* table, QPushButton* action_button,
+                                           vinput::script::Kind kind, bool is_update,
+                                           const QString& log_format) {
+  const auto selected = GetSelectedResourceItem(table);
   if (!selected) {
     return;
   }
@@ -1068,44 +1070,18 @@ void ResourcePage::onAddProviderClicked() {
   const QString title = selected->title;
 
   abortDownload();
-  btnAddProvider_->setEnabled(false);
+  action_button->setEnabled(false);
 
   downloadWorker_ = new DownloadWorker(this);
   connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this,
-          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
 
-  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = CoreConfigView(config).AsrProviderRegistryUrls();
-    return ExecuteScriptInstallOrUpdateTask(
-        vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
-        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-          return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
-        });
-  });
-  textLog_->append(tr("Installing provider %1...").arg(title));
-  downloadWorker_->start();
-}
-
-void ResourcePage::onUpdateProviderClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
-  if (!selected) {
-    return;
-  }
-  const QString id = selected->id;
-  const QString title = selected->title;
-
-  abortDownload();
-  btnUpdateProvider_->setEnabled(false);
-
-  downloadWorker_ = new DownloadWorker(this);
-  connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
+  const bool is_asr = (kind == vinput::script::Kind::kAsrProvider);
   auto updateSucceeded = std::make_shared<std::atomic_bool>(false);
+
   connect(downloadWorker_, &QThread::finished, this,
-          [this, id, updateSucceeded, worker = downloadWorker_]() {
+          [this, id, is_asr, is_update, updateSucceeded, worker = downloadWorker_]() {
             onDownloadFinished(worker);
-            if (!updateSucceeded->load()) {
+            if (!is_update || !is_asr || !updateSucceeded->load()) {
               return;
             }
             const CoreConfig config = ConfigManager::Get().Load();
@@ -1119,80 +1095,48 @@ void ResourcePage::onUpdateProviderClicked() {
             }
           });
 
-  downloadWorker_->SetTask(
-      [id, updateSucceeded](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-        const CoreConfig config = ConfigManager::Get().Load();
-        auto urls = CoreConfigView(config).AsrProviderRegistryUrls();
-        const bool saved = ExecuteScriptInstallOrUpdateTask(
-            vinput::script::Kind::kAsrProvider, id.toStdString(), urls, err, cancel_token,
-            [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-              return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
-            },
-            /*is_update=*/true);
-        updateSucceeded->store(saved);
-        return saved;
-      });
-  textLog_->append(tr("Updating provider %1...").arg(title));
+  downloadWorker_->SetTask([id, kind, is_update, updateSucceeded](
+                               std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+    const CoreConfig config = ConfigManager::Get().Load();
+    const auto urls = (kind == vinput::script::Kind::kAsrProvider)
+                          ? CoreConfigView(config).AsrProviderRegistryUrls()
+                          : CoreConfigView(config).LlmAdapterRegistryUrls();
+    const bool saved = ExecuteScriptInstallOrUpdateTask(
+        kind, id.toStdString(), urls, err, cancel_token,
+        [kind](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+          if (kind == vinput::script::Kind::kAsrProvider) {
+            return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
+          }
+          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
+        },
+        is_update);
+    updateSucceeded->store(saved);
+    return saved;
+  });
+
+  textLog_->append(log_format.arg(title));
   downloadWorker_->start();
+}
+
+void ResourcePage::onAddProviderClicked() {
+  startScriptDownloadTask(tableAvailableProviders_, btnAddProvider_,
+                          vinput::script::Kind::kAsrProvider, false,
+                          tr("Installing provider %1..."));
+}
+
+void ResourcePage::onUpdateProviderClicked() {
+  startScriptDownloadTask(tableAvailableProviders_, btnUpdateProvider_,
+                          vinput::script::Kind::kAsrProvider, true, tr("Updating provider %1..."));
 }
 
 void ResourcePage::onAddAdapterClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
-  if (!selected) {
-    return;
-  }
-  const QString id = selected->id;
-  const QString title = selected->title;
-
-  abortDownload();
-  btnAddAdapter_->setEnabled(false);
-
-  downloadWorker_ = new DownloadWorker(this);
-  connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this,
-          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
-
-  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = CoreConfigView(config).LlmAdapterRegistryUrls();
-    return ExecuteScriptInstallOrUpdateTask(
-        vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
-        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-        });
-  });
-  textLog_->append(tr("Installing adapter %1...").arg(title));
-  downloadWorker_->start();
+  startScriptDownloadTask(tableAvailableAdapters_, btnAddAdapter_,
+                          vinput::script::Kind::kLlmAdapter, false, tr("Installing adapter %1..."));
 }
 
 void ResourcePage::onUpdateAdapterClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
-  if (!selected) {
-    return;
-  }
-  const QString id = selected->id;
-  const QString title = selected->title;
-
-  abortDownload();
-  btnUpdateAdapter_->setEnabled(false);
-
-  downloadWorker_ = new DownloadWorker(this);
-  connect(downloadWorker_, &DownloadWorker::error, this, &ResourcePage::onDownloadError);
-  connect(downloadWorker_, &QThread::finished, this,
-          [this, worker = downloadWorker_]() { onDownloadFinished(worker); });
-
-  downloadWorker_->SetTask([id](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const CoreConfig config = ConfigManager::Get().Load();
-    auto urls = CoreConfigView(config).LlmAdapterRegistryUrls();
-    return ExecuteScriptInstallOrUpdateTask(
-        vinput::script::Kind::kLlmAdapter, id.toStdString(), urls, err, cancel_token,
-        [](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-        },
-        /*is_update=*/true);
-  });
-  textLog_->append(tr("Updating adapter %1...").arg(title));
-  downloadWorker_->start();
+  startScriptDownloadTask(tableAvailableAdapters_, btnUpdateAdapter_,
+                          vinput::script::Kind::kLlmAdapter, true, tr("Updating adapter %1..."));
 }
 
 void ResourcePage::updateProviderButtons() {
@@ -1217,94 +1161,109 @@ void ResourcePage::updateAdapterButtons() {
                             });
 }
 
-void ResourcePage::onRemoveProviderClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableProviders_);
+// Confirms removal of a registry script (ASR provider or LLM adapter), mutates the
+// configuration through mutate_fn, persists it, cleans up the installed script, and refreshes
+// the UI. Running LLM adapters are stopped up-front; if the config save fails, a previously
+// stopped adapter is restarted to restore its prior state.
+template <typename MutateFn, typename PostRemoveFn>
+void ResourcePage::removeScriptItem(QTableWidget* table, vinput::script::Kind kind,
+                                    const QString& confirm_question, const QString& removed_log,
+                                    const MutateFn& mutate_fn, const PostRemoveFn& post_remove_fn) {
+  const auto selected = GetSelectedResourceItem(table);
   if (!selected) {
     return;
   }
   const QString id = selected->id;
   const QString title = selected->title;
 
-  const auto response = QMessageBox::question(
-      this, tr("Confirm"), tr("Are you sure you want to remove ASR provider '%1'?").arg(title));
+  const auto response = QMessageBox::question(this, tr("Confirm"), confirm_question.arg(title));
   if (response != QMessageBox::Yes) {
     return;
   }
 
+  const std::string script_id = id.toStdString();
+  bool stopped_adapter = false;
+  if (kind == vinput::script::Kind::kLlmAdapter && vinput::adapter::IsRunning(script_id)) {
+    vinput::cli::DbusClient dbus;
+    std::string err;
+    if (!dbus.StopAdapter(script_id, &err)) {
+      QMessageBox::warning(this, tr("Error"), tr("Failed to stop adapter."));
+      return;
+    }
+    stopped_adapter = true;
+  }
+
   CoreConfig config = ConfigManager::Get().Load();
-  auto it = std::ranges::remove_if(config.asr.providers, [&](const AsrProvider& p) {
-    return AsrProviderId(p) == id.toStdString();
-  });
-  if (it.begin() == config.asr.providers.end()) {
+  if (!mutate_fn(config, script_id)) {
     return;
-  }
-  if (std::holds_alternative<LocalAsrProvider>(*it.begin())) {
-    QMessageBox::warning(this, tr("Error"), tr("The local ASR provider cannot be removed."));
-    return;
-  }
-  config.asr.providers.erase(it.begin(), config.asr.providers.end());
-  const bool was_active = (config.asr.activeProvider == id.toStdString());
-  if (was_active) {
-    config.asr.activeProvider.clear();
   }
 
   if (!ConfigManager::Get().Save(config)) {
+    if (stopped_adapter) {
+      vinput::cli::DbusClient dbus;
+      std::string err;
+      dbus.StartAdapter(script_id, &err);
+    }
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
 
-  CleanupInstalledScript(vinput::script::Kind::kAsrProvider, id.toStdString());
-  textLog_->append(tr("Removed ASR provider %1.").arg(title));
+  CleanupInstalledScript(kind, script_id);
+  textLog_->append(removed_log.arg(title));
   refreshAll();
   emit configChanged();
-  if (was_active) {
-    RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-      if (!ok) {
-        QMessageBox::warning(this, tr("Warning"),
-                             tr("Config saved, but failed to reload ASR backend: %1")
-                                 .arg(QString::fromStdString(err)));
-      }
-    });
-  }
+  post_remove_fn();
+}
+
+void ResourcePage::onRemoveProviderClicked() {
+  bool was_active = false;
+  removeScriptItem(
+      tableAvailableProviders_, vinput::script::Kind::kAsrProvider,
+      tr("Are you sure you want to remove ASR provider '%1'?"), tr("Removed ASR provider %1."),
+      [this, &was_active](CoreConfig& config, const std::string& id) {
+        auto it = std::ranges::find_if(
+            config.asr.providers, [&](const AsrProvider& p) { return AsrProviderId(p) == id; });
+        if (it == config.asr.providers.end()) {
+          return false;
+        }
+        if (std::holds_alternative<LocalAsrProvider>(*it)) {
+          QMessageBox::warning(this, tr("Error"), tr("The local ASR provider cannot be removed."));
+          return false;
+        }
+        config.asr.providers.erase(it);
+        was_active = (config.asr.activeProvider == id);
+        if (was_active) {
+          config.asr.activeProvider.clear();
+        }
+        return true;
+      },
+      [this, &was_active]() {
+        if (was_active) {
+          RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
+            if (!ok) {
+              QMessageBox::warning(this, tr("Warning"),
+                                   tr("Config saved, but failed to reload ASR backend: %1")
+                                       .arg(QString::fromStdString(err)));
+            }
+          });
+        }
+      });
 }
 
 void ResourcePage::onRemoveAdapterClicked() {
-  const auto selected = GetSelectedResourceItem(tableAvailableAdapters_);
-  if (!selected) {
-    return;
-  }
-  const QString id = selected->id;
-  const QString title = selected->title;
-
-  const auto response = QMessageBox::question(
-      this, tr("Confirm"), tr("Are you sure you want to remove LLM adapter '%1'?").arg(title));
-  if (response != QMessageBox::Yes) {
-    return;
-  }
-
-  if (vinput::adapter::IsRunning(id.toStdString())) {
-    vinput::cli::DbusClient dbus;
-    std::string err;
-    dbus.StopAdapter(id.toStdString(), &err);
-  }
-
-  CoreConfig config = ConfigManager::Get().Load();
-  auto it = std::ranges::remove_if(config.llm.adapters,
-                                   [&](const LlmAdapter& a) { return a.id == id.toStdString(); });
-  if (it.begin() == config.llm.adapters.end()) {
-    return;
-  }
-  config.llm.adapters.erase(it.begin(), config.llm.adapters.end());
-
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-
-  CleanupInstalledScript(vinput::script::Kind::kLlmAdapter, id.toStdString());
-  textLog_->append(tr("Removed LLM adapter %1.").arg(title));
-  refreshAll();
-  emit configChanged();
+  removeScriptItem(
+      tableAvailableAdapters_, vinput::script::Kind::kLlmAdapter,
+      tr("Are you sure you want to remove LLM adapter '%1'?"), tr("Removed LLM adapter %1."),
+      [](CoreConfig& config, const std::string& id) {
+        auto it = std::ranges::find_if(config.llm.adapters,
+                                       [&](const LlmAdapter& a) { return a.id == id; });
+        if (it == config.llm.adapters.end()) {
+          return false;
+        }
+        config.llm.adapters.erase(it);
+        return true;
+      },
+      []() {});
 }
 
 } // namespace vinput::gui

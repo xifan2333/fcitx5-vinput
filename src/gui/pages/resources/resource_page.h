@@ -46,6 +46,13 @@ private:
   void finishRefreshAfterI18n(const QString& error = {}, uint64_t generation = 0);
 
   void abortDownload();
+  void startScriptDownloadTask(QTableWidget* table, QPushButton* action_button,
+                               vinput::script::Kind kind, bool is_update,
+                               const QString& log_format);
+  template <typename MutateFn, typename PostRemoveFn>
+  void removeScriptItem(QTableWidget* table, vinput::script::Kind kind,
+                        const QString& confirm_question, const QString& removed_log,
+                        const MutateFn& mutate_fn, const PostRemoveFn& post_remove_fn);
 
   QLineEdit* filterInstalledModels_;
   QLineEdit* filterAvailableModels_;
