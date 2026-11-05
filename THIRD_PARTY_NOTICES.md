@@ -23,10 +23,6 @@ This file lists third-party software that this project depends on or bundles, an
    - License: GPL-2.0 and LGPL-2.1 (project contains components under both licenses)
    - Upstream: https://github.com/systemd/systemd
 
-4. **curl / libcurl**
-   - License: curl license (MIT/X derivative, SPDX identifier: `curl`)
-   - Upstream: https://curl.se/
-
 ## Bundled third-party libraries (in `3rdparty/`)
 
 1. **cpp-subprocess** (cross-platform subprocess library for modern C++)
