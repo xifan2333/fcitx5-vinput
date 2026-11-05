@@ -864,19 +864,12 @@ void ResourcePage::onUseModelClicked() {
 #if !VINPUT_ENABLE_LOCAL_ASR
   return;
 #else
-  if (tableInstalledModels_ == nullptr) {
+  const auto selected = GetSelectedResourceItem(tableInstalledModels_);
+  if (!selected) {
     return;
   }
-  auto items = tableInstalledModels_->selectedItems();
-  if (items.isEmpty()) {
-    return;
-  }
-  auto* name_item = tableInstalledModels_->item(tableInstalledModels_->currentRow(), 0);
-  const QString model_id = name_item->data(Qt::UserRole).toString();
-  QString model_title = name_item->text();
-  if (model_title.isEmpty()) {
-    model_title = model_id;
-  }
+  const QString model_id = selected->id;
+  const QString model_title = selected->title;
 
   CoreConfig config = ConfigManager::Get().Load();
   std::string err;
@@ -908,19 +901,12 @@ void ResourcePage::onRemoveModelClicked() {
 #if !VINPUT_ENABLE_LOCAL_ASR
   return;
 #else
-  if (tableInstalledModels_ == nullptr) {
+  const auto selected = GetSelectedResourceItem(tableInstalledModels_);
+  if (!selected) {
     return;
   }
-  auto items = tableInstalledModels_->selectedItems();
-  if (items.isEmpty()) {
-    return;
-  }
-  auto* name_item = tableInstalledModels_->item(tableInstalledModels_->currentRow(), 0);
-  const QString model_id = name_item->data(Qt::UserRole).toString();
-  QString model_title = name_item->text();
-  if (model_title.isEmpty()) {
-    model_title = model_id;
-  }
+  const QString model_id = selected->id;
+  const QString model_title = selected->title;
 
   auto response = QMessageBox::question(
       this, tr("Confirm"), tr("Are you sure you want to remove model '%1'?").arg(model_title));
@@ -1006,19 +992,12 @@ void ResourcePage::onDownloadModelClicked() {
 #if !VINPUT_ENABLE_LOCAL_ASR
   return;
 #else
-  if (tableAvailableModels_ == nullptr) {
+  const auto selected = GetSelectedResourceItem(tableAvailableModels_);
+  if (!selected) {
     return;
   }
-  auto items = tableAvailableModels_->selectedItems();
-  if (items.isEmpty()) {
-    return;
-  }
-  auto* name_item = tableAvailableModels_->item(tableAvailableModels_->currentRow(), 0);
-  const QString model_id = name_item->data(Qt::UserRole).toString();
-  QString model_title = name_item->text();
-  if (model_title.isEmpty()) {
-    model_title = model_id;
-  }
+  const QString model_id = selected->id;
+  const QString model_title = selected->title;
 
   abortDownload();
   btnDownloadModel_->setEnabled(false);
