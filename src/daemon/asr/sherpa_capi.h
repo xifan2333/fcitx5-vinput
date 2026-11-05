@@ -42,7 +42,9 @@ public:
       SherpaOnnxDestroyOfflineStream(handle_);
     }
   }
-  OfflineStream(OfflineStream&& other) noexcept : handle_(other.handle_) { other.handle_ = nullptr; }
+  OfflineStream(OfflineStream&& other) noexcept : handle_(other.handle_) {
+    other.handle_ = nullptr;
+  }
   OfflineStream& operator=(OfflineStream&& other) noexcept {
     if (this != &other) {
       if (handle_ != nullptr) {
@@ -68,8 +70,7 @@ private:
 
 class OfflineRecognizer {
 public:
-  static std::optional<OfflineRecognizer> Create(
-      const SherpaOnnxOfflineRecognizerConfig& config) {
+  static std::optional<OfflineRecognizer> Create(const SherpaOnnxOfflineRecognizerConfig& config) {
     const auto* handle = SherpaOnnxCreateOfflineRecognizer(&config);
     if (handle == nullptr) {
       return std::nullopt;
@@ -197,9 +198,7 @@ public:
 
   [[nodiscard]] bool Valid() const { return handle_ != nullptr; }
 
-  OnlineStream CreateStream() const {
-    return OnlineStream(SherpaOnnxCreateOnlineStream(handle_));
-  }
+  OnlineStream CreateStream() const { return OnlineStream(SherpaOnnxCreateOnlineStream(handle_)); }
   bool IsReady(const OnlineStream& stream) const {
     return SherpaOnnxIsOnlineStreamReady(handle_, stream.handle_) != 0;
   }

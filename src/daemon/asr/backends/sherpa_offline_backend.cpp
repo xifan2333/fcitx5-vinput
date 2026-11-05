@@ -343,7 +343,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
            config.model_config.funasr_nano.user_prompt = cfg_user_prompt.c_str();
          }
          cfg_hotwords = provider_hotwords_configured ? provider_prompt_hotwords
-                                                      : JsonString(family_cfg, "hotwords");
+                                                     : JsonString(family_cfg, "hotwords");
          if (!cfg_hotwords.empty()) {
            config.model_config.funasr_nano.hotwords = cfg_hotwords.c_str();
          }
@@ -367,7 +367,7 @@ CreateOfflineRecognizer(const ModelInfo& info, const AsrConfig& asr_config, std:
          config.model_config.qwen3_asr.top_p = JsonFloat(family_cfg, "top_p", 0.9F);
          config.model_config.qwen3_asr.seed = JsonInt(family_cfg, "seed", 0);
          cfg_hotwords = provider_hotwords_configured ? provider_prompt_hotwords
-                                                      : JsonString(family_cfg, "hotwords");
+                                                     : JsonString(family_cfg, "hotwords");
          if (!cfg_hotwords.empty()) {
            config.model_config.qwen3_asr.hotwords = cfg_hotwords.c_str();
          }

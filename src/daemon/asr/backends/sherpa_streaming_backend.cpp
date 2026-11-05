@@ -46,8 +46,7 @@ int ChooseNumThreads(const glz::json_t& model_cfg, int runtime_default) {
 
 class SherpaStreamingSession : public RecognitionSession {
 public:
-  SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer,
-                         sherpa::OnlineStream stream)
+  SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer, sherpa::OnlineStream stream)
       : recognizer_(recognizer), stream_(std::move(stream)) {}
 
   SherpaStreamingSession(const SherpaStreamingSession&) = delete;
@@ -244,8 +243,7 @@ public:
 
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
     const std::scoped_lock lock(recognizer_mutex_);
-    if (!InitializeRecognizerLocked(error) || !recognizer_.has_value() ||
-        !recognizer_->Valid()) {
+    if (!InitializeRecognizerLocked(error) || !recognizer_.has_value() || !recognizer_->Valid()) {
       return nullptr;
     }
 

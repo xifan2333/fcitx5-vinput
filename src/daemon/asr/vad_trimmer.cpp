@@ -14,8 +14,7 @@
 
 namespace {
 
-void FeedWaveformToVad(sherpa::VoiceActivityDetector& vad,
-                       const std::vector<float>& samples) {
+void FeedWaveformToVad(sherpa::VoiceActivityDetector& vad, const std::vector<float>& samples) {
   const int n = static_cast<int>(samples.size());
   vad.Reset();
 
