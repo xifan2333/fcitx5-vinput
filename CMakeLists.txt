@@ -116,10 +116,6 @@ configure_file(
     @ONLY)
 
 add_subdirectory(data)
-
-include_directories(${CMAKE_BINARY_DIR})
-
-
 add_subdirectory(src/common)
 add_subdirectory(src/daemon)
 add_subdirectory(src/addon)

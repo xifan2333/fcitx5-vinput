@@ -62,6 +62,7 @@ target_include_directories(common PUBLIC
 
 target_include_directories(config PUBLIC
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}
 )
 
 target_link_libraries(config PUBLIC
