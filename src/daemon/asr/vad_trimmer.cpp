@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <sherpa-onnx/c-api/cxx-api.h>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,7 +14,7 @@
 
 namespace {
 
-void FeedWaveformToVad(sherpa_onnx::cxx::VoiceActivityDetector& vad,
+void FeedWaveformToVad(sherpa::VoiceActivityDetector& vad,
                        const std::vector<float>& samples) {
   const int n = static_cast<int>(samples.size());
   vad.Reset();
@@ -63,8 +62,8 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
     params_.min_speech_duration = 0.10F;
   }
 
-  sherpa_onnx::cxx::VadModelConfig config;
-  config.silero_vad.model = model_path;
+  SherpaOnnxVadModelConfig config = {};
+  config.silero_vad.model = model_path.c_str();
   config.silero_vad.threshold = params_.threshold;
   config.silero_vad.min_silence_duration = params_.min_silence_duration;
   config.silero_vad.min_speech_duration = params_.min_speech_duration;
@@ -72,11 +71,11 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   config.silero_vad.max_speech_duration = params_.max_speech_duration;
   config.sample_rate = sample_rate;
   config.num_threads = 1;
-  config.provider = provider;
-  config.debug = false;
+  config.provider = provider.c_str();
+  config.debug = 0;
 
-  auto vad = sherpa_onnx::cxx::VoiceActivityDetector::Create(config, 30.0F);
-  if (vad.Get() == nullptr) {
+  auto vad = sherpa::VoiceActivityDetector::Create(config, 30.0F);
+  if (!vad.has_value()) {
     if (error != nullptr) {
       *error = "failed to create VAD from '" + model_path + "'";
     }
@@ -93,7 +92,7 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
 }
 
 std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sample_rate*/) {
-  if (!vad_.has_value() || vad_->Get() == nullptr || samples.empty()) {
+  if (!vad_.has_value() || !vad_->Valid() || samples.empty()) {
     return samples;
   }
 
@@ -107,7 +106,7 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
   int64_t earliest_speech_start = -1;
   int64_t latest_speech_end = -1;
 
-  while (!vad.IsEmpty()) {
+  while (!vad.Empty()) {
     auto seg = vad.Front();
     if (!seg.samples.empty()) {
       const int64_t seg_start = seg.start;
@@ -155,7 +154,7 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
 
 std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& samples,
                                                     int sample_rate) {
-  if (!vad_.has_value() || vad_->Get() == nullptr || samples.empty()) {
+  if (!vad_.has_value() || !vad_->Valid() || samples.empty()) {
     return {samples};
   }
 
@@ -168,7 +167,7 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
     int64_t end = 0;
   };
   std::vector<DetectedSegment> detected;
-  while (!vad.IsEmpty()) {
+  while (!vad.Empty()) {
     auto seg = vad.Front();
     vad.Pop();
     if (!seg.samples.empty()) {
@@ -238,7 +237,7 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
 }
 
 bool VadTrimmer::Available() const {
-  return vad_.has_value() && vad_->Get() != nullptr;
+  return vad_.has_value() && vad_->Valid();
 }
 
 void VadTrimmer::Shutdown() {
