@@ -38,7 +38,6 @@ BuildRequires:  cmake(Qt6Gui)
 BuildRequires:  cmake(Qt6Widgets)
 BuildRequires:  cmake(Qt6Network)
 BuildRequires:  cmake(Qt6LinguistTools)
-BuildRequires:  pkgconfig(libcurl)
 BuildRequires:  pkgconfig(openssl)
 BuildRequires:  pkgconfig(libarchive)
 BuildRequires:  pkgconfig(libpipewire-0.3)
@@ -46,7 +45,6 @@ BuildRequires:  pkgconfig(libsystemd)
 
 Requires:       fcitx5
 Requires:       pipewire
-Requires:       curl
 Requires:       systemd
 Requires:       qt6-qtbase
 Recommends:     wireplumber
