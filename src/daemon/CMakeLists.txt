@@ -1,9 +1,8 @@
 if(VINPUT_ENABLE_LOCAL_ASR)
-    find_library(SHERPA_ONNX_CXX_LIB sherpa-onnx-cxx-api REQUIRED)
     find_library(SHERPA_ONNX_C_LIB sherpa-onnx-c-api REQUIRED)
     find_library(ONNXRUNTIME_LIB onnxruntime REQUIRED)
     find_path(SHERPA_ONNX_INCLUDE_DIR sherpa-onnx/c-api/c-api.h REQUIRED)
-    get_filename_component(SHERPA_ONNX_RUNTIME_DIR "${SHERPA_ONNX_CXX_LIB}" DIRECTORY)
+    get_filename_component(SHERPA_ONNX_RUNTIME_DIR "${SHERPA_ONNX_C_LIB}" DIRECTORY)
 
     set(VINPUT_LOCAL_ASR_SOURCES
         asr/hotword_utils.cpp
@@ -13,7 +12,6 @@ if(VINPUT_ENABLE_LOCAL_ASR)
         asr/vad_trimmer.cpp
     )
     set(VINPUT_LOCAL_ASR_LIBS
-        ${SHERPA_ONNX_CXX_LIB}
         ${SHERPA_ONNX_C_LIB}
     )
     set(VINPUT_LOCAL_ASR_INCLUDES
@@ -127,7 +125,6 @@ install(FILES
 )
 if(VINPUT_ENABLE_LOCAL_ASR AND VINPUT_RUNTIME_MODE STREQUAL "bundled")
     install(FILES
-        "${SHERPA_ONNX_CXX_LIB}"
         "${SHERPA_ONNX_C_LIB}"
         "${ONNXRUNTIME_LIB}"
         DESTINATION "${VINPUT_RUNTIME_LIBDIR}"
