@@ -83,4 +83,4 @@ The five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `read
 
 ### Domain docs
 
-Single-context: `GLOSSARY.md` at the repo root plus `docs/adr/`. Read the glossary before naming domain concepts, and check ADRs before contradicting a settled decision. See `docs/agents/domain.md`.
+Single-context: `GLOSSARY.md` at the repo root. Read the glossary before naming domain concepts. See `docs/agents/domain.md`.
