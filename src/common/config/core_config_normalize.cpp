@@ -149,6 +149,26 @@ void NormalizeCoreConfig(CoreConfig* config) {
     config->llm.adapters = std::move(normalized);
   }
 
+  auto normalize_clients = [](std::vector<ClientSpec>* clients, const char* label) {
+    std::set<std::string> seen;
+    std::vector<ClientSpec> normalized;
+    for (auto client : *clients) {
+      if (client.id.empty()) {
+        std::cerr << "Ignoring " << label << " with empty id\n";
+        continue;
+      }
+      if (!seen.insert(client.id).second) {
+        std::cerr << "Ignoring duplicate " << label << " '" << client.id << "'\n";
+        continue;
+      }
+      EraseEmptyEnvKeys(&client);
+      normalized.push_back(std::move(client));
+    }
+    *clients = std::move(normalized);
+  };
+  normalize_clients(&config->triggers, "trigger");
+  normalize_clients(&config->receivers, "receiver");
+
   {
     std::set<std::string> seen;
     std::vector<AsrProvider> normalized;
