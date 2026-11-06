@@ -558,10 +558,9 @@ template <> struct glz::meta<ScenesWire> {
 
 template <> struct glz::meta<CoreConfigWire> {
   using T = CoreConfigWire;
-  static constexpr auto value =
-      object("version", &T::version, "registry", &T::registry, "global", &T::global, "asr", &T::asr,
-             "llm", &T::llm, "scenes", &T::scenes, "triggers", &T::triggers, "receivers",
-             &T::receivers);
+  static constexpr auto value = object(
+      "version", &T::version, "registry", &T::registry, "global", &T::global, "asr", &T::asr, "llm",
+      &T::llm, "scenes", &T::scenes, "triggers", &T::triggers, "receivers", &T::receivers);
 };
 
 std::string CoreConfigToJson(const CoreConfig& config) {
