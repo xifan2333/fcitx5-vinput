@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -99,5 +100,20 @@ private:
   bool debounce_stop_ = false;
   std::chrono::steady_clock::time_point debounce_deadline_;
 };
+
+// An interface is advertised only when its subnet contains a router, because a
+// phone reaches this machine through the router's segment. Device type plays no
+// part: wired, wireless, bonded and VLAN interfaces all qualify the same way.
+struct Ipv4Subnet {
+  std::uint32_t network = 0;
+  std::uint32_t mask = 0;
+};
+
+// Extracts the gateway address of every route that has one. The kernel prints
+// each address as a 32-bit value in network byte order, so every field is byte
+// swapped back to host order before it is returned.
+[[nodiscard]] std::vector<std::uint32_t> ParseGatewayAddresses(std::string_view route_table);
+
+[[nodiscard]] bool SubnetContains(const Ipv4Subnet& subnet, std::uint32_t address);
 
 } // namespace vinput::daemon::remote

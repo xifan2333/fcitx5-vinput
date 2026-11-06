@@ -329,10 +329,34 @@ void TestInputSessionPreemption() {
   service.Shutdown();
 }
 
+void TestGatewaySubnetFilter() {
+  const std::string route_table =
+      "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n"
+      "wlan0\t00000000\t0100000A\t0003\t0\t0\t304\t00000000\t0\t0\t0\n"
+      "wlan0\t0000000A\t00000000\t0001\t0\t0\t304\t00FFFFFF\t0\t0\t0\n"
+      "docker0\t000011AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0\n";
+
+  const std::vector<std::uint32_t> gateways =
+      vinput::daemon::remote::ParseGatewayAddresses(route_table);
+  TEST_ASSERT(gateways.size() == 1);
+  TEST_ASSERT(gateways.front() == 0x0A000001U); // 10.0.0.1
+
+  const vinput::daemon::remote::Ipv4Subnet lan{.network = 0x0A000000U, .mask = 0xFFFFFF00U};
+  const vinput::daemon::remote::Ipv4Subnet docker{.network = 0xAC110000U, .mask = 0xFFFF0000U};
+  TEST_ASSERT(vinput::daemon::remote::SubnetContains(lan, gateways.front()));
+  TEST_ASSERT(!vinput::daemon::remote::SubnetContains(docker, gateways.front()));
+
+  // No router on any segment means no gateway is reported, so callers fall back
+  // to advertising every local address instead of hiding all of them.
+  TEST_ASSERT(vinput::daemon::remote::ParseGatewayAddresses("").empty());
+  TEST_ASSERT(vinput::daemon::remote::ParseGatewayAddresses("garbage\nsplit\n").empty());
+}
+
 } // namespace
 
 int main() {
   TestRemoteAssets();
+  TestGatewaySubnetFilter();
   TestRemoteTextServiceHttpAndWs();
   TestPhoneDrivenDirectSession();
   TestInputSessionPreemption();
