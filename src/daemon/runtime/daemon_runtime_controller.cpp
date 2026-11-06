@@ -18,11 +18,14 @@
 #include <string>
 #include <sys/eventfd.h>
 #include <thread>
+#include <type_traits>
 #include <unistd.h>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "common/asr/recognition_result.h"
+#include "common/client/client_command.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
@@ -87,6 +90,7 @@ struct RecognitionDispatchContext {
   std::optional<std::chrono::steady_clock::time_point> recording_started_at;
   std::optional<std::chrono::steady_clock::time_point> first_non_silent_at;
   DbusService* dbus = nullptr;
+  bool ime = true;
 };
 
 void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
@@ -107,7 +111,7 @@ void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
   if (ctx.latest_partial_text != nullptr) {
     *ctx.latest_partial_text = event.text;
   }
-  if (ctx.dbus != nullptr) {
+  if (ctx.ime && ctx.dbus != nullptr) {
     ctx.dbus->EmitRecognitionPartial(event.text);
   }
 }
@@ -123,7 +127,7 @@ void HandleFinalText(const vinput::daemon::asr::RecognitionEvent& event,
   if (ctx.latest_partial_text != nullptr) {
     *ctx.latest_partial_text = event.text;
   }
-  if (ctx.dbus != nullptr) {
+  if (ctx.ime && ctx.dbus != nullptr) {
     ctx.dbus->EmitRecognitionPartial(event.text);
   }
 }
@@ -215,15 +219,29 @@ DaemonRuntimeController::~DaemonRuntimeController() {
 }
 
 DbusService::MethodResult DaemonRuntimeController::StartRecording() {
-  return StartRecordingInternal(false, {});
+  return StartRecording(true, false, {}, {});
 }
 
 DbusService::MethodResult
 DaemonRuntimeController::StartCommandRecording(const std::string& selected_text) {
-  return StartRecordingInternal(true, selected_text);
+  return StartRecording(true, true, selected_text, {});
+}
+
+DbusService::MethodResult
+DaemonRuntimeController::StartRecording(bool ime, bool is_command, const std::string& selected_text,
+                                        const std::string& capture_device) {
+  return StartRecordingInternal(ime, is_command, selected_text, capture_device);
+}
+
+DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::string& scene_id) {
+  return StopRecording(true, scene_id);
 }
 
 DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_raw_text) {
+  return CancelOperation(true, commit_raw_text);
+}
+
+DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, bool commit_raw_text) {
   bool apply_pending_reload = false;
   bool stop_capture = false;
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
@@ -245,6 +263,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
       }
       return DbusService::MethodResult::Failure(transition.rejection_reason);
     }
+    session_ime_ = ime;
 
     if (transition.should_stop_capture) {
       accepting_chunks_.store(false, std::memory_order_relaxed);
@@ -252,7 +271,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
       ResetRecordingStateLocked();
       session_to_cancel = session_lifecycle_.DetachActive();
       current_order_.reset();
-      dbus_->EmitStatusChanged(vinput::dbus::StatusToString(transition.new_phase));
+      NotifyStatusChanged(transition.new_phase);
       VLOG_DEBUG("recording cancelled and discarded");
       apply_pending_reload = pending_asr_backend_reload_;
     } else if (transition.should_commit_raw_text || transition.should_discard_text) {
@@ -344,8 +363,16 @@ void DaemonRuntimeController::MaybeApplyPendingAsrBackendReload() {
   VLOG_DEBUG("deferred ASR backend reload applied while idle");
 }
 
+void DaemonRuntimeController::NotifyStatusChanged(vinput::dbus::Status status) {
+  if (session_ime_ && dbus_ != nullptr) {
+    dbus_->EmitStatusChanged(vinput::dbus::StatusToString(status));
+  }
+}
+
 DbusService::MethodResult
-DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::string& selected_text) {
+DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
+                                                const std::string& selected_text,
+                                                const std::string& capture_device) {
   const auto start_enter_at = std::chrono::steady_clock::now();
   // Drain any abort-path deferred stop before arming a new recording so a
   // rapid Tap-stop-Tap cannot destroy a just-reused stream.
@@ -366,6 +393,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
     // Drop a stale deferred stop scheduled between the check above and now.
     pending_capture_stop_.store(false, std::memory_order_release);
     audio_buffer_.Reset();
+    session_ime_ = ime;
     start_recording_in_progress_ = true;
     // Accept early mic callbacks into the startup buffer until CreateSession
     // completes. They must not be discarded before the backend is ready.
@@ -379,7 +407,9 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
   // first capture buffers after a cold press. Chunks are only accepted after
   // both capture and session are armed below.
   std::string error;
-  capture_->SetTargetObject(runtime_settings.global.captureDevice);
+  const std::string target_device =
+      capture_device.empty() ? runtime_settings.global.captureDevice : capture_device;
+  capture_->SetTargetObject(target_device);
   capture_->SetNotifyFd(notify_fd_);
   AudioCapture::StartTiming capture_timing;
   if (!capture_->BeginRecording(&error, &capture_timing)) {
@@ -492,7 +522,7 @@ DaemonRuntimeController::StartRecordingInternal(bool is_command, const std::stri
              capture_timing.stream_reused ? 1 : 0, capture_timing.reuse_policy_enabled ? 1 : 0,
              start_total_ms, active_backend.backend_id);
 
-  dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Recording));
+  NotifyStatusChanged(vinput::dbus::Status::Recording);
   if (is_command) {
     VLOG_DEBUG("command recording started (selected_text length: {} chars)", selected_text.size());
   } else {
@@ -627,7 +657,7 @@ bool DaemonRuntimeController::FailActiveSession(
     session_lifecycle_.CancelAndRetireSession(std::move(session_to_cancel));
   }
 
-  dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Error));
+  NotifyStatusChanged(vinput::dbus::Status::Error);
   dbus_->EmitDesktopNotification(
       vinput::daemon::notify::MakeDaemonErrorNotification(error_message));
   capture_->EndRecording();
@@ -659,6 +689,7 @@ void DaemonRuntimeController::PollActiveSessionEvents() {
                                               .recording_started_at = recording_started_at,
                                               .first_non_silent_at = first_non_silent_at,
                                               .dbus = dbus_,
+                                              .ime = session_ime_,
                                           });
     }
   }
@@ -673,7 +704,8 @@ void DaemonRuntimeController::ScheduleCaptureStopOnMainThread() {
   WakeMainThread();
 }
 
-DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::string& scene_id) {
+DbusService::MethodResult DaemonRuntimeController::StopRecording(bool ime,
+                                                                 const std::string& scene_id) {
   bool apply_pending_reload = false;
   bool stop_capture = false;
   std::vector<int16_t> captured_pcm;
@@ -685,6 +717,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
                  vinput::dbus::StatusToString(state_machine_.CurrentPhase()));
       return DbusService::MethodResult::Failure(_("Recording is not active."));
     }
+    session_ime_ = ime;
     accepting_chunks_.store(false, std::memory_order_relaxed);
     stop_capture = true;
   }
@@ -713,7 +746,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
       VLOG_DEBUG("recording stopped without active session");
       state_machine_.OnResetToIdle();
       current_order_.reset();
-      dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
+      NotifyStatusChanged(vinput::dbus::Status::Idle);
       VLOG_DEBUG("phase -> idle");
       apply_pending_reload = true;
     } else {
@@ -731,7 +764,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
         ResetRecordingStateLocked();
         session_to_cancel = session_lifecycle_.DetachActive();
         current_order_.reset();
-        dbus_->EmitStatusChanged(vinput::dbus::StatusToString(transition.new_phase));
+        NotifyStatusChanged(transition.new_phase);
         VLOG_DEBUG("phase -> idle");
         apply_pending_reload = true;
       } else {
@@ -739,6 +772,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
         current_order_->audio_delivery_mode = active_backend_.capabilities.audio_delivery_mode;
         current_order_->session = session_lifecycle_.DetachActive();
         current_order_->backend = active_backend_;
+        current_order_->ime = session_ime_;
         if (UsesBufferedDelivery(active_backend_)) {
           current_order_->pcm = audio_buffer_.TakeBufferedPcm();
         } else {
@@ -758,7 +792,7 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(const std::stri
         };
         LogRecognitionRequest(active_backend_, total_samples);
         active_backend_ = {};
-        dbus_->EmitStatusChanged(vinput::dbus::StatusToString(transition.new_phase));
+        NotifyStatusChanged(transition.new_phase);
         worker_cv_.notify_one();
         VLOG_DEBUG("recording stopped");
       }
@@ -895,15 +929,20 @@ void DaemonRuntimeController::Shutdown() {
 
 void DaemonRuntimeController::EnterPostprocessing(bool /*command_mode*/) {
   vinput::dbus::Status next_phase = vinput::dbus::Status::Postprocessing;
+  bool ime = true;
   {
     const std::scoped_lock lock(state_mutex_);
     const auto res = state_machine_.OnInferenceComplete(true);
     next_phase = res.new_phase;
+    ime = session_ime_;
   }
-  dbus_->EmitStatusChanged(vinput::dbus::StatusToString(next_phase));
+  if (ime && dbus_ != nullptr) {
+    dbus_->EmitStatusChanged(vinput::dbus::StatusToString(next_phase));
+  }
 }
 
 void DaemonRuntimeController::ResetToIdle() {
+  bool was_ime = true;
   {
     const std::scoped_lock lock(state_mutex_);
     start_recording_in_progress_ = false;
@@ -911,9 +950,13 @@ void DaemonRuntimeController::ResetToIdle() {
     state_machine_.OnResetToIdle();
     current_order_.reset();
     ResetRecordingStateLocked();
+    was_ime = session_ime_;
+    session_ime_ = true;
   }
   RestoreOutputIfDucked();
-  dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
+  if (was_ime && dbus_ != nullptr) {
+    dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
+  }
   VLOG_DEBUG("phase -> idle");
   MaybeApplyPendingAsrBackendReload();
 }
@@ -979,7 +1022,9 @@ void DaemonRuntimeController::WorkerMain() {
         } else if (!result.text.empty()) {
           order.postprocess_request.text = std::move(result.text);
           // RecognitionPartial is also the protocol's transcript-update signal.
-          dbus_->EmitRecognitionPartial(order.postprocess_request.text);
+          if (order.ime && dbus_ != nullptr) {
+            dbus_->EmitRecognitionPartial(order.postprocess_request.text);
+          }
         }
         order.pcm.clear();
         order.session.reset();
@@ -1015,7 +1060,11 @@ void DaemonRuntimeController::WorkerMain() {
         }
         dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(error));
       }
-      dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
+      if (order.ime && dbus_ != nullptr) {
+        if (order.ime && dbus_ != nullptr) {
+          dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
+        }
+      }
     } catch (const std::exception& e) {
       {
         const std::scoped_lock lock(state_mutex_);
@@ -1035,6 +1084,82 @@ void DaemonRuntimeController::WorkerMain() {
 
     ResetToIdle();
   }
+}
+
+DbusService::MethodResult DaemonRuntimeController::InjectText(bool ime,
+                                                              vinput::client::InjectStage stage,
+                                                              const std::string& text,
+                                                              const std::string& scene_id) {
+  if (stage == vinput::client::InjectStage::Partial) {
+    if (ime && dbus_ != nullptr) {
+      dbus_->EmitRecognitionPartial(text);
+    }
+    return DbusService::MethodResult::Success();
+  }
+
+  // Final stage: if no scene is requested, commit text directly without worker thread
+  if (scene_id.empty()) {
+    vinput::result::Payload payload;
+    payload.commitText = text;
+    payload.candidates = {{.text = text, .source = vinput::result::kSourceRaw}};
+    if (ime && dbus_ != nullptr) {
+      dbus_->EmitRecognitionResult(vinput::result::Serialize(payload));
+    }
+    return DbusService::MethodResult::Success();
+  }
+
+  // Queue on worker thread for asynchronous scene post-processing
+  {
+    const std::scoped_lock lock(state_mutex_);
+    if (state_machine_.CurrentPhase() != vinput::dbus::Status::Idle) {
+      return DbusService::MethodResult::Failure(
+          _("Voice input daemon is busy. Please wait for the current request to finish."));
+    }
+    session_ime_ = ime;
+    RecognitionOrder order;
+    order.postprocess_request = PostprocessRequest{
+        .text = text,
+        .scene_id = scene_id,
+        .is_command = false,
+        .selected_text = {},
+    };
+    order.ime = ime;
+    current_order_ = std::move(order);
+  }
+  worker_cv_.notify_one();
+  return DbusService::MethodResult::Success();
+}
+
+void DaemonRuntimeController::DispatchClientCommand(const vinput::client::ClientCommand& command) {
+  std::visit(
+      [this](const auto& cmd) {
+        using T = std::decay_t<decltype(cmd)>;
+        DbusService::MethodResult result;
+        if constexpr (std::is_same_v<T, vinput::client::StartCommand>) {
+          const bool is_command = (cmd.mode == "command");
+          result = StartRecording(cmd.ime, is_command, cmd.selected_text, cmd.capture_device);
+        } else if constexpr (std::is_same_v<T, vinput::client::StopCommand>) {
+          result = StopRecording(cmd.ime, cmd.scene);
+        } else if constexpr (std::is_same_v<T, vinput::client::CancelCommand>) {
+          result = CancelOperation(cmd.ime, cmd.commit_raw);
+        } else if constexpr (std::is_same_v<T, vinput::client::InjectCommand>) {
+          result = InjectText(cmd.ime, cmd.stage, cmd.text, cmd.scene);
+        }
+        if (!result.ok) {
+          VLOG_WARN("client command rejected: {}", result.message);
+        }
+      },
+      command);
+}
+
+void DaemonRuntimeController::DispatchClientLine(std::string_view line) {
+  std::string err;
+  const auto cmd = vinput::client::ParseClientCommand(line, &err);
+  if (!cmd.has_value()) {
+    VLOG_WARN("invalid client command: {}", err);
+    return;
+  }
+  DispatchClientCommand(*cmd);
 }
 
 } // namespace vinput::daemon::runtime
