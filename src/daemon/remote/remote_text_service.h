@@ -3,9 +3,11 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -99,5 +101,29 @@ private:
   bool debounce_stop_ = false;
   std::chrono::steady_clock::time_point debounce_deadline_;
 };
+
+// An interface is advertised only when its subnet contains a router, because a
+// phone reaches this machine through the router's segment. Device type plays no
+// part: wired, wireless, bonded and VLAN interfaces all qualify the same way.
+struct Ipv4Subnet {
+  std::uint32_t network = 0;
+  std::uint32_t mask = 0;
+};
+
+// Extracts the gateway address of every route that has one. The kernel prints
+// each address as a 32-bit value in network byte order, so every field is byte
+// swapped back to host order before it is returned.
+[[nodiscard]] std::vector<std::uint32_t> ParseGatewayAddresses(std::string_view route_table);
+
+[[nodiscard]] bool SubnetContains(const Ipv4Subnet& subnet, std::uint32_t address);
+
+// Picks the addresses a phone on the local network can reach. When the routing
+// table reports a gateway, only addresses on the router's segment survive, so
+// container bridges and other isolated segments drop out. Without any gateway
+// the caller has nothing to filter against, so every non link-local address is
+// kept rather than announcing none.
+[[nodiscard]] std::vector<std::uint32_t>
+SelectReachableAddresses(std::span<const Ipv4Subnet> interfaces,
+                         std::span<const std::uint32_t> gateways);
 
 } // namespace vinput::daemon::remote

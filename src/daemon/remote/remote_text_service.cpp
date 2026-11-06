@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <asm-generic/socket.h>
 #include <atomic>
-#include <charconv>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <exception>
+#include <fmt/format.h>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <httplib.h>
@@ -14,13 +16,12 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <netdb.h>
 #include <netinet/in.h>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
-#include <system_error>
 #include <thread>
 #include <utility>
 #include <variant>
@@ -30,6 +31,7 @@
 #include "common/config/core_config_view.h"
 #include "common/json/json_access.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
 
@@ -40,32 +42,33 @@ namespace vinput::daemon::remote {
 namespace {
 
 constexpr std::string_view kRemoteProviderId = "provider.vinput.remote.streaming";
+constexpr std::string_view kRouteTablePath = "/proc/net/route";
+constexpr std::size_t kGatewayFieldIndex = 2;
+
+// RFC 3927 link-local range. Used only when no gateway exists to filter on, so a
+// failed DHCP lease never gets advertised as a reachable address.
+constexpr std::uint32_t kLinkLocalNetwork = 0xA9FE0000U;
+constexpr std::uint32_t kLinkLocalMask = 0xFFFF0000U;
+
+std::optional<std::uint32_t> ParseHexAddress(std::string_view field) {
+  const auto raw = vinput::str::ParseInteger<std::uint32_t>(field, 16);
+  if (!raw) {
+    return std::nullopt;
+  }
+  return ntohl(*raw);
+}
 
 std::optional<int> ParsePort(std::string_view value) {
-  const std::string_view trimmed = vinput::str::Trim(value);
-  if (trimmed.empty()) {
+  const auto port = vinput::str::ParseInteger<int>(value);
+  if (!port || *port < 0 || *port > 65535) {
     return std::nullopt;
   }
-  int parsed = 0;
-  const char* begin = trimmed.data();
-  const char* end = begin + trimmed.size();
-  const auto result = std::from_chars(begin, end, parsed);
-  if (result.ec != std::errc{} || result.ptr != end || parsed < 0 || parsed > 65535) {
-    return std::nullopt;
-  }
-  return parsed;
+  return port;
 }
 
 std::optional<int> ParsePositiveInt(std::string_view value) {
-  const std::string_view trimmed = vinput::str::Trim(value);
-  if (trimmed.empty()) {
-    return std::nullopt;
-  }
-  int parsed = 0;
-  const char* begin = trimmed.data();
-  const char* end = begin + trimmed.size();
-  const auto result = std::from_chars(begin, end, parsed);
-  if (result.ec != std::errc{} || result.ptr != end || parsed <= 0) {
+  const auto parsed = vinput::str::ParseInteger<int>(value);
+  if (!parsed || *parsed <= 0) {
     return std::nullopt;
   }
   return parsed;
@@ -131,6 +134,43 @@ std::string ExtractBearerToken(std::string_view auth_header) {
 }
 
 } // namespace
+
+std::vector<std::uint32_t> ParseGatewayAddresses(std::string_view route_table) {
+  std::vector<std::uint32_t> gateways;
+  for (const std::string_view line : vinput::str::SplitLines(route_table)) {
+    const std::vector<std::string_view> fields = vinput::str::Split(line, '\t');
+    if (fields.size() <= kGatewayFieldIndex) {
+      continue;
+    }
+    const auto gateway = ParseHexAddress(fields[kGatewayFieldIndex]);
+    if (!gateway || *gateway == 0) {
+      continue;
+    }
+    gateways.push_back(*gateway);
+  }
+  return gateways;
+}
+
+bool SubnetContains(const Ipv4Subnet& subnet, std::uint32_t address) {
+  return (address & subnet.mask) == (subnet.network & subnet.mask);
+}
+
+std::vector<std::uint32_t> SelectReachableAddresses(std::span<const Ipv4Subnet> interfaces,
+                                                    std::span<const std::uint32_t> gateways) {
+  std::vector<std::uint32_t> reachable;
+  for (const Ipv4Subnet& interface : interfaces) {
+    if ((interface.network & kLinkLocalMask) == kLinkLocalNetwork) {
+      continue;
+    }
+    if (!gateways.empty() && !std::ranges::any_of(gateways, [&interface](std::uint32_t gateway) {
+          return SubnetContains(interface, gateway);
+        })) {
+      continue;
+    }
+    reachable.push_back(interface.network);
+  }
+  return reachable;
+}
 
 RemoteTextService::RemoteTextService() = default;
 
@@ -288,28 +328,47 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
     return {};
   }
 
+  std::vector<std::uint32_t> gateways;
+  if (const auto route_table = vinput::file::ReadTextFile(kRouteTablePath); route_table) {
+    gateways = ParseGatewayAddresses(*route_table);
+  } else {
+    VLOG_WARN("failed to read {}: {}", kRouteTablePath, route_table.error());
+  }
+
   ifaddrs* ifaddr = nullptr;
   if (getifaddrs(&ifaddr) != 0) {
     return {};
   }
 
-  std::vector<std::string> endpoints;
+  std::vector<Ipv4Subnet> interfaces;
   for (const ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
     if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET) {
       continue;
     }
-    if ((ifa->ifa_flags & IFF_UP) == 0 || (ifa->ifa_flags & IFF_LOOPBACK) != 0) {
+    if (ifa->ifa_netmask == nullptr) {
       continue;
     }
-    char buf[NI_MAXHOST] = {};
-    if (getnameinfo(ifa->ifa_addr, sizeof(sockaddr_in), buf, sizeof(buf), nullptr, 0,
-                    NI_NUMERICHOST) != 0) {
+    const unsigned int flags = ifa->ifa_flags;
+    if ((flags & IFF_UP) == 0 || (flags & IFF_RUNNING) == 0 || (flags & IFF_LOOPBACK) != 0) {
       continue;
     }
-    endpoints.emplace_back(std::string("http://") + buf + ":" +
-                           std::to_string(bound_port_ > 0 ? bound_port_ : settings_.port));
+
+    sockaddr_in local{};
+    std::memcpy(&local, ifa->ifa_addr, sizeof(local));
+    sockaddr_in mask{};
+    std::memcpy(&mask, ifa->ifa_netmask, sizeof(mask));
+    interfaces.push_back(
+        {.network = ntohl(local.sin_addr.s_addr), .mask = ntohl(mask.sin_addr.s_addr)});
   }
   freeifaddrs(ifaddr);
+
+  const int port = bound_port_ > 0 ? bound_port_ : settings_.port;
+  std::vector<std::string> endpoints;
+  for (const std::uint32_t address : SelectReachableAddresses(interfaces, gateways)) {
+    endpoints.emplace_back(fmt::format("http://{}.{}.{}.{}:{}", (address >> 24) & 0xFFU,
+                                       (address >> 16) & 0xFFU, (address >> 8) & 0xFFU,
+                                       address & 0xFFU, port));
+  }
 
   std::ranges::sort(endpoints);
   endpoints.erase(std::ranges::unique(endpoints).begin(), endpoints.end());

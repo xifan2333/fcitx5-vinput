@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -329,10 +330,64 @@ void TestInputSessionPreemption() {
   service.Shutdown();
 }
 
+void TestGatewaySubnetFilter() {
+  const std::string route_table =
+      "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n"
+      "wlan0\t00000000\t0100000A\t0003\t0\t0\t304\t00000000\t0\t0\t0\n"
+      "wlan0\t0000000A\t00000000\t0001\t0\t0\t304\t00FFFFFF\t0\t0\t0\n"
+      "docker0\t000011AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0\n";
+
+  const std::vector<std::uint32_t> gateways =
+      vinput::daemon::remote::ParseGatewayAddresses(route_table);
+  TEST_ASSERT(gateways.size() == 1);
+  TEST_ASSERT(gateways.front() == 0x0A000001U); // 10.0.0.1
+
+  const vinput::daemon::remote::Ipv4Subnet lan{.network = 0x0A000000U, .mask = 0xFFFFFF00U};
+  const vinput::daemon::remote::Ipv4Subnet docker{.network = 0xAC110000U, .mask = 0xFFFF0000U};
+  TEST_ASSERT(vinput::daemon::remote::SubnetContains(lan, gateways.front()));
+  TEST_ASSERT(!vinput::daemon::remote::SubnetContains(docker, gateways.front()));
+
+  // No router on any segment means no gateway is reported, so callers fall back
+  // to advertising every local address instead of hiding all of them.
+  TEST_ASSERT(vinput::daemon::remote::ParseGatewayAddresses("").empty());
+  TEST_ASSERT(vinput::daemon::remote::ParseGatewayAddresses("garbage\nsplit\n").empty());
+}
+
+void TestReachableAddressSelection() {
+  using vinput::daemon::remote::Ipv4Subnet;
+  using vinput::daemon::remote::SelectReachableAddresses;
+
+  const Ipv4Subnet lan{.network = 0x0A0000ECU, .mask = 0xFFFFFF00U};    // 10.0.0.236/24
+  const Ipv4Subnet docker{.network = 0xAC110001U, .mask = 0xFFFF0000U}; // 172.17.0.1/16
+  const Ipv4Subnet second{.network = 0xC0A80105U, .mask = 0xFFFFFF00U}; // 192.168.1.5/24
+  const Ipv4Subnet apipa{.network = 0xA9FE0102U, .mask = 0xFFFF0000U};  // 169.254.1.2/16
+  const std::vector<Ipv4Subnet> interfaces{lan, docker, second, apipa};
+
+  const std::vector<std::uint32_t> home_gateway{0x0A000001U}; // 10.0.0.1
+  const auto kept = SelectReachableAddresses(interfaces, home_gateway);
+  TEST_ASSERT(kept.size() == 1);
+  TEST_ASSERT(kept.front() == lan.network);
+
+  // Two uplinks on different segments both reach their own router.
+  const std::vector<std::uint32_t> two_gateways{0x0A000001U, 0xC0A80101U};
+  const auto both = SelectReachableAddresses(interfaces, two_gateways);
+  TEST_ASSERT(both.size() == 2);
+  TEST_ASSERT(both[0] == lan.network);
+  TEST_ASSERT(both[1] == second.network);
+
+  // No gateway anywhere means nothing to filter against, so every usable
+  // address survives while link-local stays out.
+  const auto unfiltered = SelectReachableAddresses(interfaces, {});
+  TEST_ASSERT(unfiltered.size() == 3);
+  TEST_ASSERT(std::ranges::find(unfiltered, apipa.network) == unfiltered.end());
+}
+
 } // namespace
 
 int main() {
   TestRemoteAssets();
+  TestGatewaySubnetFilter();
+  TestReachableAddressSelection();
   TestRemoteTextServiceHttpAndWs();
   TestPhoneDrivenDirectSession();
   TestInputSessionPreemption();

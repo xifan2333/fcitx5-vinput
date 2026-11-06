@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <initializer_list>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -198,6 +200,27 @@ inline bool EqualsIgnoreCase(std::string_view a, std::string_view b) noexcept {
 [[nodiscard]] inline bool StartsWithIgnoreCase(std::string_view text,
                                                std::string_view prefix) noexcept {
   return text.size() >= prefix.size() && EqualsIgnoreCase(text.substr(0, prefix.size()), prefix);
+}
+
+// =========================================================================
+// 7. Numeric Parsing
+// =========================================================================
+
+// Parses the whole trimmed string as an integer in the given base. Returns
+// nullopt for empty input, malformed digits, or trailing characters.
+template <typename T> inline std::optional<T> ParseInteger(std::string_view text, int base = 10) {
+  const std::string_view trimmed = Trim(text);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+  T parsed{};
+  const char* begin = trimmed.data();
+  const char* end = begin + trimmed.size();
+  const auto result = std::from_chars(begin, end, parsed, base);
+  if (result.ec != std::errc{} || result.ptr != end) {
+    return std::nullopt;
+  }
+  return parsed;
 }
 
 } // namespace vinput::str
