@@ -392,10 +392,6 @@ private:
       }
       return true;
     }
-    if (type == "error") {
-      QueueError(std::string(vinput::str::Trim(vinput::json::String(payload, "message"))));
-      return true;
-    }
     if (type == "closed") {
       completed_ = true;
       return true;

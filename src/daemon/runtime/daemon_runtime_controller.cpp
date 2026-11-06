@@ -129,12 +129,11 @@ void HandleFinalText(const vinput::daemon::asr::RecognitionEvent& event,
 }
 
 void HandleError(const vinput::daemon::asr::RecognitionEvent& event,
-                 const RecognitionDispatchContext& ctx) {
-  if (event.error.empty() || ctx.dbus == nullptr) {
+                 const RecognitionDispatchContext& /*ctx*/) {
+  if (event.error.empty()) {
     return;
   }
-  ctx.dbus->EmitDesktopNotification(
-      vinput::daemon::notify::MakeDaemonErrorNotification(event.error));
+  VLOG_WARN("recognition event error: {}", event.error);
 }
 
 void DispatchSingleEvent(const vinput::daemon::asr::RecognitionEvent& event,
