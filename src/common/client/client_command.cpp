@@ -4,7 +4,7 @@
 #include <glaze/core/common.hpp>
 #include <glaze/core/meta.hpp>
 #include <glaze/core/opts.hpp>
-#include <glaze/core/read.hpp>
+#include <glaze/json/read.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
