@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -375,11 +374,10 @@ void TestReachableAddressSelection() {
   TEST_ASSERT(both[0] == lan.network);
   TEST_ASSERT(both[1] == second.network);
 
-  // No gateway anywhere means nothing to filter against, so every usable
-  // address survives while link-local stays out.
+  // No gateway anywhere means nothing to filter against, so all candidate
+  // interface addresses are kept.
   const auto unfiltered = SelectReachableAddresses(interfaces, {});
-  TEST_ASSERT(unfiltered.size() == 3);
-  TEST_ASSERT(std::ranges::find(unfiltered, apipa.network) == unfiltered.end());
+  TEST_ASSERT(unfiltered.size() == 4);
 }
 
 } // namespace

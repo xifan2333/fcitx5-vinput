@@ -45,11 +45,6 @@ constexpr std::string_view kRemoteProviderId = "provider.vinput.remote.streaming
 constexpr std::string_view kRouteTablePath = "/proc/net/route";
 constexpr std::size_t kGatewayFieldIndex = 2;
 
-// RFC 3927 link-local range. Used only when no gateway exists to filter on, so a
-// failed DHCP lease never gets advertised as a reachable address.
-constexpr std::uint32_t kLinkLocalNetwork = 0xA9FE0000U;
-constexpr std::uint32_t kLinkLocalMask = 0xFFFF0000U;
-
 std::optional<std::uint32_t> ParseHexAddress(std::string_view field) {
   const auto raw = vinput::str::ParseInteger<std::uint32_t>(field, 16);
   if (!raw) {
@@ -159,9 +154,6 @@ std::vector<std::uint32_t> SelectReachableAddresses(std::span<const Ipv4Subnet> 
                                                     std::span<const std::uint32_t> gateways) {
   std::vector<std::uint32_t> reachable;
   for (const Ipv4Subnet& interface : interfaces) {
-    if ((interface.network & kLinkLocalMask) == kLinkLocalNetwork) {
-      continue;
-    }
     if (!gateways.empty() && !std::ranges::any_of(gateways, [&interface](std::uint32_t gateway) {
           return SubnetContains(interface, gateway);
         })) {
