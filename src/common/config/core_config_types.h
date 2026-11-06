@@ -31,6 +31,17 @@ struct LlmAdapter {
   bool autoStart{false};
 };
 
+// A daemon-supervised pipe client (trigger or receiver). The shape deliberately
+// mirrors LlmAdapter: both are long-lived helper processes described by a command
+// line, an environment overlay, and an auto-start flag.
+struct ClientSpec {
+  std::string id;
+  std::string command;
+  std::vector<std::string> args;
+  std::map<std::string, std::string> env;
+  bool autoStart{false};
+};
+
 struct AsrProviderBase {
   std::string id;
   int timeoutMs = 0;
@@ -105,4 +116,8 @@ struct CoreConfig {
     std::string activeScene;
     std::vector<vinput::scene::Definition> definitions;
   } scenes;
+
+  // Managed pipe clients, split by domain role (see client-protocol.md).
+  std::vector<ClientSpec> triggers;
+  std::vector<ClientSpec> receivers;
 };

@@ -44,6 +44,9 @@ struct LlmAdapterWire {
   std::optional<bool> auto_start;
 };
 
+// ClientSpecWire shares the exact layout of LlmAdapterWire.
+using ClientSpecWire = LlmAdapterWire;
+
 // A single wire shape covers both provider kinds. Member order is chosen so that
 // each kind keeps its historical key order once absent members are omitted.
 struct AsrProviderWire {
@@ -113,6 +116,8 @@ struct CoreConfigWire {
   std::optional<AsrWire> asr;
   std::optional<LlmWire> llm;
   std::optional<ScenesWire> scenes;
+  std::optional<std::vector<ClientSpecWire>> triggers;
+  std::optional<std::vector<ClientSpecWire>> receivers;
 };
 
 // ---------------------------------------------------------------------------
@@ -140,6 +145,18 @@ void FromWire(const LlmAdapterWire& wire, LlmAdapter* adapter) {
     adapter->env = vinput::json::StringMap(*wire.env);
   }
   adapter->autoStart = wire.auto_start.value_or(adapter->autoStart);
+}
+
+void FromWire(const ClientSpecWire& wire, ClientSpec* client) {
+  client->id = wire.id;
+  client->command = wire.command;
+  if (wire.args.has_value()) {
+    client->args = vinput::json::Strings(*wire.args);
+  }
+  if (wire.env.has_value()) {
+    client->env = vinput::json::StringMap(*wire.env);
+  }
+  client->autoStart = wire.auto_start.value_or(client->autoStart);
 }
 
 void FromWire(const AsrProviderWire& wire, AsrProvider* provider) {
@@ -294,6 +311,22 @@ LlmAdapterWire ToWire(const LlmAdapter& adapter) {
   return wire;
 }
 
+ClientSpecWire ToWire(const ClientSpec& client) {
+  ClientSpecWire wire;
+  wire.id = client.id;
+  wire.command = client.command;
+  if (!client.args.empty()) {
+    wire.args = vinput::json::FromStrings(client.args);
+  }
+  if (!client.env.empty()) {
+    wire.env = vinput::json::FromStringMap(client.env);
+  }
+  if (client.autoStart) {
+    wire.auto_start = true;
+  }
+  return wire;
+}
+
 AsrProviderWire ToWire(const AsrProvider& provider) {
   AsrProviderWire wire;
   wire.id = AsrProviderId(provider);
@@ -439,6 +472,20 @@ CoreConfigWire ToWire(const CoreConfig& config) {
   wire.asr = ToWire(config.asr);
   wire.llm = ToWire(config.llm);
   wire.scenes = ToWire(config.scenes);
+  if (!config.triggers.empty()) {
+    wire.triggers.emplace();
+    wire.triggers->reserve(config.triggers.size());
+    for (const auto& item : config.triggers) {
+      wire.triggers->push_back(ToWire(item));
+    }
+  }
+  if (!config.receivers.empty()) {
+    wire.receivers.emplace();
+    wire.receivers->reserve(config.receivers.size());
+    for (const auto& item : config.receivers) {
+      wire.receivers->push_back(ToWire(item));
+    }
+  }
   return wire;
 }
 
@@ -511,9 +558,9 @@ template <> struct glz::meta<ScenesWire> {
 
 template <> struct glz::meta<CoreConfigWire> {
   using T = CoreConfigWire;
-  static constexpr auto value =
-      object("version", &T::version, "registry", &T::registry, "global", &T::global, "asr", &T::asr,
-             "llm", &T::llm, "scenes", &T::scenes);
+  static constexpr auto value = object(
+      "version", &T::version, "registry", &T::registry, "global", &T::global, "asr", &T::asr, "llm",
+      &T::llm, "scenes", &T::scenes, "triggers", &T::triggers, "receivers", &T::receivers);
 };
 
 std::string CoreConfigToJson(const CoreConfig& config) {
@@ -599,6 +646,26 @@ bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* 
   AsrWire asr;
   if (ReadSection(root, "asr", &asr)) {
     FromWire(asr, &parsed.asr);
+  }
+
+  std::vector<ClientSpecWire> triggers;
+  if (ReadSection(root, "triggers", &triggers)) {
+    parsed.triggers.reserve(triggers.size());
+    for (const auto& entry : triggers) {
+      ClientSpec item;
+      FromWire(entry, &item);
+      parsed.triggers.push_back(std::move(item));
+    }
+  }
+
+  std::vector<ClientSpecWire> receivers;
+  if (ReadSection(root, "receivers", &receivers)) {
+    parsed.receivers.reserve(receivers.size());
+    for (const auto& entry : receivers) {
+      ClientSpec item;
+      FromWire(entry, &item);
+      parsed.receivers.push_back(std::move(item));
+    }
   }
 
   *config = std::move(parsed);

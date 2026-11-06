@@ -25,6 +25,10 @@ public:
   [[nodiscard]] const ::LlmProvider* LlmProvider(std::string_view provider_id) const noexcept;
   [[nodiscard]] const ::LlmAdapter* LlmAdapter(std::string_view adapter_id) const noexcept;
 
+  // Managed pipe clients (triggers & receivers)
+  [[nodiscard]] const ::ClientSpec* Trigger(std::string_view trigger_id) const noexcept;
+  [[nodiscard]] const ::ClientSpec* Receiver(std::string_view receiver_id) const noexcept;
+
   // Scene definitions
   [[nodiscard]] const vinput::scene::Definition* CommandScene() const noexcept;
 

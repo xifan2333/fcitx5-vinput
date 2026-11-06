@@ -64,6 +64,30 @@ const ::LlmAdapter* CoreConfigView::LlmAdapter(std::string_view adapter_id) cons
   return nullptr;
 }
 
+const ::ClientSpec* CoreConfigView::Trigger(std::string_view trigger_id) const noexcept {
+  if (trigger_id.empty()) {
+    return nullptr;
+  }
+  for (const auto& trigger : config_->triggers) {
+    if (trigger.id == trigger_id) {
+      return &trigger;
+    }
+  }
+  return nullptr;
+}
+
+const ::ClientSpec* CoreConfigView::Receiver(std::string_view receiver_id) const noexcept {
+  if (receiver_id.empty()) {
+    return nullptr;
+  }
+  for (const auto& receiver : config_->receivers) {
+    if (receiver.id == receiver_id) {
+      return &receiver;
+    }
+  }
+  return nullptr;
+}
+
 const ::AsrProvider* CoreConfigView::AsrProvider(std::string_view provider_id) const noexcept {
   if (provider_id.empty()) {
     return nullptr;
