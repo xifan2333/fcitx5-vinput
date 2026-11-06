@@ -42,30 +42,16 @@ namespace {
 constexpr std::string_view kRemoteProviderId = "provider.vinput.remote.streaming";
 
 std::optional<int> ParsePort(std::string_view value) {
-  const std::string_view trimmed = vinput::str::Trim(value);
-  if (trimmed.empty()) {
+  const auto port = vinput::str::ParseInteger<int>(value);
+  if (!port || *port < 0 || *port > 65535) {
     return std::nullopt;
   }
-  int parsed = 0;
-  const char* begin = trimmed.data();
-  const char* end = begin + trimmed.size();
-  const auto result = std::from_chars(begin, end, parsed);
-  if (result.ec != std::errc{} || result.ptr != end || parsed < 0 || parsed > 65535) {
-    return std::nullopt;
-  }
-  return parsed;
+  return port;
 }
 
 std::optional<int> ParsePositiveInt(std::string_view value) {
-  const std::string_view trimmed = vinput::str::Trim(value);
-  if (trimmed.empty()) {
-    return std::nullopt;
-  }
-  int parsed = 0;
-  const char* begin = trimmed.data();
-  const char* end = begin + trimmed.size();
-  const auto result = std::from_chars(begin, end, parsed);
-  if (result.ec != std::errc{} || result.ptr != end || parsed <= 0) {
+  const auto parsed = vinput::str::ParseInteger<int>(value);
+  if (!parsed || *parsed <= 0) {
     return std::nullopt;
   }
   return parsed;
