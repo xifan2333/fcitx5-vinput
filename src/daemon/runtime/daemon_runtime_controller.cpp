@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "common/asr/recognition_result.h"
+#include "common/client/client_command.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"

@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -27,7 +28,10 @@ void TestParseStartCommand() {
   {
     auto cmd = vinput::client::ParseClientCommand(R"({"type":"start"})");
     ExpectTrue(cmd.has_value(), "Default start should parse");
-    const auto* start = std::get_if<vinput::client::StartCommand>(&*cmd);
+    if (!cmd) {
+      std::abort();
+    }
+    const auto* start = std::get_if<vinput::client::StartCommand>(&cmd.value());
     ExpectTrue(start != nullptr, "Command should be StartCommand");
     ExpectTrue(start->ime, "Default ime should be true");
     ExpectEq(start->mode, "normal", "Default mode should be normal");
@@ -40,7 +44,10 @@ void TestParseStartCommand() {
     auto cmd = vinput::client::ParseClientCommand(
         R"({"type":"start","ime":false,"mode":"command","selected_text":"hello","capture_device":"alsa_input.1"})");
     ExpectTrue(cmd.has_value(), "Full start should parse");
-    const auto* start = std::get_if<vinput::client::StartCommand>(&*cmd);
+    if (!cmd) {
+      std::abort();
+    }
+    const auto* start = std::get_if<vinput::client::StartCommand>(&cmd.value());
     ExpectTrue(start != nullptr, "Command should be StartCommand");
     ExpectTrue(!start->ime, "ime should be false");
     ExpectEq(start->mode, "command", "mode should be command");
@@ -53,7 +60,10 @@ void TestParseStopCommand() {
   {
     auto cmd = vinput::client::ParseClientCommand(R"({"type":"stop","ime":true,"scene":"polish"})");
     ExpectTrue(cmd.has_value(), "Stop should parse");
-    const auto* stop = std::get_if<vinput::client::StopCommand>(&*cmd);
+    if (!cmd) {
+      std::abort();
+    }
+    const auto* stop = std::get_if<vinput::client::StopCommand>(&cmd.value());
     ExpectTrue(stop != nullptr, "Command should be StopCommand");
     ExpectTrue(stop->ime, "ime should be true");
     ExpectEq(stop->scene, "polish", "scene should match");
@@ -65,7 +75,10 @@ void TestParseCancelCommand() {
     auto cmd =
         vinput::client::ParseClientCommand(R"({"type":"cancel","ime":false,"commit_raw":true})");
     ExpectTrue(cmd.has_value(), "Cancel should parse");
-    const auto* cancel = std::get_if<vinput::client::CancelCommand>(&*cmd);
+    if (!cmd) {
+      std::abort();
+    }
+    const auto* cancel = std::get_if<vinput::client::CancelCommand>(&cmd.value());
     ExpectTrue(cancel != nullptr, "Command should be CancelCommand");
     ExpectTrue(!cancel->ime, "ime should be false");
     ExpectTrue(cancel->commit_raw, "commit_raw should be true");
@@ -78,7 +91,10 @@ void TestParseInjectCommand() {
     auto cmd = vinput::client::ParseClientCommand(
         R"({"type":"inject","stage":"partial","text":"speaking...","ime":true})");
     ExpectTrue(cmd.has_value(), "Inject partial should parse");
-    const auto* inject = std::get_if<vinput::client::InjectCommand>(&*cmd);
+    if (!cmd) {
+      std::abort();
+    }
+    const auto* inject = std::get_if<vinput::client::InjectCommand>(&cmd.value());
     ExpectTrue(inject != nullptr, "Command should be InjectCommand");
     ExpectTrue(inject->stage == vinput::client::InjectStage::Partial, "Stage should be Partial");
     ExpectEq(inject->text, "speaking...", "text should match");
@@ -90,7 +106,10 @@ void TestParseInjectCommand() {
     auto cmd = vinput::client::ParseClientCommand(
         R"({"type":"inject","stage":"final","text":"done speaking","ime":false,"scene":"translate"})");
     ExpectTrue(cmd.has_value(), "Inject final should parse");
-    const auto* inject = std::get_if<vinput::client::InjectCommand>(&*cmd);
+    if (!cmd) {
+      std::abort();
+    }
+    const auto* inject = std::get_if<vinput::client::InjectCommand>(&cmd.value());
     ExpectTrue(inject != nullptr, "Command should be InjectCommand");
     ExpectTrue(inject->stage == vinput::client::InjectStage::Final, "Stage should be Final");
     ExpectEq(inject->text, "done speaking", "text should match");
