@@ -18,8 +18,10 @@
 #include <string>
 #include <sys/eventfd.h>
 #include <thread>
+#include <type_traits>
 #include <unistd.h>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "common/asr/recognition_result.h"
@@ -245,7 +247,6 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, boo
 
   {
     const std::scoped_lock lock(state_mutex_);
-    session_ime_ = ime;
     if (start_recording_in_progress_) {
       start_recording_in_progress_ = false;
       accepting_chunks_.store(false, std::memory_order_relaxed);
@@ -261,6 +262,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, boo
       }
       return DbusService::MethodResult::Failure(transition.rejection_reason);
     }
+    session_ime_ = ime;
 
     if (transition.should_stop_capture) {
       accepting_chunks_.store(false, std::memory_order_relaxed);
@@ -654,7 +656,7 @@ bool DaemonRuntimeController::FailActiveSession(
     session_lifecycle_.CancelAndRetireSession(std::move(session_to_cancel));
   }
 
-  dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Error));
+  NotifyStatusChanged(vinput::dbus::Status::Error);
   dbus_->EmitDesktopNotification(
       vinput::daemon::notify::MakeDaemonErrorNotification(error_message));
   capture_->EndRecording();
@@ -709,12 +711,12 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(bool ime,
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {
     const std::scoped_lock lock(state_mutex_);
-    session_ime_ = ime;
     if (state_machine_.CurrentPhase() != vinput::dbus::Status::Recording) {
       VLOG_DEBUG("stop rejected (phase: {})",
                  vinput::dbus::StatusToString(state_machine_.CurrentPhase()));
       return DbusService::MethodResult::Failure(_("Recording is not active."));
     }
+    session_ime_ = ime;
     accepting_chunks_.store(false, std::memory_order_relaxed);
     stop_capture = true;
   }
@@ -1019,7 +1021,9 @@ void DaemonRuntimeController::WorkerMain() {
         } else if (!result.text.empty()) {
           order.postprocess_request.text = std::move(result.text);
           // RecognitionPartial is also the protocol's transcript-update signal.
-          dbus_->EmitRecognitionPartial(order.postprocess_request.text);
+          if (order.ime && dbus_ != nullptr) {
+            dbus_->EmitRecognitionPartial(order.postprocess_request.text);
+          }
         }
         order.pcm.clear();
         order.session.reset();
@@ -1056,7 +1060,9 @@ void DaemonRuntimeController::WorkerMain() {
         dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(error));
       }
       if (order.ime && dbus_ != nullptr) {
-        dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
+        if (order.ime && dbus_ != nullptr) {
+          dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
+        }
       }
     } catch (const std::exception& e) {
       {
@@ -1127,15 +1133,19 @@ void DaemonRuntimeController::DispatchClientCommand(const vinput::client::Client
   std::visit(
       [this](const auto& cmd) {
         using T = std::decay_t<decltype(cmd)>;
+        DbusService::MethodResult result;
         if constexpr (std::is_same_v<T, vinput::client::StartCommand>) {
           const bool is_command = (cmd.mode == "command");
-          (void)StartRecording(cmd.ime, is_command, cmd.selected_text, cmd.capture_device);
+          result = StartRecording(cmd.ime, is_command, cmd.selected_text, cmd.capture_device);
         } else if constexpr (std::is_same_v<T, vinput::client::StopCommand>) {
-          (void)StopRecording(cmd.ime, cmd.scene);
+          result = StopRecording(cmd.ime, cmd.scene);
         } else if constexpr (std::is_same_v<T, vinput::client::CancelCommand>) {
-          (void)CancelOperation(cmd.ime, cmd.commit_raw);
+          result = CancelOperation(cmd.ime, cmd.commit_raw);
         } else if constexpr (std::is_same_v<T, vinput::client::InjectCommand>) {
-          (void)InjectText(cmd.ime, cmd.stage, cmd.text, cmd.scene);
+          result = InjectText(cmd.ime, cmd.stage, cmd.text, cmd.scene);
+        }
+        if (!result.ok) {
+          VLOG_WARN("client command rejected: {}", result.message);
         }
       },
       command);

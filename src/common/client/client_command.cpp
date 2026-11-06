@@ -1,9 +1,11 @@
 #include "common/client/client_command.h"
 
 #include <cstdint>
+#include <glaze/core/common.hpp>
+#include <glaze/core/meta.hpp>
 #include <glaze/core/opts.hpp>
 #include <glaze/core/read.hpp>
-#include <glaze/glaze.hpp>
+#include <glaze/json/write.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -61,6 +63,12 @@ std::optional<ClientCommand> ParseClientCommand(std::string_view line, std::stri
     StartCommand cmd;
     cmd.ime = wire.ime.value_or(true);
     cmd.mode = wire.mode.value_or("normal");
+    if (cmd.mode != "normal" && cmd.mode != "command") {
+      if (error != nullptr) {
+        *error = "start mode must be 'normal' or 'command', got: " + cmd.mode;
+      }
+      return std::nullopt;
+    }
     cmd.selected_text = wire.selected_text.value_or(std::string{});
     cmd.capture_device = wire.capture_device.value_or(std::string{});
     if (error != nullptr) {

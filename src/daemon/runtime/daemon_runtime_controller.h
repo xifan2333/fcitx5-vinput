@@ -63,7 +63,7 @@ public:
   DbusService::MethodResult StartRecording(bool ime, bool is_command,
                                            const std::string& selected_text = {},
                                            const std::string& capture_device = {});
-  DbusService::MethodResult StopRecording(bool ime, const std::string& scene_id = {});
+  DbusService::MethodResult StopRecording(bool ime, const std::string& scene_id);
   DbusService::MethodResult CancelOperation(bool ime, bool commit_raw_text);
   DbusService::MethodResult InjectText(bool ime, vinput::client::InjectStage stage,
                                        const std::string& text, const std::string& scene_id = {});
