@@ -149,15 +149,18 @@ void NormalizeCoreConfig(CoreConfig* config) {
     config->llm.adapters = std::move(normalized);
   }
 
-  auto normalize_clients = [](std::vector<ClientSpec>* clients, const char* label) {
-    std::set<std::string> seen;
+  // Cross-domain id collisions are ambiguous: FindClient prefers triggers, so a
+  // receiver reusing a trigger id would be silently shadowed. Dedupe across both
+  // domains by sharing one seen-set; the later (receiver) entry is dropped.
+  std::set<std::string> client_ids;
+  auto normalize_clients = [&client_ids](std::vector<ClientSpec>* clients, const char* label) {
     std::vector<ClientSpec> normalized;
     for (auto client : *clients) {
       if (client.id.empty()) {
         std::cerr << "Ignoring " << label << " with empty id\n";
         continue;
       }
-      if (!seen.insert(client.id).second) {
+      if (!client_ids.insert(client.id).second) {
         std::cerr << "Ignoring duplicate " << label << " '" << client.id << "'\n";
         continue;
       }

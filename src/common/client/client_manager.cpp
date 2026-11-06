@@ -6,9 +6,11 @@
 #include <filesystem>
 #include <fmt/format.h>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -40,6 +42,11 @@ namespace {
 constexpr auto kGracefulStopTimeout = std::chrono::milliseconds(2000);
 constexpr auto kForceKillTimeout = std::chrono::milliseconds(1000);
 
+// A single client command line is a small JSON object; anything larger means the
+// child is streaming garbage without newlines and must not be allowed to grow the
+// reassembly buffer without bound. Matches NotificationBridge's per-source cap.
+constexpr std::size_t kMaxCommandLineBytes = std::size_t{64} * 1024; // 64 KiB
+
 std::string SourceId(std::string_view client_id) {
   return fmt::format("client:{}", client_id);
 }
@@ -51,17 +58,31 @@ std::string SourceId(std::string_view client_id) {
 struct StdoutFramer {
   void Feed(std::span<const std::byte> bytes) {
     std::vector<std::string> lines;
+    bool overflowed_now = false;
     {
       const std::scoped_lock lock(mutex);
       for (const std::byte b : bytes) {
         const char c = static_cast<char>(b);
         if (c == '\n') {
-          lines.push_back(std::move(pending));
+          if (!overflow) {
+            lines.push_back(std::move(pending));
+          }
           pending.clear();
+          overflow = false;
         } else if (c != '\r') {
-          pending.push_back(c);
+          if (pending.size() >= kMaxCommandLineBytes) {
+            if (!overflow) {
+              overflow = true;
+              overflowed_now = true;
+            }
+          } else {
+            pending.push_back(c);
+          }
         }
       }
+    }
+    if (overflowed_now) {
+      VLOG_WARN("client command line exceeded {} bytes, dropping frame", kMaxCommandLineBytes);
     }
     if (handler) {
       for (const auto& line : lines) {
@@ -72,6 +93,7 @@ struct StdoutFramer {
 
   std::mutex mutex;
   std::string pending;
+  bool overflow = false;
   CommandHandler handler;
 };
 
@@ -83,6 +105,10 @@ struct TrackedSession {
 
 struct TrackedState {
   std::mutex mutex;
+  // Ids with a Start in flight. Two threads racing to start the same client must
+  // not both pass IsRunning and then have the second insert_or_assign replace
+  // (and thereby kill) the first session.
+  std::set<std::string, std::less<>> pending;
   std::map<std::string, std::unique_ptr<TrackedSession>, std::less<>> sessions;
 };
 
@@ -90,6 +116,23 @@ TrackedState& GetTrackedState() {
   static TrackedState state;
   return state;
 }
+
+// Releases a pending-start reservation unless the session was handed over.
+struct PendingRelease {
+  ~PendingRelease() {
+    if (!armed) {
+      return;
+    }
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    state.pending.erase(id);
+  }
+
+  void Disarm() { armed = false; }
+
+  std::string id;
+  bool armed = true;
+};
 
 // Triggers and receivers share the same spec shape; the protocol layer treats them
 // symmetrically, so lookup covers both config domains.
@@ -99,6 +142,104 @@ const ClientSpec* FindClient(const CoreConfig& config, std::string_view client_i
     return trigger;
   }
   return view.Receiver(client_id);
+}
+
+bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge* bridge,
+                   CommandHandler on_command, std::string* error) {
+  const std::string client_id = client.id;
+  if (PidPath(client_id).empty()) {
+    if (error != nullptr) {
+      *error = "client id must not contain path separators";
+    }
+    return false;
+  }
+  if (client.command.empty()) {
+    if (error != nullptr) {
+      *error = "client command is not configured";
+    }
+    return false;
+  }
+  if (IsRunning(client_id)) {
+    if (error != nullptr) {
+      *error = "client is already running";
+    }
+    return false;
+  }
+
+  {
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    if (state.sessions.contains(client_id) || !state.pending.insert(client_id).second) {
+      if (error != nullptr) {
+        *error = "client is already running";
+      }
+      return false;
+    }
+  }
+  PendingRelease release{client_id};
+
+  const auto spec = BuildCommandSpec(client);
+  const std::string source_id = SourceId(client_id);
+  auto framer = std::make_shared<StdoutFramer>();
+  framer->handler = std::move(on_command);
+
+  auto started = vinput::process::ProcessSession::Start(
+      spec,
+      [bridge, source_id](std::span<const std::byte> bytes) {
+        if (bridge != nullptr) {
+          bridge->FeedStderr(source_id, bytes);
+        }
+      },
+      [framer](std::span<const std::byte> bytes) { framer->Feed(bytes); });
+  if (!started) {
+    if (error != nullptr) {
+      *error = started.error().empty() ? "failed to start client" : started.error();
+    }
+    return false;
+  }
+
+  vinput::process::ProcessSession session = std::move(*started);
+  int immediate_exit = -1;
+  if (session.WaitForExit(std::chrono::milliseconds(250), &immediate_exit)) {
+    if (bridge != nullptr) {
+      bridge->Flush(source_id);
+      bridge->RetireSource(source_id);
+    }
+    if (error != nullptr) {
+      *error = fmt::format("client exited immediately (code {})", immediate_exit);
+    }
+    return false;
+  }
+
+  const auto child_pid = static_cast<pid_t>(session.Pid());
+  if (!WritePidFile(client_id, child_pid, error)) {
+    session.Cancel();
+    (void)session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
+    if (bridge != nullptr) {
+      bridge->Flush(source_id);
+      bridge->RetireSource(source_id);
+    }
+    return false;
+  }
+
+  auto tracked = std::make_unique<TrackedSession>(TrackedSession{
+      .session = std::move(session),
+      .bridge = bridge,
+      .framer = std::move(framer),
+  });
+
+  {
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    state.sessions.insert_or_assign(client_id, std::move(tracked));
+  }
+  release.Disarm();
+
+  VLOG_DEBUG("client started id={}", client_id);
+  if (error != nullptr) {
+    error->clear();
+  }
+  return true;
 }
 
 } // namespace
@@ -112,6 +253,11 @@ vinput::process::CommandSpec BuildCommandSpec(const ClientSpec& client) {
 }
 
 std::filesystem::path PidPath(std::string_view client_id) {
+  // A client id must stay a plain filename component: a path separator would let
+  // PID file writes and removals escape the client runtime directory.
+  if (client_id.empty() || client_id.find('/') != std::string_view::npos) {
+    return {};
+  }
   return vinput::path::ClientRuntimeDir() / (std::string(client_id) + ".pid");
 }
 
@@ -165,22 +311,32 @@ void RemovePidFile(std::string_view client_id) {
 }
 
 pid_t GetPid(std::string_view client_id) {
+  // The session is detached from the map under the lock, but bridge cleanup runs
+  // after the lock is released: a notification sink that re-enters this manager
+  // (Broadcast, GetPid) must never deadlock the query path.
+  vinput::notify::NotificationBridge* exited_bridge = nullptr;
+  bool reaped = false;
   {
     auto& state = GetTrackedState();
     const std::scoped_lock lock(state.mutex);
     if (const auto it = state.sessions.find(client_id); it != state.sessions.end()) {
       if (it->second->session.HasExited()) {
-        if (it->second->bridge != nullptr) {
-          const std::string source_id = SourceId(client_id);
-          it->second->bridge->Flush(source_id);
-          it->second->bridge->RetireSource(source_id);
-        }
-        RemovePidFile(client_id);
+        reaped = true;
+        exited_bridge = it->second->bridge;
         state.sessions.erase(it);
-        return -1;
+      } else {
+        return static_cast<pid_t>(it->second->session.Pid());
       }
-      return static_cast<pid_t>(it->second->session.Pid());
     }
+  }
+  if (reaped) {
+    if (exited_bridge != nullptr) {
+      const std::string source_id = SourceId(client_id);
+      exited_bridge->Flush(source_id);
+      exited_bridge->RetireSource(source_id);
+    }
+    RemovePidFile(client_id);
+    return -1;
   }
 
   const ClientPidRecord record = ReadPidRecord(client_id);
@@ -203,80 +359,7 @@ bool Start(std::string_view client_id, vinput::notify::NotificationBridge* bridg
     }
     return false;
   }
-  if (client->command.empty()) {
-    if (error != nullptr) {
-      *error = "client command is not configured";
-    }
-    return false;
-  }
-  if (IsRunning(client_id)) {
-    if (error != nullptr) {
-      *error = "client is already running";
-    }
-    return false;
-  }
-
-  const auto spec = BuildCommandSpec(*client);
-  const std::string source_id = SourceId(client_id);
-  auto framer = std::make_shared<StdoutFramer>();
-  framer->handler = std::move(on_command);
-
-  auto started = vinput::process::ProcessSession::Start(
-      spec,
-      [bridge, source_id](std::span<const std::byte> bytes) {
-        if (bridge != nullptr) {
-          bridge->FeedStderr(source_id, bytes);
-        }
-      },
-      [framer](std::span<const std::byte> bytes) { framer->Feed(bytes); });
-  if (!started) {
-    if (error != nullptr) {
-      *error = started.error().empty() ? "failed to start client" : started.error();
-    }
-    return false;
-  }
-
-  vinput::process::ProcessSession session = std::move(*started);
-  int immediate_exit = -1;
-  if (session.WaitForExit(std::chrono::milliseconds(250), &immediate_exit)) {
-    if (bridge != nullptr) {
-      bridge->Flush(source_id);
-      bridge->RetireSource(source_id);
-    }
-    if (error != nullptr) {
-      *error = fmt::format("client exited immediately (code {})", immediate_exit);
-    }
-    return false;
-  }
-
-  const auto child_pid = static_cast<pid_t>(session.Pid());
-  if (!WritePidFile(client_id, child_pid, error)) {
-    session.Cancel();
-    (void)session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
-    if (bridge != nullptr) {
-      bridge->Flush(source_id);
-      bridge->RetireSource(source_id);
-    }
-    return false;
-  }
-
-  auto tracked = std::make_unique<TrackedSession>(TrackedSession{
-      .session = std::move(session),
-      .bridge = bridge,
-      .framer = std::move(framer),
-  });
-
-  {
-    auto& state = GetTrackedState();
-    const std::scoped_lock lock(state.mutex);
-    state.sessions.insert_or_assign(std::string(client_id), std::move(tracked));
-  }
-
-  VLOG_DEBUG("client started id={}", client_id);
-  if (error != nullptr) {
-    error->clear();
-  }
-  return true;
+  return StartWithSpec(*client, bridge, std::move(on_command), error);
 }
 
 bool Stop(std::string_view client_id, std::string* error,
@@ -350,13 +433,15 @@ bool Stop(std::string_view client_id, std::string* error,
 
 void AutoStart(const CoreConfig& config, vinput::notify::NotificationBridge* bridge,
                CommandHandler on_command) {
+  // The caller passes the authoritative in-memory config, so the spec handed to
+  // the process is exactly what was enabled here - never a stale disk re-read.
   const auto autostart = [&](const std::vector<ClientSpec>& clients) {
     for (const auto& client : clients) {
       if (!client.autoStart) {
         continue;
       }
       std::string err;
-      if (!Start(client.id, bridge, on_command, &err)) {
+      if (!StartWithSpec(client, bridge, on_command, &err)) {
         VLOG_ERROR("failed to autostart client '{}': {}", client.id, err);
       } else {
         VLOG_DEBUG("autostarted client '{}'", client.id);
