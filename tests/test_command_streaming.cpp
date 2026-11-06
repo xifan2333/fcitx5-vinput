@@ -591,11 +591,61 @@ void TestImmediateAudioEmission() {
   unlink(received_file.c_str());
 }
 
+/** Test that obsolete stdout {"type": "error"} is ignored and not queued as an Error event. */
+void TestStdoutErrorNotQueuedAsEvent() {
+  const std::string pid_file = GetUniquePidFilePath(15);
+  unlink(pid_file.c_str());
+
+  CommandAsrProvider provider;
+  provider.id = "test-stdout-error-provider";
+  provider.command = "/bin/sh";
+  provider.args = {"-c",
+                   "echo $$ > " + pid_file +
+                       " && echo '{\"type\": \"session_started\"}'"
+                       " && echo '{\"type\": \"error\", \"message\": \"legacy stdout error\"}'"
+                       " && while read -r line; do case \"$line\" in *finish*) break ;; esac; done"
+                       " && echo '{\"type\": \"final\", \"text\": \"valid text\"}'"
+                       " && echo '{\"type\": \"closed\"}'"
+                       " && exit 0"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error, nullptr);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
+
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "Failed to read child pid file");
+
+  ExpectTrue(session->Finish(&error), "Finish failed: " + error);
+  AssertChildAlreadyReaped(child_pid);
+
+  const auto events = session->PollEvents();
+  bool saw_error = false;
+  bool saw_final = false;
+  for (const auto& ev : events) {
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
+      saw_error = true;
+    }
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText &&
+        ev.text == "valid text") {
+      saw_final = true;
+    }
+  }
+  ExpectTrue(!saw_error, "Legacy stdout error must not be queued as RecognitionEventKind::Error");
+  ExpectTrue(saw_final, "FinalText event should be preserved");
+}
+
 } // namespace
 
 int main() {
   std::cout << "Running command streaming process lifecycle tests...\n";
   TestImmediateAudioEmission();
+  TestStdoutErrorNotQueuedAsEvent();
   TestSilentSessionReapsChild();
   TestDestructionReapsChild();
   TestFinalTextSessionReapsChild();
