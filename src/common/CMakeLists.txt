@@ -12,6 +12,7 @@ set(VINPUT_CONFIG_SOURCES
     scene/postprocess_scene.cpp
     llm/provider_model_cache.cpp
     llm/adapter_manager.cpp
+    client/client_manager.cpp
     asr/recognition_result.cpp
     asr/model_manager.cpp
     registry/registry_i18n.cpp
