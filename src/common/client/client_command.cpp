@@ -1,6 +1,5 @@
 #include "common/client/client_command.h"
 
-#include <cstdint>
 #include <glaze/core/common.hpp>
 #include <glaze/core/meta.hpp>
 #include <glaze/json/read.hpp>
