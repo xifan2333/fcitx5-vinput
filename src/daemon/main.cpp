@@ -11,6 +11,7 @@ extern "C" {
 #include <signal.h>
 }
 
+#include "common/client/client_manager.h"
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
@@ -139,6 +140,9 @@ int main(int argc, char* argv[]) {
   }
 
   vinput::adapter::AutoStart(startup_settings, &notification_bridge);
+  vinput::client::AutoStart(startup_settings, &notification_bridge, [&](std::string_view line) {
+    runtime_controller.DispatchClientLine(line);
+  });
 
   runtime_controller.StartWorker();
   std::string remote_error;
@@ -194,6 +198,7 @@ int main(int argc, char* argv[]) {
   remote_text_service.Shutdown();
   runtime_controller.Shutdown();
   recognition_manager.Shutdown();
+  vinput::client::Shutdown();
   vinput::adapter::Shutdown();
   return 0;
 }

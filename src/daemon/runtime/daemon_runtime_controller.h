@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 
+#include "common/client/client_command.h"
 #include "common/dbus/dbus_interface.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
@@ -37,6 +38,7 @@ struct RecognitionOrder {
   vinput::daemon::asr::BackendDescriptor backend;
   std::vector<int16_t> pcm;
   PostprocessRequest postprocess_request;
+  bool ime = true;
 };
 
 class DaemonRuntimeController {
@@ -56,6 +58,19 @@ public:
   DbusService::MethodResult StartCommandRecording(const std::string& selected_text);
   DbusService::MethodResult StopRecording(const std::string& scene_id);
   DbusService::MethodResult CancelOperation(bool commit_raw_text);
+
+  // Extended session control supporting IME bypass, per-session capture device, and injection
+  DbusService::MethodResult StartRecording(bool ime, bool is_command,
+                                           const std::string& selected_text = {},
+                                           const std::string& capture_device = {});
+  DbusService::MethodResult StopRecording(bool ime, const std::string& scene_id = {});
+  DbusService::MethodResult CancelOperation(bool ime, bool commit_raw_text);
+  DbusService::MethodResult InjectText(bool ime, vinput::client::InjectStage stage,
+                                       const std::string& text, const std::string& scene_id = {});
+
+  void DispatchClientCommand(const vinput::client::ClientCommand& command);
+  void DispatchClientLine(std::string_view line);
+
   DbusService::MethodResult ReloadAsrBackend();
   std::string GetStatus() const;
   vinput::dbus::AsrBackendState GetAsrBackendState() const;
@@ -66,8 +81,10 @@ public:
   void Shutdown();
 
 private:
-  DbusService::MethodResult StartRecordingInternal(bool is_command,
-                                                   const std::string& selected_text);
+  DbusService::MethodResult StartRecordingInternal(bool ime, bool is_command,
+                                                   const std::string& selected_text,
+                                                   const std::string& capture_device);
+  void NotifyStatusChanged(vinput::dbus::Status status);
   bool SynchronizeAsrBackend(std::string* error = nullptr);
   void MaybeApplyPendingAsrBackendReload();
   void DrainIncomingAudio();
@@ -104,6 +121,7 @@ private:
   bool first_partial_logged_ = false;
   bool start_recording_in_progress_ = false;
   bool pending_asr_backend_reload_ = false;
+  bool session_ime_ = true;
   int notify_fd_ = -1;
   std::atomic<bool> pending_capture_stop_{false};
   std::atomic<bool> accepting_chunks_{false};
