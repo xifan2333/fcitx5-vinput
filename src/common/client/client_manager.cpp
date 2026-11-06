@@ -119,6 +119,7 @@ TrackedState& GetTrackedState() {
 
 // Releases a pending-start reservation unless the session was handed over.
 struct PendingRelease {
+  explicit PendingRelease(std::string reservation_id) : id(std::move(reservation_id)) {}
   ~PendingRelease() {
     if (!armed) {
       return;
@@ -127,6 +128,11 @@ struct PendingRelease {
     const std::scoped_lock lock(state.mutex);
     state.pending.erase(id);
   }
+
+  PendingRelease(const PendingRelease&) = delete;
+  PendingRelease& operator=(const PendingRelease&) = delete;
+  PendingRelease(PendingRelease&&) = delete;
+  PendingRelease& operator=(PendingRelease&&) = delete;
 
   void Disarm() { armed = false; }
 
