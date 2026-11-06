@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <glaze/core/common.hpp>
 #include <glaze/core/meta.hpp>
-#include <glaze/core/opts.hpp>
 #include <glaze/json/read.hpp>
 #include <optional>
 #include <string>
@@ -49,8 +48,7 @@ std::optional<ClientCommand> ParseClientCommand(std::string_view line, std::stri
   }
 
   WireEnvelope wire;
-  constexpr auto kOpts = glz::opts{.error_on_unknown_keys = uint8_t{0}};
-  const auto ec = glz::read<kOpts>(wire, line);
+  const auto ec = glz::read_json(wire, line);
   if (bool(ec)) {
     if (error != nullptr) {
       *error = glz::format_error(ec, line);
