@@ -181,6 +181,17 @@ std::filesystem::path AdapterRuntimeDir() {
   return base / "vinput" / "adapters";
 }
 
+std::filesystem::path ClientRuntimeDir() {
+  if (const auto xdg_runtime = GetEnvNonEmpty("XDG_RUNTIME_DIR")) {
+    return std::filesystem::path(*xdg_runtime) / "vinput" / "clients";
+  }
+
+  const auto tmpdir = GetEnvNonEmpty("TMPDIR");
+  const std::filesystem::path base =
+      tmpdir ? std::filesystem::path(*tmpdir) : std::filesystem::path("/tmp");
+  return base / "vinput" / "clients";
+}
+
 std::filesystem::path ContextCachePath() {
   return VinputCacheDir() / "context.jsonl";
 }
