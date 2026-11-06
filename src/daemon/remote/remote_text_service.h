@@ -120,8 +120,8 @@ struct Ipv4Subnet {
 // Picks the addresses a phone on the local network can reach. When the routing
 // table reports a gateway, only addresses on the router's segment survive, so
 // container bridges and other isolated segments drop out. Without any gateway
-// the caller has nothing to filter against, so every non link-local address is
-// kept rather than announcing none.
+// the caller has nothing to filter against, so all candidate interface addresses
+// are kept rather than announcing none.
 [[nodiscard]] std::vector<std::uint32_t>
 SelectReachableAddresses(std::span<const Ipv4Subnet> interfaces,
                          std::span<const std::uint32_t> gateways);
