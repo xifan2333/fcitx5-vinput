@@ -1,12 +1,12 @@
 #include "daemon/remote/remote_text_service.h"
 
 #include <algorithm>
-#include <arpa/inet.h>
 #include <asm-generic/socket.h>
 #include <atomic>
-#include <charconv>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <exception>
 #include <fmt/format.h>
 #include <glaze/json/json_t.hpp>
@@ -16,13 +16,11 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <net/if.h>
 #include <netinet/in.h>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
-#include <system_error>
 #include <thread>
 #include <utility>
 #include <variant>
@@ -315,6 +313,8 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
   std::vector<std::uint32_t> gateways;
   if (const auto route_table = vinput::file::ReadTextFile(kRouteTablePath); route_table) {
     gateways = ParseGatewayAddresses(*route_table);
+  } else {
+    VLOG_WARN("failed to read {}: {}", kRouteTablePath, route_table.error());
   }
 
   ifaddrs* ifaddr = nullptr;
@@ -330,20 +330,22 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
     if (ifa->ifa_netmask == nullptr) {
       continue;
     }
-    const int flags = ifa->ifa_flags;
-    if ((flags & IFF_UP) == 0 || (flags & IFF_LOOPBACK) != 0) {
+    const unsigned int flags = ifa->ifa_flags;
+    if ((flags & IFF_UP) == 0 || (flags & IFF_RUNNING) == 0 || (flags & IFF_LOOPBACK) != 0) {
       continue;
     }
 
-    const auto* address = reinterpret_cast<const sockaddr_in*>(ifa->ifa_addr);
-    const auto* netmask = reinterpret_cast<const sockaddr_in*>(ifa->ifa_netmask);
-    const std::uint32_t host_address = ntohl(address->sin_addr.s_addr);
+    sockaddr_in local{};
+    std::memcpy(&local, ifa->ifa_addr, sizeof(local));
+    sockaddr_in mask{};
+    std::memcpy(&mask, ifa->ifa_netmask, sizeof(mask));
+    const std::uint32_t host_address = ntohl(local.sin_addr.s_addr);
     if ((host_address & kLinkLocalMask) == kLinkLocalNetwork) {
       continue;
     }
 
     if (!gateways.empty()) {
-      const Ipv4Subnet subnet{.network = host_address, .mask = ntohl(netmask->sin_addr.s_addr)};
+      const Ipv4Subnet subnet{.network = host_address, .mask = ntohl(mask.sin_addr.s_addr)};
       const bool reaches_router = std::ranges::any_of(
           gateways, [&subnet](std::uint32_t gateway) { return SubnetContains(subnet, gateway); });
       if (!reaches_router) {
