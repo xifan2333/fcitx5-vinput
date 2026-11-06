@@ -18,6 +18,7 @@
 #include <mutex>
 #include <netinet/in.h>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
@@ -152,6 +153,23 @@ std::vector<std::uint32_t> ParseGatewayAddresses(std::string_view route_table) {
 
 bool SubnetContains(const Ipv4Subnet& subnet, std::uint32_t address) {
   return (address & subnet.mask) == (subnet.network & subnet.mask);
+}
+
+std::vector<std::uint32_t> SelectReachableAddresses(std::span<const Ipv4Subnet> interfaces,
+                                                    std::span<const std::uint32_t> gateways) {
+  std::vector<std::uint32_t> reachable;
+  for (const Ipv4Subnet& interface : interfaces) {
+    if ((interface.network & kLinkLocalMask) == kLinkLocalNetwork) {
+      continue;
+    }
+    if (!gateways.empty() && !std::ranges::any_of(gateways, [&interface](std::uint32_t gateway) {
+          return SubnetContains(interface, gateway);
+        })) {
+      continue;
+    }
+    reachable.push_back(interface.network);
+  }
+  return reachable;
 }
 
 RemoteTextService::RemoteTextService() = default;
@@ -322,7 +340,7 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
     return {};
   }
 
-  std::vector<std::string> endpoints;
+  std::vector<Ipv4Subnet> interfaces;
   for (const ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
     if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET) {
       continue;
@@ -339,26 +357,18 @@ std::vector<std::string> RemoteTextService::ListEndpoints() const {
     std::memcpy(&local, ifa->ifa_addr, sizeof(local));
     sockaddr_in mask{};
     std::memcpy(&mask, ifa->ifa_netmask, sizeof(mask));
-    const std::uint32_t host_address = ntohl(local.sin_addr.s_addr);
-    if ((host_address & kLinkLocalMask) == kLinkLocalNetwork) {
-      continue;
-    }
-
-    if (!gateways.empty()) {
-      const Ipv4Subnet subnet{.network = host_address, .mask = ntohl(mask.sin_addr.s_addr)};
-      const bool reaches_router = std::ranges::any_of(
-          gateways, [&subnet](std::uint32_t gateway) { return SubnetContains(subnet, gateway); });
-      if (!reaches_router) {
-        continue;
-      }
-    }
-
-    endpoints.emplace_back(fmt::format("http://{}.{}.{}.{}:{}", (host_address >> 24) & 0xFFU,
-                                       (host_address >> 16) & 0xFFU, (host_address >> 8) & 0xFFU,
-                                       host_address & 0xFFU,
-                                       bound_port_ > 0 ? bound_port_ : settings_.port));
+    interfaces.push_back(
+        {.network = ntohl(local.sin_addr.s_addr), .mask = ntohl(mask.sin_addr.s_addr)});
   }
   freeifaddrs(ifaddr);
+
+  const int port = bound_port_ > 0 ? bound_port_ : settings_.port;
+  std::vector<std::string> endpoints;
+  for (const std::uint32_t address : SelectReachableAddresses(interfaces, gateways)) {
+    endpoints.emplace_back(fmt::format("http://{}.{}.{}.{}:{}", (address >> 24) & 0xFFU,
+                                       (address >> 16) & 0xFFU, (address >> 8) & 0xFFU,
+                                       address & 0xFFU, port));
+  }
 
   std::ranges::sort(endpoints);
   endpoints.erase(std::ranges::unique(endpoints).begin(), endpoints.end());
