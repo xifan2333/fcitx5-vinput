@@ -28,5 +28,4 @@ std::filesystem::path ReadNotificationsPath();
 std::filesystem::path ProviderModelCachePath();
 std::filesystem::path InstalledManifestCachePath();
 std::filesystem::path I18nCachePath(std::string_view locale);
-std::filesystem::path RemoteWebStaticDir();
 } // namespace vinput::path

@@ -212,13 +212,4 @@ std::filesystem::path I18nCachePath(std::string_view locale) {
   return RegistryCacheDir() / "i18n" / (std::string(locale) + ".json");
 }
 
-std::filesystem::path RemoteWebStaticDir() {
-  std::filesystem::path source = VINPUT_REMOTE_WEB_DIR_SOURCE_PATH;
-  std::error_code ec;
-  if (std::filesystem::exists(source, ec) && !ec) {
-    return source;
-  }
-  return {VINPUT_REMOTE_WEB_DIR_INSTALL_PATH};
-}
-
 } // namespace vinput::path

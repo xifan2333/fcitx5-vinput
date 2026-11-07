@@ -26,28 +26,11 @@
 #include "daemon/runtime/runtime_state_machine.h"
 #include "daemon/runtime/session_lifecycle_manager.h"
 
-namespace vinput::daemon::remote {
-class RemoteTextService;
-}
-
-namespace vinput::daemon::runtime {
-
-struct RecognitionOrder {
-  vinput::daemon::asr::AudioDeliveryMode audio_delivery_mode =
-      vinput::daemon::asr::AudioDeliveryMode::Chunked;
-  std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
-  vinput::daemon::asr::BackendDescriptor backend;
-  std::vector<int16_t> pcm;
-  PostprocessRequest postprocess_request;
-  bool ime = true;
-};
-
 class DaemonRuntimeController {
 public:
   DaemonRuntimeController(AudioCapture* capture, DbusService* dbus,
                           vinput::daemon::asr::RecognitionSessionManager* recognition_manager,
-                          RecognitionPipeline* pipeline,
-                          vinput::daemon::remote::RemoteTextService* remote_text_service = nullptr);
+                          RecognitionPipeline* pipeline);
   ~DaemonRuntimeController();
 
   DaemonRuntimeController(const DaemonRuntimeController&) = delete;
@@ -106,7 +89,6 @@ private:
   vinput::daemon::audio::OutputDucker output_ducker_;
   vinput::daemon::asr::RecognitionSessionManager* recognition_manager_ = nullptr;
   RecognitionPipeline* pipeline_ = nullptr;
-  vinput::daemon::remote::RemoteTextService* remote_text_service_ = nullptr;
 
   mutable std::mutex state_mutex_;
   std::condition_variable worker_cv_;

@@ -22,7 +22,6 @@ extern "C" {
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
 #include "daemon/postprocess/post_processor.h"
-#include "daemon/remote/remote_text_service.h"
 #include "daemon/runtime/daemon_runtime_controller.h"
 #include "daemon/runtime/dbus_service.h"
 #include "daemon/runtime/recognition_pipeline.h"
@@ -91,10 +90,9 @@ int main(int argc, char* argv[]) {
   PostProcessor post_processor;
 
   // --- Single-slot state (all protected by state_mutex) ---
-  vinput::daemon::remote::RemoteTextService remote_text_service;
   vinput::daemon::runtime::RecognitionPipeline recognition_pipeline(&post_processor);
   vinput::daemon::runtime::DaemonRuntimeController runtime_controller(
-      &capture, &dbus, &recognition_manager, &recognition_pipeline, &remote_text_service);
+      &capture, &dbus, &recognition_manager, &recognition_pipeline);
 
   dbus.SetStartHandler([&]() { return runtime_controller.StartRecording(); });
 
@@ -163,14 +161,6 @@ int main(int argc, char* argv[]) {
   });
 
   runtime_controller.StartWorker();
-  std::string remote_error;
-  if (!remote_text_service.Synchronize(startup_settings, &remote_error)) {
-    if (remote_error.empty()) {
-      VLOG_WARN("remote ASR service disabled");
-    } else {
-      VLOG_WARN("remote ASR service disabled ({})", remote_error);
-    }
-  }
 
   VLOG_INFO("running");
 
@@ -213,7 +203,6 @@ int main(int argc, char* argv[]) {
 
   VLOG_INFO("shutting down");
   post_processor.Shutdown();
-  remote_text_service.Shutdown();
   runtime_controller.Shutdown();
   recognition_manager.Shutdown();
   vinput::client::Shutdown();

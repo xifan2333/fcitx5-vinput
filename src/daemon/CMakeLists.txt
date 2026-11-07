@@ -50,8 +50,6 @@ add_library(daemon_core STATIC
     audio/audio_utils.cpp
     audio/output_ducker.cpp
     notify/desktop_notification_sender.cpp
-    remote/remote_assets.cpp
-    remote/remote_text_service.cpp
     runtime/dbus_service.cpp
     runtime/daemon_runtime_controller.cpp
     runtime/recognition_pipeline.cpp

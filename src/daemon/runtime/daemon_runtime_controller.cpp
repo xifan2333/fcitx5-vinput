@@ -43,7 +43,6 @@
 #include "daemon/audio/audio_types.h"
 #include "daemon/audio/audio_utils.h"
 #include "daemon/notify/desktop_notification_sender.h"
-#include "daemon/remote/remote_text_service.h"
 #include "daemon/runtime/dbus_service.h"
 #include "daemon/runtime/recognition_pipeline.h"
 #include "daemon/runtime/runtime_state_machine.h"
@@ -176,9 +175,9 @@ void ApplyRecognitionEvents(const std::vector<vinput::daemon::asr::RecognitionEv
 DaemonRuntimeController::DaemonRuntimeController(
     AudioCapture* capture, DbusService* dbus,
     vinput::daemon::asr::RecognitionSessionManager* recognition_manager,
-    RecognitionPipeline* pipeline, vinput::daemon::remote::RemoteTextService* remote_text_service)
+    RecognitionPipeline* pipeline)
     : capture_(capture), dbus_(dbus), recognition_manager_(recognition_manager),
-      pipeline_(pipeline), remote_text_service_(remote_text_service) {
+      pipeline_(pipeline) {
   if (recognition_manager_ != nullptr) {
     recognition_manager_->SetReloadResultCallback([this](bool success, const std::string& message) {
       if (success) {
@@ -200,18 +199,6 @@ DaemonRuntimeController::DaemonRuntimeController(
     capture_->SetNotifyFd(notify_fd_);
   }
   session_lifecycle_.SetWakeCallback([this] { WakeMainThread(); });
-
-  if (remote_text_service_ != nullptr) {
-    remote_text_service_->SetSessionControlCallbacks(
-        [this]() {
-          const auto res = StartRecording();
-          return res.ok;
-        },
-        [this](const std::string& scene_id) {
-          const auto res = StopRecording(scene_id);
-          return res.ok;
-        });
-  }
 }
 
 DaemonRuntimeController::~DaemonRuntimeController() {
@@ -305,10 +292,6 @@ bool DaemonRuntimeController::SynchronizeAsrBackend(std::string* error) {
   auto runtime_settings = LoadCoreConfig();
   NormalizeCoreConfig(&runtime_settings);
   if (!recognition_manager_->SynchronizeBackend(runtime_settings, error)) {
-    return false;
-  }
-  if (remote_text_service_ != nullptr &&
-      !remote_text_service_->Synchronize(runtime_settings, error)) {
     return false;
   }
   if (error != nullptr) {
@@ -832,9 +815,6 @@ vinput::dbus::AsrBackendState DaemonRuntimeController::GetAsrBackendState() cons
       .has_effective_backend = snapshot.has_effective_backend,
       .remote_endpoints = {},
   };
-  if (remote_text_service_ != nullptr) {
-    state.remote_endpoints = remote_text_service_->ListEndpoints();
-  }
   return state;
 }
 
@@ -908,9 +888,6 @@ void DaemonRuntimeController::StartWorker() {
 }
 
 void DaemonRuntimeController::Shutdown() {
-  if (remote_text_service_ != nullptr) {
-    remote_text_service_->SetSessionControlCallbacks(nullptr, nullptr);
-  }
   accepting_chunks_.store(false, std::memory_order_relaxed);
   pending_capture_stop_.store(false, std::memory_order_relaxed);
   if (capture_ != nullptr) {
