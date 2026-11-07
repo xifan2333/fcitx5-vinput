@@ -1582,3 +1582,80 @@ msgstr "命令 ASR 提供商未返回任何文本。"
 #: src/daemon/asr/backends/sherpa_offline_backend.cpp:430
 msgid "Recognition failed: audio is about %.1f seconds long, which exceeds what this offline model can reliably process. Please record in shorter segments or switch to a streaming model."
 msgstr "本轮语音未识别：录音约 %.1f 秒，当前离线模型无法可靠处理过长的连续音频。请分段录制，或在设置中改用流式模型。"
+
+#: src/cli/control/client_actions.cpp:32
+msgid "trigger"
+msgstr "触发器"
+
+#: src/cli/control/client_actions.cpp:32
+msgid "receiver"
+msgstr "接收器"
+
+#: src/cli/control/client_actions.cpp:61
+#, c-format
+msgid "No %ss configured."
+msgstr "未配置任何 %s。"
+
+#: src/cli/control/client_actions.cpp:94
+#, c-format
+msgid "Client '%s' started."
+msgstr "客户端 '%s' 已启动。"
+
+#: src/cli/control/client_actions.cpp:114
+#, c-format
+msgid "Client '%s' stopped."
+msgstr "客户端 '%s' 已停止。"
+
+#: src/cli/control/client_actions.cpp:189
+msgid "Failed to connect to user D-Bus."
+msgstr "连接用户 D-Bus 失败。"
+
+#: src/cli/control/register_client.cpp:17
+msgid "Manage voice trigger clients"
+msgstr "管理语音触发器客户端"
+
+#: src/cli/control/register_client.cpp:20
+msgid "List configured triggers"
+msgstr "列出已配置的触发器"
+
+#: src/cli/control/register_client.cpp:28
+msgid "Start a trigger"
+msgstr "启动触发器"
+
+#: src/cli/control/register_client.cpp:29
+#: src/cli/control/register_client.cpp:38
+msgid "Trigger ID"
+msgstr "触发器 ID"
+
+#: src/cli/control/register_client.cpp:37
+msgid "Stop a trigger"
+msgstr "停止触发器"
+
+#: src/cli/control/register_client.cpp:46
+msgid "Manage voice receiver clients"
+msgstr "管理语音接收器客户端"
+
+#: src/cli/control/register_client.cpp:49
+msgid "List configured receivers"
+msgstr "列出已配置的接收器"
+
+#: src/cli/control/register_client.cpp:57
+msgid "Start a receiver"
+msgstr "启动接收器"
+
+#: src/cli/control/register_client.cpp:58
+#: src/cli/control/register_client.cpp:67
+msgid "Receiver ID"
+msgstr "接收器 ID"
+
+#: src/cli/control/register_client.cpp:66
+msgid "Stop a receiver"
+msgstr "停止接收器"
+
+#: src/cli/control/register_client.cpp:75
+msgid "Listen to live speech events from daemon"
+msgstr "监听来自守护进程的实时语音事件"
+
+#: src/cli/control/register_client.cpp:77
+msgid "Event type filter (committed, partial, all; default: committed)"
+msgstr "事件类型过滤 (committed, partial, all; 默认: committed)"
