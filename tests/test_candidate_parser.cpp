@@ -42,6 +42,12 @@ void TestJsonObjectCandidates() {
   TEST_EXPECT(truncated.size() == 2);
   TEST_EXPECT(truncated[0] == "Option 1");
   TEST_EXPECT(truncated[1] == "Option 2");
+
+  // Empty or all-blank candidates array must return empty vector and NOT fall through
+  TEST_EXPECT(ExtractCandidatesAuto(R"({"candidates": []})", 1).empty());
+  TEST_EXPECT(ExtractCandidatesAuto(R"({"candidates": []})", 2).empty());
+  TEST_EXPECT(ExtractCandidatesAuto(R"({"candidates": ["", "  "]})", 1).empty());
+  TEST_EXPECT(ExtractCandidatesAuto(R"({"candidates": ["", "  "]})", 2).empty());
 }
 
 void TestMarkdownFencedJson() {

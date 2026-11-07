@@ -22,14 +22,11 @@ std::string_view StripMarkdownFence(std::string_view text) {
   if (text.starts_with("```")) {
     const auto newline_pos = text.find('\n');
     if (newline_pos != std::string_view::npos) {
-      text = text.substr(newline_pos + 1);
-    } else {
-      return {};
-    }
-    text = vinput::str::Trim(text);
-    if (text.ends_with("```")) {
-      text.remove_suffix(3);
-      text = vinput::str::Trim(text);
+      const auto body = text.substr(newline_pos + 1);
+      const auto trimmed_body = vinput::str::Trim(body);
+      if (trimmed_body.ends_with("```")) {
+        return vinput::str::Trim(trimmed_body.substr(0, trimmed_body.size() - 3));
+      }
     }
   }
   return text;
@@ -81,9 +78,7 @@ std::vector<std::string> ExtractCandidatesAuto(std::string_view raw, int max_can
             }
           }
         }
-        if (!candidates.empty()) {
-          return candidates;
-        }
+        return candidates;
       }
     }
   }
