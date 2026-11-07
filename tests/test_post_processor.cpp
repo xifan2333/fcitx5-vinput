@@ -158,6 +158,16 @@ private:
               R"({"choices":[{"message":{"content":"{\"candidates\":[\"Slow Result\"]}"}}]})";
           response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                      std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+        } else if (request_header.find("POST /plain_lines/") != std::string::npos) {
+          const std::string body =
+              R"({"choices":[{"message":{"content":"Plain Line 1\nPlain Line 2"}}]})";
+          response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+        } else if (request_header.find("POST /plain_single/") != std::string::npos) {
+          const std::string body =
+              R"({"choices":[{"message":{"content":"Single Plain Rewritten"}}]})";
+          response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
         } else {
           // Standard successful OpenAI compatible response
           const std::string body =
@@ -444,14 +454,22 @@ void TestProcessJsonObjectToggle() {
   // Test json_object = false with multiple candidates
   {
     const MockHttpServer server;
-    CoreConfig config = CreateTestConfig(server.Port(), "/v1");
+    CoreConfig config = CreateTestConfig(server.Port(), "/plain_lines");
     config.llm.providers.front().json_object = false;
     auto scene = CreateTestScene();
     scene.llm_max_candidates = 3;
     const PostProcessor processor;
 
     std::string error_out;
-    processor.Process("test no json_object", scene, config, &error_out, nullptr);
+    const auto payload =
+        processor.Process("test no json_object", scene, config, &error_out, nullptr);
+
+    AssertTrue(error_out.empty(), "error_out should be empty on plain lines success");
+    AssertTrue(payload.commitText == "Plain Line 1", "first plain line is commitText");
+    AssertTrue(payload.candidates.size() == 3, "raw + 2 LLM candidates");
+    AssertTrue(payload.candidates[0].text == "test no json_object", "raw candidate");
+    AssertTrue(payload.candidates[1].text == "Plain Line 1", "first plain candidate");
+    AssertTrue(payload.candidates[2].text == "Plain Line 2", "second plain candidate");
 
     const auto bodies = server.CapturedBodies();
     AssertTrue(!bodies.empty(), "server should receive request body");
@@ -476,14 +494,21 @@ void TestProcessJsonObjectToggle() {
   // Test json_object = false with single candidate (llm_max_candidates = 1)
   {
     const MockHttpServer server;
-    CoreConfig config = CreateTestConfig(server.Port(), "/v1");
+    CoreConfig config = CreateTestConfig(server.Port(), "/plain_single");
     config.llm.providers.front().json_object = false;
     auto scene = CreateTestScene();
     scene.llm_max_candidates = 1;
     const PostProcessor processor;
 
     std::string error_out;
-    processor.Process("test single candidate", scene, config, &error_out, nullptr);
+    const auto payload =
+        processor.Process("test single candidate", scene, config, &error_out, nullptr);
+
+    AssertTrue(error_out.empty(), "error_out should be empty on plain single success");
+    AssertTrue(payload.commitText == "Single Plain Rewritten", "single plain text is commitText");
+    AssertTrue(payload.candidates.size() == 2, "raw + 1 LLM candidate");
+    AssertTrue(payload.candidates[0].text == "test single candidate", "raw candidate");
+    AssertTrue(payload.candidates[1].text == "Single Plain Rewritten", "single LLM candidate");
 
     const auto bodies = server.CapturedBodies();
     AssertTrue(!bodies.empty(), "server should receive request body");
