@@ -7,13 +7,6 @@
 
 namespace {
 
-void ExpectTrue(bool condition, const std::string& msg = "") {
-  if (!condition) {
-    std::cerr << "ExpectTrue failed! " << msg << "\n";
-    std::abort();
-  }
-}
-
 void ExpectEq(const std::string& actual, const std::string& expected, const std::string& msg = "") {
   if (actual != expected) {
     std::cerr << "ExpectEq failed: expected '" << expected << "', got '" << actual << "' (" << msg
