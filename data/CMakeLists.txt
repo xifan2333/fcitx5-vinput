@@ -6,12 +6,6 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput
 )
 
-install(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/web/remote/index.html
-    ${CMAKE_CURRENT_SOURCE_DIR}/web/remote/favicon.svg
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/web/remote
-)
-
 # Manual pages (English)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/man/en/vinput.1
