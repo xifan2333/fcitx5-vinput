@@ -7,6 +7,7 @@
 #include <glaze/json/read.hpp>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "common/json/json_access.h"
@@ -75,7 +76,7 @@ std::vector<std::string> ExtractCandidatesAuto(std::string_view raw, int max_can
           const auto trimmed = vinput::str::Trim(item.get_string());
           if (!trimmed.empty()) {
             candidates.emplace_back(trimmed);
-            if (static_cast<int>(candidates.size()) >= max_candidates) {
+            if (std::cmp_greater_equal(candidates.size(), max_candidates)) {
               break;
             }
           }
@@ -105,7 +106,7 @@ std::vector<std::string> ExtractCandidatesAuto(std::string_view raw, int max_can
     trimmed = StripBulletOrNumber(trimmed);
     if (!trimmed.empty()) {
       candidates.emplace_back(trimmed);
-      if (static_cast<int>(candidates.size()) >= max_candidates) {
+      if (std::cmp_greater_equal(candidates.size(), max_candidates)) {
         break;
       }
     }

@@ -1,6 +1,5 @@
 #include <cstdlib>
 #include <iostream>
-#include <string>
 #include <vector>
 
 #include "daemon/postprocess/candidate_parser.h"
