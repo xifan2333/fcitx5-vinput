@@ -412,6 +412,96 @@ void TestProviderNotFoundFallback() {
   AssertTrue(payload.commitText == "missing provider", "fallback when provider is not found");
 }
 
+void TestProcessJsonObjectToggle() {
+  // Test json_object = true (default)
+  {
+    const MockHttpServer server;
+    const CoreConfig config = CreateTestConfig(server.Port(), "/v1");
+    const auto scene = CreateTestScene();
+    const PostProcessor processor;
+
+    std::string error_out;
+    processor.Process("test default json_object", scene, config, &error_out, nullptr);
+
+    const auto bodies = server.CapturedBodies();
+    AssertTrue(!bodies.empty(), "server should receive request body");
+    glz::json_t req_json;
+    AssertTrue(!bool(glz::read_json(req_json, bodies[0])), "request body is valid json");
+    const auto* resp_format = vinput::json::Find(req_json, "response_format");
+    AssertTrue(resp_format != nullptr, "response_format must be present when json_object is true");
+    AssertTrue(vinput::json::String(*resp_format, "type") == "json_object",
+               "response_format type is json_object");
+
+    const auto* message = vinput::json::Find(req_json, "messages");
+    AssertTrue(message != nullptr && message->is_array() && !message->get_array().empty(),
+               "messages array present");
+    const auto prompt_content = vinput::json::String(message->get_array().front(), "content");
+    AssertTrue(prompt_content.find("Return only the JSON object described below") !=
+                   std::string::npos,
+               "prompt has JSON constraints");
+  }
+
+  // Test json_object = false with multiple candidates
+  {
+    const MockHttpServer server;
+    CoreConfig config = CreateTestConfig(server.Port(), "/v1");
+    config.llm.providers.front().json_object = false;
+    auto scene = CreateTestScene();
+    scene.llm_max_candidates = 3;
+    const PostProcessor processor;
+
+    std::string error_out;
+    processor.Process("test no json_object", scene, config, &error_out, nullptr);
+
+    const auto bodies = server.CapturedBodies();
+    AssertTrue(!bodies.empty(), "server should receive request body");
+    glz::json_t req_json;
+    AssertTrue(!bool(glz::read_json(req_json, bodies[0])), "request body is valid json");
+    const auto* resp_format = vinput::json::Find(req_json, "response_format");
+    AssertTrue(resp_format == nullptr, "response_format must be omitted when json_object is false");
+
+    const auto* message = vinput::json::Find(req_json, "messages");
+    AssertTrue(message != nullptr && message->is_array() && !message->get_array().empty(),
+               "messages array present");
+    const auto prompt_content = vinput::json::String(message->get_array().front(), "content");
+    AssertTrue(prompt_content.find(
+                   "Return up to 3 distinct candidate(s), exactly one candidate per line") !=
+                   std::string::npos,
+               "prompt has line-level constraints");
+    AssertTrue(prompt_content.find("Return only the JSON object described below") ==
+                   std::string::npos,
+               "prompt does not have JSON constraints");
+  }
+
+  // Test json_object = false with single candidate (llm_max_candidates = 1)
+  {
+    const MockHttpServer server;
+    CoreConfig config = CreateTestConfig(server.Port(), "/v1");
+    config.llm.providers.front().json_object = false;
+    auto scene = CreateTestScene();
+    scene.llm_max_candidates = 1;
+    const PostProcessor processor;
+
+    std::string error_out;
+    processor.Process("test single candidate", scene, config, &error_out, nullptr);
+
+    const auto bodies = server.CapturedBodies();
+    AssertTrue(!bodies.empty(), "server should receive request body");
+    glz::json_t req_json;
+    AssertTrue(!bool(glz::read_json(req_json, bodies[0])), "request body is valid json");
+    const auto* resp_format = vinput::json::Find(req_json, "response_format");
+    AssertTrue(resp_format == nullptr, "response_format must be omitted when json_object is false");
+
+    const auto* message = vinput::json::Find(req_json, "messages");
+    AssertTrue(message != nullptr && message->is_array() && !message->get_array().empty(),
+               "messages array present");
+    const auto prompt_content = vinput::json::String(message->get_array().front(), "content");
+    AssertTrue(prompt_content.find("Return only the final rewritten text directly") !=
+                   std::string::npos,
+               "prompt has single-text direct constraints");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -427,6 +517,7 @@ int main() {
   TestMalformedJsonFallback();
   TestEmptyCandidatesFallback();
   TestProviderNotFoundFallback();
+  TestProcessJsonObjectToggle();
   std::cout << "All PostProcessor unit tests passed!\n";
   return 0;
 }
