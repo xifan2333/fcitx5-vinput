@@ -82,8 +82,7 @@ Defines OpenAI\-compatible API endpoints.
     {
       \(dqid\(dq: \(dqmy\-adapter\(dq,
       \(dqcommand\(dq: \(dqpython3\(dq,
-      \(dqargs\(dq: [\(dq/path/to/entry.py\(dq],
-      \(dqauto_start\(dq: \f[B]true\f[R]
+      \(dqargs\(dq: [\(dq/path/to/entry.py\(dq]
     }
   ]
 }
@@ -97,10 +96,6 @@ Supports environment variable interpolation (e.g.
 runtime to avoid storing plaintext secrets in \f[CR]config.json\f[R].
 Variables can be injected via \f[CR]\(ti/.config/environment.d/\f[R] or
 desktop session environments.
-.TP
-\f[B]adapters[].auto_start\f[R] (\f[I]boolean\f[R])
-Whether to automatically launch the adapter process when
-\f[B]vinput\-daemon\f[R] starts.
 .SS SCENES SECTION
 Defines prompt templates and candidate counts for text rewriting.
 .IP

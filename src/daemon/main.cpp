@@ -15,7 +15,6 @@ extern "C" {
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
-#include "common/llm/adapter_manager.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 
@@ -112,22 +111,6 @@ int main(int argc, char* argv[]) {
       [&]() -> vinput::dbus::AsrBackendState { return runtime_controller.GetAsrBackendState(); });
   dbus.SetReloadAsrBackendHandler([&]() { return runtime_controller.ReloadAsrBackend(); });
 
-  dbus.SetStartAdapterHandler([&](const std::string& adapter_id) -> DbusService::MethodResult {
-    std::string error;
-    if (!vinput::adapter::Start(adapter_id, &notification_bridge, &error)) {
-      return DbusService::MethodResult::Failure(error.empty() ? "failed to start adapter" : error);
-    }
-    return DbusService::MethodResult::Success();
-  });
-
-  dbus.SetStopAdapterHandler([&](const std::string& adapter_id) -> DbusService::MethodResult {
-    std::string error;
-    if (!vinput::adapter::Stop(adapter_id, &error, &notification_bridge)) {
-      return DbusService::MethodResult::Failure(error.empty() ? "failed to stop adapter" : error);
-    }
-    return DbusService::MethodResult::Success();
-  });
-
   dbus.SetStartClientHandler([&](const std::string& client_id) -> DbusService::MethodResult {
     std::string error;
     if (!vinput::client::Start(
@@ -155,7 +138,6 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  vinput::adapter::AutoStart(startup_settings, &notification_bridge);
   vinput::client::AutoStart(startup_settings, &notification_bridge, [&](std::string_view line) {
     runtime_controller.DispatchClientLine(line);
   });
@@ -206,6 +188,5 @@ int main(int argc, char* argv[]) {
   runtime_controller.Shutdown();
   recognition_manager.Shutdown();
   vinput::client::Shutdown();
-  vinput::adapter::Shutdown();
   return 0;
 }

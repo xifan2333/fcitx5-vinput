@@ -628,16 +628,6 @@ msgstr "热词文件已更新。"
 msgid "Adapter '%s' not found."
 msgstr "未找到适配器 '%s'。"
 
-#: src/cli/config/llm_actions.cpp:62
-#, c-format
-msgid "Adapter '%s' enabled to autostart with daemon."
-msgstr "已启用适配器 '%s' 随 daemon 自启动。"
-
-#: src/cli/config/llm_actions.cpp:65
-#, c-format
-msgid "Adapter '%s' disabled from autostart with daemon."
-msgstr "已禁用适配器 '%s' 随 daemon 自启动。"
-
 #: src/cli/config/llm_actions.cpp:85
 msgid ""
 "--extra-body must be a JSON object (e.g. '{\"enable_thinking\": false}')."
@@ -712,11 +702,6 @@ msgstr ""
 msgid "Adapter '%s' added."
 msgstr "适配器 '%s' 已添加。"
 
-#: src/cli/config/llm_actions.cpp:393
-#, c-format
-msgid "Failed to stop running adapter '%s': %s"
-msgstr "停止运行中的适配器 '%s' 失败：%s"
-
 #: src/cli/config/llm_actions.cpp:416
 #, c-format
 msgid "Adapter '%s' removed."
@@ -733,21 +718,6 @@ msgstr "请指定要更新的适配器短 ID，或使用 --all 更新所有已�
 msgid "Adapter '%s' is already up to date."
 msgstr "适配器 '%s' 已是最新版本。"
 
-#: src/cli/config/llm_actions.cpp:462
-#, c-format
-msgid "Could not stop adapter '%s' before update: %s"
-msgstr "更新前未能停止适配器 '%s'：%s"
-
-#: src/cli/config/llm_actions.cpp:481 src/cli/config/llm_actions.cpp:603
-#, c-format
-msgid "Adapter '%s' restarted."
-msgstr "Adapter '%s' 已重启。"
-
-#: src/cli/config/llm_actions.cpp:483
-#, c-format
-msgid "Failed to restart adapter '%s': %s"
-msgstr "重启适配器 '%s' 失败：%s"
-
 #: src/cli/config/llm_actions.cpp:489
 #, c-format
 msgid "Adapter '%s' updated: %s -> %s"
@@ -762,16 +732,6 @@ msgstr "适配器 '%s' 已更新。"
 #, c-format
 msgid "Adapter '%s' is not installed. Use 'add' instead."
 msgstr "适配器 '%s' 尚未安装。请改用 'add'。"
-
-#: src/cli/config/llm_actions.cpp:559 src/addon/menu/vinput_menu.cpp:661
-#, c-format
-msgid "Adapter '%s' started."
-msgstr "Adapter '%s' 已启动。"
-
-#: src/cli/config/llm_actions.cpp:578 src/addon/menu/vinput_menu.cpp:654
-#, c-format
-msgid "Adapter '%s' stopped."
-msgstr "Adapter '%s' 已停止。"
 
 #: src/cli/config/llm_actions.cpp:641 src/cli/config/llm_actions.cpp:704
 msgid "PID"
@@ -796,14 +756,6 @@ msgstr "属性"
 #: src/cli/config/llm_actions.cpp:702
 msgid "Title"
 msgstr "名称"
-
-#: src/cli/config/llm_actions.cpp:703
-msgid "Status"
-msgstr "状态"
-
-#: src/cli/config/llm_actions.cpp:705
-msgid "Autostart"
-msgstr "自启动"
 
 #: src/cli/config/llm_actions.cpp:706 src/common/scene/postprocess_scene.cpp:32
 #: src/common/scene/postprocess_scene.cpp:42
@@ -1025,10 +977,6 @@ msgstr "列出适配器"
 msgid "List remote adapters"
 msgstr "列出远程适配器"
 
-#: src/cli/config/register_llm.cpp:102
-msgid "List adapter processes and runtime status"
-msgstr "列出适配器进程与运行状态"
-
 #: src/cli/config/register_llm.cpp:110
 msgid "Show adapter status"
 msgstr "显示适配器状态"
@@ -1060,26 +1008,6 @@ msgstr "更新 LLM 适配器脚本"
 #: src/cli/config/register_llm.cpp:149
 msgid "Update all installed adapters"
 msgstr "更新所有已安装的适配器"
-
-#: src/cli/config/register_llm.cpp:158
-msgid "Start an adapter"
-msgstr "启动适配器"
-
-#: src/cli/config/register_llm.cpp:167
-msgid "Stop an adapter"
-msgstr "停止适配器"
-
-#: src/cli/config/register_llm.cpp:176
-msgid "Restart an adapter"
-msgstr "重启适配器"
-
-#: src/cli/config/register_llm.cpp:185
-msgid "Enable adapter autostart with daemon"
-msgstr "启用适配器随 daemon 自启动"
-
-#: src/cli/config/register_llm.cpp:194
-msgid "Disable adapter autostart with daemon"
-msgstr "禁用适配器随 daemon 自启动"
 
 #: src/cli/control/daemon_actions.cpp:20
 #: src/cli/control/recording_actions.cpp:18
@@ -1392,14 +1320,6 @@ msgstr "无法连接到 vinput-daemon。"
 msgid "Failed to reload ASR backend."
 msgstr "重新加载 ASR 后端失败。"
 
-#: src/addon/dbus/vinput_dbus.cpp:710 src/addon/menu/vinput_menu.cpp:657
-msgid "Failed to start adapter."
-msgstr "启动适配器失败。"
-
-#: src/addon/dbus/vinput_dbus.cpp:746 src/addon/menu/vinput_menu.cpp:650
-msgid "Failed to stop adapter."
-msgstr "停止适配器失败。"
-
 #: src/addon/dbus/vinput_dbus.cpp:991 src/addon/dbus/vinput_dbus.cpp:1013
 #: src/addon/dbus/vinput_dbus.cpp:1036
 msgid "Voice Input"
@@ -1508,30 +1428,6 @@ msgstr "保存场景配置失败。"
 #, c-format
 msgid "Scene switched to '%s'."
 msgstr "场景已切换为 '%s'。"
-
-#: src/addon/menu/vinput_menu.cpp:605 src/addon/menu/vinput_menu.cpp:606
-msgid "Proc"
-msgstr "Proc"
-
-#: src/addon/menu/vinput_menu.cpp:607
-msgid "Manage adapter processes"
-msgstr "管理适配器进程"
-
-#: src/addon/menu/vinput_menu.cpp:622
-msgid "Proc (running · autostart)"
-msgstr "Proc (运行中 · 自启)"
-
-#: src/addon/menu/vinput_menu.cpp:622
-msgid "Proc (running)"
-msgstr "Proc (运行中)"
-
-#: src/addon/menu/vinput_menu.cpp:624
-msgid "Proc (stopped · autostart)"
-msgstr "Proc (已停止 · 自启)"
-
-#: src/addon/menu/vinput_menu.cpp:624
-msgid "Proc (stopped)"
-msgstr "Proc (已停止)"
 
 #: src/daemon/asr/backends/sherpa_offline_backend.cpp:609
 #: src/daemon/asr/backends/sherpa_streaming_backend.cpp:515
@@ -1692,3 +1588,7 @@ msgstr "适配器 '%s' 超时。"
 #, c-format
 msgid "Adapter '%s' exited with code %d."
 msgstr "适配器 '%s' 异常退出，退出码 %d。"
+
+#: src/cli/config/llm_actions.cpp
+msgid "Env"
+msgstr "环境变量"

@@ -198,14 +198,6 @@ bool DbusClient::ReloadAsrBackend(std::string* error) {
   return CallDaemonVoid(bus_, vinput::dbus::kMethodReloadAsrBackend, error);
 }
 
-bool DbusClient::StartAdapter(const std::string& adapter_id, std::string* error) {
-  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStartAdapter, adapter_id, error);
-}
-
-bool DbusClient::StopAdapter(const std::string& adapter_id, std::string* error) {
-  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStopAdapter, adapter_id, error);
-}
-
 bool DbusClient::StartClient(const std::string& client_id, std::string* error) {
   return CallDaemonStringArg(bus_, vinput::dbus::kMethodStartClient, client_id, error);
 }

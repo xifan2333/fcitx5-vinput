@@ -90,8 +90,6 @@ private:
   bool callStopRecording(const std::string& scene_id);
   void callCancelOperation(bool commit_raw_text);
   bool callReloadAsrBackend(std::string* error = nullptr);
-  bool callStartAdapter(const std::string& adapter_id, std::string* error = nullptr);
-  bool callStopAdapter(const std::string& adapter_id, std::string* error = nullptr);
   bool callSyncRpc(const char* member, const std::string& fallback_error, std::string* error,
                    const std::string* arg = nullptr);
   void onRecognitionResult(fcitx::dbus::Message& msg);

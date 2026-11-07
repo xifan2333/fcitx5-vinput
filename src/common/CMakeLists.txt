@@ -11,7 +11,6 @@ set(VINPUT_CONFIG_SOURCES
     config/vinput_config.cpp
     scene/postprocess_scene.cpp
     llm/provider_model_cache.cpp
-    llm/adapter_manager.cpp
     client/client_manager.cpp
     client/client_command.cpp
     client/client_event.cpp

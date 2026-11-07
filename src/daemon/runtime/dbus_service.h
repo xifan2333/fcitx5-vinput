@@ -56,8 +56,6 @@ public:
   void SetStatusHandler(std::function<std::string()> handler);
   void SetAsrBackendStateHandler(std::function<vinput::dbus::AsrBackendState()> handler);
   void SetReloadAsrBackendHandler(std::function<MethodResult()> handler);
-  void SetStartAdapterHandler(std::function<MethodResult(const std::string& adapter_id)> handler);
-  void SetStopAdapterHandler(std::function<MethodResult(const std::string& adapter_id)> handler);
   void SetStartClientHandler(std::function<MethodResult(const std::string& client_id)> handler);
   void SetStopClientHandler(std::function<MethodResult(const std::string& client_id)> handler);
 
@@ -68,8 +66,6 @@ public:
   static int handleGetStatus(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleGetAsrBackendState(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleReloadAsrBackend(sd_bus_message* m, void* userdata, sd_bus_error* error);
-  static int handleStartAdapter(sd_bus_message* m, void* userdata, sd_bus_error* error);
-  static int handleStopAdapter(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStartClient(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStopClient(sd_bus_message* m, void* userdata, sd_bus_error* error);
 
@@ -97,8 +93,6 @@ private:
   std::function<std::string()> status_handler_;
   std::function<vinput::dbus::AsrBackendState()> asr_backend_state_handler_;
   std::function<MethodResult()> reload_asr_backend_handler_;
-  std::function<MethodResult(const std::string& adapter_id)> start_adapter_handler_;
-  std::function<MethodResult(const std::string& adapter_id)> stop_adapter_handler_;
   std::function<MethodResult(const std::string& client_id)> start_client_handler_;
   std::function<MethodResult(const std::string& client_id)> stop_client_handler_;
 };

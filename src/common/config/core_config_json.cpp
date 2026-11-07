@@ -42,11 +42,15 @@ struct LlmAdapterWire {
   std::string command;
   std::optional<glz::json_t> args;
   std::optional<glz::json_t> env;
-  std::optional<bool> auto_start;
 };
 
-// ClientSpecWire shares the exact layout of LlmAdapterWire.
-using ClientSpecWire = LlmAdapterWire;
+struct ClientSpecWire {
+  std::string id;
+  std::string command;
+  std::optional<glz::json_t> args;
+  std::optional<glz::json_t> env;
+  std::optional<bool> auto_start;
+};
 
 // A single wire shape covers both provider kinds. Member order is chosen so that
 // each kind keeps its historical key order once absent members are omitted.
@@ -146,7 +150,6 @@ void FromWire(const LlmAdapterWire& wire, LlmAdapter* adapter) {
   if (wire.env.has_value()) {
     adapter->env = vinput::json::StringMap(*wire.env);
   }
-  adapter->autoStart = wire.auto_start.value_or(adapter->autoStart);
 }
 
 void FromWire(const ClientSpecWire& wire, ClientSpec* client) {
@@ -309,9 +312,6 @@ LlmAdapterWire ToWire(const LlmAdapter& adapter) {
   }
   if (!adapter.env.empty()) {
     wire.env = vinput::json::FromStringMap(adapter.env);
-  }
-  if (adapter.autoStart) {
-    wire.auto_start = true;
   }
   return wire;
 }
@@ -505,6 +505,12 @@ template <> struct glz::meta<LlmProviderWire> {
 
 template <> struct glz::meta<LlmAdapterWire> {
   using T = LlmAdapterWire;
+  static constexpr auto value =
+      object("id", &T::id, "command", &T::command, "args", &T::args, "env", &T::env);
+};
+
+template <> struct glz::meta<ClientSpecWire> {
+  using T = ClientSpecWire;
   static constexpr auto value = object("id", &T::id, "command", &T::command, "args", &T::args,
                                        "env", &T::env, "auto_start", &T::auto_start);
 };

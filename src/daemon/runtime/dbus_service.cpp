@@ -67,10 +67,6 @@ static const sd_bus_vtable vtable[] = {
                   &DbusService::handleGetAsrBackendState, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodReloadAsrBackend, "", "", &DbusService::handleReloadAsrBackend,
                   SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_METHOD(kMethodStartAdapter, "s", "", &DbusService::handleStartAdapter,
-                  SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_METHOD(kMethodStopAdapter, "s", "", &DbusService::handleStopAdapter,
-                  SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodStartClient, "s", "", &DbusService::handleStartClient,
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodStopClient, "s", "", &DbusService::handleStopClient,
@@ -237,14 +233,6 @@ void DbusService::SetReloadAsrBackendHandler(std::function<MethodResult()> handl
   reload_asr_backend_handler_ = std::move(handler);
 }
 
-void DbusService::SetStartAdapterHandler(std::function<MethodResult(const std::string&)> handler) {
-  start_adapter_handler_ = std::move(handler);
-}
-
-void DbusService::SetStopAdapterHandler(std::function<MethodResult(const std::string&)> handler) {
-  stop_adapter_handler_ = std::move(handler);
-}
-
 void DbusService::SetStartClientHandler(std::function<MethodResult(const std::string&)> handler) {
   start_client_handler_ = std::move(handler);
 }
@@ -368,38 +356,6 @@ int DbusService::handleReloadAsrBackend(sd_bus_message* m, void* userdata, sd_bu
   MethodResult result;
   if (self->reload_asr_backend_handler_) {
     result = self->reload_asr_backend_handler_();
-  }
-  return ReplyWithMethodResult(m, error, result, "");
-}
-
-int DbusService::handleStartAdapter(sd_bus_message* m, void* userdata, sd_bus_error* error) {
-  auto* self = static_cast<DbusService*>(userdata);
-  const char* adapter_id = "";
-  const int ret = sd_bus_message_read(m, "s", &adapter_id);
-  if (ret < 0) {
-    VLOG_ERROR("failed to read StartAdapter id: {}", strerror(-ret));
-    return ret;
-  }
-
-  MethodResult result;
-  if (self->start_adapter_handler_) {
-    result = self->start_adapter_handler_(adapter_id != nullptr ? adapter_id : "");
-  }
-  return ReplyWithMethodResult(m, error, result, "");
-}
-
-int DbusService::handleStopAdapter(sd_bus_message* m, void* userdata, sd_bus_error* error) {
-  auto* self = static_cast<DbusService*>(userdata);
-  const char* adapter_id = "";
-  const int ret = sd_bus_message_read(m, "s", &adapter_id);
-  if (ret < 0) {
-    VLOG_ERROR("failed to read StopAdapter id: {}", strerror(-ret));
-    return ret;
-  }
-
-  MethodResult result;
-  if (self->stop_adapter_handler_) {
-    result = self->stop_adapter_handler_(adapter_id != nullptr ? adapter_id : "");
   }
   return ReplyWithMethodResult(m, error, result, "");
 }

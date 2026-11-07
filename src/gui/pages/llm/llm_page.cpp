@@ -62,7 +62,6 @@
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
 #include "common/json/json_access.h"
-#include "common/llm/adapter_manager.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
@@ -364,14 +363,8 @@ LlmPage::LlmPage(QWidget* parent)
   auto* adapterBtnLayout = new QVBoxLayout();
   btnAdapterEdit_ = new QPushButton(tr("Edit"));
   btnAdapterRemove_ = new QPushButton(tr("Remove"));
-  btnAdapterStart_ = new QPushButton(tr("Start"));
-  btnAdapterStop_ = new QPushButton(tr("Stop"));
-  btnAdapterRefresh_ = new QPushButton(tr("Refresh"));
   adapterBtnLayout->addWidget(btnAdapterEdit_);
   adapterBtnLayout->addWidget(btnAdapterRemove_);
-  adapterBtnLayout->addWidget(btnAdapterStart_);
-  adapterBtnLayout->addWidget(btnAdapterStop_);
-  adapterBtnLayout->addWidget(btnAdapterRefresh_);
   adapterBtnLayout->addStretch();
   adapterLayout->addLayout(adapterBtnLayout);
 
@@ -402,9 +395,6 @@ LlmPage::LlmPage(QWidget* parent)
   connect(btnLlmTest_, &QPushButton::clicked, this, &LlmPage::onLlmTest);
   connect(btnAdapterEdit_, &QPushButton::clicked, this, &LlmPage::onAdapterEdit);
   connect(btnAdapterRemove_, &QPushButton::clicked, this, &LlmPage::onAdapterRemove);
-  connect(btnAdapterStart_, &QPushButton::clicked, this, &LlmPage::onAdapterStart);
-  connect(btnAdapterStop_, &QPushButton::clicked, this, &LlmPage::onAdapterStop);
-  connect(btnAdapterRefresh_, &QPushButton::clicked, this, &LlmPage::refreshAdapterList);
   connect(listAdapters_, &QListWidget::itemSelectionChanged, this, &LlmPage::updateAdapterButtons);
   connect(btnSceneAdd_, &QPushButton::clicked, this, &LlmPage::onSceneAdd);
   connect(btnSceneEdit_, &QPushButton::clicked, this, &LlmPage::onSceneEdit);
@@ -444,10 +434,8 @@ void LlmPage::refreshAdapterList() {
   for (const auto& adapter : config.llm.adapters) {
     const QString id = QString::fromStdString(adapter.id);
     const QString title = AdapterTitleForGui(adapter.id);
-    const bool running = vinput::adapter::IsRunning(adapter.id);
 
-    QString display = title + " · " + (running ? tr("running") : tr("stopped"));
-    display += " · " + (adapter.autoStart ? tr("autostart") : tr("manual"));
+    QString display = title;
     const QString command = QString::fromStdString(adapter.command);
     if (!command.isEmpty()) {
       display += " · " + command;
@@ -455,15 +443,12 @@ void LlmPage::refreshAdapterList() {
 
     auto* item = new QListWidgetItem(display, listAdapters_);
     item->setData(Qt::UserRole, id);
-    item->setData(Qt::UserRole + 1, running);
     item->setData(Qt::UserRole + 2, title);
-    item->setData(Qt::UserRole + 3, adapter.autoStart);
 
     // Build tooltip
     QString tooltip;
-    tooltip += tr("Autostart: %1").arg(adapter.autoStart ? tr("enabled") : tr("disabled"));
     if (!command.isEmpty()) {
-      tooltip += "\n" + tr("Command: %1").arg(command);
+      tooltip += tr("Command: %1").arg(command);
     }
     if (!adapter.args.empty()) {
       std::string joined_args;
@@ -473,7 +458,10 @@ void LlmPage::refreshAdapterList() {
         }
         joined_args += a;
       }
-      tooltip += "\n" + tr("Args: %1").arg(QString::fromStdString(joined_args));
+      if (!tooltip.isEmpty()) {
+        tooltip += "\n";
+      }
+      tooltip += tr("Args: %1").arg(QString::fromStdString(joined_args));
     }
     if (!adapter.env.empty()) {
       std::string joined_env;
@@ -485,7 +473,10 @@ void LlmPage::refreshAdapterList() {
         joined_env += '=';
         joined_env += v;
       }
-      tooltip += "\n" + tr("Env: %1").arg(QString::fromStdString(joined_env));
+      if (!tooltip.isEmpty()) {
+        tooltip += "\n";
+      }
+      tooltip += tr("Env: %1").arg(QString::fromStdString(joined_env));
     }
     item->setToolTip(tooltip.trimmed());
   }
@@ -720,12 +711,6 @@ void LlmPage::onAdapterRemove() {
     return;
   }
 
-  if (vinput::adapter::IsRunning(adapter_id.toStdString())) {
-    vinput::cli::DbusClient dbus;
-    std::string err;
-    dbus.StopAdapter(adapter_id.toStdString(), &err);
-  }
-
   CoreConfig config = ConfigManager::Get().Load();
   const auto removed = std::ranges::remove_if(
       config.llm.adapters, [&](const LlmAdapter& a) { return a.id == adapter_id.toStdString(); });
@@ -752,50 +737,9 @@ void LlmPage::onAdapterRemove() {
 
 void LlmPage::updateAdapterButtons() {
   auto* item = listAdapters_->currentItem();
-  if (item == nullptr) {
-    btnAdapterEdit_->setEnabled(false);
-    btnAdapterRemove_->setEnabled(false);
-    btnAdapterStart_->setEnabled(false);
-    btnAdapterStop_->setEnabled(false);
-    return;
-  }
-  const bool running = item->data(Qt::UserRole + 1).toBool();
-  btnAdapterEdit_->setEnabled(true);
-  btnAdapterRemove_->setEnabled(true);
-  btnAdapterStart_->setEnabled(!running);
-  btnAdapterStop_->setEnabled(running);
-}
-
-void LlmPage::executeAdapterControl(bool start) {
-  auto* item = listAdapters_->currentItem();
-  if (item == nullptr) {
-    return;
-  }
-
-  const QString adapter_id = item->data(Qt::UserRole).toString();
-  QString adapter_title = item->data(Qt::UserRole + 2).toString();
-  if (adapter_title.isEmpty()) {
-    adapter_title = AdapterTitleForGui(adapter_id.toStdString());
-  }
-
-  RunAdapterControlGuarded(
-      this, {btnAdapterStart_, btnAdapterStop_}, adapter_id.toStdString(), start,
-      [this, start, adapter_title]() {
-        if (start) {
-          QMessageBox::information(this, tr("LLM Adapter Started"),
-                                   tr("Adapter '%1' started.").arg(adapter_title));
-        }
-        refreshAdapterList();
-      },
-      tr("Error"), [this]() { updateAdapterButtons(); });
-}
-
-void LlmPage::onAdapterStart() {
-  executeAdapterControl(true);
-}
-
-void LlmPage::onAdapterStop() {
-  executeAdapterControl(false);
+  const bool has_selection = (item != nullptr);
+  btnAdapterEdit_->setEnabled(has_selection);
+  btnAdapterRemove_->setEnabled(has_selection);
 }
 
 void LlmPage::refreshSceneList() {

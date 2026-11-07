@@ -82,21 +82,17 @@ PipeWire 音频采集节点名称，或 \f[CR]\(dqdefault\(dq\f[R]
     {
       \(dqid\(dq: \(dqmy\-adapter\(dq,
       \(dqcommand\(dq: \(dqpython3\(dq,
-      \(dqargs\(dq: [\(dq/path/to/entry.py\(dq],
-      \(dqauto_start\(dq: \f[B]true\f[R]
+      \(dqargs\(dq: [\(dq/path/to/entry.py\(dq]
     }
   ]
 }
 .EE
 .TP
 \f[B]providers[].api_key\f[R] (\f[I]字符串\f[R])
-访问该服务商的 API 密钥。支持使用环境变量脱敏语法（如
+访问该服务商的 API密钥。支持使用环境变量脱敏语法（如
 \f[CR]\(dq${OPENAI_API_KEY}\(dq\f[R] 或
 \f[CR]\(dq{{env.OPENAI_API_KEY}}\(dq\f[R]），运行时自动从环境变量解析，避免在配置文件中保存明文密钥。环境变量可通过
 \f[CR]\(ti/.config/environment.d/\f[R] 或桌面环境会话注入。
-.TP
-\f[B]adapters[].auto_start\f[R] (\f[I]布尔值\f[R])
-是否在 \f[B]vinput\-daemon\f[R] 启动时自动启动该适配器进程。
 .SS SCENES 场景后处理配置
 定义用于文字润色、错别字修正或翻译的提示词模板与候选词配置。
 .IP

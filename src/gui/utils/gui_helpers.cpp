@@ -51,24 +51,6 @@
 
 namespace vinput::gui {
 
-void RunAdapterControlAsync(QWidget* context, std::string adapter_id, bool start,
-                            std::function<void(bool ok, const std::string& err)> callback) {
-  const QPointer<QWidget> self(context);
-  QThreadPool::globalInstance()->start(
-      [self, adapter_id = std::move(adapter_id), start, callback = std::move(callback)]() mutable {
-        vinput::cli::DbusClient dbus;
-        std::string err;
-        const bool ok =
-            start ? dbus.StartAdapter(adapter_id, &err) : dbus.StopAdapter(adapter_id, &err);
-        QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
-          if (!self) {
-            return;
-          }
-          callback(ok, err);
-        });
-      });
-}
-
 namespace {
 struct GuiHelpers {
   Q_DECLARE_TR_FUNCTIONS(GuiHelpers)

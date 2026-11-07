@@ -31,7 +31,6 @@
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
-#include "common/llm/adapter_manager.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
 #include "common/scene/postprocess_scene.h"
@@ -368,7 +367,6 @@ void VinputEngine::initializePaletteRegistry() {
                   .model_id = m.model,
                   .scene_id = {},
                   .adapter_id = {},
-                  .adapter_running = false,
                   .is_command_entry = false,
                   .command_token = {},
               });
@@ -434,7 +432,6 @@ void VinputEngine::initializePaletteRegistry() {
                   .model_id = m.id,
                   .scene_id = {},
                   .adapter_id = {},
-                  .adapter_running = false,
                   .is_command_entry = false,
                   .command_token = {},
               });
@@ -467,7 +464,6 @@ void VinputEngine::initializePaletteRegistry() {
                   .model_id = {},
                   .scene_id = {},
                   .adapter_id = {},
-                  .adapter_running = false,
                   .is_command_entry = false,
                   .command_token = {},
               });
@@ -540,7 +536,6 @@ void VinputEngine::initializePaletteRegistry() {
                   .model_id = {},
                   .scene_id = scene.id,
                   .adapter_id = {},
-                  .adapter_running = false,
                   .is_command_entry = false,
                   .command_token = {},
               });
@@ -557,70 +552,6 @@ void VinputEngine::initializePaletteRegistry() {
             }
             engine->active_scene_id_ = item.scene_id;
             engine->notifyInfo(fmt::sprintf(_("Scene switched to '%s'."), item.text.c_str()));
-          },
-  });
-
-  // 4. Proc (/proc, alias /p)
-  palette_registry_.registerCommand(PaletteCommand{
-      .id = "proc",
-      .name = "proc",
-      .alias = "p",
-      .title = _("Proc"),
-      .comment = _("Proc"),
-      .description = _("Manage adapter processes"),
-      .category = PaletteCategory::Adapter,
-      .getItems =
-          [](VinputEngine* /*engine*/) {
-            std::vector<PaletteItem> items;
-            const auto config = LoadCoreConfig();
-            const auto i18n_map = vinput::registry::LoadMergedCachedI18nMap(
-                vinput::registry::DetectPreferredLocale(), nullptr);
-            for (const auto& adapter : config.llm.adapters) {
-              const bool running = vinput::adapter::IsRunning(adapter.id);
-              const std::string title =
-                  vinput::registry::LookupI18n(i18n_map, adapter.id + ".title", adapter.id);
-              const bool is_autostart = adapter.autoStart;
-              std::string comment;
-              if (running) {
-                comment = is_autostart ? _("Proc (running · autostart)") : _("Proc (running)");
-              } else {
-                comment = is_autostart ? _("Proc (stopped · autostart)") : _("Proc (stopped)");
-              }
-              items.push_back(PaletteItem{
-                  .category = PaletteCategory::Adapter,
-                  .id = adapter.id,
-                  .text = title,
-                  .comment = std::move(comment),
-                  .search_text = adapter.id + " " + title + (running ? " running" : " stopped") +
-                                 " adapter proc ps",
-                  .active = false,
-                  .provider_id = {},
-                  .model_id = {},
-                  .scene_id = {},
-                  .adapter_id = adapter.id,
-                  .adapter_running = running,
-                  .is_command_entry = false,
-                  .command_token = {},
-              });
-            }
-            return items;
-          },
-      .onSelect =
-          [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
-            std::string error;
-            if (item.adapter_running) {
-              if (!engine->callStopAdapter(item.adapter_id, &error)) {
-                engine->notifyError(error.empty() ? _("Failed to stop adapter.") : error);
-                return;
-              }
-              engine->notifyInfo(fmt::sprintf(_("Adapter '%s' stopped."), item.text.c_str()));
-            } else {
-              if (!engine->callStartAdapter(item.adapter_id, &error)) {
-                engine->notifyError(error.empty() ? _("Failed to start adapter.") : error);
-                return;
-              }
-              engine->notifyInfo(fmt::sprintf(_("Adapter '%s' started."), item.text.c_str()));
-            }
           },
   });
 }
@@ -645,7 +576,6 @@ void VinputEngine::reloadPaletteItems() {
         .model_id = {},
         .scene_id = {},
         .adapter_id = {},
-        .adapter_running = false,
         .is_command_entry = true,
         .command_token = cmd.alias.empty() ? cmd.name : cmd.alias,
     });
