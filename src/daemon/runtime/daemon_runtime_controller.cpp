@@ -26,6 +26,8 @@
 
 #include "common/asr/recognition_result.h"
 #include "common/client/client_command.h"
+#include "common/client/client_event.h"
+#include "common/client/client_manager.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
@@ -114,6 +116,7 @@ void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
   if (ctx.ime && ctx.dbus != nullptr) {
     ctx.dbus->EmitRecognitionPartial(event.text);
   }
+  vinput::client::Broadcast(vinput::client::SerializePartialEvent(event.text, ctx.ime));
 }
 
 void HandleFinalText(const vinput::daemon::asr::RecognitionEvent& event,
@@ -130,6 +133,7 @@ void HandleFinalText(const vinput::daemon::asr::RecognitionEvent& event,
   if (ctx.ime && ctx.dbus != nullptr) {
     ctx.dbus->EmitRecognitionPartial(event.text);
   }
+  vinput::client::Broadcast(vinput::client::SerializePartialEvent(event.text, ctx.ime));
 }
 
 void HandleError(const vinput::daemon::asr::RecognitionEvent& event,
@@ -367,6 +371,8 @@ void DaemonRuntimeController::NotifyStatusChanged(vinput::dbus::Status status) {
   if (session_ime_ && dbus_ != nullptr) {
     dbus_->EmitStatusChanged(vinput::dbus::StatusToString(status));
   }
+  vinput::client::Broadcast(
+      vinput::client::SerializeStatusEvent(vinput::dbus::StatusToString(status), session_ime_));
 }
 
 DbusService::MethodResult
@@ -939,6 +945,8 @@ void DaemonRuntimeController::EnterPostprocessing(bool /*command_mode*/) {
   if (ime && dbus_ != nullptr) {
     dbus_->EmitStatusChanged(vinput::dbus::StatusToString(next_phase));
   }
+  vinput::client::Broadcast(
+      vinput::client::SerializeStatusEvent(vinput::dbus::StatusToString(next_phase), ime));
 }
 
 void DaemonRuntimeController::ResetToIdle() {
@@ -957,6 +965,8 @@ void DaemonRuntimeController::ResetToIdle() {
   if (was_ime && dbus_ != nullptr) {
     dbus_->EmitStatusChanged(vinput::dbus::StatusToString(vinput::dbus::Status::Idle));
   }
+  vinput::client::Broadcast(vinput::client::SerializeStatusEvent(
+      vinput::dbus::StatusToString(vinput::dbus::Status::Idle), was_ime));
   VLOG_DEBUG("phase -> idle");
   MaybeApplyPendingAsrBackendReload();
 }
@@ -1025,6 +1035,8 @@ void DaemonRuntimeController::WorkerMain() {
           if (order.ime && dbus_ != nullptr) {
             dbus_->EmitRecognitionPartial(order.postprocess_request.text);
           }
+          vinput::client::Broadcast(
+              vinput::client::SerializePartialEvent(order.postprocess_request.text, order.ime));
         }
         order.pcm.clear();
         order.session.reset();
@@ -1061,10 +1073,10 @@ void DaemonRuntimeController::WorkerMain() {
         dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(error));
       }
       if (order.ime && dbus_ != nullptr) {
-        if (order.ime && dbus_ != nullptr) {
-          dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
-        }
+        dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
       }
+      vinput::client::Broadcast(
+          vinput::client::SerializeCommittedEvent(pipeline_result.payload, order.ime));
     } catch (const std::exception& e) {
       {
         const std::scoped_lock lock(state_mutex_);
@@ -1094,6 +1106,7 @@ DbusService::MethodResult DaemonRuntimeController::InjectText(bool ime,
     if (ime && dbus_ != nullptr) {
       dbus_->EmitRecognitionPartial(text);
     }
+    vinput::client::Broadcast(vinput::client::SerializePartialEvent(text, ime));
     return DbusService::MethodResult::Success();
   }
 
@@ -1105,6 +1118,7 @@ DbusService::MethodResult DaemonRuntimeController::InjectText(bool ime,
     if (ime && dbus_ != nullptr) {
       dbus_->EmitRecognitionResult(vinput::result::Serialize(payload));
     }
+    vinput::client::Broadcast(vinput::client::SerializeCommittedEvent(payload, ime));
     return DbusService::MethodResult::Success();
   }
 
