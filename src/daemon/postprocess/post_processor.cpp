@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/format.h>
 #include <fmt/printf.h>
 #include <fstream>
 #include <glaze/core/common.hpp>
@@ -159,23 +160,33 @@ std::string BuildContextPrefix(int max_lines) {
   return result;
 }
 
-std::string BuildConstraintsSuffix(int max_llm_candidates) {
+std::string BuildConstraintsSuffix(int max_llm_candidates, bool json_object = true) {
   if (max_llm_candidates <= 0) {
     return {};
   }
-  char buf[768];
-  std::snprintf(buf, sizeof(buf),
-                "\n\n## Constraints\n"
-                "- Return only the JSON object described below.\n"
-                "- Each candidate must contain only the final rewritten text.\n"
-                "- Do not include explanations, Markdown fences, or extra keys.\n"
-                "\n\n## Format\n"
-                "Return up to %d distinct candidate(s) in a JSON object:\n"
-                "```json\n"
-                "{\"candidates\": [\"<string>\"]}\n"
-                "```",
-                max_llm_candidates);
-  return buf;
+  if (!json_object) {
+    if (max_llm_candidates == 1) {
+      return "\n\n## Constraints\n"
+             "- Return only the final rewritten text directly.\n"
+             "- Do not include explanations, markdown fences, or extra commentary.";
+    }
+    return fmt::format(
+        "\n\n## Constraints\n"
+        "- Return up to {} distinct candidate(s), exactly one candidate per line.\n"
+        "- Each line must contain only the final rewritten text.\n"
+        "- Do not include numbering, explanations, markdown fences, or extra commentary.",
+        max_llm_candidates);
+  }
+  return fmt::format("\n\n## Constraints\n"
+                     "- Return only the JSON object described below.\n"
+                     "- Each candidate must contain only the final rewritten text.\n"
+                     "- Do not include explanations, Markdown fences, or extra keys.\n"
+                     "\n\n## Format\n"
+                     "Return up to {} distinct candidate(s) in a JSON object:\n"
+                     "```json\n"
+                     "{{\"candidates\": [\"<string>\"]}}\n"
+                     "```",
+                     max_llm_candidates);
 }
 
 // Merge user-supplied extra_body fields into the outgoing request. Some
@@ -242,7 +253,8 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   }
 
   const std::string context_prefix = BuildContextPrefix(scene.context_lines);
-  const std::string constraints_suffix = BuildConstraintsSuffix(max_llm_candidates);
+  const std::string constraints_suffix =
+      BuildConstraintsSuffix(max_llm_candidates, provider.json_object);
 
   // We send a single user message. The output-format constraints are appended
   // verbatim at the end regardless of interpolation, since downstream parsing
@@ -287,9 +299,11 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
       {"model", scene.model},
       {"stream", false},
       {"temperature", 0.2},
-      {"response_format", BuildCandidatesResponseFormat()},
       {"messages", glz::json_t(std::move(messages))},
   };
+  if (provider.json_object) {
+    request["response_format"] = BuildCandidatesResponseFormat();
+  }
   MergeExtraBody(request, provider.extra_body, provider);
   const std::string request_body = vinput::json::ToText(request);
 
