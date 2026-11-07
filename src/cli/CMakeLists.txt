@@ -27,6 +27,8 @@ add_executable(cli
     control/daemon_actions.cpp
     control/register_recording.cpp
     control/recording_actions.cpp
+    control/register_client.cpp
+    control/client_actions.cpp
     config/asr_actions.cpp
     config/config_actions.cpp
     config/device_actions.cpp

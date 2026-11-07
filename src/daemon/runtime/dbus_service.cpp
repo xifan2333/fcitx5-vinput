@@ -71,6 +71,10 @@ static const sd_bus_vtable vtable[] = {
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodStopAdapter, "s", "", &DbusService::handleStopAdapter,
                   SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD(kMethodStartClient, "s", "", &DbusService::handleStartClient,
+                  SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD(kMethodStopClient, "s", "", &DbusService::handleStopClient,
+                  SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_SIGNAL(kSignalRecognitionResult, "s", 0),
     SD_BUS_SIGNAL(kSignalRecognitionPartial, "s", 0),
     SD_BUS_SIGNAL(kSignalStatusChanged, "s", 0),
@@ -241,6 +245,14 @@ void DbusService::SetStopAdapterHandler(std::function<MethodResult(const std::st
   stop_adapter_handler_ = std::move(handler);
 }
 
+void DbusService::SetStartClientHandler(std::function<MethodResult(const std::string&)> handler) {
+  start_client_handler_ = std::move(handler);
+}
+
+void DbusService::SetStopClientHandler(std::function<MethodResult(const std::string&)> handler) {
+  stop_client_handler_ = std::move(handler);
+}
+
 int DbusService::handleStartRecording(sd_bus_message* m, void* userdata, sd_bus_error* error) {
   auto* self = static_cast<DbusService*>(userdata);
   MethodResult result;
@@ -388,6 +400,38 @@ int DbusService::handleStopAdapter(sd_bus_message* m, void* userdata, sd_bus_err
   MethodResult result;
   if (self->stop_adapter_handler_) {
     result = self->stop_adapter_handler_(adapter_id != nullptr ? adapter_id : "");
+  }
+  return ReplyWithMethodResult(m, error, result, "");
+}
+
+int DbusService::handleStartClient(sd_bus_message* m, void* userdata, sd_bus_error* error) {
+  auto* self = static_cast<DbusService*>(userdata);
+  const char* client_id = "";
+  const int ret = sd_bus_message_read(m, "s", &client_id);
+  if (ret < 0) {
+    VLOG_ERROR("failed to read StartClient id: {}", strerror(-ret));
+    return ret;
+  }
+
+  MethodResult result;
+  if (self->start_client_handler_) {
+    result = self->start_client_handler_(client_id != nullptr ? client_id : "");
+  }
+  return ReplyWithMethodResult(m, error, result, "");
+}
+
+int DbusService::handleStopClient(sd_bus_message* m, void* userdata, sd_bus_error* error) {
+  auto* self = static_cast<DbusService*>(userdata);
+  const char* client_id = "";
+  const int ret = sd_bus_message_read(m, "s", &client_id);
+  if (ret < 0) {
+    VLOG_ERROR("failed to read StopClient id: {}", strerror(-ret));
+    return ret;
+  }
+
+  MethodResult result;
+  if (self->stop_client_handler_) {
+    result = self->stop_client_handler_(client_id != nullptr ? client_id : "");
   }
   return ReplyWithMethodResult(m, error, result, "");
 }

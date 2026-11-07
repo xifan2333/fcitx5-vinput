@@ -130,6 +130,24 @@ int main(int argc, char* argv[]) {
     return DbusService::MethodResult::Success();
   });
 
+  dbus.SetStartClientHandler([&](const std::string& client_id) -> DbusService::MethodResult {
+    std::string error;
+    if (!vinput::client::Start(
+            client_id, &notification_bridge,
+            [&](std::string_view line) { runtime_controller.DispatchClientLine(line); }, &error)) {
+      return DbusService::MethodResult::Failure(error.empty() ? "failed to start client" : error);
+    }
+    return DbusService::MethodResult::Success();
+  });
+
+  dbus.SetStopClientHandler([&](const std::string& client_id) -> DbusService::MethodResult {
+    std::string error;
+    if (!vinput::client::Stop(client_id, &error, &notification_bridge)) {
+      return DbusService::MethodResult::Failure(error.empty() ? "failed to stop client" : error);
+    }
+    return DbusService::MethodResult::Success();
+  });
+
   std::string dbus_error;
   if (!dbus.Start(&dbus_error)) {
     if (dbus_error.empty()) {

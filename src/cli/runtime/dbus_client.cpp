@@ -206,4 +206,12 @@ bool DbusClient::StopAdapter(const std::string& adapter_id, std::string* error) 
   return CallDaemonStringArg(bus_, vinput::dbus::kMethodStopAdapter, adapter_id, error);
 }
 
+bool DbusClient::StartClient(const std::string& client_id, std::string* error) {
+  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStartClient, client_id, error);
+}
+
+bool DbusClient::StopClient(const std::string& client_id, std::string* error) {
+  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStopClient, client_id, error);
+}
+
 } // namespace vinput::cli

@@ -238,6 +238,7 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
     auto& state = GetTrackedState();
     const std::scoped_lock lock(state.mutex);
     state.sessions.insert_or_assign(client_id, std::move(tracked));
+    state.pending.erase(client_id);
   }
   release.Disarm();
 
