@@ -1,11 +1,13 @@
 #include "cli/utils/formatter.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <glaze/json/json_t.hpp>
 #include <iostream>
 #include <memory>
 #include <string>
-#include <tabulate/tabulate.hpp>
+#include <string_view>
+#include <unicodelib.h>
 #include <utility>
 #include <vector>
 
@@ -58,51 +60,7 @@ std::string TextFormatter::Bold(const std::string& s) const {
 
 void TextFormatter::PrintTable(const std::vector<std::string>& headers,
                                const std::vector<std::vector<std::string>>& rows) {
-  if (headers.empty()) {
-    return;
-  }
-
-  using namespace tabulate;
-
-  Table table;
-
-  // Add header row
-  Table::Row_t header_row;
-  header_row.reserve(headers.size());
-  for (const auto& h : headers) {
-    header_row.emplace_back(h);
-  }
-  table.add_row(header_row);
-
-  // Style header: bold, no color override
-  for (size_t i = 0; i < headers.size(); ++i) {
-    if (use_color_) {
-      table[0][i].format().font_style({FontStyle::bold});
-    }
-  }
-
-  // Add data rows
-  for (const auto& row : rows) {
-    Table::Row_t table_row;
-    table_row.reserve(headers.size());
-    for (size_t i = 0; i < headers.size(); ++i) {
-      table_row.emplace_back(i < row.size() ? row[i] : "");
-    }
-    table.add_row(table_row);
-  }
-
-  // Borderless style: no borders, no corners, two-space column separator,
-  // zero vertical padding to match original compact output
-  table.format()
-      .border("")
-      .corner("")
-      .column_separator("  ")
-      .padding_top(0)
-      .padding_bottom(0)
-      .padding_left(0)
-      .padding_right(0);
-
-  std::cout << table << "\n";
+  std::cout << vinput::cli::RenderTable(headers, rows, use_color_);
 }
 
 void TextFormatter::PrintKeyValue(const std::string& key, const std::string& value) {
@@ -182,3 +140,143 @@ std::unique_ptr<Formatter> CreateFormatter(const CliContext& ctx) {
   }
   return std::make_unique<TextFormatter>(ctx.is_tty);
 }
+
+namespace vinput::cli {
+
+int MeasureVisibleWidth(std::string_view utf8_str) {
+  std::u32string visible_cps;
+  visible_cps.reserve(utf8_str.size());
+
+  for (size_t i = 0; i < utf8_str.size();) {
+    if (utf8_str[i] == '\033') {
+      if (i + 1 < utf8_str.size() && utf8_str[i + 1] == ']') {
+        // OSC sequence: \033] ... (\a or \033\\)
+        i += 2;
+        while (i < utf8_str.size()) {
+          if (utf8_str[i] == '\a') {
+            ++i;
+            break;
+          }
+          if (utf8_str[i] == '\033' && i + 1 < utf8_str.size() && utf8_str[i + 1] == '\\') {
+            i += 2;
+            break;
+          }
+          ++i;
+        }
+        continue;
+      }
+      if (i + 1 < utf8_str.size() && utf8_str[i + 1] == '[') {
+        // CSI / SGR sequence: \033[ ... [0x40-0x7e]
+        i += 2;
+        while (i < utf8_str.size()) {
+          const auto ch = static_cast<unsigned char>(utf8_str[i]);
+          ++i;
+          if (ch >= 0x40 && ch <= 0x7e) {
+            break;
+          }
+        }
+        continue;
+      }
+    }
+
+    const auto c = static_cast<unsigned char>(utf8_str[i]);
+    char32_t cp = 0;
+    size_t bytes = 0;
+    if (c < 0x80) {
+      cp = c;
+      bytes = 1;
+    } else if ((c & 0xe0) == 0xc0) {
+      if (i + 1 < utf8_str.size()) {
+        cp = static_cast<char32_t>(((c & 0x1f) << 6) |
+                                   (static_cast<unsigned char>(utf8_str[i + 1]) & 0x3f));
+        bytes = 2;
+      }
+    } else if ((c & 0xf0) == 0xe0) {
+      if (i + 2 < utf8_str.size()) {
+        cp = static_cast<char32_t>(((c & 0x0f) << 12) |
+                                   ((static_cast<unsigned char>(utf8_str[i + 1]) & 0x3f) << 6) |
+                                   (static_cast<unsigned char>(utf8_str[i + 2]) & 0x3f));
+        bytes = 3;
+      }
+    } else if ((c & 0xf8) == 0xf0) {
+      if (i + 3 < utf8_str.size()) {
+        cp = static_cast<char32_t>(((c & 0x07) << 18) |
+                                   ((static_cast<unsigned char>(utf8_str[i + 1]) & 0x3f) << 12) |
+                                   ((static_cast<unsigned char>(utf8_str[i + 2]) & 0x3f) << 6) |
+                                   (static_cast<unsigned char>(utf8_str[i + 3]) & 0x3f));
+        bytes = 4;
+      }
+    }
+    if (bytes > 0) {
+      visible_cps.push_back(cp);
+      i += bytes;
+    } else {
+      ++i;
+    }
+  }
+
+  return unicode::width(visible_cps, unicode::AmbiguousWidth::Narrow);
+}
+
+std::string PadCellToVisibleWidth(const std::string& cell, int target_width) {
+  const int w = MeasureVisibleWidth(cell);
+  const int pad = target_width - w;
+  if (pad <= 0) {
+    return cell;
+  }
+  return cell + std::string(static_cast<size_t>(pad), ' ');
+}
+
+std::string RenderTable(const std::vector<std::string>& headers,
+                        const std::vector<std::vector<std::string>>& rows, bool use_color) {
+  if (headers.empty()) {
+    return {};
+  }
+
+  std::vector<int> col_widths(headers.size(), 0);
+  for (size_t i = 0; i < headers.size(); ++i) {
+    col_widths[i] = MeasureVisibleWidth(headers[i]);
+  }
+  for (const auto& row : rows) {
+    for (size_t i = 0; i < row.size() && i < col_widths.size(); ++i) {
+      col_widths[i] = std::max(col_widths[i], MeasureVisibleWidth(row[i]));
+    }
+  }
+
+  std::string output;
+
+  // Header row
+  for (size_t i = 0; i < headers.size(); ++i) {
+    if (i > 0) {
+      output += "  ";
+    }
+    const std::string cell =
+        (i + 1 < headers.size()) ? PadCellToVisibleWidth(headers[i], col_widths[i]) : headers[i];
+    if (use_color) {
+      output += "\033[1m" + cell + "\033[0m";
+    } else {
+      output += cell;
+    }
+  }
+  output += '\n';
+
+  // Data rows
+  for (const auto& row : rows) {
+    for (size_t i = 0; i < headers.size(); ++i) {
+      if (i > 0) {
+        output += "  ";
+      }
+      const std::string cell = (i < row.size()) ? row[i] : "";
+      if (i + 1 < headers.size()) {
+        output += PadCellToVisibleWidth(cell, col_widths[i]);
+      } else {
+        output += cell;
+      }
+    }
+    output += '\n';
+  }
+
+  return output;
+}
+
+} // namespace vinput::cli

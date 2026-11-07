@@ -69,6 +69,12 @@ vinput_add_test(test_editor_utils
 )
 target_include_directories(test_editor_utils PRIVATE ${CMAKE_SOURCE_DIR}/src/cli)
 
+vinput_add_test(test_formatter
+    SOURCES test_formatter.cpp ${CMAKE_SOURCE_DIR}/src/cli/utils/formatter.cpp
+    LIBS unicodelib::unicodelib common
+)
+target_include_directories(test_formatter PRIVATE ${CMAKE_SOURCE_DIR}/src/cli)
+
 # 6. Config migration test (needs CMAKE_SOURCE_DIR definition)
 vinput_add_test(test_config_migration)
 target_compile_definitions(test_config_migration PRIVATE

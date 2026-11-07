@@ -60,3 +60,12 @@ public:
 };
 
 std::unique_ptr<Formatter> CreateFormatter(const CliContext& ctx);
+
+namespace vinput::cli {
+
+int MeasureVisibleWidth(std::string_view utf8_str);
+std::string PadCellToVisibleWidth(const std::string& cell, int target_width);
+std::string RenderTable(const std::vector<std::string>& headers,
+                        const std::vector<std::vector<std::string>>& rows, bool use_color = false);
+
+} // namespace vinput::cli
