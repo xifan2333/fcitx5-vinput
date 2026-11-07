@@ -20,6 +20,7 @@ struct LlmProvider {
   std::string id;
   std::string base_url;
   std::string api_key;
+  bool json_object{true};
   glz::json_t extra_body = glz::json_t(glz::json_t::object_t{});
 };
 

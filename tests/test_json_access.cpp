@@ -120,6 +120,44 @@ void TestCoreConfigRoundTrip() {
   TEST_EXPECT(reloaded_provider->env.at("EXAMPLE_URL") == "http://127.0.0.1:9999/v1");
 }
 
+void TestLlmProviderJsonObjectRoundTrip() {
+  constexpr std::string_view kConfigText = R"({
+    "llm": {
+      "providers": [
+        {
+          "id": "provider-default",
+          "base_url": "https://api.openai.com/v1"
+        },
+        {
+          "id": "provider-no-json",
+          "base_url": "http://127.0.0.1:11434/v1",
+          "json_object": false
+        }
+      ]
+    }
+  })";
+
+  CoreConfig config;
+  std::string error;
+  TEST_EXPECT(CoreConfigFromJson(kConfigText, &config, &error));
+  TEST_EXPECT(config.llm.providers.size() == 2);
+  TEST_EXPECT(config.llm.providers[0].id == "provider-default");
+  TEST_EXPECT(config.llm.providers[0].json_object == true);
+  TEST_EXPECT(config.llm.providers[1].id == "provider-no-json");
+  TEST_EXPECT(config.llm.providers[1].json_object == false);
+
+  const std::string serialized = CoreConfigToJson(config);
+  // Default json_object == true is omitted to keep config clean
+  TEST_EXPECT(serialized.find(R"("json_object": false)") != std::string::npos);
+  TEST_EXPECT(serialized.find(R"("json_object": true)") == std::string::npos);
+
+  CoreConfig reloaded;
+  TEST_EXPECT(CoreConfigFromJson(serialized, &reloaded, &error));
+  TEST_EXPECT(reloaded.llm.providers.size() == 2);
+  TEST_EXPECT(reloaded.llm.providers[0].json_object == true);
+  TEST_EXPECT(reloaded.llm.providers[1].json_object == false);
+}
+
 } // namespace
 
 int main() {
@@ -127,6 +165,7 @@ int main() {
   TestFromStringMapIsFlat();
   TestEmptyObjectIsObject();
   TestCoreConfigRoundTrip();
+  TestLlmProviderJsonObjectRoundTrip();
   std::cout << "test_json_access: all assertions passed\n";
   return 0;
 }

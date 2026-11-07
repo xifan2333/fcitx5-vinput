@@ -33,6 +33,7 @@ struct LlmProviderWire {
   std::string id;
   std::optional<std::string> base_url;
   std::optional<std::string> api_key;
+  std::optional<bool> json_object;
   std::optional<glz::json_t> extra_body;
 };
 
@@ -128,6 +129,7 @@ void FromWire(const LlmProviderWire& wire, LlmProvider* provider) {
   provider->id = wire.id;
   provider->base_url = wire.base_url.value_or(provider->base_url);
   provider->api_key = wire.api_key.value_or(provider->api_key);
+  provider->json_object = wire.json_object.value_or(provider->json_object);
 
   provider->extra_body = glz::json_t(glz::json_t::object_t{});
   if (wire.extra_body.has_value() && wire.extra_body->is_object()) {
@@ -288,6 +290,9 @@ LlmProviderWire ToWire(const LlmProvider& provider) {
   }
   if (!provider.api_key.empty()) {
     wire.api_key = provider.api_key;
+  }
+  if (!provider.json_object) {
+    wire.json_object = false;
   }
   if (provider.extra_body.is_object() && !provider.extra_body.empty()) {
     wire.extra_body = provider.extra_body;
@@ -493,8 +498,9 @@ CoreConfigWire ToWire(const CoreConfig& config) {
 
 template <> struct glz::meta<LlmProviderWire> {
   using T = LlmProviderWire;
-  static constexpr auto value = object("id", &T::id, "base_url", &T::base_url, "api_key",
-                                       &T::api_key, "extra_body", &T::extra_body);
+  static constexpr auto value =
+      object("id", &T::id, "base_url", &T::base_url, "api_key", &T::api_key, "json_object",
+             &T::json_object, "extra_body", &T::extra_body);
 };
 
 template <> struct glz::meta<LlmAdapterWire> {
