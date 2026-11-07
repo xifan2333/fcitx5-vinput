@@ -2,7 +2,6 @@
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qstring.h>
-#include <QtWidgets/qcheckbox.h>
 #include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qmessagebox.h>
@@ -40,11 +39,6 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
     cmd_editor.Populate(initial.command, initial.args, initial.env);
     cmd_editor.AddToForm(form);
 
-    auto* chkAutoStart = new QCheckBox(AdapterDialog::tr("Start with daemon"));
-    chkAutoStart->setChecked(initial.autoStart);
-    form->addRow(QString(), chkAutoStart);
-
-    bool auto_start = false;
     std::string command;
     std::vector<std::string> args;
     std::map<std::string, std::string> env;
@@ -53,7 +47,6 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
 
     const bool accepted =
         RunFormDialog(parent, AdapterDialog::tr("Configure LLM Adapter"), form, [&]() {
-          auto_start = chkAutoStart->isChecked();
           extract_ok = cmd_editor.Extract(&command, &args, &env, &env_error);
         });
 
@@ -67,7 +60,6 @@ bool ShowAdapterDialog(QWidget* parent, const AdapterData& initial, AdapterData*
     }
 
     out_data->id = initial.id;
-    out_data->autoStart = auto_start;
     out_data->command = std::move(command);
     out_data->args = std::move(args);
     out_data->env = std::move(env);

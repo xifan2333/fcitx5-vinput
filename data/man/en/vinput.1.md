@@ -87,34 +87,22 @@ Manage OpenAI-compatible LLM endpoints for scene post-processing and text rewrit
 :   Test network connectivity and API authentication for the specified LLM provider.
 
 ## LLM ADAPTER MANAGEMENT
-Manage local bridge processes that adapt non-standard models into OpenAI-compatible endpoints.
+Manage one-shot command adapters for text rewriting and candidate filtering.
 
 **adapter list** [**-a**, **--available**]
-:   List local adapters with autostart status, or available remote adapters with **-a**.
+:   List installed adapters, or available remote adapters with **-a**.
 
-**adapter ps**
-:   List adapter processes and runtime status (status, PID, autostart, and command).
+**adapter add** *ID* [**-e** *KEY=VALUE*]...
+:   Install an adapter script by *ID*, optionally specifying environment variable overrides.
 
-**adapter status** *ID*
-:   Show detailed status and configuration properties for an adapter.
+**adapter update** [*ID*] [**-a**, **--all**] [**-f**, **--force**]
+:   Update an adapter script to the latest version.
 
-**adapter add** *ID*
-:   Install an adapter script by *ID*.
+**adapter edit** *ID*
+:   Open the adapter script in the editor specified by `$EDITOR`.
 
-**adapter start** *ID*
-:   Start the background adapter process.
-
-**adapter stop** *ID*
-:   Stop the running adapter process.
-
-**adapter restart** *ID*
-:   Restart the specified adapter process.
-
-**adapter enable** *ID*
-:   Enable the adapter to autostart when the daemon starts.
-
-**adapter disable** *ID*
-:   Disable the adapter from autostarting with the daemon.
+**adapter remove** *ID*
+:   Remove an adapter from configuration and delete its managed script file.
 
 ## HOTWORD MANAGEMENT
 Manage domain-specific vocabulary and custom dictionaries for local sherpa-onnx models (not available in the Lite package).

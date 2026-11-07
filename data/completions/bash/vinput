@@ -142,14 +142,26 @@ _vinput() {
                 if [[ "$cur" == -* ]]; then
                     COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
                 else
-                    COMPREPLY=($(compgen -W "list ls ps status add start stop restart enable disable" -- "$cur"))
+                    COMPREPLY=($(compgen -W "list ls add remove rm update up edit e" -- "$cur"))
                 fi
             else
                 case "${words[2]}" in
                     list|ls)
                         COMPREPLY=($(compgen -W "-a --available -h --help" -- "$cur"))
                         ;;
-                    start|stop|restart|enable|disable|status)
+                    add)
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "-e --env -h --help" -- "$cur"))
+                        fi
+                        ;;
+                    update|up)
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "-a --all -f --force -h --help" -- "$cur"))
+                        else
+                            COMPREPLY=($(compgen -W "$(_vinput_installed_adapters)" -- "$cur"))
+                        fi
+                        ;;
+                    remove|rm|edit|e)
                         if [[ "$cur" == -* ]]; then
                             COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
                         else

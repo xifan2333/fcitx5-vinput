@@ -86,17 +86,16 @@ complete -c vinput -n "__fish_seen_subcommand_from llm; and __fish_seen_subcomma
 complete -c vinput -n "__fish_seen_subcommand_from llm; and __fish_seen_subcommand_from edit e remove rm test" -a "(__fish_vinput_installed_llm_providers)"
 
 # adapter
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a "list ls" -d "List local or remote adapters"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a ps -d "List adapter processes and status"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a status -d "Show adapter status"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a add -d "Install an adapter"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a start -d "Start an adapter process"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a stop -d "Stop an adapter process"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a restart -d "Restart an adapter process"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a enable -d "Enable adapter autostart with daemon"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls ps status add start stop restart enable disable" -a disable -d "Disable adapter autostart with daemon"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add remove rm update up edit e" -a "list ls" -d "List local or remote adapters"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add remove rm update up edit e" -a add -d "Install an adapter"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add remove rm update up edit e" -a "remove rm" -d "Remove an adapter"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add remove rm update up edit e" -a "update up" -d "Update an adapter script"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add remove rm update up edit e" -a "edit e" -d "Edit adapter script in editor"
 complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from list ls" -s a -l available -d "List remote adapters"
-complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from start stop restart enable disable status" -a "(__fish_vinput_installed_adapters)"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from add" -s e -l env -r -d "Adapter env var as KEY=VALUE"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from update up" -s a -l all -d "Update all installed adapters"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from update up" -s f -l force -d "Force update even if up to date"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from remove rm update up edit e" -a "(__fish_vinput_installed_adapters)"
 
 # hotword
 complete -c vinput -n "not __fish_vinput_is_lite; and __fish_seen_subcommand_from hotword; and not __fish_seen_subcommand_from get set clear edit e" -a get -d "Show configured hotword path"

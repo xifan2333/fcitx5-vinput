@@ -103,19 +103,13 @@ void RegisterAdapterCommands(CLI::App& app, CliAction* action) {
     };
   });
 
-  auto* ps = adapter->add_subcommand("ps", _("List adapter processes and runtime status"));
-  ps->callback([action]() {
-    *action = [](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigPsAdapters(fmt, ctx);
-    };
-  });
-
-  auto statusId = std::make_shared<std::string>();
-  auto* status = adapter->add_subcommand("status", _("Show adapter status"));
-  status->add_option("id", *statusId, _("Adapter short ID"))->required();
-  status->callback([action, statusId]() {
-    *action = [statusId](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigStatusAdapter(*statusId, fmt, ctx);
+  auto editId = std::make_shared<std::string>();
+  auto* edit = adapter->add_subcommand("edit", _("Edit an LLM adapter script"));
+  edit->alias("e");
+  edit->add_option("id", *editId, _("Adapter short ID"))->required();
+  edit->callback([action, editId]() {
+    *action = [editId](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigEditAdapter(*editId, fmt, ctx);
     };
   });
 
@@ -155,51 +149,6 @@ void RegisterAdapterCommands(CLI::App& app, CliAction* action) {
   update->callback([action, updateSelector, updateAll, updateForce]() {
     *action = [updateSelector, updateAll, updateForce](Formatter& fmt, const CliContext& ctx) {
       return RunLlmConfigUpdateAdapter(*updateSelector, *updateAll, *updateForce, fmt, ctx);
-    };
-  });
-
-  auto startId = std::make_shared<std::string>();
-  auto* start = adapter->add_subcommand("start", _("Start an adapter"));
-  start->add_option("id", *startId, _("Adapter short ID"))->required();
-  start->callback([action, startId]() {
-    *action = [startId](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigStartAdapter(*startId, fmt, ctx);
-    };
-  });
-
-  auto stopId = std::make_shared<std::string>();
-  auto* stop = adapter->add_subcommand("stop", _("Stop an adapter"));
-  stop->add_option("id", *stopId, _("Adapter short ID"))->required();
-  stop->callback([action, stopId]() {
-    *action = [stopId](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigStopAdapter(*stopId, fmt, ctx);
-    };
-  });
-
-  auto restartId = std::make_shared<std::string>();
-  auto* restart = adapter->add_subcommand("restart", _("Restart an adapter"));
-  restart->add_option("id", *restartId, _("Adapter short ID"))->required();
-  restart->callback([action, restartId]() {
-    *action = [restartId](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigRestartAdapter(*restartId, fmt, ctx);
-    };
-  });
-
-  auto enableId = std::make_shared<std::string>();
-  auto* enable = adapter->add_subcommand("enable", _("Enable adapter autostart with daemon"));
-  enable->add_option("id", *enableId, _("Adapter short ID"))->required();
-  enable->callback([action, enableId]() {
-    *action = [enableId](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigEnableAdapter(*enableId, fmt, ctx);
-    };
-  });
-
-  auto disableId = std::make_shared<std::string>();
-  auto* disable = adapter->add_subcommand("disable", _("Disable adapter autostart with daemon"));
-  disable->add_option("id", *disableId, _("Adapter short ID"))->required();
-  disable->callback([action, disableId]() {
-    *action = [disableId](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigDisableAdapter(*disableId, fmt, ctx);
     };
   });
 }

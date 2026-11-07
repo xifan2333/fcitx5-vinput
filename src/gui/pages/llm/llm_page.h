@@ -17,8 +17,6 @@ public:
   void reload();
 
 private:
-  void executeAdapterControl(bool start);
-
   QListWidget* listProviders_;
   QPushButton* btnLlmAdd_;
   QPushButton* btnLlmEdit_;
@@ -28,9 +26,6 @@ private:
   QListWidget* listAdapters_;
   QPushButton* btnAdapterEdit_;
   QPushButton* btnAdapterRemove_;
-  QPushButton* btnAdapterStart_;
-  QPushButton* btnAdapterStop_;
-  QPushButton* btnAdapterRefresh_;
 
   QListWidget* listScenes_;
   QPushButton* btnSceneAdd_;
@@ -51,8 +46,6 @@ private slots:
   void onLlmTest();
   void onAdapterEdit();
   void onAdapterRemove();
-  void onAdapterStart();
-  void onAdapterStop();
   void updateAdapterButtons();
   void onSceneAdd();
   void onSceneEdit();

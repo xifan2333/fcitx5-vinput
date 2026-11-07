@@ -41,7 +41,6 @@ public:
   [[nodiscard]] double duckOutputVolume() const;
 
 private:
-  void executeAdapterControl(bool start);
   void executeDaemonAction(bool restart);
   void populateAsrList(const CoreConfig& config,
                        const vinput::dbus::AsrBackendState* backend_state);
@@ -58,11 +57,6 @@ private:
   QPushButton* btnAsrEdit_;
   QPushButton* btnAsrSetActive_;
 
-  QListWidget* listAdapters_;
-  QPushButton* btnAdapterStart_;
-  QPushButton* btnAdapterStop_;
-  QCheckBox* chkAdapterAutostart_;
-
   QLabel* lblDaemonStatus_;
   QPushButton* btnDaemonStart_;
   QPushButton* btnDaemonStop_;
@@ -77,12 +71,6 @@ private slots:
   void updateAsrButtons();
   void onAsrEdit();
   void onAsrSetActive();
-
-  void refreshAdapterList();
-  void updateAdapterButtons();
-  void onAdapterStart();
-  void onAdapterStop();
-  void onAdapterAutostartToggled(bool checked);
 
   void refreshDaemonStatus();
   void onDaemonStart();

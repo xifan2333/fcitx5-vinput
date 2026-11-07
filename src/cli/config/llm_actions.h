@@ -8,8 +8,7 @@
 
 int RunLlmConfigList(Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& ctx);
-int RunLlmConfigPsAdapters(Formatter& fmt, const CliContext& ctx);
-int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
+int RunLlmConfigEditAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std::string& apiKey,
                     const std::string& extraBody, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigInstallAdapter(const std::string& selector,
@@ -18,11 +17,6 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
 int RunLlmConfigRemoveAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force, Formatter& fmt,
                               const CliContext& ctx);
-int RunLlmConfigStartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
-int RunLlmConfigStopAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
-int RunLlmConfigRestartAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
-int RunLlmConfigEnableAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
-int RunLlmConfigDisableAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigRemove(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const std::string& apiKey,
                      const std::string& extraBody, bool hasBaseUrl, bool hasApiKey,

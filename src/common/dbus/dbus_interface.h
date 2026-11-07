@@ -17,8 +17,6 @@ constexpr const char* kMethodCancelOperation = "CancelOperation";
 constexpr const char* kMethodGetStatus = "GetStatus";
 constexpr const char* kMethodGetAsrBackendState = "GetAsrBackendState";
 constexpr const char* kMethodReloadAsrBackend = "ReloadAsrBackend";
-constexpr const char* kMethodStartAdapter = "StartAdapter";
-constexpr const char* kMethodStopAdapter = "StopAdapter";
 constexpr const char* kMethodStartClient = "StartClient";
 constexpr const char* kMethodStopClient = "StopClient";
 
