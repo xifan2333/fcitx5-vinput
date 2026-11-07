@@ -14,6 +14,7 @@ set(VINPUT_CONFIG_SOURCES
     llm/adapter_manager.cpp
     client/client_manager.cpp
     client/client_command.cpp
+    client/client_event.cpp
     asr/recognition_result.cpp
     asr/model_manager.cpp
     registry/registry_i18n.cpp
