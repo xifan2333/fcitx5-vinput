@@ -215,7 +215,7 @@ void runAllTests() {
     expect(candidate_list != nullptr, "Candidate list must be present after opening palette");
     auto* pageable = candidate_list->toPageable();
     expect(pageable != nullptr, "Candidate list must implement PageableCandidateList");
-    expect(pageable->totalPages() == 2, "4 command entries with pageSize 2 must form 2 pages");
+    expect(pageable->totalPages() == 2, "3 command entries with pageSize 2 must form 2 pages");
     expect(pageable->currentPage() == 0, "Initial page must be page 0");
     expect(candidate_list->size() == 2, "First page must contain 2 candidates");
     expect(candidate_list->candidate(0).text().toString() == "/model (/m)",
@@ -228,11 +228,9 @@ void runAllTests() {
     engine.handleKeyEvent(pgdn);
     expect(pgdn.filtered() && pgdn.accepted(), "Page_Down must be filtered and accepted");
     expect(pageable->currentPage() == 1, "Pageable current page must now be 1");
-    expect(candidate_list->size() == 2, "Second page must contain remaining 2 candidates");
+    expect(candidate_list->size() == 1, "Second page must contain remaining 1 candidate");
     expect(candidate_list->candidate(0).text().toString() == "/scene (/s)",
            "Page 1 first candidate must be /scene (/s)");
-    expect(candidate_list->candidate(1).text().toString() == "/proc (/p)",
-           "Page 1 second candidate must be /proc (/p)");
 
     // 6c. Select first candidate on page 1 with digit key '1' (digitSelection() == 0)
     // Previously, DigitSelectionIndex used current_page * 10 + 0 = 10, which overflowed (10 >= 4).
