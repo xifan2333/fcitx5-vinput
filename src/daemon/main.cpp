@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  PostProcessor post_processor;
+  PostProcessor post_processor(&notification_bridge);
 
   // --- Single-slot state (all protected by state_mutex) ---
   vinput::daemon::runtime::RecognitionPipeline recognition_pipeline(&post_processor);

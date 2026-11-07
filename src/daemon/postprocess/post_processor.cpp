@@ -515,13 +515,22 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
   AppendCandidate(fallback, normalized, vinput::result::kSourceRaw);
   fallback.commitText = normalized;
 
-  const LlmProvider* provider = CoreConfigView(settings).LlmProvider(scene.provider_id);
-  if (provider == nullptr || max_llm_candidates == 0) {
+  const CoreConfigView view(settings);
+  const LlmProvider* provider = view.LlmProvider(scene.provider_id);
+  const LlmAdapter* adapter = (provider == nullptr) ? view.LlmAdapter(scene.provider_id) : nullptr;
+  if ((provider == nullptr && adapter == nullptr) || max_llm_candidates == 0) {
     return fallback;
   }
 
-  auto rewritten = RewriteWithOpenAiCompatible(normalized, scene, *provider, max_llm_candidates,
-                                               error_out, {}, &shutting_down_, cancel_flag);
+  std::optional<std::vector<std::string>> rewritten;
+  if (provider != nullptr) {
+    rewritten = RewriteWithOpenAiCompatible(normalized, scene, *provider, max_llm_candidates,
+                                            error_out, {}, &shutting_down_, cancel_flag);
+  } else {
+    rewritten =
+        RewriteWithCommandAdapter(normalized, scene, *adapter, max_llm_candidates,
+                                  notification_bridge_, error_out, &shutting_down_, cancel_flag);
+  }
   if (!rewritten.has_value()) {
     return fallback;
   }
@@ -580,53 +589,70 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
   const int command_max_llm_candidates =
       vinput::scene::NormalizeLlmMaxCandidates(command_scene.llm_max_candidates);
 
-  const LlmProvider* provider = CoreConfigView(settings).LlmProvider(command_scene.provider_id);
-  if (provider == nullptr || command_max_llm_candidates == 0) {
+  const CoreConfigView view(settings);
+  const LlmProvider* provider = view.LlmProvider(command_scene.provider_id);
+  const LlmAdapter* adapter =
+      (provider == nullptr) ? view.LlmAdapter(command_scene.provider_id) : nullptr;
+  if ((provider == nullptr && adapter == nullptr) || command_max_llm_candidates == 0) {
     return fallback;
   }
 
-  // Resolve any `file:///` reference up front so the URI is not
-  // accidentally concatenated with data text.
-  std::string task_prompt = command_scene.prompt;
-  if (vinput::prompt_template::IsFileUri(task_prompt)) {
-    std::string load_err;
-    auto loaded = vinput::prompt_template::LoadFromFileUri(task_prompt, &load_err);
-    if (!loaded) {
-      if (error_out != nullptr) {
-        *error_out = fmt::sprintf(_("Failed to load prompt file '%s': %s"), task_prompt, load_err);
+  std::optional<std::vector<std::string>> rewritten;
+  if (provider != nullptr) {
+    // Resolve any `file:///` reference up front so the URI is not
+    // accidentally concatenated with data text.
+    std::string task_prompt = command_scene.prompt;
+    if (vinput::prompt_template::IsFileUri(task_prompt)) {
+      std::string load_err;
+      auto loaded = vinput::prompt_template::LoadFromFileUri(task_prompt, &load_err);
+      if (!loaded) {
+        if (error_out != nullptr) {
+          *error_out =
+              fmt::sprintf(_("Failed to load prompt file '%s': %s"), task_prompt, load_err);
+        }
+        return fallback;
       }
-      return fallback;
+      task_prompt = std::move(*loaded);
     }
-    task_prompt = std::move(*loaded);
-  }
 
-  // Interpolation mode ({{asr}}/{{selected}}/{{context}}): author owns layout.
-  // Legacy mode: wrap ASR command and selected text in Vinput-scoped XML tags
-  // so data is clearly separated from prompt instructions.
-  const bool use_template = vinput::prompt_template::HasInterpolation(task_prompt);
-  std::string_view asr_var;
-  std::string_view selected_var;
-  if (use_template) {
-    asr_var = normalized_asr;
-    selected_var = selected_text;
+    // Interpolation mode ({{asr}}/{{selected}}/{{context}}): author owns layout.
+    // Legacy mode: wrap ASR command and selected text in Vinput-scoped XML tags
+    // so data is clearly separated from prompt instructions.
+    const bool use_template = vinput::prompt_template::HasInterpolation(task_prompt);
+    std::string_view asr_var;
+    std::string_view selected_var;
+    if (use_template) {
+      asr_var = normalized_asr;
+      selected_var = selected_text;
+    } else {
+      // Legacy mode: wrap data in Vinput-scoped XML tags.
+      if (!task_prompt.empty() && task_prompt.back() != '\n') {
+        task_prompt.push_back('\n');
+      }
+      task_prompt += '\n';
+      task_prompt += WrapXmlBlock(kXmlTagAsr, normalized_asr);
+      task_prompt += "\n\n";
+      task_prompt += WrapXmlBlock(kXmlTagSelected, selected_text);
+      task_prompt += '\n';
+    }
+
+    // Data is already embedded in task_prompt (legacy XML tags) or will be
+    // substituted via {{asr}}/{{selected}} (interpolation). Pass empty text to
+    // avoid double-appending.
+    rewritten = RewriteWithOpenAiCompatible("", command_scene, *provider,
+                                            command_max_llm_candidates, error_out, task_prompt,
+                                            &shutting_down_, cancel_flag, asr_var, selected_var);
   } else {
-    // Legacy mode: wrap data in Vinput-scoped XML tags.
-    if (!task_prompt.empty() && task_prompt.back() != '\n') {
-      task_prompt.push_back('\n');
-    }
-    task_prompt += '\n';
-    task_prompt += WrapXmlBlock(kXmlTagAsr, normalized_asr);
-    task_prompt += "\n\n";
-    task_prompt += WrapXmlBlock(kXmlTagSelected, selected_text);
-    task_prompt += '\n';
+    // Command mode stdin: single-line JSON {"text": asr, "selected": selected}
+    const glz::json_t cmd_input = {
+        {"text", normalized_asr},
+        {"selected", selected_text},
+    };
+    const std::string cmd_stdin = vinput::json::ToText(cmd_input);
+    rewritten =
+        RewriteWithCommandAdapter(cmd_stdin, command_scene, *adapter, command_max_llm_candidates,
+                                  notification_bridge_, error_out, &shutting_down_, cancel_flag);
   }
-
-  // Data is already embedded in task_prompt (legacy XML tags) or will be
-  // substituted via {{asr}}/{{selected}} (interpolation). Pass empty text to
-  // avoid double-appending.
-  auto rewritten = RewriteWithOpenAiCompatible("", command_scene, *provider,
-                                               command_max_llm_candidates, error_out, task_prompt,
-                                               &shutting_down_, cancel_flag, asr_var, selected_var);
 
   vinput::result::Payload payload;
   std::set<std::string> seen;

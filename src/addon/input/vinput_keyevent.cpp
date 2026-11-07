@@ -99,7 +99,8 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
         updateVoicePresentation(ic, CommandDisabledPreeditText());
         return;
       }
-      if (cmd_scene->provider_id.empty() || view.LlmProvider(cmd_scene->provider_id) == nullptr) {
+      if (cmd_scene->provider_id.empty() || (view.LlmProvider(cmd_scene->provider_id) == nullptr &&
+                                             view.LlmAdapter(cmd_scene->provider_id) == nullptr)) {
         finishFrontendSession(ic);
         updateVoicePresentation(ic, CommandNoProviderPreeditText());
         return;
