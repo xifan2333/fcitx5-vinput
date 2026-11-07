@@ -18,7 +18,6 @@
 #include <string>
 #include <sys/eventfd.h>
 #include <thread>
-#include <type_traits>
 #include <unistd.h>
 #include <utility>
 #include <variant>

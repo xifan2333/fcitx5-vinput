@@ -52,7 +52,7 @@ void ClearError(std::string* error) {
   }
 }
 
-std::optional<ClientCommand> ParseStart(const WireEnvelope& wire, std::string* error) {
+std::optional<ClientCommand> ParseStart(WireEnvelope& wire, std::string* error) {
   StartCommand cmd;
   cmd.ime = wire.ime.value_or(true);
   cmd.mode = wire.mode.value_or("normal");
@@ -66,7 +66,7 @@ std::optional<ClientCommand> ParseStart(const WireEnvelope& wire, std::string* e
   return cmd;
 }
 
-std::optional<ClientCommand> ParseStop(const WireEnvelope& wire, std::string* error) {
+std::optional<ClientCommand> ParseStop(WireEnvelope& wire, std::string* error) {
   StopCommand cmd;
   cmd.ime = wire.ime.value_or(true);
   cmd.scene = wire.scene.value_or(std::string{});
@@ -74,7 +74,7 @@ std::optional<ClientCommand> ParseStop(const WireEnvelope& wire, std::string* er
   return cmd;
 }
 
-std::optional<ClientCommand> ParseCancel(const WireEnvelope& wire, std::string* error) {
+std::optional<ClientCommand> ParseCancel(WireEnvelope& wire, std::string* error) {
   CancelCommand cmd;
   cmd.ime = wire.ime.value_or(true);
   cmd.commit_raw = wire.commit_raw.value_or(false);
@@ -82,7 +82,7 @@ std::optional<ClientCommand> ParseCancel(const WireEnvelope& wire, std::string* 
   return cmd;
 }
 
-std::optional<ClientCommand> ParseInject(const WireEnvelope& wire, std::string* error) {
+std::optional<ClientCommand> ParseInject(WireEnvelope& wire, std::string* error) {
   if (!wire.stage.has_value() || !wire.text.has_value()) {
     SetError(error, "inject command requires 'stage' and 'text'");
     return std::nullopt;
@@ -101,13 +101,13 @@ std::optional<ClientCommand> ParseInject(const WireEnvelope& wire, std::string* 
   InjectCommand cmd;
   cmd.ime = wire.ime.value_or(true);
   cmd.stage = stage;
-  cmd.text = *wire.text;
+  cmd.text = std::move(*wire.text);
   cmd.scene = wire.scene.value_or(std::string{});
   ClearError(error);
   return cmd;
 }
 
-using CommandParser = std::optional<ClientCommand> (*)(const WireEnvelope&, std::string*);
+using CommandParser = std::optional<ClientCommand> (*)(WireEnvelope&, std::string*);
 
 struct CommandHandler {
   std::string_view type;
@@ -115,10 +115,10 @@ struct CommandHandler {
 };
 
 constexpr CommandHandler kCommandParsers[] = {
-    {"start", &ParseStart},
-    {"stop", &ParseStop},
-    {"cancel", &ParseCancel},
-    {"inject", &ParseInject},
+    {.type = "start", .parser = &ParseStart},
+    {.type = "stop", .parser = &ParseStop},
+    {.type = "cancel", .parser = &ParseCancel},
+    {.type = "inject", .parser = &ParseInject},
 };
 
 } // namespace
