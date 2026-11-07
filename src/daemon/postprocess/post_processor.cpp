@@ -13,6 +13,7 @@
 #include <glaze/json/read.hpp>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -26,10 +27,12 @@
 #include "common/llm/defaults.h"
 #include "common/net/http_client.h"
 #include "common/net/http_types.h"
+#include "common/notify/notification_bridge.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/path_utils.h"
+#include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
 #include "common/utils/url_utils.h"
 
@@ -379,6 +382,101 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   return candidates;
 }
 
+constexpr std::size_t kMaxBatchNotifications = 4;
+
+std::optional<std::vector<std::string>>
+RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::Definition& scene,
+                          const LlmAdapter& adapter, int max_candidates,
+                          vinput::notify::NotificationBridge* notification_bridge,
+                          std::string* error_out, const std::atomic<bool>* shutdown_flag = nullptr,
+                          const std::atomic<bool>* request_cancel_flag = nullptr) {
+  const auto is_cancelled = [&]() noexcept {
+    return (shutdown_flag != nullptr && shutdown_flag->load(std::memory_order_relaxed)) ||
+           (request_cancel_flag != nullptr && request_cancel_flag->load(std::memory_order_relaxed));
+  };
+
+  if (is_cancelled()) {
+    if (error_out != nullptr) {
+      error_out->clear();
+    }
+    return std::nullopt;
+  }
+
+  if (adapter.command.empty()) {
+    if (error_out != nullptr) {
+      *error_out = fmt::sprintf(_("Adapter '%s' has no command configured."), adapter.id);
+    }
+    return std::nullopt;
+  }
+
+  vinput::process::CommandSpec spec;
+  spec.command = adapter.command;
+  spec.args = adapter.args;
+  spec.env = adapter.env;
+  spec.timeout_ms = scene.timeout_ms;
+
+  const auto stdin_bytes = std::as_bytes(std::span(stdin_content));
+  auto result = vinput::process::Run(spec, stdin_bytes);
+
+  if (!result.stderr_text.empty() && notification_bridge != nullptr) {
+    std::size_t delivered = 0;
+    vinput::process::DrainLinesFromBuffer(
+        result.stderr_text,
+        [notification_bridge, &adapter, &delivered](std::string_view line) -> bool {
+          if (delivered >= kMaxBatchNotifications) {
+            return false;
+          }
+          notification_bridge->DeliverLine(adapter.id, line);
+          ++delivered;
+          return true;
+        },
+        /*flush_tail=*/true);
+  }
+
+  if (is_cancelled()) {
+    if (error_out != nullptr) {
+      error_out->clear();
+    }
+    return std::nullopt;
+  }
+
+  if (result.launch_failed) {
+    const std::string msg = fmt::sprintf(_("Failed to start adapter '%s'."), adapter.id);
+    VLOG_ERROR("{}", msg);
+    if (error_out != nullptr) {
+      *error_out = msg;
+    }
+    return std::nullopt;
+  }
+
+  if (result.timed_out) {
+    const std::string msg = fmt::sprintf(_("Adapter '%s' timed out."), adapter.id);
+    VLOG_ERROR("{}", msg);
+    if (error_out != nullptr) {
+      *error_out = msg;
+    }
+    return std::nullopt;
+  }
+
+  if (result.exit_code != 0) {
+    const std::string msg =
+        fmt::sprintf(_("Adapter '%s' exited with code %d."), adapter.id, result.exit_code);
+    VLOG_WARN("{}", msg);
+    if (error_out != nullptr) {
+      *error_out = msg;
+    }
+    return std::nullopt;
+  }
+
+  auto candidates = vinput::postprocess::ExtractCandidatesAuto(result.stdout_text, max_candidates);
+  if (candidates.empty()) {
+    VLOG_WARN("Adapter '{}' returned no valid candidates", adapter.id);
+    return std::nullopt;
+  }
+
+  return candidates;
+}
+
 void AppendCandidate(vinput::result::Payload& payload, std::string text, const char* source) {
   text = std::string(vinput::str::Trim(text));
   if (text.empty()) {
@@ -390,6 +488,13 @@ void AppendCandidate(vinput::result::Payload& payload, std::string text, const c
 }
 
 } // namespace
+
+PostProcessor::PostProcessor(vinput::notify::NotificationBridge* notification_bridge)
+    : notification_bridge_(notification_bridge) {}
+
+void PostProcessor::SetNotificationBridge(vinput::notify::NotificationBridge* notification_bridge) {
+  notification_bridge_ = notification_bridge;
+}
 
 void PostProcessor::Shutdown() {
   shutting_down_.store(true, std::memory_order_relaxed);

@@ -1672,3 +1672,23 @@ msgstr "订阅守护进程信号失败。"
 #: src/cli/control/client_actions.cpp:322
 msgid "D-Bus connection error during listen."
 msgstr "监听期间 D-Bus 连接发生错误。"
+
+#: src/daemon/postprocess/post_processor.cpp:396
+#, c-format
+msgid "Adapter '%s' has no command configured."
+msgstr "适配器 '%s' 未配置命令。"
+
+#: src/daemon/postprocess/post_processor.cpp:437
+#, c-format
+msgid "Failed to start adapter '%s'."
+msgstr "启动适配器 '%s' 失败。"
+
+#: src/daemon/postprocess/post_processor.cpp:446
+#, c-format
+msgid "Adapter '%s' timed out."
+msgstr "适配器 '%s' 超时。"
+
+#: src/daemon/postprocess/post_processor.cpp:455
+#, c-format
+msgid "Adapter '%s' exited with code %d."
+msgstr "适配器 '%s' 异常退出，退出码 %d。"
