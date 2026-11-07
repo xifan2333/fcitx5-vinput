@@ -58,6 +58,7 @@ add_library(daemon_core STATIC
     runtime/runtime_state_machine.cpp
     postprocess/post_processor.cpp
     postprocess/prompt_template.cpp
+    postprocess/candidate_parser.cpp
 )
 
 set_target_properties(daemon_core PROPERTIES
