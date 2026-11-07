@@ -19,6 +19,8 @@ constexpr const char* kMethodGetAsrBackendState = "GetAsrBackendState";
 constexpr const char* kMethodReloadAsrBackend = "ReloadAsrBackend";
 constexpr const char* kMethodStartAdapter = "StartAdapter";
 constexpr const char* kMethodStopAdapter = "StopAdapter";
+constexpr const char* kMethodStartClient = "StartClient";
+constexpr const char* kMethodStopClient = "StopClient";
 
 constexpr const char* kSignalRecognitionResult = "RecognitionResult";
 constexpr const char* kSignalRecognitionPartial = "RecognitionPartial";
