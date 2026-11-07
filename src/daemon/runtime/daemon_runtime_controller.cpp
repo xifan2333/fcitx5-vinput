@@ -52,6 +52,11 @@ namespace vinput::daemon::runtime {
 
 namespace {
 
+template <class... Ts> struct Overloaded : Ts... {
+  using Ts::operator()...;
+};
+template <class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
+
 constexpr float kNonSilentPeakThreshold = 0.02F;
 constexpr float kNonSilentRmsThreshold = 0.005F;
 
@@ -1129,25 +1134,26 @@ DbusService::MethodResult DaemonRuntimeController::InjectText(bool ime,
 }
 
 void DaemonRuntimeController::DispatchClientCommand(const vinput::client::ClientCommand& command) {
-  std::visit(
-      [this](const auto& cmd) {
-        using T = std::decay_t<decltype(cmd)>;
-        DbusService::MethodResult result;
-        if constexpr (std::is_same_v<T, vinput::client::StartCommand>) {
-          const bool is_command = (cmd.mode == "command");
-          result = StartRecording(cmd.ime, is_command, cmd.selected_text, cmd.capture_device);
-        } else if constexpr (std::is_same_v<T, vinput::client::StopCommand>) {
-          result = StopRecording(cmd.ime, cmd.scene);
-        } else if constexpr (std::is_same_v<T, vinput::client::CancelCommand>) {
-          result = CancelOperation(cmd.ime, cmd.commit_raw);
-        } else if constexpr (std::is_same_v<T, vinput::client::InjectCommand>) {
-          result = InjectText(cmd.ime, cmd.stage, cmd.text, cmd.scene);
-        }
-        if (!result.ok) {
-          VLOG_WARN("client command rejected: {}", result.message);
-        }
-      },
-      command);
+  const auto result = std::visit(Overloaded{
+                                     [this](const vinput::client::StartCommand& cmd) {
+                                       const bool is_command = (cmd.mode == "command");
+                                       return StartRecording(cmd.ime, is_command, cmd.selected_text,
+                                                             cmd.capture_device);
+                                     },
+                                     [this](const vinput::client::StopCommand& cmd) {
+                                       return StopRecording(cmd.ime, cmd.scene);
+                                     },
+                                     [this](const vinput::client::CancelCommand& cmd) {
+                                       return CancelOperation(cmd.ime, cmd.commit_raw);
+                                     },
+                                     [this](const vinput::client::InjectCommand& cmd) {
+                                       return InjectText(cmd.ime, cmd.stage, cmd.text, cmd.scene);
+                                     },
+                                 },
+                                 command);
+  if (!result.ok) {
+    VLOG_WARN("client command rejected: {}", result.message);
+  }
 }
 
 void DaemonRuntimeController::DispatchClientLine(std::string_view line) {
