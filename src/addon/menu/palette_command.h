@@ -13,7 +13,6 @@ enum class PaletteCategory : std::uint8_t {
   Asr,
   Scene,
   CommandModel,
-  Adapter,
   Custom,
 };
 
@@ -28,7 +27,6 @@ struct PaletteItem {
   std::string model_id;
   std::string scene_id;
   std::string adapter_id;
-  bool adapter_running = false;
   bool is_command_entry = false;
   std::string command_token;
 };

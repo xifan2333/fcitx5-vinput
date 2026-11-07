@@ -26,8 +26,6 @@ public:
   bool StartCommandRecording(const std::string& selected_text, std::string* error = nullptr);
   bool StopRecording(const std::string& scene_id, std::string* error = nullptr);
   bool ReloadAsrBackend(std::string* error = nullptr);
-  bool StartAdapter(const std::string& adapter_id, std::string* error = nullptr);
-  bool StopAdapter(const std::string& adapter_id, std::string* error = nullptr);
   bool StartClient(const std::string& client_id, std::string* error = nullptr);
   bool StopClient(const std::string& client_id, std::string* error = nullptr);
 

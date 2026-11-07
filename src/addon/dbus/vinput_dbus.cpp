@@ -610,16 +610,6 @@ bool VinputEngine::callReloadAsrBackend(std::string* error) {
   return callSyncRpc(kMethodReloadAsrBackend, _("Failed to reload ASR backend."), error);
 }
 
-bool VinputEngine::callStartAdapter(const std::string& adapter_id, std::string* error) {
-  return callSyncRpc(vinput::dbus::kMethodStartAdapter, _("Failed to start adapter."), error,
-                     &adapter_id);
-}
-
-bool VinputEngine::callStopAdapter(const std::string& adapter_id, std::string* error) {
-  return callSyncRpc(vinput::dbus::kMethodStopAdapter, _("Failed to stop adapter."), error,
-                     &adapter_id);
-}
-
 bool VinputEngine::daemonSyncAllowed() const {
   return std::chrono::steady_clock::now() >= daemon_sync_blocked_until_;
 }

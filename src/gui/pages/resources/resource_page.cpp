@@ -61,7 +61,6 @@
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
-#include "common/llm/adapter_manager.h"
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_i18n.h"
 #include "common/registry/registry_models.h"
@@ -240,7 +239,7 @@ template <typename MaterializeFn>
 bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::string& id,
                                       const std::vector<std::string>& registry_urls,
                                       std::string* err, const std::atomic<bool>* cancel_token,
-                                      const MaterializeFn& materialize_fn, bool is_update = false) {
+                                      const MaterializeFn& materialize_fn) {
   const CoreConfig config = ConfigManager::Get().Load();
   auto entries = vinput::script::FetchRegistry(config, kind, registry_urls, err);
   if (!err->empty() || IsWorkerCancelled(cancel_token)) {
@@ -254,55 +253,23 @@ bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::stri
     return false;
   }
 
-  const bool is_adapter = (kind == vinput::script::Kind::kLlmAdapter);
-  const bool was_running = is_adapter && is_update && vinput::adapter::IsRunning(id);
-  bool stopped = false;
-  if (was_running) {
-    vinput::cli::DbusClient dbus;
-    std::string stop_err;
-    if (!dbus.StopAdapter(id, &stop_err)) {
-      *err = stop_err.empty() ? "Failed to stop adapter." : stop_err;
-      return false;
-    }
-    stopped = true;
-  }
-
-  auto restart = [&]() -> bool {
-    if (!stopped) {
-      return true;
-    }
-    vinput::cli::DbusClient dbus;
-    std::string start_err;
-    if (!dbus.StartAdapter(id, &start_err)) {
-      if (!err->empty()) {
-        *err += "; ";
-      }
-      *err += start_err.empty() ? "Failed to restart adapter." : start_err;
-      return false;
-    }
-    return true;
-  };
-
   std::filesystem::path script_path;
   if (!vinput::script::DownloadScript(*it, kind, &script_path, err, nullptr, cancel_token) ||
       IsWorkerCancelled(cancel_token)) {
-    restart();
     return false;
   }
 
   CoreConfig mut_config = ConfigManager::Get().Load();
   if (!materialize_fn(&mut_config, *it, script_path, err) || IsWorkerCancelled(cancel_token)) {
-    restart();
     return false;
   }
 
   if (!ConfigManager::Get().Save(mut_config)) {
     *err = "Failed to save configuration.";
-    restart();
     return false;
   }
 
-  return restart();
+  return true;
 }
 
 struct ScriptActionButtons {
@@ -1065,24 +1032,23 @@ void ResourcePage::startScriptDownloadTask(QTableWidget* table, QPushButton* act
             }
           });
 
-  downloadWorker_->SetTask([id, kind, is_update, updateSucceeded](
-                               std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const CoreConfig config = ConfigManager::Get().Load();
-    const auto urls = (kind == vinput::script::Kind::kAsrProvider)
-                          ? CoreConfigView(config).AsrProviderRegistryUrls()
-                          : CoreConfigView(config).LlmAdapterRegistryUrls();
-    const bool saved = ExecuteScriptInstallOrUpdateTask(
-        kind, id.toStdString(), urls, err, cancel_token,
-        [kind](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-          if (kind == vinput::script::Kind::kAsrProvider) {
-            return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
-          }
-          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-        },
-        is_update);
-    updateSucceeded->store(saved);
-    return saved;
-  });
+  downloadWorker_->SetTask(
+      [id, kind, updateSucceeded](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+        const CoreConfig config = ConfigManager::Get().Load();
+        const auto urls = (kind == vinput::script::Kind::kAsrProvider)
+                              ? CoreConfigView(config).AsrProviderRegistryUrls()
+                              : CoreConfigView(config).LlmAdapterRegistryUrls();
+        const bool saved = ExecuteScriptInstallOrUpdateTask(
+            kind, id.toStdString(), urls, err, cancel_token,
+            [kind](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+              if (kind == vinput::script::Kind::kAsrProvider) {
+                return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
+              }
+              return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
+            });
+        updateSucceeded->store(saved);
+        return saved;
+      });
 
   textLog_->append(log_format.arg(title));
   downloadWorker_->start();
@@ -1152,28 +1118,12 @@ void ResourcePage::removeScriptItem(QTableWidget* table, vinput::script::Kind ki
   }
 
   const std::string script_id = id.toStdString();
-  bool stopped_adapter = false;
-  if (kind == vinput::script::Kind::kLlmAdapter && vinput::adapter::IsRunning(script_id)) {
-    vinput::cli::DbusClient dbus;
-    std::string err;
-    if (!dbus.StopAdapter(script_id, &err)) {
-      QMessageBox::warning(this, tr("Error"), tr("Failed to stop adapter."));
-      return;
-    }
-    stopped_adapter = true;
-  }
-
   CoreConfig config = ConfigManager::Get().Load();
   if (!mutate_fn(config, script_id)) {
     return;
   }
 
   if (!ConfigManager::Get().Save(config)) {
-    if (stopped_adapter) {
-      vinput::cli::DbusClient dbus;
-      std::string err;
-      dbus.StartAdapter(script_id, &err);
-    }
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
