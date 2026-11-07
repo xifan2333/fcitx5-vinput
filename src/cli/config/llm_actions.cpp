@@ -11,7 +11,6 @@
 #include <map>
 #include <string>
 #include <string_view>
-#include <sys/types.h>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -30,9 +29,9 @@
 #include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
 
-#include "cli/runtime/dbus_client.h"
 #include "cli/utils/cli_context.h"
 #include "cli/utils/cli_helpers.h"
+#include "cli/utils/editor_utils.h"
 #include "cli/utils/formatter.h"
 #include "cli/utils/resource_utils.h"
 
@@ -428,42 +427,48 @@ int RunLlmConfigUpdateAdapter(const std::string& selector, bool all, bool force,
   return 0;
 }
 
-const auto installed_display_map =
-    vinput::cli::FetchScriptDisplayMap(config, vinput::script::Kind::kLlmAdapter);
-const auto it = installed_display_map.find(adapter->id);
-const std::string title = (it == installed_display_map.end()) ? "" : it->second.title;
-
-if (ctx.json_output) {
-  fmt.PrintJson({
-      {"id", vinput::cli::HumanizeResourceId(installed_display_map, adapter->id)},
-      {"machine_id", adapter->id},
-      {"title", title},
-      {"command", adapter->command},
-      {"args", vinput::json::FromStrings(adapter->args)},
-      {"env", vinput::json::FromStringMap(adapter->env)},
-  });
-  return 0;
-}
-
-const std::vector<std::string> headers = {_("PROPERTY"), _("VALUE")};
-std::vector<std::vector<std::string>> rows = {
-    {_("ID"), vinput::cli::HumanizeResourceId(installed_display_map, adapter->id)},
-    {_("Title"), title},
-    {_("Command"), adapter->command},
-};
-if (!adapter->args.empty()) {
-  rows.push_back({_("Args"), vinput::str::Join(adapter->args, " ")});
-}
-if (!adapter->env.empty()) {
-  std::vector<std::string> env_pairs;
-  env_pairs.reserve(adapter->env.size());
-  for (const auto& [k, v] : adapter->env) {
-    env_pairs.push_back(k + "=" + v);
+int RunLlmConfigEditAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx) {
+  (void)ctx;
+  const CoreConfig config = LoadCoreConfig();
+  std::string error;
+  const std::string resolved_id =
+      vinput::cli::ResolveInstalledLlmAdapterSelector(config, id, &error);
+  if (resolved_id.empty()) {
+    fmt.PrintError(error);
+    return 1;
   }
-  rows.push_back({_("Env"), vinput::str::Join(env_pairs, " ")});
-}
-fmt.PrintTable(headers, rows);
-return 0;
+  const auto* adapter = CoreConfigView(config).LlmAdapter(resolved_id);
+  if (adapter == nullptr) {
+    fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found."), id));
+    return 1;
+  }
+
+  auto script_path =
+      vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kLlmAdapter, resolved_id);
+  std::error_code ec;
+  if (!std::filesystem::exists(script_path, ec) || ec) {
+    if (!adapter->args.empty()) {
+      const std::filesystem::path candidate(adapter->args.front());
+      if (std::filesystem::exists(candidate, ec) && !ec) {
+        script_path = candidate;
+      }
+    }
+  }
+
+  if (script_path.empty() || !std::filesystem::exists(script_path, ec) || ec) {
+    fmt.PrintError(
+        ::fmt::sprintf(_("Adapter '%s' does not reference an editable script file."), id));
+    return 1;
+  }
+
+  const int ret = OpenInEditor(script_path);
+  if (ret != 0) {
+    fmt.PrintError(_("Editor exited with error."));
+    return ret;
+  }
+
+  fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' updated."), id));
+  return 0;
 }
 
 int RunLlmConfigRemove(const std::string& id, Formatter& fmt, const CliContext& ctx) {

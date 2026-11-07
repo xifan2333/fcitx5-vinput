@@ -16,7 +16,6 @@
 #include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
-#include <QtCore/qthreadpool.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qurl.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
@@ -35,7 +34,6 @@
 #include <functional>
 #include <map>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "common/llm/defaults.h"
@@ -44,8 +42,6 @@
 #include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
 #include "common/utils/url_utils.h"
-
-#include "cli/runtime/dbus_client.h"
 
 #include "gui/utils/config_manager.h"
 

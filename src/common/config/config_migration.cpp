@@ -136,6 +136,9 @@ const std::vector<MigrationRule>& GetRules() {
        {},
        300,
        500},
+
+      // v2.4.0: Remove obsolete auto_start from llm.adapters
+      {"2.4.0", "config.json", ActionType::Remove, "llm.adapters.*.auto_start"},
   };
   return kRules;
 }

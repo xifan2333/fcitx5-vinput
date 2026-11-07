@@ -239,7 +239,7 @@ template <typename MaterializeFn>
 bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::string& id,
                                       const std::vector<std::string>& registry_urls,
                                       std::string* err, const std::atomic<bool>* cancel_token,
-                                      const MaterializeFn& materialize_fn, bool is_update = false) {
+                                      const MaterializeFn& materialize_fn) {
   const CoreConfig config = ConfigManager::Get().Load();
   auto entries = vinput::script::FetchRegistry(config, kind, registry_urls, err);
   if (!err->empty() || IsWorkerCancelled(cancel_token)) {
@@ -1045,8 +1045,7 @@ void ResourcePage::startScriptDownloadTask(QTableWidget* table, QPushButton* act
             return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
           }
           return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-        },
-        is_update);
+        });
     updateSucceeded->store(saved);
     return saved;
   });

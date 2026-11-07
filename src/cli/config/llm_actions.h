@@ -8,7 +8,7 @@
 
 int RunLlmConfigList(Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& ctx);
-int RunLlmConfigStatusAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
+int RunLlmConfigEditAdapter(const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std::string& apiKey,
                     const std::string& extraBody, Formatter& fmt, const CliContext& ctx);
 int RunLlmConfigInstallAdapter(const std::string& selector,

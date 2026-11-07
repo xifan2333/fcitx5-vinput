@@ -103,12 +103,13 @@ void RegisterAdapterCommands(CLI::App& app, CliAction* action) {
     };
   });
 
-  auto statusId = std::make_shared<std::string>();
-  auto* status = adapter->add_subcommand("status", _("Show adapter status"));
-  status->add_option("id", *statusId, _("Adapter short ID"))->required();
-  status->callback([action, statusId]() {
-    *action = [statusId](Formatter& fmt, const CliContext& ctx) {
-      return RunLlmConfigStatusAdapter(*statusId, fmt, ctx);
+  auto editId = std::make_shared<std::string>();
+  auto* edit = adapter->add_subcommand("edit", _("Edit an LLM adapter script"));
+  edit->alias("e");
+  edit->add_option("id", *editId, _("Adapter short ID"))->required();
+  edit->callback([action, editId]() {
+    *action = [editId](Formatter& fmt, const CliContext& ctx) {
+      return RunLlmConfigEditAdapter(*editId, fmt, ctx);
     };
   });
 

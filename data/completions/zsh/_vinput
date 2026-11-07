@@ -123,14 +123,13 @@ _vinput_adapter_cmds() {
     adapter_cmds=(
         'list:List local or remote adapters'
         'ls:List local or remote adapters'
-        'ps:List adapter processes and runtime status'
-        'status:Show adapter status'
         'add:Install an adapter script'
-        'start:Start an adapter process'
-        'stop:Stop an adapter process'
-        'restart:Restart an adapter process'
-        'enable:Enable adapter autostart with daemon'
-        'disable:Disable adapter autostart with daemon'
+        'edit:Edit an LLM adapter script'
+        'e:Edit an LLM adapter script'
+        'update:Update an LLM adapter script'
+        'up:Update an LLM adapter script'
+        'remove:Remove an LLM adapter'
+        'rm:Remove an LLM adapter'
     )
     _describe -t adapter_cmds 'adapter command' adapter_cmds
 }
@@ -305,7 +304,7 @@ _vinput() {
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '(-a --available)'{-a,--available}'[List remote adapters]' ;;
-                                start|stop|restart|enable|disable|status)
+                                remove|rm|update|up|edit|e)
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '1:adapter:_vinput_installed_adapters' ;;

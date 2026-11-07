@@ -2,7 +2,6 @@
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qstring.h>
-#include <QtWidgets/qcheckbox.h>
 #include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qmessagebox.h>

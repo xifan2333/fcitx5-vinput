@@ -67,8 +67,6 @@
 #include "common/registry/registry_scripts.h"
 #include "common/scene/postprocess_scene.h"
 
-#include "cli/runtime/dbus_client.h"
-
 #include "gui/utils/config_manager.h"
 #include "gui/utils/i18n_cache.h"
 
