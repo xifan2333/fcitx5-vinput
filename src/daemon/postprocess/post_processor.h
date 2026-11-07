@@ -16,6 +16,11 @@ public:
   explicit PostProcessor(vinput::notify::NotificationBridge* notification_bridge = nullptr);
   ~PostProcessor() = default;
 
+  PostProcessor(const PostProcessor&) = delete;
+  PostProcessor& operator=(const PostProcessor&) = delete;
+  PostProcessor(PostProcessor&&) = delete;
+  PostProcessor& operator=(PostProcessor&&) = delete;
+
   void SetNotificationBridge(vinput::notify::NotificationBridge* notification_bridge);
   void Shutdown();
 

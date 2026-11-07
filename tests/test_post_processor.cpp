@@ -632,10 +632,10 @@ void TestProcessCommandAdapterStderrNotification() {
   std::vector<std::string> delivered_notifications;
   vinput::notify::NotificationBridge bridge(
       [&delivered_notifications](const vinput::notify::Notification& n) {
-        delivered_notifications.push_back(n.message);
+        delivered_notifications.push_back(n.body);
       });
 
-  PostProcessor processor(&bridge);
+  const PostProcessor processor(&bridge);
   std::string error_out;
   const auto payload = processor.Process("input", scene, config, &error_out, nullptr);
 
