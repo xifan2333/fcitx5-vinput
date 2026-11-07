@@ -1657,5 +1657,18 @@ msgid "Listen to live speech events from daemon"
 msgstr "监听来自守护进程的实时语音事件"
 
 #: src/cli/control/register_client.cpp:77
-msgid "Event type filter (committed, partial, all; default: committed)"
-msgstr "事件类型过滤 (committed, partial, all; 默认: committed)"
+msgid "Event type filter (committed, partial, status, all; default: committed)"
+msgstr "事件类型过滤 (committed, partial, status, all; 默认: committed)"
+
+#: src/cli/control/client_actions.cpp:189
+#, c-format
+msgid "'%s' is not configured as a %s."
+msgstr "'%s' 未配置为 %s。"
+
+#: src/cli/control/client_actions.cpp:278
+msgid "Failed to subscribe to daemon signals."
+msgstr "订阅守护进程信号失败。"
+
+#: src/cli/control/client_actions.cpp:322
+msgid "D-Bus connection error during listen."
+msgstr "监听期间 D-Bus 连接发生错误。"

@@ -16,8 +16,8 @@ enum class ClientKind : std::uint8_t {
 };
 
 int RunClientList(ClientKind kind, Formatter& fmt, const CliContext& ctx);
-int RunClientStart(const std::string& id, Formatter& fmt, const CliContext& ctx);
-int RunClientStop(const std::string& id, Formatter& fmt, const CliContext& ctx);
+int RunClientStart(ClientKind kind, const std::string& id, Formatter& fmt, const CliContext& ctx);
+int RunClientStop(ClientKind kind, const std::string& id, Formatter& fmt, const CliContext& ctx);
 int RunListen(std::string_view type_filter, Formatter& fmt, const CliContext& ctx);
 
 } // namespace vinput::cli::control

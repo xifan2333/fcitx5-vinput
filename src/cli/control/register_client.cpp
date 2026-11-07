@@ -29,7 +29,7 @@ void RegisterClientCommands(CLI::App& app, CliAction* action) {
   trigger_start->add_option("id", *trigger_start_id, _("Trigger ID"))->required();
   trigger_start->callback([action, trigger_start_id]() {
     *action = [trigger_start_id](Formatter& fmt, const CliContext& ctx) {
-      return RunClientStart(*trigger_start_id, fmt, ctx);
+      return RunClientStart(ClientKind::Trigger, *trigger_start_id, fmt, ctx);
     };
   });
 
@@ -38,7 +38,7 @@ void RegisterClientCommands(CLI::App& app, CliAction* action) {
   trigger_stop->add_option("id", *trigger_stop_id, _("Trigger ID"))->required();
   trigger_stop->callback([action, trigger_stop_id]() {
     *action = [trigger_stop_id](Formatter& fmt, const CliContext& ctx) {
-      return RunClientStop(*trigger_stop_id, fmt, ctx);
+      return RunClientStop(ClientKind::Trigger, *trigger_stop_id, fmt, ctx);
     };
   });
 
@@ -58,7 +58,7 @@ void RegisterClientCommands(CLI::App& app, CliAction* action) {
   receiver_start->add_option("id", *receiver_start_id, _("Receiver ID"))->required();
   receiver_start->callback([action, receiver_start_id]() {
     *action = [receiver_start_id](Formatter& fmt, const CliContext& ctx) {
-      return RunClientStart(*receiver_start_id, fmt, ctx);
+      return RunClientStart(ClientKind::Receiver, *receiver_start_id, fmt, ctx);
     };
   });
 
@@ -67,15 +67,17 @@ void RegisterClientCommands(CLI::App& app, CliAction* action) {
   receiver_stop->add_option("id", *receiver_stop_id, _("Receiver ID"))->required();
   receiver_stop->callback([action, receiver_stop_id]() {
     *action = [receiver_stop_id](Formatter& fmt, const CliContext& ctx) {
-      return RunClientStop(*receiver_stop_id, fmt, ctx);
+      return RunClientStop(ClientKind::Receiver, *receiver_stop_id, fmt, ctx);
     };
   });
 
   // 3. vinput listen
   auto listen_type = std::make_shared<std::string>("committed");
   auto* listen = app.add_subcommand("listen", _("Listen to live speech events from daemon"));
-  listen->add_option("-t,--type", *listen_type,
-                     _("Event type filter (committed, partial, all; default: committed)"));
+  listen
+      ->add_option("-t,--type", *listen_type,
+                   _("Event type filter (committed, partial, status, all; default: committed)"))
+      ->check(CLI::IsMember({"committed", "partial", "status", "all"}));
   listen->callback([action, listen_type]() {
     *action = [listen_type](Formatter& fmt, const CliContext& ctx) {
       return RunListen(*listen_type, fmt, ctx);
