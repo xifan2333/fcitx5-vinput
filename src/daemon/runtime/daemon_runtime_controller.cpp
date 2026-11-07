@@ -1075,8 +1075,13 @@ void DaemonRuntimeController::WorkerMain() {
       if (order.ime && dbus_ != nullptr) {
         dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
       }
-      vinput::client::Broadcast(
-          vinput::client::SerializeCommittedEvent(pipeline_result.payload, order.ime));
+      // An empty commit (discarded post-processing or empty recognition) carries no
+      // payload worth broadcasting: a clipboard-syncing receiver would otherwise
+      // clear the clipboard on every discarded session.
+      if (!pipeline_result.payload.commitText.empty()) {
+        vinput::client::Broadcast(
+            vinput::client::SerializeCommittedEvent(pipeline_result.payload, order.ime));
+      }
     } catch (const std::exception& e) {
       {
         const std::scoped_lock lock(state_mutex_);
@@ -1118,7 +1123,9 @@ DbusService::MethodResult DaemonRuntimeController::InjectText(bool ime,
     if (ime && dbus_ != nullptr) {
       dbus_->EmitRecognitionResult(vinput::result::Serialize(payload));
     }
-    vinput::client::Broadcast(vinput::client::SerializeCommittedEvent(payload, ime));
+    if (!text.empty()) {
+      vinput::client::Broadcast(vinput::client::SerializeCommittedEvent(payload, ime));
+    }
     return DbusService::MethodResult::Success();
   }
 

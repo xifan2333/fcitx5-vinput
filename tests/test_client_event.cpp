@@ -62,12 +62,21 @@ void TestSerializeCommittedEvent() {
       "Committed false mismatch");
 }
 
+void TestSanitizeControlCharacters() {
+  // 0x01 is not escapable by glaze's table and would otherwise emit NUL bytes,
+  // producing invalid JSON for every receiver. It must be stripped at the boundary.
+  const std::string json = vinput::client::SerializePartialEvent(std::string("a\x01\x1f\nb"), true);
+  ExpectEq(json, R"({"type":"partial","text":"a\nb","ime":true})",
+           "Unescapable control characters must be stripped");
+}
+
 } // namespace
 
 int main() {
   TestSerializeStatusEvent();
   TestSerializePartialEvent();
   TestSerializeCommittedEvent();
+  TestSanitizeControlCharacters();
   std::cout << "All client_event tests passed!\n";
   return 0;
 }
