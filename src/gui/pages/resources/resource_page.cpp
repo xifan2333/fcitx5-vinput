@@ -1032,23 +1032,23 @@ void ResourcePage::startScriptDownloadTask(QTableWidget* table, QPushButton* act
             }
           });
 
-  downloadWorker_->SetTask([id, kind, is_update, updateSucceeded](
-                               std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-    const CoreConfig config = ConfigManager::Get().Load();
-    const auto urls = (kind == vinput::script::Kind::kAsrProvider)
-                          ? CoreConfigView(config).AsrProviderRegistryUrls()
-                          : CoreConfigView(config).LlmAdapterRegistryUrls();
-    const bool saved = ExecuteScriptInstallOrUpdateTask(
-        kind, id.toStdString(), urls, err, cancel_token,
-        [kind](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-          if (kind == vinput::script::Kind::kAsrProvider) {
-            return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
-          }
-          return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-        });
-    updateSucceeded->store(saved);
-    return saved;
-  });
+  downloadWorker_->SetTask(
+      [id, kind, updateSucceeded](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+        const CoreConfig config = ConfigManager::Get().Load();
+        const auto urls = (kind == vinput::script::Kind::kAsrProvider)
+                              ? CoreConfigView(config).AsrProviderRegistryUrls()
+                              : CoreConfigView(config).LlmAdapterRegistryUrls();
+        const bool saved = ExecuteScriptInstallOrUpdateTask(
+            kind, id.toStdString(), urls, err, cancel_token,
+            [kind](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+              if (kind == vinput::script::Kind::kAsrProvider) {
+                return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
+              }
+              return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
+            });
+        updateSucceeded->store(saved);
+        return saved;
+      });
 
   textLog_->append(log_format.arg(title));
   downloadWorker_->start();

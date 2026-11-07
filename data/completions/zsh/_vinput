@@ -304,7 +304,18 @@ _vinput() {
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '(-a --available)'{-a,--available}'[List remote adapters]' ;;
-                                remove|rm|update|up|edit|e)
+                                add)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '*'{-e,--env}'[Adapter env var as KEY=VALUE]:env:' \
+                                        '1:adapter:_vinput_installed_adapters' ;;
+                                update|up)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-a --all)'{-a,--all}'[Update all installed adapters]' \
+                                        '(-f --force)'{-f,--force}'[Force update even if up to date]' \
+                                        '1:adapter:_vinput_installed_adapters' ;;
+                                remove|rm|edit|e)
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '1:adapter:_vinput_installed_adapters' ;;

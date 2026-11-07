@@ -92,6 +92,9 @@ complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_
 complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add remove rm update up edit e" -a "update up" -d "Update an adapter script"
 complete -c vinput -n "__fish_seen_subcommand_from adapter; and not __fish_seen_subcommand_from list ls add remove rm update up edit e" -a "edit e" -d "Edit adapter script in editor"
 complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from list ls" -s a -l available -d "List remote adapters"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from add" -s e -l env -r -d "Adapter env var as KEY=VALUE"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from update up" -s a -l all -d "Update all installed adapters"
+complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from update up" -s f -l force -d "Force update even if up to date"
 complete -c vinput -n "__fish_seen_subcommand_from adapter; and __fish_seen_subcommand_from remove rm update up edit e" -a "(__fish_vinput_installed_adapters)"
 
 # hotword

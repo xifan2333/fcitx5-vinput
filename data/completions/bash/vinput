@@ -149,7 +149,19 @@ _vinput() {
                     list|ls)
                         COMPREPLY=($(compgen -W "-a --available -h --help" -- "$cur"))
                         ;;
-                    remove|rm|update|up|edit|e)
+                    add)
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "-e --env -h --help" -- "$cur"))
+                        fi
+                        ;;
+                    update|up)
+                        if [[ "$cur" == -* ]]; then
+                            COMPREPLY=($(compgen -W "-a --all -f --force -h --help" -- "$cur"))
+                        else
+                            COMPREPLY=($(compgen -W "$(_vinput_installed_adapters)" -- "$cur"))
+                        fi
+                        ;;
+                    remove|rm|edit|e)
                         if [[ "$cur" == -* ]]; then
                             COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
                         else
