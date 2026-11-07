@@ -533,7 +533,7 @@ void TestProcessCommandAdapterDictation() {
   LlmAdapter adapter;
   adapter.id = "echo_adapter";
   adapter.command = "sh";
-  adapter.args = {"-c", "cat"};
+  adapter.args = {"-c", "echo rewritten from pipe"};
   config.llm.adapters.push_back(adapter);
 
   vinput::scene::Definition scene;
@@ -548,11 +548,11 @@ void TestProcessCommandAdapterDictation() {
   const auto payload = processor.Process("hello from pipe", scene, config, &error_out, nullptr);
 
   AssertTrue(error_out.empty(), "error_out should be empty on adapter success");
-  AssertTrue(payload.commitText == "hello from pipe", "commitText is adapter output");
+  AssertTrue(payload.commitText == "rewritten from pipe", "commitText is adapter output");
   AssertTrue(payload.candidates.size() == 2, "candidates has raw + adapter");
   AssertTrue(payload.candidates[0].text == "hello from pipe", "first candidate is raw");
   AssertTrue(payload.candidates[0].source == vinput::result::kSourceRaw, "source is raw");
-  AssertTrue(payload.candidates[1].text == "hello from pipe", "second candidate is llm");
+  AssertTrue(payload.candidates[1].text == "rewritten from pipe", "second candidate is llm");
   AssertTrue(payload.candidates[1].source == vinput::result::kSourceLlm, "source is llm");
 }
 
