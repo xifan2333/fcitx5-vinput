@@ -33,6 +33,7 @@
 #include "common/utils/string_utils.h"
 #include "common/utils/url_utils.h"
 
+#include "daemon/postprocess/candidate_parser.h"
 #include "daemon/postprocess/prompt_template.h"
 
 namespace {
@@ -68,7 +69,7 @@ void LogResponseSummary(const LlmProvider& provider, const std::string& url, lon
              provider.id.empty() ? "(unnamed)" : provider.id, url, status_code, total_time_ms);
 }
 
-std::vector<std::string> ExtractCandidates(const glz::json_t& response) {
+std::vector<std::string> ExtractCandidates(const glz::json_t& response, int max_candidates) {
   const auto* choices = vinput::json::Find(response, "choices");
   if (choices == nullptr || !choices->is_array() || choices->get_array().empty()) {
     return {};
@@ -84,29 +85,7 @@ std::vector<std::string> ExtractCandidates(const glz::json_t& response) {
     return {};
   }
 
-  glz::json_t content_json;
-  if (bool(glz::read_json(content_json, content->get<std::string>()))) {
-    return {};
-  }
-
-  const auto* candidate_array = vinput::json::Find(content_json, "candidates");
-  if (candidate_array == nullptr || !candidate_array->is_array()) {
-    return {};
-  }
-
-  std::vector<std::string> candidates;
-  for (const auto& value : candidate_array->get_array()) {
-    if (!value.is_string()) {
-      continue;
-    }
-    const auto& candidate_text = value.get_string();
-    const auto trimmed_candidate = vinput::str::Trim(candidate_text);
-    if (!trimmed_candidate.empty()) {
-      candidates.emplace_back(trimmed_candidate);
-    }
-  }
-
-  return candidates;
+  return vinput::postprocess::ExtractCandidatesAuto(content->get<std::string>(), max_candidates);
 }
 
 constexpr std::string_view kXmlTagAsr = "vinput-asr";
@@ -391,7 +370,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
     return std::nullopt;
   }
 
-  auto candidates = ExtractCandidates(response);
+  auto candidates = ExtractCandidates(response, max_llm_candidates);
   if (candidates.empty()) {
     VLOG_WARN("LLM response from {} returned no valid candidates", url);
     return std::nullopt;
