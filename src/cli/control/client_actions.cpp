@@ -1,8 +1,9 @@
 #include "cli/control/client_actions.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <csignal>
-#include <fmt/format.h>
 #include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <iostream>
@@ -50,12 +51,7 @@ const std::vector<ClientSpec>& GetClientList(const CoreConfig& config, ClientKin
 
 bool HasClientWithId(const CoreConfig& config, ClientKind kind, std::string_view id) {
   const auto& list = GetClientList(config, kind);
-  for (const auto& client : list) {
-    if (client.id == id) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(list, [&](const auto& client) { return client.id == id; });
 }
 
 struct ListenContext {

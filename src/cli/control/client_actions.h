@@ -4,7 +4,6 @@
 #include <string>
 #include <string_view>
 
-#include "cli/control/action.h"
 #include "cli/utils/cli_context.h"
 #include "cli/utils/formatter.h"
 
