@@ -7,11 +7,21 @@
 #include "common/config/core_config_types.h"
 #include "common/scene/postprocess_scene.h"
 
+namespace vinput::notify {
+class NotificationBridge;
+}
+
 class PostProcessor {
 public:
-  PostProcessor() = default;
+  explicit PostProcessor(vinput::notify::NotificationBridge* notification_bridge = nullptr);
   ~PostProcessor() = default;
 
+  PostProcessor(const PostProcessor&) = delete;
+  PostProcessor& operator=(const PostProcessor&) = delete;
+  PostProcessor(PostProcessor&&) = delete;
+  PostProcessor& operator=(PostProcessor&&) = delete;
+
+  void SetNotificationBridge(vinput::notify::NotificationBridge* notification_bridge);
   void Shutdown();
 
   vinput::result::Payload Process(const std::string& raw_text,
@@ -28,4 +38,5 @@ public:
 
 private:
   mutable std::atomic<bool> shutting_down_{false};
+  vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
 };

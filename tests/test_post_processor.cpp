@@ -18,6 +18,7 @@
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
+#include "common/notify/notification_bridge.h"
 #include "common/scene/postprocess_scene.h"
 
 #include "daemon/postprocess/post_processor.h"
@@ -527,6 +528,147 @@ void TestProcessJsonObjectToggle() {
   }
 }
 
+void TestProcessCommandAdapterDictation() {
+  CoreConfig config;
+  LlmAdapter adapter;
+  adapter.id = "echo_adapter";
+  adapter.command = "sh";
+  adapter.args = {"-c", "echo rewritten from pipe"};
+  config.llm.adapters.push_back(adapter);
+
+  vinput::scene::Definition scene;
+  scene.id = "test_scene";
+  scene.provider_id = "echo_adapter";
+  scene.raw_cand = true;
+  scene.llm_max_candidates = 2;
+  scene.timeout_ms = 5000;
+
+  const PostProcessor processor;
+  std::string error_out;
+  const auto payload = processor.Process("hello from pipe", scene, config, &error_out, nullptr);
+
+  AssertTrue(error_out.empty(), "error_out should be empty on adapter success");
+  AssertTrue(payload.commitText == "rewritten from pipe", "commitText is adapter output");
+  AssertTrue(payload.candidates.size() == 2, "candidates has raw + adapter");
+  AssertTrue(payload.candidates[0].text == "hello from pipe", "first candidate is raw");
+  AssertTrue(payload.candidates[0].source == vinput::result::kSourceRaw, "source is raw");
+  AssertTrue(payload.candidates[1].text == "rewritten from pipe", "second candidate is llm");
+  AssertTrue(payload.candidates[1].source == vinput::result::kSourceLlm, "source is llm");
+}
+
+void TestProcessCommandAdapterCommandMode() {
+  CoreConfig config;
+  LlmAdapter adapter;
+  adapter.id = "cmd_adapter";
+  adapter.command = "python3";
+  adapter.args = {"-c", "import sys, json; d = json.loads(sys.stdin.read()); print(f'Translated: "
+                        "{d[\"selected\"]} via {d[\"text\"]}')"};
+  config.llm.adapters.push_back(adapter);
+
+  vinput::scene::Definition scene;
+  scene.id = "translate_scene";
+  scene.provider_id = "cmd_adapter";
+  scene.raw_cand = true;
+  scene.llm_max_candidates = 2;
+  scene.timeout_ms = 5000;
+
+  const PostProcessor processor;
+  std::string error_out;
+  const auto payload =
+      processor.ProcessCommand("to English", "你好", scene, config, &error_out, nullptr);
+
+  AssertTrue(error_out.empty(), "error_out should be empty on command adapter success");
+  AssertTrue(payload.commitText == "Translated: 你好 via to English",
+             "commitText matches formatted command");
+  AssertTrue(payload.candidates.size() == 3, "selected + asr + adapter candidates");
+  AssertTrue(payload.candidates[0].text == "你好", "first candidate is selected");
+  AssertTrue(payload.candidates[1].text == "to English", "second candidate is asr");
+  AssertTrue(payload.candidates[2].text == "Translated: 你好 via to English",
+             "third candidate is adapter");
+  AssertTrue(payload.candidates[2].source == vinput::result::kSourceLlm, "adapter source is llm");
+}
+
+void TestProcessCommandAdapterLineStream() {
+  CoreConfig config;
+  LlmAdapter adapter;
+  adapter.id = "lines_adapter";
+  adapter.command = "python3";
+  adapter.args = {"-c", "print('Line A\\nLine B\\nLine C')"};
+  config.llm.adapters.push_back(adapter);
+
+  vinput::scene::Definition scene;
+  scene.id = "lines_scene";
+  scene.provider_id = "lines_adapter";
+  scene.raw_cand = false;
+  scene.llm_max_candidates = 2;
+  scene.timeout_ms = 5000;
+
+  const PostProcessor processor;
+  std::string error_out;
+  const auto payload = processor.Process("raw input", scene, config, &error_out, nullptr);
+
+  AssertTrue(error_out.empty(), "error_out should be empty on line stream success");
+  AssertTrue(payload.commitText == "Line A", "commitText is first line");
+  AssertTrue(payload.candidates.size() == 2, "capped at max_candidates=2");
+  AssertTrue(payload.candidates[0].text == "Line A", "candidate 1 is Line A");
+  AssertTrue(payload.candidates[1].text == "Line B", "candidate 2 is Line B");
+}
+
+void TestProcessCommandAdapterStderrNotification() {
+  CoreConfig config;
+  LlmAdapter adapter;
+  adapter.id = "stderr_adapter";
+  adapter.command = "python3";
+  adapter.args = {"-c", "import sys; sys.stderr.write('Warning log\\n'); print('Result OK')"};
+  config.llm.adapters.push_back(adapter);
+
+  vinput::scene::Definition scene;
+  scene.id = "stderr_scene";
+  scene.provider_id = "stderr_adapter";
+  scene.raw_cand = false;
+  scene.llm_max_candidates = 1;
+  scene.timeout_ms = 5000;
+
+  std::vector<std::string> delivered_notifications;
+  vinput::notify::NotificationBridge bridge(
+      [&delivered_notifications](const vinput::notify::Notification& n) {
+        delivered_notifications.push_back(n.body);
+      });
+
+  const PostProcessor processor(&bridge);
+  std::string error_out;
+  const auto payload = processor.Process("input", scene, config, &error_out, nullptr);
+
+  AssertTrue(payload.commitText == "Result OK", "adapter succeeded despite stderr");
+  AssertTrue(!delivered_notifications.empty(), "notification bridge received stderr");
+  AssertTrue(delivered_notifications[0].find("Warning log") != std::string::npos,
+             "message content matches");
+}
+
+void TestProcessCommandAdapterFailureFallback() {
+  CoreConfig config;
+  LlmAdapter adapter;
+  adapter.id = "fail_adapter";
+  adapter.command = "sh";
+  adapter.args = {"-c", "exit 2"};
+  config.llm.adapters.push_back(adapter);
+
+  vinput::scene::Definition scene;
+  scene.id = "fail_scene";
+  scene.provider_id = "fail_adapter";
+  scene.raw_cand = true;
+  scene.llm_max_candidates = 2;
+  scene.timeout_ms = 5000;
+
+  const PostProcessor processor;
+  std::string error_out;
+  const auto payload = processor.Process("fail input", scene, config, &error_out, nullptr);
+
+  AssertTrue(!error_out.empty(), "error_out populated on exit code failure");
+  AssertTrue(payload.commitText == "fail input", "fallback to raw text on exit failure");
+  AssertTrue(payload.candidates.size() == 1, "only raw candidate on failure");
+}
+
 } // namespace
 
 int main() {
@@ -543,6 +685,11 @@ int main() {
   TestEmptyCandidatesFallback();
   TestProviderNotFoundFallback();
   TestProcessJsonObjectToggle();
+  TestProcessCommandAdapterDictation();
+  TestProcessCommandAdapterCommandMode();
+  TestProcessCommandAdapterLineStream();
+  TestProcessCommandAdapterStderrNotification();
+  TestProcessCommandAdapterFailureFallback();
   std::cout << "All PostProcessor unit tests passed!\n";
   return 0;
 }
