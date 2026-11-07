@@ -9,17 +9,38 @@ concept is missing, that is a signal to add it here rather than to invent a syno
 
 ### Three-stream subprocess model
 
-The single contract every helper process follows — ASR providers and LLM adapters alike. Each stream
-has exactly one job:
+The single contract every helper process follows — ASR providers, LLM adapters, and client triggers/receivers alike. Each stream has exactly one job:
 
 | Stream | Role |
 | :--- | :--- |
-| `stdin` | Input: audio (raw PCM or JSONL frames), request text, control events |
-| `stdout` | Result: recognized text, `partial` / `final` events, adapter output |
+| `stdin` | Input: audio (raw PCM or JSONL frames), request text, control events, daemon broadcast stream |
+| `stdout` | Result: recognized text, `partial` / `final` events, adapter output, client command stream |
 | `stderr` | User notification: the only channel out of the daemon's sandbox |
 
 `stderr` is not a log sink. A helper runs inside the daemon's sandbox with no window and no reachable
 journald for the user, so a line written there is the only way it can say anything to the user.
+
+### Client (Trigger / Receiver)
+
+A long-lived helper process supervised by `vinput-daemon` over standard I/O pipes. At the wire layer
+every client is symmetric: commands flow out of its `stdout` into the daemon, and system status/transcripts
+broadcast out of the daemon into its `stdin`. At the domain layer, clients specialize by primary role:
+
+- **Trigger**: Primary role is session control (hardware buttons, Bluetooth remotes, foot pedals, phone web remote).
+- **Receiver**: Primary role is result consumption (floating subtitles, clipboard synchronization, external automations).
+
+### Session IME routing (`ime: bool`)
+
+The universal routing flag on client commands and daemon broadcasts. When `true` (default), the session
+engages the desktop input method (preedit candidate underlines, selection menus, commit text to cursor).
+When `false`, the session runs silently in the background: D-Bus signals to Fcitx5 are suppressed, and
+transcripts flow exclusively to connected client streams.
+
+### Per-session capture device (`capture_device`)
+
+An optional override on `start` commands. Connects PipeWire capture to a specific hardware node (e.g.
+a near-field Bluetooth microphone on a remote) for the duration of one session, then restores the
+global configuration.
 
 ### Notification line
 
