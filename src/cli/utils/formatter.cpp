@@ -143,21 +143,54 @@ std::unique_ptr<Formatter> CreateFormatter(const CliContext& ctx) {
 
 namespace vinput::cli {
 
-int MeasureVisibleWidth(std::string_view utf8_str) {
-  std::u32string visible_cps;
-  visible_cps.reserve(utf8_str.size());
+namespace {
 
-  for (size_t i = 0; i < utf8_str.size();) {
-    if (utf8_str[i] == '\033') {
-      if (i + 1 < utf8_str.size() && utf8_str[i + 1] == ']') {
+std::string FlattenCellText(std::string_view text) {
+  std::string result;
+  result.reserve(text.size());
+  bool in_newline = false;
+  for (const char ch : text) {
+    if (ch == '\r' || ch == '\n') {
+      if (!in_newline) {
+        result.push_back(' ');
+        in_newline = true;
+      }
+    } else {
+      result.push_back(ch);
+      in_newline = false;
+    }
+  }
+  return result;
+}
+
+bool HasUnclosedSgr(std::string_view cell) {
+  const auto last_esc = cell.rfind("\033[");
+  if (last_esc == std::string_view::npos) {
+    return false;
+  }
+  return !cell.ends_with("\033[0m") && !cell.ends_with("\033[m");
+}
+
+} // namespace
+
+int MeasureVisibleWidth(std::string_view utf8_str) {
+  const std::string flat = FlattenCellText(utf8_str);
+  std::u32string visible_cps;
+  visible_cps.reserve(flat.size());
+
+  const auto is_cont = [](unsigned char b) noexcept { return (b & 0xc0) == 0x80; };
+
+  for (size_t i = 0; i < flat.size();) {
+    if (flat[i] == '\033') {
+      if (i + 1 < flat.size() && flat[i + 1] == ']') {
         // OSC sequence: \033] ... (\a or \033\\)
         i += 2;
-        while (i < utf8_str.size()) {
-          if (utf8_str[i] == '\a') {
+        while (i < flat.size()) {
+          if (flat[i] == '\a') {
             ++i;
             break;
           }
-          if (utf8_str[i] == '\033' && i + 1 < utf8_str.size() && utf8_str[i + 1] == '\\') {
+          if (flat[i] == '\033' && i + 1 < flat.size() && flat[i + 1] == '\\') {
             i += 2;
             break;
           }
@@ -165,11 +198,11 @@ int MeasureVisibleWidth(std::string_view utf8_str) {
         }
         continue;
       }
-      if (i + 1 < utf8_str.size() && utf8_str[i + 1] == '[') {
+      if (i + 1 < flat.size() && flat[i + 1] == '[') {
         // CSI / SGR sequence: \033[ ... [0x40-0x7e]
         i += 2;
-        while (i < utf8_str.size()) {
-          const auto ch = static_cast<unsigned char>(utf8_str[i]);
+        while (i < flat.size()) {
+          const auto ch = static_cast<unsigned char>(flat[i]);
           ++i;
           if (ch >= 0x40 && ch <= 0x7e) {
             break;
@@ -179,38 +212,44 @@ int MeasureVisibleWidth(std::string_view utf8_str) {
       }
     }
 
-    const auto c = static_cast<unsigned char>(utf8_str[i]);
+    const auto c = static_cast<unsigned char>(flat[i]);
     char32_t cp = 0;
     size_t bytes = 0;
     if (c < 0x80) {
       cp = c;
       bytes = 1;
     } else if ((c & 0xe0) == 0xc0) {
-      if (i + 1 < utf8_str.size()) {
+      if (i + 1 < flat.size() && is_cont(static_cast<unsigned char>(flat[i + 1]))) {
         cp = static_cast<char32_t>(((c & 0x1f) << 6) |
-                                   (static_cast<unsigned char>(utf8_str[i + 1]) & 0x3f));
+                                   (static_cast<unsigned char>(flat[i + 1]) & 0x3f));
         bytes = 2;
       }
     } else if ((c & 0xf0) == 0xe0) {
-      if (i + 2 < utf8_str.size()) {
+      if (i + 2 < flat.size() && is_cont(static_cast<unsigned char>(flat[i + 1])) &&
+          is_cont(static_cast<unsigned char>(flat[i + 2]))) {
         cp = static_cast<char32_t>(((c & 0x0f) << 12) |
-                                   ((static_cast<unsigned char>(utf8_str[i + 1]) & 0x3f) << 6) |
-                                   (static_cast<unsigned char>(utf8_str[i + 2]) & 0x3f));
+                                   ((static_cast<unsigned char>(flat[i + 1]) & 0x3f) << 6) |
+                                   (static_cast<unsigned char>(flat[i + 2]) & 0x3f));
         bytes = 3;
       }
     } else if ((c & 0xf8) == 0xf0) {
-      if (i + 3 < utf8_str.size()) {
+      if (i + 3 < flat.size() && is_cont(static_cast<unsigned char>(flat[i + 1])) &&
+          is_cont(static_cast<unsigned char>(flat[i + 2])) &&
+          is_cont(static_cast<unsigned char>(flat[i + 3]))) {
         cp = static_cast<char32_t>(((c & 0x07) << 18) |
-                                   ((static_cast<unsigned char>(utf8_str[i + 1]) & 0x3f) << 12) |
-                                   ((static_cast<unsigned char>(utf8_str[i + 2]) & 0x3f) << 6) |
-                                   (static_cast<unsigned char>(utf8_str[i + 3]) & 0x3f));
+                                   ((static_cast<unsigned char>(flat[i + 1]) & 0x3f) << 12) |
+                                   ((static_cast<unsigned char>(flat[i + 2]) & 0x3f) << 6) |
+                                   (static_cast<unsigned char>(flat[i + 3]) & 0x3f));
         bytes = 4;
       }
     }
+
     if (bytes > 0) {
       visible_cps.push_back(cp);
       i += bytes;
     } else {
+      // Fallback: invalid UTF-8 byte, advance 1 and count as replacement char (width 1)
+      visible_cps.push_back(0xFFFD);
       ++i;
     }
   }
@@ -219,12 +258,16 @@ int MeasureVisibleWidth(std::string_view utf8_str) {
 }
 
 std::string PadCellToVisibleWidth(const std::string& cell, int target_width) {
-  const int w = MeasureVisibleWidth(cell);
+  std::string safe_cell = FlattenCellText(cell);
+  if (HasUnclosedSgr(safe_cell)) {
+    safe_cell += "\033[0m";
+  }
+  const int w = MeasureVisibleWidth(safe_cell);
   const int pad = target_width - w;
   if (pad <= 0) {
-    return cell;
+    return safe_cell;
   }
-  return cell + std::string(static_cast<size_t>(pad), ' ');
+  return safe_cell + std::string(static_cast<size_t>(pad), ' ');
 }
 
 std::string RenderTable(const std::vector<std::string>& headers,
@@ -266,7 +309,11 @@ std::string RenderTable(const std::vector<std::string>& headers,
       if (i > 0) {
         output += "  ";
       }
-      const std::string cell = (i < row.size()) ? row[i] : "";
+      const std::string raw_cell = (i < row.size()) ? row[i] : "";
+      std::string cell = FlattenCellText(raw_cell);
+      if (HasUnclosedSgr(cell)) {
+        cell += "\033[0m";
+      }
       if (i + 1 < headers.size()) {
         output += PadCellToVisibleWidth(cell, col_widths[i]);
       } else {
@@ -277,6 +324,7 @@ std::string RenderTable(const std::vector<std::string>& headers,
   }
 
   return output;
+}
 }
 
 } // namespace vinput::cli

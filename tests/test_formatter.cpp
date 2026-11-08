@@ -86,12 +86,73 @@ void TestRenderTable() {
 
   // Count lines: 1 header line + 2 data lines = 3 lines total
   size_t line_count = 0;
-  for (char c : rendered) {
+  for (const char c : rendered) {
     if (c == '\n') {
       ++line_count;
     }
   }
   TEST_ASSERT(line_count == 3);
+}
+
+void TestRenderTableWithHyperlinkInMiddleColumn() {
+  using vinput::cli::MeasureVisibleWidth;
+  using vinput::cli::RenderTable;
+
+  const std::vector<std::string> headers = {"NAME", "LINK", "STATUS"};
+  const std::string link =
+      "\033]8;;https://github.com/xifan2333/fcitx5-vinput/pull/574\aPull Request\033]8;;\a";
+
+  const std::vector<std::vector<std::string>> rows = {
+      {"item-1", link, "运行中"},
+      {"long-item-2", "Plain Doc", "已停止"},
+  };
+
+  const std::string rendered = RenderTable(headers, rows, /*use_color=*/false);
+  TEST_ASSERT(!rendered.empty());
+
+  // Verify that both rows align properly after the middle column
+  size_t first_newline = rendered.find('\n');
+  TEST_ASSERT(first_newline != std::string::npos);
+  size_t second_newline = rendered.find('\n', first_newline + 1);
+  TEST_ASSERT(second_newline != std::string::npos);
+
+  std::string row1 = rendered.substr(first_newline + 1, second_newline - first_newline - 1);
+  std::string row2 = rendered.substr(second_newline + 1);
+  if (!row2.empty() && row2.back() == '\n') {
+    row2.pop_back();
+  }
+
+  // The substring preceding "运行中" and "已停止" should have identical visible width
+  size_t idx1 = row1.rfind("运行中");
+  size_t idx2 = row2.rfind("已停止");
+  TEST_ASSERT(idx1 != std::string::npos);
+  TEST_ASSERT(idx2 != std::string::npos);
+
+  std::string prefix1 = row1.substr(0, idx1);
+  std::string prefix2 = row2.substr(0, idx2);
+  TEST_ASSERT(MeasureVisibleWidth(prefix1) == MeasureVisibleWidth(prefix2));
+}
+
+void TestRenderTableWithNewlines() {
+  using vinput::cli::RenderTable;
+
+  const std::vector<std::string> headers = {"ID", "DESCRIPTION"};
+  const std::vector<std::vector<std::string>> rows = {
+      {"item", "Line 1\nLine 2\r\nLine 3"},
+  };
+
+  const std::string rendered = RenderTable(headers, rows, /*use_color=*/false);
+  TEST_ASSERT(!rendered.empty());
+
+  // Newlines within cell must be flattened into single line to avoid breaking the table row
+  size_t line_count = 0;
+  for (const char c : rendered) {
+    if (c == '\n') {
+      ++line_count;
+    }
+  }
+  TEST_ASSERT(line_count == 2); // 1 header + 1 row
+  TEST_ASSERT(rendered.find("Line 1 Line 2 Line 3") != std::string::npos);
 }
 
 } // namespace
@@ -102,6 +163,8 @@ int main() {
   TestMeasureVisibleWidthAnsiAndOsc8();
   TestPadCellToVisibleWidth();
   TestRenderTable();
+  TestRenderTableWithHyperlinkInMiddleColumn();
+  TestRenderTableWithNewlines();
   std::cout << "All formatter tests passed successfully.\n";
   return 0;
 }

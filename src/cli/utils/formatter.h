@@ -3,6 +3,7 @@
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "cli/utils/cli_context.h"
