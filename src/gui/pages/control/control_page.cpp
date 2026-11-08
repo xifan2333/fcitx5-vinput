@@ -122,6 +122,29 @@ template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, 
   });
 }
 
+bool CallClientLifecycleRpc(const std::string& client_id, bool start, std::string* error) {
+  vinput::cli::DbusClient dbus;
+  return start ? dbus.StartClient(client_id, error) : dbus.StopClient(client_id, error);
+}
+
+template <typename Callback>
+void RunClientActionAsync(ControlPage* page, const std::string& client_id, bool start,
+                          Callback callback) {
+  const QPointer<ControlPage> self(page);
+  QThreadPool::globalInstance()->start(
+      [self, client_id, start, callback = std::move(callback)]() mutable {
+        std::string err;
+        const bool ok = CallClientLifecycleRpc(client_id, start, &err);
+        QMetaObject::invokeMethod(self,
+                                  [self, callback = std::move(callback), ok, err, start]() mutable {
+                                    if (!self) {
+                                      return;
+                                    }
+                                    callback(ok, err, start);
+                                  });
+      });
+}
+
 struct AsrDisplayContext {
   QString selected_id;
   QString effective_id;
@@ -244,6 +267,18 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   if (id == selected_id) {
     table->selectRow(row);
   }
+}
+
+bool UpdateClientAutostart(CoreConfig& config, std::string_view client_id, std::string_view kind,
+                           bool checked) {
+  auto& list = (kind == "trigger") ? config.triggers : config.receivers;
+  for (auto& client : list) {
+    if (client.id == client_id) {
+      client.autoStart = checked;
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -598,9 +633,27 @@ void ControlPage::refreshClientStatuses() {
   updateClientButtons();
 }
 
-void ControlPage::updateClientButtons() {
+std::optional<ControlPage::SelectedClient> ControlPage::selectedClient() const {
   const int row = tableClients_->currentRow();
   if (row < 0) {
+    return std::nullopt;
+  }
+  auto* item = tableClients_->item(row, 0);
+  if (item == nullptr) {
+    return std::nullopt;
+  }
+  return SelectedClient{
+      .row = row,
+      .id = item->data(Qt::UserRole).toString().toStdString(),
+      .kind = item->data(Qt::UserRole + 1).toString().toStdString(),
+      .auto_start = item->data(Qt::UserRole + 2).toBool(),
+      .is_running = item->data(Qt::UserRole + 3).toBool(),
+  };
+}
+
+void ControlPage::updateClientButtons() {
+  const auto client = selectedClient();
+  if (!client.has_value()) {
     btnClientStart_->setEnabled(false);
     btnClientStop_->setEnabled(false);
     chkClientAutoStart_->setEnabled(false);
@@ -609,28 +662,68 @@ void ControlPage::updateClientButtons() {
     updatingClientSelection_ = false;
     return;
   }
-  auto* item = tableClients_->item(row, 0);
-  if (item == nullptr) {
-    btnClientStart_->setEnabled(false);
-    btnClientStop_->setEnabled(false);
-    chkClientAutoStart_->setEnabled(false);
-    return;
-  }
-  const bool is_running = item->data(Qt::UserRole + 3).toBool();
-  const bool auto_start = item->data(Qt::UserRole + 2).toBool();
-  btnClientStart_->setEnabled(!is_running);
-  btnClientStop_->setEnabled(is_running);
+  btnClientStart_->setEnabled(!client->is_running);
+  btnClientStop_->setEnabled(client->is_running);
   chkClientAutoStart_->setEnabled(true);
   updatingClientSelection_ = true;
-  chkClientAutoStart_->setChecked(auto_start);
+  chkClientAutoStart_->setChecked(client->auto_start);
   updatingClientSelection_ = false;
 }
 
-void ControlPage::onClientStart() {}
+void ControlPage::executeClientAction(bool start) {
+  const auto client = selectedClient();
+  if (!client.has_value()) {
+    return;
+  }
+  btnClientStart_->setEnabled(false);
+  btnClientStop_->setEnabled(false);
 
-void ControlPage::onClientStop() {}
+  RunClientActionAsync(
+      this, client->id, start, [this](bool ok, const std::string& err, bool is_start) {
+        if (!ok) {
+          const QString msg =
+              is_start ? tr("Failed to start client: %1") : tr("Failed to stop client: %1");
+          QMessageBox::warning(this, tr("Warning"), msg.arg(QString::fromStdString(err)));
+        }
+        refreshClientStatuses();
+      });
+}
 
-void ControlPage::onClientAutoStartToggled(bool /*checked*/) {}
+void ControlPage::onClientStart() {
+  executeClientAction(true);
+}
+
+void ControlPage::onClientStop() {
+  executeClientAction(false);
+}
+
+void ControlPage::onClientAutoStartToggled(bool checked) {
+  if (updatingClientSelection_) {
+    return;
+  }
+  const auto client = selectedClient();
+  if (!client.has_value()) {
+    return;
+  }
+
+  CoreConfig config = ConfigManager::Get().Load();
+  if (!UpdateClientAutostart(config, client->id, client->kind, checked)) {
+    return;
+  }
+
+  if (!ConfigManager::Get().Save(config)) {
+    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
+    return;
+  }
+
+  if (auto* item = tableClients_->item(client->row, 0)) {
+    item->setData(Qt::UserRole + 2, checked);
+  }
+  if (auto* autostartItem = tableClients_->item(client->row, 3)) {
+    autostartItem->setText(checked ? tr("Enabled") : tr("Disabled"));
+  }
+  emit configChanged();
+}
 
 void ControlPage::onAsrEdit() {
   auto* item = listAsrProviders_->currentItem();
