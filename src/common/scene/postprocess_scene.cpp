@@ -93,8 +93,8 @@ bool ValidateDefinition(const Definition& scene, std::string* error, bool requir
 
   const bool has_provider = HasProvider(scene);
   const bool has_model = HasModel(scene);
-  if (has_provider != has_model) {
-    return SetValidationError(error, "Scene provider and model must be configured together.");
+  if (!has_provider && has_model) {
+    return SetValidationError(error, "Scene model cannot be configured without a provider.");
   }
   return true;
 }
@@ -177,32 +177,23 @@ bool UpdateScene(Config* config, const std::string& id, const Definition& def, s
 
 bool RemoveScene(Config* config, const std::string& id, bool force, std::string* error) {
   if (const auto* scene = Find(*config, id); scene != nullptr && scene->builtin) {
-    if (error != nullptr) {
-      *error = "Cannot remove built-in scene '" + id + "'.";
-    }
-    return false;
+    return SetValidationError(error, "Cannot remove built-in scene '" + id + "'.");
   }
-  if (!force) {
-    if (config->activeSceneId == id) {
-      if (error != nullptr) {
-        *error = "Cannot remove active scene '" + id + "'.";
-      }
-      return false;
-    }
+  if (!force && config->activeSceneId == id) {
+    return SetValidationError(error, "Cannot remove active scene '" + id + "'.");
   }
-  for (auto it = config->scenes.begin(); it != config->scenes.end(); ++it) {
-    if (it->id == id) {
-      config->scenes.erase(it);
-      if (config->activeSceneId == id) {
-        config->activeSceneId = config->scenes.empty() ? "" : config->scenes.front().id;
-      }
-      return true;
-    }
+
+  auto& scenes = config->scenes;
+  auto it = std::ranges::find_if(scenes, [&](const Definition& s) { return s.id == id; });
+  if (it == scenes.end()) {
+    return SetValidationError(error, "Scene id '" + id + "' not found.");
   }
-  if (error != nullptr) {
-    *error = "Scene id '" + id + "' not found.";
+
+  scenes.erase(it);
+  if (config->activeSceneId == id) {
+    config->activeSceneId = scenes.empty() ? "" : scenes.front().id;
   }
-  return false;
+  return true;
 }
 
 bool SetActiveScene(Config* config, const std::string& id, std::string* error) {
