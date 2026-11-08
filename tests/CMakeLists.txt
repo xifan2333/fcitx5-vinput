@@ -1,22 +1,16 @@
-# tests/CMakeLists.txt
-# Unit tests powered by vinput_add_test helper and reusable core libraries.
+# tests/CMakeLists.txt Unit tests powered by vinput_add_test helper and reusable core libraries.
 
 # 1. PipeWire device tests
 vinput_add_test(test_pipewire_target LIBS pipewire_device)
 
-# 2. Addon integration & modifier key tests
-vinput_add_test(modifier_key_tests
-    LIBS addon_core
-    ENV "XDG_CONFIG_HOME=/tmp/vinput_test_cfg"
-)
+# 1. Addon integration & modifier key tests
+vinput_add_test(modifier_key_tests LIBS addon_core ENV "XDG_CONFIG_HOME=/tmp/vinput_test_cfg")
 vinput_add_test(test_status_poll_gate)
 target_include_directories(test_status_poll_gate PRIVATE ${CMAKE_SOURCE_DIR}/src/addon)
 
-vinput_add_test(test_async_context_writer
-    LIBS addon_core
-)
+vinput_add_test(test_async_context_writer LIBS addon_core)
 
-# 3. Daemon core component tests (linked against daemon_core static library)
+# 1. Daemon core component tests (linked against daemon_core static library)
 vinput_add_test(test_interpolation LIBS daemon_core)
 vinput_add_test(test_command_batch LIBS daemon_core)
 vinput_add_test(test_command_streaming LIBS daemon_core)
@@ -32,12 +26,12 @@ vinput_add_test(test_post_processor LIBS daemon_core)
 vinput_add_test(test_candidate_parser LIBS daemon_core)
 vinput_add_test(test_recognition_pipeline LIBS daemon_core)
 vinput_add_test(test_output_ducker LIBS daemon_core)
-if(VINPUT_ENABLE_LOCAL_ASR)
-    vinput_add_test(test_vad_segmentation LIBS daemon_core)
-    vinput_add_test(test_hotword_utils LIBS daemon_core)
-endif()
+if (VINPUT_ENABLE_LOCAL_ASR)
+  vinput_add_test(test_vad_segmentation LIBS daemon_core)
+  vinput_add_test(test_hotword_utils LIBS daemon_core)
+endif ()
 
-# 4. Common & Config core tests
+# 1. Common & Config core tests
 vinput_add_test(test_installed_manifest)
 vinput_add_test(test_process_utils)
 vinput_add_test(test_process_session)
@@ -62,32 +56,44 @@ vinput_add_test(test_locale_utils)
 vinput_add_test(test_logging)
 vinput_add_test(test_audio_realtime_queue LIBS readerwriterqueue::readerwriterqueue)
 
-# 5. CLI utility tests
-vinput_add_test(test_editor_utils
-    SOURCES test_editor_utils.cpp ${CMAKE_SOURCE_DIR}/src/cli/utils/editor_utils.cpp
-    LIBS subprocess::subprocess CLI11::CLI11
+# 1. CLI utility tests
+vinput_add_test(
+  test_editor_utils
+  SOURCES
+  test_editor_utils.cpp
+  ${CMAKE_SOURCE_DIR}/src/cli/utils/editor_utils.cpp
+  LIBS
+  subprocess::subprocess
+  CLI11::CLI11
 )
 target_include_directories(test_editor_utils PRIVATE ${CMAKE_SOURCE_DIR}/src/cli)
 
-vinput_add_test(test_formatter
-    SOURCES test_formatter.cpp ${CMAKE_SOURCE_DIR}/src/cli/utils/formatter.cpp
-    LIBS unicodelib::unicodelib common
+vinput_add_test(
+  test_formatter
+  SOURCES
+  test_formatter.cpp
+  ${CMAKE_SOURCE_DIR}/src/cli/utils/formatter.cpp
+  LIBS
+  unicodelib::unicodelib
+  common
 )
 target_include_directories(test_formatter PRIVATE ${CMAKE_SOURCE_DIR}/src/cli)
 
-# 6. Config migration test (needs CMAKE_SOURCE_DIR definition)
+# 1. Config migration test (needs CMAKE_SOURCE_DIR definition)
 vinput_add_test(test_config_migration)
-target_compile_definitions(test_config_migration PRIVATE
-    CMAKE_SOURCE_DIR_STR="${CMAKE_SOURCE_DIR}"
-)
+target_compile_definitions(test_config_migration PRIVATE CMAKE_SOURCE_DIR_STR="${CMAKE_SOURCE_DIR}")
 
-# 7. GUI utility tests (optional on Qt6)
-find_package(Qt6 COMPONENTS Core QUIET)
-if(Qt6_FOUND)
-    vinput_add_test(test_download_worker
-        SOURCES test_download_worker.cpp ${CMAKE_SOURCE_DIR}/src/gui/utils/download_worker.cpp
-        LIBS Qt6::Core
-    )
-    target_include_directories(test_download_worker PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
-    set_target_properties(test_download_worker PROPERTIES AUTOMOC ON)
-endif()
+# 1. GUI utility tests (optional on Qt6)
+find_package(
+  Qt6
+  COMPONENTS Core
+  QUIET
+)
+if (Qt6_FOUND)
+  vinput_add_test(
+    test_download_worker SOURCES test_download_worker.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/utils/download_worker.cpp LIBS Qt6::Core
+  )
+  target_include_directories(test_download_worker PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
+  set_target_properties(test_download_worker PROPERTIES AUTOMOC ON)
+endif ()

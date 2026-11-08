@@ -28,9 +28,7 @@ set(VINPUT_CONFIG_SOURCES
     notify/notification_bridge.cpp
 )
 
-add_library(config STATIC
-    ${VINPUT_CONFIG_SOURCES}
-)
+add_library(config STATIC ${VINPUT_CONFIG_SOURCES})
 
 set(VINPUT_REGISTRY_SOURCES
     asr/bpe_vocab_exporter.cpp
@@ -44,66 +42,43 @@ set(VINPUT_REGISTRY_SOURCES
     utils/downloader.cpp
 )
 
-add_library(common STATIC
-    ${VINPUT_REGISTRY_SOURCES}
+add_library(common STATIC ${VINPUT_REGISTRY_SOURCES})
+
+set_target_properties(common PROPERTIES POSITION_INDEPENDENT_CODE ON OUTPUT_NAME "vinput-common")
+
+set_target_properties(config PROPERTIES POSITION_INDEPENDENT_CODE ON OUTPUT_NAME "vinput-config")
+
+target_include_directories(common PUBLIC ${CMAKE_SOURCE_DIR}/src)
+
+target_include_directories(config PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR})
+
+target_link_libraries(
+  config
+  PUBLIC Fcitx5::Config
+         ${GETTEXT_LIBRARIES}
+         OpenSSL::Crypto
+         3rdparty_fmt
+         spdlog::spdlog_header_only
+         subprocess::subprocess
+         nonstd::scope
+         unicodelib::unicodelib
+         mio::mio
+         glaze::glaze
+         tl::expected
+         readerwriterqueue::readerwriterqueue
 )
 
-set_target_properties(common PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    OUTPUT_NAME "vinput-common"
+target_link_libraries(
+  common PUBLIC config httplib::httplib LibArchive::LibArchive OpenSSL::Crypto
+                indicators::indicators
 )
 
-set_target_properties(config PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    OUTPUT_NAME "vinput-config"
+add_library(pipewire_device STATIC audio/pipewire_device.cpp)
+
+set_target_properties(
+  pipewire_device PROPERTIES POSITION_INDEPENDENT_CODE ON OUTPUT_NAME "vinput-pipewire-device"
 )
 
-target_include_directories(common PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
-)
+target_include_directories(pipewire_device PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
-target_include_directories(config PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_BINARY_DIR}
-)
-
-target_link_libraries(config PUBLIC
-    Fcitx5::Config
-    ${GETTEXT_LIBRARIES}
-    OpenSSL::Crypto
-    3rdparty_fmt
-    spdlog::spdlog_header_only
-    subprocess::subprocess
-    nonstd::scope
-    unicodelib::unicodelib
-    mio::mio
-    glaze::glaze
-    tl::expected
-    readerwriterqueue::readerwriterqueue
-)
-
-target_link_libraries(common PUBLIC
-    config
-    httplib::httplib
-    LibArchive::LibArchive
-    OpenSSL::Crypto
-    indicators::indicators
-)
-
-add_library(pipewire_device STATIC
-    audio/pipewire_device.cpp
-)
-
-set_target_properties(pipewire_device PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    OUTPUT_NAME "vinput-pipewire-device"
-)
-
-target_include_directories(pipewire_device PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_libraries(pipewire_device PUBLIC
-    config
-    PkgConfig::PIPEWIRE
-)
+target_link_libraries(pipewire_device PUBLIC config PkgConfig::PIPEWIRE)

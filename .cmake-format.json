@@ -1,0 +1,11 @@
+{
+  "format": {
+    "command_case": "canonical",
+    "dangle_parens": true,
+    "line_width": 100,
+    "separate_ctrl_name_with_space": true,
+    "separate_fn_name_with_space": false,
+    "tab_size": 2,
+    "use_tabchars": false
+  }
+}

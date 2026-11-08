@@ -7,6 +7,7 @@ shfmt = "latest"
 "github:kucherenko/jscpd" = "latest"
 "github:ast-grep/ast-grep" = "latest"
 "github:crate-ci/typos" = "latest"
+"pipx:cmakelang" = "latest"
 "npm:prettier" = "latest"
 
 [env]

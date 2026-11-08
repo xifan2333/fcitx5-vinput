@@ -1,5 +1,5 @@
-# cmake/Dependencies.cmake
-# Discovers system shared libraries (Tier 1 dependencies) and sets up imported targets.
+# cmake/Dependencies.cmake Discovers system shared libraries (Tier 1 dependencies) and sets up
+# imported targets.
 
 find_package(PkgConfig REQUIRED)
 find_package(Gettext REQUIRED)
