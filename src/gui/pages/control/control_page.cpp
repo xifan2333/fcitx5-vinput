@@ -6,6 +6,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -21,28 +22,19 @@
 #include <QThreadPool>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QtCore/qtypes.h>
 #include <QtWidgets/qcheckbox.h>
+#include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <cmath>
-#include <qboxlayout.h>
-#include <qcombobox.h>
-#include <qfont.h>
-#include <qformlayout.h>
-#include <qframe.h>
-#include <qlabel.h>
-#include <qlist.h>
-#include <qmessagebox.h>
-#include <qnamespace.h>
-#include <qobjectdefs.h>
-#include <qpointer.h>
-#include <qspinbox.h>
-#include <qthreadpool.h>
-#include <qtimer.h>
-#include <qtmetamacros.h>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <sys/types.h>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -152,14 +144,14 @@ struct AsrDisplayContext {
   bool reload_in_progress = false;
   bool reload_failed = false;
   const vinput::dbus::AsrBackendState* backend_state = nullptr;
-  std::map<std::string, std::string> i18n_map;
+  vinput::registry::I18nMap i18n_map;
 };
 
 QString FormatProviderDetail(const AsrProvider& provider,
-                             const std::map<std::string, std::string>& i18n_map) {
+                             const vinput::registry::I18nMap& i18n_map) {
   if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
     if (local->model.empty()) {
-      return QObject::tr("(not set)");
+      return ControlPage::tr("(not set)");
     }
     const auto title =
         vinput::registry::LookupI18n(i18n_map, local->model + ".title", local->model);
@@ -174,16 +166,16 @@ QString FormatProviderDetail(const AsrProvider& provider,
 QList<QString> BuildProviderMarkers(const QString& id, const AsrDisplayContext& ctx) {
   QList<QString> markers;
   if (id == ctx.selected_id) {
-    markers << QObject::tr("configured");
+    markers << ControlPage::tr("configured");
   }
   if (id == ctx.effective_id) {
-    markers << QObject::tr("effective");
+    markers << ControlPage::tr("effective");
   }
   if (ctx.reload_in_progress && id == ctx.target_id && id != ctx.effective_id) {
-    markers << QObject::tr("loading");
+    markers << ControlPage::tr("loading");
   }
   if (ctx.reload_failed && id == ctx.target_id) {
-    markers << QObject::tr("reload failed");
+    markers << ControlPage::tr("reload failed");
   }
   return markers;
 }
@@ -229,12 +221,12 @@ QString BuildProviderDisplay(const AsrProvider& provider, const AsrDisplayContex
 
 QString FormatClientStatus(bool running, pid_t pid) {
   if (!running) {
-    return QObject::tr("Stopped");
+    return ControlPage::tr("Stopped");
   }
   if (pid > 0) {
-    return QObject::tr("Running (%1)").arg(pid);
+    return ControlPage::tr("Running (%1)").arg(pid);
   }
-  return QObject::tr("Running");
+  return ControlPage::tr("Running");
 }
 
 void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trigger,
@@ -243,11 +235,11 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   table->insertRow(row);
 
   const QString id = QString::fromStdString(client.id);
-  const bool running = vinput::client::IsRunning(client.id);
-  const pid_t pid = running ? vinput::client::GetPid(client.id) : -1;
+  const pid_t pid = vinput::client::GetPid(client.id);
+  const bool running = (pid > 0);
 
-  auto* itemType =
-      new QTableWidgetItem(is_trigger ? QObject::tr("[Trigger]") : QObject::tr("[Receiver]"));
+  auto* itemType = new QTableWidgetItem(is_trigger ? ControlPage::tr("[Trigger]")
+                                                   : ControlPage::tr("[Receiver]"));
   itemType->setData(Qt::UserRole, id);
   itemType->setData(Qt::UserRole + 1, is_trigger ? "trigger" : "receiver");
   itemType->setData(Qt::UserRole + 2, client.autoStart);
@@ -256,8 +248,8 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
 
   auto* itemId = new QTableWidgetItem(id);
   auto* itemStatus = new QTableWidgetItem(FormatClientStatus(running, pid));
-  auto* itemAutostart =
-      new QTableWidgetItem(client.autoStart ? QObject::tr("Enabled") : QObject::tr("Disabled"));
+  auto* itemAutostart = new QTableWidgetItem(client.autoStart ? ControlPage::tr("Enabled")
+                                                              : ControlPage::tr("Disabled"));
 
   table->setItem(row, 0, itemType);
   table->setItem(row, 1, itemId);
@@ -623,8 +615,8 @@ void ControlPage::refreshClientStatuses() {
       continue;
     }
     const QString id = itemType->data(Qt::UserRole).toString();
-    const bool running = vinput::client::IsRunning(id.toStdString());
-    const pid_t pid = running ? vinput::client::GetPid(id.toStdString()) : -1;
+    const pid_t pid = vinput::client::GetPid(id.toStdString());
+    const bool running = (pid > 0);
 
     itemType->setData(Qt::UserRole + 3, running);
     itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
@@ -634,6 +626,10 @@ void ControlPage::refreshClientStatuses() {
 }
 
 std::optional<ControlPage::SelectedClient> ControlPage::selectedClient() const {
+  if (tableClients_->selectionModel() == nullptr ||
+      tableClients_->selectionModel()->selectedRows().isEmpty()) {
+    return std::nullopt;
+  }
   const int row = tableClients_->currentRow();
   if (row < 0) {
     return std::nullopt;
@@ -662,8 +658,9 @@ void ControlPage::updateClientButtons() {
     updatingClientSelection_ = false;
     return;
   }
-  btnClientStart_->setEnabled(!client->is_running);
-  btnClientStop_->setEnabled(client->is_running);
+  const bool is_pending = (!pendingClientId_.empty() && pendingClientId_ == client->id);
+  btnClientStart_->setEnabled(!is_pending && !client->is_running);
+  btnClientStop_->setEnabled(!is_pending && client->is_running);
   chkClientAutoStart_->setEnabled(true);
   updatingClientSelection_ = true;
   chkClientAutoStart_->setChecked(client->auto_start);
@@ -672,14 +669,16 @@ void ControlPage::updateClientButtons() {
 
 void ControlPage::executeClientAction(bool start) {
   const auto client = selectedClient();
-  if (!client.has_value()) {
+  if (!client.has_value() || (!pendingClientId_.empty() && pendingClientId_ == client->id)) {
     return;
   }
+  pendingClientId_ = client->id;
   btnClientStart_->setEnabled(false);
   btnClientStop_->setEnabled(false);
 
   RunClientActionAsync(
       this, client->id, start, [this](bool ok, const std::string& err, bool is_start) {
+        pendingClientId_.clear();
         if (!ok) {
           const QString msg =
               is_start ? tr("Failed to start client: %1") : tr("Failed to stop client: %1");
@@ -712,6 +711,9 @@ void ControlPage::onClientAutoStartToggled(bool checked) {
   }
 
   if (!ConfigManager::Get().Save(config)) {
+    updatingClientSelection_ = true;
+    chkClientAutoStart_->setChecked(client->auto_start);
+    updatingClientSelection_ = false;
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
