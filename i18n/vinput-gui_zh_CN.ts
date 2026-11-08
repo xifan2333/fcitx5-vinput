@@ -214,6 +214,18 @@
         <source>Env:</source>
         <translation>环境变量：</translation>
     </message>
+    <message>
+        <source>Not applicable for command adapters</source>
+        <translation>命令适配器不适用</translation>
+    </message>
+    <message>
+        <source>(Adapter does not require model)</source>
+        <translation>(适配器无需模型)</translation>
+    </message>
+    <message>
+        <source>Adapter</source>
+        <translation>适配器</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>
@@ -614,6 +626,14 @@
         <location filename="../src/gui/pages/llm/llm_page.cpp" line="90"/>
         <source>Invalid extra_body JSON: %1</source>
         <translation>extra_body JSON 无效：%1</translation>
+    </message>
+    <message>
+        <source>Support json_object response format</source>
+        <translation>支持 json_object 响应格式</translation>
+    </message>
+    <message>
+        <source>Whether to request json_object format from the provider. Disable this for local models (e.g. Ollama) that do not support response_format.</source>
+        <translation>是否向提供商请求 json_object 格式。对于不支持 response_format 的本地模型（如 Ollama）请关闭此项。</translation>
     </message>
     <message>
         <location filename="../src/gui/pages/llm/llm_page.cpp" line="97"/>

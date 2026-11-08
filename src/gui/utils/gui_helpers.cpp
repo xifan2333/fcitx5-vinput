@@ -451,9 +451,9 @@ void ApplyProviderSelectionState(QComboBox* comboProvider, QComboBox* comboModel
   if (kind == ProviderEntryKind::Adapter) {
     comboModel->setEnabled(false);
     comboModel->clear();
-    comboModel->setToolTip(QObject::tr("Not applicable for command adapters"));
+    comboModel->setToolTip(GuiHelpers::tr("Not applicable for command adapters"));
     if (auto* lineEdit = comboModel->lineEdit()) {
-      lineEdit->setPlaceholderText(QObject::tr("(Adapter does not require model)"));
+      lineEdit->setPlaceholderText(GuiHelpers::tr("(Adapter does not require model)"));
     }
     if (spinContextLines != nullptr) {
       spinContextLines->setEnabled(false);
@@ -502,7 +502,7 @@ void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
   const CoreConfig config = ConfigManager::Get().Load();
   for (const auto& a : config.llm.adapters) {
     const QString id = QString::fromStdString(a.id);
-    comboProvider->addItem(QString("[%1] %2").arg(QObject::tr("Adapter"), id), id);
+    comboProvider->addItem(QString("[%1] %2").arg(GuiHelpers::tr("Adapter"), id), id);
     comboProvider->setItemData(comboProvider->count() - 1,
                                static_cast<int>(ProviderEntryKind::Adapter), Qt::UserRole + 1);
   }
