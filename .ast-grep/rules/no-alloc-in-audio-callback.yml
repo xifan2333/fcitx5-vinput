@@ -1,0 +1,21 @@
+id: no-alloc-in-audio-callback
+message: "实时音频回调线程中绝对禁止堆内存分配与阻塞互斥锁加锁！必须使用预分配内存与无锁队列 (readerwriterqueue)。"
+severity: error
+language: Cpp
+files:
+  - "src/daemon/audio/audio_capture.cpp"
+rule:
+  any:
+    - kind: new_expression
+    - pattern: malloc($$$ARGS)
+    - pattern: std::make_unique<$$$T>($$$ARGS)
+    - pattern: std::make_shared<$$$T>($$$ARGS)
+    - pattern: $MUTEX.lock()
+    - kind: type_identifier
+      regex: (lock_guard|unique_lock|scoped_lock)
+  inside:
+    stopBy: end
+    kind: function_definition
+    has:
+      stopBy: end
+      pattern: processCallback

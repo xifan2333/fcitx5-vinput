@@ -1,136 +1,108 @@
-if(VINPUT_ENABLE_LOCAL_ASR)
-    find_library(SHERPA_ONNX_C_LIB sherpa-onnx-c-api REQUIRED)
-    find_library(ONNXRUNTIME_LIB onnxruntime REQUIRED)
-    find_path(SHERPA_ONNX_INCLUDE_DIR sherpa-onnx/c-api/c-api.h REQUIRED)
-    get_filename_component(SHERPA_ONNX_RUNTIME_DIR "${SHERPA_ONNX_C_LIB}" DIRECTORY)
+if (VINPUT_ENABLE_LOCAL_ASR)
+  find_library(SHERPA_ONNX_C_LIB sherpa-onnx-c-api REQUIRED)
+  find_library(ONNXRUNTIME_LIB onnxruntime REQUIRED)
+  find_path(SHERPA_ONNX_INCLUDE_DIR sherpa-onnx/c-api/c-api.h REQUIRED)
+  get_filename_component(SHERPA_ONNX_RUNTIME_DIR "${SHERPA_ONNX_C_LIB}" DIRECTORY)
 
-    set(VINPUT_LOCAL_ASR_SOURCES
-        asr/hotword_utils.cpp
-        asr/backends/sherpa_offline_backend.cpp
-        asr/backends/sherpa_streaming_backend.cpp
-        asr/vad_segmentation.cpp
-        asr/vad_trimmer.cpp
-    )
-    set(VINPUT_LOCAL_ASR_LIBS
-        ${SHERPA_ONNX_C_LIB}
-    )
-    set(VINPUT_LOCAL_ASR_INCLUDES
-        ${SHERPA_ONNX_INCLUDE_DIR}
-    )
-else()
-    set(VINPUT_LOCAL_ASR_SOURCES)
-    set(VINPUT_LOCAL_ASR_LIBS)
-    set(VINPUT_LOCAL_ASR_INCLUDES)
-endif()
+  set(VINPUT_LOCAL_ASR_SOURCES
+      asr/hotword_utils.cpp asr/backends/sherpa_offline_backend.cpp
+      asr/backends/sherpa_streaming_backend.cpp asr/vad_segmentation.cpp asr/vad_trimmer.cpp
+  )
+  set(VINPUT_LOCAL_ASR_LIBS ${SHERPA_ONNX_C_LIB})
+  set(VINPUT_LOCAL_ASR_INCLUDES ${SHERPA_ONNX_INCLUDE_DIR})
+else ()
+  set(VINPUT_LOCAL_ASR_SOURCES)
+  set(VINPUT_LOCAL_ASR_LIBS)
+  set(VINPUT_LOCAL_ASR_INCLUDES)
+endif ()
 
-set(VINPUT_SYSTEMD_SERVICE_FILE
-    "${CMAKE_CURRENT_BINARY_DIR}/vinput-daemon.service")
-set(VINPUT_DBUS_SERVICE_FILE
-    "${CMAKE_CURRENT_BINARY_DIR}/org.fcitx.Vinput.service")
+set(VINPUT_SYSTEMD_SERVICE_FILE "${CMAKE_CURRENT_BINARY_DIR}/vinput-daemon.service")
+set(VINPUT_DBUS_SERVICE_FILE "${CMAKE_CURRENT_BINARY_DIR}/org.fcitx.Vinput.service")
 
-if(VINPUT_ENABLE_LOCAL_ASR AND VINPUT_RUNTIME_MODE STREQUAL "bundled")
-    if(IS_ABSOLUTE "${VINPUT_RUNTIME_LIBDIR}")
-        set(VINPUT_DAEMON_INSTALL_RPATH "${VINPUT_RUNTIME_LIBDIR}")
-    else()
-        set(VINPUT_DAEMON_INSTALL_RPATH "\$ORIGIN/../${VINPUT_RUNTIME_LIBDIR}")
-    endif()
-endif()
+if (VINPUT_ENABLE_LOCAL_ASR AND VINPUT_RUNTIME_MODE STREQUAL "bundled")
+  if (IS_ABSOLUTE "${VINPUT_RUNTIME_LIBDIR}")
+    set(VINPUT_DAEMON_INSTALL_RPATH "${VINPUT_RUNTIME_LIBDIR}")
+  else ()
+    set(VINPUT_DAEMON_INSTALL_RPATH "\$ORIGIN/../${VINPUT_RUNTIME_LIBDIR}")
+  endif ()
+endif ()
 
 set(VINPUT_VAD_MODEL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/fcitx5-vinput/vad")
 
-add_library(daemon_core STATIC
-    asr/local_asr_model_loader.cpp
-    asr/runtime/backend_factory.cpp
-    asr/runtime/recognition_session_manager.cpp
-    asr/runtime/async_recognition_session.cpp
-    ${VINPUT_LOCAL_ASR_SOURCES}
-    asr/backends/command_batch_backend.cpp
-    asr/backends/command_streaming_backend.cpp
-    audio/audio_capture.cpp
-    audio/audio_utils.cpp
-    audio/output_ducker.cpp
-    notify/desktop_notification_sender.cpp
-    runtime/dbus_service.cpp
-    runtime/daemon_runtime_controller.cpp
-    runtime/recognition_pipeline.cpp
-    runtime/audio_recording_buffer.cpp
-    runtime/session_lifecycle_manager.cpp
-    runtime/runtime_state_machine.cpp
-    postprocess/post_processor.cpp
-    postprocess/prompt_template.cpp
-    postprocess/candidate_parser.cpp
+add_library(
+  daemon_core STATIC
+  asr/local_asr_model_loader.cpp
+  asr/runtime/backend_factory.cpp
+  asr/runtime/recognition_session_manager.cpp
+  asr/runtime/async_recognition_session.cpp
+  ${VINPUT_LOCAL_ASR_SOURCES}
+  asr/backends/command_batch_backend.cpp
+  asr/backends/command_streaming_backend.cpp
+  audio/audio_capture.cpp
+  audio/audio_utils.cpp
+  audio/output_ducker.cpp
+  notify/desktop_notification_sender.cpp
+  runtime/dbus_service.cpp
+  runtime/daemon_runtime_controller.cpp
+  runtime/recognition_pipeline.cpp
+  runtime/audio_recording_buffer.cpp
+  runtime/session_lifecycle_manager.cpp
+  runtime/runtime_state_machine.cpp
+  postprocess/post_processor.cpp
+  postprocess/prompt_template.cpp
+  postprocess/candidate_parser.cpp
 )
 
-set_target_properties(daemon_core PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    OUTPUT_NAME "vinput-daemon-core"
+set_target_properties(
+  daemon_core PROPERTIES POSITION_INDEPENDENT_CODE ON OUTPUT_NAME "vinput-daemon-core"
 )
 
-target_compile_definitions(daemon_core PUBLIC
-    VINPUT_VAD_MODEL_PATH="${VINPUT_VAD_MODEL_DIR}/silero_vad.onnx"
+target_compile_definitions(
+  daemon_core PUBLIC VINPUT_VAD_MODEL_PATH="${VINPUT_VAD_MODEL_DIR}/silero_vad.onnx"
 )
 
-target_include_directories(daemon_core PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
-    ${VINPUT_LOCAL_ASR_INCLUDES}
+target_include_directories(daemon_core PUBLIC ${CMAKE_SOURCE_DIR}/src ${VINPUT_LOCAL_ASR_INCLUDES})
+
+target_link_libraries(
+  daemon_core
+  PUBLIC common
+         pipewire_device
+         base64::base64
+         readerwriterqueue::readerwriterqueue
+         PkgConfig::SDBUS
+         ${VINPUT_LOCAL_ASR_LIBS}
+         Threads::Threads
 )
 
-target_link_libraries(daemon_core PUBLIC
-    common
-    pipewire_device
-    base64::base64
-    readerwriterqueue::readerwriterqueue
-    PkgConfig::SDBUS
-    ${VINPUT_LOCAL_ASR_LIBS}
-    Threads::Threads
-)
-
-add_executable(daemon
-    main.cpp
-)
+add_executable(daemon main.cpp)
 
 set_target_properties(daemon PROPERTIES OUTPUT_NAME "vinput-daemon")
 
-target_link_libraries(daemon PRIVATE
-    daemon_core
+target_link_libraries(daemon PRIVATE daemon_core)
+
+if (VINPUT_ENABLE_LOCAL_ASR)
+  set_target_properties(daemon PROPERTIES BUILD_RPATH "${SHERPA_ONNX_RUNTIME_DIR}")
+  if (VINPUT_RUNTIME_MODE STREQUAL "bundled")
+    set_target_properties(daemon PROPERTIES INSTALL_RPATH "${VINPUT_DAEMON_INSTALL_RPATH}")
+  endif ()
+endif ()
+
+configure_file(
+  "${CMAKE_SOURCE_DIR}/systemd/vinput-daemon.service.in" "${VINPUT_SYSTEMD_SERVICE_FILE}" @ONLY
 )
-
-if(VINPUT_ENABLE_LOCAL_ASR)
-    set_target_properties(daemon PROPERTIES
-        BUILD_RPATH "${SHERPA_ONNX_RUNTIME_DIR}"
-    )
-    if(VINPUT_RUNTIME_MODE STREQUAL "bundled")
-        set_target_properties(daemon PROPERTIES
-            INSTALL_RPATH "${VINPUT_DAEMON_INSTALL_RPATH}"
-        )
-    endif()
-endif()
-
-configure_file("${CMAKE_SOURCE_DIR}/systemd/vinput-daemon.service.in"
-               "${VINPUT_SYSTEMD_SERVICE_FILE}"
-               @ONLY)
-configure_file("${CMAKE_SOURCE_DIR}/data/org.fcitx.Vinput.service.in"
-               "${VINPUT_DBUS_SERVICE_FILE}"
-               @ONLY)
+configure_file(
+  "${CMAKE_SOURCE_DIR}/data/org.fcitx.Vinput.service.in" "${VINPUT_DBUS_SERVICE_FILE}" @ONLY
+)
 
 install(TARGETS daemon DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES
-    "${VINPUT_SYSTEMD_SERVICE_FILE}"
-    DESTINATION "${VINPUT_SYSTEMD_USER_DIR}"
-)
-install(FILES
-    "${VINPUT_DBUS_SERVICE_FILE}"
-    DESTINATION "${VINPUT_DBUS_SERVICE_DIR}"
-)
-if(VINPUT_ENABLE_LOCAL_ASR AND VINPUT_RUNTIME_MODE STREQUAL "bundled")
-    install(FILES
-        "${SHERPA_ONNX_C_LIB}"
-        "${ONNXRUNTIME_LIB}"
-        DESTINATION "${VINPUT_RUNTIME_LIBDIR}"
-    )
-endif()
+install(FILES "${VINPUT_SYSTEMD_SERVICE_FILE}" DESTINATION "${VINPUT_SYSTEMD_USER_DIR}")
+install(FILES "${VINPUT_DBUS_SERVICE_FILE}" DESTINATION "${VINPUT_DBUS_SERVICE_DIR}")
+if (VINPUT_ENABLE_LOCAL_ASR AND VINPUT_RUNTIME_MODE STREQUAL "bundled")
+  install(FILES "${SHERPA_ONNX_C_LIB}" "${ONNXRUNTIME_LIB}" DESTINATION "${VINPUT_RUNTIME_LIBDIR}")
+endif ()
 # VAD model (optional — daemon gracefully degrades if missing)
-if(VINPUT_ENABLE_LOCAL_ASR AND EXISTS "${CMAKE_SOURCE_DIR}/data/vad/silero_vad.onnx")
-    install(FILES "${CMAKE_SOURCE_DIR}/data/vad/silero_vad.onnx"
-            DESTINATION "${VINPUT_VAD_MODEL_DIR}")
-endif()
+if (VINPUT_ENABLE_LOCAL_ASR AND EXISTS "${CMAKE_SOURCE_DIR}/data/vad/silero_vad.onnx")
+  install(FILES "${CMAKE_SOURCE_DIR}/data/vad/silero_vad.onnx"
+          DESTINATION "${VINPUT_VAD_MODEL_DIR}"
+  )
+endif ()

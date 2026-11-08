@@ -1,15 +1,18 @@
 [tools]
-hk = "2"
+hk = "latest"
 node = "latest"
 pandoc = "latest"
 ruff = "latest"
 shfmt = "latest"
-"npm:jscpd" = "5"
-"npm:prettier" = "3"
+"github:kucherenko/jscpd" = "latest"
+"github:ast-grep/ast-grep" = "latest"
+"github:crate-ci/typos" = "latest"
+"pipx:cmakelang" = "latest"
 # Pinned to CI's cpp-linter major version (clang-tidy 21, ubuntu-24.04).
 # Do not upgrade past 21.x without checking .github/workflows/ci.yml first.
 "pipx:clang-tidy" = "21.1.6"
 "pipx:lizard" = "latest"
+"npm:prettier" = "latest"
 
 [env]
 _.file = ".env"
@@ -44,7 +47,19 @@ set -euo pipefail
 
 [tasks."check:dup"]
 description = "Analyze code duplication across src/ using jscpd"
-run = "jscpd src --reporters console"
+run = "jscpd --config .jscpd.json"
+
+[tasks."check:ast"]
+description = "Audit C++ AST structural anti-patterns via ast-grep"
+run = "ast-grep scan"
+
+[tasks."check:typos"]
+description = "Check spelling and identifier integrity via typos"
+run = "typos"
+
+[tasks."check:cmake"]
+description = "Check CMake listfiles formatting via cmake-format"
+run = "cmake-format --check CMakeLists.txt cmake/*.cmake data/CMakeLists.txt po/CMakeLists.txt src/**/CMakeLists.txt tests/CMakeLists.txt"
 
 [tasks."check:complexity"]
 description = "Audit C++ cyclomatic & cognitive complexity via lizard (CCN <= 15, CogC <= 15)"
