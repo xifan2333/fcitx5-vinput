@@ -1,15 +1,14 @@
 [tools]
-hk = "2"
+hk = "latest"
 node = "latest"
 pandoc = "latest"
 ruff = "latest"
 shfmt = "latest"
-"npm:jscpd" = "5"
-"npm:prettier" = "3"
-# Pinned to CI's cpp-linter major version (clang-tidy 21, ubuntu-24.04).
-# Do not upgrade past 21.x without checking .github/workflows/ci.yml first.
-"pipx:clang-tidy" = "21.1.6"
-"pipx:lizard" = "latest"
+"github:kucherenko/jscpd" = "latest"
+"github:ast-grep/ast-grep" = "latest"
+"github:crate-ci/typos" = "latest"
+"github:BlankSpruce/gersemi" = "latest"
+"npm:prettier" = "latest"
 
 [env]
 _.file = ".env"
