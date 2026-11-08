@@ -13,6 +13,7 @@ enum class PaletteCategory : std::uint8_t {
   Asr,
   Scene,
   CommandModel,
+  Process,
   Custom,
 };
 
