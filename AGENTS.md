@@ -58,18 +58,33 @@ Progressive operational guide, hard constraints, and routing index for AI coding
 22. **Strict Full-Project Linter Standards (Zero Compromise)**: Maintain full-file, zero-tolerance static analysis across every modified file (`lines-changed-only: false`, Clang-Tidy 21, Clang-Format, `-DVINPUT_ENABLE_WERROR=ON`). Never downgrade checks or compromise standards for legacy lines in touched files. Every touched file must strictly compile cleanly with zero warnings and zero diagnostic suppressions (`// NOLINT`).
 23. **Architectural Boundary Mandate (Common Extraction vs. Domain Cohesion)**: Generic procedural parsing, string transformations, and low-level character scanners must never reside in domain modules (`src/cli/`, `src/daemon/`, `src/addon/`, `src/gui/`). All generic text and data primitives belong strictly in `src/common/` as stateless, reusable utilities. Business domains must strictly focus on high-level workflow orchestration and delegate stream processing to `src/common/`.
 24. **Objective Cognitive Complexity & Space-Time Resource Gate**: Every function in touched files must satisfy `readability-function-cognitive-complexity.Threshold <= 15`. Nested loops and multi-level branching for stream parsing are strictly prohibited; standard library algorithms (`std::ranges::find_if`, `std::string_view::find_first_of`) must be used instead. Deliberately employ constant-factor space trade-offs (`reserve()`, immutable single-pass structs) to eliminate repeated heap reallocations and duplicate scans.
+25. **Eight Pillars of Engineering Excellence & Hard/Soft Constraint Model**:
+   - **🔴 Hard Constraints (Machine Blockers / 0-Tolerance)**:
+     - *Zero-Warning & Zero-Suppression*: `-DVINPUT_ENABLE_WERROR=ON` across all targets. Never use `// NOLINT` or diagnostic pragmas.
+     - *Formatting & Integrity*: Spotless automated formatting via `clang-format`, `cmake-format` (`cmakelang`), `shfmt`, and `typos` spell checking.
+     - *Real-Time Audio RT Thread Safety*: PipeWire `processCallback` strictly forbids heap allocations (`new`, `malloc`, `make_unique`) and blocking locks (`std::mutex::lock`); lock-free SPSC (`readerwriterqueue`) is mandatory.
+     - *Zero Stdout/Stderr Pollution*: `std::cout`, `std::cerr`, `printf`, and `puts` are strictly prohibited in `src/daemon/` and `src/addon/`; structured logging (`VLOG_*`) is mandatory.
+     - *Memory & Lifetime Safety*: Zero dangling references, zero uninitialized variables, zero use-after-move (guaranteed by Clang-Tidy `bugprone-*` and CI ASan/UBSan).
+   - **🟡 Soft Constraints (Design Heuristics / Contextual Flexibility)**:
+     - *Guard Clauses & Control Flow*: Default to early returns and table-driven dispatch. Natural 2–3 level local branching is permitted; 4+ levels trigger `ast-grep` advisory warnings.
+     - *Algorithmic Complexity*: Eliminate accidental $O(N^2)$ dynamic container iterations. Small constant loops, fixed 2D matrices, or coordinate passes are legitimate.
+     - *Duplication Triage*: Governed by `jscpd` (Rust, `.jscpd.json`). Distinguish Type A (logic slop $\to$ abstract to `src/common/`) from Type B (inherent protocol/D-Bus boilerplate $\to$ retain with rationale).
+     - *Idiomatic Modern C++20*: Prefer `std::string_view`, `std::span`, value semantics, and `expected<T, E>`. Pragmatic engineering is respected when interfacing with raw C ABIs.
 
 ---
 
 ## 3. Core Commands & Quality Gates
 
 ```bash
-# Quality Gate (run before every commit/push)
+# Quality Gate (run before every commit/push - sub-second native execution)
 mise run check:plan       # Preview execution plan and linters
-mise run check:changed    # Validate only touched files (safe, fast)
-mise run check:complexity # Audit cognitive complexity via clang-tidy (<= 15)
+mise run check:changed    # Validate only touched files (safe, fast, < 0.3s)
+mise run check:ast        # Audit C++ AST structural anti-patterns via ast-grep
 mise run check:dup        # Analyze code duplication across src/ (jscpd)
-mise run fix              # Auto-format all files via hk/clang-format
+mise run check:typos      # Audit identifier and code spelling integrity (typos)
+mise run check:cmake      # Validate CMake listfiles formatting (cmake-format)
+mise run check:complexity # Audit cyclomatic & cognitive complexity (CCN <= 15, CogC <= 15)
+mise run fix              # Auto-format all files via hk (clang-format, cmake-format, ruff, shfmt)
 
 # CI & Remote Validation (CI-First strategy)
 gh workflow run ci.yml && gh run watch                         # Standard PR CI
