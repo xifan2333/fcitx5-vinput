@@ -230,28 +230,35 @@ template <typename T> inline std::optional<T> ParseInteger(std::string_view text
 // =========================================================================
 
 // Strips terminal escape sequences (ANSI CSI/SGR styles and OSC 8 hyperlinks),
-// leaving only visible UTF-8 text.
+// leaving only visible UTF-8 text via chunk-based navigation.
 [[nodiscard]] inline std::string StripTerminalEscapes(std::string_view text) {
   std::string visible;
   visible.reserve(text.size());
   std::string_view cur = text;
 
   while (!cur.empty()) {
+    const auto esc_pos = cur.find('\033');
+    if (esc_pos == std::string_view::npos) {
+      visible.append(cur);
+      break;
+    }
+
+    if (esc_pos > 0) {
+      visible.append(cur.substr(0, esc_pos));
+      cur.remove_prefix(esc_pos);
+    }
+
     if (cur.starts_with("\033[")) {
       // CSI / SGR: terminates at characters in ['@'..'~'] (0x40 - 0x7E)
       size_t end_idx = 2;
       while (end_idx < cur.size()) {
-        const auto ch = static_cast<unsigned char>(cur[end_idx]);
-        ++end_idx;
+        const auto ch = static_cast<unsigned char>(cur[end_idx++]);
         if (ch >= 0x40 && ch <= 0x7e) {
           break;
         }
       }
       cur.remove_prefix(end_idx);
-      continue;
-    }
-
-    if (cur.starts_with("\033]")) {
+    } else if (cur.starts_with("\033]")) {
       // OSC (e.g. OSC 8 hyperlink): terminates at BEL ('\a') or ST ("\033\\")
       const auto bel_pos = cur.find('\a');
       const auto st_pos = cur.find("\033\\");
@@ -261,12 +268,11 @@ template <typename T> inline std::optional<T> ParseInteger(std::string_view text
       } else {
         break;
       }
-      continue;
+    } else {
+      cur.remove_prefix(1);
     }
-
-    visible.push_back(cur.front());
-    cur.remove_prefix(1);
   }
+
   return visible;
 }
 
@@ -276,6 +282,34 @@ template <typename T> inline std::optional<T> ParseInteger(std::string_view text
   const std::string visible = StripTerminalEscapes(text);
   const auto u32 = unicode::utf8::decode(visible);
   return unicode::width(u32, unicode::AmbiguousWidth::Narrow);
+}
+
+// Flattens runs of carriage returns, newlines, and tabs into a single space,
+// preserving intentional indentation and spaces in the original text.
+[[nodiscard]] inline std::string FlattenLineBreaks(std::string_view text) {
+  std::string result;
+  result.reserve(text.size());
+  std::string_view cur = text;
+
+  while (!cur.empty()) {
+    const auto break_pos = cur.find_first_of("\r\n\t");
+    if (break_pos == std::string_view::npos) {
+      result.append(cur);
+      break;
+    }
+
+    result.append(cur.substr(0, break_pos));
+    result.push_back(' ');
+    cur.remove_prefix(break_pos);
+
+    const auto next_valid = cur.find_first_not_of("\r\n\t");
+    if (next_valid == std::string_view::npos) {
+      break;
+    }
+    cur.remove_prefix(next_valid);
+  }
+
+  return result;
 }
 
 // Collapses runs of whitespace, carriage returns, newlines, and tabs into a single space.

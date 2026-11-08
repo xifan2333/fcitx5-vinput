@@ -262,13 +262,20 @@ void TestJoinKeyValue() {
 void TestTerminalEscapesAndDisplayWidth() {
   using vinput::str::CollapseWhitespace;
   using vinput::str::DisplayWidth;
+  using vinput::str::FlattenLineBreaks;
   using vinput::str::StripTerminalEscapes;
 
-  // CollapseWhitespace
+  // FlattenLineBreaks: only flattens \r, \n, \t into single space, preserving intentional spaces
+  TEST_ASSERT(FlattenLineBreaks("") == "");
+  TEST_ASSERT(FlattenLineBreaks("hello world") == "hello world");
+  TEST_ASSERT(FlattenLineBreaks("  code   block  ") == "  code   block  ");
+  TEST_ASSERT(FlattenLineBreaks("Line 1\r\nLine 2\nLine 3\tTab") == "Line 1 Line 2 Line 3 Tab");
+
+  // CollapseWhitespace: folds all whitespace runs into single space
   TEST_ASSERT(CollapseWhitespace("hello \t\r\n world") == "hello world");
   TEST_ASSERT(CollapseWhitespace("\n\t a \r\n b \t\n").find("a b") != std::string::npos);
 
-  // StripTerminalEscapes
+  // StripTerminalEscapes: chunk-based stripping
   const std::string colored = "\033[1;32mHello\033[0m";
   TEST_ASSERT(StripTerminalEscapes(colored) == "Hello");
 

@@ -165,9 +165,42 @@ void TestRenderTableWithColor() {
 
   const std::string colored = RenderTable(headers, rows, /*use_color=*/true);
   TEST_ASSERT(!colored.empty());
-  // Header line must contain bold escape sequence
-  TEST_ASSERT(colored.find("\033[1m") != std::string::npos);
-  TEST_ASSERT(colored.find("\033[0m") != std::string::npos);
+
+  // Entire header line must be wrapped with bold sequence
+  const size_t first_newline = colored.find('\n');
+  TEST_ASSERT(first_newline != std::string::npos);
+  const std::string header_line = colored.substr(0, first_newline);
+  const std::string data_line = colored.substr(first_newline + 1);
+
+  TEST_ASSERT(header_line.starts_with("\033[1m"));
+  TEST_ASSERT(header_line.ends_with("\033[0m"));
+
+  // Data row must not contain header bold style
+  TEST_ASSERT(data_line.find("\033[1m") == std::string::npos);
+  TEST_ASSERT(data_line.find("item  active") != std::string::npos);
+}
+
+void TestRenderTableWithUnclosedEscapes() {
+  using vinput::cli::RenderTable;
+
+  // Row 1 contains unclosed hyperlink and unclosed color
+  // Row 2 contains closed hyperlink with trailing text (must not be falsely identified as unclosed)
+  const std::vector<std::string> headers = {"LINK", "COLOR", "NOTE"};
+  const std::vector<std::vector<std::string>> rows = {
+      {"\033]8;;https://example.com/unclosed\aUnclosedLink", "\033[31mUnclosedRed", "Plain"},
+      {"\033]8;;https://example.com/closed\aDoc\033]8;;\a (v1.0)", "\033[32mGreen\033[0m ok",
+       "Normal"},
+  };
+
+  const std::string rendered = RenderTable(headers, rows, /*use_color=*/false);
+  TEST_ASSERT(!rendered.empty());
+
+  // Unclosed link must be closed with terminator in output
+  TEST_ASSERT(rendered.find("UnclosedLink\033]8;;\a") != std::string::npos);
+  // Unclosed color must be reset with terminator in output
+  TEST_ASSERT(rendered.find("UnclosedRed\033[0m") != std::string::npos);
+  // Trailing text in closed link must be preserved
+  TEST_ASSERT(rendered.find("Doc\033]8;;\a (v1.0)") != std::string::npos);
 }
 
 } // namespace
@@ -181,6 +214,7 @@ int main() {
   TestRenderTableWithHyperlinkInMiddleColumn();
   TestRenderTableWithNewlines();
   TestRenderTableWithColor();
+  TestRenderTableWithUnclosedEscapes();
   std::cout << "All formatter tests passed successfully.\n";
   return 0;
 }
