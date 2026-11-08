@@ -138,6 +138,7 @@ struct ProviderFormResult {
   std::string id;
   std::string base_url;
   std::string api_key;
+  bool json_object{true};
   glz::json_t extra_body;
 };
 
@@ -159,23 +160,32 @@ std::optional<ProviderFormResult> ShowProviderDialog(QWidget* parent, const QStr
   if (initial != nullptr) {
     editApiKey->setPlaceholderText(LlmPage::tr("Leave empty to keep current key"));
   }
+  auto* chkJsonObject = new QCheckBox(LlmPage::tr("Support json_object response format"));
+  chkJsonObject->setChecked(initial != nullptr ? initial->json_object : true);
+  chkJsonObject->setToolTip(
+      LlmPage::tr("Whether to request json_object format from the provider. Disable this for "
+                  "local models (e.g. Ollama) that do not support response_format."));
+
   auto* editExtraBody = MakeExtraBodyEditor(initial != nullptr ? &initial->extra_body : nullptr);
 
   form->addRow(LlmPage::tr("Name:"), editName);
   form->addRow(LlmPage::tr("Base URL:"), editBaseUrl);
   form->addRow(LlmPage::tr("API Key:"), editApiKey);
+  form->addRow(QString(), chkJsonObject);
   form->addRow(LlmPage::tr("Extra body (JSON):"), editExtraBody);
 
   QString name_text;
   QString base_url_text;
   QString api_key_text;
   QString extra_body_text;
+  bool json_object = true;
 
   const bool accepted = RunFormDialog(parent, title, form, [&]() {
     name_text = editName->text().trimmed();
     base_url_text = editBaseUrl->text().trimmed();
     api_key_text = editApiKey->text().trimmed();
     extra_body_text = editExtraBody->toPlainText();
+    json_object = chkJsonObject->isChecked();
   });
   if (!accepted) {
     return std::nullopt;
@@ -196,6 +206,7 @@ std::optional<ProviderFormResult> ShowProviderDialog(QWidget* parent, const QStr
       .id = name_text.toStdString(),
       .base_url = base_url_text.toStdString(),
       .api_key = api_key_text.toStdString(),
+      .json_object = json_object,
       .extra_body = std::move(extra_body),
   };
 }
@@ -223,6 +234,37 @@ QString AdapterTitleForGui(const std::string& adapter_id) {
   const auto i18n_map = I18nCache::Get().GetMap();
   return QString::fromStdString(
       vinput::registry::LookupI18n(i18n_map, adapter_id + ".title", adapter_id));
+}
+
+QString BuildAdapterTooltip(const LlmAdapter& adapter) {
+  QStringList lines;
+  const QString command = QString::fromStdString(adapter.command);
+  if (!command.isEmpty()) {
+    lines.append(LlmPage::tr("Command: %1").arg(command));
+  }
+  if (!adapter.args.empty()) {
+    std::string joined_args;
+    for (const auto& a : adapter.args) {
+      if (!joined_args.empty()) {
+        joined_args += ' ';
+      }
+      joined_args += a;
+    }
+    lines.append(LlmPage::tr("Args: %1").arg(QString::fromStdString(joined_args)));
+  }
+  if (!adapter.env.empty()) {
+    std::string joined_env;
+    for (const auto& [k, v] : adapter.env) {
+      if (!joined_env.empty()) {
+        joined_env += ' ';
+      }
+      joined_env += k;
+      joined_env += '=';
+      joined_env += v;
+    }
+    lines.append(LlmPage::tr("Env: %1").arg(QString::fromStdString(joined_env)));
+  }
+  return lines.join('\n');
 }
 
 std::optional<vinput::scene::Definition>
@@ -442,41 +484,7 @@ void LlmPage::refreshAdapterList() {
     auto* item = new QListWidgetItem(display, listAdapters_);
     item->setData(Qt::UserRole, id);
     item->setData(Qt::UserRole + 2, title);
-
-    // Build tooltip
-    QString tooltip;
-    if (!command.isEmpty()) {
-      tooltip += tr("Command: %1").arg(command);
-    }
-    if (!adapter.args.empty()) {
-      std::string joined_args;
-      for (const auto& a : adapter.args) {
-        if (!joined_args.empty()) {
-          joined_args += ' ';
-        }
-        joined_args += a;
-      }
-      if (!tooltip.isEmpty()) {
-        tooltip += "\n";
-      }
-      tooltip += tr("Args: %1").arg(QString::fromStdString(joined_args));
-    }
-    if (!adapter.env.empty()) {
-      std::string joined_env;
-      for (const auto& [k, v] : adapter.env) {
-        if (!joined_env.empty()) {
-          joined_env += ' ';
-        }
-        joined_env += k;
-        joined_env += '=';
-        joined_env += v;
-      }
-      if (!tooltip.isEmpty()) {
-        tooltip += "\n";
-      }
-      tooltip += tr("Env: %1").arg(QString::fromStdString(joined_env));
-    }
-    item->setToolTip(tooltip.trimmed());
+    item->setToolTip(BuildAdapterTooltip(adapter));
   }
   updateAdapterButtons();
 }
@@ -499,6 +507,7 @@ void LlmPage::onLlmAdd() {
   provider.id = result->id;
   provider.base_url = result->base_url;
   provider.api_key = result->api_key;
+  provider.json_object = result->json_object;
   provider.extra_body = std::move(result->extra_body);
   config.llm.providers.push_back(std::move(provider));
 
@@ -537,6 +546,7 @@ void LlmPage::onLlmEdit() {
     if (!result->api_key.empty()) {
       it->api_key = result->api_key;
     }
+    it->json_object = result->json_object;
     it->extra_body = std::move(result->extra_body);
     if (!ConfigManager::Get().Save(config)) {
       QMessageBox::warning(this, tr("Error"), tr("Failed to save config."));
