@@ -24,6 +24,7 @@
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QtCore/qcontainerfwd.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qobjectdefs.h>
@@ -308,7 +309,8 @@ void PopulateSceneFormWidgets(const SceneDialogWidgets& w,
                            QString::fromStdString(initial->model), w.spinContextLines);
 }
 
-void ExtractSceneFormValues(const SceneDialogWidgets& w, vinput::scene::Definition* def) {
+void ExtractSceneFormValues(const SceneDialogWidgets& w, vinput::scene::Definition* def,
+                            ProviderEntryKind* kind_out = nullptr) {
   def->id = w.editId->text().trimmed().toStdString();
   def->label = w.editLabel->text().trimmed().toStdString();
   def->prompt = w.editPrompt->toPlainText().trimmed().toStdString();
@@ -317,6 +319,9 @@ void ExtractSceneFormValues(const SceneDialogWidgets& w, vinput::scene::Definiti
                                        : w.comboProvider->currentText().trimmed().toStdString();
   const auto kind =
       static_cast<ProviderEntryKind>(w.comboProvider->currentData(Qt::UserRole + 1).toInt());
+  if (kind_out != nullptr) {
+    *kind_out = kind;
+  }
   if (kind == ProviderEntryKind::Adapter) {
     def->model.clear();
   } else {
@@ -376,16 +381,15 @@ ShowSceneDialog(QWidget* parent, const QString& title,
   form->addRow(QString(), w.chkRawPrev);
 
   vinput::scene::Definition def = initial != nullptr ? *initial : vinput::scene::Definition{};
-  const bool accepted =
-      RunFormDialog(parent, title, form, [&]() { ExtractSceneFormValues(w, &def); });
+  ProviderEntryKind selected_kind = ProviderEntryKind::None;
+  const bool accepted = RunFormDialog(parent, title, form,
+                                      [&]() { ExtractSceneFormValues(w, &def, &selected_kind); });
 
   if (!accepted) {
     return std::nullopt;
   }
 
-  const auto kind =
-      static_cast<ProviderEntryKind>(w.comboProvider->currentData(Qt::UserRole + 1).toInt());
-  if (kind == ProviderEntryKind::Llm && !def.provider_id.empty() && def.model.empty()) {
+  if (selected_kind == ProviderEntryKind::Llm && !def.provider_id.empty() && def.model.empty()) {
     QMessageBox::warning(parent, LlmPage::tr("Error"),
                          LlmPage::tr("Model must be specified when using an LLM provider."));
     return std::nullopt;

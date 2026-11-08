@@ -398,6 +398,7 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
   static QHash<QString, QStringList> cache;
 
   if (provider.base_url.isEmpty()) {
+    InvalidatePendingModelFetch(comboModel);
     comboModel->setEnabled(true);
     comboModel->clear();
     const QString desired = comboModel->property("vinput_desired_model").toString();
