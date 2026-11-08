@@ -266,7 +266,7 @@ void TestTerminalEscapesAndDisplayWidth() {
   using vinput::str::StripTerminalEscapes;
 
   // FlattenLineBreaks: only flattens \r, \n, \t into single space, preserving intentional spaces
-  TEST_ASSERT(FlattenLineBreaks("") == "");
+  TEST_ASSERT(FlattenLineBreaks("").empty());
   TEST_ASSERT(FlattenLineBreaks("hello world") == "hello world");
   TEST_ASSERT(FlattenLineBreaks("  code   block  ") == "  code   block  ");
   TEST_ASSERT(FlattenLineBreaks("Line 1\r\nLine 2\nLine 3\tTab") == "Line 1 Line 2 Line 3 Tab");

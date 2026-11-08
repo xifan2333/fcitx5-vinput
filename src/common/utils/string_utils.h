@@ -246,7 +246,7 @@ struct CsiResult {
 
 [[nodiscard]] inline CsiResult ConsumeCsi(std::string_view cur) noexcept {
   const auto rest = cur.substr(2);
-  const auto it = std::ranges::find_if(rest, [](char c) noexcept {
+  const auto* const it = std::ranges::find_if(rest, [](char c) noexcept {
     const auto uc = static_cast<unsigned char>(c);
     return uc >= 0x40 && uc <= 0x7e;
   });
@@ -254,7 +254,7 @@ struct CsiResult {
     return {.length = cur.size(), .sgr_active = std::nullopt};
   }
 
-  const size_t len = static_cast<size_t>(it - cur.begin() + 1);
+  const auto len = static_cast<size_t>(it - cur.begin() + 1);
   if (*it != 'm') {
     return {.length = len, .sgr_active = std::nullopt};
   }
@@ -313,7 +313,8 @@ inline void StepTerminalEscape(std::string_view& cur, bool& in_hyperlink,
 
 // Higher-order iterator that visits text chunks and terminal escape sequences in a single pass.
 template <typename TextFn, typename EscapeFn>
-inline void ForEachTerminalChunk(std::string_view text, TextFn&& on_text, EscapeFn&& on_escape) {
+inline void ForEachTerminalChunk(std::string_view text, const TextFn& on_text,
+                                 const EscapeFn& on_escape) {
   std::string_view cur = text;
   while (!cur.empty()) {
     const auto esc_pos = cur.find('\033');
