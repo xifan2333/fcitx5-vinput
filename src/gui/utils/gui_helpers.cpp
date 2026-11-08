@@ -394,6 +394,12 @@ void HandleModelsReply(QComboBox* comboModel, QNetworkReply* reply, const QStrin
   reply->manager()->deleteLater();
 }
 
+void InvalidatePendingModelFetch(QComboBox* comboModel) {
+  const int generation = comboModel->property("vinput_provider_fetch_generation").toInt() + 1;
+  comboModel->setProperty("vinput_provider_fetch_generation", generation);
+  comboModel->setProperty("vinput_provider_fetch_key", QString());
+}
+
 void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* comboModel) {
   static QHash<QString, QStringList> cache;
 
@@ -450,12 +456,6 @@ QList<ProviderInfo> LoadLlmProviders() {
     }
   }
   return providers;
-}
-
-void InvalidatePendingModelFetch(QComboBox* comboModel) {
-  const int generation = comboModel->property("vinput_provider_fetch_generation").toInt() + 1;
-  comboModel->setProperty("vinput_provider_fetch_generation", generation);
-  comboModel->setProperty("vinput_provider_fetch_key", QString());
 }
 
 void ApplyProviderSelectionState(QComboBox* comboProvider, QComboBox* comboModel,
