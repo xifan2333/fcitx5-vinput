@@ -1581,3 +1581,36 @@ msgstr "适配器 '%s' 未引用可编辑的脚本文件。"
 #: src/cli/config/register_llm.cpp
 msgid "Edit an LLM adapter script"
 msgstr "编辑 LLM 适配器脚本"
+
+#: src/addon/menu/vinput_menu.cpp
+msgid "Process"
+msgstr "进程"
+
+#: src/addon/menu/vinput_menu.cpp
+msgid "Manage client processes"
+msgstr "管理客户端进程"
+
+#: src/addon/menu/vinput_menu.cpp
+msgid "Failed to start client."
+msgstr "启动客户端失败。"
+
+#: src/addon/menu/vinput_menu.cpp
+msgid "Failed to stop client."
+msgstr "停止客户端失败。"
+
+#: src/addon/menu/vinput_menu.cpp
+msgid "[Trigger]"
+msgstr "[触发器]"
+
+#: src/addon/menu/vinput_menu.cpp
+msgid "[Receiver]"
+msgstr "[接收器]"
+
+#: src/addon/menu/vinput_menu.cpp
+msgid " [autostart]"
+msgstr " [自启动]"
+
+#: src/addon/menu/vinput_menu.cpp
+#, c-format
+msgid "running (%d)"
+msgstr "运行中 (%d)"
