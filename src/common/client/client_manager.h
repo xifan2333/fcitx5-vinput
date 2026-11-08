@@ -6,6 +6,9 @@
 #include <string>
 #include <string_view>
 #include <sys/types.h>
+#include <vector>
+
+#include "common/dbus/dbus_interface.h"
 
 struct ClientSpec;
 struct CoreConfig;
@@ -64,5 +67,10 @@ void Broadcast(std::string_view line);
 
 // Shuts down all running clients tracked in this process.
 void Shutdown();
+
+// Queries the running status and pid of all configured clients.
+// Combines live sessions tracked by this host process with on-disk PID records.
+std::vector<vinput::dbus::ClientStatus> GetClientStatuses(const CoreConfig& config);
+std::vector<vinput::dbus::ClientStatus> GetClientStatuses();
 
 } // namespace vinput::client

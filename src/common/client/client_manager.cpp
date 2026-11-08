@@ -56,29 +56,35 @@ std::string SourceId(std::string_view client_id) {
 // arrives; a leftover partial line at session teardown is discarded because it can
 // never parse as a complete command.
 struct StdoutFramer {
+  void ConsumeByte(char c, std::vector<std::string>& lines, bool& overflowed_now) {
+    if (c == '\r') {
+      return;
+    }
+    if (c == '\n') {
+      if (!overflow) {
+        lines.push_back(std::move(pending));
+      }
+      pending.clear();
+      overflow = false;
+      return;
+    }
+    if (pending.size() >= kMaxCommandLineBytes) {
+      if (!overflow) {
+        overflow = true;
+        overflowed_now = true;
+      }
+      return;
+    }
+    pending.push_back(c);
+  }
+
   void Feed(std::span<const std::byte> bytes) {
     std::vector<std::string> lines;
     bool overflowed_now = false;
     {
       const std::scoped_lock lock(mutex);
       for (const std::byte b : bytes) {
-        const char c = static_cast<char>(b);
-        if (c == '\n') {
-          if (!overflow) {
-            lines.push_back(std::move(pending));
-          }
-          pending.clear();
-          overflow = false;
-        } else if (c != '\r') {
-          if (pending.size() >= kMaxCommandLineBytes) {
-            if (!overflow) {
-              overflow = true;
-              overflowed_now = true;
-            }
-          } else {
-            pending.push_back(c);
-          }
-        }
+        ConsumeByte(static_cast<char>(b), lines, overflowed_now);
       }
     }
     if (overflowed_now) {
@@ -150,10 +156,8 @@ const ClientSpec* FindClient(const CoreConfig& config, std::string_view client_i
   return view.Receiver(client_id);
 }
 
-bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge* bridge,
-                   CommandHandler on_command, std::string* error) {
-  const std::string client_id = client.id;
-  if (PidPath(client_id).empty()) {
+bool ValidateClientPreconditions(const ClientSpec& client, std::string* error) {
+  if (PidPath(client.id).empty()) {
     if (error != nullptr) {
       *error = "client id must not contain path separators";
     }
@@ -165,22 +169,57 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
     }
     return false;
   }
-  if (IsRunning(client_id)) {
+  if (IsRunning(client.id)) {
     if (error != nullptr) {
       *error = "client is already running";
     }
     return false;
   }
+  return true;
+}
 
-  {
-    auto& state = GetTrackedState();
-    const std::scoped_lock lock(state.mutex);
-    if (state.sessions.contains(client_id) || !state.pending.insert(client_id).second) {
-      if (error != nullptr) {
-        *error = "client is already running";
-      }
-      return false;
+bool TryAcquirePendingStart(std::string_view client_id, std::string* error) {
+  auto& state = GetTrackedState();
+  const std::scoped_lock lock(state.mutex);
+  if (state.sessions.contains(client_id) || !state.pending.insert(std::string(client_id)).second) {
+    if (error != nullptr) {
+      *error = "client is already running";
     }
+    return false;
+  }
+  return true;
+}
+
+void CleanupBridgeSource(vinput::notify::NotificationBridge* bridge, std::string_view source_id) {
+  if (bridge != nullptr) {
+    bridge->Flush(source_id);
+    bridge->RetireSource(source_id);
+  }
+}
+
+void CommitTrackedSession(std::string_view client_id, vinput::process::ProcessSession session,
+                          vinput::notify::NotificationBridge* bridge,
+                          std::shared_ptr<StdoutFramer> framer) {
+  auto tracked = std::make_unique<TrackedSession>(TrackedSession{
+      .session = std::move(session),
+      .bridge = bridge,
+      .framer = std::move(framer),
+  });
+  auto& state = GetTrackedState();
+  const std::scoped_lock lock(state.mutex);
+  state.sessions.insert_or_assign(std::string(client_id), std::move(tracked));
+  state.pending.erase(client_id);
+}
+
+bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge* bridge,
+                   CommandHandler on_command, std::string* error) {
+  const std::string client_id = client.id;
+  if (!ValidateClientPreconditions(client, error)) {
+    return false;
+  }
+
+  if (!TryAcquirePendingStart(client_id, error)) {
+    return false;
   }
   PendingRelease release{client_id};
 
@@ -207,10 +246,7 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
   vinput::process::ProcessSession session = std::move(*started);
   int immediate_exit = -1;
   if (session.WaitForExit(std::chrono::milliseconds(250), &immediate_exit)) {
-    if (bridge != nullptr) {
-      bridge->Flush(source_id);
-      bridge->RetireSource(source_id);
-    }
+    CleanupBridgeSource(bridge, source_id);
     if (error != nullptr) {
       *error = fmt::format("client exited immediately (code {})", immediate_exit);
     }
@@ -221,25 +257,11 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
   if (!WritePidFile(client_id, child_pid, error)) {
     session.Cancel();
     (void)session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
-    if (bridge != nullptr) {
-      bridge->Flush(source_id);
-      bridge->RetireSource(source_id);
-    }
+    CleanupBridgeSource(bridge, source_id);
     return false;
   }
 
-  auto tracked = std::make_unique<TrackedSession>(TrackedSession{
-      .session = std::move(session),
-      .bridge = bridge,
-      .framer = std::move(framer),
-  });
-
-  {
-    auto& state = GetTrackedState();
-    const std::scoped_lock lock(state.mutex);
-    state.sessions.insert_or_assign(client_id, std::move(tracked));
-    state.pending.erase(client_id);
-  }
+  CommitTrackedSession(client_id, std::move(session), bridge, std::move(framer));
   release.Disarm();
 
   VLOG_DEBUG("client started id={}", client_id);
@@ -369,45 +391,23 @@ bool Start(std::string_view client_id, vinput::notify::NotificationBridge* bridg
   return StartWithSpec(*client, bridge, std::move(on_command), error);
 }
 
-bool Stop(std::string_view client_id, std::string* error,
-          vinput::notify::NotificationBridge* bridge) {
-  std::unique_ptr<TrackedSession> to_stop;
-  {
-    auto& state = GetTrackedState();
-    const std::scoped_lock lock(state.mutex);
-    if (const auto it = state.sessions.find(client_id); it != state.sessions.end()) {
-      to_stop = std::move(it->second);
-      state.sessions.erase(it);
-    }
-  }
-
-  if (to_stop != nullptr) {
-    to_stop->session.Cancel();
-    (void)to_stop->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
-    auto* b = bridge != nullptr ? bridge : to_stop->bridge;
-    if (b != nullptr) {
-      const std::string source_id = SourceId(client_id);
-      b->Flush(source_id);
-      b->RetireSource(source_id);
-    }
-    RemovePidFile(client_id);
-    VLOG_DEBUG("client stopped id={}", client_id);
-    if (error != nullptr) {
-      error->clear();
-    }
-    return true;
-  }
-
-  const ClientPidRecord record = ReadPidRecord(client_id);
-  const auto result = vinput::process::TerminateGracefully(record.pid, record.start_time,
-                                                           kGracefulStopTimeout, kForceKillTimeout);
-
-  if (bridge != nullptr) {
+void StopTrackedSession(std::string_view client_id, std::unique_ptr<TrackedSession> to_stop,
+                        vinput::notify::NotificationBridge* bridge) {
+  to_stop->session.Cancel();
+  (void)to_stop->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
+  auto* b = bridge != nullptr ? bridge : to_stop->bridge;
+  if (b != nullptr) {
     const std::string source_id = SourceId(client_id);
-    bridge->Flush(source_id);
-    bridge->RetireSource(source_id);
+    b->Flush(source_id);
+    b->RetireSource(source_id);
   }
+  RemovePidFile(client_id);
+  VLOG_DEBUG("client stopped id={}", client_id);
+}
 
+bool HandleExternalProcessTermination(std::string_view client_id,
+                                      const vinput::process::TerminateResult& result,
+                                      std::string* error) {
   const auto fail = [error](const std::string& message) {
     if (error != nullptr) {
       *error = message;
@@ -436,6 +436,39 @@ bool Stop(std::string_view client_id, std::string* error,
                 id + ": " + result.error);
   }
   return false;
+}
+
+bool Stop(std::string_view client_id, std::string* error,
+          vinput::notify::NotificationBridge* bridge) {
+  std::unique_ptr<TrackedSession> to_stop;
+  {
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    if (const auto it = state.sessions.find(client_id); it != state.sessions.end()) {
+      to_stop = std::move(it->second);
+      state.sessions.erase(it);
+    }
+  }
+
+  if (to_stop != nullptr) {
+    StopTrackedSession(client_id, std::move(to_stop), bridge);
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
+  const ClientPidRecord record = ReadPidRecord(client_id);
+  const auto result = vinput::process::TerminateGracefully(record.pid, record.start_time,
+                                                           kGracefulStopTimeout, kForceKillTimeout);
+
+  if (bridge != nullptr) {
+    const std::string source_id = SourceId(client_id);
+    bridge->Flush(source_id);
+    bridge->RetireSource(source_id);
+  }
+
+  return HandleExternalProcessTermination(client_id, result, error);
 }
 
 void AutoStart(const CoreConfig& config, vinput::notify::NotificationBridge* bridge,
@@ -496,6 +529,53 @@ void Shutdown() {
     }
     RemovePidFile(id);
   }
+}
+
+std::vector<vinput::dbus::ClientStatus> GetClientStatuses(const CoreConfig& config) {
+  std::vector<vinput::dbus::ClientStatus> result;
+  std::set<std::string, std::less<>> seen;
+  result.reserve(config.triggers.size() + config.receivers.size());
+
+  const auto collect = [&](const std::vector<ClientSpec>& clients) {
+    for (const auto& client : clients) {
+      if (!seen.insert(client.id).second) {
+        continue;
+      }
+      const auto pid = GetPid(client.id);
+      result.push_back({
+          .id = client.id,
+          .running = (pid > 0),
+          .pid = static_cast<std::int64_t>(pid),
+      });
+    }
+  };
+
+  collect(config.triggers);
+  collect(config.receivers);
+
+  {
+    auto& state = GetTrackedState();
+    const std::scoped_lock lock(state.mutex);
+    for (const auto& [id, tracked] : state.sessions) {
+      if (seen.contains(id)) {
+        continue;
+      }
+      const bool alive = !tracked->session.HasExited();
+      result.push_back({
+          .id = id,
+          .running = alive,
+          .pid = alive ? static_cast<std::int64_t>(tracked->session.Pid()) : -1,
+      });
+    }
+  }
+
+  return result;
+}
+
+std::vector<vinput::dbus::ClientStatus> GetClientStatuses() {
+  auto config = LoadCoreConfig();
+  NormalizeCoreConfig(&config);
+  return GetClientStatuses(config);
 }
 
 } // namespace vinput::client
