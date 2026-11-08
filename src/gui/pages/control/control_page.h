@@ -10,7 +10,11 @@
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qspinbox.h>
+#include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
+#include <optional>
+#include <string>
+#include <unordered_set>
 
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
@@ -42,8 +46,22 @@ public:
 
 private:
   void executeDaemonAction(bool restart);
+  void executeClientAction(bool start);
+
+  struct SelectedClient {
+    int row = -1;
+    std::string id;
+    std::string kind;
+    bool auto_start = false;
+    bool is_running = false;
+  };
+  [[nodiscard]] std::optional<SelectedClient> selectedClient() const;
+
   void populateAsrList(const CoreConfig& config,
                        const vinput::dbus::AsrBackendState* backend_state);
+  void populateClientList();
+  void refreshClientStatuses();
+  void updateClientButtons();
 
   QComboBox* comboDevice_;
   QCheckBox* chkNormalizeAudio_;
@@ -56,6 +74,13 @@ private:
   QListWidget* listAsrProviders_;
   QPushButton* btnAsrEdit_;
   QPushButton* btnAsrSetActive_;
+
+  QTableWidget* tableClients_{nullptr};
+  QPushButton* btnClientStart_{nullptr};
+  QPushButton* btnClientStop_{nullptr};
+  QCheckBox* chkClientAutoStart_{nullptr};
+  bool updatingClientSelection_{false};
+  std::unordered_set<std::string> pendingClientIds_;
 
   QLabel* lblDaemonStatus_;
   QPushButton* btnDaemonStart_;
@@ -76,6 +101,10 @@ private slots:
   void onDaemonStart();
   void onDaemonStop();
   void onDaemonRestart();
+
+  void onClientStart();
+  void onClientStop();
+  void onClientAutoStartToggled(bool checked);
 
   void checkSandboxPermissions();
 };

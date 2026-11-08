@@ -5,6 +5,8 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,15 +17,21 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QThreadPool>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QtCore/qglobal.h>
 #include <QtWidgets/qcheckbox.h>
+#include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <qboxlayout.h>
 #include <qcombobox.h>
 #include <qfont.h>
@@ -40,11 +48,13 @@
 #include <qtimer.h>
 #include <qtmetamacros.h>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
+#include "common/client/client_manager.h"
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/registry/registry_i18n.h"
@@ -118,12 +128,171 @@ template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, 
   });
 }
 
+bool CallClientLifecycleRpc(const std::string& client_id, bool start, std::string* error) {
+  vinput::cli::DbusClient dbus;
+  return start ? dbus.StartClient(client_id, error) : dbus.StopClient(client_id, error);
+}
+
+template <typename Callback>
+void RunClientActionAsync(ControlPage* page, const std::string& client_id, bool start,
+                          Callback callback) {
+  const QPointer<ControlPage> self(page);
+  QThreadPool::globalInstance()->start(
+      [self, client_id, start, callback = std::move(callback)]() mutable {
+        std::string err;
+        const bool ok = CallClientLifecycleRpc(client_id, start, &err);
+        QMetaObject::invokeMethod(self,
+                                  [self, callback = std::move(callback), ok, err, start]() mutable {
+                                    if (!self) {
+                                      return;
+                                    }
+                                    callback(ok, err, start);
+                                  });
+      });
+}
+
+struct AsrDisplayContext {
+  QString selected_id;
+  QString effective_id;
+  QString target_id;
+  bool reload_in_progress = false;
+  bool reload_failed = false;
+  const vinput::dbus::AsrBackendState* backend_state = nullptr;
+  vinput::registry::I18nMap i18n_map;
+};
+
+QString FormatProviderDetail(const AsrProvider& provider,
+                             const vinput::registry::I18nMap& i18n_map) {
+  if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
+    if (local->model.empty()) {
+      return ControlPage::tr("(not set)");
+    }
+    const auto title =
+        vinput::registry::LookupI18n(i18n_map, local->model + ".title", local->model);
+    return QString::fromStdString(title);
+  }
+  if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
+    return QString::fromStdString(command->command);
+  }
+  return {};
+}
+
+QList<QString> BuildProviderMarkers(const QString& id, const AsrDisplayContext& ctx) {
+  QList<QString> markers;
+  if (id == ctx.selected_id) {
+    markers << ControlPage::tr("configured");
+  }
+  if (id == ctx.effective_id) {
+    markers << ControlPage::tr("effective");
+  }
+  if (ctx.reload_in_progress && id == ctx.target_id && id != ctx.effective_id) {
+    markers << ControlPage::tr("loading");
+  }
+  if (ctx.reload_failed && id == ctx.target_id) {
+    markers << ControlPage::tr("reload failed");
+  }
+  return markers;
+}
+
+QString FormatRemoteEndpoints(const vinput::dbus::AsrBackendState* backend_state) {
+  if (backend_state == nullptr || backend_state->remote_endpoints.empty()) {
+    return {};
+  }
+  QList<QString> urls;
+  urls.reserve(static_cast<qsizetype>(backend_state->remote_endpoints.size()));
+  for (const auto& endpoint : backend_state->remote_endpoints) {
+    urls << QString::fromStdString(endpoint);
+  }
+  return urls.join(" / ");
+}
+
+QString BuildProviderDisplay(const AsrProvider& provider, const AsrDisplayContext& ctx) {
+  const QString id = QString::fromStdString(AsrProviderId(provider));
+  const QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
+  const std::string id_str = id.toStdString();
+  const QString title =
+      QString::fromStdString(vinput::registry::LookupI18n(ctx.i18n_map, id_str + ".title", id_str));
+
+  QString display = title + " [" + type + "]";
+  const QString detail = FormatProviderDetail(provider, ctx.i18n_map);
+  if (!detail.isEmpty()) {
+    display += " · " + detail;
+  }
+
+  const auto markers = BuildProviderMarkers(id, ctx);
+  if (!markers.isEmpty()) {
+    display += " · " + markers.join(", ");
+  }
+
+  if (id == ctx.effective_id) {
+    const QString endpoints = FormatRemoteEndpoints(ctx.backend_state);
+    if (!endpoints.isEmpty()) {
+      display += " · " + endpoints;
+    }
+  }
+  return display;
+}
+
+QString FormatClientStatus(bool running, int pid) {
+  if (!running) {
+    return ControlPage::tr("Stopped");
+  }
+  if (pid > 0) {
+    return ControlPage::tr("Running (%1)").arg(pid);
+  }
+  return ControlPage::tr("Running");
+}
+
+void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trigger,
+                     const QString& selected_id) {
+  const int row = table->rowCount();
+  table->insertRow(row);
+
+  const QString id = QString::fromStdString(client.id);
+  const auto pid = vinput::client::GetPid(client.id);
+  const bool running = (pid > 0);
+
+  auto* itemType = new QTableWidgetItem(is_trigger ? ControlPage::tr("[Trigger]")
+                                                   : ControlPage::tr("[Receiver]"));
+  itemType->setData(Qt::UserRole, id);
+  itemType->setData(Qt::UserRole + 1, is_trigger ? "trigger" : "receiver");
+  itemType->setData(Qt::UserRole + 2, client.autoStart);
+  itemType->setData(Qt::UserRole + 3, running);
+  itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
+
+  auto* itemId = new QTableWidgetItem(id);
+  auto* itemStatus = new QTableWidgetItem(FormatClientStatus(running, static_cast<int>(pid)));
+  auto* itemAutostart = new QTableWidgetItem(client.autoStart ? ControlPage::tr("Enabled")
+                                                              : ControlPage::tr("Disabled"));
+
+  table->setItem(row, 0, itemType);
+  table->setItem(row, 1, itemId);
+  table->setItem(row, 2, itemStatus);
+  table->setItem(row, 3, itemAutostart);
+
+  if (id == selected_id) {
+    table->selectRow(row);
+  }
+}
+
+bool UpdateClientAutostart(CoreConfig& config, std::string_view client_id, std::string_view kind,
+                           bool checked) {
+  auto& list = (kind == "trigger") ? config.triggers : config.receivers;
+  for (auto& client : list) {
+    if (client.id == client_id) {
+      client.autoStart = checked;
+      return true;
+    }
+  }
+  return false;
+}
+
 } // namespace
 
 ControlPage::ControlPage(QWidget* parent)
     : QWidget(parent), comboDevice_(new QComboBox()), spinInputGain_(new QDoubleSpinBox()),
       spinDuckVolume_(new QSpinBox()), listAsrProviders_(new QListWidget()),
-      daemonRefreshTimer_(new QTimer(this)) {
+      tableClients_(new QTableWidget(this)), daemonRefreshTimer_(new QTimer(this)) {
   auto* layout = new QVBoxLayout(this);
 
   // Audio section: capture device + audio processing knobs.
@@ -206,6 +375,58 @@ ControlPage::ControlPage(QWidget* parent)
 
   layout->addSpacing(20);
 
+  // Client Processes section
+  auto* clientFrame = new QFrame();
+  clientFrame->setFrameShape(QFrame::StyledPanel);
+  auto* clientLayout = new QVBoxLayout(clientFrame);
+
+  auto* clientTitle = new QLabel(tr("<b>Client Processes</b>"));
+  clientLayout->addWidget(clientTitle);
+
+  auto* clientContentLayout = new QHBoxLayout();
+
+  tableClients_->setColumnCount(4);
+  tableClients_->setHorizontalHeaderLabels({tr("Type"), tr("ID"), tr("Status"), tr("Autostart")});
+  tableClients_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  tableClients_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  tableClients_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  tableClients_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+  tableClients_->horizontalHeader()->setStretchLastSection(false);
+  tableClients_->verticalHeader()->setVisible(false);
+  tableClients_->setSelectionBehavior(QAbstractItemView::SelectRows);
+  tableClients_->setSelectionMode(QAbstractItemView::SingleSelection);
+  tableClients_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  tableClients_->setMinimumHeight(100);
+  tableClients_->setMaximumHeight(160);
+
+  clientContentLayout->addWidget(tableClients_);
+
+  auto* clientBtnLayout = new QVBoxLayout();
+  btnClientStart_ = new QPushButton(tr("Start"));
+  btnClientStop_ = new QPushButton(tr("Stop"));
+  chkClientAutoStart_ = new QCheckBox(tr("Start with daemon"));
+  chkClientAutoStart_->setToolTip(tr("Automatically start this client when the daemon starts."));
+
+  btnClientStart_->setEnabled(false);
+  btnClientStop_->setEnabled(false);
+  chkClientAutoStart_->setEnabled(false);
+
+  clientBtnLayout->addWidget(btnClientStart_);
+  clientBtnLayout->addWidget(btnClientStop_);
+  clientBtnLayout->addWidget(chkClientAutoStart_);
+  clientBtnLayout->addStretch();
+  clientContentLayout->addLayout(clientBtnLayout);
+  clientLayout->addLayout(clientContentLayout);
+  layout->addWidget(clientFrame);
+
+  connect(btnClientStart_, &QPushButton::clicked, this, &ControlPage::onClientStart);
+  connect(btnClientStop_, &QPushButton::clicked, this, &ControlPage::onClientStop);
+  connect(chkClientAutoStart_, &QCheckBox::toggled, this, &ControlPage::onClientAutoStartToggled);
+  connect(tableClients_, &QTableWidget::itemSelectionChanged, this,
+          &ControlPage::updateClientButtons);
+
+  layout->addSpacing(20);
+
   // Daemon section
   auto* daemonFrame = new QFrame();
   daemonFrame->setFrameShape(QFrame::StyledPanel);
@@ -276,6 +497,7 @@ void ControlPage::reload() {
   }
 
   refreshAsrList();
+  populateClientList();
 }
 
 QString ControlPage::currentDevice() const {
@@ -322,15 +544,19 @@ void ControlPage::refreshAsrList() {
 
 void ControlPage::populateAsrList(const CoreConfig& config,
                                   const vinput::dbus::AsrBackendState* backend_state) {
-  const QString selected_id = QString::fromStdString(config.asr.activeProvider);
-  const QString effective_id = (backend_state != nullptr)
-                                   ? QString::fromStdString(backend_state->effective_provider_id)
-                                   : QString{};
-  const QString target_id = (backend_state != nullptr)
-                                ? QString::fromStdString(backend_state->target_provider_id)
-                                : QString{};
-  const bool reload_in_progress = (backend_state != nullptr) && backend_state->reload_in_progress;
-  const bool reload_failed = (backend_state != nullptr) && !backend_state->last_error.empty();
+  const AsrDisplayContext ctx{
+      .selected_id = QString::fromStdString(config.asr.activeProvider),
+      .effective_id = (backend_state != nullptr)
+                          ? QString::fromStdString(backend_state->effective_provider_id)
+                          : QString{},
+      .target_id = (backend_state != nullptr)
+                       ? QString::fromStdString(backend_state->target_provider_id)
+                       : QString{},
+      .reload_in_progress = (backend_state != nullptr) && backend_state->reload_in_progress,
+      .reload_failed = (backend_state != nullptr) && !backend_state->last_error.empty(),
+      .backend_state = backend_state,
+      .i18n_map = I18nCache::Get().GetMap(),
+  };
 
   const QString current_selection =
       (listAsrProviders_->currentItem() != nullptr)
@@ -338,7 +564,6 @@ void ControlPage::populateAsrList(const CoreConfig& config,
           : QString{};
 
   listAsrProviders_->clear();
-  auto i18n_map = I18nCache::Get().GetMap();
 
   for (const auto& provider : config.asr.providers) {
 #if !VINPUT_ENABLE_LOCAL_ASR
@@ -348,47 +573,10 @@ void ControlPage::populateAsrList(const CoreConfig& config,
 #endif
     const QString id = QString::fromStdString(AsrProviderId(provider));
     const QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
-
     const std::string id_str = id.toStdString();
-    const QString title =
-        QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id_str + ".title", id_str));
-
-    QString display = title + " [" + type + "]";
-    if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
-      QString model = QString::fromStdString(local->model);
-      if (!model.isEmpty()) {
-        model = QString::fromStdString(
-            vinput::registry::LookupI18n(i18n_map, local->model + ".title", local->model));
-      }
-      display += " · " + (model.isEmpty() ? tr("(not set)") : model);
-    } else if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
-      display += " · " + QString::fromStdString(command->command);
-    }
-
-    QList<QString> markers;
-    if (id == selected_id) {
-      markers << tr("configured");
-    }
-    if (id == effective_id) {
-      markers << tr("effective");
-    }
-    if (reload_in_progress && id == target_id && id != effective_id) {
-      markers << tr("loading");
-    }
-    if (reload_failed && id == target_id) {
-      markers << tr("reload failed");
-    }
-    if (!markers.isEmpty()) {
-      display += " · " + markers.join(", ");
-    }
-    if (id == effective_id && (backend_state != nullptr) &&
-        !backend_state->remote_endpoints.empty()) {
-      QList<QString> urls;
-      for (const auto& endpoint : backend_state->remote_endpoints) {
-        urls << QString::fromStdString(endpoint);
-      }
-      display += " · " + urls.join(" / ");
-    }
+    const QString title = QString::fromStdString(
+        vinput::registry::LookupI18n(ctx.i18n_map, id_str + ".title", id_str));
+    const QString display = BuildProviderDisplay(provider, ctx);
 
     auto* item = new QListWidgetItem(display, listAsrProviders_);
     item->setData(Qt::UserRole, id);
@@ -410,6 +598,148 @@ void ControlPage::updateAsrButtons() {
   const bool is_local = item->data(Qt::UserRole + 1).toString() == "local";
   btnAsrEdit_->setEnabled(!is_local);
   btnAsrSetActive_->setEnabled(true);
+}
+
+void ControlPage::populateClientList() {
+  const QString selected_id =
+      (tableClients_->currentRow() >= 0 &&
+       tableClients_->item(tableClients_->currentRow(), 0) != nullptr)
+          ? tableClients_->item(tableClients_->currentRow(), 0)->data(Qt::UserRole).toString()
+          : QString{};
+
+  tableClients_->setRowCount(0);
+  const CoreConfig config = ConfigManager::Get().Load();
+
+  for (const auto& trigger : config.triggers) {
+    AppendClientRow(tableClients_, trigger, true, selected_id);
+  }
+  for (const auto& receiver : config.receivers) {
+    AppendClientRow(tableClients_, receiver, false, selected_id);
+  }
+
+  updateClientButtons();
+}
+
+void ControlPage::refreshClientStatuses() {
+  const int count = tableClients_->rowCount();
+  for (int row = 0; row < count; ++row) {
+    auto* itemType = tableClients_->item(row, 0);
+    auto* itemStatus = tableClients_->item(row, 2);
+    if (itemType == nullptr || itemStatus == nullptr) {
+      continue;
+    }
+    const QString id = itemType->data(Qt::UserRole).toString();
+    const auto pid = vinput::client::GetPid(id.toStdString());
+    const bool running = (pid > 0);
+
+    itemType->setData(Qt::UserRole + 3, running);
+    itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
+    itemStatus->setText(FormatClientStatus(running, static_cast<int>(pid)));
+  }
+  updateClientButtons();
+}
+
+std::optional<ControlPage::SelectedClient> ControlPage::selectedClient() const {
+  if (tableClients_->selectionModel() == nullptr ||
+      tableClients_->selectionModel()->selectedRows().isEmpty()) {
+    return std::nullopt;
+  }
+  const int row = tableClients_->currentRow();
+  if (row < 0) {
+    return std::nullopt;
+  }
+  auto* item = tableClients_->item(row, 0);
+  if (item == nullptr) {
+    return std::nullopt;
+  }
+  return SelectedClient{
+      .row = row,
+      .id = item->data(Qt::UserRole).toString().toStdString(),
+      .kind = item->data(Qt::UserRole + 1).toString().toStdString(),
+      .auto_start = item->data(Qt::UserRole + 2).toBool(),
+      .is_running = item->data(Qt::UserRole + 3).toBool(),
+  };
+}
+
+void ControlPage::updateClientButtons() {
+  const auto client = selectedClient();
+  if (!client.has_value()) {
+    btnClientStart_->setEnabled(false);
+    btnClientStop_->setEnabled(false);
+    chkClientAutoStart_->setEnabled(false);
+    updatingClientSelection_ = true;
+    chkClientAutoStart_->setChecked(false);
+    updatingClientSelection_ = false;
+    return;
+  }
+  const bool is_pending = pendingClientIds_.contains(client->id);
+  btnClientStart_->setEnabled(!is_pending && !client->is_running);
+  btnClientStop_->setEnabled(!is_pending && client->is_running);
+  chkClientAutoStart_->setEnabled(true);
+  updatingClientSelection_ = true;
+  chkClientAutoStart_->setChecked(client->auto_start);
+  updatingClientSelection_ = false;
+}
+
+void ControlPage::executeClientAction(bool start) {
+  const auto client = selectedClient();
+  if (!client.has_value() || pendingClientIds_.contains(client->id)) {
+    return;
+  }
+  pendingClientIds_.insert(client->id);
+  btnClientStart_->setEnabled(false);
+  btnClientStop_->setEnabled(false);
+
+  RunClientActionAsync(
+      this, client->id, start,
+      [this, client_id = client->id](bool ok, const std::string& err, bool is_start) {
+        pendingClientIds_.erase(client_id);
+        if (!ok) {
+          const QString msg =
+              is_start ? tr("Failed to start client: %1") : tr("Failed to stop client: %1");
+          QMessageBox::warning(this, tr("Warning"), msg.arg(QString::fromStdString(err)));
+        }
+        refreshClientStatuses();
+      });
+}
+
+void ControlPage::onClientStart() {
+  executeClientAction(true);
+}
+
+void ControlPage::onClientStop() {
+  executeClientAction(false);
+}
+
+void ControlPage::onClientAutoStartToggled(bool checked) {
+  if (updatingClientSelection_) {
+    return;
+  }
+  const auto client = selectedClient();
+  if (!client.has_value()) {
+    return;
+  }
+
+  CoreConfig config = ConfigManager::Get().Load();
+  if (!UpdateClientAutostart(config, client->id, client->kind, checked)) {
+    return;
+  }
+
+  if (!ConfigManager::Get().Save(config)) {
+    updatingClientSelection_ = true;
+    chkClientAutoStart_->setChecked(client->auto_start);
+    updatingClientSelection_ = false;
+    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
+    return;
+  }
+
+  if (auto* item = tableClients_->item(client->row, 0)) {
+    item->setData(Qt::UserRole + 2, checked);
+  }
+  if (auto* autostartItem = tableClients_->item(client->row, 3)) {
+    autostartItem->setText(checked ? tr("Enabled") : tr("Disabled"));
+  }
+  emit configChanged();
 }
 
 void ControlPage::onAsrEdit() {
@@ -513,6 +843,8 @@ void ControlPage::onAsrSetActive() {
 }
 
 void ControlPage::refreshDaemonStatus() {
+  refreshClientStatuses();
+
   vinput::cli::DbusClient dbus;
   std::string err;
   if (!dbus.IsDaemonRunning(&err)) {
