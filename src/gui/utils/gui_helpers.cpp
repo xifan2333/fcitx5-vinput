@@ -27,6 +27,7 @@
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qspinbox.h>
 #include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qtextedit.h>
 #include <QtWidgets/qwidget.h>
@@ -358,16 +359,60 @@ void ApplyProviderModelFetchError(QComboBox* comboModel, const QString& error) {
   comboModel->setProperty("vinput_desired_model", QString());
 }
 
+void SetModelPlaceholder(QComboBox* comboModel, const QString& text) {
+  if (auto* lineEdit = comboModel->lineEdit()) {
+    lineEdit->setPlaceholderText(text);
+  }
+}
+
+void HandleModelsReply(QComboBox* comboModel, QNetworkReply* reply, const QString& cacheKey,
+                       int generation, const std::string& provider_id,
+                       QHash<QString, QStringList>& cache) {
+  const bool stale =
+      comboModel->property("vinput_provider_fetch_generation").toInt() != generation ||
+      comboModel->property("vinput_provider_fetch_key").toString() != cacheKey;
+
+  QStringList models;
+  QString error;
+  const bool success = (reply->error() == QNetworkReply::NoError) &&
+                       ParseOpenAiModelsResponse(reply->readAll(), &models, &error);
+  if (!success && error.isEmpty()) {
+    error = reply->errorString();
+  }
+
+  if (!stale) {
+    if (success) {
+      cache.insert(cacheKey, models);
+      SaveProviderModels(provider_id, models);
+      ApplyFetchedProviderModels(comboModel, models);
+    } else {
+      ApplyProviderModelFetchError(comboModel, error);
+    }
+  }
+
+  reply->deleteLater();
+  reply->manager()->deleteLater();
+}
+
+void InvalidatePendingModelFetch(QComboBox* comboModel) {
+  const int generation = comboModel->property("vinput_provider_fetch_generation").toInt() + 1;
+  comboModel->setProperty("vinput_provider_fetch_generation", generation);
+  comboModel->setProperty("vinput_provider_fetch_key", QString());
+}
+
 void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* comboModel) {
   static QHash<QString, QStringList> cache;
 
   if (provider.base_url.isEmpty()) {
+    InvalidatePendingModelFetch(comboModel);
     comboModel->setEnabled(true);
     comboModel->clear();
-    comboModel->setToolTip(QString());
-    if (auto* lineEdit = comboModel->lineEdit()) {
-      lineEdit->setPlaceholderText(QString());
+    const QString desired = comboModel->property("vinput_desired_model").toString();
+    if (!desired.isEmpty()) {
+      comboModel->setEditText(desired);
     }
+    comboModel->setToolTip(QString());
+    SetModelPlaceholder(comboModel, QString());
     return;
   }
 
@@ -384,44 +429,17 @@ void FetchModelsFromProviderAsync(const ProviderInfo& provider, QComboBox* combo
   comboModel->setEnabled(false);
   comboModel->clear();
   comboModel->setToolTip(QString());
-  if (auto* lineEdit = comboModel->lineEdit()) {
-    lineEdit->setPlaceholderText(GuiHelpers::tr("Loading models..."));
-  }
+  SetModelPlaceholder(comboModel, GuiHelpers::tr("Loading models..."));
 
   auto* nam = new QNetworkAccessManager(comboModel);
   QNetworkReply* reply = StartOpenAiModelsRequest(nam, provider.base_url.toStdString(),
                                                   provider.api_key.trimmed().toStdString(),
                                                   vinput::llm::kModelFetchTimeoutMs);
 
-  QObject::connect(
-      reply, &QNetworkReply::finished, comboModel,
-      [comboModel, reply, cacheKey, generation, provider_id = provider.id.toStdString()]() {
-        const bool stale =
-            comboModel->property("vinput_provider_fetch_generation").toInt() != generation ||
-            comboModel->property("vinput_provider_fetch_key").toString() != cacheKey;
-
-        QStringList models;
-        QString error;
-        bool success = false;
-        if (reply->error() == QNetworkReply::NoError) {
-          success = ParseOpenAiModelsResponse(reply->readAll(), &models, &error);
-        } else {
-          error = reply->errorString();
-        }
-
-        if (!stale) {
-          if (success) {
-            cache.insert(cacheKey, models);
-            SaveProviderModels(provider_id, models);
-            ApplyFetchedProviderModels(comboModel, models);
-          } else {
-            ApplyProviderModelFetchError(comboModel, error);
-          }
-        }
-
-        reply->deleteLater();
-        reply->manager()->deleteLater();
-      });
+  QObject::connect(reply, &QNetworkReply::finished, comboModel,
+                   [comboModel, reply, cacheKey, generation, pid = provider.id.toStdString()]() {
+                     HandleModelsReply(comboModel, reply, cacheKey, generation, pid, cache);
+                   });
 }
 
 // Load LLM providers from CLI -> NO, from config now.
@@ -440,46 +458,112 @@ QList<ProviderInfo> LoadLlmProviders() {
   return providers;
 }
 
+void ApplyProviderSelectionState(QComboBox* comboProvider, QComboBox* comboModel,
+                                 QSpinBox* spinContextLines, const QList<ProviderInfo>& providers) {
+  const int idx = comboProvider->currentIndex();
+  const auto kind =
+      static_cast<ProviderEntryKind>(comboProvider->itemData(idx, Qt::UserRole + 1).toInt());
+  const QString selected_id = comboProvider->itemData(idx, Qt::UserRole).toString();
+
+  if (kind == ProviderEntryKind::Adapter) {
+    InvalidatePendingModelFetch(comboModel);
+    comboModel->setEnabled(false);
+    comboModel->clear();
+    comboModel->setToolTip(GuiHelpers::tr("Not applicable for command adapters"));
+    SetModelPlaceholder(comboModel, GuiHelpers::tr("(Adapter does not require model)"));
+    if (spinContextLines != nullptr) {
+      spinContextLines->setEnabled(false);
+    }
+    return;
+  }
+
+  if (kind == ProviderEntryKind::None || selected_id.isEmpty()) {
+    InvalidatePendingModelFetch(comboModel);
+    comboModel->setEnabled(false);
+    comboModel->clear();
+    comboModel->setToolTip(QString());
+    SetModelPlaceholder(comboModel, GuiHelpers::tr("(Select a provider first)"));
+    if (spinContextLines != nullptr) {
+      spinContextLines->setEnabled(true);
+    }
+    return;
+  }
+
+  comboModel->setEnabled(true);
+  SetModelPlaceholder(comboModel, QString());
+  if (spinContextLines != nullptr) {
+    spinContextLines->setEnabled(true);
+  }
+
+  const auto it =
+      std::ranges::find_if(providers, [&](const auto& p) { return p.id == selected_id; });
+  if (it != providers.end()) {
+    FetchModelsFromProviderAsync(*it, comboModel);
+  }
+}
+
+int FindMatchingProviderIndex(QComboBox* comboProvider, const QString& provider_id,
+                              const QString& model) {
+  int match_idx = -1;
+  for (int i = 0; i < comboProvider->count(); ++i) {
+    if (comboProvider->itemData(i, Qt::UserRole).toString() != provider_id) {
+      continue;
+    }
+    const auto kind =
+        static_cast<ProviderEntryKind>(comboProvider->itemData(i, Qt::UserRole + 1).toInt());
+    if (model.isEmpty() && kind == ProviderEntryKind::Adapter) {
+      return i;
+    }
+    if (!model.isEmpty() && kind == ProviderEntryKind::Llm) {
+      return i;
+    }
+    if (match_idx < 0) {
+      match_idx = i;
+    }
+  }
+  return match_idx;
+}
+
 } // namespace
 
 void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
-                              const QString& currentProvider, const QString& currentModel) {
+                              const QString& currentProvider, const QString& currentModel,
+                              QSpinBox* spinContextLines) {
   comboProvider->clear();
-  comboProvider->addItem(QString()); // empty = inherit / none
+  comboProvider->addItem(QString(), QString());
+  comboProvider->setItemData(0, static_cast<int>(ProviderEntryKind::None), Qt::UserRole + 1);
 
   const auto providers = LoadLlmProviders();
   for (const auto& p : providers) {
-    comboProvider->addItem(p.id);
+    comboProvider->addItem(QString("[LLM] %1").arg(p.id), p.id);
+    comboProvider->setItemData(comboProvider->count() - 1, static_cast<int>(ProviderEntryKind::Llm),
+                               Qt::UserRole + 1);
+  }
+
+  const CoreConfig config = ConfigManager::Get().Load();
+  for (const auto& a : config.llm.adapters) {
+    const QString id = QString::fromStdString(a.id);
+    comboProvider->addItem(QString("[%1] %2").arg(GuiHelpers::tr("Adapter"), id), id);
+    comboProvider->setItemData(comboProvider->count() - 1,
+                               static_cast<int>(ProviderEntryKind::Adapter), Qt::UserRole + 1);
   }
 
   comboModel->setEditable(true);
   comboModel->setProperty("vinput_desired_model", currentModel);
 
-  auto refreshModels = [comboModel, comboProvider, providers]() {
-    const QString selected = comboProvider->currentText();
-    if (selected.isEmpty()) {
-      comboModel->setEnabled(true);
-      comboModel->clear();
-      comboModel->setToolTip(QString());
-      if (auto* lineEdit = comboModel->lineEdit()) {
-        lineEdit->setPlaceholderText(QString());
-      }
-      return;
-    }
-    for (const auto& p : providers) {
-      if (p.id == selected) {
-        FetchModelsFromProviderAsync(p, comboModel);
-        break;
-      }
-    }
+  auto onActivated = [comboModel, comboProvider, spinContextLines, providers]() {
+    ApplyProviderSelectionState(comboProvider, comboModel, spinContextLines, providers);
   };
-
-  QObject::connect(comboProvider, &QComboBox::activated, comboProvider, refreshModels);
+  QObject::connect(comboProvider, &QComboBox::activated, comboProvider, onActivated);
 
   if (!currentProvider.isEmpty()) {
-    comboProvider->setCurrentText(currentProvider);
-    refreshModels();
+    const int idx = FindMatchingProviderIndex(comboProvider, currentProvider, currentModel);
+    if (idx >= 0) {
+      comboProvider->setCurrentIndex(idx);
+    }
   }
+
+  ApplyProviderSelectionState(comboProvider, comboModel, spinContextLines, providers);
 }
 
 } // namespace vinput::gui

@@ -5,6 +5,7 @@
 #include <variant>
 #include <vector>
 
+#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
 #include "common/scene/postprocess_scene.h"
@@ -266,6 +267,78 @@ void TestInfrastructureAndPassthrough() {
          "ModelBaseDir() must match DefaultModelBaseDir()");
 }
 
+void TestSceneValidation() {
+  std::string error;
+
+  // Case 1: valid adapter scene (has provider_id, empty model)
+  vinput::scene::Definition adapter_scene;
+  adapter_scene.id = "translate_adapter_scene";
+  adapter_scene.provider_id = "my-adapter";
+  adapter_scene.model.clear();
+  Expect(vinput::scene::ValidateDefinition(adapter_scene, &error),
+         "Scene with provider_id but empty model (adapter) must be valid");
+  Expect(error.empty(), "Error string must be empty for valid adapter scene");
+
+  // Case 2: valid LLM provider scene (has provider_id and model)
+  vinput::scene::Definition llm_scene;
+  llm_scene.id = "deepseek_scene";
+  llm_scene.provider_id = "deepseek";
+  llm_scene.model = "deepseek-chat";
+  Expect(vinput::scene::ValidateDefinition(llm_scene, &error),
+         "Scene with both provider_id and model must be valid");
+
+  // Case 3: valid raw/passthrough scene (empty provider_id and empty model)
+  vinput::scene::Definition raw_scene;
+  raw_scene.id = "raw_scene";
+  Expect(vinput::scene::ValidateDefinition(raw_scene, &error),
+         "Scene with neither provider_id nor model must be valid");
+
+  // Case 4: invalid scene (has model but empty provider_id)
+  vinput::scene::Definition invalid_scene;
+  invalid_scene.id = "invalid_scene";
+  invalid_scene.model = "gpt-4o";
+  Expect(!vinput::scene::ValidateDefinition(invalid_scene, &error),
+         "Scene with model but no provider_id must be invalid");
+  Expect(error == "Scene model cannot be configured without a provider.",
+         "Error message must specify model cannot be configured without a provider");
+
+  // Case 5: CoreConfig validation: LLM provider requires model, adapter permits empty model
+  CoreConfig cfg;
+  cfg.version = ">=2.4.0";
+  vinput::scene::Definition s_raw;
+  s_raw.id = std::string(vinput::scene::kRawSceneId);
+  cfg.scenes.definitions.push_back(s_raw);
+
+  vinput::scene::Definition s_cmd;
+  s_cmd.id = std::string(vinput::scene::kCommandSceneId);
+  cfg.scenes.definitions.push_back(s_cmd);
+
+  LlmProvider test_prov;
+  test_prov.id = "my-llm";
+  cfg.llm.providers.push_back(test_prov);
+
+  LlmAdapter test_adap;
+  test_adap.id = "my-adapter";
+  cfg.llm.adapters.push_back(test_adap);
+
+  // Valid with adapter and empty model
+  vinput::scene::Definition s_adapter;
+  s_adapter.id = "adapter_scene";
+  s_adapter.provider_id = "my-adapter";
+  cfg.scenes.definitions.push_back(s_adapter);
+  Expect(ValidateCoreConfig(cfg, &error), "CoreConfig with adapter and empty model must be valid");
+
+  // Invalid with LLM provider and empty model
+  vinput::scene::Definition s_llm;
+  s_llm.id = "llm_empty_model";
+  s_llm.provider_id = "my-llm";
+  cfg.scenes.definitions.push_back(s_llm);
+  Expect(!ValidateCoreConfig(cfg, &error),
+         "CoreConfig with LLM provider and empty model must be invalid");
+  Expect(error.find("Scene model must be configured for LLM providers") != std::string::npos,
+         "Error must reject empty model for LLM provider");
+}
+
 } // namespace
 
 int main() {
@@ -276,6 +349,7 @@ int main() {
   TestRegistryUrls();
   TestCommandScene();
   TestInfrastructureAndPassthrough();
+  TestSceneValidation();
 
   std::cout << "All test_core_config_view tests passed successfully!\n";
   return 0;
