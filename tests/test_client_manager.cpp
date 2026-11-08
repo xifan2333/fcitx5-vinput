@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -7,7 +8,9 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
 #include <thread>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 

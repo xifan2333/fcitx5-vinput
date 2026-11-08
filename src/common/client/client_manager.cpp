@@ -588,7 +588,9 @@ std::vector<vinput::dbus::ClientStatus> GetClientStatuses(const CoreConfig& conf
 
   for (const auto& [id, bridge] : reaped) {
     CleanupBridgeSource(bridge, SourceId(id));
-    RemovePidFile(id);
+    if (GetPid(id) <= 0) {
+      RemovePidFile(id);
+    }
   }
 
   return result;
