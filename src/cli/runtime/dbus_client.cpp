@@ -2,10 +2,13 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <sys/types.h>
 #include <systemd/sd-bus.h>
 #include <utility>
 #include <vector>
 
+#include "common/client/client_manager.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/runtime/runtime_defaults.h"
 
@@ -256,6 +259,29 @@ bool DbusClient::GetClientStatuses(std::vector<vinput::dbus::ClientStatus>* stat
     error->clear();
   }
   return true;
+}
+
+ClientStatusMap DbusClient::GetClientStatusesMap(std::string* error) {
+  ClientStatusMap map;
+  if (!IsDaemonRunning(error)) {
+    return map;
+  }
+  std::vector<vinput::dbus::ClientStatus> statuses;
+  if (GetClientStatuses(&statuses, error)) {
+    for (auto& s : statuses) {
+      map.emplace(s.id, std::move(s));
+    }
+  }
+  return map;
+}
+
+std::pair<bool, pid_t> ResolveClientRuntimeStatus(const ClientStatusMap& status_map,
+                                                  std::string_view client_id) {
+  if (const auto it = status_map.find(std::string(client_id)); it != status_map.end()) {
+    return {it->second.running, static_cast<pid_t>(it->second.pid)};
+  }
+  const auto pid = vinput::client::GetPid(client_id);
+  return {pid > 0, pid};
 }
 
 } // namespace vinput::cli
