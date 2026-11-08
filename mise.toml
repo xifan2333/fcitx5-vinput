@@ -8,6 +8,7 @@ shfmt = "latest"
 "github:ast-grep/ast-grep" = "latest"
 "github:crate-ci/typos" = "latest"
 "pipx:cmakelang" = "latest"
+"pipx:lizard" = "latest"
 "npm:prettier" = "latest"
 
 [env]
@@ -43,7 +44,19 @@ set -euo pipefail
 
 [tasks."check:dup"]
 description = "Analyze code duplication across src/ using jscpd"
-run = "jscpd src --reporters console"
+run = "jscpd --config .jscpd.json"
+
+[tasks."check:ast"]
+description = "Audit C++ AST structural anti-patterns via ast-grep"
+run = "ast-grep scan"
+
+[tasks."check:typos"]
+description = "Check spelling and identifier integrity via typos"
+run = "typos"
+
+[tasks."check:cmake"]
+description = "Check CMake listfiles formatting via cmake-format"
+run = "cmake-format --check CMakeLists.txt cmake/*.cmake data/CMakeLists.txt po/CMakeLists.txt src/**/CMakeLists.txt tests/CMakeLists.txt"
 
 [tasks."check:complexity"]
 description = "Audit C++ cyclomatic & cognitive complexity via lizard (CCN <= 15, CogC <= 15)"

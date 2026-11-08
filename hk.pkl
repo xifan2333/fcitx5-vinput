@@ -1,11 +1,17 @@
 amends "package://github.com/jdx/hk/releases/download/v2.0.0/hk@2.0.0#/Config.pkl"
 import "package://github.com/jdx/hk/releases/download/v2.0.0/hk@2.0.0#/Builtins.pkl"
 
-exclude = List("3rdparty/**")
+exclude = List("3rdparty/**", "build/**")
 
 local linters = new Mapping<String, Step> {
   ["clang-format"] = (Builtins.clang_format) {
     glob = List("src/**/*.cpp", "src/**/*.h", "tests/**/*.cpp", "tests/**/*.h")
+  }
+
+  ["cmake-format"] {
+    glob = List("**/CMakeLists.txt", "CMakeLists.txt", "cmake/**/*.cmake")
+    check = "cmake-format --check"
+    fix = "cmake-format -i"
   }
 
   ["ruff"] = Builtins.ruff
@@ -19,6 +25,11 @@ local linters = new Mapping<String, Step> {
     check = "python3 scripts/check-i18n.py"
   }
 
+  ["check-ast"] {
+    glob = List("src/**/*.cpp", "src/**/*.h")
+    check = "ast-grep scan"
+  }
+
   ["check-complexity"] {
     glob = List("src/**/*.cpp", "src/**/*.h")
     check = "bash scripts/check-complexity.sh"
@@ -26,7 +37,12 @@ local linters = new Mapping<String, Step> {
 
   ["check-dup"] {
     glob = List("src/**/*.cpp", "src/**/*.h")
-    check = "jscpd src --reporters console"
+    check = "jscpd --config .jscpd.json"
+  }
+
+  ["check-typos"] {
+    glob = List("src/**", "CMakeLists.txt", "cmake/**", "scripts/**")
+    check = "typos"
   }
 
   ["prettier"] = (Builtins.prettier) {
