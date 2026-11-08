@@ -29,6 +29,7 @@
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
+#include <QtCore/qstringlist.h>
 #include <QtCore/qtimer.h>
 #include <QtGui/qfontmetrics.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
@@ -379,6 +380,14 @@ ShowSceneDialog(QWidget* parent, const QString& title,
       RunFormDialog(parent, title, form, [&]() { ExtractSceneFormValues(w, &def); });
 
   if (!accepted) {
+    return std::nullopt;
+  }
+
+  const auto kind =
+      static_cast<ProviderEntryKind>(w.comboProvider->currentData(Qt::UserRole + 1).toInt());
+  if (kind == ProviderEntryKind::Llm && !def.provider_id.empty() && def.model.empty()) {
+    QMessageBox::warning(parent, LlmPage::tr("Error"),
+                         LlmPage::tr("Model must be specified when using an LLM provider."));
     return std::nullopt;
   }
 

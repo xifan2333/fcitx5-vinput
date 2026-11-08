@@ -5,6 +5,7 @@
 #include <variant>
 #include <vector>
 
+#include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
 #include "common/scene/postprocess_scene.h"
@@ -298,7 +299,31 @@ void TestSceneValidation() {
   invalid_scene.model = "gpt-4o";
   Expect(!vinput::scene::ValidateDefinition(invalid_scene, &error),
          "Scene with model but no provider_id must be invalid");
-  Expect(!error.empty(), "Error string must be set when model lacks provider_id");
+  Expect(error == "Scene model cannot be configured without a provider.",
+         "Error message must specify model cannot be configured without a provider");
+
+  // Case 5: CoreConfig validation: LLM provider requires model, adapter permits empty model
+  CoreConfig cfg;
+  cfg.version = ">=2.4.0";
+  cfg.scenes.definitions = {
+      vinput::scene::Definition{.id = std::string(vinput::scene::kRawSceneId)},
+      vinput::scene::Definition{.id = std::string(vinput::scene::kCommandSceneId)},
+  };
+  cfg.llm.providers.push_back(LlmProvider{.id = "my-llm"});
+  cfg.llm.adapters.push_back(LlmAdapter{.id = "my-adapter"});
+
+  // Valid with adapter and empty model
+  cfg.scenes.definitions.push_back(
+      vinput::scene::Definition{.id = "adapter_scene", .provider_id = "my-adapter", .model = ""});
+  Expect(ValidateCoreConfig(cfg, &error), "CoreConfig with adapter and empty model must be valid");
+
+  // Invalid with LLM provider and empty model
+  cfg.scenes.definitions.push_back(
+      vinput::scene::Definition{.id = "llm_empty_model", .provider_id = "my-llm", .model = ""});
+  Expect(!ValidateCoreConfig(cfg, &error),
+         "CoreConfig with LLM provider and empty model must be invalid");
+  Expect(error.find("Scene model must be configured for LLM providers") != std::string::npos,
+         "Error must reject empty model for LLM provider");
 }
 
 } // namespace

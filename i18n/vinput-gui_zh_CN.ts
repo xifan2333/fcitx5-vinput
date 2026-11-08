@@ -226,6 +226,10 @@
         <source>Adapter</source>
         <translation>适配器</translation>
     </message>
+    <message>
+        <source>(Select a provider first)</source>
+        <translation>(请先选择提供商)</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>
@@ -634,6 +638,10 @@
     <message>
         <source>Whether to request json_object format from the provider. Disable this for local models (e.g. Ollama) that do not support response_format.</source>
         <translation>是否向提供商请求 json_object 格式。对于不支持 response_format 的本地模型（如 Ollama）请关闭此项。</translation>
+    </message>
+    <message>
+        <source>Model must be specified when using an LLM provider.</source>
+        <translation>使用 LLM 提供商时必须指定模型。</translation>
     </message>
     <message>
         <location filename="../src/gui/pages/llm/llm_page.cpp" line="97"/>

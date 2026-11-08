@@ -12,6 +12,7 @@
 #include <QtWidgets/qwidget.h>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
@@ -33,7 +34,7 @@ struct ResourceVersionInfo;
 
 namespace vinput::gui {
 
-enum class ProviderEntryKind {
+enum class ProviderEntryKind : std::uint8_t {
   None = 0,
   Llm = 1,
   Adapter = 2,
