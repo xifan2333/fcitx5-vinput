@@ -10,6 +10,8 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unicodelib.h>
+#include <unicodelib_encodings.h>
 #include <utility>
 #include <vector>
 
@@ -221,6 +223,78 @@ template <typename T> inline std::optional<T> ParseInteger(std::string_view text
     return std::nullopt;
   }
   return parsed;
+}
+
+// =========================================================================
+// 8. Terminal Text & Escapes
+// =========================================================================
+
+// Strips terminal escape sequences (ANSI CSI/SGR styles and OSC 8 hyperlinks),
+// leaving only visible UTF-8 text.
+[[nodiscard]] inline std::string StripTerminalEscapes(std::string_view text) {
+  std::string visible;
+  visible.reserve(text.size());
+  std::string_view cur = text;
+
+  while (!cur.empty()) {
+    if (cur.starts_with("\033[")) {
+      // CSI / SGR: terminates at characters in ['@'..'~'] (0x40 - 0x7E)
+      size_t end_idx = 2;
+      while (end_idx < cur.size()) {
+        const auto ch = static_cast<unsigned char>(cur[end_idx]);
+        ++end_idx;
+        if (ch >= 0x40 && ch <= 0x7e) {
+          break;
+        }
+      }
+      cur.remove_prefix(end_idx);
+      continue;
+    }
+
+    if (cur.starts_with("\033]")) {
+      // OSC (e.g. OSC 8 hyperlink): terminates at BEL ('\a') or ST ("\033\\")
+      const auto bel_pos = cur.find('\a');
+      const auto st_pos = cur.find("\033\\");
+      const auto term_pos = std::min(bel_pos, st_pos);
+      if (term_pos != std::string_view::npos) {
+        cur.remove_prefix((term_pos == bel_pos) ? term_pos + 1 : term_pos + 2);
+      } else {
+        break;
+      }
+      continue;
+    }
+
+    visible.push_back(cur.front());
+    cur.remove_prefix(1);
+  }
+  return visible;
+}
+
+// Calculates visual display column width under Unicode UAX #11, correctly
+// discounting terminal escape sequences and measuring East Asian Wide (CJK) as 2.
+[[nodiscard]] inline int DisplayWidth(std::string_view text) {
+  const std::string visible = StripTerminalEscapes(text);
+  const auto u32 = unicode::utf8::decode(visible);
+  return unicode::width(u32, unicode::AmbiguousWidth::Narrow);
+}
+
+// Collapses runs of whitespace, carriage returns, newlines, and tabs into a single space.
+[[nodiscard]] inline std::string CollapseWhitespace(std::string_view text) {
+  std::string result;
+  result.reserve(text.size());
+  bool in_whitespace = false;
+  for (const char ch : text) {
+    if (std::isspace(static_cast<unsigned char>(ch)) != 0) {
+      if (!in_whitespace) {
+        result.push_back(' ');
+        in_whitespace = true;
+      }
+    } else {
+      result.push_back(ch);
+      in_whitespace = false;
+    }
+  }
+  return result;
 }
 
 } // namespace vinput::str

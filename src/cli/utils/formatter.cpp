@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "common/json/json_access.h"
+#include "common/utils/string_utils.h"
 
 #include "cli/utils/cli_context.h"
 
@@ -146,68 +147,6 @@ namespace vinput::cli {
 
 namespace {
 
-std::string FlattenCellText(std::string_view text) {
-  std::string result;
-  result.reserve(text.size());
-  bool in_whitespace = false;
-  for (const char ch : text) {
-    if (ch == '\r' || ch == '\n' || ch == '\t') {
-      if (!in_whitespace) {
-        result.push_back(' ');
-        in_whitespace = true;
-      }
-    } else {
-      result.push_back(ch);
-      in_whitespace = false;
-    }
-  }
-  return result;
-}
-
-// Matches an ANSI / OSC escape sequence starting at sv.
-// Returns the byte length of the matched escape sequence, or 0 if not an escape.
-size_t MatchTerminalEscape(std::string_view sv) noexcept {
-  if (sv.starts_with("\033[")) {
-    // CSI sequence: terminates at characters in ['@'..'~'] (0x40 - 0x7E)
-    for (size_t i = 2; i < sv.size(); ++i) {
-      const auto ch = static_cast<unsigned char>(sv[i]);
-      if (ch >= 0x40 && ch <= 0x7e) {
-        return i + 1;
-      }
-    }
-    return sv.size();
-  }
-
-  if (sv.starts_with("\033]")) {
-    // OSC sequence (e.g. OSC 8 hyperlink): terminates at BEL ('\a') or ST ("\033\\")
-    const auto bel_pos = sv.find('\a');
-    const auto st_pos = sv.find("\033\\");
-    const auto term_pos = std::min(bel_pos, st_pos);
-    if (term_pos != std::string_view::npos) {
-      return (term_pos == bel_pos) ? term_pos + 1 : term_pos + 2;
-    }
-    return sv.size();
-  }
-
-  return 0;
-}
-
-std::string StripInvisibleEscapes(std::string_view input) {
-  std::string visible;
-  visible.reserve(input.size());
-  std::string_view cur = input;
-
-  while (!cur.empty()) {
-    if (const auto esc_len = MatchTerminalEscape(cur); esc_len > 0) {
-      cur.remove_prefix(esc_len);
-    } else {
-      visible.push_back(cur.front());
-      cur.remove_prefix(1);
-    }
-  }
-  return visible;
-}
-
 bool HasUnclosedSgr(std::string_view cell) noexcept {
   const auto last_esc = cell.rfind("\033[");
   if (last_esc == std::string_view::npos) {
@@ -225,7 +164,7 @@ bool HasUnclosedOsc8(std::string_view cell) noexcept {
 }
 
 std::string SanitizeCell(std::string_view raw_text) {
-  std::string cell = FlattenCellText(raw_text);
+  std::string cell = vinput::str::CollapseWhitespace(raw_text);
   if (HasUnclosedOsc8(cell)) {
     cell += "\033]8;;\a";
   }
@@ -251,11 +190,10 @@ std::vector<int> ComputeColumnWidths(const std::vector<std::string>& headers,
 
 std::string FormatRow(const std::vector<std::string>& cells, const std::vector<int>& col_widths,
                       bool is_header, bool use_color) {
-  std::string line;
+  std::vector<std::string> formatted_cells;
+  formatted_cells.reserve(col_widths.size());
+
   for (size_t i = 0; i < col_widths.size(); ++i) {
-    if (i > 0) {
-      line += "  ";
-    }
     const std::string raw = (i < cells.size()) ? cells[i] : "";
     std::string cell = SanitizeCell(raw);
 
@@ -264,30 +202,27 @@ std::string FormatRow(const std::vector<std::string>& cells, const std::vector<i
     }
 
     if (is_header && use_color) {
-      line += "\033[1m" + cell + "\033[0m";
+      formatted_cells.push_back("\033[1m" + cell + "\033[0m");
     } else {
-      line += cell;
+      formatted_cells.push_back(std::move(cell));
     }
   }
-  return line;
+  return vinput::str::Join(formatted_cells, "  ");
 }
 
 } // namespace
 
 int MeasureVisibleWidth(std::string_view utf8_str) {
-  const std::string visible = StripInvisibleEscapes(FlattenCellText(utf8_str));
-  const auto u32 = unicode::utf8::decode(visible);
-  return unicode::width(u32, unicode::AmbiguousWidth::Narrow);
+  return vinput::str::DisplayWidth(utf8_str);
 }
 
 std::string PadCellToVisibleWidth(const std::string& cell, int target_width) {
-  std::string safe_cell = SanitizeCell(cell);
-  const int w = MeasureVisibleWidth(safe_cell);
+  const int w = MeasureVisibleWidth(cell);
   const int pad = target_width - w;
   if (pad <= 0) {
-    return safe_cell;
+    return cell;
   }
-  return safe_cell + std::string(static_cast<size_t>(pad), ' ');
+  return cell + std::string(static_cast<size_t>(pad), ' ');
 }
 
 std::string RenderTable(const std::vector<std::string>& headers,
@@ -297,13 +232,15 @@ std::string RenderTable(const std::vector<std::string>& headers,
   }
 
   const auto col_widths = ComputeColumnWidths(headers, rows);
-  std::string output = FormatRow(headers, col_widths, /*is_header=*/true, use_color) + '\n';
+  std::vector<std::string> lines;
+  lines.reserve(rows.size() + 1);
 
+  lines.push_back(FormatRow(headers, col_widths, /*is_header=*/true, use_color));
   for (const auto& row : rows) {
-    output += FormatRow(row, col_widths, /*is_header=*/false, use_color) + '\n';
+    lines.push_back(FormatRow(row, col_widths, /*is_header=*/false, use_color));
   }
 
-  return output;
+  return vinput::str::Join(lines, "\n") + '\n';
 }
 
 } // namespace vinput::cli
