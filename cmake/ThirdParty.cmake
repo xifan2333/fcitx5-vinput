@@ -74,13 +74,6 @@ target_include_directories(3rdparty_glaze SYSTEM INTERFACE
 )
 add_library(glaze::glaze ALIAS 3rdparty_glaze)
 
-# tabulate
-add_library(3rdparty_tabulate INTERFACE)
-target_include_directories(3rdparty_tabulate SYSTEM INTERFACE
-    ${CMAKE_SOURCE_DIR}/3rdparty/tabulate/include
-)
-add_library(tabulate::tabulate ALIAS 3rdparty_tabulate)
-
 # indicators
 add_library(3rdparty_indicators INTERFACE)
 target_include_directories(3rdparty_indicators SYSTEM INTERFACE

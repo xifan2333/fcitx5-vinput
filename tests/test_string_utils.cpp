@@ -259,6 +259,37 @@ void TestJoinKeyValue() {
   TEST_ASSERT(JoinKeyValue(pair_list, "&", "=") == "=val&key=");
 }
 
+void TestTerminalEscapesAndDisplayWidth() {
+  using vinput::str::CollapseWhitespace;
+  using vinput::str::DisplayWidth;
+  using vinput::str::FlattenLineBreaks;
+  using vinput::str::StripTerminalEscapes;
+
+  // FlattenLineBreaks: only flattens \r, \n, \t into single space, preserving intentional spaces
+  TEST_ASSERT(FlattenLineBreaks("").empty());
+  TEST_ASSERT(FlattenLineBreaks("hello world") == "hello world");
+  TEST_ASSERT(FlattenLineBreaks("  code   block  ") == "  code   block  ");
+  TEST_ASSERT(FlattenLineBreaks("Line 1\r\nLine 2\nLine 3\tTab") == "Line 1 Line 2 Line 3 Tab");
+
+  // CollapseWhitespace: folds all whitespace runs into single space
+  TEST_ASSERT(CollapseWhitespace("hello \t\r\n world") == "hello world");
+  TEST_ASSERT(CollapseWhitespace("\n\t a \r\n b \t\n").find("a b") != std::string::npos);
+
+  // StripTerminalEscapes: chunk-based stripping
+  const std::string colored = "\033[1;32mHello\033[0m";
+  TEST_ASSERT(StripTerminalEscapes(colored) == "Hello");
+
+  const std::string link = "\033]8;;https://example.com\aClick\033]8;;\a";
+  TEST_ASSERT(StripTerminalEscapes(link) == "Click");
+
+  // DisplayWidth
+  TEST_ASSERT(DisplayWidth("") == 0);
+  TEST_ASSERT(DisplayWidth("abc") == 3);
+  TEST_ASSERT(DisplayWidth("中文测试") == 8);
+  TEST_ASSERT(DisplayWidth(colored) == 5);
+  TEST_ASSERT(DisplayWidth(link) == 5);
+}
+
 } // namespace
 
 int main() {
@@ -272,5 +303,6 @@ int main() {
   TestRSplitOnce();
   TestJoin();
   TestJoinKeyValue();
+  TestTerminalEscapesAndDisplayWidth();
   return 0;
 }

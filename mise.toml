@@ -9,6 +9,7 @@ shfmt = "latest"
 # Pinned to CI's cpp-linter major version (clang-tidy 21, ubuntu-24.04).
 # Do not upgrade past 21.x without checking .github/workflows/ci.yml first.
 "pipx:clang-tidy" = "21.1.6"
+"pipx:lizard" = "latest"
 
 [env]
 _.file = ".env"
@@ -44,6 +45,10 @@ set -euo pipefail
 [tasks."check:dup"]
 description = "Analyze code duplication across src/ using jscpd"
 run = "jscpd src --reporters console"
+
+[tasks."check:complexity"]
+description = "Audit C++ cyclomatic & cognitive complexity via lizard (CCN <= 15, CogC <= 15)"
+run = "bash scripts/check-complexity.sh \"$@\""
 
 [tasks."check:tidy"]
 description = "Run clang-tidy on C++ files (default: changed vs origin/main; --all; --full for VINPUT_ENABLE_LOCAL_ASR paths)"

@@ -91,6 +91,11 @@ Read **[references/c-abi-boundaries.md](references/c-abi-boundaries.md)**
 - **Trigger**: When triaging review bot (CodeRabbit, Qodo) comments, handling C API callbacks, or planning C++20 refactoring.
 - **Core Standard**: Strict separation of the 6 canonical C ABI boundaries (PipeWire/SPA, sd-bus, libarchive, OpenSSL EVP, POSIX signal/poll, Fcitx5 addon factory) from pure C++20 business logic. Never modernize C ABI callbacks or raw arrays at these boundaries.
 
+### Branch: Enforcing Module Boundaries & Cognitive Complexity
+Read **[references/module-boundaries-and-complexity.md](references/module-boundaries-and-complexity.md)**
+- **Trigger**: When structuring new modules, abstracting shared utilities into `src/common/`, refactoring nested loops, or triaging cognitive complexity warnings.
+- **Core Standard**: Strict separation of generic infrastructure (`src/common/`) from business domain orchestration (`src/cli/`, `src/daemon/`, `src/addon/`, `src/gui/`). Hard ceiling of <= 15 cognitive complexity enforced by Clang-Tidy, with standard C++20 algorithms replacing manual loop steppers and intentional capacity reservation (`reserve()`) eliminating redundant heap allocations.
+
 ---
 
 ## 4. Upstream Pillar Grounding (Context7 Pointers)

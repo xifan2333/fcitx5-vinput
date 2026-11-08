@@ -26,7 +26,7 @@ Dependencies are governed by a strict binary boundary based on **runtime ABI pre
 | Tier | Policy & Role | Scope & Examples | Build & Packaging Standard |
 | :--- | :--- | :--- | :--- |
 | **Tier 1: System ABI & Shared Libraries (`*.so`)** | Host-only; never vendor. | `fcitx5`, `pipewire`, `libsystemd`, `qt6`, `openssl`, `libarchive`, `gettext` | 1. Declare distro package in `scripts/ci-install-build-deps.sh`, `packaging/`, and `flake.nix`;<br>2. CMake single-line `find_package(... REQUIRED)` or `pkg_check_modules(... REQUIRED)`. |
-| **Tier 2: Pure C++ Header-Only Libraries** | Self-contained in `3rdparty/`; never consume from host or `FetchContent`. | `fmt`, `spdlog`, `CLI11`, `httplib`, `glaze`, `tl-expected`, `mio`, `readerwriterqueue`, `subprocess`, `scope`, `tabulate`, `indicators`, `base64`, `unicodelib` | 1. Vendor pristine upstream snapshot under `3rdparty/<lib_name>/`;<br>2. Expose via `SYSTEM INTERFACE` in `CMakeLists.txt`;<br>3. Register license and version in `THIRD_PARTY_NOTICES.md`. |
+| **Tier 2: Pure C++ Header-Only Libraries** | Self-contained in `3rdparty/`; never consume from host or `FetchContent`. | `fmt`, `spdlog`, `CLI11`, `httplib`, `glaze`, `tl-expected`, `mio`, `readerwriterqueue`, `subprocess`, `scope`, `indicators`, `base64`, `unicodelib` | 1. Vendor pristine upstream snapshot under `3rdparty/<lib_name>/`;<br>2. Expose via `SYSTEM INTERFACE` in `CMakeLists.txt`;<br>3. Register license and version in `THIRD_PARTY_NOTICES.md`. |
 
 ### Rationale for Self-Contained Header-Only Policy
 

@@ -63,25 +63,19 @@ This file lists third-party software that this project depends on or bundles, an
    - Upstream: https://github.com/stephenberry/glaze
    - Version: v2.9.5 (commit 7c298ef6c403c505cf6291b686e32d943f1fb102, imported 2026-10-21, vendored in `3rdparty/glaze/`)
 
-8. **p-ranav/tabulate** (`3rdparty/tabulate/`)
-   - Description: Header-only C++17 library for pretty-printing tables in the terminal, with native CJK wide-character alignment and ANSI escape awareness.
-   - License: MIT
-   - Upstream: https://github.com/p-ranav/tabulate
-   - Version: v2.2 (imported 2026-10-21, vendored in `3rdparty/tabulate/`)
-
-9. **p-ranav/indicators** (`3rdparty/indicators/`)
+8. **p-ranav/indicators** (`3rdparty/indicators/`)
    - Description: Header-only C++17 library for dynamic terminal progress bars and spinners.
    - License: MIT
    - Upstream: https://github.com/p-ranav/indicators
    - Version: v2.3 (imported 2026-10-21, vendored in `3rdparty/indicators/`)
 
-10. **TartanLlama/expected** (`3rdparty/tl-expected/`)
+9. **TartanLlama/expected** (`3rdparty/tl-expected/`)
     - Description: C++11/14/17/20/23 implementation of `std::expected` with monadic operations and functional extensions.
     - License: CC0-1.0 (Public Domain Dedication)
     - Upstream: https://github.com/TartanLlama/expected
     - Version: v1.3.1 (commit 1770e3559f2f6ea4a5fb4f577ad22aeb30fbd8e4, imported 2026-10-22, vendored in `3rdparty/tl-expected/`)
 
-11. **fmtlib/fmt** (`3rdparty/fmt/`)
+10. **fmtlib/fmt** (`3rdparty/fmt/`)
     - Description: Fast and safe formatting library for C++.
     - License: MIT
     - License text:
@@ -115,7 +109,7 @@ This file lists third-party software that this project depends on or bundles, an
     - Upstream: https://github.com/fmtlib/fmt
     - Version: v11.1.4 (imported 2026-11-02, vendored in `3rdparty/fmt/`)
 
-12. **gabime/spdlog** (`3rdparty/spdlog/`)
+11. **gabime/spdlog** (`3rdparty/spdlog/`)
     - Description: Fast C++ logging library.
     - License: MIT
     - License text:
@@ -143,7 +137,7 @@ This file lists third-party software that this project depends on or bundles, an
     - Upstream: https://github.com/gabime/spdlog
     - Version: v1.15.1 (imported 2026-11-03, vendored in `3rdparty/spdlog/`)
 
-13. **CLIUtils/CLI11** (`3rdparty/cli11/`)
+12. **CLIUtils/CLI11** (`3rdparty/cli11/`)
     - Description: Command line parser for C++11 and beyond.
     - License: BSD-3-Clause
     - License text:
@@ -175,7 +169,7 @@ This file lists third-party software that this project depends on or bundles, an
     - Upstream: https://github.com/CLIUtils/CLI11
     - Version: v2.4.2 (commit 6c7b07a878ad834957b98d0f9ce1dbe0cb204fc9, imported 2026-11-04, vendored in `3rdparty/cli11/`)
 
-14. **yhirose/cpp-httplib** (`3rdparty/httplib/`)
+13. **yhirose/cpp-httplib** (`3rdparty/httplib/`)
     - Description: A C++11 single-file header-only cross-platform HTTP/HTTPS and WebSocket library.
     - License: MIT
     - License text:

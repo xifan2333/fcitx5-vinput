@@ -19,6 +19,16 @@ local linters = new Mapping<String, Step> {
     check = "python3 scripts/check-i18n.py"
   }
 
+  ["check-complexity"] {
+    glob = List("src/**/*.cpp", "src/**/*.h")
+    check = "bash scripts/check-complexity.sh"
+  }
+
+  ["check-dup"] {
+    glob = List("src/**/*.cpp", "src/**/*.h")
+    check = "jscpd src --reporters console"
+  }
+
   ["prettier"] = (Builtins.prettier) {
     glob = List("**/*.json")
     exclude = List("site/package-lock.json")
