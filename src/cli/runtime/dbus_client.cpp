@@ -95,7 +95,7 @@ bool CallDaemonVoid(sd_bus* bus, const char* member, std::string* error) {
 
 bool CallDaemonStringArg(sd_bus* bus, const char* member, const std::string& arg,
                          std::string* error) {
-  return CallDaemonMethod(bus_, member, nullptr, error, "s", arg.c_str());
+  return CallDaemonMethod(bus, member, nullptr, error, "s", arg.c_str());
 }
 
 std::string SafeString(const char* str) {
@@ -112,6 +112,55 @@ std::vector<std::string> ReadStringArray(sd_bus_message* msg) {
     sd_bus_message_exit_container(msg);
   }
   return result;
+}
+
+bool ReadClientStatusEntry(sd_bus_message* msg, vinput::dbus::ClientStatus& item) {
+  const char* id = nullptr;
+  int running = 0;
+  int64_t pid = -1;
+  if (sd_bus_message_read(msg, "sbx", &id, &running, &pid) < 0) {
+    return false;
+  }
+  item.id = SafeString(id);
+  item.running = (running != 0);
+  item.pid = pid;
+  return true;
+}
+
+bool ReadClientStatusArray(sd_bus_message* msg, std::vector<vinput::dbus::ClientStatus>& statuses,
+                           std::string* error) {
+  if (sd_bus_message_enter_container(msg, 'a', "(sbx)") <= 0) {
+    if (error != nullptr) {
+      *error = "failed to enter client status array";
+    }
+    return false;
+  }
+
+  int r = 0;
+  while ((r = sd_bus_message_enter_container(msg, 'r', "sbx")) > 0) {
+    vinput::dbus::ClientStatus item;
+    const bool ok = ReadClientStatusEntry(msg, item);
+    sd_bus_message_exit_container(msg);
+    if (!ok) {
+      statuses.clear();
+      sd_bus_message_exit_container(msg);
+      if (error != nullptr) {
+        *error = "failed to read client status element";
+      }
+      return false;
+    }
+    statuses.push_back(std::move(item));
+  }
+  sd_bus_message_exit_container(msg);
+
+  if (r < 0) {
+    statuses.clear();
+    if (error != nullptr) {
+      *error = "failed to enter client status element";
+    }
+    return false;
+  }
+  return true;
 }
 
 } // namespace
@@ -233,27 +282,9 @@ bool DbusClient::GetClientStatuses(std::vector<vinput::dbus::ClientStatus>* stat
     return false;
   }
 
-  if (sd_bus_message_enter_container(reply.get(), 'a', "(sbx)") < 0) {
-    if (error != nullptr) {
-      *error = "failed to enter client status array";
-    }
+  if (!ReadClientStatusArray(reply.get(), *statuses, error)) {
     return false;
   }
-
-  while (sd_bus_message_enter_container(reply.get(), 'r', "sbx") > 0) {
-    const char* id = nullptr;
-    int running = 0;
-    int64_t pid = -1;
-    if (sd_bus_message_read(reply.get(), "sbx", &id, &running, &pid) >= 0) {
-      statuses->push_back({
-          .id = (id != nullptr) ? id : "",
-          .running = (running != 0),
-          .pid = pid,
-      });
-    }
-    sd_bus_message_exit_container(reply.get());
-  }
-  sd_bus_message_exit_container(reply.get());
 
   if (error != nullptr) {
     error->clear();

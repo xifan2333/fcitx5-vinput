@@ -26,6 +26,7 @@ extern "C" {
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
+#include "common/dbus/dbus_interface.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
@@ -208,7 +209,9 @@ void CommitTrackedSession(std::string_view client_id, vinput::process::ProcessSe
   auto& state = GetTrackedState();
   const std::scoped_lock lock(state.mutex);
   state.sessions.insert_or_assign(std::string(client_id), std::move(tracked));
-  state.pending.erase(client_id);
+  if (const auto it = state.pending.find(client_id); it != state.pending.end()) {
+    state.pending.erase(it);
+  }
 }
 
 bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge* bridge,
@@ -269,6 +272,53 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
     error->clear();
   }
   return true;
+}
+
+void StopTrackedSession(std::string_view client_id, std::unique_ptr<TrackedSession> to_stop,
+                        vinput::notify::NotificationBridge* bridge) {
+  to_stop->session.Cancel();
+  (void)to_stop->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
+  auto* b = bridge != nullptr ? bridge : to_stop->bridge;
+  if (b != nullptr) {
+    const std::string source_id = SourceId(client_id);
+    b->Flush(source_id);
+    b->RetireSource(source_id);
+  }
+  RemovePidFile(client_id);
+  VLOG_DEBUG("client stopped id={}", client_id);
+}
+
+bool HandleExternalProcessTermination(std::string_view client_id,
+                                      const vinput::process::TerminateResult& result,
+                                      std::string* error) {
+  const auto fail = [error](const std::string& message) {
+    if (error != nullptr) {
+      *error = message;
+    }
+    return false;
+  };
+  const std::string id(client_id);
+
+  switch (result.outcome) {
+  case vinput::process::TerminateOutcome::Exited:
+    RemovePidFile(client_id);
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  case vinput::process::TerminateOutcome::NotFound:
+    RemovePidFile(client_id);
+    return fail("client is not running: " + id);
+  case vinput::process::TerminateOutcome::StillRunning:
+    return fail("client did not exit after SIGKILL: " + id);
+  case vinput::process::TerminateOutcome::Unconfirmed:
+    return fail("could not confirm that client stopped: " + id);
+  case vinput::process::TerminateOutcome::Failed:
+    return fail((result.failed_signal == SIGKILL ? "failed to force-kill client "
+                                                 : "failed to signal client ") +
+                id + ": " + result.error);
+  }
+  return false;
 }
 
 } // namespace
@@ -391,53 +441,6 @@ bool Start(std::string_view client_id, vinput::notify::NotificationBridge* bridg
   return StartWithSpec(*client, bridge, std::move(on_command), error);
 }
 
-void StopTrackedSession(std::string_view client_id, std::unique_ptr<TrackedSession> to_stop,
-                        vinput::notify::NotificationBridge* bridge) {
-  to_stop->session.Cancel();
-  (void)to_stop->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
-  auto* b = bridge != nullptr ? bridge : to_stop->bridge;
-  if (b != nullptr) {
-    const std::string source_id = SourceId(client_id);
-    b->Flush(source_id);
-    b->RetireSource(source_id);
-  }
-  RemovePidFile(client_id);
-  VLOG_DEBUG("client stopped id={}", client_id);
-}
-
-bool HandleExternalProcessTermination(std::string_view client_id,
-                                      const vinput::process::TerminateResult& result,
-                                      std::string* error) {
-  const auto fail = [error](const std::string& message) {
-    if (error != nullptr) {
-      *error = message;
-    }
-    return false;
-  };
-  const std::string id(client_id);
-
-  switch (result.outcome) {
-  case vinput::process::TerminateOutcome::Exited:
-    RemovePidFile(client_id);
-    if (error != nullptr) {
-      error->clear();
-    }
-    return true;
-  case vinput::process::TerminateOutcome::NotFound:
-    RemovePidFile(client_id);
-    return fail("client is not running: " + id);
-  case vinput::process::TerminateOutcome::StillRunning:
-    return fail("client did not exit after SIGKILL: " + id);
-  case vinput::process::TerminateOutcome::Unconfirmed:
-    return fail("could not confirm that client stopped: " + id);
-  case vinput::process::TerminateOutcome::Failed:
-    return fail((result.failed_signal == SIGKILL ? "failed to force-kill client "
-                                                 : "failed to signal client ") +
-                id + ": " + result.error);
-  }
-  return false;
-}
-
 bool Stop(std::string_view client_id, std::string* error,
           vinput::notify::NotificationBridge* bridge) {
   std::unique_ptr<TrackedSession> to_stop;
@@ -553,20 +556,39 @@ std::vector<vinput::dbus::ClientStatus> GetClientStatuses(const CoreConfig& conf
   collect(config.triggers);
   collect(config.receivers);
 
+  std::vector<std::pair<std::string, vinput::notify::NotificationBridge*>> reaped;
   {
     auto& state = GetTrackedState();
     const std::scoped_lock lock(state.mutex);
-    for (const auto& [id, tracked] : state.sessions) {
+    for (auto it = state.sessions.begin(); it != state.sessions.end();) {
+      const auto& id = it->first;
+      auto& tracked = it->second;
       if (seen.contains(id)) {
+        ++it;
         continue;
       }
-      const bool alive = !tracked->session.HasExited();
-      result.push_back({
-          .id = id,
-          .running = alive,
-          .pid = alive ? static_cast<std::int64_t>(tracked->session.Pid()) : -1,
-      });
+      if (tracked->session.HasExited()) {
+        reaped.emplace_back(id, tracked->bridge);
+        result.push_back({
+            .id = id,
+            .running = false,
+            .pid = -1,
+        });
+        it = state.sessions.erase(it);
+      } else {
+        result.push_back({
+            .id = id,
+            .running = true,
+            .pid = static_cast<std::int64_t>(tracked->session.Pid()),
+        });
+        ++it;
+      }
     }
+  }
+
+  for (const auto& [id, bridge] : reaped) {
+    CleanupBridgeSource(bridge, SourceId(id));
+    RemovePidFile(id);
   }
 
   return result;

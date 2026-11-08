@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysymgen.h>
@@ -750,9 +752,9 @@ void VinputEngine::registerSceneCommand() {
   });
 }
 
-bool IsClientActive(VinputEngine& engine, const PaletteItem& item) {
+bool VinputEngine::isClientActive(const PaletteItem& item) const {
   std::vector<vinput::dbus::ClientStatus> statuses;
-  if (engine.callGetClientStatuses(&statuses)) {
+  if (callGetClientStatuses(&statuses)) {
     const auto it = std::ranges::find_if(statuses, [&](const auto& s) { return s.id == item.id; });
     if (it != statuses.end()) {
       return it->running;
@@ -762,7 +764,7 @@ bool IsClientActive(VinputEngine& engine, const PaletteItem& item) {
 }
 
 void VinputEngine::handleClientToggle(const PaletteItem& item) {
-  const bool is_running = IsClientActive(*this, item);
+  const bool is_running = isClientActive(item);
   std::string error;
   if (is_running) {
     if (!callStopClient(item.id, &error)) {
@@ -847,7 +849,7 @@ bool VinputEngine::callStopClient(const std::string& client_id, std::string* err
                      &client_id);
 }
 
-bool VinputEngine::callGetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses) {
+bool VinputEngine::callGetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses) const {
   if (statuses == nullptr || bus_ == nullptr || !daemonSyncAllowed()) {
     return false;
   }
@@ -855,8 +857,11 @@ bool VinputEngine::callGetClientStatuses(std::vector<vinput::dbus::ClientStatus>
       bus_->createMethodCall(vinput::dbus::kBusName, vinput::dbus::kObjectPath,
                              vinput::dbus::kInterface, vinput::dbus::kMethodGetClientStatuses);
   auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
-  if (!reply || reply.isError()) {
+  if (!reply) {
     noteDaemonSyncFailure();
+    return false;
+  }
+  if (reply.isError()) {
     return false;
   }
   clearDaemonSyncFailure();

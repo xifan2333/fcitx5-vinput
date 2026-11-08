@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <sys/poll.h>
+#include <vector>
 
 extern "C" {
 #include <signal.h>

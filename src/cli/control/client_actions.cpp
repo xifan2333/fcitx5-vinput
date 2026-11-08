@@ -9,7 +9,6 @@
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -160,6 +159,67 @@ int OnStatusChanged(sd_bus_message* m, void* userdata, sd_bus_error* /*ret_error
   return 0;
 }
 
+struct ListenSubscriptions {
+  sd_bus_slot* slot_partial = nullptr;
+  sd_bus_slot* slot_result = nullptr;
+  sd_bus_slot* slot_status = nullptr;
+
+  ~ListenSubscriptions() {
+    if (slot_partial != nullptr) {
+      sd_bus_slot_unref(slot_partial);
+    }
+    if (slot_result != nullptr) {
+      sd_bus_slot_unref(slot_result);
+    }
+    if (slot_status != nullptr) {
+      sd_bus_slot_unref(slot_status);
+    }
+  }
+
+  ListenSubscriptions() = default;
+  ListenSubscriptions(const ListenSubscriptions&) = delete;
+  ListenSubscriptions& operator=(const ListenSubscriptions&) = delete;
+  ListenSubscriptions(ListenSubscriptions&&) = delete;
+  ListenSubscriptions& operator=(ListenSubscriptions&&) = delete;
+};
+
+bool SubscribeSignals(sd_bus* bus, ListenContext& lctx, ListenSubscriptions& subs) {
+  int ret = 0;
+  if (lctx.type_filter == "all" || lctx.type_filter == "partial") {
+    ret = sd_bus_match_signal(bus, &subs.slot_partial, vinput::dbus::kBusName,
+                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
+                              vinput::dbus::kSignalRecognitionPartial, OnRecognitionPartial, &lctx);
+  }
+  if (ret >= 0 && (lctx.type_filter == "all" || lctx.type_filter == "committed")) {
+    ret = sd_bus_match_signal(bus, &subs.slot_result, vinput::dbus::kBusName,
+                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
+                              vinput::dbus::kSignalRecognitionResult, OnRecognitionResult, &lctx);
+  }
+  if (ret >= 0 && (lctx.type_filter == "all" || lctx.type_filter == "status")) {
+    ret = sd_bus_match_signal(bus, &subs.slot_status, vinput::dbus::kBusName,
+                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
+                              vinput::dbus::kSignalStatusChanged, OnStatusChanged, &lctx);
+  }
+  return ret >= 0;
+}
+
+int ProcessListenLoop(sd_bus* bus) {
+  while (!ListenInterrupted().load(std::memory_order_relaxed)) {
+    const int r = sd_bus_process(bus, nullptr);
+    if (r > 0) {
+      continue;
+    }
+    if (r < 0) {
+      return r;
+    }
+    const int w = sd_bus_wait(bus, 250000); // 250ms
+    if (w < 0 && w != -EINTR) {
+      return w;
+    }
+  }
+  return 0;
+}
+
 } // namespace
 
 int RunClientList(ClientKind kind, Formatter& fmt, const CliContext& ctx) {
@@ -237,70 +297,6 @@ int RunClientStop(ClientKind kind, const std::string& id, Formatter& fmt, const 
     fmt.PrintJson({{"ok", true}, {"id", id}, {"action", "stop"}});
   } else {
     fmt.PrintSuccess(::fmt::sprintf(_("Client '%s' stopped."), id));
-  }
-  return 0;
-}
-
-struct ListenSubscriptions {
-  sd_bus_slot* slot_partial = nullptr;
-  sd_bus_slot* slot_result = nullptr;
-  sd_bus_slot* slot_status = nullptr;
-
-  ~ListenSubscriptions() {
-    if (slot_partial != nullptr) {
-      sd_bus_slot_unref(slot_partial);
-    }
-    if (slot_result != nullptr) {
-      sd_bus_slot_unref(slot_result);
-    }
-    if (slot_status != nullptr) {
-      sd_bus_slot_unref(slot_status);
-    }
-  }
-
-  ListenSubscriptions() = default;
-  ListenSubscriptions(const ListenSubscriptions&) = delete;
-  ListenSubscriptions& operator=(const ListenSubscriptions&) = delete;
-  ListenSubscriptions(ListenSubscriptions&&) = delete;
-  ListenSubscriptions& operator=(ListenSubscriptions&&) = delete;
-};
-
-bool SubscribeSignals(sd_bus* bus, const ListenContext& lctx, ListenSubscriptions& subs) {
-  int ret = 0;
-  if (lctx.type_filter == "all" || lctx.type_filter == "partial") {
-    ret = sd_bus_match_signal(bus, &subs.slot_partial, vinput::dbus::kBusName,
-                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
-                              vinput::dbus::kSignalRecognitionPartial, OnRecognitionPartial,
-                              const_cast<ListenContext*>(&lctx));
-  }
-  if (ret >= 0 && (lctx.type_filter == "all" || lctx.type_filter == "committed")) {
-    ret = sd_bus_match_signal(bus, &subs.slot_result, vinput::dbus::kBusName,
-                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
-                              vinput::dbus::kSignalRecognitionResult, OnRecognitionResult,
-                              const_cast<ListenContext*>(&lctx));
-  }
-  if (ret >= 0 && (lctx.type_filter == "all" || lctx.type_filter == "status")) {
-    ret = sd_bus_match_signal(bus, &subs.slot_status, vinput::dbus::kBusName,
-                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
-                              vinput::dbus::kSignalStatusChanged, OnStatusChanged,
-                              const_cast<ListenContext*>(&lctx));
-  }
-  return ret >= 0;
-}
-
-int ProcessListenLoop(sd_bus* bus) {
-  while (!ListenInterrupted().load(std::memory_order_relaxed)) {
-    const int r = sd_bus_process(bus, nullptr);
-    if (r > 0) {
-      continue;
-    }
-    if (r < 0) {
-      return r;
-    }
-    const int w = sd_bus_wait(bus, 250000); // 250ms
-    if (w < 0 && w != -EINTR) {
-      return w;
-    }
   }
   return 0;
 }
