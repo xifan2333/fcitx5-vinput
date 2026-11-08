@@ -111,25 +111,25 @@ void TestRenderTableWithHyperlinkInMiddleColumn() {
   TEST_ASSERT(!rendered.empty());
 
   // Verify that both rows align properly after the middle column
-  size_t first_newline = rendered.find('\n');
+  const size_t first_newline = rendered.find('\n');
   TEST_ASSERT(first_newline != std::string::npos);
-  size_t second_newline = rendered.find('\n', first_newline + 1);
+  const size_t second_newline = rendered.find('\n', first_newline + 1);
   TEST_ASSERT(second_newline != std::string::npos);
 
-  std::string row1 = rendered.substr(first_newline + 1, second_newline - first_newline - 1);
+  const std::string row1 = rendered.substr(first_newline + 1, second_newline - first_newline - 1);
   std::string row2 = rendered.substr(second_newline + 1);
   if (!row2.empty() && row2.back() == '\n') {
     row2.pop_back();
   }
 
   // The substring preceding "运行中" and "已停止" should have identical visible width
-  size_t idx1 = row1.rfind("运行中");
-  size_t idx2 = row2.rfind("已停止");
+  const size_t idx1 = row1.rfind("运行中");
+  const size_t idx2 = row2.rfind("已停止");
   TEST_ASSERT(idx1 != std::string::npos);
   TEST_ASSERT(idx2 != std::string::npos);
 
-  std::string prefix1 = row1.substr(0, idx1);
-  std::string prefix2 = row2.substr(0, idx2);
+  const std::string prefix1 = row1.substr(0, idx1);
+  const std::string prefix2 = row2.substr(0, idx2);
   TEST_ASSERT(MeasureVisibleWidth(prefix1) == MeasureVisibleWidth(prefix2));
 }
 
@@ -138,7 +138,7 @@ void TestRenderTableWithNewlines() {
 
   const std::vector<std::string> headers = {"ID", "DESCRIPTION"};
   const std::vector<std::vector<std::string>> rows = {
-      {"item", "Line 1\nLine 2\r\nLine 3"},
+      {"item", "Line 1\nLine 2\r\nLine 3\tTab"},
   };
 
   const std::string rendered = RenderTable(headers, rows, /*use_color=*/false);
@@ -152,7 +152,22 @@ void TestRenderTableWithNewlines() {
     }
   }
   TEST_ASSERT(line_count == 2); // 1 header + 1 row
-  TEST_ASSERT(rendered.find("Line 1 Line 2 Line 3") != std::string::npos);
+  TEST_ASSERT(rendered.find("Line 1 Line 2 Line 3 Tab") != std::string::npos);
+}
+
+void TestRenderTableWithColor() {
+  using vinput::cli::RenderTable;
+
+  const std::vector<std::string> headers = {"ID", "STATUS"};
+  const std::vector<std::vector<std::string>> rows = {
+      {"item", "active"},
+  };
+
+  const std::string colored = RenderTable(headers, rows, /*use_color=*/true);
+  TEST_ASSERT(!colored.empty());
+  // Header line must contain bold escape sequence
+  TEST_ASSERT(colored.find("\033[1m") != std::string::npos);
+  TEST_ASSERT(colored.find("\033[0m") != std::string::npos);
 }
 
 } // namespace
@@ -165,6 +180,7 @@ int main() {
   TestRenderTable();
   TestRenderTableWithHyperlinkInMiddleColumn();
   TestRenderTableWithNewlines();
+  TestRenderTableWithColor();
   std::cout << "All formatter tests passed successfully.\n";
   return 0;
 }

@@ -149,16 +149,16 @@ namespace {
 std::string FlattenCellText(std::string_view text) {
   std::string result;
   result.reserve(text.size());
-  bool in_newline = false;
+  bool in_whitespace = false;
   for (const char ch : text) {
-    if (ch == '\r' || ch == '\n') {
-      if (!in_newline) {
+    if (ch == '\r' || ch == '\n' || ch == '\t') {
+      if (!in_whitespace) {
         result.push_back(' ');
-        in_newline = true;
+        in_whitespace = true;
       }
     } else {
       result.push_back(ch);
-      in_newline = false;
+      in_whitespace = false;
     }
   }
   return result;
@@ -216,6 +216,25 @@ bool HasUnclosedSgr(std::string_view cell) noexcept {
   return !cell.ends_with("\033[0m") && !cell.ends_with("\033[m");
 }
 
+bool HasUnclosedOsc8(std::string_view cell) noexcept {
+  const auto last_osc8 = cell.rfind("\033]8;;");
+  if (last_osc8 == std::string_view::npos) {
+    return false;
+  }
+  return !cell.ends_with("\033]8;;\a") && !cell.ends_with("\033]8;;\033\\");
+}
+
+std::string SanitizeCell(std::string_view raw_text) {
+  std::string cell = FlattenCellText(raw_text);
+  if (HasUnclosedOsc8(cell)) {
+    cell += "\033]8;;\a";
+  }
+  if (HasUnclosedSgr(cell)) {
+    cell += "\033[0m";
+  }
+  return cell;
+}
+
 std::vector<int> ComputeColumnWidths(const std::vector<std::string>& headers,
                                      const std::vector<std::vector<std::string>>& rows) {
   std::vector<int> col_widths(headers.size(), 0);
@@ -238,10 +257,7 @@ std::string FormatRow(const std::vector<std::string>& cells, const std::vector<i
       line += "  ";
     }
     const std::string raw = (i < cells.size()) ? cells[i] : "";
-    std::string cell = FlattenCellText(raw);
-    if (HasUnclosedSgr(cell)) {
-      cell += "\033[0m";
-    }
+    std::string cell = SanitizeCell(raw);
 
     if (i + 1 < col_widths.size()) {
       cell = PadCellToVisibleWidth(cell, col_widths[i]);
@@ -265,10 +281,7 @@ int MeasureVisibleWidth(std::string_view utf8_str) {
 }
 
 std::string PadCellToVisibleWidth(const std::string& cell, int target_width) {
-  std::string safe_cell = FlattenCellText(cell);
-  if (HasUnclosedSgr(safe_cell)) {
-    safe_cell += "\033[0m";
-  }
+  std::string safe_cell = SanitizeCell(cell);
   const int w = MeasureVisibleWidth(safe_cell);
   const int pad = target_width - w;
   if (pad <= 0) {
