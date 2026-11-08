@@ -28,9 +28,11 @@
 #include <fmt/printf.h>
 
 #include "common/asr/recognition_result.h"
+#include "common/client/client_manager.h"
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
+#include "common/dbus/dbus_interface.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
 #include "common/scene/postprocess_scene.h"
@@ -335,13 +337,134 @@ private:
   std::size_t index_;
 };
 
-} // namespace
+bool IsPaletteItemVisible(const PaletteItem& item, const ParsedPaletteQuery& parsed,
+                          std::string_view query) {
+  if (item.is_command_entry) {
+    if (query.empty()) {
+      return true;
+    }
+    return parsed.is_command_mode && parsed.command == nullptr &&
+           (parsed.terms.empty() || MatchesAllTerms(item.search_text, parsed.terms));
+  }
 
-void VinputEngine::initializePaletteRegistry() {
-  palette_registry_.clear();
+  if (query.empty()) {
+    return false;
+  }
 
-  // 1. Model (/model, alias /m)
-  palette_registry_.registerCommand(PaletteCommand{
+  if (parsed.command != nullptr) {
+    return (item.category == parsed.command->category) &&
+           (parsed.terms.empty() || MatchesAllTerms(item.search_text, parsed.terms));
+  }
+
+  return !parsed.is_command_mode && MatchesAllTerms(item.search_text, parsed.terms);
+}
+
+bool IsHandledPaletteMenuKey(const fcitx::Key& key, bool printable) {
+  return IsPagePrevKey(key) || IsPageNextKey(key) || key.digitSelection() >= 0 ||
+         IsBackspaceKey(key) || IsUpKey(key) || IsDownKey(key) || IsEnterKey(key) ||
+         IsEscapeKey(key) || IsPureModifierKey(key) || printable;
+}
+
+bool HandlePaletteQueryEditing(const fcitx::Key& key, bool printable, std::string* query) {
+  if (query == nullptr) {
+    return false;
+  }
+  if (IsEscapeKey(key)) {
+    if (!query->empty()) {
+      query->clear();
+      return true;
+    }
+    return false;
+  }
+  if (IsBackspaceKey(key)) {
+    if (!query->empty()) {
+      PopLastUtf8Char(query);
+      return true;
+    }
+    return false;
+  }
+  if (printable) {
+    const std::string utf8 = fcitx::Key::keySymToUTF8(key.normalize().sym());
+    query->append(utf8);
+    return true;
+  }
+  return false;
+}
+
+bool HandlePaletteCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
+                                  fcitx::InputContext* ic) {
+  if (list == nullptr) {
+    return false;
+  }
+  const int digit = key.digitSelection();
+  if (digit >= 0 && digit < list->size()) {
+    list->candidate(digit).select(ic);
+    return true;
+  }
+  auto* cursor_list = list->toCursorMovable();
+  if (cursor_list != nullptr && IsUpKey(key)) {
+    cursor_list->prevCandidate();
+    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+    return true;
+  }
+  if (cursor_list != nullptr && IsDownKey(key)) {
+    cursor_list->nextCandidate();
+    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+    return true;
+  }
+  if (IsEnterKey(key)) {
+    const int index = std::max(list->cursorIndex(), 0);
+    if (index >= 0 && index < list->size()) {
+      list->candidate(index).select(ic);
+    }
+    return true;
+  }
+  return false;
+}
+
+bool IsHandledResultMenuKey(const fcitx::Key& key, const std::vector<fcitx::Key>& prev_keys,
+                            const std::vector<fcitx::Key>& next_keys) {
+  return key.digitSelection() >= 0 || key.checkKeyList(prev_keys) || key.checkKeyList(next_keys) ||
+         key.check(FcitxKey_Up) || key.check(FcitxKey_Down) || key.check(FcitxKey_Return) ||
+         key.check(FcitxKey_KP_Enter) || key.check(FcitxKey_Escape);
+}
+
+bool HandleResultCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
+                                 fcitx::InputContext* ic) {
+  if (list == nullptr) {
+    return false;
+  }
+  const int digit = key.digitSelection();
+  if (digit >= 0 && digit < list->size()) {
+    list->candidate(digit).select(ic);
+    return true;
+  }
+  auto* cursor_list = list->toCursorMovable();
+  if (cursor_list != nullptr && key.check(FcitxKey_Up)) {
+    cursor_list->prevCandidate();
+    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+    return true;
+  }
+  if (cursor_list != nullptr && key.check(FcitxKey_Down)) {
+    cursor_list->nextCandidate();
+    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+    return true;
+  }
+  if (key.check(FcitxKey_Return) || key.check(FcitxKey_KP_Enter)) {
+    const int index = std::max(list->cursorIndex(), 0);
+    if (index >= 0 && index < list->size()) {
+      list->candidate(index).select(ic);
+    }
+    return true;
+  }
+  return false;
+}
+
+void RegisterModelCommand(PaletteCommandRegistry* registry) {
+  if (registry == nullptr) {
+    return;
+  }
+  registry->registerCommand(PaletteCommand{
       .id = "model",
       .name = "model",
       .alias = "m",
@@ -386,9 +509,139 @@ void VinputEngine::initializePaletteRegistry() {
                                             item.provider_id.c_str(), item.model_id.c_str()));
           },
   });
+}
 
-  // 2. ASR (/asr, alias /a)
-  palette_registry_.registerCommand(PaletteCommand{
+#if VINPUT_ENABLE_LOCAL_ASR
+void AppendLocalAsrItems(const CoreConfig& config,
+                         const std::unordered_map<std::string, std::string>& i18n_map,
+                         std::vector<PaletteItem>* items) {
+  if (items == nullptr) {
+    return;
+  }
+  const auto& active_provider = config.asr.activeProvider;
+  const bool is_local_active = (active_provider == "sherpa-onnx" || active_provider.empty());
+  const ModelManager model_mgr;
+  const auto local_models = model_mgr.ListDetailed(CoreConfigView(config).PreferredLocalModel());
+
+  for (const auto& m : local_models) {
+    if (m.state == ModelState::Broken) {
+      continue;
+    }
+    const bool is_active = is_local_active && (m.state == ModelState::Active);
+    std::string display = vinput::registry::LookupI18n(i18n_map, m.id + ".title", m.id);
+    if (display.empty()) {
+      display = m.id;
+    }
+    std::string comment = is_active ? _("ASR *") : _("ASR");
+    items->push_back(PaletteItem{
+        .category = PaletteCategory::Asr,
+        .id = m.id,
+        .text = display,
+        .comment = std::move(comment),
+        .search_text = m.id + " " + display + " asr",
+        .active = is_active,
+        .provider_id = "sherpa-onnx",
+        .model_id = m.id,
+        .scene_id = {},
+        .adapter_id = {},
+        .is_command_entry = false,
+        .command_token = {},
+    });
+  }
+}
+#endif
+
+void AppendCloudAsrItems(const CoreConfig& config,
+                         const std::unordered_map<std::string, std::string>& i18n_map,
+                         std::vector<PaletteItem>* items) {
+  if (items == nullptr) {
+    return;
+  }
+  for (const auto& prov : config.asr.providers) {
+    if (std::holds_alternative<LocalAsrProvider>(prov)) {
+      continue;
+    }
+    const std::string pid = AsrProviderId(prov);
+    if (pid.empty()) {
+      continue;
+    }
+    const bool is_active = (pid == config.asr.activeProvider);
+    const std::string title = vinput::registry::LookupI18n(i18n_map, pid + ".title", pid);
+    std::string comment = is_active ? _("ASR *") : _("ASR");
+    std::string search_text = pid;
+    search_text += ' ';
+    search_text += title;
+    search_text += " asr";
+    items->push_back(PaletteItem{
+        .category = PaletteCategory::Asr,
+        .id = pid,
+        .text = title,
+        .comment = std::move(comment),
+        .search_text = std::move(search_text),
+        .active = is_active,
+        .provider_id = pid,
+        .model_id = {},
+        .scene_id = {},
+        .adapter_id = {},
+        .is_command_entry = false,
+        .command_token = {},
+    });
+  }
+}
+
+std::vector<PaletteItem> LoadAsrItems() {
+  std::vector<PaletteItem> items;
+  const auto config = LoadCoreConfig();
+  const auto i18n_map =
+      vinput::registry::LoadMergedCachedI18nMap(vinput::registry::DetectPreferredLocale(), nullptr);
+#if VINPUT_ENABLE_LOCAL_ASR
+  AppendLocalAsrItems(config, i18n_map, &items);
+#endif
+  AppendCloudAsrItems(config, i18n_map, &items);
+  return items;
+}
+
+void HandleAsrSelection(VinputEngine* engine, const PaletteItem& item) {
+  if (engine == nullptr) {
+    return;
+  }
+  auto core_config = LoadCoreConfig();
+#if !VINPUT_ENABLE_LOCAL_ASR
+  const auto* target_provider = CoreConfigView(core_config).AsrProvider(item.provider_id);
+  if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
+    engine->notifyError(fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
+                                       "supported in this Lite build."),
+                                     item.provider_id.c_str()));
+    return;
+  }
+#endif
+  core_config.asr.activeProvider = item.provider_id;
+  if (!item.model_id.empty()) {
+    std::string error;
+    if (!SetPreferredLocalModel(&core_config, item.model_id, &error)) {
+      engine->notifyError(error);
+      return;
+    }
+  }
+  if (!SaveCoreConfig(core_config)) {
+    engine->notifyError(_("Failed to save ASR config."));
+    return;
+  }
+  if (!engine->queryDaemonStatus().empty()) {
+    std::string reload_error;
+    if (!engine->callReloadAsrBackend(&reload_error)) {
+      engine->notifyError(reload_error.empty() ? _("Failed to reload ASR backend.") : reload_error);
+      return;
+    }
+  }
+  engine->notifyInfo(fmt::sprintf(_("ASR switch requested for '%s'."), item.text.c_str()));
+}
+
+void RegisterAsrCommand(PaletteCommandRegistry* registry) {
+  if (registry == nullptr) {
+    return;
+  }
+  registry->registerCommand(PaletteCommand{
       .id = "asr",
       .name = "asr",
       .alias = "a",
@@ -396,120 +649,17 @@ void VinputEngine::initializePaletteRegistry() {
       .comment = _("ASR"),
       .description = _("Switch ASR provider or model"),
       .category = PaletteCategory::Asr,
-      .getItems =
-          [](VinputEngine* /*engine*/) {
-            std::vector<PaletteItem> items;
-            const auto config = LoadCoreConfig();
-            const auto i18n_map = vinput::registry::LoadMergedCachedI18nMap(
-                vinput::registry::DetectPreferredLocale(), nullptr);
-
-#if VINPUT_ENABLE_LOCAL_ASR
-            const auto& active_provider = config.asr.activeProvider;
-            const bool is_local_active =
-                (active_provider == "sherpa-onnx" || active_provider.empty());
-            const ModelManager model_mgr;
-            const auto local_models =
-                model_mgr.ListDetailed(CoreConfigView(config).PreferredLocalModel());
-
-            for (const auto& m : local_models) {
-              if (m.state == ModelState::Broken) {
-                continue;
-              }
-              const bool is_active = is_local_active && (m.state == ModelState::Active);
-              std::string display = vinput::registry::LookupI18n(i18n_map, m.id + ".title", m.id);
-              if (display.empty()) {
-                display = m.id;
-              }
-              std::string comment = is_active ? _("ASR *") : _("ASR");
-              items.push_back(PaletteItem{
-                  .category = PaletteCategory::Asr,
-                  .id = m.id,
-                  .text = display,
-                  .comment = std::move(comment),
-                  .search_text = m.id + " " + display + " asr",
-                  .active = is_active,
-                  .provider_id = "sherpa-onnx",
-                  .model_id = m.id,
-                  .scene_id = {},
-                  .adapter_id = {},
-                  .is_command_entry = false,
-                  .command_token = {},
-              });
-            }
-#endif
-
-            for (const auto& prov : config.asr.providers) {
-              if (std::holds_alternative<LocalAsrProvider>(prov)) {
-                continue;
-              }
-              const std::string pid = AsrProviderId(prov);
-              if (pid.empty()) {
-                continue;
-              }
-              const bool is_active = (pid == config.asr.activeProvider);
-              const std::string title = vinput::registry::LookupI18n(i18n_map, pid + ".title", pid);
-              std::string comment = is_active ? _("ASR *") : _("ASR");
-              std::string search_text = pid;
-              search_text += ' ';
-              search_text += title;
-              search_text += " asr";
-              items.push_back(PaletteItem{
-                  .category = PaletteCategory::Asr,
-                  .id = pid,
-                  .text = title,
-                  .comment = std::move(comment),
-                  .search_text = std::move(search_text),
-                  .active = is_active,
-                  .provider_id = pid,
-                  .model_id = {},
-                  .scene_id = {},
-                  .adapter_id = {},
-                  .is_command_entry = false,
-                  .command_token = {},
-              });
-            }
-            return items;
-          },
-      .onSelect =
-          [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
-            auto core_config = LoadCoreConfig();
-#if !VINPUT_ENABLE_LOCAL_ASR
-            const auto* target_provider = CoreConfigView(core_config).AsrProvider(item.provider_id);
-            if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
-              engine->notifyError(
-                  fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
-                                 "supported in this Lite build."),
-                               item.provider_id.c_str()));
-              return;
-            }
-#endif
-            core_config.asr.activeProvider = item.provider_id;
-            if (!item.model_id.empty()) {
-              std::string error;
-              if (!SetPreferredLocalModel(&core_config, item.model_id, &error)) {
-                engine->notifyError(error);
-                return;
-              }
-            }
-            if (!SaveCoreConfig(core_config)) {
-              engine->notifyError(_("Failed to save ASR config."));
-              return;
-            }
-            if (!engine->queryDaemonStatus().empty()) {
-              std::string reload_error;
-              if (!engine->callReloadAsrBackend(&reload_error)) {
-                engine->notifyError(reload_error.empty() ? _("Failed to reload ASR backend.")
-                                                         : reload_error);
-                return;
-              }
-            }
-            engine->notifyInfo(
-                fmt::sprintf(_("ASR switch requested for '%s'."), item.text.c_str()));
-          },
+      .getItems = [](VinputEngine* /*engine*/) { return LoadAsrItems(); },
+      .onSelect = [](VinputEngine* engine, const PaletteItem& item,
+                     fcitx::InputContext* /*ic*/) { HandleAsrSelection(engine, item); },
   });
+}
 
-  // 3. Scene (/scene, alias /s)
-  palette_registry_.registerCommand(PaletteCommand{
+void RegisterSceneCommand(PaletteCommandRegistry* registry) {
+  if (registry == nullptr) {
+    return;
+  }
+  registry->registerCommand(PaletteCommand{
       .id = "scene",
       .name = "scene",
       .alias = "s",
@@ -554,6 +704,119 @@ void VinputEngine::initializePaletteRegistry() {
             engine->notifyInfo(fmt::sprintf(_("Scene switched to '%s'."), item.text.c_str()));
           },
   });
+}
+
+std::string FormatClientComment(bool running, pid_t pid, bool auto_start) {
+  std::string status =
+      running ? (pid > 0 ? fmt::sprintf(_("running (%d)"), pid) : _("running")) : _("stopped");
+  if (auto_start) {
+    status += _(" [autostart]");
+  }
+  return status;
+}
+
+PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger) {
+  const bool running = vinput::client::IsRunning(client.id);
+  const pid_t pid = vinput::client::GetPid(client.id);
+  const std::string type_label = is_trigger ? _("[Trigger]") : _("[Receiver]");
+  const std::string text = fmt::sprintf("%s %s", type_label.c_str(), client.id.c_str());
+  std::string comment = FormatClientComment(running, pid, client.autoStart);
+
+  std::string search_text = client.id;
+  search_text += ' ';
+  search_text += client.command;
+  search_text += is_trigger ? " trigger " : " receiver ";
+  if (client.autoStart) {
+    search_text += "autostart ";
+  }
+  search_text += running ? "running " : "stopped ";
+  search_text += "proc process";
+
+  return PaletteItem{
+      .category = PaletteCategory::Process,
+      .id = client.id,
+      .text = std::move(text),
+      .comment = std::move(comment),
+      .search_text = std::move(search_text),
+      .active = running,
+      .provider_id = {},
+      .model_id = {},
+      .scene_id = {},
+      .adapter_id = {},
+      .is_command_entry = false,
+      .command_token = {},
+  };
+}
+
+void HandleClientToggle(VinputEngine* engine, const PaletteItem& item) {
+  if (engine == nullptr) {
+    return;
+  }
+  const bool is_running = vinput::client::IsRunning(item.id);
+  std::string error;
+  if (is_running) {
+    if (!engine->callStopClient(item.id, &error)) {
+      engine->notifyError(error.empty() ? _("Failed to stop client.") : error);
+      return;
+    }
+    engine->notifyInfo(fmt::sprintf(_("Client '%s' stopped."), item.id.c_str()));
+  } else {
+    if (!engine->callStartClient(item.id, &error)) {
+      engine->notifyError(error.empty() ? _("Failed to start client.") : error);
+      return;
+    }
+    engine->notifyInfo(fmt::sprintf(_("Client '%s' started."), item.id.c_str()));
+  }
+}
+
+void RegisterProcessCommand(PaletteCommandRegistry* registry) {
+  if (registry == nullptr) {
+    return;
+  }
+  registry->registerCommand(PaletteCommand{
+      .id = "proc",
+      .name = "proc",
+      .alias = "p",
+      .title = _("Process"),
+      .comment = _("Process"),
+      .description = _("Manage client processes"),
+      .category = PaletteCategory::Process,
+      .getItems =
+          [](VinputEngine* /*engine*/) {
+            std::vector<PaletteItem> items;
+            const auto config = LoadCoreConfig();
+            items.reserve(config.triggers.size() + config.receivers.size());
+            for (const auto& client : config.triggers) {
+              items.push_back(BuildClientPaletteItem(client, true));
+            }
+            for (const auto& client : config.receivers) {
+              items.push_back(BuildClientPaletteItem(client, false));
+            }
+            return items;
+          },
+      .onSelect = [](VinputEngine* engine, const PaletteItem& item,
+                     fcitx::InputContext* /*ic*/) { HandleClientToggle(engine, item); },
+  });
+}
+
+} // namespace
+
+void VinputEngine::initializePaletteRegistry() {
+  palette_registry_.clear();
+  RegisterModelCommand(&palette_registry_);
+  RegisterAsrCommand(&palette_registry_);
+  RegisterSceneCommand(&palette_registry_);
+  RegisterProcessCommand(&palette_registry_);
+}
+
+bool VinputEngine::callStartClient(const std::string& client_id, std::string* error) {
+  return callSyncRpc(vinput::dbus::kMethodStartClient, _("Failed to start client."), error,
+                     &client_id);
+}
+
+bool VinputEngine::callStopClient(const std::string& client_id, std::string* error) {
+  return callSyncRpc(vinput::dbus::kMethodStopClient, _("Failed to stop client."), error,
+                     &client_id);
 }
 
 void VinputEngine::reloadPaletteItems() {
@@ -611,34 +874,8 @@ void VinputEngine::rebuildPaletteMenu(fcitx::InputContext* ic) {
   palette_filtered_indices_.clear();
 
   for (std::size_t i = 0; i < palette_items_.size(); ++i) {
-    const auto& item = palette_items_[i];
-
-    if (item.is_command_entry) {
-      if (palette_query_.empty()) {
-        palette_filtered_indices_.push_back(i);
-      } else if (parsed.is_command_mode && parsed.command == nullptr) {
-        if (parsed.terms.empty() || MatchesAllTerms(item.search_text, parsed.terms)) {
-          palette_filtered_indices_.push_back(i);
-        }
-      }
-      continue;
-    }
-
-    if (palette_query_.empty()) {
-      continue;
-    }
-
-    if (parsed.command != nullptr) {
-      if (item.category != parsed.command->category) {
-        continue;
-      }
-      if (parsed.terms.empty() || MatchesAllTerms(item.search_text, parsed.terms)) {
-        palette_filtered_indices_.push_back(i);
-      }
-    } else if (!parsed.is_command_mode) {
-      if (MatchesAllTerms(item.search_text, parsed.terms)) {
-        palette_filtered_indices_.push_back(i);
-      }
+    if (IsPaletteItemVisible(palette_items_[i], parsed, palette_query_)) {
+      palette_filtered_indices_.push_back(i);
     }
   }
 
@@ -691,25 +928,17 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return false;
   }
 
-  auto candidate_list = palette_menu_ic_->inputPanel().candidateList();
-  auto* cursor_list = candidate_list != nullptr ? candidate_list->toCursorMovable() : nullptr;
-  const auto normalized_key = keyEvent.key().normalize();
-  const bool printable_filter_input = IsPrintableMenuInput(keyEvent.key());
-  const bool handled_key = IsPagePrevKey(keyEvent.key()) || IsPageNextKey(keyEvent.key()) ||
-                           keyEvent.key().digitSelection() >= 0 || IsBackspaceKey(keyEvent.key()) ||
-                           IsUpKey(keyEvent.key()) || IsDownKey(keyEvent.key()) ||
-                           IsEnterKey(keyEvent.key()) || IsEscapeKey(keyEvent.key()) ||
-                           IsPureModifierKey(keyEvent.key()) || printable_filter_input;
-
+  const bool printable = IsPrintableMenuInput(keyEvent.key());
+  const bool handled = IsHandledPaletteMenuKey(keyEvent.key(), printable);
   if (keyEvent.isRelease()) {
-    if (!handled_key) {
-      return false;
+    if (handled) {
+      keyEvent.filterAndAccept();
+      return true;
     }
-    keyEvent.filterAndAccept();
-    return true;
+    return false;
   }
 
-  if (!handled_key) {
+  if (!handled) {
     hidePaletteMenu();
     return false;
   }
@@ -719,79 +948,27 @@ bool VinputEngine::handlePaletteMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
-  if (IsEscapeKey(keyEvent.key())) {
-    if (!palette_query_.empty()) {
-      palette_query_.clear();
-      rebuildPaletteMenu(palette_menu_ic_);
-    } else {
-      hidePaletteMenu();
-    }
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (IsBackspaceKey(keyEvent.key())) {
-    if (!palette_query_.empty()) {
-      PopLastUtf8Char(&palette_query_);
-      rebuildPaletteMenu(palette_menu_ic_);
-    } else {
-      hidePaletteMenu();
-    }
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (printable_filter_input) {
-    const std::string utf8 = fcitx::Key::keySymToUTF8(normalized_key.sym());
-    palette_query_.append(utf8);
+  if (HandlePaletteQueryEditing(keyEvent.key(), printable, &palette_query_)) {
     rebuildPaletteMenu(palette_menu_ic_);
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (IsPagePrevKey(keyEvent.key())) {
+  if (IsEscapeKey(keyEvent.key()) || IsBackspaceKey(keyEvent.key())) {
+    hidePaletteMenu();
+    keyEvent.filterAndAccept();
+    return true;
+  }
+
+  if (IsPagePrevKey(keyEvent.key()) || IsPageNextKey(keyEvent.key())) {
     const ParsedPaletteQuery parsed = ParsePaletteQuery(palette_query_, palette_registry_);
-    ChangeCandidatePage(palette_menu_ic_, PaletteMenuTitle(parsed), false);
+    ChangeCandidatePage(palette_menu_ic_, PaletteMenuTitle(parsed), IsPageNextKey(keyEvent.key()));
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (IsPageNextKey(keyEvent.key())) {
-    const ParsedPaletteQuery parsed = ParsePaletteQuery(palette_query_, palette_registry_);
-    ChangeCandidatePage(palette_menu_ic_, PaletteMenuTitle(parsed), true);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  const int digit = keyEvent.key().digitSelection();
-  if (candidate_list != nullptr && digit >= 0 && digit < candidate_list->size()) {
-    candidate_list->candidate(digit).select(palette_menu_ic_);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (cursor_list != nullptr && IsUpKey(keyEvent.key())) {
-    cursor_list->prevCandidate();
-    palette_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (cursor_list != nullptr && IsDownKey(keyEvent.key())) {
-    cursor_list->nextCandidate();
-    palette_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (IsEnterKey(keyEvent.key())) {
-    int index = candidate_list != nullptr ? candidate_list->cursorIndex() : -1;
-    index = std::max(index, 0);
-    if (candidate_list != nullptr && index >= 0 && index < candidate_list->size()) {
-      candidate_list->candidate(index).select(palette_menu_ic_);
-    } else {
-      hidePaletteMenu();
-    }
+  auto candidate_list = palette_menu_ic_->inputPanel().candidateList();
+  if (HandlePaletteCandidateAction(keyEvent.key(), candidate_list.get(), palette_menu_ic_)) {
     keyEvent.filterAndAccept();
     return true;
   }
@@ -875,13 +1052,9 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return false;
   }
 
-  auto candidate_list = result_menu_ic_->inputPanel().candidateList();
-  auto* cursor_list = candidate_list != nullptr ? candidate_list->toCursorMovable() : nullptr;
+  const bool handled = IsResultMenuHandledKey(keyEvent.key(), page_prev_keys_, page_next_keys_);
   if (keyEvent.isRelease()) {
-    if (keyEvent.key().digitSelection() >= 0 || keyEvent.key().checkKeyList(page_prev_keys_) ||
-        keyEvent.key().checkKeyList(page_next_keys_) || keyEvent.key().check(FcitxKey_Up) ||
-        keyEvent.key().check(FcitxKey_Down) || keyEvent.key().check(FcitxKey_Return) ||
-        keyEvent.key().check(FcitxKey_KP_Enter) || keyEvent.key().check(FcitxKey_Escape)) {
+    if (handled) {
       keyEvent.filterAndAccept();
       return true;
     }
@@ -894,52 +1067,21 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return true;
   }
 
+  auto candidate_list = result_menu_ic_->inputPanel().candidateList();
   if (candidate_list == nullptr || candidate_list->empty() || result_candidates_.empty()) {
     hideResultMenu();
     return false;
   }
 
-  if (keyEvent.key().checkKeyList(page_prev_keys_)) {
-    ChangeCandidatePage(result_menu_ic_, ResultMenuTitle(result_candidates_.size()), false);
+  if (keyEvent.key().checkKeyList(page_prev_keys_) ||
+      keyEvent.key().checkKeyList(page_next_keys_)) {
+    ChangeCandidatePage(result_menu_ic_, ResultMenuTitle(result_candidates_.size()),
+                        keyEvent.key().checkKeyList(page_next_keys_));
     keyEvent.filterAndAccept();
     return true;
   }
 
-  if (keyEvent.key().checkKeyList(page_next_keys_)) {
-    ChangeCandidatePage(result_menu_ic_, ResultMenuTitle(result_candidates_.size()), true);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  const int digit = keyEvent.key().digitSelection();
-  if (candidate_list != nullptr && digit >= 0 && digit < candidate_list->size()) {
-    candidate_list->candidate(digit).select(result_menu_ic_);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (cursor_list != nullptr && keyEvent.key().check(FcitxKey_Up)) {
-    cursor_list->prevCandidate();
-    result_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (cursor_list != nullptr && keyEvent.key().check(FcitxKey_Down)) {
-    cursor_list->nextCandidate();
-    result_menu_ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    keyEvent.filterAndAccept();
-    return true;
-  }
-
-  if (keyEvent.key().check(FcitxKey_Return) || keyEvent.key().check(FcitxKey_KP_Enter)) {
-    int index = candidate_list != nullptr ? candidate_list->cursorIndex() : -1;
-    index = std::max(index, 0);
-    if (candidate_list != nullptr && index >= 0 && index < candidate_list->size()) {
-      candidate_list->candidate(index).select(result_menu_ic_);
-    } else {
-      hideResultMenu();
-    }
+  if (HandleResultCandidateAction(keyEvent.key(), candidate_list.get(), result_menu_ic_)) {
     keyEvent.filterAndAccept();
     return true;
   }
