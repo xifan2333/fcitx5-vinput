@@ -48,6 +48,7 @@
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
+#include "common/client/client_manager.h"
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/registry/registry_i18n.h"
@@ -201,6 +202,48 @@ QString BuildProviderDisplay(const AsrProvider& provider, const AsrDisplayContex
     }
   }
   return display;
+}
+
+QString FormatClientStatus(bool running, pid_t pid) {
+  if (!running) {
+    return QObject::tr("Stopped");
+  }
+  if (pid > 0) {
+    return QObject::tr("Running (%1)").arg(pid);
+  }
+  return QObject::tr("Running");
+}
+
+void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trigger,
+                     const QString& selected_id) {
+  const int row = table->rowCount();
+  table->insertRow(row);
+
+  const QString id = QString::fromStdString(client.id);
+  const bool running = vinput::client::IsRunning(client.id);
+  const pid_t pid = running ? vinput::client::GetPid(client.id) : -1;
+
+  auto* itemType =
+      new QTableWidgetItem(is_trigger ? QObject::tr("[Trigger]") : QObject::tr("[Receiver]"));
+  itemType->setData(Qt::UserRole, id);
+  itemType->setData(Qt::UserRole + 1, is_trigger ? "trigger" : "receiver");
+  itemType->setData(Qt::UserRole + 2, client.autoStart);
+  itemType->setData(Qt::UserRole + 3, running);
+  itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
+
+  auto* itemId = new QTableWidgetItem(id);
+  auto* itemStatus = new QTableWidgetItem(FormatClientStatus(running, pid));
+  auto* itemAutostart =
+      new QTableWidgetItem(client.autoStart ? QObject::tr("Enabled") : QObject::tr("Disabled"));
+
+  table->setItem(row, 0, itemType);
+  table->setItem(row, 1, itemId);
+  table->setItem(row, 2, itemStatus);
+  table->setItem(row, 3, itemAutostart);
+
+  if (id == selected_id) {
+    table->selectRow(row);
+  }
 }
 
 } // namespace
@@ -413,6 +456,7 @@ void ControlPage::reload() {
   }
 
   refreshAsrList();
+  populateClientList();
 }
 
 QString ControlPage::currentDevice() const {
@@ -515,9 +559,44 @@ void ControlPage::updateAsrButtons() {
   btnAsrSetActive_->setEnabled(true);
 }
 
-void ControlPage::populateClientList() {}
+void ControlPage::populateClientList() {
+  const QString selected_id =
+      (tableClients_->currentRow() >= 0 &&
+       tableClients_->item(tableClients_->currentRow(), 0) != nullptr)
+          ? tableClients_->item(tableClients_->currentRow(), 0)->data(Qt::UserRole).toString()
+          : QString{};
 
-void ControlPage::refreshClientStatuses() {}
+  tableClients_->setRowCount(0);
+  const CoreConfig config = ConfigManager::Get().Load();
+
+  for (const auto& trigger : config.triggers) {
+    AppendClientRow(tableClients_, trigger, true, selected_id);
+  }
+  for (const auto& receiver : config.receivers) {
+    AppendClientRow(tableClients_, receiver, false, selected_id);
+  }
+
+  updateClientButtons();
+}
+
+void ControlPage::refreshClientStatuses() {
+  const int count = tableClients_->rowCount();
+  for (int row = 0; row < count; ++row) {
+    auto* itemType = tableClients_->item(row, 0);
+    auto* itemStatus = tableClients_->item(row, 2);
+    if (itemType == nullptr || itemStatus == nullptr) {
+      continue;
+    }
+    const QString id = itemType->data(Qt::UserRole).toString();
+    const bool running = vinput::client::IsRunning(id.toStdString());
+    const pid_t pid = running ? vinput::client::GetPid(id.toStdString()) : -1;
+
+    itemType->setData(Qt::UserRole + 3, running);
+    itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
+    itemStatus->setText(FormatClientStatus(running, pid));
+  }
+  updateClientButtons();
+}
 
 void ControlPage::updateClientButtons() {
   const int row = tableClients_->currentRow();
@@ -654,6 +733,8 @@ void ControlPage::onAsrSetActive() {
 }
 
 void ControlPage::refreshDaemonStatus() {
+  refreshClientStatuses();
+
   vinput::cli::DbusClient dbus;
   std::string err;
   if (!dbus.IsDaemonRunning(&err)) {
