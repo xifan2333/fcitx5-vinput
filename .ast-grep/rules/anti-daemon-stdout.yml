@@ -1,7 +1,7 @@
 id: anti-daemon-stdout
-message: "严禁在守护进程或输入法插件中使用裸标准输出 (std::cout/printf/puts)。请统一使用 VLOG_* 结构化分级日志。"
+message: "严禁在守护进程或输入法插件中使用裸标准输出 (std::cout/cerr, printf, puts, fprintf/fputs)。请统一使用 VLOG_* 结构化分级日志。"
 severity: error
-language: C++
+language: Cpp
 files:
   - "src/daemon/**"
   - "src/addon/**"
@@ -11,3 +11,5 @@ rule:
     - pattern: std::cerr << $$$A
     - pattern: printf($$$ARGS)
     - pattern: puts($$$ARGS)
+    - pattern: fprintf($$$ARGS)
+    - pattern: fputs($$$ARGS)

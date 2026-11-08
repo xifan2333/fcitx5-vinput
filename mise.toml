@@ -8,6 +8,9 @@ shfmt = "latest"
 "github:ast-grep/ast-grep" = "latest"
 "github:crate-ci/typos" = "latest"
 "pipx:cmakelang" = "latest"
+# Pinned to CI's cpp-linter major version (clang-tidy 21, ubuntu-24.04).
+# Do not upgrade past 21.x without checking .github/workflows/ci.yml first.
+"pipx:clang-tidy" = "21.1.6"
 "pipx:lizard" = "latest"
 "npm:prettier" = "latest"
 

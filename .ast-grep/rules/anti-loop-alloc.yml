@@ -1,0 +1,20 @@
+id: anti-loop-alloc
+message: "检测到循环体内的动态堆内存分配 (new / make_unique)。在热循环中建议在循环外预分配并复用对象，减少内存碎片与分配开销。"
+severity: warning
+language: Cpp
+files:
+  - "src/daemon/**"
+  - "src/common/**"
+rule:
+  any:
+    - kind: new_expression
+    - pattern: malloc($$$ARGS)
+    - pattern: std::make_unique<$$$T>($$$ARGS)
+    - pattern: std::make_shared<$$$T>($$$ARGS)
+  inside:
+    stopBy: end
+    any:
+      - kind: for_statement
+      - kind: for_range_loop
+      - kind: while_statement
+      - kind: do_statement

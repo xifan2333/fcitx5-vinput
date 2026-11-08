@@ -1,7 +1,7 @@
 id: nested-loops
 message: "检测到嵌套循环。如果是处理动态容器集合，请评估是否存在 O(N^2) 算法退化风险，优先改用哈希查找或单趟流式处理；若为已知固定小矩阵或多维坐标运算可忽略此警告。"
 severity: warning
-language: C++
+language: Cpp
 files:
   - "src/**"
 rule:
