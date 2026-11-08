@@ -8,7 +8,6 @@
 #include <mutex>
 #include <string>
 #include <string_view>
-#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -328,7 +327,7 @@ void TestGetClientStatuses() {
   statuses = vinput::client::GetClientStatuses(config);
   ExpectTrue(!statuses[0].running && statuses[0].pid == -1, "Trigger should be stopped after Stop");
 
-  const pid_t self_pid = getpid();
+  const auto self_pid = getpid();
   std::string write_err;
   ExpectTrue(vinput::client::WritePidFile("receiver.status.test", self_pid, &write_err),
              "WritePidFile should succeed: " + write_err);
