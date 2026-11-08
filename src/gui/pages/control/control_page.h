@@ -14,6 +14,7 @@
 #include <QtWidgets/qwidget.h>
 #include <optional>
 #include <string>
+#include <unordered_set>
 
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
@@ -79,7 +80,7 @@ private:
   QPushButton* btnClientStop_{nullptr};
   QCheckBox* chkClientAutoStart_{nullptr};
   bool updatingClientSelection_{false};
-  std::string pendingClientId_;
+  std::unordered_set<std::string> pendingClientIds_;
 
   QLabel* lblDaemonStatus_;
   QPushButton* btnDaemonStart_;

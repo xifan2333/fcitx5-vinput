@@ -24,8 +24,10 @@
 #include <QWidget>
 #include <QtCore/qglobal.h>
 #include <QtWidgets/qcheckbox.h>
+#include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <cmath>
@@ -47,7 +49,6 @@
 #include <qtmetamacros.h>
 #include <string>
 #include <string_view>
-#include <sys/types.h>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -232,7 +233,7 @@ QString BuildProviderDisplay(const AsrProvider& provider, const AsrDisplayContex
   return display;
 }
 
-QString FormatClientStatus(bool running, pid_t pid) {
+QString FormatClientStatus(bool running, int pid) {
   if (!running) {
     return ControlPage::tr("Stopped");
   }
@@ -248,7 +249,7 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   table->insertRow(row);
 
   const QString id = QString::fromStdString(client.id);
-  const pid_t pid = vinput::client::GetPid(client.id);
+  const auto pid = vinput::client::GetPid(client.id);
   const bool running = (pid > 0);
 
   auto* itemType = new QTableWidgetItem(is_trigger ? ControlPage::tr("[Trigger]")
@@ -260,7 +261,7 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
 
   auto* itemId = new QTableWidgetItem(id);
-  auto* itemStatus = new QTableWidgetItem(FormatClientStatus(running, pid));
+  auto* itemStatus = new QTableWidgetItem(FormatClientStatus(running, static_cast<int>(pid)));
   auto* itemAutostart = new QTableWidgetItem(client.autoStart ? ControlPage::tr("Enabled")
                                                               : ControlPage::tr("Disabled"));
 
@@ -628,12 +629,12 @@ void ControlPage::refreshClientStatuses() {
       continue;
     }
     const QString id = itemType->data(Qt::UserRole).toString();
-    const pid_t pid = vinput::client::GetPid(id.toStdString());
+    const auto pid = vinput::client::GetPid(id.toStdString());
     const bool running = (pid > 0);
 
     itemType->setData(Qt::UserRole + 3, running);
     itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
-    itemStatus->setText(FormatClientStatus(running, pid));
+    itemStatus->setText(FormatClientStatus(running, static_cast<int>(pid)));
   }
   updateClientButtons();
 }
@@ -671,7 +672,7 @@ void ControlPage::updateClientButtons() {
     updatingClientSelection_ = false;
     return;
   }
-  const bool is_pending = (!pendingClientId_.empty() && pendingClientId_ == client->id);
+  const bool is_pending = pendingClientIds_.contains(client->id);
   btnClientStart_->setEnabled(!is_pending && !client->is_running);
   btnClientStop_->setEnabled(!is_pending && client->is_running);
   chkClientAutoStart_->setEnabled(true);
@@ -682,16 +683,17 @@ void ControlPage::updateClientButtons() {
 
 void ControlPage::executeClientAction(bool start) {
   const auto client = selectedClient();
-  if (!client.has_value() || (!pendingClientId_.empty() && pendingClientId_ == client->id)) {
+  if (!client.has_value() || pendingClientIds_.contains(client->id)) {
     return;
   }
-  pendingClientId_ = client->id;
+  pendingClientIds_.insert(client->id);
   btnClientStart_->setEnabled(false);
   btnClientStop_->setEnabled(false);
 
   RunClientActionAsync(
-      this, client->id, start, [this](bool ok, const std::string& err, bool is_start) {
-        pendingClientId_.clear();
+      this, client->id, start,
+      [this, client_id = client->id](bool ok, const std::string& err, bool is_start) {
+        pendingClientIds_.erase(client_id);
         if (!ok) {
           const QString msg =
               is_start ? tr("Failed to start client: %1") : tr("Failed to stop client: %1");
@@ -747,8 +749,9 @@ void ControlPage::onAsrEdit() {
   }
   const QString provider_id = item->data(Qt::UserRole).toString();
 
-  const CoreConfig config = ConfigManager::Get().Load();
+  CoreConfig config = ConfigManager::Get().Load();
   AsrProviderData current;
+  bool found = false;
 
   for (const auto& provider : config.asr.providers) {
     if (AsrProviderId(provider) == provider_id.toStdString()) {
@@ -762,11 +765,12 @@ void ControlPage::onAsrEdit() {
         current.args = cmd->args;
         current.env = cmd->env;
       }
+      found = true;
       break;
     }
   }
 
-  if (current.id.empty()) {
+  if (!found) {
     return;
   }
 
@@ -775,9 +779,8 @@ void ControlPage::onAsrEdit() {
     return;
   }
 
-  CoreConfig updated_config = ConfigManager::Get().Load();
   // Remove old
-  std::erase_if(updated_config.asr.providers,
+  std::erase_if(config.asr.providers,
                 [&](const AsrProvider& p) { return AsrProviderId(p) == current.id; });
 
   // Add new
@@ -786,7 +789,7 @@ void ControlPage::onAsrEdit() {
     LocalAsrProvider p;
     p.model = updated.model;
     p.timeoutMs = updated.timeout_ms;
-    updated_config.asr.providers.emplace_back(p);
+    config.asr.providers.emplace_back(p);
   } else
 #endif
   {
@@ -796,10 +799,10 @@ void ControlPage::onAsrEdit() {
     p.args = updated.args;
     p.env = updated.env;
     p.timeoutMs = updated.timeout_ms;
-    updated_config.asr.providers.emplace_back(p);
+    config.asr.providers.emplace_back(p);
   }
 
-  if (!ConfigManager::Get().Save(updated_config)) {
+  if (!ConfigManager::Get().Save(config)) {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
