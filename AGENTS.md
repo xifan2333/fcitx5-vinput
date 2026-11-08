@@ -56,6 +56,8 @@ Progressive operational guide, hard constraints, and routing index for AI coding
       - *Type B (Domain Boilerplate)*: Inherent protocol mappings, D-Bus XML dispatch stubs, or serialization tables $\to$ state concrete technical reasons for retaining.
     - **Mandatory Pre-Action Report to Human**: The agent **MUST** report the duplication summary (clone locations, lines, tokens) and its triage logic to the human maintainer in chat, and **await explicit human decision/confirmation** before writing refactoring code or finalizing the task.
 22. **Strict Full-Project Linter Standards (Zero Compromise)**: Maintain full-file, zero-tolerance static analysis across every modified file (`lines-changed-only: false`, Clang-Tidy 21, Clang-Format, `-DVINPUT_ENABLE_WERROR=ON`). Never downgrade checks or compromise standards for legacy lines in touched files. Every touched file must strictly compile cleanly with zero warnings and zero diagnostic suppressions (`// NOLINT`).
+23. **Architectural Boundary Mandate (Common Extraction vs. Domain Cohesion)**: Generic procedural parsing, string transformations, and low-level character scanners must never reside in domain modules (`src/cli/`, `src/daemon/`, `src/addon/`, `src/gui/`). All generic text and data primitives belong strictly in `src/common/` as stateless, reusable utilities. Business domains must strictly focus on high-level workflow orchestration and delegate stream processing to `src/common/`.
+24. **Objective Cognitive Complexity & Space-Time Resource Gate**: Every function in touched files must satisfy `readability-function-cognitive-complexity.Threshold <= 15`. Nested loops and multi-level branching for stream parsing are strictly prohibited; standard library algorithms (`std::ranges::find_if`, `std::string_view::find_first_of`) must be used instead. Deliberately employ constant-factor space trade-offs (`reserve()`, immutable single-pass structs) to eliminate repeated heap reallocations and duplicate scans.
 
 ---
 
@@ -65,6 +67,7 @@ Progressive operational guide, hard constraints, and routing index for AI coding
 # Quality Gate (run before every commit/push)
 mise run check:plan       # Preview execution plan and linters
 mise run check:changed    # Validate only touched files (safe, fast)
+mise run check:complexity # Audit cognitive complexity via clang-tidy (<= 15)
 mise run check:dup        # Analyze code duplication across src/ (jscpd)
 mise run fix              # Auto-format all files via hk/clang-format
 
@@ -93,6 +96,7 @@ To avoid context saturation, consult detailed reference manuals on demand when e
 | **Audio & Daemon Debugging** | [audio-debugging.md](.agents/skills/vinput-dev/references/audio-debugging.md) | Diagnosing PipeWire capture issues, SPA buffers, XRuns, `vinput-daemon.service` journalctl, and `VINPUT_DEBUG=1` tracing. |
 | **C ABI Hard Boundaries** | [c-abi-boundaries.md](.agents/skills/vinput-dev/references/c-abi-boundaries.md) | Triaging review bot suggestions, identifying non-modernizable C boundaries (PipeWire, sd-bus, POSIX, libarchive), and enforcing C++20 standards elsewhere. |
 | **Dependency Governance** | [dependency-spec.md](.agents/skills/vinput-dev/references/dependency-spec.md) | Adding/upgrading third-party libraries, `flake.nix` packages, `3rdparty/` vendoring, CMake `SYSTEM INTERFACE` isolation, and license auditing in `THIRD_PARTY_NOTICES.md`. |
+| **Module Boundaries & Complexity** | [module-boundaries-and-complexity.md](.agents/skills/vinput-dev/references/module-boundaries-and-complexity.md) | Enforcing common vs. domain module boundaries, cognitive complexity limits (<=15), and space-time allocation trade-offs. |
 | **Fcitx5 Addon Architecture** | Context7: `/fcitx/fcitx5` | Modifying `src/addon/`, Fcitx5 key event pipelines, addon lifecycle, and Fcitx5 official `fcitx::Configuration` / `fcitx::RawConfig`. |
 | **Local Speech Engine (ASR)** | Context7: `/k2-fsa/sherpa-onnx` | Modifying `src/daemon/asr/`, sherpa-onnx offline/online recognizers, VAD, and model loading. |
 | **Low-Latency Audio Capture** | Context7: `/pipewire/pipewire` | Modifying `src/daemon/audio/`, PipeWire C API, SPA pod formats, and stream lifecycle. |

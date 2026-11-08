@@ -145,102 +145,57 @@ namespace vinput::cli {
 
 namespace {
 
-struct TerminalState {
-  bool in_hyperlink{false};
-  bool active_sgr{false};
+using Cell = vinput::str::ProcessedTerminalCell;
+
+struct TableGrid {
+  std::vector<Cell> headers;
+  std::vector<std::vector<Cell>> rows;
+  std::vector<int> col_widths;
 };
 
-TerminalState InspectTerminalState(std::string_view text) noexcept {
-  TerminalState state{};
-  std::string_view cur = text;
-
-  while (!cur.empty()) {
-    const auto esc_pos = cur.find('\033');
-    if (esc_pos == std::string_view::npos) {
-      break;
-    }
-    cur.remove_prefix(esc_pos);
-
-    if (cur.starts_with("\033[")) {
-      size_t end_idx = 2;
-      while (end_idx < cur.size()) {
-        const auto ch = static_cast<unsigned char>(cur[end_idx++]);
-        if (ch >= 0x40 && ch <= 0x7e) {
-          if (ch == 'm') {
-            const std::string_view params = cur.substr(2, end_idx - 3);
-            state.active_sgr = !(params.empty() || params == "0" || params == "00");
-          }
-          break;
-        }
-      }
-      cur.remove_prefix(end_idx);
-    } else if (cur.starts_with("\033]")) {
-      const auto bel_pos = cur.find('\a');
-      const auto st_pos = cur.find("\033\\");
-      const auto term_pos = std::min(bel_pos, st_pos);
-      if (term_pos == std::string_view::npos) {
-        if (cur.starts_with("\033]8;")) {
-          state.in_hyperlink = true;
-        }
-        break;
-      }
-
-      if (cur.starts_with("\033]8;")) {
-        const auto payload = cur.substr(0, term_pos);
-        state.in_hyperlink = !(payload == "\033]8;;" || payload.ends_with(";"));
-      }
-      cur.remove_prefix((term_pos == bel_pos) ? term_pos + 1 : term_pos + 2);
-    } else {
-      cur.remove_prefix(1);
-    }
-  }
-
-  return state;
-}
-
-std::string SanitizeCell(std::string_view raw_text) {
-  std::string cell = vinput::str::FlattenLineBreaks(raw_text);
-  const auto state = InspectTerminalState(cell);
-  if (state.in_hyperlink) {
-    cell += "\033]8;;\a";
-  }
-  if (state.active_sgr) {
-    cell += "\033[0m";
-  }
-  return cell;
-}
-
-std::vector<int> ComputeColumnWidths(const std::vector<std::string>& headers,
-                                     const std::vector<std::vector<std::string>>& rows) {
-  std::vector<int> col_widths;
-  col_widths.reserve(headers.size());
+TableGrid BuildTableGrid(const std::vector<std::string>& headers,
+                         const std::vector<std::vector<std::string>>& rows) {
+  TableGrid grid{};
+  grid.headers.reserve(headers.size());
+  grid.col_widths.reserve(headers.size());
 
   for (const auto& header : headers) {
-    col_widths.push_back(MeasureVisibleWidth(SanitizeCell(header)));
+    auto cell = vinput::str::SanitizeTerminalCell(header);
+    grid.col_widths.push_back(cell.visible_width);
+    grid.headers.push_back(std::move(cell));
   }
 
+  grid.rows.reserve(rows.size());
   for (const auto& row : rows) {
-    for (size_t i = 0; i < row.size() && i < col_widths.size(); ++i) {
-      col_widths[i] = std::max(col_widths[i], MeasureVisibleWidth(SanitizeCell(row[i])));
+    std::vector<Cell> processed_row;
+    processed_row.reserve(row.size());
+    for (size_t i = 0; i < row.size(); ++i) {
+      auto cell = vinput::str::SanitizeTerminalCell(row[i]);
+      if (i < grid.col_widths.size()) {
+        grid.col_widths[i] = std::max(grid.col_widths[i], cell.visible_width);
+      }
+      processed_row.push_back(std::move(cell));
     }
+    grid.rows.push_back(std::move(processed_row));
   }
-  return col_widths;
+
+  return grid;
 }
 
-std::string FormatRow(const std::vector<std::string>& cells, const std::vector<int>& col_widths) {
-  std::vector<std::string> formatted_cells;
-  formatted_cells.reserve(col_widths.size());
+std::string FormatAlignedRow(const std::vector<Cell>& cells, const std::vector<int>& col_widths) {
+  std::vector<std::string> parts;
+  parts.reserve(col_widths.size());
 
   for (size_t i = 0; i < col_widths.size(); ++i) {
-    const std::string raw = (i < cells.size()) ? cells[i] : "";
-    std::string cell = SanitizeCell(raw);
-
-    if (i + 1 < col_widths.size()) {
-      cell = PadCellToVisibleWidth(cell, col_widths[i]);
+    std::string text = (i < cells.size()) ? cells[i].sanitized_text : std::string{};
+    const int w = (i < cells.size()) ? cells[i].visible_width : 0;
+    if (i + 1 < col_widths.size() && col_widths[i] > w) {
+      text.append(static_cast<size_t>(col_widths[i] - w), ' ');
     }
-    formatted_cells.push_back(std::move(cell));
+    parts.push_back(std::move(text));
   }
-  return vinput::str::Join(formatted_cells, "  ");
+
+  return vinput::str::Join(parts, "  ");
 }
 
 } // namespace
@@ -264,18 +219,18 @@ std::string RenderTable(const std::vector<std::string>& headers,
     return {};
   }
 
-  const auto col_widths = ComputeColumnWidths(headers, rows);
+  const auto grid = BuildTableGrid(headers, rows);
   std::vector<std::string> lines;
-  lines.reserve(rows.size() + 1);
+  lines.reserve(grid.rows.size() + 1);
 
-  std::string header_line = FormatRow(headers, col_widths);
+  std::string header_line = FormatAlignedRow(grid.headers, grid.col_widths);
   if (use_color) {
     header_line = "\033[1m" + header_line + "\033[0m";
   }
   lines.push_back(std::move(header_line));
 
-  for (const auto& row : rows) {
-    lines.push_back(FormatRow(row, col_widths));
+  for (const auto& row : grid.rows) {
+    lines.push_back(FormatAlignedRow(row, grid.col_widths));
   }
 
   return vinput::str::Join(lines, "\n") + '\n';

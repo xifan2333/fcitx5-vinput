@@ -18,11 +18,13 @@ set -euo pipefail
 BUILD_DIR=build
 FULL=0
 ALL=0
+CHECKS=""
 FILES=()
 for arg in "$@"; do
   case "$arg" in
   --full) FULL=1 ;;
   --all) ALL=1 ;;
+  --checks=*) CHECKS="${arg#--checks=}" ;;
   *) FILES+=("$arg") ;;
   esac
 done
@@ -94,4 +96,9 @@ if [ "${#FILES[@]}" -eq 0 ]; then
   exit 0
 fi
 
-printf '%s\0' "${FILES[@]}" | xargs -0 -r -n 1 -P "$(nproc)" clang-tidy -p "$BUILD_DIR"
+EXTRA_ARGS=()
+if [ -n "$CHECKS" ]; then
+  EXTRA_ARGS+=(--checks="$CHECKS")
+fi
+
+printf '%s\0' "${FILES[@]}" | xargs -0 -r -n 1 -P "$(nproc)" clang-tidy -p "$BUILD_DIR" "${EXTRA_ARGS[@]}"

@@ -229,49 +229,123 @@ template <typename T> inline std::optional<T> ParseInteger(std::string_view text
 // 8. Terminal Text & Escapes
 // =========================================================================
 
+// Represents a sanitized terminal cell with its precomputed display width.
+struct ProcessedTerminalCell {
+  std::string sanitized_text;
+  int visible_width{0};
+};
+
+namespace detail {
+
+// Skips and consumes a CSI sequence starting at "\033[".
+// Evaluates if an active SGR styling sequence was encountered or reset.
+struct CsiResult {
+  size_t length{0};
+  std::optional<bool> sgr_active;
+};
+
+[[nodiscard]] inline CsiResult ConsumeCsi(std::string_view cur) noexcept {
+  const auto rest = cur.substr(2);
+  const auto it = std::ranges::find_if(rest, [](char c) noexcept {
+    const auto uc = static_cast<unsigned char>(c);
+    return uc >= 0x40 && uc <= 0x7e;
+  });
+  if (it == rest.end()) {
+    return {.length = cur.size(), .sgr_active = std::nullopt};
+  }
+
+  const size_t len = static_cast<size_t>(it - cur.begin() + 1);
+  if (*it != 'm') {
+    return {.length = len, .sgr_active = std::nullopt};
+  }
+
+  const std::string_view params = cur.substr(2, len - 3);
+  const bool is_reset = (params.empty() || params == "0" || params == "00");
+  return {.length = len, .sgr_active = !is_reset};
+}
+
+// Skips and consumes an OSC sequence starting at "\033]".
+// Evaluates if an OSC 8 hyperlink state changed.
+struct OscResult {
+  size_t length{0};
+  std::optional<bool> hyperlink_active;
+};
+
+[[nodiscard]] inline OscResult ConsumeOsc(std::string_view cur) noexcept {
+  const auto bel_pos = cur.find('\a');
+  const auto st_pos = cur.find("\033\\");
+  const auto term_pos = std::min(bel_pos, st_pos);
+  if (term_pos == std::string_view::npos) {
+    const bool is_osc8 = cur.starts_with("\033]8;");
+    return {.length = cur.size(),
+            .hyperlink_active = is_osc8 ? std::make_optional(true) : std::nullopt};
+  }
+
+  const size_t len = (term_pos == bel_pos) ? term_pos + 1 : term_pos + 2;
+  if (!cur.starts_with("\033]8;")) {
+    return {.length = len, .hyperlink_active = std::nullopt};
+  }
+
+  const auto payload = cur.substr(0, term_pos);
+  const bool is_close = (payload == "\033]8;;" || payload.ends_with(";"));
+  return {.length = len, .hyperlink_active = !is_close};
+}
+
+// Dispatches and steps past an escape sequence at the front of cur, updating terminal states.
+inline void StepTerminalEscape(std::string_view& cur, bool& in_hyperlink,
+                               bool& active_sgr) noexcept {
+  if (cur.starts_with("\033[")) {
+    const auto res = ConsumeCsi(cur);
+    if (res.sgr_active.has_value()) {
+      active_sgr = *res.sgr_active;
+    }
+    cur.remove_prefix(res.length);
+  } else if (cur.starts_with("\033]")) {
+    const auto res = ConsumeOsc(cur);
+    if (res.hyperlink_active.has_value()) {
+      in_hyperlink = *res.hyperlink_active;
+    }
+    cur.remove_prefix(res.length);
+  } else {
+    cur.remove_prefix(1);
+  }
+}
+
+// Higher-order iterator that visits text chunks and terminal escape sequences in a single pass.
+template <typename TextFn, typename EscapeFn>
+inline void ForEachTerminalChunk(std::string_view text, TextFn&& on_text, EscapeFn&& on_escape) {
+  std::string_view cur = text;
+  while (!cur.empty()) {
+    const auto esc_pos = cur.find('\033');
+    if (esc_pos == std::string_view::npos) {
+      on_text(cur);
+      break;
+    }
+
+    if (esc_pos > 0) {
+      on_text(cur.substr(0, esc_pos));
+      cur.remove_prefix(esc_pos);
+    }
+
+    on_escape(cur);
+  }
+}
+
+} // namespace detail
+
 // Strips terminal escape sequences (ANSI CSI/SGR styles and OSC 8 hyperlinks),
 // leaving only visible UTF-8 text via chunk-based navigation.
 [[nodiscard]] inline std::string StripTerminalEscapes(std::string_view text) {
   std::string visible;
   visible.reserve(text.size());
-  std::string_view cur = text;
 
-  while (!cur.empty()) {
-    const auto esc_pos = cur.find('\033');
-    if (esc_pos == std::string_view::npos) {
-      visible.append(cur);
-      break;
-    }
-
-    if (esc_pos > 0) {
-      visible.append(cur.substr(0, esc_pos));
-      cur.remove_prefix(esc_pos);
-    }
-
-    if (cur.starts_with("\033[")) {
-      // CSI / SGR: terminates at characters in ['@'..'~'] (0x40 - 0x7E)
-      size_t end_idx = 2;
-      while (end_idx < cur.size()) {
-        const auto ch = static_cast<unsigned char>(cur[end_idx++]);
-        if (ch >= 0x40 && ch <= 0x7e) {
-          break;
-        }
-      }
-      cur.remove_prefix(end_idx);
-    } else if (cur.starts_with("\033]")) {
-      // OSC (e.g. OSC 8 hyperlink): terminates at BEL ('\a') or ST ("\033\\")
-      const auto bel_pos = cur.find('\a');
-      const auto st_pos = cur.find("\033\\");
-      const auto term_pos = std::min(bel_pos, st_pos);
-      if (term_pos != std::string_view::npos) {
-        cur.remove_prefix((term_pos == bel_pos) ? term_pos + 1 : term_pos + 2);
-      } else {
-        break;
-      }
-    } else {
-      cur.remove_prefix(1);
-    }
-  }
+  detail::ForEachTerminalChunk(
+      text, [&](std::string_view chunk) { visible.append(chunk); },
+      [](std::string_view& cur) {
+        bool dummy_link = false;
+        bool dummy_sgr = false;
+        detail::StepTerminalEscape(cur, dummy_link, dummy_sgr);
+      });
 
   return visible;
 }
@@ -310,6 +384,34 @@ template <typename T> inline std::optional<T> ParseInteger(std::string_view text
   }
 
   return result;
+}
+
+// Sanitizes a terminal cell by flattening line breaks, closing unclosed escape sequences
+// (OSC 8 hyperlinks and ANSI SGR styles), and computing its display width in a single pass.
+[[nodiscard]] inline ProcessedTerminalCell SanitizeTerminalCell(std::string_view raw_text) {
+  std::string flat = FlattenLineBreaks(raw_text);
+
+  std::string visible;
+  visible.reserve(flat.size());
+
+  bool in_hyperlink = false;
+  bool active_sgr = false;
+
+  detail::ForEachTerminalChunk(
+      flat, [&](std::string_view chunk) { visible.append(chunk); },
+      [&](std::string_view& cur) { detail::StepTerminalEscape(cur, in_hyperlink, active_sgr); });
+
+  if (in_hyperlink) {
+    flat += "\033]8;;\a";
+  }
+  if (active_sgr) {
+    flat += "\033[0m";
+  }
+
+  const auto u32 = unicode::utf8::decode(visible);
+  const int width = unicode::width(u32, unicode::AmbiguousWidth::Narrow);
+
+  return ProcessedTerminalCell{.sanitized_text = std::move(flat), .visible_width = width};
 }
 
 // Collapses runs of whitespace, carriage returns, newlines, and tabs into a single space.

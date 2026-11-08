@@ -27,7 +27,7 @@ Checks: >
   readability-*,
   -readability-magic-numbers,
   -readability-named-parameter,
-  -readability-function-cognitive-complexity,
+  readability-function-cognitive-complexity,
   -readability-identifier-length,
   -readability-else-after-return,
   -readability-use-concise-preprocessor-directives
@@ -38,6 +38,7 @@ WarningsAsErrors: ''
 HeaderFilterRegex: '^(src|tests)/.*'
 
 CheckOptions:
+  readability-function-cognitive-complexity.Threshold: 15
   readability-identifier-naming.ClassCase: CamelCase
   readability-identifier-naming.StructCase: CamelCase
   readability-identifier-naming.EnumCase: CamelCase
