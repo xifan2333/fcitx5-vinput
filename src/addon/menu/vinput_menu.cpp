@@ -17,6 +17,8 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -413,11 +415,15 @@ bool HandlePaletteCandidateAction(const fcitx::Key& key, fcitx::CandidateList* l
     return true;
   }
   if (IsEnterKey(key)) {
+    if (list->empty()) {
+      return false;
+    }
     const int index = std::max(list->cursorIndex(), 0);
     if (index >= 0 && index < list->size()) {
       list->candidate(index).select(ic);
+      return true;
     }
-    return true;
+    return false;
   }
   return false;
 }
@@ -451,64 +457,17 @@ bool HandleResultCandidateAction(const fcitx::Key& key, fcitx::CandidateList* li
     return true;
   }
   if (key.check(FcitxKey_Return) || key.check(FcitxKey_KP_Enter)) {
+    if (list->empty()) {
+      return false;
+    }
     const int index = std::max(list->cursorIndex(), 0);
     if (index >= 0 && index < list->size()) {
       list->candidate(index).select(ic);
+      return true;
     }
-    return true;
+    return false;
   }
   return false;
-}
-
-void RegisterModelCommand(PaletteCommandRegistry* registry) {
-  if (registry == nullptr) {
-    return;
-  }
-  registry->registerCommand(PaletteCommand{
-      .id = "model",
-      .name = "model",
-      .alias = "m",
-      .title = _("Cmd-Model"),
-      .comment = _("Cmd-Model"),
-      .description = _("Switch command model"),
-      .category = PaletteCategory::CommandModel,
-      .getItems =
-          [](VinputEngine* /*engine*/) {
-            std::vector<PaletteItem> items;
-            const auto config = LoadCoreConfig();
-            const auto active_models = vinput::llm::LoadActiveModels(config);
-            for (const auto& m : active_models) {
-              std::string comment = m.active_for_command ? _("Cmd-Model *") : _("Cmd-Model");
-              items.push_back(PaletteItem{
-                  .category = PaletteCategory::CommandModel,
-                  .id = m.full_id,
-                  .text = m.provider_id + " / " + m.model,
-                  .comment = std::move(comment),
-                  .search_text = m.full_id + " " + m.provider_id + " " + m.model + " model cmd",
-                  .active = m.active_for_command,
-                  .provider_id = m.provider_id,
-                  .model_id = m.model,
-                  .scene_id = {},
-                  .adapter_id = {},
-                  .is_command_entry = false,
-                  .command_token = {},
-              });
-            }
-            return items;
-          },
-      .onSelect =
-          [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
-            auto core_config = LoadCoreConfig();
-            std::string error;
-            if (!vinput::llm::SetActiveCommandModel(&core_config, item.provider_id, item.model_id,
-                                                    &error)) {
-              engine->notifyError(error.empty() ? _("Failed to set command model.") : error);
-              return;
-            }
-            engine->notifyInfo(fmt::sprintf(_("Command model set to '%s / %s'."),
-                                            item.provider_id.c_str(), item.model_id.c_str()));
-          },
-  });
 }
 
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -601,17 +560,108 @@ std::vector<PaletteItem> LoadAsrItems() {
   return items;
 }
 
-void HandleAsrSelection(VinputEngine* engine, const PaletteItem& item) {
-  if (engine == nullptr) {
-    return;
+std::string FormatClientComment(bool running, pid_t pid, bool auto_start) {
+  std::string status = _("stopped");
+  if (running) {
+    status = (pid > 0) ? fmt::sprintf(_("running (%d)"), pid) : _("running");
   }
+  if (auto_start) {
+    status += _(" [autostart]");
+  }
+  return status;
+}
+
+PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger) {
+  const bool running = vinput::client::IsRunning(client.id);
+  const pid_t pid = vinput::client::GetPid(client.id);
+  const std::string type_label = is_trigger ? _("[Trigger]") : _("[Receiver]");
+  std::string text = fmt::sprintf("%s %s", type_label.c_str(), client.id.c_str());
+  std::string comment = FormatClientComment(running, pid, client.autoStart);
+
+  std::string search_text = client.id;
+  search_text += ' ';
+  search_text += client.command;
+  search_text += is_trigger ? " trigger " : " receiver ";
+  if (client.autoStart) {
+    search_text += "autostart ";
+  }
+  search_text += running ? "running " : "stopped ";
+  search_text += "proc process";
+
+  return PaletteItem{
+      .category = PaletteCategory::Process,
+      .id = client.id,
+      .text = std::move(text),
+      .comment = std::move(comment),
+      .search_text = std::move(search_text),
+      .active = running,
+      .provider_id = {},
+      .model_id = {},
+      .scene_id = {},
+      .adapter_id = {},
+      .is_command_entry = false,
+      .command_token = {},
+  };
+}
+
+} // namespace
+
+void VinputEngine::registerModelCommand() {
+  palette_registry_.registerCommand(PaletteCommand{
+      .id = "model",
+      .name = "model",
+      .alias = "m",
+      .title = _("Cmd-Model"),
+      .comment = _("Cmd-Model"),
+      .description = _("Switch command model"),
+      .category = PaletteCategory::CommandModel,
+      .getItems =
+          [](VinputEngine* /*engine*/) {
+            std::vector<PaletteItem> items;
+            const auto config = LoadCoreConfig();
+            const auto active_models = vinput::llm::LoadActiveModels(config);
+            for (const auto& m : active_models) {
+              std::string comment = m.active_for_command ? _("Cmd-Model *") : _("Cmd-Model");
+              items.push_back(PaletteItem{
+                  .category = PaletteCategory::CommandModel,
+                  .id = m.full_id,
+                  .text = m.provider_id + " / " + m.model,
+                  .comment = std::move(comment),
+                  .search_text = m.full_id + " " + m.provider_id + " " + m.model + " model cmd",
+                  .active = m.active_for_command,
+                  .provider_id = m.provider_id,
+                  .model_id = m.model,
+                  .scene_id = {},
+                  .adapter_id = {},
+                  .is_command_entry = false,
+                  .command_token = {},
+              });
+            }
+            return items;
+          },
+      .onSelect =
+          [this](VinputEngine* /*engine*/, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
+            auto core_config = LoadCoreConfig();
+            std::string error;
+            if (!vinput::llm::SetActiveCommandModel(&core_config, item.provider_id, item.model_id,
+                                                    &error)) {
+              notifyError(error.empty() ? _("Failed to set command model.") : error);
+              return;
+            }
+            notifyInfo(fmt::sprintf(_("Command model set to '%s / %s'."), item.provider_id.c_str(),
+                                    item.model_id.c_str()));
+          },
+  });
+}
+
+void VinputEngine::handleAsrSelection(const PaletteItem& item) {
   auto core_config = LoadCoreConfig();
 #if !VINPUT_ENABLE_LOCAL_ASR
   const auto* target_provider = CoreConfigView(core_config).AsrProvider(item.provider_id);
   if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
-    engine->notifyError(fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
-                                       "supported in this Lite build."),
-                                     item.provider_id.c_str()));
+    notifyError(fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
+                               "supported in this Lite build."),
+                             item.provider_id.c_str()));
     return;
   }
 #endif
@@ -619,29 +669,26 @@ void HandleAsrSelection(VinputEngine* engine, const PaletteItem& item) {
   if (!item.model_id.empty()) {
     std::string error;
     if (!SetPreferredLocalModel(&core_config, item.model_id, &error)) {
-      engine->notifyError(error);
+      notifyError(error);
       return;
     }
   }
   if (!SaveCoreConfig(core_config)) {
-    engine->notifyError(_("Failed to save ASR config."));
+    notifyError(_("Failed to save ASR config."));
     return;
   }
-  if (!engine->queryDaemonStatus().empty()) {
+  if (!queryDaemonStatus().empty()) {
     std::string reload_error;
-    if (!engine->callReloadAsrBackend(&reload_error)) {
-      engine->notifyError(reload_error.empty() ? _("Failed to reload ASR backend.") : reload_error);
+    if (!callReloadAsrBackend(&reload_error)) {
+      notifyError(reload_error.empty() ? _("Failed to reload ASR backend.") : reload_error);
       return;
     }
   }
-  engine->notifyInfo(fmt::sprintf(_("ASR switch requested for '%s'."), item.text.c_str()));
+  notifyInfo(fmt::sprintf(_("ASR switch requested for '%s'."), item.text.c_str()));
 }
 
-void RegisterAsrCommand(PaletteCommandRegistry* registry) {
-  if (registry == nullptr) {
-    return;
-  }
-  registry->registerCommand(PaletteCommand{
+void VinputEngine::registerAsrCommand() {
+  palette_registry_.registerCommand(PaletteCommand{
       .id = "asr",
       .name = "asr",
       .alias = "a",
@@ -650,16 +697,13 @@ void RegisterAsrCommand(PaletteCommandRegistry* registry) {
       .description = _("Switch ASR provider or model"),
       .category = PaletteCategory::Asr,
       .getItems = [](VinputEngine* /*engine*/) { return LoadAsrItems(); },
-      .onSelect = [](VinputEngine* engine, const PaletteItem& item,
-                     fcitx::InputContext* /*ic*/) { HandleAsrSelection(engine, item); },
+      .onSelect = [this](VinputEngine* /*engine*/, const PaletteItem& item,
+                         fcitx::InputContext* /*ic*/) { handleAsrSelection(item); },
   });
 }
 
-void RegisterSceneCommand(PaletteCommandRegistry* registry) {
-  if (registry == nullptr) {
-    return;
-  }
-  registry->registerCommand(PaletteCommand{
+void VinputEngine::registerSceneCommand() {
+  palette_registry_.registerCommand(PaletteCommand{
       .id = "scene",
       .name = "scene",
       .alias = "s",
@@ -693,87 +737,39 @@ void RegisterSceneCommand(PaletteCommandRegistry* registry) {
             return items;
           },
       .onSelect =
-          [](VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
+          [this](VinputEngine* /*engine*/, const PaletteItem& item, fcitx::InputContext* /*ic*/) {
             auto core_config = LoadCoreConfig();
             core_config.scenes.activeScene = item.scene_id;
             if (!SaveCoreConfig(core_config)) {
-              engine->notifyError(_("Failed to save scene config."));
+              notifyError(_("Failed to save scene config."));
               return;
             }
-            engine->active_scene_id_ = item.scene_id;
-            engine->notifyInfo(fmt::sprintf(_("Scene switched to '%s'."), item.text.c_str()));
+            active_scene_id_ = item.scene_id;
+            notifyInfo(fmt::sprintf(_("Scene switched to '%s'."), item.text.c_str()));
           },
   });
 }
 
-std::string FormatClientComment(bool running, pid_t pid, bool auto_start) {
-  std::string status =
-      running ? (pid > 0 ? fmt::sprintf(_("running (%d)"), pid) : _("running")) : _("stopped");
-  if (auto_start) {
-    status += _(" [autostart]");
-  }
-  return status;
-}
-
-PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger) {
-  const bool running = vinput::client::IsRunning(client.id);
-  const pid_t pid = vinput::client::GetPid(client.id);
-  const std::string type_label = is_trigger ? _("[Trigger]") : _("[Receiver]");
-  const std::string text = fmt::sprintf("%s %s", type_label.c_str(), client.id.c_str());
-  std::string comment = FormatClientComment(running, pid, client.autoStart);
-
-  std::string search_text = client.id;
-  search_text += ' ';
-  search_text += client.command;
-  search_text += is_trigger ? " trigger " : " receiver ";
-  if (client.autoStart) {
-    search_text += "autostart ";
-  }
-  search_text += running ? "running " : "stopped ";
-  search_text += "proc process";
-
-  return PaletteItem{
-      .category = PaletteCategory::Process,
-      .id = client.id,
-      .text = std::move(text),
-      .comment = std::move(comment),
-      .search_text = std::move(search_text),
-      .active = running,
-      .provider_id = {},
-      .model_id = {},
-      .scene_id = {},
-      .adapter_id = {},
-      .is_command_entry = false,
-      .command_token = {},
-  };
-}
-
-void HandleClientToggle(VinputEngine* engine, const PaletteItem& item) {
-  if (engine == nullptr) {
-    return;
-  }
+void VinputEngine::handleClientToggle(const PaletteItem& item) {
   const bool is_running = vinput::client::IsRunning(item.id);
   std::string error;
   if (is_running) {
-    if (!engine->callStopClient(item.id, &error)) {
-      engine->notifyError(error.empty() ? _("Failed to stop client.") : error);
+    if (!callStopClient(item.id, &error)) {
+      notifyError(error.empty() ? _("Failed to stop client.") : error);
       return;
     }
-    engine->notifyInfo(fmt::sprintf(_("Client '%s' stopped."), item.id.c_str()));
+    notifyInfo(fmt::sprintf(_("Client '%s' stopped."), item.id.c_str()));
   } else {
-    if (!engine->callStartClient(item.id, &error)) {
-      engine->notifyError(error.empty() ? _("Failed to start client.") : error);
+    if (!callStartClient(item.id, &error)) {
+      notifyError(error.empty() ? _("Failed to start client.") : error);
       return;
     }
-    engine->notifyInfo(fmt::sprintf(_("Client '%s' started."), item.id.c_str()));
+    notifyInfo(fmt::sprintf(_("Client '%s' started."), item.id.c_str()));
   }
 }
 
-void RegisterProcessCommand(PaletteCommandRegistry* registry) {
-  if (registry == nullptr) {
-    return;
-  }
-  registry->registerCommand(PaletteCommand{
+void VinputEngine::registerProcessCommand() {
+  palette_registry_.registerCommand(PaletteCommand{
       .id = "proc",
       .name = "proc",
       .alias = "p",
@@ -794,19 +790,17 @@ void RegisterProcessCommand(PaletteCommandRegistry* registry) {
             }
             return items;
           },
-      .onSelect = [](VinputEngine* engine, const PaletteItem& item,
-                     fcitx::InputContext* /*ic*/) { HandleClientToggle(engine, item); },
+      .onSelect = [this](VinputEngine* /*engine*/, const PaletteItem& item,
+                         fcitx::InputContext* /*ic*/) { handleClientToggle(item); },
   });
 }
 
-} // namespace
-
 void VinputEngine::initializePaletteRegistry() {
   palette_registry_.clear();
-  RegisterModelCommand(&palette_registry_);
-  RegisterAsrCommand(&palette_registry_);
-  RegisterSceneCommand(&palette_registry_);
-  RegisterProcessCommand(&palette_registry_);
+  registerModelCommand();
+  registerAsrCommand();
+  registerSceneCommand();
+  registerProcessCommand();
 }
 
 bool VinputEngine::callStartClient(const std::string& client_id, std::string* error) {
@@ -987,6 +981,9 @@ void VinputEngine::selectPaletteItem(std::size_t index, fcitx::InputContext* ic)
 
   if (item.is_command_entry) {
     palette_query_ = "/" + item.command_token + " ";
+    if (item.category == PaletteCategory::Process) {
+      reloadPaletteItems();
+    }
     rebuildPaletteMenu(palette_menu_ic_ != nullptr ? palette_menu_ic_ : ic);
     return;
   }
@@ -1052,7 +1049,7 @@ bool VinputEngine::handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent) {
     return false;
   }
 
-  const bool handled = IsResultMenuHandledKey(keyEvent.key(), page_prev_keys_, page_next_keys_);
+  const bool handled = IsHandledResultMenuKey(keyEvent.key(), page_prev_keys_, page_next_keys_);
   if (keyEvent.isRelease()) {
     if (handled) {
       keyEvent.filterAndAccept();

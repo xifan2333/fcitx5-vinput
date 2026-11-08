@@ -67,6 +67,12 @@ private:
   void applySettings();
   void reloadSceneConfig();
   void initializePaletteRegistry();
+  void registerModelCommand();
+  void registerAsrCommand();
+  void registerSceneCommand();
+  void registerProcessCommand();
+  void handleAsrSelection(const PaletteItem& item);
+  void handleClientToggle(const PaletteItem& item);
   void showPaletteMenu(fcitx::InputContext* ic, const std::string& initial_query = {});
   void hidePaletteMenu();
   void resetPaletteMenuState();
