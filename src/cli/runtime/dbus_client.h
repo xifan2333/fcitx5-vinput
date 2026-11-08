@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "common/dbus/dbus_interface.h"
 
@@ -28,6 +29,8 @@ public:
   bool ReloadAsrBackend(std::string* error = nullptr);
   bool StartClient(const std::string& client_id, std::string* error = nullptr);
   bool StopClient(const std::string& client_id, std::string* error = nullptr);
+  bool GetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses,
+                         std::string* error = nullptr);
 
 private:
   sd_bus* bus_ = nullptr;

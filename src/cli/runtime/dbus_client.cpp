@@ -92,7 +92,23 @@ bool CallDaemonVoid(sd_bus* bus, const char* member, std::string* error) {
 
 bool CallDaemonStringArg(sd_bus* bus, const char* member, const std::string& arg,
                          std::string* error) {
-  return CallDaemonMethod(bus, member, nullptr, error, "s", arg.c_str());
+  return CallDaemonMethod(bus_, member, nullptr, error, "s", arg.c_str());
+}
+
+std::string SafeString(const char* str) {
+  return (str != nullptr) ? str : "";
+}
+
+std::vector<std::string> ReadStringArray(sd_bus_message* msg) {
+  std::vector<std::string> result;
+  if (sd_bus_message_enter_container(msg, 'a', "s") >= 0) {
+    const char* item = nullptr;
+    while (sd_bus_message_read_basic(msg, 's', static_cast<void*>(&item)) > 0) {
+      result.emplace_back(SafeString(item));
+    }
+    sd_bus_message_exit_container(msg);
+  }
+  return result;
 }
 
 } // namespace
@@ -156,20 +172,13 @@ bool DbusClient::GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::s
                       static_cast<void*>(&target_model), static_cast<void*>(&effective_provider),
                       static_cast<void*>(&effective_model), static_cast<void*>(&last_error),
                       &reload_in_progress, &has_effective_backend);
-  std::vector<std::string> endpoints;
-  if (sd_bus_message_enter_container(reply.get(), 'a', "s") >= 0) {
-    const char* endpoint = nullptr;
-    while (sd_bus_message_read_basic(reply.get(), 's', static_cast<void*>(&endpoint)) > 0) {
-      endpoints.emplace_back((endpoint != nullptr) ? endpoint : "");
-    }
-    sd_bus_message_exit_container(reply.get());
-  }
+  std::vector<std::string> endpoints = ReadStringArray(reply.get());
   if (state != nullptr) {
-    state->target_provider_id = (target_provider != nullptr) ? target_provider : "";
-    state->target_model_id = (target_model != nullptr) ? target_model : "";
-    state->effective_provider_id = (effective_provider != nullptr) ? effective_provider : "";
-    state->effective_model_id = (effective_model != nullptr) ? effective_model : "";
-    state->last_error = (last_error != nullptr) ? last_error : "";
+    state->target_provider_id = SafeString(target_provider);
+    state->target_model_id = SafeString(target_model);
+    state->effective_provider_id = SafeString(effective_provider);
+    state->effective_model_id = SafeString(effective_model);
+    state->last_error = SafeString(last_error);
     state->reload_in_progress = reload_in_progress != 0;
     state->has_effective_backend = has_effective_backend != 0;
     state->remote_endpoints = std::move(endpoints);
@@ -204,6 +213,49 @@ bool DbusClient::StartClient(const std::string& client_id, std::string* error) {
 
 bool DbusClient::StopClient(const std::string& client_id, std::string* error) {
   return CallDaemonStringArg(bus_, vinput::dbus::kMethodStopClient, client_id, error);
+}
+
+bool DbusClient::GetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses,
+                                   std::string* error) {
+  if (statuses == nullptr) {
+    if (error != nullptr) {
+      *error = "null statuses pointer";
+    }
+    return false;
+  }
+  statuses->clear();
+
+  ScopedMessage reply;
+  if (!CallDaemonMethod(bus_, vinput::dbus::kMethodGetClientStatuses, &reply, error, "")) {
+    return false;
+  }
+
+  if (sd_bus_message_enter_container(reply.get(), 'a', "(sbx)") < 0) {
+    if (error != nullptr) {
+      *error = "failed to enter client status array";
+    }
+    return false;
+  }
+
+  while (sd_bus_message_enter_container(reply.get(), 'r', "sbx") > 0) {
+    const char* id = nullptr;
+    int running = 0;
+    int64_t pid = -1;
+    if (sd_bus_message_read(reply.get(), "sbx", &id, &running, &pid) >= 0) {
+      statuses->push_back({
+          .id = (id != nullptr) ? id : "",
+          .running = (running != 0),
+          .pid = pid,
+      });
+    }
+    sd_bus_message_exit_container(reply.get());
+  }
+  sd_bus_message_exit_container(reply.get());
+
+  if (error != nullptr) {
+    error->clear();
+  }
+  return true;
 }
 
 } // namespace vinput::cli
