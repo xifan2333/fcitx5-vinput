@@ -69,24 +69,7 @@ struct ScopedConfigDir {
   ScopedConfigDir& operator=(ScopedConfigDir&&) = delete;
 };
 
-void runAllTests() {
-  const ScopedConfigDir sandbox;
-
-  char arg0[] = "vinput-modifier-test";
-  char arg1[] = "--disable=all";
-  char* argv[] = {arg0, arg1, nullptr};
-
-  fcitx::Instance instance(2, argv);
-  TestInputContext ic(instance);
-  VinputEngine engine(&instance);
-
-  fcitx::RawConfig test_config;
-  test_config.setValueByPath("TriggerKey/0", "Alt_R");
-  test_config.setValueByPath("TriggerKey/1", "F8");
-  test_config.setValueByPath("CommandKeys/0", "Control_R");
-  test_config.setValueByPath("MenuKey/0", "Shift_R");
-  engine.setConfig(test_config);
-
+void TestSingleModifierTap(TestInputContext& ic, VinputEngine& engine) {
   std::cout << "--- 1. Testing Single-Modifier Tap (Start & Stop) ---\n";
   // Press Alt_R -> arms pending timer, exclusively consumed
   fcitx::KeyEvent press_alt(&ic, fcitx::Key(FcitxKey_Alt_R), false);
@@ -101,7 +84,9 @@ void runAllTests() {
   expect(release_alt.filtered() && release_alt.accepted(),
          "Trigger release must be exclusively consumed");
   expect(!engine.isPendingStart(), "Pending start timer should be cleared on tap release");
+}
 
+void TestChordInterruption(TestInputContext& ic, VinputEngine& engine) {
   std::cout << "--- 2. Testing Alt_R + T Shortcut Combination (Chord Interruption) ---\n";
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   // Press Alt_R
@@ -128,7 +113,9 @@ void runAllTests() {
   expect(chord_alt_r.filtered() && chord_alt_r.accepted(),
          "Interrupted Alt_R release is consumed without trigger");
   expect(!engine.isRecordingActive(), "Chord release must not start recording");
+}
 
+void TestNonTriggerRegularKeys(TestInputContext& ic, VinputEngine& engine) {
   std::cout << "--- 3. Testing Non-Trigger Regular Keys (Alt_L + T) Pass-through ---\n";
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   // Left Alt (not in TriggerKey list) must pass through untouched
@@ -140,7 +127,9 @@ void runAllTests() {
   engine.handleKeyEvent(left_alt_r);
   expect(!left_alt_r.filtered() && !left_alt_r.accepted(),
          "Left Alt release must pass through to app");
+}
 
+void TestMultiTriggerIsolation(TestInputContext& ic, VinputEngine& engine) {
   std::cout << "--- 4. Testing Multi-Trigger Isolation ---\n";
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   // Press Trigger 1 (Alt_R)
@@ -160,7 +149,9 @@ void runAllTests() {
   engine.handleKeyEvent(multi_f8_r);
   expect(multi_f8_r.filtered() && multi_f8_r.accepted(), "F8 release is consumed");
   expect(!engine.isPendingStart(), "Pending start timer is cleared after F8 interaction");
+}
 
+void TestMenuKeyTriggerAndCombination(TestInputContext& ic, VinputEngine& engine) {
   std::cout << "--- 5. Testing Menu Key (Shift_R) Release-Based Trigger & Combination ---\n";
   // 5a. Shift_R + A combination: Shift_R press is consumed, A interrupts and passes through,
   // Shift_R release is consumed without triggering palette
@@ -196,120 +187,155 @@ void runAllTests() {
   engine.handleKeyEvent(close_shift_r);
   expect(close_shift_r.filtered() && close_shift_r.accepted(),
          "Close Shift_R release is consumed and closes palette");
+}
 
+void TestPaletteMenuPaginationAndSelection(fcitx::Instance& instance, TestInputContext& ic,
+                                           VinputEngine& engine) {
   std::cout << "--- 6. Testing Palette Menu Pagination & Selection (pageSize = 2, #401) ---\n";
-  {
-    fcitx::RawConfig global_config;
-    global_config.setValueByPath("Behavior/DefaultPageSize", "2");
-    instance.globalConfig().load(global_config);
-    expect(instance.globalConfig().defaultPageSize() == 2,
-           "defaultPageSize must be configured to 2");
+  fcitx::RawConfig global_config;
+  global_config.setValueByPath("Behavior/DefaultPageSize", "2");
+  instance.globalConfig().load(global_config);
+  expect(instance.globalConfig().defaultPageSize() == 2, "defaultPageSize must be configured to 2");
 
-    // 6a. Open palette menu via Shift_R tap
-    fcitx::KeyEvent open_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
-    engine.handleKeyEvent(open_p);
-    fcitx::KeyEvent open_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
-    engine.handleKeyEvent(open_r);
+  // 6a. Open palette menu via Shift_R tap
+  fcitx::KeyEvent open_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
+  engine.handleKeyEvent(open_p);
+  fcitx::KeyEvent open_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
+  engine.handleKeyEvent(open_r);
 
-    auto candidate_list = ic.inputPanel().candidateList();
-    expect(candidate_list != nullptr, "Candidate list must be present after opening palette");
-    auto* pageable = candidate_list->toPageable();
-    expect(pageable != nullptr, "Candidate list must implement PageableCandidateList");
-    expect(pageable->totalPages() == 2, "3 command entries with pageSize 2 must form 2 pages");
-    expect(pageable->currentPage() == 0, "Initial page must be page 0");
-    expect(candidate_list->size() == 2, "First page must contain 2 candidates");
-    expect(candidate_list->candidate(0).text().toString() == "/model (/m)",
-           "First candidate must be /model (/m)");
-    expect(candidate_list->candidate(1).text().toString() == "/asr (/a)",
-           "Second candidate must be /asr (/a)");
+  auto candidate_list = ic.inputPanel().candidateList();
+  expect(candidate_list != nullptr, "Candidate list must be present after opening palette");
+  auto* pageable = candidate_list->toPageable();
+  expect(pageable != nullptr, "Candidate list must implement PageableCandidateList");
+  expect(pageable->totalPages() == 2, "4 command entries with pageSize 2 must form 2 pages");
+  expect(pageable->currentPage() == 0, "Initial page must be page 0");
+  expect(candidate_list->size() == 2, "First page must contain 2 candidates");
+  expect(candidate_list->candidate(0).text().toString() == "/model (/m)",
+         "First candidate must be /model (/m)");
+  expect(candidate_list->candidate(1).text().toString() == "/asr (/a)",
+         "Second candidate must be /asr (/a)");
 
-    // 6b. Page down to page 1
-    fcitx::KeyEvent pgdn(&ic, fcitx::Key(FcitxKey_Page_Down), false);
-    engine.handleKeyEvent(pgdn);
-    expect(pgdn.filtered() && pgdn.accepted(), "Page_Down must be filtered and accepted");
-    expect(pageable->currentPage() == 1, "Pageable current page must now be 1");
-    expect(candidate_list->size() == 1, "Second page must contain remaining 1 candidate");
-    expect(candidate_list->candidate(0).text().toString() == "/scene (/s)",
-           "Page 1 first candidate must be /scene (/s)");
+  // 6b. Page down to page 1
+  fcitx::KeyEvent pgdn(&ic, fcitx::Key(FcitxKey_Page_Down), false);
+  engine.handleKeyEvent(pgdn);
+  expect(pgdn.filtered() && pgdn.accepted(), "Page_Down must be filtered and accepted");
+  expect(pageable->currentPage() == 1, "Pageable current page must now be 1");
+  expect(candidate_list->size() == 2, "Second page must contain remaining 2 candidates");
+  expect(candidate_list->candidate(0).text().toString() == "/scene (/s)",
+         "Page 1 first candidate must be /scene (/s)");
+  expect(candidate_list->candidate(1).text().toString() == "/proc (/p)",
+         "Page 1 second candidate must be /proc (/p)");
 
-    // 6c. Select first candidate on page 1 with digit key '1' (digitSelection() == 0)
-    // Previously, DigitSelectionIndex used current_page * 10 + 0 = 10, which overflowed (10 >= 4).
-    // Now it uses candidate_list->candidate(digit).select(...) and correctly selects /scene.
-    fcitx::KeyEvent digit_1_p(&ic, fcitx::Key(FcitxKey_1), false);
-    engine.handleKeyEvent(digit_1_p);
-    expect(digit_1_p.filtered() && digit_1_p.accepted(),
-           "Digit 1 on page 1 must select candidate 0 on page 1 (/scene)");
+  // 6c. Select first candidate on page 1 with digit key '1' (digitSelection() == 0)
+  fcitx::KeyEvent digit_1_p(&ic, fcitx::Key(FcitxKey_1), false);
+  engine.handleKeyEvent(digit_1_p);
+  expect(digit_1_p.filtered() && digit_1_p.accepted(),
+         "Digit 1 on page 1 must select candidate 0 on page 1 (/scene)");
 
-    fcitx::KeyEvent digit_1_r(&ic, fcitx::Key(FcitxKey_1), true);
-    engine.handleKeyEvent(digit_1_r);
-    expect(digit_1_r.filtered() && digit_1_r.accepted(), "Digit 1 release must be consumed");
+  fcitx::KeyEvent digit_1_r(&ic, fcitx::Key(FcitxKey_1), true);
+  engine.handleKeyEvent(digit_1_r);
+  expect(digit_1_r.filtered() && digit_1_r.accepted(), "Digit 1 release must be consumed");
 
-    // Verify /scene was actually selected: menu remains open and title updates to reflect Scene
-    candidate_list = ic.inputPanel().candidateList();
-    expect(candidate_list != nullptr, "Menu must stay open after command entry selection");
-    expect(ic.inputPanel().auxUp().toString().find(_("Scene")) != std::string::npos,
-           "Menu title must reflect Scene after selecting /scene with digit 1");
+  // Verify /scene was actually selected: menu remains open and title updates to reflect Scene
+  candidate_list = ic.inputPanel().candidateList();
+  expect(candidate_list != nullptr, "Menu must stay open after command entry selection");
+  expect(ic.inputPanel().auxUp().toString().find(_("Scene")) != std::string::npos,
+         "Menu title must reflect Scene after selecting /scene with digit 1");
 
-    // Close menu with Escape keys
-    fcitx::KeyEvent esc_p1(&ic, fcitx::Key(FcitxKey_Escape), false);
-    engine.handleKeyEvent(esc_p1);
-    fcitx::KeyEvent esc_r1(&ic, fcitx::Key(FcitxKey_Escape), true);
-    engine.handleKeyEvent(esc_r1);
-    fcitx::KeyEvent esc_p2(&ic, fcitx::Key(FcitxKey_Escape), false);
-    engine.handleKeyEvent(esc_p2);
-    fcitx::KeyEvent esc_r2(&ic, fcitx::Key(FcitxKey_Escape), true);
-    engine.handleKeyEvent(esc_r2);
-    expect(ic.inputPanel().candidateList() == nullptr || ic.inputPanel().candidateList()->empty(),
-           "Escape must dismiss the palette menu");
+  // Close menu with Escape keys
+  fcitx::KeyEvent esc_p1(&ic, fcitx::Key(FcitxKey_Escape), false);
+  engine.handleKeyEvent(esc_p1);
+  fcitx::KeyEvent esc_r1(&ic, fcitx::Key(FcitxKey_Escape), true);
+  engine.handleKeyEvent(esc_r1);
+  fcitx::KeyEvent esc_p2(&ic, fcitx::Key(FcitxKey_Escape), false);
+  engine.handleKeyEvent(esc_p2);
+  fcitx::KeyEvent esc_r2(&ic, fcitx::Key(FcitxKey_Escape), true);
+  engine.handleKeyEvent(esc_r2);
+  expect(ic.inputPanel().candidateList() == nullptr || ic.inputPanel().candidateList()->empty(),
+         "Escape must dismiss the palette menu");
 
-    // 6d. Test Enter key selection with Down key navigation (selects /asr on page 0)
-    fcitx::KeyEvent open2_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
-    engine.handleKeyEvent(open2_p);
-    fcitx::KeyEvent open2_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
-    engine.handleKeyEvent(open2_r);
+  // 6d. Test Enter key selection with Down key navigation (selects /asr on page 0)
+  fcitx::KeyEvent open2_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
+  engine.handleKeyEvent(open2_p);
+  fcitx::KeyEvent open2_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
+  engine.handleKeyEvent(open2_r);
 
-    fcitx::KeyEvent down_k(&ic, fcitx::Key(FcitxKey_Down), false);
-    engine.handleKeyEvent(down_k);
-    expect(down_k.filtered() && down_k.accepted(), "Down key must move cursor");
+  fcitx::KeyEvent down_k(&ic, fcitx::Key(FcitxKey_Down), false);
+  engine.handleKeyEvent(down_k);
+  expect(down_k.filtered() && down_k.accepted(), "Down key must move cursor");
 
-    fcitx::KeyEvent enter_k(&ic, fcitx::Key(FcitxKey_Return), false);
-    engine.handleKeyEvent(enter_k);
-    expect(enter_k.filtered() && enter_k.accepted(),
-           "Enter key must select the candidate at cursor");
+  fcitx::KeyEvent enter_k(&ic, fcitx::Key(FcitxKey_Return), false);
+  engine.handleKeyEvent(enter_k);
+  expect(enter_k.filtered() && enter_k.accepted(), "Enter key must select the candidate at cursor");
 
-    // Verify /asr was actually selected by checking title reflects ASR
-    candidate_list = ic.inputPanel().candidateList();
-    expect(candidate_list != nullptr, "Menu must stay open after command entry selection");
-    expect(ic.inputPanel().auxUp().toString().find(_("ASR")) != std::string::npos,
-           "Menu title must reflect ASR after selecting /asr with Enter");
+  // Verify /asr was actually selected by checking title reflects ASR
+  candidate_list = ic.inputPanel().candidateList();
+  expect(candidate_list != nullptr, "Menu must stay open after command entry selection");
+  expect(ic.inputPanel().auxUp().toString().find(_("ASR")) != std::string::npos,
+         "Menu title must reflect ASR after selecting /asr with Enter");
 
-    // Close menu again
-    fcitx::KeyEvent esc2_p1(&ic, fcitx::Key(FcitxKey_Escape), false);
-    engine.handleKeyEvent(esc2_p1);
-    fcitx::KeyEvent esc2_r1(&ic, fcitx::Key(FcitxKey_Escape), true);
-    engine.handleKeyEvent(esc2_r1);
-    fcitx::KeyEvent esc2_p2(&ic, fcitx::Key(FcitxKey_Escape), false);
-    engine.handleKeyEvent(esc2_p2);
-    fcitx::KeyEvent esc2_r2(&ic, fcitx::Key(FcitxKey_Escape), true);
-    engine.handleKeyEvent(esc2_r2);
+  // Close menu again
+  fcitx::KeyEvent esc2_p1(&ic, fcitx::Key(FcitxKey_Escape), false);
+  engine.handleKeyEvent(esc2_p1);
+  fcitx::KeyEvent esc2_r1(&ic, fcitx::Key(FcitxKey_Escape), true);
+  engine.handleKeyEvent(esc2_r1);
+  fcitx::KeyEvent esc2_p2(&ic, fcitx::Key(FcitxKey_Escape), false);
+  engine.handleKeyEvent(esc2_p2);
+  fcitx::KeyEvent esc2_r2(&ic, fcitx::Key(FcitxKey_Escape), true);
+  engine.handleKeyEvent(esc2_r2);
 
-    // 6e. Test out-of-range digit selection on page 1 (1 candidate on page 1)
-    // Pressing digit '3' (digitSelection() == 2) must not access out of bounds
-    fcitx::KeyEvent open3_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
-    engine.handleKeyEvent(open3_p);
-    fcitx::KeyEvent open3_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
-    engine.handleKeyEvent(open3_r);
+  // 6e. Test out-of-range digit selection on page 1 (2 candidates on page 1)
+  // Pressing digit '3' (digitSelection() == 2) must not access out of bounds
+  fcitx::KeyEvent open3_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
+  engine.handleKeyEvent(open3_p);
+  fcitx::KeyEvent open3_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
+  engine.handleKeyEvent(open3_r);
 
-    fcitx::KeyEvent pgdn3(&ic, fcitx::Key(FcitxKey_Page_Down), false);
-    engine.handleKeyEvent(pgdn3);
+  fcitx::KeyEvent pgdn3(&ic, fcitx::Key(FcitxKey_Page_Down), false);
+  engine.handleKeyEvent(pgdn3);
 
-    fcitx::KeyEvent digit_3_p(&ic, fcitx::Key(FcitxKey_3), false);
-    engine.handleKeyEvent(digit_3_p);
-    // An out-of-range digit candidate selection dismisses the menu safely
-    expect(ic.inputPanel().candidateList() == nullptr || ic.inputPanel().candidateList()->empty(),
-           "Out-of-range digit key on page 1 must dismiss menu without out-of-bounds access");
-  }
+  fcitx::KeyEvent digit_3_p(&ic, fcitx::Key(FcitxKey_3), false);
+  engine.handleKeyEvent(digit_3_p);
+  // An out-of-range digit candidate selection dismisses the menu safely
+  expect(ic.inputPanel().candidateList() == nullptr || ic.inputPanel().candidateList()->empty(),
+         "Out-of-range digit key on page 1 must dismiss menu without out-of-bounds access");
 
+  // 6f. Test selecting /proc (/p) with digit key '2' on page 1 (selects candidate 1: /proc (/p))
+  fcitx::KeyEvent open4_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
+  engine.handleKeyEvent(open4_p);
+  fcitx::KeyEvent open4_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
+  engine.handleKeyEvent(open4_r);
+
+  fcitx::KeyEvent pgdn4(&ic, fcitx::Key(FcitxKey_Page_Down), false);
+  engine.handleKeyEvent(pgdn4);
+
+  fcitx::KeyEvent digit_2_p(&ic, fcitx::Key(FcitxKey_2), false);
+  engine.handleKeyEvent(digit_2_p);
+  expect(digit_2_p.filtered() && digit_2_p.accepted(),
+         "Digit 2 on page 1 must select candidate 1 on page 1 (/proc)");
+
+  fcitx::KeyEvent digit_2_r(&ic, fcitx::Key(FcitxKey_2), true);
+  engine.handleKeyEvent(digit_2_r);
+  expect(digit_2_r.filtered() && digit_2_r.accepted(), "Digit 2 release must be consumed");
+
+  // Verify /proc was actually selected: menu remains open and title updates to reflect Process
+  candidate_list = ic.inputPanel().candidateList();
+  expect(candidate_list != nullptr, "Menu must stay open after command entry selection");
+  expect(ic.inputPanel().auxUp().toString().find(_("Process")) != std::string::npos,
+         "Menu title must reflect Process after selecting /proc with digit 2");
+
+  // Close menu again
+  fcitx::KeyEvent esc4_p1(&ic, fcitx::Key(FcitxKey_Escape), false);
+  engine.handleKeyEvent(esc4_p1);
+  fcitx::KeyEvent esc4_r1(&ic, fcitx::Key(FcitxKey_Escape), true);
+  engine.handleKeyEvent(esc4_r1);
+  fcitx::KeyEvent esc4_p2(&ic, fcitx::Key(FcitxKey_Escape), false);
+  engine.handleKeyEvent(esc4_p2);
+  fcitx::KeyEvent esc4_r2(&ic, fcitx::Key(FcitxKey_Escape), true);
+  engine.handleKeyEvent(esc4_r2);
+}
+
+void TestLifetimeTokenUafGuard(fcitx::Instance& instance) {
   std::cout << "--- 7. Testing VinputEngine lifetime_token_ UAF Guard ---\n";
   std::weak_ptr<bool> token;
   {
@@ -320,6 +346,33 @@ void runAllTests() {
     expect(shared != nullptr && *shared, "lifetimeToken payload must be true");
   }
   expect(token.expired(), "lifetimeToken must expire immediately upon engine destruction");
+}
+
+void runAllTests() {
+  const ScopedConfigDir sandbox;
+
+  char arg0[] = "vinput-modifier-test";
+  char arg1[] = "--disable=all";
+  char* argv[] = {arg0, arg1, nullptr};
+
+  fcitx::Instance instance(2, argv);
+  TestInputContext ic(instance);
+  VinputEngine engine(&instance);
+
+  fcitx::RawConfig test_config;
+  test_config.setValueByPath("TriggerKey/0", "Alt_R");
+  test_config.setValueByPath("TriggerKey/1", "F8");
+  test_config.setValueByPath("CommandKeys/0", "Control_R");
+  test_config.setValueByPath("MenuKey/0", "Shift_R");
+  engine.setConfig(test_config);
+
+  TestSingleModifierTap(ic, engine);
+  TestChordInterruption(ic, engine);
+  TestNonTriggerRegularKeys(ic, engine);
+  TestMultiTriggerIsolation(ic, engine);
+  TestMenuKeyTriggerAndCombination(ic, engine);
+  TestPaletteMenuPaginationAndSelection(instance, ic, engine);
+  TestLifetimeTokenUafGuard(instance);
 
   std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }
