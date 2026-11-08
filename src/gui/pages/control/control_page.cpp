@@ -22,16 +22,29 @@
 #include <QThreadPool>
 #include <QVBoxLayout>
 #include <QWidget>
-#include <QtCore/qtypes.h>
+#include <QtCore/qglobal.h>
 #include <QtWidgets/qcheckbox.h>
-#include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
-#include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <qboxlayout.h>
+#include <qcombobox.h>
+#include <qfont.h>
+#include <qformlayout.h>
+#include <qframe.h>
+#include <qlabel.h>
+#include <qlist.h>
+#include <qmessagebox.h>
+#include <qnamespace.h>
+#include <qobjectdefs.h>
+#include <qpointer.h>
+#include <qspinbox.h>
+#include <qthreadpool.h>
+#include <qtimer.h>
+#include <qtmetamacros.h>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
@@ -734,9 +747,8 @@ void ControlPage::onAsrEdit() {
   }
   const QString provider_id = item->data(Qt::UserRole).toString();
 
-  CoreConfig config = ConfigManager::Get().Load();
+  const CoreConfig config = ConfigManager::Get().Load();
   AsrProviderData current;
-  bool found = false;
 
   for (const auto& provider : config.asr.providers) {
     if (AsrProviderId(provider) == provider_id.toStdString()) {
@@ -750,12 +762,11 @@ void ControlPage::onAsrEdit() {
         current.args = cmd->args;
         current.env = cmd->env;
       }
-      found = true;
       break;
     }
   }
 
-  if (!found) {
+  if (current.id.empty()) {
     return;
   }
 
@@ -764,8 +775,9 @@ void ControlPage::onAsrEdit() {
     return;
   }
 
+  CoreConfig updated_config = ConfigManager::Get().Load();
   // Remove old
-  std::erase_if(config.asr.providers,
+  std::erase_if(updated_config.asr.providers,
                 [&](const AsrProvider& p) { return AsrProviderId(p) == current.id; });
 
   // Add new
@@ -774,7 +786,7 @@ void ControlPage::onAsrEdit() {
     LocalAsrProvider p;
     p.model = updated.model;
     p.timeoutMs = updated.timeout_ms;
-    config.asr.providers.emplace_back(p);
+    updated_config.asr.providers.emplace_back(p);
   } else
 #endif
   {
@@ -784,10 +796,10 @@ void ControlPage::onAsrEdit() {
     p.args = updated.args;
     p.env = updated.env;
     p.timeoutMs = updated.timeout_ms;
-    config.asr.providers.emplace_back(p);
+    updated_config.asr.providers.emplace_back(p);
   }
 
-  if (!ConfigManager::Get().Save(config)) {
+  if (!ConfigManager::Get().Save(updated_config)) {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
