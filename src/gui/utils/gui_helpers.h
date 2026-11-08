@@ -24,6 +24,7 @@ class QFormLayout;
 class QLineEdit;
 class QNetworkAccessManager;
 class QNetworkReply;
+class QSpinBox;
 class QTextEdit;
 
 namespace vinput::script {
@@ -31,6 +32,12 @@ struct ResourceVersionInfo;
 }
 
 namespace vinput::gui {
+
+enum class ProviderEntryKind {
+  None = 0,
+  Llm = 1,
+  Adapter = 2,
+};
 
 // Create and display a modal form dialog containing form layout and standard Ok/Cancel buttons.
 // If accepted, executes on_accepted while dialog and form widgets are still alive.
@@ -120,11 +127,11 @@ bool ValidateProviderInput(const QString& name, const QString& base_url, QString
 bool ParseCommandEnv(const QString& text, std::map<std::string, std::string>* env,
                      QString* error_out);
 
-// Populate provider combo from `vinput -j llm list`, wire it to refresh
-// model combo via OpenAI /models endpoint.
+// Populate provider combo with LLM providers and command adapters, wire it to refresh
+// model combo via OpenAI /models endpoint or disable model/context lines for adapters.
 void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
-                              const QString& currentProvider = {},
-                              const QString& currentModel = {});
+                              const QString& currentProvider = {}, const QString& currentModel = {},
+                              QSpinBox* spinContextLines = nullptr);
 
 // Encapsulates standard Command / Interpreter, Args, and Env fields in forms.
 class CommandEditorGroup {

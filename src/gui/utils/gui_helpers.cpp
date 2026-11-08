@@ -27,6 +27,7 @@
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qspinbox.h>
 #include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qtextedit.h>
 #include <QtWidgets/qwidget.h>
@@ -440,46 +441,90 @@ QList<ProviderInfo> LoadLlmProviders() {
   return providers;
 }
 
+void ApplyProviderSelectionState(QComboBox* comboProvider, QComboBox* comboModel,
+                                 QSpinBox* spinContextLines, const QList<ProviderInfo>& providers) {
+  const int idx = comboProvider->currentIndex();
+  const auto kind =
+      static_cast<ProviderEntryKind>(comboProvider->itemData(idx, Qt::UserRole + 1).toInt());
+  const QString selected_id = comboProvider->itemData(idx, Qt::UserRole).toString();
+
+  if (kind == ProviderEntryKind::Adapter) {
+    comboModel->setEnabled(false);
+    comboModel->clear();
+    comboModel->setToolTip(QObject::tr("Not applicable for command adapters"));
+    if (auto* lineEdit = comboModel->lineEdit()) {
+      lineEdit->setPlaceholderText(QObject::tr("(Adapter does not require model)"));
+    }
+    if (spinContextLines != nullptr) {
+      spinContextLines->setEnabled(false);
+    }
+    return;
+  }
+
+  comboModel->setEnabled(true);
+  if (auto* lineEdit = comboModel->lineEdit()) {
+    lineEdit->setPlaceholderText(QString());
+  }
+  if (spinContextLines != nullptr) {
+    spinContextLines->setEnabled(true);
+  }
+
+  if (kind == ProviderEntryKind::None || selected_id.isEmpty()) {
+    comboModel->clear();
+    comboModel->setToolTip(QString());
+    return;
+  }
+
+  for (const auto& p : providers) {
+    if (p.id == selected_id) {
+      FetchModelsFromProviderAsync(p, comboModel);
+      break;
+    }
+  }
+}
+
 } // namespace
 
 void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
-                              const QString& currentProvider, const QString& currentModel) {
+                              const QString& currentProvider, const QString& currentModel,
+                              QSpinBox* spinContextLines) {
   comboProvider->clear();
-  comboProvider->addItem(QString()); // empty = inherit / none
+  comboProvider->addItem(QString(), QString());
+  comboProvider->setItemData(0, static_cast<int>(ProviderEntryKind::None), Qt::UserRole + 1);
 
   const auto providers = LoadLlmProviders();
   for (const auto& p : providers) {
-    comboProvider->addItem(p.id);
+    comboProvider->addItem(QString("[LLM] %1").arg(p.id), p.id);
+    comboProvider->setItemData(comboProvider->count() - 1, static_cast<int>(ProviderEntryKind::Llm),
+                               Qt::UserRole + 1);
+  }
+
+  const CoreConfig config = ConfigManager::Get().Load();
+  for (const auto& a : config.llm.adapters) {
+    const QString id = QString::fromStdString(a.id);
+    comboProvider->addItem(QString("[%1] %2").arg(QObject::tr("Adapter"), id), id);
+    comboProvider->setItemData(comboProvider->count() - 1,
+                               static_cast<int>(ProviderEntryKind::Adapter), Qt::UserRole + 1);
   }
 
   comboModel->setEditable(true);
   comboModel->setProperty("vinput_desired_model", currentModel);
 
-  auto refreshModels = [comboModel, comboProvider, providers]() {
-    const QString selected = comboProvider->currentText();
-    if (selected.isEmpty()) {
-      comboModel->setEnabled(true);
-      comboModel->clear();
-      comboModel->setToolTip(QString());
-      if (auto* lineEdit = comboModel->lineEdit()) {
-        lineEdit->setPlaceholderText(QString());
-      }
-      return;
-    }
-    for (const auto& p : providers) {
-      if (p.id == selected) {
-        FetchModelsFromProviderAsync(p, comboModel);
+  auto onActivated = [comboModel, comboProvider, spinContextLines, providers]() {
+    ApplyProviderSelectionState(comboProvider, comboModel, spinContextLines, providers);
+  };
+  QObject::connect(comboProvider, &QComboBox::activated, comboProvider, onActivated);
+
+  if (!currentProvider.isEmpty()) {
+    for (int i = 0; i < comboProvider->count(); ++i) {
+      if (comboProvider->itemData(i, Qt::UserRole).toString() == currentProvider) {
+        comboProvider->setCurrentIndex(i);
         break;
       }
     }
-  };
-
-  QObject::connect(comboProvider, &QComboBox::activated, comboProvider, refreshModels);
-
-  if (!currentProvider.isEmpty()) {
-    comboProvider->setCurrentText(currentProvider);
-    refreshModels();
   }
+
+  ApplyProviderSelectionState(comboProvider, comboModel, spinContextLines, providers);
 }
 
 } // namespace vinput::gui
