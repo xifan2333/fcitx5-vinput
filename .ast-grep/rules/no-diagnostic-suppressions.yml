@@ -1,0 +1,9 @@
+id: no-diagnostic-suppressions
+message: "严禁使用 // NOLINT 压制代码诊断。必须通过类型重构、引入标准头文件或修正架构根除警告。"
+severity: error
+language: C++
+files:
+  - "src/**"
+rule:
+  kind: comment
+  regex: NOLINT

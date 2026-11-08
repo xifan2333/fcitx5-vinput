@@ -1,0 +1,12 @@
+[files]
+extend-exclude = [
+  "3rdparty",
+  "build",
+  "site",
+  "po",
+  "i18n",
+]
+
+[default.extend-words]
+nam = "nam"
+datas = "datas"
