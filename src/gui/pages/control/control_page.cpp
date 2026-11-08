@@ -118,6 +118,88 @@ template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, 
   });
 }
 
+struct AsrDisplayContext {
+  QString selected_id;
+  QString effective_id;
+  QString target_id;
+  bool reload_in_progress = false;
+  bool reload_failed = false;
+  const vinput::dbus::AsrBackendState* backend_state = nullptr;
+  std::map<std::string, std::string> i18n_map;
+};
+
+QString FormatProviderDetail(const AsrProvider& provider,
+                             const std::map<std::string, std::string>& i18n_map) {
+  if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
+    if (local->model.empty()) {
+      return QObject::tr("(not set)");
+    }
+    const auto title =
+        vinput::registry::LookupI18n(i18n_map, local->model + ".title", local->model);
+    return QString::fromStdString(title);
+  }
+  if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
+    return QString::fromStdString(command->command);
+  }
+  return {};
+}
+
+QList<QString> BuildProviderMarkers(const QString& id, const AsrDisplayContext& ctx) {
+  QList<QString> markers;
+  if (id == ctx.selected_id) {
+    markers << QObject::tr("configured");
+  }
+  if (id == ctx.effective_id) {
+    markers << QObject::tr("effective");
+  }
+  if (ctx.reload_in_progress && id == ctx.target_id && id != ctx.effective_id) {
+    markers << QObject::tr("loading");
+  }
+  if (ctx.reload_failed && id == ctx.target_id) {
+    markers << QObject::tr("reload failed");
+  }
+  return markers;
+}
+
+QString FormatRemoteEndpoints(const vinput::dbus::AsrBackendState* backend_state) {
+  if (backend_state == nullptr || backend_state->remote_endpoints.empty()) {
+    return {};
+  }
+  QList<QString> urls;
+  urls.reserve(static_cast<qsizetype>(backend_state->remote_endpoints.size()));
+  for (const auto& endpoint : backend_state->remote_endpoints) {
+    urls << QString::fromStdString(endpoint);
+  }
+  return urls.join(" / ");
+}
+
+QString BuildProviderDisplay(const AsrProvider& provider, const AsrDisplayContext& ctx) {
+  const QString id = QString::fromStdString(AsrProviderId(provider));
+  const QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
+  const std::string id_str = id.toStdString();
+  const QString title =
+      QString::fromStdString(vinput::registry::LookupI18n(ctx.i18n_map, id_str + ".title", id_str));
+
+  QString display = title + " [" + type + "]";
+  const QString detail = FormatProviderDetail(provider, ctx.i18n_map);
+  if (!detail.isEmpty()) {
+    display += " · " + detail;
+  }
+
+  const auto markers = BuildProviderMarkers(id, ctx);
+  if (!markers.isEmpty()) {
+    display += " · " + markers.join(", ");
+  }
+
+  if (id == ctx.effective_id) {
+    const QString endpoints = FormatRemoteEndpoints(ctx.backend_state);
+    if (!endpoints.isEmpty()) {
+      display += " · " + endpoints;
+    }
+  }
+  return display;
+}
+
 } // namespace
 
 ControlPage::ControlPage(QWidget* parent)
@@ -322,15 +404,19 @@ void ControlPage::refreshAsrList() {
 
 void ControlPage::populateAsrList(const CoreConfig& config,
                                   const vinput::dbus::AsrBackendState* backend_state) {
-  const QString selected_id = QString::fromStdString(config.asr.activeProvider);
-  const QString effective_id = (backend_state != nullptr)
-                                   ? QString::fromStdString(backend_state->effective_provider_id)
-                                   : QString{};
-  const QString target_id = (backend_state != nullptr)
-                                ? QString::fromStdString(backend_state->target_provider_id)
-                                : QString{};
-  const bool reload_in_progress = (backend_state != nullptr) && backend_state->reload_in_progress;
-  const bool reload_failed = (backend_state != nullptr) && !backend_state->last_error.empty();
+  const AsrDisplayContext ctx{
+      .selected_id = QString::fromStdString(config.asr.activeProvider),
+      .effective_id = (backend_state != nullptr)
+                          ? QString::fromStdString(backend_state->effective_provider_id)
+                          : QString{},
+      .target_id = (backend_state != nullptr)
+                       ? QString::fromStdString(backend_state->target_provider_id)
+                       : QString{},
+      .reload_in_progress = (backend_state != nullptr) && backend_state->reload_in_progress,
+      .reload_failed = (backend_state != nullptr) && !backend_state->last_error.empty(),
+      .backend_state = backend_state,
+      .i18n_map = I18nCache::Get().GetMap(),
+  };
 
   const QString current_selection =
       (listAsrProviders_->currentItem() != nullptr)
@@ -338,7 +424,6 @@ void ControlPage::populateAsrList(const CoreConfig& config,
           : QString{};
 
   listAsrProviders_->clear();
-  auto i18n_map = I18nCache::Get().GetMap();
 
   for (const auto& provider : config.asr.providers) {
 #if !VINPUT_ENABLE_LOCAL_ASR
@@ -348,47 +433,10 @@ void ControlPage::populateAsrList(const CoreConfig& config,
 #endif
     const QString id = QString::fromStdString(AsrProviderId(provider));
     const QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
-
     const std::string id_str = id.toStdString();
-    const QString title =
-        QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id_str + ".title", id_str));
-
-    QString display = title + " [" + type + "]";
-    if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
-      QString model = QString::fromStdString(local->model);
-      if (!model.isEmpty()) {
-        model = QString::fromStdString(
-            vinput::registry::LookupI18n(i18n_map, local->model + ".title", local->model));
-      }
-      display += " · " + (model.isEmpty() ? tr("(not set)") : model);
-    } else if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
-      display += " · " + QString::fromStdString(command->command);
-    }
-
-    QList<QString> markers;
-    if (id == selected_id) {
-      markers << tr("configured");
-    }
-    if (id == effective_id) {
-      markers << tr("effective");
-    }
-    if (reload_in_progress && id == target_id && id != effective_id) {
-      markers << tr("loading");
-    }
-    if (reload_failed && id == target_id) {
-      markers << tr("reload failed");
-    }
-    if (!markers.isEmpty()) {
-      display += " · " + markers.join(", ");
-    }
-    if (id == effective_id && (backend_state != nullptr) &&
-        !backend_state->remote_endpoints.empty()) {
-      QList<QString> urls;
-      for (const auto& endpoint : backend_state->remote_endpoints) {
-        urls << QString::fromStdString(endpoint);
-      }
-      display += " · " + urls.join(" / ");
-    }
+    const QString title = QString::fromStdString(
+        vinput::registry::LookupI18n(ctx.i18n_map, id_str + ".title", id_str));
+    const QString display = BuildProviderDisplay(provider, ctx);
 
     auto* item = new QListWidgetItem(display, listAsrProviders_);
     item->setData(Qt::UserRole, id);
