@@ -5,6 +5,7 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,6 +16,8 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QThreadPool>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -205,7 +208,7 @@ QString BuildProviderDisplay(const AsrProvider& provider, const AsrDisplayContex
 ControlPage::ControlPage(QWidget* parent)
     : QWidget(parent), comboDevice_(new QComboBox()), spinInputGain_(new QDoubleSpinBox()),
       spinDuckVolume_(new QSpinBox()), listAsrProviders_(new QListWidget()),
-      daemonRefreshTimer_(new QTimer(this)) {
+      tableClients_(new QTableWidget(this)), daemonRefreshTimer_(new QTimer(this)) {
   auto* layout = new QVBoxLayout(this);
 
   // Audio section: capture device + audio processing knobs.
@@ -285,6 +288,58 @@ ControlPage::ControlPage(QWidget* parent)
   btnAsrSetActive_->setEnabled(false);
 
   connect(&I18nCache::Get(), &I18nCache::mapUpdated, this, &ControlPage::refreshAsrList);
+
+  layout->addSpacing(20);
+
+  // Client Processes section
+  auto* clientFrame = new QFrame();
+  clientFrame->setFrameShape(QFrame::StyledPanel);
+  auto* clientLayout = new QVBoxLayout(clientFrame);
+
+  auto* clientTitle = new QLabel(tr("<b>Client Processes</b>"));
+  clientLayout->addWidget(clientTitle);
+
+  auto* clientContentLayout = new QHBoxLayout();
+
+  tableClients_->setColumnCount(4);
+  tableClients_->setHorizontalHeaderLabels({tr("Type"), tr("ID"), tr("Status"), tr("Autostart")});
+  tableClients_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  tableClients_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  tableClients_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  tableClients_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+  tableClients_->horizontalHeader()->setStretchLastSection(false);
+  tableClients_->verticalHeader()->setVisible(false);
+  tableClients_->setSelectionBehavior(QAbstractItemView::SelectRows);
+  tableClients_->setSelectionMode(QAbstractItemView::SingleSelection);
+  tableClients_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  tableClients_->setMinimumHeight(100);
+  tableClients_->setMaximumHeight(160);
+
+  clientContentLayout->addWidget(tableClients_);
+
+  auto* clientBtnLayout = new QVBoxLayout();
+  btnClientStart_ = new QPushButton(tr("Start"));
+  btnClientStop_ = new QPushButton(tr("Stop"));
+  chkClientAutoStart_ = new QCheckBox(tr("Start with daemon"));
+  chkClientAutoStart_->setToolTip(tr("Automatically start this client when the daemon starts."));
+
+  btnClientStart_->setEnabled(false);
+  btnClientStop_->setEnabled(false);
+  chkClientAutoStart_->setEnabled(false);
+
+  clientBtnLayout->addWidget(btnClientStart_);
+  clientBtnLayout->addWidget(btnClientStop_);
+  clientBtnLayout->addWidget(chkClientAutoStart_);
+  clientBtnLayout->addStretch();
+  clientContentLayout->addLayout(clientBtnLayout);
+  clientLayout->addLayout(clientContentLayout);
+  layout->addWidget(clientFrame);
+
+  connect(btnClientStart_, &QPushButton::clicked, this, &ControlPage::onClientStart);
+  connect(btnClientStop_, &QPushButton::clicked, this, &ControlPage::onClientStop);
+  connect(chkClientAutoStart_, &QCheckBox::toggled, this, &ControlPage::onClientAutoStartToggled);
+  connect(tableClients_, &QTableWidget::itemSelectionChanged, this,
+          &ControlPage::updateClientButtons);
 
   layout->addSpacing(20);
 
@@ -459,6 +514,44 @@ void ControlPage::updateAsrButtons() {
   btnAsrEdit_->setEnabled(!is_local);
   btnAsrSetActive_->setEnabled(true);
 }
+
+void ControlPage::populateClientList() {}
+
+void ControlPage::refreshClientStatuses() {}
+
+void ControlPage::updateClientButtons() {
+  const int row = tableClients_->currentRow();
+  if (row < 0) {
+    btnClientStart_->setEnabled(false);
+    btnClientStop_->setEnabled(false);
+    chkClientAutoStart_->setEnabled(false);
+    updatingClientSelection_ = true;
+    chkClientAutoStart_->setChecked(false);
+    updatingClientSelection_ = false;
+    return;
+  }
+  auto* item = tableClients_->item(row, 0);
+  if (item == nullptr) {
+    btnClientStart_->setEnabled(false);
+    btnClientStop_->setEnabled(false);
+    chkClientAutoStart_->setEnabled(false);
+    return;
+  }
+  const bool is_running = item->data(Qt::UserRole + 3).toBool();
+  const bool auto_start = item->data(Qt::UserRole + 2).toBool();
+  btnClientStart_->setEnabled(!is_running);
+  btnClientStop_->setEnabled(is_running);
+  chkClientAutoStart_->setEnabled(true);
+  updatingClientSelection_ = true;
+  chkClientAutoStart_->setChecked(auto_start);
+  updatingClientSelection_ = false;
+}
+
+void ControlPage::onClientStart() {}
+
+void ControlPage::onClientStop() {}
+
+void ControlPage::onClientAutoStartToggled(bool /*checked*/) {}
 
 void ControlPage::onAsrEdit() {
   auto* item = listAsrProviders_->currentItem();

@@ -10,6 +10,7 @@
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qspinbox.h>
+#include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
 
 #include "common/config/core_config_types.h"
@@ -44,6 +45,9 @@ private:
   void executeDaemonAction(bool restart);
   void populateAsrList(const CoreConfig& config,
                        const vinput::dbus::AsrBackendState* backend_state);
+  void populateClientList();
+  void refreshClientStatuses();
+  void updateClientButtons();
 
   QComboBox* comboDevice_;
   QCheckBox* chkNormalizeAudio_;
@@ -56,6 +60,12 @@ private:
   QListWidget* listAsrProviders_;
   QPushButton* btnAsrEdit_;
   QPushButton* btnAsrSetActive_;
+
+  QTableWidget* tableClients_{nullptr};
+  QPushButton* btnClientStart_{nullptr};
+  QPushButton* btnClientStop_{nullptr};
+  QCheckBox* chkClientAutoStart_{nullptr};
+  bool updatingClientSelection_{false};
 
   QLabel* lblDaemonStatus_;
   QPushButton* btnDaemonStart_;
@@ -76,6 +86,10 @@ private slots:
   void onDaemonStart();
   void onDaemonStop();
   void onDaemonRestart();
+
+  void onClientStart();
+  void onClientStop();
+  void onClientAutoStartToggled(bool checked);
 
   void checkSandboxPermissions();
 };
