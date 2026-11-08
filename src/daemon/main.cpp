@@ -37,62 +37,27 @@ void signal_handler(int sig) {
   RunningFlag() = false;
 }
 
-} // namespace
-
-int main(int argc, char* argv[]) {
-  vinput::i18n::Init();
-  signal(SIGTERM, signal_handler);
-  signal(SIGINT, signal_handler);
-
-  if (argc > 0 && argv != nullptr) {
-    const std::span<char* const> args(argv, static_cast<size_t>(argc));
-    for (size_t i = 1; i < args.size(); ++i) {
-      if (args[i] == nullptr) {
-        continue;
-      }
-      const std::string_view arg(args[i]);
-      if (arg.starts_with("--log-level=")) {
-        vinput::log::SetLogLevel(arg.substr(12));
-      } else if (arg == "--log-level" && i + 1 < args.size() && args[i + 1] != nullptr) {
-        vinput::log::SetLogLevel(args[++i]);
-      }
+void ParseCommandLineLogLevel(int argc, char* argv[]) {
+  if (argc <= 0 || argv == nullptr) {
+    return;
+  }
+  const std::span<char* const> args(argv, static_cast<size_t>(argc));
+  for (size_t i = 1; i < args.size(); ++i) {
+    if (args[i] == nullptr) {
+      continue;
+    }
+    const std::string_view arg(args[i]);
+    if (arg.starts_with("--log-level=")) {
+      vinput::log::SetLogLevel(arg.substr(12));
+    } else if (arg == "--log-level" && i + 1 < args.size() && args[i + 1] != nullptr) {
+      vinput::log::SetLogLevel(args[++i]);
     }
   }
+}
 
-  DbusService dbus;
-  vinput::notify::NotificationBridge notification_bridge(
-      [&dbus](const auto& n) { dbus.EmitDesktopNotification(n); });
-
-  auto startup_settings = LoadCoreConfig();
-  NormalizeCoreConfig(&startup_settings);
-  vinput::daemon::asr::RecognitionSessionManager recognition_manager(&notification_bridge);
-
-  std::string asr_disabled_reason;
-  if (!recognition_manager.Initialize(startup_settings, &asr_disabled_reason)) {
-    if (asr_disabled_reason.empty()) {
-      VLOG_WARN("running with ASR disabled");
-    } else {
-      VLOG_WARN("running with ASR disabled ({})", asr_disabled_reason);
-    }
-  }
-
-  AudioCapture capture;
-  std::string capture_error;
-  if (!capture.Start(&capture_error)) {
-    if (capture_error.empty()) {
-      capture_error = "audio capture start failed";
-    }
-    VLOG_ERROR("{}", capture_error);
-    return 1;
-  }
-
-  PostProcessor post_processor(&notification_bridge);
-
-  // --- Single-slot state (all protected by state_mutex) ---
-  vinput::daemon::runtime::RecognitionPipeline recognition_pipeline(&post_processor);
-  vinput::daemon::runtime::DaemonRuntimeController runtime_controller(
-      &capture, &dbus, &recognition_manager, &recognition_pipeline);
-
+void WireDbusHandlers(DbusService& dbus,
+                      vinput::daemon::runtime::DaemonRuntimeController& runtime_controller,
+                      vinput::notify::NotificationBridge& notification_bridge) {
   dbus.SetStartHandler([&]() { return runtime_controller.StartRecording(); });
 
   dbus.SetStartCommandHandler([&](const std::string& selected_text) {
@@ -129,23 +94,29 @@ int main(int argc, char* argv[]) {
     return DbusService::MethodResult::Success();
   });
 
-  std::string dbus_error;
-  if (!dbus.Start(&dbus_error)) {
-    if (dbus_error.empty()) {
-      dbus_error = "DBus service start failed";
-    }
-    VLOG_ERROR("{}", dbus_error);
-    return 1;
-  }
-
-  vinput::client::AutoStart(startup_settings, &notification_bridge, [&](std::string_view line) {
-    runtime_controller.DispatchClientLine(line);
+  dbus.SetGetClientStatusesHandler([&]() -> std::vector<vinput::dbus::ClientStatus> {
+    return vinput::client::GetClientStatuses();
   });
+}
 
-  runtime_controller.StartWorker();
+void DispatchPollEvents(const pollfd* fds, DbusService& dbus,
+                        vinput::daemon::runtime::DaemonRuntimeController& runtime_controller) {
+  if ((fds[1].revents & POLLIN) != 0) {
+    dbus.FlushEmitQueue();
+  }
+  if ((fds[2].revents & POLLIN) != 0) {
+    runtime_controller.FlushDeferredActions();
+  }
+  if ((fds[0].revents & POLLIN) != 0) {
+    while (dbus.ProcessOnce()) {
+      // process all pending messages
+    }
+  }
+}
 
-  VLOG_INFO("running");
-
+void RunEventLoop(DbusService& dbus,
+                  vinput::daemon::runtime::DaemonRuntimeController& runtime_controller,
+                  AudioCapture& capture) {
   const int dbus_fd = dbus.GetFd();
   const int notify_fd = dbus.GetNotifyFd();
   const int runtime_notify_fd = runtime_controller.GetNotifyFd();
@@ -169,19 +140,73 @@ int main(int argc, char* argv[]) {
     capture.MaybeDestroyExpiredStream();
 
     if (ret > 0) {
-      if ((fds[1].revents & POLLIN) != 0) {
-        dbus.FlushEmitQueue();
-      }
-      if ((fds[2].revents & POLLIN) != 0) {
-        runtime_controller.FlushDeferredActions();
-      }
-      if ((fds[0].revents & POLLIN) != 0) {
-        while (dbus.ProcessOnce()) {
-          // process all pending messages
-        }
-      }
+      DispatchPollEvents(fds, dbus, runtime_controller);
     }
   }
+}
+
+} // namespace
+
+int main(int argc, char* argv[]) {
+  vinput::i18n::Init();
+  signal(SIGTERM, signal_handler);
+  signal(SIGINT, signal_handler);
+
+  ParseCommandLineLogLevel(argc, argv);
+
+  DbusService dbus;
+  vinput::notify::NotificationBridge notification_bridge(
+      [&dbus](const auto& n) { dbus.EmitDesktopNotification(n); });
+
+  auto startup_settings = LoadCoreConfig();
+  NormalizeCoreConfig(&startup_settings);
+  vinput::daemon::asr::RecognitionSessionManager recognition_manager(&notification_bridge);
+
+  std::string asr_disabled_reason;
+  if (!recognition_manager.Initialize(startup_settings, &asr_disabled_reason)) {
+    if (asr_disabled_reason.empty()) {
+      VLOG_WARN("running with ASR disabled");
+    } else {
+      VLOG_WARN("running with ASR disabled ({})", asr_disabled_reason);
+    }
+  }
+
+  AudioCapture capture;
+  std::string capture_error;
+  if (!capture.Start(&capture_error)) {
+    if (capture_error.empty()) {
+      capture_error = "audio capture start failed";
+    }
+    VLOG_ERROR("{}", capture_error);
+    return 1;
+  }
+
+  PostProcessor post_processor(&notification_bridge);
+
+  // --- Single-slot state (all protected by state_mutex) ---
+  vinput::daemon::runtime::RecognitionPipeline recognition_pipeline(&post_processor);
+  vinput::daemon::runtime::DaemonRuntimeController runtime_controller(
+      &capture, &dbus, &recognition_manager, &recognition_pipeline);
+
+  WireDbusHandlers(dbus, runtime_controller, notification_bridge);
+
+  std::string dbus_error;
+  if (!dbus.Start(&dbus_error)) {
+    if (dbus_error.empty()) {
+      dbus_error = "DBus service start failed";
+    }
+    VLOG_ERROR("{}", dbus_error);
+    return 1;
+  }
+
+  vinput::client::AutoStart(startup_settings, &notification_bridge, [&](std::string_view line) {
+    runtime_controller.DispatchClientLine(line);
+  });
+
+  runtime_controller.StartWorker();
+
+  VLOG_INFO("running");
+  RunEventLoop(dbus, runtime_controller, capture);
 
   VLOG_INFO("shutting down");
   post_processor.Shutdown();
