@@ -305,21 +305,34 @@ void TestSceneValidation() {
   // Case 5: CoreConfig validation: LLM provider requires model, adapter permits empty model
   CoreConfig cfg;
   cfg.version = ">=2.4.0";
-  cfg.scenes.definitions = {
-      vinput::scene::Definition{.id = std::string(vinput::scene::kRawSceneId)},
-      vinput::scene::Definition{.id = std::string(vinput::scene::kCommandSceneId)},
-  };
-  cfg.llm.providers.push_back(LlmProvider{.id = "my-llm"});
-  cfg.llm.adapters.push_back(LlmAdapter{.id = "my-adapter"});
+  vinput::scene::Definition s_raw;
+  s_raw.id = std::string(vinput::scene::kRawSceneId);
+  cfg.scenes.definitions.push_back(s_raw);
+
+  vinput::scene::Definition s_cmd;
+  s_cmd.id = std::string(vinput::scene::kCommandSceneId);
+  cfg.scenes.definitions.push_back(s_cmd);
+
+  LlmProvider test_prov;
+  test_prov.id = "my-llm";
+  cfg.llm.providers.push_back(test_prov);
+
+  LlmAdapter test_adap;
+  test_adap.id = "my-adapter";
+  cfg.llm.adapters.push_back(test_adap);
 
   // Valid with adapter and empty model
-  cfg.scenes.definitions.push_back(
-      vinput::scene::Definition{.id = "adapter_scene", .provider_id = "my-adapter", .model = ""});
+  vinput::scene::Definition s_adapter;
+  s_adapter.id = "adapter_scene";
+  s_adapter.provider_id = "my-adapter";
+  cfg.scenes.definitions.push_back(s_adapter);
   Expect(ValidateCoreConfig(cfg, &error), "CoreConfig with adapter and empty model must be valid");
 
   // Invalid with LLM provider and empty model
-  cfg.scenes.definitions.push_back(
-      vinput::scene::Definition{.id = "llm_empty_model", .provider_id = "my-llm", .model = ""});
+  vinput::scene::Definition s_llm;
+  s_llm.id = "llm_empty_model";
+  s_llm.provider_id = "my-llm";
+  cfg.scenes.definitions.push_back(s_llm);
   Expect(!ValidateCoreConfig(cfg, &error),
          "CoreConfig with LLM provider and empty model must be invalid");
   Expect(error.find("Scene model must be configured for LLM providers") != std::string::npos,
