@@ -255,21 +255,21 @@ VinputEngine::HotkeyMatch VinputEngine::classifyHotkey(const fcitx::Key& event_k
                                                        bool is_release) const {
   struct HotkeyBinding {
     HotkeyRole role;
-    const fcitx::KeyList& keys;
+    const fcitx::KeyList* keys = nullptr;
     bool is_command;
   };
 
   const std::array bindings = {
-      HotkeyBinding{.role = HotkeyRole::Trigger, .keys = trigger_keys_, .is_command = false},
-      HotkeyBinding{.role = HotkeyRole::Command, .keys = command_keys_, .is_command = true},
-      HotkeyBinding{.role = HotkeyRole::Menu, .keys = menu_keys_, .is_command = false},
+      HotkeyBinding{.role = HotkeyRole::Trigger, .keys = &trigger_keys_, .is_command = false},
+      HotkeyBinding{.role = HotkeyRole::Command, .keys = &command_keys_, .is_command = true},
+      HotkeyBinding{.role = HotkeyRole::Menu, .keys = &menu_keys_, .is_command = false},
   };
 
   for (const auto& binding : bindings) {
-    const int index = matchKeyListIndex(event_key, binding.keys, is_release);
+    const int index = matchKeyListIndex(event_key, *binding.keys, is_release);
     if (index >= 0) {
       return {.role = binding.role,
-              .matched_key = binding.keys[index],
+              .matched_key = (*binding.keys)[index],
               .is_command = binding.is_command};
     }
   }

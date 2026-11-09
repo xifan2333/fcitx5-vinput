@@ -22,6 +22,8 @@
 #include <thread>
 #include <unistd.h>
 
+#include "common/config/vinput_config.h"
+
 #include "core/vinput.h"
 
 namespace {
