@@ -70,6 +70,39 @@ struct ScopedConfigDir {
   ScopedConfigDir& operator=(ScopedConfigDir&&) = delete;
 };
 
+void TestEvaluateTapHoldTiming() {
+  std::cout << "--- 0. Testing EvaluateTapHoldTiming Pure Helper (#577) ---\n";
+  using Action = VinputEngine::TapHoldAction;
+  using std::chrono::milliseconds;
+
+  // Hold mode: always HoldStop regardless of duration
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Hold, milliseconds(50)) ==
+             Action::HoldStop,
+         "Hold mode short duration must yield HoldStop");
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Hold, milliseconds(500)) ==
+             Action::HoldStop,
+         "Hold mode long duration must yield HoldStop");
+
+  // Tap mode: always TapToggle regardless of duration
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Tap, milliseconds(50)) ==
+             Action::TapToggle,
+         "Tap mode short duration must yield TapToggle");
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Tap, milliseconds(500)) ==
+             Action::TapToggle,
+         "Tap mode long duration must yield TapToggle");
+
+  // Both mode: short duration (< 200ms) -> BothTapLock; duration >= 200ms -> HoldStop
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Both, milliseconds(100)) ==
+             Action::BothTapLock,
+         "Both mode duration < 200ms must yield BothTapLock");
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Both, milliseconds(200)) ==
+             Action::HoldStop,
+         "Both mode duration >= 200ms must yield HoldStop");
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Both, milliseconds(350)) ==
+             Action::HoldStop,
+         "Both mode duration > 200ms must yield HoldStop");
+}
+
 void TestSingleModifierTap(TestInputContext& ic, VinputEngine& engine) {
   std::cout << "--- 1. Testing Single-Modifier Tap (Start & Stop) ---\n";
   // Press Alt_R -> arms pending timer, exclusively consumed
@@ -421,6 +454,7 @@ void runAllTests() {
   test_config.setValueByPath("MenuKey/0", "Shift_R");
   engine.setConfig(test_config);
 
+  TestEvaluateTapHoldTiming();
   TestSingleModifierTap(ic, engine);
   TestChordInterruption(ic, engine);
   TestChordInterruptionTapMode(ic, engine, test_config);

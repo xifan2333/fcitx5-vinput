@@ -63,6 +63,25 @@ public:
   [[nodiscard]] static int matchKeyListIndex(const fcitx::Key& event_key,
                                              const fcitx::KeyList& list, bool is_release);
 
+  static constexpr auto kTapMaxHoldDuration = std::chrono::milliseconds(200);
+
+  enum class TapHoldAction : std::uint8_t {
+    HoldStop,
+    TapToggle,
+    BothTapLock,
+  };
+
+  [[nodiscard]] static constexpr TapHoldAction
+  EvaluateTapHoldTiming(TriggerMode mode, std::chrono::steady_clock::duration duration) noexcept {
+    if (mode == TriggerMode::Hold) {
+      return TapHoldAction::HoldStop;
+    }
+    if (mode == TriggerMode::Tap) {
+      return TapHoldAction::TapToggle;
+    }
+    return (duration < kTapMaxHoldDuration) ? TapHoldAction::BothTapLock : TapHoldAction::HoldStop;
+  }
+
 private:
   void applySettings();
   void reloadSceneConfig();
@@ -202,7 +221,6 @@ private:
   bool handleDaemonRecordingPrecondition(fcitx::InputContext* ic, const fcitx::Key& trigger,
                                          bool is_command);
   bool validateCommandModePrerequisites(fcitx::InputContext* ic);
-  std::string acquireSelectionText(fcitx::InputContext* ic);
   void handleRecordingStartFailure(fcitx::InputContext* ic, bool is_command);
   void dispatchRecordingStart(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command,
                               const std::string& selected_text);

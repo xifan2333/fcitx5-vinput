@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <ctime>
@@ -33,7 +34,6 @@ namespace {
 constexpr auto kDefaultClock = 1; // POSIX CLOCK_MONOTONIC
 constexpr auto kReleaseDebounce = std::chrono::milliseconds(500);
 constexpr auto kTriggerDebounce = std::chrono::milliseconds(80);
-constexpr auto kTapMaxHoldDuration = std::chrono::milliseconds(200);
 
 std::string NoSelectionPreeditText() {
   return _("Please select text first.");
@@ -87,6 +87,14 @@ std::string ExtractClipboardPrimary(fcitx::Instance* instance, fcitx::InputConte
   return primary;
 }
 
+std::string AcquireContextSelection(fcitx::Instance* instance, fcitx::InputContext* ic) {
+  std::string selected_text = ExtractSurroundingSelection(ic);
+  if (selected_text.empty()) {
+    selected_text = ExtractClipboardPrimary(instance, ic);
+  }
+  return selected_text;
+}
+
 } // namespace
 
 int VinputEngine::matchKeyListIndex(const fcitx::Key& event_key, const fcitx::KeyList& list,
@@ -138,14 +146,6 @@ bool VinputEngine::validateCommandModePrerequisites(fcitx::InputContext* ic) {
   return true;
 }
 
-std::string VinputEngine::acquireSelectionText(fcitx::InputContext* ic) {
-  std::string selected_text = ExtractSurroundingSelection(ic);
-  if (selected_text.empty()) {
-    selected_text = ExtractClipboardPrimary(instance_, ic);
-  }
-  return selected_text;
-}
-
 void VinputEngine::handleRecordingStartFailure(fcitx::InputContext* ic, bool is_command) {
   finishFrontendSession(ic);
   if (bus_ == nullptr) {
@@ -195,7 +195,7 @@ void VinputEngine::startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key
     if (!validateCommandModePrerequisites(ic)) {
       return;
     }
-    selected_text = acquireSelectionText(ic);
+    selected_text = AcquireContextSelection(instance_, ic);
     if (selected_text.empty()) {
       if (status_ic_ == ic) {
         finishFrontendSession(ic);
@@ -253,23 +253,25 @@ bool VinputEngine::handleMenuNavigationKeyEvent(fcitx::KeyEvent& keyEvent) {
 
 VinputEngine::HotkeyMatch VinputEngine::classifyHotkey(const fcitx::Key& event_key,
                                                        bool is_release) const {
-  const int trigger_index = matchKeyListIndex(event_key, trigger_keys_, is_release);
-  if (trigger_index >= 0) {
-    return {.role = HotkeyRole::Trigger,
-            .matched_key = trigger_keys_[trigger_index],
-            .is_command = false};
-  }
+  struct HotkeyBinding {
+    HotkeyRole role;
+    const fcitx::KeyList& keys;
+    bool is_command;
+  };
 
-  const int command_index = matchKeyListIndex(event_key, command_keys_, is_release);
-  if (command_index >= 0) {
-    return {.role = HotkeyRole::Command,
-            .matched_key = command_keys_[command_index],
-            .is_command = true};
-  }
+  const std::array bindings = {
+      HotkeyBinding{.role = HotkeyRole::Trigger, .keys = trigger_keys_, .is_command = false},
+      HotkeyBinding{.role = HotkeyRole::Command, .keys = command_keys_, .is_command = true},
+      HotkeyBinding{.role = HotkeyRole::Menu, .keys = menu_keys_, .is_command = false},
+  };
 
-  const int menu_index = matchKeyListIndex(event_key, menu_keys_, is_release);
-  if (menu_index >= 0) {
-    return {.role = HotkeyRole::Menu, .matched_key = menu_keys_[menu_index], .is_command = false};
+  for (const auto& binding : bindings) {
+    const int index = matchKeyListIndex(event_key, binding.keys, is_release);
+    if (index >= 0) {
+      return {.role = binding.role,
+              .matched_key = binding.keys[index],
+              .is_command = binding.is_command};
+    }
   }
 
   return {.role = HotkeyRole::None, .matched_key = fcitx::Key(), .is_command = false};
@@ -378,30 +380,23 @@ void VinputEngine::handleTapReleaseMode(fcitx::InputContext* ic, const HotkeyMat
 void VinputEngine::handleTriggerReleaseMode(fcitx::InputContext* ic, const HotkeyMatch& match,
                                             std::chrono::steady_clock::duration duration,
                                             std::chrono::steady_clock::time_point now) {
-  const auto trigger_mode = *config_.triggerMode;
-  if (trigger_mode == TriggerMode::Hold) {
+  const auto action = EvaluateTapHoldTiming(*config_.triggerMode, duration);
+  if (action == TapHoldAction::HoldStop) {
     if (session_ && session_->phase == Session::Phase::Recording) {
       scheduleStopRecording();
     }
     return;
   }
 
-  if (trigger_mode == TriggerMode::Tap) {
+  if (action == TapHoldAction::TapToggle) {
     handleTapReleaseMode(ic, match, now);
     return;
   }
 
-  // TriggerMode::Both
-  if (duration < kTapMaxHoldDuration) {
-    if (session_) {
-      session_->trigger_released = true;
-      session_->stop_on_release = false;
-    }
-    return;
-  }
-
-  if (session_ && session_->phase == Session::Phase::Recording) {
-    scheduleStopRecording();
+  // TapHoldAction::BothTapLock
+  if (session_) {
+    session_->trigger_released = true;
+    session_->stop_on_release = false;
   }
 }
 
