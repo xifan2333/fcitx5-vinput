@@ -47,6 +47,7 @@
 #include <qthreadpool.h>
 #include <qtimer.h>
 #include <qtmetamacros.h>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -284,6 +285,47 @@ bool UpdateClientAutostart(CoreConfig& config, std::string_view client_id, std::
     }
   }
   return false;
+}
+
+std::optional<AsrProviderData> FindAsrProviderData(const CoreConfig& config,
+                                                   std::string_view provider_id) {
+  for (const auto& provider : config.asr.providers) {
+    if (AsrProviderId(provider) == provider_id) {
+      AsrProviderData data;
+      data.id = AsrProviderId(provider);
+      data.type = std::string(AsrProviderType(provider));
+      data.timeout_ms = AsrProviderTimeoutMs(provider);
+      if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
+        data.model = local->model;
+      } else if (const auto* cmd = std::get_if<CommandAsrProvider>(&provider)) {
+        data.command = cmd->command;
+        data.args = cmd->args;
+        data.env = cmd->env;
+      }
+      return data;
+    }
+  }
+  return std::nullopt;
+}
+
+AsrProvider MakeAsrProvider(const AsrProviderData& data, std::string_view fallback_id) {
+  const std::string new_id = data.id.empty() ? std::string(fallback_id) : data.id;
+#if VINPUT_ENABLE_LOCAL_ASR
+  if (data.type == "local") {
+    LocalAsrProvider p;
+    p.id = new_id;
+    p.model = data.model;
+    p.timeoutMs = data.timeout_ms;
+    return p;
+  }
+#endif
+  CommandAsrProvider p;
+  p.id = new_id;
+  p.command = data.command;
+  p.args = data.args;
+  p.env = data.env;
+  p.timeoutMs = data.timeout_ms;
+  return p;
 }
 
 } // namespace
@@ -751,60 +793,54 @@ void ControlPage::onAsrEdit() {
   }
   const QString provider_id = item->data(Qt::UserRole).toString();
 
-  CoreConfig config = ConfigManager::Get().Load();
-  AsrProviderData current;
-  bool found = false;
-
-  for (const auto& provider : config.asr.providers) {
-    if (AsrProviderId(provider) == provider_id.toStdString()) {
-      current.id = AsrProviderId(provider);
-      current.type = std::string(AsrProviderType(provider));
-      current.timeout_ms = AsrProviderTimeoutMs(provider);
-      if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
-        current.model = local->model;
-      } else if (const auto* cmd = std::get_if<CommandAsrProvider>(&provider)) {
-        current.command = cmd->command;
-        current.args = cmd->args;
-        current.env = cmd->env;
-      }
-      found = true;
-      break;
-    }
-  }
-
-  if (!found) {
+  CoreConfig config;
+  std::string load_error;
+  if (!ConfigManager::Get().TryLoad(&config, &load_error)) {
+    QMessageBox::critical(
+        this, tr("Error"),
+        tr("Failed to load configuration: %1").arg(QString::fromStdString(load_error)));
     return;
   }
 
+  const auto current_opt = FindAsrProviderData(config, provider_id.toStdString());
+  if (!current_opt.has_value()) {
+    QMessageBox::warning(this, tr("Warning"), tr("Provider not found."));
+    refreshAsrList();
+    return;
+  }
+
+  auto current = *current_opt;
   AsrProviderData updated;
   if (!ShowAsrProviderDialog(this, tr("Edit ASR Provider"), &current, &updated)) {
     return;
   }
 
-  // Remove old
-  std::erase_if(config.asr.providers,
-                [&](const AsrProvider& p) { return AsrProviderId(p) == current.id; });
-
-  // Add new
-#if VINPUT_ENABLE_LOCAL_ASR
-  if (updated.type == "local") {
-    LocalAsrProvider p;
-    p.model = updated.model;
-    p.timeoutMs = updated.timeout_ms;
-    config.asr.providers.emplace_back(p);
-  } else
-#endif
-  {
-    CommandAsrProvider p;
-    p.id = updated.id;
-    p.command = updated.command;
-    p.args = updated.args;
-    p.env = updated.env;
-    p.timeoutMs = updated.timeout_ms;
-    config.asr.providers.emplace_back(p);
+  CoreConfig fresh_config;
+  if (!ConfigManager::Get().TryLoad(&fresh_config, &load_error)) {
+    QMessageBox::critical(
+        this, tr("Error"),
+        tr("Configuration is corrupted or unreadable: %1").arg(QString::fromStdString(load_error)));
+    return;
   }
 
-  if (!ConfigManager::Get().Save(config)) {
+  auto target_it = std::ranges::find_if(
+      fresh_config.asr.providers, [&](const auto& p) { return AsrProviderId(p) == current.id; });
+  if (target_it == fresh_config.asr.providers.end()) {
+    QMessageBox::warning(this, tr("Conflict"),
+                         tr("The provider '%1' was removed or modified by another process.")
+                             .arg(QString::fromStdString(current.id)));
+    refreshAsrList();
+    return;
+  }
+
+  const std::string new_id = updated.id.empty() ? current.id : updated.id;
+  *target_it = MakeAsrProvider(updated, new_id);
+
+  if (fresh_config.asr.activeProvider == current.id && new_id != current.id) {
+    fresh_config.asr.activeProvider = new_id;
+  }
+
+  if (!ConfigManager::Get().Save(fresh_config)) {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
