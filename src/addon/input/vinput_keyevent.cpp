@@ -13,10 +13,10 @@
 #include <fcitx-utils/utf8.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
+#include <fcitx/instance.h>
 #include <iterator>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_view.h"
@@ -255,20 +255,24 @@ VinputEngine::HotkeyMatch VinputEngine::classifyHotkey(const fcitx::Key& event_k
                                                        bool is_release) const {
   const int trigger_index = matchKeyListIndex(event_key, trigger_keys_, is_release);
   if (trigger_index >= 0) {
-    return {HotkeyRole::Trigger, trigger_keys_[trigger_index], false};
+    return {.role = HotkeyRole::Trigger,
+            .matched_key = trigger_keys_[trigger_index],
+            .is_command = false};
   }
 
   const int command_index = matchKeyListIndex(event_key, command_keys_, is_release);
   if (command_index >= 0) {
-    return {HotkeyRole::Command, command_keys_[command_index], true};
+    return {.role = HotkeyRole::Command,
+            .matched_key = command_keys_[command_index],
+            .is_command = true};
   }
 
   const int menu_index = matchKeyListIndex(event_key, menu_keys_, is_release);
   if (menu_index >= 0) {
-    return {HotkeyRole::Menu, menu_keys_[menu_index], false};
+    return {.role = HotkeyRole::Menu, .matched_key = menu_keys_[menu_index], .is_command = false};
   }
 
-  return {HotkeyRole::None, fcitx::Key(), false};
+  return {.role = HotkeyRole::None, .matched_key = fcitx::Key(), .is_command = false};
 }
 
 void VinputEngine::handleNonHotkeyKeyEvent(fcitx::KeyEvent& keyEvent) {
