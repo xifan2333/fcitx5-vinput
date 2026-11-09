@@ -15,6 +15,13 @@ class ConfigManager : public QObject {
 public:
   static ConfigManager& Get();
 
+  ConfigManager(const ConfigManager&) = delete;
+  ConfigManager& operator=(const ConfigManager&) = delete;
+  ConfigManager(ConfigManager&&) = delete;
+  ConfigManager& operator=(ConfigManager&&) = delete;
+
+  ~ConfigManager() override = default;
+
   CoreConfig Load();
   bool TryLoad(CoreConfig* config, std::string* error = nullptr);
   bool Save(const CoreConfig& config);
@@ -25,15 +32,7 @@ signals:
 private:
   ConfigManager() = default;
 
-  ConfigManager(const ConfigManager&) = delete;
-  ConfigManager& operator=(const ConfigManager&) = delete;
-  ConfigManager(ConfigManager&&) = delete;
-  ConfigManager& operator=(ConfigManager&&) = delete;
-
   QMutex mutex_;
-
-protected:
-  ~ConfigManager() override = default;
 };
 
 } // namespace vinput::gui

@@ -35,29 +35,27 @@ bool ConfigManager::TryLoad(CoreConfig* config, std::string* error) {
 
   const auto path = vinput::path::CoreConfigPath();
   std::error_code ec;
-  if (std::filesystem::exists(path, ec)) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-      if (error != nullptr) {
-        *error = "failed to open config file";
-      }
-      return false;
-    }
-
-    const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-    if (!CoreConfigFromJson(text, config, error)) {
-      return false;
-    }
-    NormalizeCoreConfig(config);
-    return true;
-  }
-  if (ec) {
+  if (!std::filesystem::exists(path, ec)) {
     if (error != nullptr) {
-      *error = "failed to inspect config file: " + ec.message();
+      *error = ec ? ("failed to inspect config file: " + ec.message()) : "config file not found";
     }
     return false;
   }
-  return LoadBundledDefaultCoreConfig(config, error);
+
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    if (error != nullptr) {
+      *error = "failed to open config file";
+    }
+    return false;
+  }
+
+  const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+  if (!CoreConfigFromJson(text, config, error)) {
+    return false;
+  }
+  NormalizeCoreConfig(config);
+  return true;
 }
 
 bool ConfigManager::Save(const CoreConfig& config) {

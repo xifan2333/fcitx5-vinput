@@ -313,6 +313,35 @@ bool SameAsrProviderData(const AsrProviderData& lhs, const AsrProviderData& rhs)
          lhs.timeout_ms == rhs.timeout_ms;
 }
 
+bool ValidateEditState(QWidget* parent, const CoreConfig& fresh_config,
+                       const AsrProviderData& current, std::string_view new_id) {
+  const auto fresh_data = FindAsrProviderData(fresh_config, current.id);
+  if (!fresh_data.has_value()) {
+    QMessageBox::warning(
+        parent, QObject::tr("Conflict"),
+        QObject::tr("The provider '%1' was removed or modified by another process.")
+            .arg(QString::fromStdString(current.id)));
+    return false;
+  }
+  if (!SameAsrProviderData(*fresh_data, current)) {
+    QMessageBox::warning(parent, QObject::tr("Conflict"),
+                         QObject::tr("The provider '%1' was modified by another process.")
+                             .arg(QString::fromStdString(current.id)));
+    return false;
+  }
+  if (new_id != current.id) {
+    const bool duplicate = std::ranges::any_of(
+        fresh_config.asr.providers, [&](const auto& p) { return AsrProviderId(p) == new_id; });
+    if (duplicate) {
+      QMessageBox::warning(parent, QObject::tr("Conflict"),
+                           QObject::tr("A provider with the ID '%1' already exists.")
+                               .arg(QString::fromStdString(std::string(new_id))));
+      return false;
+    }
+  }
+  return true;
+}
+
 AsrProvider MakeAsrProvider(const AsrProviderData& data, std::string_view fallback_id) {
   const std::string new_id = data.id.empty() ? std::string(fallback_id) : data.id;
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -828,26 +857,19 @@ void ControlPage::onAsrEdit() {
     return;
   }
 
+  const std::string new_id = updated.id.empty() ? current.id : updated.id;
+  if (!ValidateEditState(this, fresh_config, current, new_id)) {
+    refreshAsrList();
+    return;
+  }
+
   auto target_it = std::ranges::find_if(
       fresh_config.asr.providers, [&](const auto& p) { return AsrProviderId(p) == current.id; });
   if (target_it == fresh_config.asr.providers.end()) {
-    QMessageBox::warning(this, tr("Conflict"),
-                         tr("The provider '%1' was removed or modified by another process.")
-                             .arg(QString::fromStdString(current.id)));
     refreshAsrList();
     return;
   }
 
-  const auto fresh_data = FindAsrProviderData(fresh_config, current.id);
-  if (!fresh_data.has_value() || !SameAsrProviderData(*fresh_data, current)) {
-    QMessageBox::warning(this, tr("Conflict"),
-                         tr("The provider '%1' was modified by another process.")
-                             .arg(QString::fromStdString(current.id)));
-    refreshAsrList();
-    return;
-  }
-
-  const std::string new_id = updated.id.empty() ? current.id : updated.id;
   *target_it = MakeAsrProvider(updated, new_id);
 
   if (fresh_config.asr.activeProvider == current.id && new_id != current.id) {
