@@ -52,6 +52,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <variant>
@@ -74,9 +75,24 @@
 #include "gui/utils/i18n_cache.h"
 
 #include "config.h"
+#include "dialogs/client_dialog.h"
 #include "utils/gui_helpers.h"
 
 namespace vinput::gui {
+
+struct RegistryFetchResults {
+  std::vector<RemoteModelEntry> models;
+  std::vector<vinput::script::RegistryEntry> providers;
+  std::vector<vinput::script::RegistryEntry> adapters;
+  std::vector<vinput::script::RegistryEntry> triggers;
+  std::vector<vinput::script::RegistryEntry> receivers;
+  std::string models_error;
+  std::string providers_error;
+  std::string adapters_error;
+  std::string triggers_error;
+  std::string receivers_error;
+  std::vector<std::string> warnings;
+};
 
 namespace {
 
@@ -110,44 +126,42 @@ public:
   }
 };
 
-void SetupTable(QTableWidget* t, const QStringList& headers) {
-  t->setColumnCount(static_cast<int>(headers.size()));
-  t->setHorizontalHeaderLabels(headers);
-  t->setSelectionBehavior(QAbstractItemView::SelectRows);
-  t->setSelectionMode(QAbstractItemView::SingleSelection);
-  t->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  t->setAlternatingRowColors(true);
-  t->verticalHeader()->hide();
-  t->horizontalHeader()->setStretchLastSection(true);
-  t->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+void SetupTable(QTableWidget* table, const QStringList& headers) {
+  table->setColumnCount(headers.size());
+  table->setHorizontalHeaderLabels(headers);
+  table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table->setSelectionBehavior(QAbstractItemView::SelectRows);
+  table->setSelectionMode(QAbstractItemView::SingleSelection);
+  table->verticalHeader()->setVisible(false);
+  table->horizontalHeader()->setStretchLastSection(true);
+  table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+  table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
 }
 
 QLineEdit* CreateFilterEdit(const QString& placeholder, QWidget* parent) {
   auto* edit = new QLineEdit(parent);
-  edit->setClearButtonEnabled(true);
   edit->setPlaceholderText(placeholder);
+  edit->setClearButtonEnabled(true);
   return edit;
 }
 
-void ApplyTableFilter(QTableWidget* table, const QString& filter_text) {
-  if (table == nullptr) {
-    return;
-  }
-
-  const QString needle = filter_text.trimmed();
+void ApplyTableFilter(QTableWidget* table, const QString& pattern) {
+  const QString needle = pattern.trimmed();
   for (int row = 0; row < table->rowCount(); ++row) {
-    bool matches = needle.isEmpty();
-    if (!matches) {
-      for (int col = 0; col < table->columnCount(); ++col) {
-        const auto* item = table->item(row, col);
-        if (item == nullptr) {
-          continue;
-        }
-        const QString haystack = item->text() + '\n' + item->data(Qt::UserRole).toString();
-        if (haystack.contains(needle, Qt::CaseInsensitive)) {
-          matches = true;
-          break;
-        }
+    if (needle.isEmpty()) {
+      table->setRowHidden(row, false);
+      continue;
+    }
+    bool matches = false;
+    for (int col = 0; col < table->columnCount(); ++col) {
+      const auto* item = table->item(row, col);
+      if (item == nullptr) {
+        continue;
+      }
+      const QString haystack = item->text() + '\n' + item->data(Qt::UserRole).toString();
+      if (haystack.contains(needle, Qt::CaseInsensitive)) {
+        matches = true;
+        break;
       }
     }
     table->setRowHidden(row, !matches);
@@ -248,8 +262,15 @@ bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::stri
 
   auto it = std::ranges::find_if(entries, [&](const auto& e) { return e.id == id; });
   if (it == entries.end()) {
-    *err = (kind == vinput::script::Kind::kAsrProvider) ? "Provider not found in registry."
-                                                        : "Adapter not found in registry.";
+    if (kind == vinput::script::Kind::kAsrProvider) {
+      *err = "Provider not found in registry.";
+    } else if (kind == vinput::script::Kind::kLlmAdapter) {
+      *err = "Adapter not found in registry.";
+    } else if (kind == vinput::script::Kind::kTrigger) {
+      *err = "Trigger not found in registry.";
+    } else {
+      *err = "Receiver not found in registry.";
+    }
     return false;
   }
 
@@ -276,6 +297,7 @@ struct ScriptActionButtons {
   QPushButton* add = nullptr;
   QPushButton* update = nullptr;
   QPushButton* remove = nullptr;
+  QPushButton* edit = nullptr;
 };
 
 template <typename IsInstalledFn>
@@ -287,6 +309,9 @@ void UpdateScriptActionButtons(QTableWidget* table, int status_column,
     buttons.add->setEnabled(false);
     buttons.update->setEnabled(false);
     buttons.remove->setEnabled(false);
+    if (buttons.edit != nullptr) {
+      buttons.edit->setEnabled(false);
+    }
     return;
   }
   const bool installed = is_installed(selected->id.toStdString());
@@ -297,6 +322,9 @@ void UpdateScriptActionButtons(QTableWidget* table, int status_column,
   buttons.add->setEnabled(!installed && !incompatible);
   buttons.update->setEnabled(installed && !incompatible);
   buttons.remove->setEnabled(installed);
+  if (buttons.edit != nullptr) {
+    buttons.edit->setEnabled(installed);
+  }
 }
 
 template <typename IsInstalledFn, typename UpdateButtonsFn>
@@ -309,6 +337,8 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
   auto i18n_map = I18nCache::Get().GetMap();
   const auto manifest = vinput::registry::InstalledManifest::Load();
   const bool is_asr = (kind == vinput::script::Kind::kAsrProvider);
+  const bool is_client =
+      (kind == vinput::script::Kind::kTrigger || kind == vinput::script::Kind::kReceiver);
 
   for (const auto& entry : entries) {
     const QString id = QString::fromStdString(entry.id);
@@ -325,6 +355,8 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
     if (is_asr) {
       table->setItem(row, col++,
                      MakeCell(entry.stream ? QObject::tr("stream") : QObject::tr("non-stream")));
+    } else if (is_client) {
+      table->setItem(row, col++, MakeCell(QString::fromStdString(entry.command)));
     }
 
     const bool installed = is_installed(config, entry.id);
@@ -352,6 +384,99 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
   update_buttons();
 }
 
+template <typename GetLocalClientsFn>
+std::vector<vinput::script::RegistryEntry>
+MergeWithLocalClients(const std::vector<vinput::script::RegistryEntry>& remote_entries,
+                      const GetLocalClientsFn& get_local_clients) {
+  std::vector<vinput::script::RegistryEntry> merged = remote_entries;
+  for (const auto& client : get_local_clients()) {
+    const bool exists =
+        std::ranges::any_of(merged, [&](const auto& e) { return e.id == client.id; });
+    if (!exists) {
+      vinput::script::RegistryEntry local_entry;
+      local_entry.id = client.id;
+      local_entry.command = client.command;
+      merged.push_back(std::move(local_entry));
+    }
+  }
+  return merged;
+}
+
+std::vector<std::string> ResolveScriptUrls(const CoreConfig& config, vinput::script::Kind kind) {
+  const CoreConfigView view(config);
+  switch (kind) {
+  case vinput::script::Kind::kAsrProvider:
+    return view.AsrProviderRegistryUrls();
+  case vinput::script::Kind::kLlmAdapter:
+    return view.LlmAdapterRegistryUrls();
+  case vinput::script::Kind::kTrigger:
+    return view.TriggerRegistryUrls();
+  case vinput::script::Kind::kReceiver:
+    return view.ReceiverRegistryUrls();
+  }
+  return {};
+}
+
+bool MaterializeRegistryScript(CoreConfig* cfg, vinput::script::Kind kind,
+                               const vinput::script::RegistryEntry& entry,
+                               const std::filesystem::path& path, std::string* err) {
+  switch (kind) {
+  case vinput::script::Kind::kAsrProvider:
+    return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
+  case vinput::script::Kind::kLlmAdapter:
+    return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
+  case vinput::script::Kind::kTrigger:
+    return vinput::script::MaterializeTrigger(cfg, entry, path, err);
+  case vinput::script::Kind::kReceiver:
+    return vinput::script::MaterializeReceiver(cfg, entry, path, err);
+  }
+  return false;
+}
+
+void MaybeReloadAsrBackendOnScriptUpdate(ResourcePage* page, QTextEdit* text_log,
+                                         const std::string& id, bool is_update, bool is_asr,
+                                         bool succeeded) {
+  if (!is_update || !is_asr || !succeeded) {
+    return;
+  }
+  const CoreConfig config = ConfigManager::Get().Load();
+  if (config.asr.activeProvider != id) {
+    return;
+  }
+  RunReloadAsrBackendAsync(page, [text_log](bool ok, const std::string& err) {
+    if (!ok && text_log != nullptr) {
+      text_log->append(
+          ResourcePage::tr("Warning: config saved, but failed to reload ASR backend: %1")
+              .arg(QString::fromStdString(err)));
+    }
+  });
+}
+
+RegistryFetchResults FetchAllRemoteRegistries(const CoreConfig& config) {
+  RegistryFetchResults res;
+#if VINPUT_ENABLE_LOCAL_ASR
+  res.models = ModelRepository::FetchRegistry(config, CoreConfigView(config).ModelRegistryUrls(),
+                                              &res.models_error, nullptr, &res.warnings);
+#endif
+  const CoreConfigView view(config);
+  res.providers = vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider,
+                                                view.AsrProviderRegistryUrls(),
+                                                &res.providers_error, nullptr, &res.warnings);
+  res.adapters = vinput::script::FetchRegistry(config, vinput::script::Kind::kLlmAdapter,
+                                               view.LlmAdapterRegistryUrls(), &res.adapters_error,
+                                               nullptr, &res.warnings);
+  res.triggers = vinput::script::FetchRegistry(config, vinput::script::Kind::kTrigger,
+                                               view.TriggerRegistryUrls(), &res.triggers_error,
+                                               nullptr, &res.warnings);
+  res.receivers = vinput::script::FetchRegistry(config, vinput::script::Kind::kReceiver,
+                                                view.ReceiverRegistryUrls(), &res.receivers_error,
+                                                nullptr, &res.warnings);
+
+  std::ranges::sort(res.warnings);
+  res.warnings.erase(std::ranges::unique(res.warnings).begin(), res.warnings.end());
+  return res;
+}
+
 } // namespace
 
 ResourcePage::ResourcePage(QWidget* parent)
@@ -362,6 +487,7 @@ ResourcePage::ResourcePage(QWidget* parent)
       tableInstalledModels_(nullptr), tableAvailableModels_(nullptr),
 #endif
       tableAvailableProviders_(new QTableWidget()), tableAvailableAdapters_(new QTableWidget()),
+      tableAvailableTriggers_(new QTableWidget()), tableAvailableReceivers_(new QTableWidget()),
       downloadStatusLabel_(new QLabel()), downloadProgressBar_(new QProgressBar()),
       textLog_(new QTextEdit()) {
   auto* layout = new QVBoxLayout(this);
@@ -471,6 +597,60 @@ ResourcePage::ResourcePage(QWidget* parent)
   adaptersLayout->addLayout(adapterLayout, 1);
   resourceTabs_->addTab(adaptersTab, tr("LLM Adapters"));
 
+  auto* triggersTab = new QWidget(this);
+  auto* triggersLayout = new QVBoxLayout(triggersTab);
+  auto* lblTriggers = new QLabel(tr("<b>Available Triggers</b>"));
+  triggersLayout->addWidget(lblTriggers);
+  filterAvailableTriggers_ = CreateFilterEdit(tr("Filter triggers..."), triggersTab);
+  triggersLayout->addWidget(filterAvailableTriggers_);
+
+  auto* triggerLayout = new QHBoxLayout();
+  SetupTable(tableAvailableTriggers_,
+             {tr("Title"), tr("Description"), tr("Command"), tr("Status"), tr("README")});
+  tableAvailableTriggers_->setItemDelegateForColumn(4, new LinkDelegate(tableAvailableTriggers_));
+  triggerLayout->addWidget(tableAvailableTriggers_, 1);
+
+  btnAddTrigger_ = new QPushButton(tr("Install"));
+  btnUpdateTrigger_ = new QPushButton(tr("Update"));
+  btnEditTrigger_ = new QPushButton(tr("Edit"));
+  btnRemoveTrigger_ = new QPushButton(tr("Remove"));
+  auto* triggerBtnLayout = new QVBoxLayout();
+  triggerBtnLayout->addWidget(btnAddTrigger_);
+  triggerBtnLayout->addWidget(btnUpdateTrigger_);
+  triggerBtnLayout->addWidget(btnEditTrigger_);
+  triggerBtnLayout->addWidget(btnRemoveTrigger_);
+  triggerBtnLayout->addStretch();
+  triggerLayout->addLayout(triggerBtnLayout);
+  triggersLayout->addLayout(triggerLayout, 1);
+  resourceTabs_->addTab(triggersTab, tr("Triggers"));
+
+  auto* receiversTab = new QWidget(this);
+  auto* receiversLayout = new QVBoxLayout(receiversTab);
+  auto* lblReceivers = new QLabel(tr("<b>Available Receivers</b>"));
+  receiversLayout->addWidget(lblReceivers);
+  filterAvailableReceivers_ = CreateFilterEdit(tr("Filter receivers..."), receiversTab);
+  receiversLayout->addWidget(filterAvailableReceivers_);
+
+  auto* receiverLayout = new QHBoxLayout();
+  SetupTable(tableAvailableReceivers_,
+             {tr("Title"), tr("Description"), tr("Command"), tr("Status"), tr("README")});
+  tableAvailableReceivers_->setItemDelegateForColumn(4, new LinkDelegate(tableAvailableReceivers_));
+  receiverLayout->addWidget(tableAvailableReceivers_, 1);
+
+  btnAddReceiver_ = new QPushButton(tr("Install"));
+  btnUpdateReceiver_ = new QPushButton(tr("Update"));
+  btnEditReceiver_ = new QPushButton(tr("Edit"));
+  btnRemoveReceiver_ = new QPushButton(tr("Remove"));
+  auto* receiverBtnLayout = new QVBoxLayout();
+  receiverBtnLayout->addWidget(btnAddReceiver_);
+  receiverBtnLayout->addWidget(btnUpdateReceiver_);
+  receiverBtnLayout->addWidget(btnEditReceiver_);
+  receiverBtnLayout->addWidget(btnRemoveReceiver_);
+  receiverBtnLayout->addStretch();
+  receiverLayout->addLayout(receiverBtnLayout);
+  receiversLayout->addLayout(receiverLayout, 1);
+  resourceTabs_->addTab(receiversTab, tr("Receivers"));
+
   textLog_->setReadOnly(true);
   textLog_->setMaximumHeight(100);
 
@@ -500,16 +680,37 @@ ResourcePage::ResourcePage(QWidget* parent)
   connect(btnAddAdapter_, &QPushButton::clicked, this, &ResourcePage::onAddAdapterClicked);
   connect(btnUpdateAdapter_, &QPushButton::clicked, this, &ResourcePage::onUpdateAdapterClicked);
   connect(btnRemoveAdapter_, &QPushButton::clicked, this, &ResourcePage::onRemoveAdapterClicked);
+  connect(btnAddTrigger_, &QPushButton::clicked, this, &ResourcePage::onAddTriggerClicked);
+  connect(btnUpdateTrigger_, &QPushButton::clicked, this, &ResourcePage::onUpdateTriggerClicked);
+  connect(btnEditTrigger_, &QPushButton::clicked, this, &ResourcePage::onEditTriggerClicked);
+  connect(btnRemoveTrigger_, &QPushButton::clicked, this, &ResourcePage::onRemoveTriggerClicked);
+  connect(btnAddReceiver_, &QPushButton::clicked, this, &ResourcePage::onAddReceiverClicked);
+  connect(btnUpdateReceiver_, &QPushButton::clicked, this, &ResourcePage::onUpdateReceiverClicked);
+  connect(btnEditReceiver_, &QPushButton::clicked, this, &ResourcePage::onEditReceiverClicked);
+  connect(btnRemoveReceiver_, &QPushButton::clicked, this, &ResourcePage::onRemoveReceiverClicked);
+
   connect(tableAvailableProviders_, &QTableWidget::itemSelectionChanged, this,
           &ResourcePage::updateProviderButtons);
   connect(tableAvailableAdapters_, &QTableWidget::itemSelectionChanged, this,
           &ResourcePage::updateAdapterButtons);
+  connect(tableAvailableTriggers_, &QTableWidget::itemSelectionChanged, this,
+          &ResourcePage::updateTriggerButtons);
+  connect(tableAvailableReceivers_, &QTableWidget::itemSelectionChanged, this,
+          &ResourcePage::updateReceiverButtons);
+
   AttachTableLinkDoubleClickHandler(tableAvailableProviders_, 4);
   AttachTableLinkDoubleClickHandler(tableAvailableAdapters_, 3);
+  AttachTableLinkDoubleClickHandler(tableAvailableTriggers_, 4);
+  AttachTableLinkDoubleClickHandler(tableAvailableReceivers_, 4);
+
   connect(filterAvailableProviders_, &QLineEdit::textChanged, this,
           [this](const QString& text) { ApplyTableFilter(tableAvailableProviders_, text); });
   connect(filterAvailableAdapters_, &QLineEdit::textChanged, this,
           [this](const QString& text) { ApplyTableFilter(tableAvailableAdapters_, text); });
+  connect(filterAvailableTriggers_, &QLineEdit::textChanged, this,
+          [this](const QString& text) { ApplyTableFilter(tableAvailableTriggers_, text); });
+  connect(filterAvailableReceivers_, &QLineEdit::textChanged, this,
+          [this](const QString& text) { ApplyTableFilter(tableAvailableReceivers_, text); });
 
   btnAddProvider_->setEnabled(false);
   btnUpdateProvider_->setEnabled(false);
@@ -517,6 +718,14 @@ ResourcePage::ResourcePage(QWidget* parent)
   btnAddAdapter_->setEnabled(false);
   btnUpdateAdapter_->setEnabled(false);
   btnRemoveAdapter_->setEnabled(false);
+  btnAddTrigger_->setEnabled(false);
+  btnUpdateTrigger_->setEnabled(false);
+  btnEditTrigger_->setEnabled(false);
+  btnRemoveTrigger_->setEnabled(false);
+  btnAddReceiver_->setEnabled(false);
+  btnUpdateReceiver_->setEnabled(false);
+  btnEditReceiver_->setEnabled(false);
+  btnRemoveReceiver_->setEnabled(false);
 
   connect(&I18nCache::Get(), &I18nCache::mapUpdated, this,
           [this](uint64_t generation) { finishRefreshAfterI18n({}, generation); });
@@ -557,6 +766,8 @@ void ResourcePage::refreshLocalizedTables() {
 #endif
   populateRemoteProviders(remoteProviders_);
   populateRemoteAdapters(remoteAdapters_);
+  populateRemoteTriggers(remoteTriggers_);
+  populateRemoteReceivers(remoteReceivers_);
 }
 
 void ResourcePage::finishRefreshAfterI18n(const QString& error, uint64_t generation) {
@@ -710,21 +921,76 @@ void ResourcePage::populateRemoteAdapters(
       [this]() { updateAdapterButtons(); });
 }
 
+void ResourcePage::populateRemoteTriggers(
+    const std::vector<vinput::script::RegistryEntry>& triggers) {
+  const CoreConfig config = ConfigManager::Get().Load();
+  auto merged = MergeWithLocalClients(triggers, [&]() { return config.triggers; });
+  PopulateRemoteScripts(
+      tableAvailableTriggers_, filterAvailableTriggers_, merged, vinput::script::Kind::kTrigger,
+      [](const CoreConfig& cfg, const std::string& id) {
+        return CoreConfigView(cfg).Trigger(id) != nullptr;
+      },
+      [this]() { updateTriggerButtons(); });
+}
+
+void ResourcePage::populateRemoteReceivers(
+    const std::vector<vinput::script::RegistryEntry>& receivers) {
+  const CoreConfig config = ConfigManager::Get().Load();
+  auto merged = MergeWithLocalClients(receivers, [&]() { return config.receivers; });
+  PopulateRemoteScripts(
+      tableAvailableReceivers_, filterAvailableReceivers_, merged, vinput::script::Kind::kReceiver,
+      [](const CoreConfig& cfg, const std::string& id) {
+        return CoreConfigView(cfg).Receiver(id) != nullptr;
+      },
+      [this]() { updateReceiverButtons(); });
+}
+
+void ResourcePage::applyRegistryFetchResults(RegistryFetchResults results, uint64_t generation) {
+  if (generation != refreshGeneration_) {
+    return;
+  }
+
+  remoteModels_ = std::move(results.models);
+  remoteProviders_ = std::move(results.providers);
+  remoteAdapters_ = std::move(results.adapters);
+  remoteTriggers_ = std::move(results.triggers);
+  remoteReceivers_ = std::move(results.receivers);
+
+  auto log_err = [this](std::string_view err, const QString& prefix) {
+    if (!err.empty()) {
+      textLog_->append(prefix.arg(QString::fromStdString(std::string(err))));
+    }
+  };
+  log_err(results.models_error, tr("Models fetch error: %1"));
+  log_err(results.providers_error, tr("Providers fetch error: %1"));
+  log_err(results.adapters_error, tr("Adapters fetch error: %1"));
+  log_err(results.triggers_error, tr("Triggers fetch error: %1"));
+  log_err(results.receivers_error, tr("Receivers fetch error: %1"));
+  for (const auto& warning : results.warnings) {
+    textLog_->append(tr("Registry warning: %1").arg(QString::fromStdString(warning)));
+  }
+
+  populateRemoteModels(remoteModels_);
+  populateRemoteProviders(remoteProviders_);
+  populateRemoteAdapters(remoteAdapters_);
+  populateRemoteTriggers(remoteTriggers_);
+  populateRemoteReceivers(remoteReceivers_);
+
+  refreshWaitingForI18n_ = true;
+  i18nWaitGeneration_ = I18nCache::Get().ReloadFromDisk();
+}
+
 void ResourcePage::refreshAll() {
   const CoreConfig config = ConfigManager::Get().Load();
 #if VINPUT_ENABLE_LOCAL_ASR
   const QString baseDir = QString::fromStdString(CoreConfigView::ModelBaseDir().string());
+  const ModelManager local_manager(baseDir.toStdString());
+  populateLocalModels(local_manager.ListDetailed(CoreConfigView(config).PreferredLocalModel()));
 #endif
   const QPointer<ResourcePage> self(this);
   const uint64_t generation = ++refreshGeneration_;
   refreshWaitingForI18n_ = false;
   i18nWaitGeneration_ = 0;
-
-  // Keep installed models visible during the network round-trip.
-#if VINPUT_ENABLE_LOCAL_ASR
-  const ModelManager local_manager(baseDir.toStdString());
-  populateLocalModels(local_manager.ListDetailed(CoreConfigView(config).PreferredLocalModel()));
-#endif
 
   btnRefreshResources_->setEnabled(false);
   textLog_->append(tr("Fetching remote registry..."));
@@ -733,69 +999,14 @@ void ResourcePage::refreshAll() {
     if (!self) {
       return;
     }
-
-    std::vector<std::string> warnings;
-    std::string models_error;
-    std::string providers_error;
-    std::string adapters_error;
-
-#if VINPUT_ENABLE_LOCAL_ASR
-    auto remote_models = ModelRepository::FetchRegistry(
-        config, CoreConfigView(config).ModelRegistryUrls(), &models_error, nullptr, &warnings);
-#else
-    std::vector<RemoteModelEntry> remote_models;
-#endif
-    auto remote_providers = vinput::script::FetchRegistry(
-        config, vinput::script::Kind::kAsrProvider,
-        CoreConfigView(config).AsrProviderRegistryUrls(), &providers_error, nullptr, &warnings);
-    auto remote_adapters = vinput::script::FetchRegistry(
-        config, vinput::script::Kind::kLlmAdapter, CoreConfigView(config).LlmAdapterRegistryUrls(),
-        &adapters_error, nullptr, &warnings);
-
-    std::ranges::sort(warnings);
-    warnings.erase(std::ranges::unique(warnings).begin(), warnings.end());
-
+    auto results = FetchAllRemoteRegistries(config);
     QMetaObject::invokeMethod(
         self,
-        [self, generation, remote_models = std::move(remote_models),
-         remote_providers = std::move(remote_providers),
-         remote_adapters = std::move(remote_adapters), models_error = std::move(models_error),
-         providers_error = std::move(providers_error), adapters_error = std::move(adapters_error),
-         warnings = std::move(warnings)]() mutable {
-          if (!self || generation != self->refreshGeneration_) {
+        [self, generation, results = std::move(results)]() mutable {
+          if (!self) {
             return;
           }
-
-          self->remoteModels_ = std::move(remote_models);
-          self->remoteProviders_ = std::move(remote_providers);
-          self->remoteAdapters_ = std::move(remote_adapters);
-
-          if (!models_error.empty()) {
-            self->textLog_->append(ResourcePage::tr("Models fetch error: %1")
-                                       .arg(QString::fromStdString(models_error)));
-          }
-          if (!providers_error.empty()) {
-            self->textLog_->append(ResourcePage::tr("Providers fetch error: %1")
-                                       .arg(QString::fromStdString(providers_error)));
-          }
-          if (!adapters_error.empty()) {
-            self->textLog_->append(ResourcePage::tr("Adapters fetch error: %1")
-                                       .arg(QString::fromStdString(adapters_error)));
-          }
-          for (const auto& warning : warnings) {
-            self->textLog_->append(
-                ResourcePage::tr("Registry warning: %1").arg(QString::fromStdString(warning)));
-          }
-
-          // Paint remotes with the current map first so rows appear even
-          // when disk i18n is already warm; finishRefreshAfterI18n repaints
-          // after ReloadFromDisk if titles changed.
-          self->populateRemoteModels(self->remoteModels_);
-          self->populateRemoteProviders(self->remoteProviders_);
-          self->populateRemoteAdapters(self->remoteAdapters_);
-
-          self->refreshWaitingForI18n_ = true;
-          self->i18nWaitGeneration_ = I18nCache::Get().ReloadFromDisk();
+          self->applyRegistryFetchResults(std::move(results), generation);
         },
         Qt::QueuedConnection);
   });
@@ -943,6 +1154,8 @@ void ResourcePage::onDownloadFinished(DownloadWorker* originating_worker) {
   refreshAll();
   updateProviderButtons();
   updateAdapterButtons();
+  updateTriggerButtons();
+  updateReceiverButtons();
   emit configChanged();
 }
 
@@ -1016,39 +1229,25 @@ void ResourcePage::startScriptDownloadTask(QTableWidget* table, QPushButton* act
   auto updateSucceeded = std::make_shared<std::atomic_bool>(false);
 
   connect(downloadWorker_, &QThread::finished, this,
-          [this, id, is_asr, is_update, updateSucceeded, worker = downloadWorker_]() {
+          [this, id = id.toStdString(), is_asr, is_update, updateSucceeded,
+           worker = downloadWorker_]() {
             onDownloadFinished(worker);
-            if (!is_update || !is_asr || !updateSucceeded->load()) {
-              return;
-            }
-            const CoreConfig config = ConfigManager::Get().Load();
-            if (config.asr.activeProvider == id.toStdString()) {
-              RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-                if (!ok) {
-                  textLog_->append(tr("Warning: config saved, but failed to reload ASR backend: %1")
-                                       .arg(QString::fromStdString(err)));
-                }
-              });
-            }
+            MaybeReloadAsrBackendOnScriptUpdate(this, textLog_, id, is_update, is_asr,
+                                                updateSucceeded->load());
           });
 
-  downloadWorker_->SetTask(
-      [id, kind, updateSucceeded](std::string* err, const std::atomic<bool>* cancel_token) -> bool {
-        const CoreConfig config = ConfigManager::Get().Load();
-        const auto urls = (kind == vinput::script::Kind::kAsrProvider)
-                              ? CoreConfigView(config).AsrProviderRegistryUrls()
-                              : CoreConfigView(config).LlmAdapterRegistryUrls();
-        const bool saved = ExecuteScriptInstallOrUpdateTask(
-            kind, id.toStdString(), urls, err, cancel_token,
-            [kind](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
-              if (kind == vinput::script::Kind::kAsrProvider) {
-                return vinput::script::MaterializeAsrProvider(cfg, entry, path, err);
-              }
-              return vinput::script::MaterializeLlmAdapter(cfg, entry, path, err);
-            });
-        updateSucceeded->store(saved);
-        return saved;
-      });
+  downloadWorker_->SetTask([id = id.toStdString(), kind, updateSucceeded](
+                               std::string* err, const std::atomic<bool>* cancel_token) -> bool {
+    const CoreConfig config = ConfigManager::Get().Load();
+    const auto urls = ResolveScriptUrls(config, kind);
+    const bool saved = ExecuteScriptInstallOrUpdateTask(
+        kind, id, urls, err, cancel_token,
+        [kind](CoreConfig* cfg, const auto& entry, const auto& path, auto* err) {
+          return MaterializeRegistryScript(cfg, kind, entry, path, err);
+        });
+    updateSucceeded->store(saved);
+    return saved;
+  });
 
   textLog_->append(log_format.arg(title));
   downloadWorker_->start();
@@ -1075,11 +1274,32 @@ void ResourcePage::onUpdateAdapterClicked() {
                           vinput::script::Kind::kLlmAdapter, true, tr("Updating adapter %1..."));
 }
 
+void ResourcePage::onAddTriggerClicked() {
+  startScriptDownloadTask(tableAvailableTriggers_, btnAddTrigger_, vinput::script::Kind::kTrigger,
+                          false, tr("Installing trigger %1..."));
+}
+
+void ResourcePage::onUpdateTriggerClicked() {
+  startScriptDownloadTask(tableAvailableTriggers_, btnUpdateTrigger_,
+                          vinput::script::Kind::kTrigger, true, tr("Updating trigger %1..."));
+}
+
+void ResourcePage::onAddReceiverClicked() {
+  startScriptDownloadTask(tableAvailableReceivers_, btnAddReceiver_,
+                          vinput::script::Kind::kReceiver, false, tr("Installing receiver %1..."));
+}
+
+void ResourcePage::onUpdateReceiverClicked() {
+  startScriptDownloadTask(tableAvailableReceivers_, btnUpdateReceiver_,
+                          vinput::script::Kind::kReceiver, true, tr("Updating receiver %1..."));
+}
+
 void ResourcePage::updateProviderButtons() {
   UpdateScriptActionButtons(tableAvailableProviders_, 3,
                             ScriptActionButtons{.add = btnAddProvider_,
                                                 .update = btnUpdateProvider_,
-                                                .remove = btnRemoveProvider_},
+                                                .remove = btnRemoveProvider_,
+                                                .edit = nullptr},
                             [](const std::string& id) {
                               const CoreConfig config = ConfigManager::Get().Load();
                               return CoreConfigView(config).AsrProvider(id) != nullptr;
@@ -1090,17 +1310,41 @@ void ResourcePage::updateAdapterButtons() {
   UpdateScriptActionButtons(tableAvailableAdapters_, 2,
                             ScriptActionButtons{.add = btnAddAdapter_,
                                                 .update = btnUpdateAdapter_,
-                                                .remove = btnRemoveAdapter_},
+                                                .remove = btnRemoveAdapter_,
+                                                .edit = nullptr},
                             [](const std::string& id) {
                               const CoreConfig config = ConfigManager::Get().Load();
                               return CoreConfigView(config).LlmAdapter(id) != nullptr;
                             });
 }
 
+void ResourcePage::updateTriggerButtons() {
+  UpdateScriptActionButtons(tableAvailableTriggers_, 3,
+                            ScriptActionButtons{.add = btnAddTrigger_,
+                                                .update = btnUpdateTrigger_,
+                                                .remove = btnRemoveTrigger_,
+                                                .edit = btnEditTrigger_},
+                            [](const std::string& id) {
+                              const CoreConfig config = ConfigManager::Get().Load();
+                              return CoreConfigView(config).Trigger(id) != nullptr;
+                            });
+}
+
+void ResourcePage::updateReceiverButtons() {
+  UpdateScriptActionButtons(tableAvailableReceivers_, 3,
+                            ScriptActionButtons{.add = btnAddReceiver_,
+                                                .update = btnUpdateReceiver_,
+                                                .remove = btnRemoveReceiver_,
+                                                .edit = btnEditReceiver_},
+                            [](const std::string& id) {
+                              const CoreConfig config = ConfigManager::Get().Load();
+                              return CoreConfigView(config).Receiver(id) != nullptr;
+                            });
+}
+
 // Confirms removal of a registry script (ASR provider or LLM adapter), mutates the
 // configuration through mutate_fn, persists it, cleans up the installed script, and refreshes
-// the UI. Running LLM adapters are stopped up-front; if the config save fails, a previously
-// stopped adapter is restarted to restore its prior state.
+// the UI.
 template <typename MutateFn, typename PostRemoveFn>
 void ResourcePage::removeScriptItem(QTableWidget* table, vinput::script::Kind kind,
                                     const QString& confirm_question, const QString& removed_log,
@@ -1133,6 +1377,32 @@ void ResourcePage::removeScriptItem(QTableWidget* table, vinput::script::Kind ki
   refreshAll();
   emit configChanged();
   post_remove_fn();
+}
+
+template <typename FindClientFn>
+void ResourcePage::editClientItem(QTableWidget* table, const QString& dialog_title,
+                                  const QString& updated_log, const FindClientFn& find_client_fn) {
+  const auto selected = GetSelectedResourceItem(table);
+  if (!selected) {
+    return;
+  }
+  CoreConfig config = ConfigManager::Get().Load();
+  ClientSpec* client = find_client_fn(&config, selected->id.toStdString());
+  if (client == nullptr) {
+    return;
+  }
+  ClientSpec updated;
+  if (!ShowClientDialog(this, dialog_title, *client, &updated)) {
+    return;
+  }
+  *client = std::move(updated);
+  if (!ConfigManager::Get().Save(config)) {
+    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
+    return;
+  }
+  textLog_->append(updated_log.arg(selected->title));
+  refreshAll();
+  emit configChanged();
 }
 
 void ResourcePage::onRemoveProviderClicked() {
@@ -1181,6 +1451,56 @@ void ResourcePage::onRemoveAdapterClicked() {
           return false;
         }
         config.llm.adapters.erase(it);
+        return true;
+      },
+      []() {});
+}
+
+void ResourcePage::onEditTriggerClicked() {
+  editClientItem(tableAvailableTriggers_, tr("Configure Trigger"), tr("Trigger '%1' updated."),
+                 [](CoreConfig* cfg, const std::string& id) -> ClientSpec* {
+                   auto it = std::ranges::find_if(cfg->triggers,
+                                                  [&](const ClientSpec& c) { return c.id == id; });
+                   return (it != cfg->triggers.end()) ? &(*it) : nullptr;
+                 });
+}
+
+void ResourcePage::onRemoveTriggerClicked() {
+  removeScriptItem(
+      tableAvailableTriggers_, vinput::script::Kind::kTrigger,
+      tr("Are you sure you want to remove trigger '%1'?"), tr("Removed trigger %1."),
+      [](CoreConfig& config, const std::string& id) {
+        auto it =
+            std::ranges::find_if(config.triggers, [&](const ClientSpec& c) { return c.id == id; });
+        if (it == config.triggers.end()) {
+          return false;
+        }
+        config.triggers.erase(it);
+        return true;
+      },
+      []() {});
+}
+
+void ResourcePage::onEditReceiverClicked() {
+  editClientItem(tableAvailableReceivers_, tr("Configure Receiver"), tr("Receiver '%1' updated."),
+                 [](CoreConfig* cfg, const std::string& id) -> ClientSpec* {
+                   auto it = std::ranges::find_if(cfg->receivers,
+                                                  [&](const ClientSpec& c) { return c.id == id; });
+                   return (it != cfg->receivers.end()) ? &(*it) : nullptr;
+                 });
+}
+
+void ResourcePage::onRemoveReceiverClicked() {
+  removeScriptItem(
+      tableAvailableReceivers_, vinput::script::Kind::kReceiver,
+      tr("Are you sure you want to remove receiver '%1'?"), tr("Removed receiver %1."),
+      [](CoreConfig& config, const std::string& id) {
+        auto it =
+            std::ranges::find_if(config.receivers, [&](const ClientSpec& c) { return c.id == id; });
+        if (it == config.receivers.end()) {
+          return false;
+        }
+        config.receivers.erase(it);
         return true;
       },
       []() {});
