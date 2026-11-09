@@ -1,4 +1,5 @@
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qglobal.h>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -11,8 +12,6 @@
 #include "common/config/core_config_types.h"
 
 #include "gui/utils/config_manager.h"
-
-#include "dialogs/asr_provider_dialog.h"
 
 namespace {
 
@@ -56,7 +55,7 @@ void TestNullPointer() {
 
 void TestNonexistentConfigFails() {
   const TempDirGuard guard;
-  setenv("XDG_CONFIG_HOME", guard.path.c_str(), 1);
+  qputenv("XDG_CONFIG_HOME", guard.path.string().c_str());
 
   CoreConfig config;
   std::string error;
@@ -73,7 +72,7 @@ void TestCorruptedConfigProtection() {
     ofs << R"({ "version": "2.4.0", "asr": { unclosed json)";
   }
 
-  setenv("XDG_CONFIG_HOME", guard.path.c_str(), 1);
+  qputenv("XDG_CONFIG_HOME", guard.path.string().c_str());
 
   CoreConfig config;
   config.version = "sentinel_version";
@@ -111,7 +110,7 @@ void TestValidConfigLoading() {
 })";
   }
 
-  setenv("XDG_CONFIG_HOME", guard.path.c_str(), 1);
+  qputenv("XDG_CONFIG_HOME", guard.path.string().c_str());
 
   CoreConfig config;
   std::string error;
@@ -157,35 +156,32 @@ void TestAsrProviderIdInheritance() {
 
 void TestExternalModificationConflict() {
   // Snapshot of the provider captured when the edit dialog opened.
-  vinput::gui::AsrProviderData snapshot;
+  CommandAsrProvider snapshot;
   snapshot.id = "provider-a";
-  snapshot.type = "command";
   snapshot.command = "whisper-cli";
   snapshot.args = {"--model", "small"};
   snapshot.env = {{"LANG", "en_US.UTF-8"}};
-  snapshot.timeout_ms = 30000;
+  snapshot.timeoutMs = 30000;
 
   // The same provider ID still exists in the fresh config, but another process
   // changed its command while the dialog was open.
-  vinput::gui::AsrProviderData fresh;
+  CommandAsrProvider fresh;
   fresh.id = "provider-a";
-  fresh.type = "command";
   fresh.command = "faster-whisper";
   fresh.args = {"--model", "small"};
   fresh.env = {{"LANG", "en_US.UTF-8"}};
-  fresh.timeout_ms = 30000;
+  fresh.timeoutMs = 30000;
 
   // Existence-by-ID lookup alone cannot distinguish "unchanged" from "modified";
   // the edit flow must compare the persisted fields to reject the overwrite.
-  const bool unchanged = snapshot.id == fresh.id && snapshot.type == fresh.type &&
-                         snapshot.model == fresh.model && snapshot.command == fresh.command &&
+  const bool unchanged = snapshot.id == fresh.id && snapshot.command == fresh.command &&
                          snapshot.args == fresh.args && snapshot.env == fresh.env &&
-                         snapshot.timeout_ms == fresh.timeout_ms;
+                         snapshot.timeoutMs == fresh.timeoutMs;
   AssertTrue(!unchanged,
              "Externally modified provider (same ID, changed command) must be a conflict");
 
   // Sanity: an identical snapshot must not be flagged as a conflict.
-  const vinput::gui::AsrProviderData identical = fresh;
+  const CommandAsrProvider identical = fresh;
   const bool same = snapshot.id == fresh.id && fresh.command == identical.command;
   AssertTrue(same, "Identical fields must compare equal");
 }
