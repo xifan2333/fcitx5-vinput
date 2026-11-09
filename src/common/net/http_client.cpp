@@ -15,7 +15,7 @@
 #include <mutex>
 #include <optional>
 #include <ratio>
-#include <sstream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -62,6 +62,10 @@ bool HasUserAgent(const std::vector<HttpHeader>& headers) {
       headers, [](const auto& h) { return vinput::str::EqualsIgnoreCase(h.name, "user-agent"); });
 }
 
+bool IsCancelled(const HttpRequest& request) noexcept {
+  return request.cancel_token != nullptr && request.cancel_token->load(std::memory_order_relaxed);
+}
+
 struct ConnectionIdentity {
   std::string origin;
   std::string credential;
@@ -81,6 +85,50 @@ struct ConnectionIdentityHash {
 
 class HttpClient::Impl {
 public:
+  using ProgressFn = httplib::DownloadProgress;
+
+  struct ProgressTracker {
+    std::chrono::steady_clock::time_point last_time = std::chrono::steady_clock::now();
+    std::uint64_t last_bytes = 0;
+    bool has_last = false;
+
+    void Update(size_t current, size_t total, const HttpRequest& request) {
+      HttpProgress p;
+      p.downloaded_bytes = current;
+      p.total_bytes = total;
+      const auto now = std::chrono::steady_clock::now();
+      if (has_last) {
+        const double elapsed = std::chrono::duration<double>(now - last_time).count();
+        if (elapsed > 0.0 && p.downloaded_bytes >= last_bytes) {
+          p.speed_bps = static_cast<double>(p.downloaded_bytes - last_bytes) / elapsed;
+        }
+      }
+      last_bytes = p.downloaded_bytes;
+      last_time = now;
+      has_last = true;
+      request.progress_cb(p);
+    }
+  };
+
+  static ProgressFn SetupProgressTracker(const HttpRequest& request, ProgressTracker& tracker) {
+    return [&request, &tracker](size_t current, size_t total) -> bool {
+      if (IsCancelled(request)) {
+        return false;
+      }
+      if (request.progress_cb) {
+        try {
+          tracker.Update(current, total, request);
+        } catch (...) {
+          return false;
+        }
+        if (IsCancelled(request)) {
+          return false;
+        }
+      }
+      return true;
+    };
+  }
+
   Impl() = default;
   ~Impl() = default;
 
@@ -97,40 +145,11 @@ public:
       return resp;
     }
 
-    // 1. Unified File protocol handler using vinput::file infrastructure
     if (uc.scheme == "file") {
-      HttpResponse resp;
-      const std::filesystem::path file_path(uc.path);
-      if (dest_path != nullptr) {
-        std::error_code ec;
-        std::filesystem::create_directories(dest_path->parent_path(), ec);
-        std::filesystem::copy_file(file_path, *dest_path,
-                                   std::filesystem::copy_options::overwrite_existing, ec);
-        if (ec) {
-          resp.status_code = 404;
-          resp.error_message = "Failed to copy local file: " + ec.message();
-          return resp;
-        }
-      } else {
-        auto read_res = vinput::file::ReadTextFile(file_path, request.max_response_bytes);
-        if (!read_res) {
-          resp.status_code = 404;
-          resp.error_message = read_res.error();
-          return resp;
-        }
-        resp.body = std::move(*read_res);
-      }
-      resp.status_code = 200;
-      resp.effective_url = request.url;
-      return resp;
+      return HandleFileProtocol(request, dest_path, uc.path);
     }
 
-    // 2. HTTP/HTTPS protocol handler
-    std::string host = uc.host;
-    if (host.find(':') != std::string::npos && !host.starts_with('[')) {
-      host = "[" + host + "]";
-    }
-    const std::string origin = uc.scheme + "://" + host + (uc.port.empty() ? "" : ":" + uc.port);
+    const std::string origin = FormatOrigin(uc);
     const std::string path_and_query = (uc.path.empty() ? "/" : uc.path) + uc.query;
 
     const ConnectionIdentity id{
@@ -140,139 +159,12 @@ public:
             request.proxy.has_value() ? ("custom=" + *request.proxy) : BuildProxyPolicySignature(),
     };
 
-    std::shared_ptr<httplib::Client> cli = Acquire(id);
-    const bool new_client = !cli;
-    if (!cli) {
-      cli = std::make_shared<httplib::Client>(origin);
-    }
+    auto cli = AcquireOrCreateClient(id, request, dest_path, uc.scheme);
+    const httplib::Headers headers = BuildHeaders(request);
+    ProgressTracker tracker;
+    auto progress_fn = SetupProgressTracker(request, tracker);
 
-    // Explicitly enable persistent keep-alive connections on client
-    cli->set_keep_alive(true);
-    cli->set_follow_location(request.follow_redirects);
-    cli->set_read_timeout(request.timeout_ms / 1000, (request.timeout_ms % 1000) * 1000);
-    cli->set_connection_timeout(request.connect_timeout_ms / 1000,
-                                (request.connect_timeout_ms % 1000) * 1000);
-    cli->set_write_timeout(request.timeout_ms / 1000, (request.timeout_ms % 1000) * 1000);
-
-    // In cpp-httplib, payload_max_length of 0 means unlimited.
-    // For file downloads (streamed directly to disk), do not clamp with in-memory limit.
-    if (dest_path != nullptr) {
-      cli->set_payload_max_length(0);
-    } else {
-      cli->set_payload_max_length(request.max_response_bytes);
-    }
-
-    auto apply_proxy = [&](std::string_view proxy_str) {
-      std::string p_url(proxy_str);
-      if (!p_url.starts_with("http://") && !p_url.starts_with("https://")) {
-        p_url = "http://" + p_url;
-      }
-      httplib::detail::UrlComponents p_uc;
-      if (httplib::detail::parse_url(p_url, p_uc)) {
-        int p_port = 80;
-        if (!p_uc.port.empty()) {
-          p_port = std::atoi(p_uc.port.c_str());
-        } else if (p_uc.scheme == "https") {
-          p_port = 443;
-        }
-        cli->set_proxy(p_uc.host, p_port);
-      }
-    };
-
-    if (new_client && request.proxy.has_value()) {
-      if (!request.proxy->empty()) {
-        apply_proxy(*request.proxy);
-      }
-    } else if (new_client) {
-      const char* ambient_proxy = nullptr;
-      if (uc.scheme == "https") {
-        ambient_proxy = std::getenv("https_proxy");
-        if (ambient_proxy == nullptr) {
-          ambient_proxy = std::getenv("HTTPS_PROXY");
-        }
-      } else {
-        ambient_proxy = std::getenv("http_proxy");
-        if (ambient_proxy == nullptr) {
-          ambient_proxy = std::getenv("HTTP_PROXY");
-        }
-      }
-      if (ambient_proxy == nullptr) {
-        ambient_proxy = std::getenv("all_proxy");
-        if (ambient_proxy == nullptr) {
-          ambient_proxy = std::getenv("ALL_PROXY");
-        }
-      }
-      if (ambient_proxy != nullptr && *ambient_proxy != '\0') {
-        apply_proxy(ambient_proxy);
-      }
-
-      // Delegate no_proxy matching completely to cpp-httplib native set_no_proxy()
-      const char* no_proxy = std::getenv("no_proxy");
-      if (no_proxy == nullptr) {
-        no_proxy = std::getenv("NO_PROXY");
-      }
-      if (no_proxy != nullptr && *no_proxy != '\0') {
-        std::vector<std::string> patterns;
-        std::stringstream ss(no_proxy);
-        for (std::string item; std::getline(ss, item, ',');) {
-          const std::string trimmed(vinput::str::Trim(item));
-          if (!trimmed.empty()) {
-            patterns.push_back(trimmed);
-          }
-        }
-        if (!patterns.empty()) {
-          cli->set_no_proxy(patterns);
-        }
-      }
-    }
-
-    httplib::Headers headers;
-    for (const auto& h : request.headers) {
-      headers.emplace(h.name, h.value);
-    }
-    if (!HasUserAgent(request.headers)) {
-      headers.emplace("User-Agent", "fcitx5-vinput");
-    }
-
-    struct ProgressTracker {
-      std::chrono::steady_clock::time_point last_time = std::chrono::steady_clock::now();
-      std::uint64_t last_bytes = 0;
-      bool has_last = false;
-    } tracker;
-
-    auto progress_fn = [&](size_t current, size_t total) -> bool {
-      if (request.cancel_token != nullptr &&
-          request.cancel_token->load(std::memory_order_relaxed)) {
-        return false;
-      }
-      if (request.progress_cb) {
-        HttpProgress p;
-        p.downloaded_bytes = current;
-        p.total_bytes = total;
-        const auto now = std::chrono::steady_clock::now();
-        if (tracker.has_last) {
-          const double elapsed = std::chrono::duration<double>(now - tracker.last_time).count();
-          if (elapsed > 0.0 && p.downloaded_bytes >= tracker.last_bytes) {
-            p.speed_bps = static_cast<double>(p.downloaded_bytes - tracker.last_bytes) / elapsed;
-          }
-        }
-        tracker.last_bytes = p.downloaded_bytes;
-        tracker.last_time = now;
-        tracker.has_last = true;
-        try {
-          request.progress_cb(p);
-        } catch (...) {
-          return false;
-        }
-        if (request.cancel_token != nullptr &&
-            request.cancel_token->load(std::memory_order_relaxed)) {
-          return false;
-        }
-      }
-      return true;
-    };
-
-    if (request.cancel_token != nullptr && request.cancel_token->load(std::memory_order_relaxed)) {
+    if (IsCancelled(request)) {
       HttpResponse resp;
       resp.cancelled = true;
       resp.error_message = "Request cancelled";
@@ -284,79 +176,17 @@ public:
     httplib::Result res;
 
     if (dest_path != nullptr) {
-      std::error_code ec;
-      std::filesystem::create_directories(dest_path->parent_path(), ec);
-
-      const auto tmp_path =
-          dest_path->parent_path() /
-          (dest_path->filename().string() + ".tmp." +
-           std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-      std::ofstream out_file(tmp_path, std::ios::binary);
-      if (!out_file.is_open()) {
+      auto dl =
+          ExecuteStreamingDownload(*cli, path_and_query, headers, request, *dest_path, progress_fn);
+      if (!dl.error.empty()) {
         HttpResponse resp;
-        resp.error_message = "Failed to open destination file: " + tmp_path.string();
+        resp.error_message = std::move(dl.error);
         Release(id, cli);
         return resp;
       }
-
-      res = cli->Get(
-          path_and_query, headers,
-          [&](const char* data, size_t data_length) {
-            if (request.cancel_token != nullptr &&
-                request.cancel_token->load(std::memory_order_relaxed)) {
-              return false;
-            }
-            out_file.write(data, static_cast<std::streamsize>(data_length));
-            return out_file.good();
-          },
-          progress_fn);
-      out_file.flush();
-      out_file.close();
-
-      if (res && res->status >= 200 && res->status < 300) {
-        std::filesystem::rename(tmp_path, *dest_path, ec);
-        if (ec) {
-          std::filesystem::remove(tmp_path, ec);
-        }
-      } else {
-        std::filesystem::remove(tmp_path, ec);
-      }
+      res = std::move(dl.res);
     } else {
-      switch (request.method) {
-      case HttpMethod::Get:
-        res = cli->Get(path_and_query, headers, progress_fn);
-        break;
-      case HttpMethod::Post: {
-        std::string ct = "application/x-www-form-urlencoded";
-        const auto ct_opt = request.Header("Content-Type");
-        if (ct_opt.has_value()) {
-          ct = std::string(*ct_opt);
-        }
-        res = cli->Post(path_and_query, headers, request.body, ct, progress_fn);
-        break;
-      }
-      case HttpMethod::Put: {
-        std::string ct = "application/octet-stream";
-        const auto ct_opt = request.Header("Content-Type");
-        if (ct_opt.has_value()) {
-          ct = std::string(*ct_opt);
-        }
-        res = cli->Put(path_and_query, headers, request.body, ct, progress_fn);
-        break;
-      }
-      case HttpMethod::Delete: {
-        std::string ct = "application/octet-stream";
-        const auto ct_opt = request.Header("Content-Type");
-        if (ct_opt.has_value()) {
-          ct = std::string(*ct_opt);
-        }
-        res = cli->Delete(path_and_query, headers, request.body, ct, progress_fn);
-        break;
-      }
-      case HttpMethod::Head:
-        res = cli->Head(path_and_query, headers);
-        break;
-      }
+      res = DispatchMethodRequest(*cli, request, path_and_query, headers, progress_fn);
     }
 
     const auto end_time = std::chrono::steady_clock::now();
@@ -364,47 +194,279 @@ public:
     response.total_time_ms =
         std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
-    if (request.cancel_token != nullptr && request.cancel_token->load(std::memory_order_relaxed)) {
+    if (IsCancelled(request)) {
       response.cancelled = true;
       response.error_message = "Request cancelled";
       Release(id, cli);
       return response;
     }
 
+    ExtractResponseMetadata(res, request, origin, response);
     if (res) {
-      response.status_code = res->status;
-      response.body = std::move(res->body);
-      for (const auto& [k, v] : res->headers) {
-        response.headers.push_back({k, v});
-      }
-      const auto loc = res->get_header_value("Location");
-      if (!loc.empty()) {
-        response.effective_url = loc.starts_with('/') ? (origin + loc) : loc;
-      } else if (!res->location.empty()) {
-        response.effective_url =
-            res->location.starts_with('/') ? (origin + res->location) : res->location;
-      } else {
-        response.effective_url = request.url;
-      }
       Release(id, cli);
-    } else {
-      const auto err = res.error();
-      if (err == httplib::Error::Canceled ||
-          (request.cancel_token != nullptr &&
-           request.cancel_token->load(std::memory_order_relaxed))) {
-        response.cancelled = true;
-        response.error_message = "Request cancelled";
-      } else if (err == httplib::Error::ExceedMaxPayloadSize) {
-        response.error_message = "Response exceeded maximum allowed size";
-      } else {
-        response.error_message = httplib::to_string(err);
-      }
     }
-
     return response;
   }
 
 private:
+  std::shared_ptr<httplib::Client> AcquireOrCreateClient(const ConnectionIdentity& id,
+                                                         const HttpRequest& request,
+                                                         const std::filesystem::path* dest_path,
+                                                         std::string_view scheme) {
+    std::shared_ptr<httplib::Client> cli = Acquire(id);
+    if (!cli) {
+      cli = std::make_shared<httplib::Client>(id.origin);
+      ApplyProxyConfiguration(*cli, request, scheme);
+    }
+    ConfigureClientOptions(*cli, request, dest_path);
+    return cli;
+  }
+
+  static HttpResponse HandleFileProtocol(const HttpRequest& request,
+                                         const std::filesystem::path* dest_path,
+                                         const std::string& path) {
+    HttpResponse resp;
+    const std::filesystem::path file_path(path);
+    if (dest_path != nullptr) {
+      std::error_code ec;
+      std::filesystem::create_directories(dest_path->parent_path(), ec);
+      std::filesystem::copy_file(file_path, *dest_path,
+                                 std::filesystem::copy_options::overwrite_existing, ec);
+      if (ec) {
+        resp.status_code = 404;
+        resp.error_message = "Failed to copy local file: " + ec.message();
+        return resp;
+      }
+    } else {
+      auto read_res = vinput::file::ReadTextFile(file_path, request.max_response_bytes);
+      if (!read_res) {
+        resp.status_code = 404;
+        resp.error_message = read_res.error();
+        return resp;
+      }
+      resp.body = std::move(*read_res);
+    }
+    resp.status_code = 200;
+    resp.effective_url = request.url;
+    return resp;
+  }
+
+  static std::string FormatOrigin(const httplib::detail::UrlComponents& uc) {
+    std::string host = uc.host;
+    if (host.find(':') != std::string::npos && !host.starts_with('[')) {
+      host = "[" + host + "]";
+    }
+    return uc.scheme + "://" + host + (uc.port.empty() ? "" : ":" + uc.port);
+  }
+
+  static void ApplyProxyUrl(httplib::Client& cli, std::string_view proxy_str) {
+    std::string p_url(proxy_str);
+    if (!p_url.starts_with("http://") && !p_url.starts_with("https://")) {
+      p_url = "http://" + p_url;
+    }
+    httplib::detail::UrlComponents p_uc;
+    if (httplib::detail::parse_url(p_url, p_uc)) {
+      int p_port = 80;
+      if (!p_uc.port.empty()) {
+        p_port = std::atoi(p_uc.port.c_str());
+      } else if (p_uc.scheme == "https") {
+        p_port = 443;
+      }
+      cli.set_proxy(p_uc.host, p_port);
+    }
+  }
+
+  static const char* GetFirstEnv(std::span<const char* const> names) {
+    for (const char* name : names) {
+      const char* val = std::getenv(name);
+      if (val != nullptr && *val != '\0') {
+        return val;
+      }
+    }
+    return nullptr;
+  }
+
+  static const char* ResolveAmbientProxy(std::string_view scheme) {
+    static constexpr std::array<const char*, 4> kHttpsVars = {"https_proxy", "HTTPS_PROXY",
+                                                              "all_proxy", "ALL_PROXY"};
+    static constexpr std::array<const char*, 4> kHttpVars = {"http_proxy", "HTTP_PROXY",
+                                                             "all_proxy", "ALL_PROXY"};
+    return GetFirstEnv(scheme == "https" ? kHttpsVars : kHttpVars);
+  }
+
+  static void ApplyNoProxyPatterns(httplib::Client& cli) {
+    static constexpr std::array<const char*, 2> kNoProxyVars = {"no_proxy", "NO_PROXY"};
+    const char* no_proxy = GetFirstEnv(kNoProxyVars);
+    if (no_proxy == nullptr) {
+      return;
+    }
+    std::vector<std::string> patterns;
+    for (const auto item : vinput::str::Split(no_proxy, ',')) {
+      const auto trimmed = vinput::str::Trim(item);
+      if (!trimmed.empty()) {
+        patterns.emplace_back(trimmed);
+      }
+    }
+    if (!patterns.empty()) {
+      cli.set_no_proxy(patterns);
+    }
+  }
+
+  static void ApplyProxyConfiguration(httplib::Client& cli, const HttpRequest& request,
+                                      std::string_view scheme) {
+    if (request.proxy.has_value()) {
+      if (!request.proxy->empty()) {
+        ApplyProxyUrl(cli, *request.proxy);
+      }
+      return;
+    }
+    const char* ambient = ResolveAmbientProxy(scheme);
+    if (ambient != nullptr) {
+      ApplyProxyUrl(cli, ambient);
+    }
+    ApplyNoProxyPatterns(cli);
+  }
+
+  static void ConfigureClientOptions(httplib::Client& cli, const HttpRequest& request,
+                                     const std::filesystem::path* dest_path) {
+    cli.set_keep_alive(true);
+    cli.set_follow_location(request.follow_redirects);
+    cli.set_read_timeout(request.timeout_ms / 1000, (request.timeout_ms % 1000) * 1000);
+    cli.set_connection_timeout(request.connect_timeout_ms / 1000,
+                               (request.connect_timeout_ms % 1000) * 1000);
+    cli.set_write_timeout(request.timeout_ms / 1000, (request.timeout_ms % 1000) * 1000);
+    cli.set_payload_max_length(dest_path != nullptr ? 0 : request.max_response_bytes);
+  }
+
+  static httplib::Headers BuildHeaders(const HttpRequest& request) {
+    httplib::Headers headers;
+    for (const auto& h : request.headers) {
+      headers.emplace(h.name, h.value);
+    }
+    if (!HasUserAgent(request.headers)) {
+      headers.emplace("User-Agent", "fcitx5-vinput");
+    }
+    return headers;
+  }
+
+  struct DownloadResult {
+    httplib::Result res;
+    std::string error;
+  };
+
+  static DownloadResult
+  ExecuteStreamingDownload(httplib::Client& cli, const std::string& path_and_query,
+                           const httplib::Headers& headers, const HttpRequest& request,
+                           const std::filesystem::path& dest_path, const ProgressFn& progress_fn) {
+    std::error_code ec;
+    std::filesystem::create_directories(dest_path.parent_path(), ec);
+
+    const auto tmp_path =
+        dest_path.parent_path() /
+        (dest_path.filename().string() + ".tmp." +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::ofstream out_file(tmp_path, std::ios::binary);
+    if (!out_file.is_open()) {
+      return {.res = {}, .error = "Failed to open destination file: " + tmp_path.string()};
+    }
+
+    auto res = cli.Get(
+        path_and_query, headers,
+        [&](const char* data, size_t data_length) {
+          if (IsCancelled(request)) {
+            return false;
+          }
+          out_file.write(data, static_cast<std::streamsize>(data_length));
+          return out_file.good();
+        },
+        progress_fn);
+    out_file.flush();
+    out_file.close();
+
+    if (res && res->status >= 200 && res->status < 300) {
+      std::filesystem::rename(tmp_path, dest_path, ec);
+      if (ec) {
+        std::filesystem::remove(tmp_path, ec);
+      }
+    } else {
+      std::filesystem::remove(tmp_path, ec);
+    }
+    return {.res = std::move(res), .error = {}};
+  }
+
+  static httplib::Result DispatchMethodRequest(httplib::Client& cli, const HttpRequest& request,
+                                               const std::string& path_and_query,
+                                               const httplib::Headers& headers,
+                                               const ProgressFn& progress_fn) {
+    switch (request.method) {
+    case HttpMethod::Get:
+      return cli.Get(path_and_query, headers, progress_fn);
+    case HttpMethod::Post: {
+      const std::string ct =
+          request.Header("Content-Type").has_value() ? "" : "application/x-www-form-urlencoded";
+      return cli.Post(path_and_query, headers, request.body, ct, progress_fn);
+    }
+    case HttpMethod::Put: {
+      const std::string ct =
+          request.Header("Content-Type").has_value() ? "" : "application/octet-stream";
+      return cli.Put(path_and_query, headers, request.body, ct, progress_fn);
+    }
+    case HttpMethod::Delete: {
+      const std::string ct =
+          request.Header("Content-Type").has_value() ? "" : "application/octet-stream";
+      return cli.Delete(path_and_query, headers, request.body, ct, progress_fn);
+    }
+    case HttpMethod::Head:
+      return cli.Head(path_and_query, headers);
+    }
+    return {};
+  }
+
+  static std::string ExtractEffectiveUrl(const httplib::Response& res, const std::string& origin,
+                                         const std::string& default_url) {
+    const auto loc = res.get_header_value("Location");
+    if (!loc.empty()) {
+      return loc.starts_with('/') ? (origin + loc) : loc;
+    }
+    if (!res.location.empty()) {
+      return res.location.starts_with('/') ? (origin + res.location) : res.location;
+    }
+    return default_url;
+  }
+
+  static void ExtractSuccessResponse(httplib::Response& res, const HttpRequest& request,
+                                     const std::string& origin, HttpResponse& response) {
+    response.status_code = res.status;
+    response.body = std::move(res.body);
+    for (const auto& [k, v] : res.headers) {
+      response.headers.push_back({k, v});
+    }
+    response.effective_url = ExtractEffectiveUrl(res, origin, request.url);
+  }
+
+  static void ExtractErrorResponse(httplib::Error err, const HttpRequest& request,
+                                   HttpResponse& response) {
+    if (err == httplib::Error::Canceled || IsCancelled(request)) {
+      response.cancelled = true;
+      response.error_message = "Request cancelled";
+      return;
+    }
+    if (err == httplib::Error::ExceedMaxPayloadSize) {
+      response.error_message = "Response exceeded maximum allowed size";
+      return;
+    }
+    response.error_message = httplib::to_string(err);
+  }
+
+  static void ExtractResponseMetadata(httplib::Result& res, const HttpRequest& request,
+                                      const std::string& origin, HttpResponse& response) {
+    if (res) {
+      ExtractSuccessResponse(*res, request, origin, response);
+    } else {
+      ExtractErrorResponse(res.error(), request, response);
+    }
+  }
+
   std::shared_ptr<httplib::Client> Acquire(const ConnectionIdentity& id) {
     const std::scoped_lock lock(pool_mutex_);
     auto it = pool_.find(id);
@@ -471,7 +533,9 @@ HttpResponse HttpClient::PostJson(const std::string& url, const std::string& jso
   req.method = HttpMethod::Post;
   req.body = json_body;
   req.headers = extra_headers;
-  req.headers.push_back({"Content-Type", "application/json"});
+  if (!req.Header("Content-Type").has_value()) {
+    req.headers.push_back({"Content-Type", "application/json"});
+  }
   req.timeout_ms = timeout_ms;
   req.cancel_token = cancel_token;
   return Request(req);
