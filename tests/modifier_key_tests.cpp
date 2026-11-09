@@ -142,6 +142,7 @@ void TestChordInterruptionTapMode(TestInputContext& ic, VinputEngine& engine,
 
   // 2. Interrupted release: Intervening key cancels hotkey; release must NOT attempt start
   ic.inputPanel().setPreedit(fcitx::Text());
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   fcitx::KeyEvent chord_press(&ic, fcitx::Key(FcitxKey_Alt_R), false);
   engine.handleKeyEvent(chord_press);
   expect(chord_press.filtered() && chord_press.accepted(), "Chord Alt_R press is consumed");
