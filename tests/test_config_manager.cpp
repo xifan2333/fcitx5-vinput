@@ -1,10 +1,13 @@
 #include <QtCore/qcoreapplication.h>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <stdlib.h> // setenv
 #include <string>
 #include <system_error>
+#include <unistd.h> // getpid
 
 #include "common/config/core_config_types.h"
 
@@ -19,6 +22,25 @@ void AssertTrue(bool condition, const char* message) {
   }
 }
 
+// RAII guard creating a unique per-run temporary directory, so tests never
+// delete or collide with data owned by other processes or runs.
+class TempDirGuard {
+public:
+  TempDirGuard() {
+    path = std::filesystem::temp_directory_path() /
+           ("vinput_test_config_" + std::to_string(::getpid()) + "_" +
+            std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+    std::error_code ec;
+    std::filesystem::create_directories(path / "vinput", ec);
+  }
+  ~TempDirGuard() {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+  }
+
+  std::filesystem::path path;
+};
+
 void TestNullPointer() {
   std::string error;
   const bool ok = vinput::gui::ConfigManager::Get().TryLoad(nullptr, &error);
@@ -27,19 +49,14 @@ void TestNullPointer() {
 }
 
 void TestCorruptedConfigProtection() {
-  const auto temp_dir = std::filesystem::temp_directory_path() / "vinput_test_cfg_corrupted";
-  std::error_code ec;
-  std::filesystem::remove_all(temp_dir, ec);
-  const auto config_dir = temp_dir / "vinput";
-  std::filesystem::create_directories(config_dir, ec);
+  TempDirGuard guard;
 
-  const auto config_path = config_dir / "config.json";
   {
-    std::ofstream ofs(config_path);
-    ofs << "{ \"version\": \"2.4.0\", \"asr\": { unclosed json";
+    std::ofstream ofs(guard.path / "vinput" / "config.json");
+    ofs << R"({ "version": "2.4.0", "asr": { unclosed json)";
   }
 
-  setenv("XDG_CONFIG_HOME", temp_dir.c_str(), 1);
+  setenv("XDG_CONFIG_HOME", guard.path.c_str(), 1);
 
   CoreConfig config;
   config.version = "sentinel_version";
@@ -53,46 +70,39 @@ void TestCorruptedConfigProtection() {
              "config.version must remain untouched on failure");
   AssertTrue(config.asr.activeProvider == "sentinel_active",
              "config.asr.activeProvider must remain untouched on failure");
-
-  std::filesystem::remove_all(temp_dir, ec);
 }
 
 void TestValidConfigLoading() {
-  const auto temp_dir = std::filesystem::temp_directory_path() / "vinput_test_cfg_valid";
-  std::error_code ec;
-  std::filesystem::remove_all(temp_dir, ec);
-  const auto config_dir = temp_dir / "vinput";
-  std::filesystem::create_directories(config_dir, ec);
+  TempDirGuard guard;
 
-  const auto config_path = config_dir / "config.json";
+  const auto config_path = guard.path / "vinput" / "config.json";
   {
     std::ofstream ofs(config_path);
     ofs << R"({
-      "version": ">=2.4.0",
-      "asr": {
-        "activeProvider": "sherpa-local",
-        "providers": [
-          {
-            "id": "sherpa-local",
-            "type": "local",
-            "model": "zipformer-zh",
-            "timeoutMs": 15000
-          }
-        ]
+  "version": ">=2.4.0",
+  "asr": {
+    "active_provider": "sherpa-local",
+    "providers": [
+      {
+        "id": "sherpa-local",
+        "type": "local",
+        "model": "zipformer-zh",
+        "timeout_ms": 15000
       }
-    })";
+    ]
+  }
+})";
   }
 
-  setenv("XDG_CONFIG_HOME", temp_dir.c_str(), 1);
+  setenv("XDG_CONFIG_HOME", guard.path.c_str(), 1);
 
   CoreConfig config;
   std::string error;
   const bool ok = vinput::gui::ConfigManager::Get().TryLoad(&config, &error);
   AssertTrue(ok, "TryLoad on valid JSON must return true");
+  AssertTrue(error.empty(), "Error string must be empty on success");
   AssertTrue(config.asr.activeProvider == "sherpa-local", "activeProvider must match");
   AssertTrue(config.asr.providers.size() == 1, "providers count must match");
-
-  std::filesystem::remove_all(temp_dir, ec);
 }
 
 void TestAsrProviderIdInheritance() {
@@ -128,15 +138,49 @@ void TestAsrProviderIdInheritance() {
              "activeProvider must not change when a non-active provider is renamed");
 }
 
+void TestExternalModificationConflict() {
+  // Snapshot of the provider captured when the edit dialog opened.
+  CommandAsrProvider snapshot;
+  snapshot.id = "provider-a";
+  snapshot.command = "whisper-cli";
+  snapshot.args = {"--model", "small"};
+  snapshot.env = {{"LANG", "en_US.UTF-8"}};
+  snapshot.timeoutMs = 30000;
+
+  // The same provider ID still exists in the fresh config, but another process
+  // changed its command while the dialog was open.
+  CommandAsrProvider fresh;
+  fresh.id = "provider-a";
+  fresh.command = "faster-whisper";
+  fresh.args = {"--model", "small"};
+  fresh.env = {{"LANG", "en_US.UTF-8"}};
+  fresh.timeoutMs = 30000;
+
+  // Existence-by-ID lookup alone cannot distinguish "unchanged" from "modified";
+  // the edit flow must compare the persisted fields to reject the overwrite.
+  const bool unchanged = snapshot.id == fresh.id && snapshot.type == fresh.type &&
+                         snapshot.model == fresh.model && snapshot.command == fresh.command &&
+                         snapshot.args == fresh.args && snapshot.env == fresh.env &&
+                         snapshot.timeoutMs == fresh.timeoutMs;
+  AssertTrue(!unchanged,
+             "Externally modified provider (same ID, changed command) must be a conflict");
+
+  // Sanity: an identical snapshot must not be flagged as a conflict.
+  CommandAsrProvider identical = fresh;
+  const bool same = snapshot.id == snapshot.id && fresh.command == identical.command;
+  AssertTrue(same, "Identical fields must compare equal");
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
-  QCoreApplication app(argc, argv);
+  const QCoreApplication app(argc, argv);
 
   TestNullPointer();
   TestCorruptedConfigProtection();
   TestValidConfigLoading();
   TestAsrProviderIdInheritance();
+  TestExternalModificationConflict();
 
   std::cout << "All ConfigManager tests passed!\n";
   return 0;

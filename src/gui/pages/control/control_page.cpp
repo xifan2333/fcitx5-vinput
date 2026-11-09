@@ -47,7 +47,6 @@
 #include <qthreadpool.h>
 #include <qtimer.h>
 #include <qtmetamacros.h>
-#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -306,6 +305,12 @@ std::optional<AsrProviderData> FindAsrProviderData(const CoreConfig& config,
     }
   }
   return std::nullopt;
+}
+
+bool SameAsrProviderData(const AsrProviderData& lhs, const AsrProviderData& rhs) {
+  return lhs.id == rhs.id && lhs.type == rhs.type && lhs.model == rhs.model &&
+         lhs.command == rhs.command && lhs.args == rhs.args && lhs.env == rhs.env &&
+         lhs.timeout_ms == rhs.timeout_ms;
 }
 
 AsrProvider MakeAsrProvider(const AsrProviderData& data, std::string_view fallback_id) {
@@ -828,6 +833,15 @@ void ControlPage::onAsrEdit() {
   if (target_it == fresh_config.asr.providers.end()) {
     QMessageBox::warning(this, tr("Conflict"),
                          tr("The provider '%1' was removed or modified by another process.")
+                             .arg(QString::fromStdString(current.id)));
+    refreshAsrList();
+    return;
+  }
+
+  const auto fresh_data = FindAsrProviderData(fresh_config, current.id);
+  if (!fresh_data.has_value() || !SameAsrProviderData(*fresh_data, current)) {
+    QMessageBox::warning(this, tr("Conflict"),
+                         tr("The provider '%1' was modified by another process.")
                              .arg(QString::fromStdString(current.id)));
     refreshAsrList();
     return;
