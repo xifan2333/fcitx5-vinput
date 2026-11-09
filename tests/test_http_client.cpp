@@ -1,3 +1,4 @@
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -15,6 +16,7 @@
 
 #include "common/net/http_client.h"
 #include "common/net/http_types.h"
+#include "common/utils/string_utils.h"
 
 namespace {
 
@@ -72,6 +74,9 @@ public:
   [[nodiscard]] const std::vector<std::string>& CapturedAuthHeaders() const {
     return captured_auth_headers_;
   }
+  [[nodiscard]] const std::vector<std::string>& CapturedRequestHeaders() const {
+    return captured_request_headers_;
+  }
   [[nodiscard]] const std::vector<std::string>& CapturedRequestBodies() const {
     return captured_request_bodies_;
   }
@@ -107,6 +112,58 @@ private:
     return false;
   }
 
+  [[nodiscard]] bool ShouldDropResponse() const {
+    return behavior_ == MockServerBehavior::DropSecondRequestBody &&
+           captured_request_bodies_.size() == 2;
+  }
+
+  void RecordCapturedRequest(std::string_view request_header, std::string request_body) {
+    const std::size_t auth_pos = request_header.find("Authorization: ");
+    const std::size_t auth_end = request_header.find("\r\n", auth_pos);
+    captured_auth_headers_.push_back(
+        auth_pos == std::string_view::npos
+            ? ""
+            : std::string(request_header.substr(auth_pos, auth_end - auth_pos)));
+    captured_request_headers_.emplace_back(request_header);
+    captured_request_bodies_.push_back(std::move(request_body));
+  }
+
+  [[nodiscard]] bool SendResponse(int client_fd) const {
+    const std::string_view response_payload =
+        behavior_ == MockServerBehavior::CloseEachConnection
+            ? "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
+            : "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nOK";
+    return send(client_fd, response_payload.data(), response_payload.size(), MSG_NOSIGNAL) ==
+           static_cast<ssize_t>(response_payload.size());
+  }
+
+  bool ServeOneRequest(int client_fd) {
+    std::string request_body;
+    std::string request_header;
+    if (!ReadHttpRequest(client_fd, request_body, request_header)) {
+      return false;
+    }
+    RecordCapturedRequest(request_header, std::move(request_body));
+    if (ShouldDropResponse()) {
+      return false;
+    }
+    if (!SendResponse(client_fd) || behavior_ == MockServerBehavior::CloseEachConnection) {
+      return false;
+    }
+    pollfd next_poll{.fd = client_fd, .events = POLLIN, .revents = 0};
+    return poll(&next_poll, 1, 300) > 0;
+  }
+
+  void HandleClientConnection(int client_fd) {
+    ++accepted_connections_;
+    while (!stop_requested_.load()) {
+      if (!ServeOneRequest(client_fd)) {
+        break;
+      }
+    }
+    close(client_fd);
+  }
+
   void RunServerLoop() {
     while (!stop_requested_.load()) {
       pollfd pfd{.fd = listen_fd_, .events = POLLIN, .revents = 0};
@@ -117,41 +174,7 @@ private:
       if (client_fd < 0) {
         continue;
       }
-      ++accepted_connections_;
-      while (!stop_requested_.load()) {
-        std::string request_body;
-        std::string request_header;
-        if (!ReadHttpRequest(client_fd, request_body, request_header)) {
-          break;
-        }
-        const std::size_t auth_pos = request_header.find("Authorization: ");
-        const std::size_t auth_end = request_header.find("\r\n", auth_pos);
-        captured_auth_headers_.push_back(
-            auth_pos == std::string::npos ? ""
-                                          : request_header.substr(auth_pos, auth_end - auth_pos));
-        captured_request_bodies_.push_back(request_body);
-        if (behavior_ == MockServerBehavior::DropSecondRequestBody &&
-            captured_request_bodies_.size() == 2) {
-          break; // Close without any response: simulate connection drop scenario.
-        }
-        const std::string response_payload =
-            behavior_ == MockServerBehavior::CloseEachConnection
-                ? "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
-                : "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nOK";
-        if (send(client_fd, response_payload.data(), response_payload.size(), MSG_NOSIGNAL) !=
-            static_cast<ssize_t>(response_payload.size())) {
-          break;
-        }
-        if (behavior_ == MockServerBehavior::CloseEachConnection) {
-          break;
-        }
-        // Keep-alive: wait briefly for the next request on this connection.
-        pollfd next_poll{.fd = client_fd, .events = POLLIN, .revents = 0};
-        if (poll(&next_poll, 1, 300) <= 0) {
-          break;
-        }
-      }
-      close(client_fd);
+      HandleClientConnection(client_fd);
     }
   }
 
@@ -162,6 +185,7 @@ private:
   std::atomic<int> accepted_connections_{0};
   std::atomic<bool> stop_requested_{false};
   std::vector<std::string> captured_auth_headers_;
+  std::vector<std::string> captured_request_headers_;
   std::vector<std::string> captured_request_bodies_;
 };
 
@@ -186,6 +210,50 @@ vinput::net::HttpResponse ExecuteRequest(vinput::net::HttpClient& client, const 
     req.headers.push_back({"Authorization", "Bearer " + auth_bearer});
   }
   return client.Request(req);
+}
+
+void CheckContentType(vinput::net::HttpMethod method, const std::string& name,
+                      const std::string& value, const std::string& body) {
+  MockHttpServer server(MockServerBehavior::KeepAlive);
+  vinput::net::HttpClient client;
+  vinput::net::HttpRequest request;
+  request.url = BuildMockServerUrl(server);
+  request.method = method;
+  request.body = body;
+  request.proxy = "";
+  request.timeout_ms = 3000;
+  if (!name.empty()) {
+    request.headers.push_back({name, value});
+  }
+  AssertTrue(client.Request(request).Ok(), "content-type request succeeds");
+  server.Stop();
+  AssertTrue(server.CapturedRequestHeaders().size() == 1, "one request captured");
+  AssertTrue(server.CapturedRequestBodies() == std::vector<std::string>{body}, "body preserved");
+  std::size_t count = 0;
+  for (const auto line : vinput::str::SplitLines(server.CapturedRequestHeaders().front())) {
+    const auto header = vinput::str::SplitOnce(line, ':');
+    if (header && vinput::str::EqualsIgnoreCase(header->first, "Content-Type")) {
+      ++count;
+      AssertTrue(vinput::str::Trim(header->second) == value, "content-type value preserved");
+    }
+  }
+  AssertTrue(count == 1, "exactly one Content-Type on the wire");
+}
+
+void TestContentTypeIsSentOnce() {
+  using vinput::net::HttpMethod;
+  constexpr std::array methods{HttpMethod::Post, HttpMethod::Put, HttpMethod::Delete};
+  for (const auto method : methods) {
+    const std::string default_type = method == HttpMethod::Post
+                                         ? "application/x-www-form-urlencoded"
+                                         : "application/octet-stream";
+    CheckContentType(method, "", default_type, "payload");
+    CheckContentType(method, "", default_type, "");
+    CheckContentType(method, "Content-Type", "application/json", "{}");
+    CheckContentType(method, "content-type", "text/plain", "payload");
+    CheckContentType(method, "cOnTeNt-TyPe", "application/custom", "");
+    CheckContentType(method, "Content-Type", "", "payload");
+  }
 }
 
 void TestIsolationAcrossIdentityChanges() {
@@ -371,6 +439,7 @@ void TestQueryOnlyUrlOriginReuse() {
 } // namespace
 
 int main() {
+  TestContentTypeIsSentOnce();
   TestIsolationAcrossIdentityChanges();
   TestTenConsecutiveRequestsReuseOneConnection();
   TestConnectionCloseReconnectsCleanly();
