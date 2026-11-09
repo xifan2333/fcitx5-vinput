@@ -8,6 +8,7 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <optional>
+#include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <sys/poll.h>
