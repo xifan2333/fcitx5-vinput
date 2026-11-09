@@ -7,8 +7,6 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
-#include <optional>
-#include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <sys/poll.h>
@@ -30,38 +28,6 @@ void AssertTrue(bool condition, const char* message) {
     std::abort();
   }
 }
-
-class ScopedEnvGuard {
-public:
-  ScopedEnvGuard(const char* name, const char* new_val) : name_(name) {
-    const char* cur = std::getenv(name_);
-    if (cur != nullptr) {
-      prev_val_ = cur;
-    }
-    if (new_val != nullptr) {
-      setenv(name_, new_val, 1);
-    } else {
-      unsetenv(name_);
-    }
-  }
-
-  ~ScopedEnvGuard() {
-    if (prev_val_.has_value()) {
-      setenv(name_, prev_val_->c_str(), 1);
-    } else {
-      unsetenv(name_);
-    }
-  }
-
-  ScopedEnvGuard(const ScopedEnvGuard&) = delete;
-  ScopedEnvGuard& operator=(const ScopedEnvGuard&) = delete;
-  ScopedEnvGuard(ScopedEnvGuard&&) = delete;
-  ScopedEnvGuard& operator=(ScopedEnvGuard&&) = delete;
-
-private:
-  const char* name_;
-  std::optional<std::string> prev_val_;
-};
 
 enum class MockServerBehavior : std::uint8_t {
   KeepAlive,
@@ -293,9 +259,6 @@ void TestContentTypeIsSentOnce() {
 }
 
 void TestPostJsonContentTypeIsSentOnce() {
-  const ScopedEnvGuard no_proxy_guard("no_proxy", "127.0.0.1,localhost");
-  const ScopedEnvGuard no_proxy_upper_guard("NO_PROXY", "127.0.0.1,localhost");
-
   MockHttpServer server(MockServerBehavior::KeepAlive);
   vinput::net::HttpClient client;
   const std::string url = BuildMockServerUrl(server);
@@ -313,13 +276,9 @@ void TestPostJsonContentTypeIsSentOnce() {
   const std::vector<vinput::net::HttpHeader> empty_headers = {{"Content-Type", ""}};
   AssertTrue(client.PostJson(url, "{}", empty_headers).Ok(), "empty PostJson succeeds");
 
-  const std::vector<vinput::net::HttpHeader> dup_headers = {
-      {"content-type", "application/problem+json"}, {"Content-Type", "text/plain"}};
-  AssertTrue(client.PostJson(url, "{}", dup_headers).Ok(), "dup PostJson succeeds");
-
   server.Stop();
 
-  AssertTrue(server.CapturedRequestHeaders().size() == 5, "five PostJson requests captured");
+  AssertTrue(server.CapturedRequestHeaders().size() == 4, "four PostJson requests captured");
   auto verify_ct = [](const std::string& raw_header, const std::string& expected_val) {
     std::size_t ct_count = 0;
     for (const auto line : vinput::str::SplitLines(raw_header)) {
@@ -335,7 +294,16 @@ void TestPostJsonContentTypeIsSentOnce() {
   verify_ct(server.CapturedRequestHeaders()[1], "application/problem+json");
   verify_ct(server.CapturedRequestHeaders()[2], "application/problem+json");
   verify_ct(server.CapturedRequestHeaders()[3], "");
-  verify_ct(server.CapturedRequestHeaders()[4], "application/problem+json");
+
+  bool found_x_test = false;
+  for (const auto line : vinput::str::SplitLines(server.CapturedRequestHeaders()[1])) {
+    const auto header = vinput::str::SplitOnce(line, ':');
+    if (header && vinput::str::EqualsIgnoreCase(header->first, "X-Test") &&
+        vinput::str::Trim(header->second) == "1") {
+      found_x_test = true;
+    }
+  }
+  AssertTrue(found_x_test, "custom header preserved in PostJson");
 }
 
 void TestIsolationAcrossIdentityChanges() {

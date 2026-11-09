@@ -532,23 +532,10 @@ HttpResponse HttpClient::PostJson(const std::string& url, const std::string& jso
   req.url = url;
   req.method = HttpMethod::Post;
   req.body = json_body;
-  req.headers.reserve(extra_headers.size() + 1);
-
-  bool has_content_type = false;
-  for (const auto& h : extra_headers) {
-    if (vinput::str::EqualsIgnoreCase(h.name, "Content-Type")) {
-      if (!has_content_type) {
-        req.headers.push_back(h);
-        has_content_type = true;
-      }
-    } else {
-      req.headers.push_back(h);
-    }
-  }
-  if (!has_content_type) {
+  req.headers = extra_headers;
+  if (!req.Header("Content-Type").has_value()) {
     req.headers.push_back({"Content-Type", "application/json"});
   }
-
   req.timeout_ms = timeout_ms;
   req.cancel_token = cancel_token;
   return Request(req);
