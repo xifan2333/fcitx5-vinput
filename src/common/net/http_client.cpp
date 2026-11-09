@@ -16,7 +16,6 @@
 #include <optional>
 #include <ratio>
 #include <span>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -86,6 +85,50 @@ struct ConnectionIdentityHash {
 
 class HttpClient::Impl {
 public:
+  using ProgressFn = httplib::DownloadProgress;
+
+  struct ProgressTracker {
+    std::chrono::steady_clock::time_point last_time = std::chrono::steady_clock::now();
+    std::uint64_t last_bytes = 0;
+    bool has_last = false;
+
+    void Update(size_t current, size_t total, const HttpRequest& request) {
+      HttpProgress p;
+      p.downloaded_bytes = current;
+      p.total_bytes = total;
+      const auto now = std::chrono::steady_clock::now();
+      if (has_last) {
+        const double elapsed = std::chrono::duration<double>(now - last_time).count();
+        if (elapsed > 0.0 && p.downloaded_bytes >= last_bytes) {
+          p.speed_bps = static_cast<double>(p.downloaded_bytes - last_bytes) / elapsed;
+        }
+      }
+      last_bytes = p.downloaded_bytes;
+      last_time = now;
+      has_last = true;
+      request.progress_cb(p);
+    }
+  };
+
+  static ProgressFn SetupProgressTracker(const HttpRequest& request, ProgressTracker& tracker) {
+    return [&request, &tracker](size_t current, size_t total) -> bool {
+      if (IsCancelled(request)) {
+        return false;
+      }
+      if (request.progress_cb) {
+        try {
+          tracker.Update(current, total, request);
+        } catch (...) {
+          return false;
+        }
+        if (IsCancelled(request)) {
+          return false;
+        }
+      }
+      return true;
+    };
+  }
+
   Impl() = default;
   ~Impl() = default;
 
@@ -210,7 +253,7 @@ private:
 
   static std::string FormatOrigin(const httplib::detail::UrlComponents& uc) {
     std::string host = uc.host;
-    if (host.find(":") != std::string::npos && !host.starts_with("[")) {
+    if (host.find(':') != std::string::npos && !host.starts_with('[')) {
       host = "[" + host + "]";
     }
     return uc.scheme + "://" + host + (uc.port.empty() ? "" : ":" + uc.port);
@@ -258,11 +301,10 @@ private:
       return;
     }
     std::vector<std::string> patterns;
-    std::stringstream ss(no_proxy);
-    for (std::string item; std::getline(ss, item, ",");) {
-      const std::string trimmed(vinput::str::Trim(item));
+    for (const auto item : vinput::str::Split(no_proxy, ',')) {
+      const auto trimmed = vinput::str::Trim(item);
       if (!trimmed.empty()) {
-        patterns.push_back(trimmed);
+        patterns.emplace_back(trimmed);
       }
     }
     if (!patterns.empty()) {
@@ -307,59 +349,15 @@ private:
     return headers;
   }
 
-  struct ProgressTracker {
-    std::chrono::steady_clock::time_point last_time = std::chrono::steady_clock::now();
-    std::uint64_t last_bytes = 0;
-    bool has_last = false;
-
-    void Update(size_t current, size_t total, const HttpRequest& request) {
-      HttpProgress p;
-      p.downloaded_bytes = current;
-      p.total_bytes = total;
-      const auto now = std::chrono::steady_clock::now();
-      if (has_last) {
-        const double elapsed = std::chrono::duration<double>(now - last_time).count();
-        if (elapsed > 0.0 && p.downloaded_bytes >= last_bytes) {
-          p.speed_bps = static_cast<double>(p.downloaded_bytes - last_bytes) / elapsed;
-        }
-      }
-      last_bytes = p.downloaded_bytes;
-      last_time = now;
-      has_last = true;
-      request.progress_cb(p);
-    }
-  };
-
-  static auto SetupProgressTracker(const HttpRequest& request, ProgressTracker& tracker) {
-    return [&request, &tracker](size_t current, size_t total) -> bool {
-      if (IsCancelled(request)) {
-        return false;
-      }
-      if (request.progress_cb) {
-        try {
-          tracker.Update(current, total, request);
-        } catch (...) {
-          return false;
-        }
-        if (IsCancelled(request)) {
-          return false;
-        }
-      }
-      return true;
-    };
-  }
-
   struct DownloadResult {
     httplib::Result res;
     std::string error;
   };
 
-  static DownloadResult ExecuteStreamingDownload(httplib::Client& cli,
-                                                 const std::string& path_and_query,
-                                                 const httplib::Headers& headers,
-                                                 const HttpRequest& request,
-                                                 const std::filesystem::path& dest_path,
-                                                 const httplib::Progress& progress_fn) {
+  static DownloadResult
+  ExecuteStreamingDownload(httplib::Client& cli, const std::string& path_and_query,
+                           const httplib::Headers& headers, const HttpRequest& request,
+                           const std::filesystem::path& dest_path, const ProgressFn& progress_fn) {
     std::error_code ec;
     std::filesystem::create_directories(dest_path.parent_path(), ec);
 
@@ -399,7 +397,7 @@ private:
   static httplib::Result DispatchMethodRequest(httplib::Client& cli, const HttpRequest& request,
                                                const std::string& path_and_query,
                                                const httplib::Headers& headers,
-                                               const httplib::Progress& progress_fn) {
+                                               const ProgressFn& progress_fn) {
     switch (request.method) {
     case HttpMethod::Get:
       return cli.Get(path_and_query, headers, progress_fn);
@@ -428,15 +426,15 @@ private:
                                          const std::string& default_url) {
     const auto loc = res.get_header_value("Location");
     if (!loc.empty()) {
-      return loc.starts_with("/") ? (origin + loc) : loc;
+      return loc.starts_with('/') ? (origin + loc) : loc;
     }
     if (!res.location.empty()) {
-      return res.location.starts_with("/") ? (origin + res.location) : res.location;
+      return res.location.starts_with('/') ? (origin + res.location) : res.location;
     }
     return default_url;
   }
 
-  static void ExtractSuccessResponse(const httplib::Response& res, const HttpRequest& request,
+  static void ExtractSuccessResponse(httplib::Response& res, const HttpRequest& request,
                                      const std::string& origin, HttpResponse& response) {
     response.status_code = res.status;
     response.body = std::move(res.body);
@@ -460,7 +458,7 @@ private:
     response.error_message = httplib::to_string(err);
   }
 
-  static void ExtractResponseMetadata(const httplib::Result& res, const HttpRequest& request,
+  static void ExtractResponseMetadata(httplib::Result& res, const HttpRequest& request,
                                       const std::string& origin, HttpResponse& response) {
     if (res) {
       ExtractSuccessResponse(*res, request, origin, response);
@@ -469,7 +467,6 @@ private:
     }
   }
 
-private:
   std::shared_ptr<httplib::Client> Acquire(const ConnectionIdentity& id) {
     const std::scoped_lock lock(pool_mutex_);
     auto it = pool_.find(id);
@@ -536,7 +533,9 @@ HttpResponse HttpClient::PostJson(const std::string& url, const std::string& jso
   req.method = HttpMethod::Post;
   req.body = json_body;
   req.headers = extra_headers;
-  req.headers.push_back({"Content-Type", "application/json"});
+  if (!req.Header("Content-Type").has_value()) {
+    req.headers.push_back({"Content-Type", "application/json"});
+  }
   req.timeout_ms = timeout_ms;
   req.cancel_token = cancel_token;
   return Request(req);

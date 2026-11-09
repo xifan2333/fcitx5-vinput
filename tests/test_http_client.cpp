@@ -8,10 +8,12 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <string>
+#include <string_view>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "common/net/http_client.h"
@@ -256,6 +258,36 @@ void TestContentTypeIsSentOnce() {
   }
 }
 
+void TestPostJsonContentTypeIsSentOnce() {
+  MockHttpServer server(MockServerBehavior::KeepAlive);
+  vinput::net::HttpClient client;
+  const std::string url = BuildMockServerUrl(server);
+
+  auto res_default = client.PostJson(url, "{}");
+  AssertTrue(res_default.Ok(), "default PostJson succeeds");
+
+  const std::vector<vinput::net::HttpHeader> custom_headers = {
+      {"Content-Type", "application/problem+json"}, {"X-Test", "1"}};
+  auto res_custom = client.PostJson(url, "{}", custom_headers);
+  AssertTrue(res_custom.Ok(), "custom Content-Type PostJson succeeds");
+  server.Stop();
+
+  AssertTrue(server.CapturedRequestHeaders().size() == 2, "two PostJson requests captured");
+  auto verify_ct = [](const std::string& raw_header, const std::string& expected_val) {
+    std::size_t ct_count = 0;
+    for (const auto line : vinput::str::SplitLines(raw_header)) {
+      const auto header = vinput::str::SplitOnce(line, ':');
+      if (header && vinput::str::EqualsIgnoreCase(header->first, "Content-Type")) {
+        ++ct_count;
+        AssertTrue(vinput::str::Trim(header->second) == expected_val, "ct value matches");
+      }
+    }
+    AssertTrue(ct_count == 1, "exactly one Content-Type in PostJson");
+  };
+  verify_ct(server.CapturedRequestHeaders()[0], "application/json");
+  verify_ct(server.CapturedRequestHeaders()[1], "application/problem+json");
+}
+
 void TestIsolationAcrossIdentityChanges() {
   MockHttpServer server(MockServerBehavior::KeepAlive);
   vinput::net::HttpClient client;
@@ -440,6 +472,7 @@ void TestQueryOnlyUrlOriginReuse() {
 
 int main() {
   TestContentTypeIsSentOnce();
+  TestPostJsonContentTypeIsSentOnce();
   TestIsolationAcrossIdentityChanges();
   TestTenConsecutiveRequestsReuseOneConnection();
   TestConnectionCloseReconnectsCleanly();
