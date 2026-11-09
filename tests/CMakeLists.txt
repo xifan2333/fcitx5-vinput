@@ -96,4 +96,11 @@ if (Qt6_FOUND)
   )
   target_include_directories(test_download_worker PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
   set_target_properties(test_download_worker PROPERTIES AUTOMOC ON)
+
+  vinput_add_test(
+    test_config_manager SOURCES test_config_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/utils/config_manager.cpp LIBS Qt6::Core
+  )
+  target_include_directories(test_config_manager PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
+  set_target_properties(test_config_manager PROPERTIES AUTOMOC ON)
 endif ()
