@@ -276,9 +276,12 @@ void TestPostJsonContentTypeIsSentOnce() {
   const std::vector<vinput::net::HttpHeader> empty_headers = {{"Content-Type", ""}};
   AssertTrue(client.PostJson(url, "{}", empty_headers).Ok(), "empty PostJson succeeds");
 
+  const std::vector<vinput::net::HttpHeader> lower_empty_headers = {{"content-type", ""}};
+  AssertTrue(client.PostJson(url, "{}", lower_empty_headers).Ok(), "lower empty PostJson succeeds");
+
   server.Stop();
 
-  AssertTrue(server.CapturedRequestHeaders().size() == 4, "four PostJson requests captured");
+  AssertTrue(server.CapturedRequestHeaders().size() == 5, "five PostJson requests captured");
   auto verify_ct = [](const std::string& raw_header, const std::string& expected_val) {
     std::size_t ct_count = 0;
     for (const auto line : vinput::str::SplitLines(raw_header)) {
@@ -294,6 +297,7 @@ void TestPostJsonContentTypeIsSentOnce() {
   verify_ct(server.CapturedRequestHeaders()[1], "application/problem+json");
   verify_ct(server.CapturedRequestHeaders()[2], "application/problem+json");
   verify_ct(server.CapturedRequestHeaders()[3], "");
+  verify_ct(server.CapturedRequestHeaders()[4], "");
 
   bool found_x_test = false;
   for (const auto line : vinput::str::SplitLines(server.CapturedRequestHeaders()[1])) {
