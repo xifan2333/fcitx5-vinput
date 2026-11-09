@@ -173,11 +173,39 @@ private:
   fcitx::KeyList menu_keys_{fcitx::Key(FcitxKey_Shift_R)};
 
   enum class HotkeyRole : std::uint8_t { None, Menu, Trigger, Command };
+  struct HotkeyMatch {
+    HotkeyRole role = HotkeyRole::None;
+    fcitx::Key matched_key;
+    bool is_command = false;
+  };
   std::optional<fcitx::KeySym> held_key_sym_;
   HotkeyRole held_role_ = HotkeyRole::None;
   bool chord_interrupted_ = false;
   std::chrono::steady_clock::time_point held_press_time_;
 
+  [[nodiscard]] bool handlePostprocessingKeyEvent(fcitx::KeyEvent& keyEvent);
+  [[nodiscard]] bool handleMenuNavigationKeyEvent(fcitx::KeyEvent& keyEvent);
+  [[nodiscard]] HotkeyMatch classifyHotkey(const fcitx::Key& event_key, bool is_release) const;
+  void handleNonHotkeyKeyEvent(fcitx::KeyEvent& keyEvent);
+  bool handleActiveSessionHotkeyDown(const fcitx::Key& matched_key);
+  void handleHotkeyDown(fcitx::KeyEvent& keyEvent, fcitx::InputContext* ic,
+                        const HotkeyMatch& match);
+  void handleTapReleaseMode(fcitx::InputContext* ic, const HotkeyMatch& match,
+                            std::chrono::steady_clock::time_point now);
+  void handleTriggerReleaseMode(fcitx::InputContext* ic, const HotkeyMatch& match,
+                                std::chrono::steady_clock::duration duration,
+                                std::chrono::steady_clock::time_point now);
+  void handleActiveHeldHotkeyRelease(fcitx::InputContext* ic, const HotkeyMatch& match,
+                                     HotkeyRole active_role);
+  void handleHotkeyUp(fcitx::KeyEvent& keyEvent, fcitx::InputContext* ic, const HotkeyMatch& match);
+
+  bool handleDaemonRecordingPrecondition(fcitx::InputContext* ic, const fcitx::Key& trigger,
+                                         bool is_command);
+  bool validateCommandModePrerequisites(fcitx::InputContext* ic);
+  std::string acquireSelectionText(fcitx::InputContext* ic);
+  void handleRecordingStartFailure(fcitx::InputContext* ic, bool is_command);
+  void dispatchRecordingStart(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command,
+                              const std::string& selected_text);
   void startVoiceRecording(fcitx::InputContext* ic, const fcitx::Key& trigger, bool is_command);
 
   fcitx::KeyList page_prev_keys_{
