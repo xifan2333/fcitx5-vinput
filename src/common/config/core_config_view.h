@@ -36,6 +36,8 @@ public:
   [[nodiscard]] std::vector<std::string> ModelRegistryUrls() const;
   [[nodiscard]] std::vector<std::string> AsrProviderRegistryUrls() const;
   [[nodiscard]] std::vector<std::string> LlmAdapterRegistryUrls() const;
+  [[nodiscard]] std::vector<std::string> TriggerRegistryUrls() const;
+  [[nodiscard]] std::vector<std::string> ReceiverRegistryUrls() const;
   [[nodiscard]] std::vector<std::string> RegistryI18nUrls(std::string_view locale) const;
 
   // Infrastructure paths

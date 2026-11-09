@@ -145,6 +145,14 @@ std::vector<std::string> CoreConfigView::LlmAdapterRegistryUrls() const {
   return ResolveRegistryUrlsForPath(*config_, "registry/adapters.json");
 }
 
+std::vector<std::string> CoreConfigView::TriggerRegistryUrls() const {
+  return ResolveRegistryUrlsForPath(*config_, "registry/triggers.json");
+}
+
+std::vector<std::string> CoreConfigView::ReceiverRegistryUrls() const {
+  return ResolveRegistryUrlsForPath(*config_, "registry/receivers.json");
+}
+
 std::vector<std::string> CoreConfigView::RegistryI18nUrls(std::string_view locale) const {
   return ResolveRegistryUrlsForPath(*config_, fmt::format("i18n/{}.json", locale));
 }

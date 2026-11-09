@@ -17,6 +17,8 @@ namespace vinput::script {
 enum class Kind {
   kAsrProvider,
   kLlmAdapter,
+  kTrigger,
+  kReceiver,
 };
 
 enum class UpdateStatus : std::uint8_t {
@@ -71,6 +73,10 @@ bool MaterializeAsrProvider(CoreConfig* config, const RegistryEntry& entry,
 bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
                            const std::filesystem::path& script_path, std::string* error,
                            const std::map<std::string, std::string>& env_overrides = {});
+bool MaterializeTrigger(CoreConfig* config, const RegistryEntry& entry,
+                        const std::filesystem::path& script_path, std::string* error);
+bool MaterializeReceiver(CoreConfig* config, const RegistryEntry& entry,
+                         const std::filesystem::path& script_path, std::string* error);
 
 ResourceVersionInfo CheckResourceVersion(const vinput::registry::InstalledManifest& manifest,
                                          Kind kind, const RegistryEntry& entry,

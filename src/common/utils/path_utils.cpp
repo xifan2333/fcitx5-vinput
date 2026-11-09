@@ -167,6 +167,14 @@ std::filesystem::path ManagedLlmAdapterDir() {
   return ManagedResourceDir("adapters");
 }
 
+std::filesystem::path ManagedTriggerDir() {
+  return ManagedResourceDir("triggers");
+}
+
+std::filesystem::path ManagedReceiverDir() {
+  return ManagedResourceDir("receivers");
+}
+
 std::filesystem::path AdapterRuntimeDir() {
   if (const auto xdg_runtime = GetEnvNonEmpty("XDG_RUNTIME_DIR")) {
     return std::filesystem::path(*xdg_runtime) / "vinput" / "adapters";
