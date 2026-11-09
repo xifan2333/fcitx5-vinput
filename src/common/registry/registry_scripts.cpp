@@ -34,15 +34,26 @@ namespace {
 
 namespace fs = std::filesystem;
 
-struct TmpFileGuard {
-  fs::path path;
-  bool active = true;
+class TmpFileGuard {
+public:
+  explicit TmpFileGuard(fs::path path) : path_(std::move(path)) {}
   ~TmpFileGuard() {
-    if (active && !path.empty()) {
+    if (active_ && !path_.empty()) {
       std::error_code ec;
-      fs::remove(path, ec);
+      fs::remove(path_, ec);
     }
   }
+
+  TmpFileGuard(const TmpFileGuard&) = delete;
+  TmpFileGuard& operator=(const TmpFileGuard&) = delete;
+  TmpFileGuard(TmpFileGuard&&) = delete;
+  TmpFileGuard& operator=(TmpFileGuard&&) = delete;
+
+  void Dismiss() noexcept { active_ = false; }
+
+private:
+  fs::path path_;
+  bool active_ = true;
 };
 
 bool IsValidResourceIdBasic(std::string_view id) {
@@ -100,16 +111,16 @@ std::vector<std::string> SplitResourceId(std::string_view id) {
 }
 
 std::filesystem::path ManagedBaseDirForType(std::string_view type) {
-  if (type == "provider" || type == "providers") {
+  if (type == "provider") {
     return vinput::path::ManagedAsrProviderDir();
   }
-  if (type == "adapter" || type == "adapters") {
+  if (type == "adapter") {
     return vinput::path::ManagedLlmAdapterDir();
   }
-  if (type == "trigger" || type == "triggers") {
+  if (type == "trigger") {
     return vinput::path::ManagedTriggerDir();
   }
-  if (type == "receiver" || type == "receivers") {
+  if (type == "receiver") {
     return vinput::path::ManagedReceiverDir();
   }
   return {};
@@ -118,13 +129,13 @@ std::filesystem::path ManagedBaseDirForType(std::string_view type) {
 bool TypeMatchesKind(std::string_view type, Kind kind) {
   switch (kind) {
   case Kind::kAsrProvider:
-    return type == "providers" || type == "provider";
+    return type == "provider";
   case Kind::kLlmAdapter:
-    return type == "adapters" || type == "adapter";
+    return type == "adapter";
   case Kind::kTrigger:
-    return type == "triggers" || type == "trigger";
+    return type == "trigger";
   case Kind::kReceiver:
-    return type == "receivers" || type == "receiver";
+    return type == "receiver";
   }
   return false;
 }
@@ -431,17 +442,22 @@ LlmAdapter* UpsertLlmAdapter(std::vector<LlmAdapter>* adapters, const fs::path& 
 }
 
 UpdateStatus CompareVersionsOrSha(const RegistryEntry& entry, const ResourceVersionInfo& info) {
-  if (!entry.version.empty()) {
-    if (!info.installed_version.empty()) {
-      return (entry.version == info.installed_version) ? UpdateStatus::kUpToDate
-                                                       : UpdateStatus::kUpdateAvailable;
+  if (!entry.version.empty() && !info.installed_version.empty()) {
+    if (entry.version != info.installed_version) {
+      return UpdateStatus::kUpdateAvailable;
     }
-    return UpdateStatus::kUpdateAvailable;
   }
+
   if (!entry.sha256.empty() && !info.installed_sha256.empty()) {
-    return (entry.sha256 == info.installed_sha256) ? UpdateStatus::kUpToDate
-                                                   : UpdateStatus::kUpdateAvailable;
+    return (entry.sha256 != info.installed_sha256) ? UpdateStatus::kUpdateAvailable
+                                                   : UpdateStatus::kUpToDate;
   }
+
+  if (!entry.version.empty()) {
+    return (entry.version == info.installed_version) ? UpdateStatus::kUpToDate
+                                                     : UpdateStatus::kUpdateAvailable;
+  }
+
   return UpdateStatus::kUpToDate;
 }
 
@@ -527,7 +543,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
   const fs::path tmp_path =
       path.string() + ".download." +
       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".tmp";
-  TmpFileGuard guard{tmp_path, true};
+  TmpFileGuard guard(tmp_path);
 
   std::string resolved_url;
   if (!PerformScriptDownload(entry.script_urls, tmp_path, cancel_token, &resolved_url, error)) {
@@ -555,7 +571,7 @@ bool DownloadScript(const RegistryEntry& entry, Kind kind, std::filesystem::path
     }
     return false;
   }
-  guard.active = false;
+  guard.Dismiss();
 
   auto manifest = vinput::registry::InstalledManifest::Load();
   manifest.RecordInstalled(entry.id, KindToManifestString(kind), entry.version, final_sha);
@@ -645,9 +661,9 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
   return true;
 }
 
-bool MaterializeClient(std::vector<ClientSpec>* clients, Kind kind, const RegistryEntry& entry,
-                       const fs::path& script_path, std::string_view type_label,
-                       std::string* error) {
+static bool MaterializeClient(std::vector<ClientSpec>* clients, Kind kind,
+                              const RegistryEntry& entry, const fs::path& script_path,
+                              std::string_view type_label, std::string* error) {
   if (clients == nullptr) {
     if (error != nullptr) {
       *error = "client list is null";

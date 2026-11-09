@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "common/config/core_config_types.h"
+
 #include "utils/gui_helpers.h"
 
 namespace vinput::gui {
@@ -30,19 +32,20 @@ bool ShowClientDialog(QWidget* parent, const QString& title, const ClientSpec& i
     return false;
   }
 
+  ClientSpec current = initial;
   while (true) {
     auto* form = new QFormLayout();
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 
-    form->addRow(ClientDialog::tr("Client ID:"), new QLabel(QString::fromStdString(initial.id)));
+    form->addRow(ClientDialog::tr("Client ID:"), new QLabel(QString::fromStdString(current.id)));
 
     auto* checkAutoStart = new QCheckBox(ClientDialog::tr("Auto-start with daemon"));
-    checkAutoStart->setChecked(initial.autoStart);
+    checkAutoStart->setChecked(current.autoStart);
     form->addRow(QString(), checkAutoStart);
 
     CommandEditorGroup cmd_editor;
     cmd_editor.SetEnvMaxHeight(120);
-    cmd_editor.Populate(initial.command, initial.args, initial.env);
+    cmd_editor.Populate(current.command, current.args, current.env);
     cmd_editor.AddToForm(form);
 
     std::string command;
@@ -50,17 +53,32 @@ bool ShowClientDialog(QWidget* parent, const QString& title, const ClientSpec& i
     std::map<std::string, std::string> env;
     QString env_error;
     bool extract_ok = false;
+    bool auto_start = false;
 
     const bool accepted = RunFormDialog(parent, title, form, [&]() {
       extract_ok = cmd_editor.Extract(&command, &args, &env, &env_error);
+      auto_start = checkAutoStart->isChecked();
     });
 
     if (!accepted) {
       return false;
     }
 
+    current.autoStart = auto_start;
     if (!extract_ok) {
+      if (!command.empty()) {
+        current.command = std::move(command);
+      }
+      current.args = std::move(args);
       QMessageBox::warning(parent, ClientDialog::tr("Error"), env_error);
+      continue;
+    }
+
+    if (command.empty()) {
+      current.args = std::move(args);
+      current.env = std::move(env);
+      QMessageBox::warning(parent, ClientDialog::tr("Error"),
+                           ClientDialog::tr("Command must not be empty."));
       continue;
     }
 
@@ -68,7 +86,7 @@ bool ShowClientDialog(QWidget* parent, const QString& title, const ClientSpec& i
     out_data->command = std::move(command);
     out_data->args = std::move(args);
     out_data->env = std::move(env);
-    out_data->autoStart = checkAutoStart->isChecked();
+    out_data->autoStart = auto_start;
     return true;
   }
 }

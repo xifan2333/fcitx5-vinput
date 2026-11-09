@@ -141,6 +141,14 @@ void TestCheckResourceVersion() {
   auto info_trigger_not_installed = vinput::script::CheckResourceVersion(
       manifest, vinput::script::Kind::kTrigger, trigger_entry, false);
   ExpectTrue(info_trigger_not_installed.status == vinput::script::UpdateStatus::kNotInstalled);
+
+  // Case 5: singular vs plural ID prefixes
+  ExpectTrue(
+      vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kTrigger, "triggers.test.t1")
+          .empty());
+  ExpectTrue(
+      !vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kTrigger, "trigger.test.t1")
+           .empty());
 }
 
 void TestMaterializeTriggerAndReceiver() {
@@ -164,7 +172,7 @@ void TestMaterializeTriggerAndReceiver() {
   ExpectEq(config.triggers[0].command, "python3");
   ExpectEq(config.triggers[0].args[0], script_path.string());
   ExpectTrue(!config.triggers[0].autoStart);
-  ExpectTrue(config.triggers[0].env.count("API_KEY") > 0);
+  ExpectTrue(config.triggers[0].env.contains("API_KEY"));
 
   // Set autoStart and custom env value
   config.triggers[0].autoStart = true;

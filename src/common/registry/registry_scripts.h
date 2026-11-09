@@ -14,7 +14,7 @@ struct CoreConfig;
 
 namespace vinput::script {
 
-enum class Kind {
+enum class Kind : std::uint8_t {
   kAsrProvider,
   kLlmAdapter,
   kTrigger,

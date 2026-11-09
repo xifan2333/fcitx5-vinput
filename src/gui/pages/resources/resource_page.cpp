@@ -127,7 +127,7 @@ public:
 };
 
 void SetupTable(QTableWidget* table, const QStringList& headers) {
-  table->setColumnCount(headers.size());
+  table->setColumnCount(static_cast<int>(headers.size()));
   table->setHorizontalHeaderLabels(headers);
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -319,12 +319,65 @@ void UpdateScriptActionButtons(QTableWidget* table, int status_column,
   const bool incompatible =
       stCell != nullptr && stCell->data(Qt::UserRole + 1).toInt() ==
                                static_cast<int>(vinput::script::UpdateStatus::kIncompatible);
-  buttons.add->setEnabled(!installed && !incompatible);
-  buttons.update->setEnabled(installed && !incompatible);
+  const bool is_local_only = stCell != nullptr && stCell->data(Qt::UserRole + 2).toBool();
+  buttons.add->setEnabled(!installed && !incompatible && !is_local_only);
+  buttons.update->setEnabled(installed && !incompatible && !is_local_only);
   buttons.remove->setEnabled(installed);
   if (buttons.edit != nullptr) {
     buttons.edit->setEnabled(installed);
   }
+}
+
+QString FormatClientCommand(const CoreConfig& config, vinput::script::Kind kind,
+                            const vinput::script::RegistryEntry& entry) {
+  const CoreConfigView view(config);
+  const ClientSpec* client =
+      (kind == vinput::script::Kind::kTrigger) ? view.Trigger(entry.id) : view.Receiver(entry.id);
+  if (client == nullptr) {
+    return QString::fromStdString(entry.command);
+  }
+  QString result = QString::fromStdString(client->command);
+  for (const auto& arg : client->args) {
+    if (!result.isEmpty()) {
+      result += ' ';
+    }
+    result += QString::fromStdString(arg);
+  }
+  return result;
+}
+
+QTableWidgetItem* CreateScriptDetailCell(vinput::script::Kind kind, const CoreConfig& config,
+                                         const vinput::script::RegistryEntry& entry) {
+  if (kind == vinput::script::Kind::kAsrProvider) {
+    return MakeCell(entry.stream ? QObject::tr("stream") : QObject::tr("non-stream"));
+  }
+  return MakeCell(FormatClientCommand(config, kind, entry));
+}
+
+QTableWidgetItem* CreateScriptStatusCell(const vinput::script::ResourceVersionInfo& ver_info,
+                                         bool installed, bool is_local_only) {
+  vinput::script::ResourceVersionInfo effective_info = ver_info;
+  if (is_local_only && installed) {
+    effective_info.status = vinput::script::UpdateStatus::kUpToDate;
+  }
+  const QString status = (is_local_only && installed)
+                             ? QObject::tr("Local")
+                             : FormatScriptUpdateStatus(effective_info, installed);
+  auto* stCell = MakeCell(status);
+  stCell->setData(Qt::UserRole + 1, static_cast<int>(effective_info.status));
+  stCell->setData(Qt::UserRole + 2, is_local_only);
+  return stCell;
+}
+
+QTableWidgetItem* CreateReadmeCell(const std::string& readme_url) {
+  if (readme_url.empty()) {
+    auto* emptyCell = MakeCell(QString::fromLatin1("-"));
+    emptyCell->setTextAlignment(Qt::AlignCenter);
+    return emptyCell;
+  }
+  auto* item = MakeCell(QObject::tr("Open README"), QString::fromStdString(readme_url));
+  item->setTextAlignment(Qt::AlignCenter);
+  return item;
 }
 
 template <typename IsInstalledFn, typename UpdateButtonsFn>
@@ -336,7 +389,7 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
   const CoreConfig config = ConfigManager::Get().Load();
   auto i18n_map = I18nCache::Get().GetMap();
   const auto manifest = vinput::registry::InstalledManifest::Load();
-  const bool is_asr = (kind == vinput::script::Kind::kAsrProvider);
+  const bool has_detail_col = (kind != vinput::script::Kind::kLlmAdapter);
   const bool is_client =
       (kind == vinput::script::Kind::kTrigger || kind == vinput::script::Kind::kReceiver);
 
@@ -352,32 +405,16 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
     table->setItem(row, 1, MakeCell(desc));
 
     int col = 2;
-    if (is_asr) {
-      table->setItem(row, col++,
-                     MakeCell(entry.stream ? QObject::tr("stream") : QObject::tr("non-stream")));
-    } else if (is_client) {
-      table->setItem(row, col++, MakeCell(QString::fromStdString(entry.command)));
+    if (has_detail_col) {
+      table->setItem(row, col++, CreateScriptDetailCell(kind, config, entry));
     }
 
     const bool installed = is_installed(config, entry.id);
+    const bool is_local_only = is_client && entry.script_urls.empty();
     const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
 
-    const QString status = FormatScriptUpdateStatus(ver_info, installed);
-
-    auto* stCell = MakeCell(status);
-    stCell->setData(Qt::UserRole + 1, static_cast<int>(ver_info.status));
-    table->setItem(row, col++, stCell);
-
-    const QString readme_url = QString::fromStdString(entry.readme_url);
-    if (!readme_url.isEmpty()) {
-      auto* item = MakeCell(QObject::tr("Open README"), readme_url);
-      item->setTextAlignment(Qt::AlignCenter);
-      table->setItem(row, col, item);
-    } else {
-      auto* emptyCell = MakeCell(QString::fromLatin1("-"));
-      emptyCell->setTextAlignment(Qt::AlignCenter);
-      table->setItem(row, col, emptyCell);
-    }
+    table->setItem(row, col++, CreateScriptStatusCell(ver_info, installed, is_local_only));
+    table->setItem(row, col, CreateReadmeCell(entry.readme_url));
   }
 
   ApplyTableFilter(table, filter->text());
