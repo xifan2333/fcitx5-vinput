@@ -244,13 +244,12 @@ QString FormatClientStatus(bool running, int pid) {
 }
 
 void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trigger,
-                     const QString& selected_id) {
+                     const QString& selected_id, const vinput::cli::ClientStatusMap& status_map) {
   const int row = table->rowCount();
   table->insertRow(row);
 
   const QString id = QString::fromStdString(client.id);
-  const auto pid = vinput::client::GetPid(client.id);
-  const bool running = (pid > 0);
+  const auto [running, pid] = vinput::cli::ResolveClientRuntimeStatus(status_map, client.id);
 
   auto* itemType = new QTableWidgetItem(is_trigger ? ControlPage::tr("[Trigger]")
                                                    : ControlPage::tr("[Receiver]"));
@@ -609,18 +608,22 @@ void ControlPage::populateClientList() {
 
   tableClients_->setRowCount(0);
   const CoreConfig config = ConfigManager::Get().Load();
+  vinput::cli::DbusClient dbus;
+  const auto status_map = dbus.GetClientStatusesMap();
 
   for (const auto& trigger : config.triggers) {
-    AppendClientRow(tableClients_, trigger, true, selected_id);
+    AppendClientRow(tableClients_, trigger, true, selected_id, status_map);
   }
   for (const auto& receiver : config.receivers) {
-    AppendClientRow(tableClients_, receiver, false, selected_id);
+    AppendClientRow(tableClients_, receiver, false, selected_id, status_map);
   }
 
   updateClientButtons();
 }
 
 void ControlPage::refreshClientStatuses() {
+  vinput::cli::DbusClient dbus;
+  const auto status_map = dbus.GetClientStatusesMap();
   const int count = tableClients_->rowCount();
   for (int row = 0; row < count; ++row) {
     auto* itemType = tableClients_->item(row, 0);
@@ -628,9 +631,8 @@ void ControlPage::refreshClientStatuses() {
     if (itemType == nullptr || itemStatus == nullptr) {
       continue;
     }
-    const QString id = itemType->data(Qt::UserRole).toString();
-    const auto pid = vinput::client::GetPid(id.toStdString());
-    const bool running = (pid > 0);
+    const std::string id = itemType->data(Qt::UserRole).toString().toStdString();
+    const auto [running, pid] = vinput::cli::ResolveClientRuntimeStatus(status_map, id);
 
     itemType->setData(Qt::UserRole + 3, running);
     itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));

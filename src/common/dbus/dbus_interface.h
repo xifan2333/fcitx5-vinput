@@ -19,6 +19,7 @@ constexpr const char* kMethodGetAsrBackendState = "GetAsrBackendState";
 constexpr const char* kMethodReloadAsrBackend = "ReloadAsrBackend";
 constexpr const char* kMethodStartClient = "StartClient";
 constexpr const char* kMethodStopClient = "StopClient";
+constexpr const char* kMethodGetClientStatuses = "GetClientStatuses";
 
 constexpr const char* kSignalRecognitionResult = "RecognitionResult";
 constexpr const char* kSignalRecognitionPartial = "RecognitionPartial";
@@ -42,6 +43,12 @@ struct AsrBackendState {
   bool reload_in_progress = false;
   bool has_effective_backend = false;
   std::vector<std::string> remote_endpoints;
+};
+
+struct ClientStatus {
+  std::string id;
+  bool running = false;
+  std::int64_t pid = -1;
 };
 
 inline const char* StatusToString(Status s) {

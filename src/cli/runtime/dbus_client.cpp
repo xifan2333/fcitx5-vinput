@@ -2,10 +2,13 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <sys/types.h>
 #include <systemd/sd-bus.h>
 #include <utility>
 #include <vector>
 
+#include "common/client/client_manager.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/runtime/runtime_defaults.h"
 
@@ -95,6 +98,71 @@ bool CallDaemonStringArg(sd_bus* bus, const char* member, const std::string& arg
   return CallDaemonMethod(bus, member, nullptr, error, "s", arg.c_str());
 }
 
+std::string SafeString(const char* str) {
+  return (str != nullptr) ? str : "";
+}
+
+std::vector<std::string> ReadStringArray(sd_bus_message* msg) {
+  std::vector<std::string> result;
+  if (sd_bus_message_enter_container(msg, 'a', "s") >= 0) {
+    const char* item = nullptr;
+    while (sd_bus_message_read_basic(msg, 's', static_cast<void*>(&item)) > 0) {
+      result.emplace_back(SafeString(item));
+    }
+    sd_bus_message_exit_container(msg);
+  }
+  return result;
+}
+
+bool ReadClientStatusEntry(sd_bus_message* msg, vinput::dbus::ClientStatus& item) {
+  const char* id = nullptr;
+  int running = 0;
+  int64_t pid = -1;
+  if (sd_bus_message_read(msg, "sbx", &id, &running, &pid) < 0) {
+    return false;
+  }
+  item.id = SafeString(id);
+  item.running = (running != 0);
+  item.pid = pid;
+  return true;
+}
+
+bool ReadClientStatusArray(sd_bus_message* msg, std::vector<vinput::dbus::ClientStatus>& statuses,
+                           std::string* error) {
+  if (sd_bus_message_enter_container(msg, 'a', "(sbx)") <= 0) {
+    if (error != nullptr) {
+      *error = "failed to enter client status array";
+    }
+    return false;
+  }
+
+  int r = 0;
+  while ((r = sd_bus_message_enter_container(msg, 'r', "sbx")) > 0) {
+    vinput::dbus::ClientStatus item;
+    const bool ok = ReadClientStatusEntry(msg, item);
+    sd_bus_message_exit_container(msg);
+    if (!ok) {
+      statuses.clear();
+      sd_bus_message_exit_container(msg);
+      if (error != nullptr) {
+        *error = "failed to read client status element";
+      }
+      return false;
+    }
+    statuses.push_back(std::move(item));
+  }
+  sd_bus_message_exit_container(msg);
+
+  if (r < 0) {
+    statuses.clear();
+    if (error != nullptr) {
+      *error = "failed to enter client status element";
+    }
+    return false;
+  }
+  return true;
+}
+
 } // namespace
 
 DbusClient::DbusClient() {
@@ -156,20 +224,13 @@ bool DbusClient::GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::s
                       static_cast<void*>(&target_model), static_cast<void*>(&effective_provider),
                       static_cast<void*>(&effective_model), static_cast<void*>(&last_error),
                       &reload_in_progress, &has_effective_backend);
-  std::vector<std::string> endpoints;
-  if (sd_bus_message_enter_container(reply.get(), 'a', "s") >= 0) {
-    const char* endpoint = nullptr;
-    while (sd_bus_message_read_basic(reply.get(), 's', static_cast<void*>(&endpoint)) > 0) {
-      endpoints.emplace_back((endpoint != nullptr) ? endpoint : "");
-    }
-    sd_bus_message_exit_container(reply.get());
-  }
+  std::vector<std::string> endpoints = ReadStringArray(reply.get());
   if (state != nullptr) {
-    state->target_provider_id = (target_provider != nullptr) ? target_provider : "";
-    state->target_model_id = (target_model != nullptr) ? target_model : "";
-    state->effective_provider_id = (effective_provider != nullptr) ? effective_provider : "";
-    state->effective_model_id = (effective_model != nullptr) ? effective_model : "";
-    state->last_error = (last_error != nullptr) ? last_error : "";
+    state->target_provider_id = SafeString(target_provider);
+    state->target_model_id = SafeString(target_model);
+    state->effective_provider_id = SafeString(effective_provider);
+    state->effective_model_id = SafeString(effective_model);
+    state->last_error = SafeString(last_error);
     state->reload_in_progress = reload_in_progress != 0;
     state->has_effective_backend = has_effective_backend != 0;
     state->remote_endpoints = std::move(endpoints);
@@ -204,6 +265,54 @@ bool DbusClient::StartClient(const std::string& client_id, std::string* error) {
 
 bool DbusClient::StopClient(const std::string& client_id, std::string* error) {
   return CallDaemonStringArg(bus_, vinput::dbus::kMethodStopClient, client_id, error);
+}
+
+bool DbusClient::GetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses,
+                                   std::string* error) {
+  if (statuses == nullptr) {
+    if (error != nullptr) {
+      *error = "null statuses pointer";
+    }
+    return false;
+  }
+  statuses->clear();
+
+  ScopedMessage reply;
+  if (!CallDaemonMethod(bus_, vinput::dbus::kMethodGetClientStatuses, &reply, error, "")) {
+    return false;
+  }
+
+  if (!ReadClientStatusArray(reply.get(), *statuses, error)) {
+    return false;
+  }
+
+  if (error != nullptr) {
+    error->clear();
+  }
+  return true;
+}
+
+ClientStatusMap DbusClient::GetClientStatusesMap(std::string* error) {
+  ClientStatusMap map;
+  if (!IsDaemonRunning(error)) {
+    return map;
+  }
+  std::vector<vinput::dbus::ClientStatus> statuses;
+  if (GetClientStatuses(&statuses, error)) {
+    for (auto& s : statuses) {
+      map.emplace(s.id, std::move(s));
+    }
+  }
+  return map;
+}
+
+std::pair<bool, pid_t> ResolveClientRuntimeStatus(const ClientStatusMap& status_map,
+                                                  std::string_view client_id) {
+  if (const auto it = status_map.find(std::string(client_id)); it != status_map.end()) {
+    return {it->second.running, static_cast<pid_t>(it->second.pid)};
+  }
+  const auto pid = vinput::client::GetPid(client_id);
+  return {pid > 0, pid};
 }
 
 } // namespace vinput::cli

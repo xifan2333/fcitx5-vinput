@@ -54,6 +54,48 @@ bool HasClientWithId(const CoreConfig& config, ClientKind kind, std::string_view
   return std::ranges::any_of(list, [&](const auto& client) { return client.id == id; });
 }
 
+void PrintClientListJson(Formatter& fmt, const std::vector<ClientSpec>& clients,
+                         const vinput::cli::ClientStatusMap& status_map) {
+  glz::json_t::array_t arr;
+  arr.reserve(clients.size());
+  for (const auto& client : clients) {
+    const auto [running, pid] = vinput::cli::ResolveClientRuntimeStatus(status_map, client.id);
+    glz::json_t entry = {
+        {"id", client.id},
+        {"running", running},
+        {"pid", pid > 0 ? glz::json_t(pid) : glz::json_t(nullptr)},
+        {"auto_start", client.autoStart},
+        {"command", client.command},
+    };
+    arr.emplace_back(std::move(entry));
+  }
+  fmt.PrintJson(glz::json_t(std::move(arr)));
+}
+
+void PrintClientListTable(Formatter& fmt, ClientKind kind, const std::vector<ClientSpec>& clients,
+                          const vinput::cli::ClientStatusMap& status_map) {
+  if (clients.empty()) {
+    fmt.PrintInfo(::fmt::sprintf(_("No %ss configured."), KindLabel(kind)));
+    return;
+  }
+
+  const std::vector<std::string> headers = {_("ID"), _("STATUS"), _("PID"), _("AUTOSTART"),
+                                            _("COMMAND")};
+  std::vector<std::vector<std::string>> rows;
+  rows.reserve(clients.size());
+  for (const auto& client : clients) {
+    const auto [running, pid] = vinput::cli::ResolveClientRuntimeStatus(status_map, client.id);
+    rows.push_back({
+        client.id,
+        running ? _("running") : _("stopped"),
+        pid > 0 ? std::to_string(pid) : "-",
+        client.autoStart ? _("enabled") : _("disabled"),
+        client.command,
+    });
+  }
+  fmt.PrintTable(headers, rows);
+}
+
 struct ListenContext {
   std::string type_filter;
   bool json_output = false;
@@ -117,52 +159,81 @@ int OnStatusChanged(sd_bus_message* m, void* userdata, sd_bus_error* /*ret_error
   return 0;
 }
 
+struct ListenSubscriptions {
+  sd_bus_slot* slot_partial = nullptr;
+  sd_bus_slot* slot_result = nullptr;
+  sd_bus_slot* slot_status = nullptr;
+
+  ~ListenSubscriptions() {
+    if (slot_partial != nullptr) {
+      sd_bus_slot_unref(slot_partial);
+    }
+    if (slot_result != nullptr) {
+      sd_bus_slot_unref(slot_result);
+    }
+    if (slot_status != nullptr) {
+      sd_bus_slot_unref(slot_status);
+    }
+  }
+
+  ListenSubscriptions() = default;
+  ListenSubscriptions(const ListenSubscriptions&) = delete;
+  ListenSubscriptions& operator=(const ListenSubscriptions&) = delete;
+  ListenSubscriptions(ListenSubscriptions&&) = delete;
+  ListenSubscriptions& operator=(ListenSubscriptions&&) = delete;
+};
+
+bool SubscribeSignals(sd_bus* bus, ListenContext& lctx, ListenSubscriptions& subs) {
+  int ret = 0;
+  if (lctx.type_filter == "all" || lctx.type_filter == "partial") {
+    ret = sd_bus_match_signal(bus, &subs.slot_partial, vinput::dbus::kBusName,
+                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
+                              vinput::dbus::kSignalRecognitionPartial, OnRecognitionPartial, &lctx);
+  }
+  if (ret >= 0 && (lctx.type_filter == "all" || lctx.type_filter == "committed")) {
+    ret = sd_bus_match_signal(bus, &subs.slot_result, vinput::dbus::kBusName,
+                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
+                              vinput::dbus::kSignalRecognitionResult, OnRecognitionResult, &lctx);
+  }
+  if (ret >= 0 && (lctx.type_filter == "all" || lctx.type_filter == "status")) {
+    ret = sd_bus_match_signal(bus, &subs.slot_status, vinput::dbus::kBusName,
+                              vinput::dbus::kObjectPath, vinput::dbus::kInterface,
+                              vinput::dbus::kSignalStatusChanged, OnStatusChanged, &lctx);
+  }
+  return ret >= 0;
+}
+
+int ProcessListenLoop(sd_bus* bus) {
+  while (!ListenInterrupted().load(std::memory_order_relaxed)) {
+    const int r = sd_bus_process(bus, nullptr);
+    if (r > 0) {
+      continue;
+    }
+    if (r < 0) {
+      return r;
+    }
+    const int w = sd_bus_wait(bus, 250000); // 250ms
+    if (w < 0 && w != -EINTR) {
+      return w;
+    }
+  }
+  return 0;
+}
+
 } // namespace
 
 int RunClientList(ClientKind kind, Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   const auto& clients = GetClientList(config, kind);
+  vinput::cli::DbusClient dbus;
+  const auto status_map = dbus.GetClientStatusesMap();
 
   if (ctx.json_output) {
-    glz::json_t::array_t arr;
-    arr.reserve(clients.size());
-    for (const auto& client : clients) {
-      const bool running = vinput::client::IsRunning(client.id);
-      const auto pid = vinput::client::GetPid(client.id);
-      glz::json_t entry = {
-          {"id", client.id},
-          {"running", running},
-          {"pid", pid > 0 ? glz::json_t(pid) : glz::json_t(nullptr)},
-          {"auto_start", client.autoStart},
-          {"command", client.command},
-      };
-      arr.emplace_back(std::move(entry));
-    }
-    fmt.PrintJson(glz::json_t(std::move(arr)));
+    PrintClientListJson(fmt, clients, status_map);
     return 0;
   }
 
-  if (clients.empty()) {
-    fmt.PrintInfo(::fmt::sprintf(_("No %ss configured."), KindLabel(kind)));
-    return 0;
-  }
-
-  const std::vector<std::string> headers = {_("ID"), _("STATUS"), _("PID"), _("AUTOSTART"),
-                                            _("COMMAND")};
-  std::vector<std::vector<std::string>> rows;
-  rows.reserve(clients.size());
-  for (const auto& client : clients) {
-    const bool running = vinput::client::IsRunning(client.id);
-    const auto pid = vinput::client::GetPid(client.id);
-    rows.push_back({
-        client.id,
-        running ? _("running") : _("stopped"),
-        pid > 0 ? std::to_string(pid) : "-",
-        client.autoStart ? _("enabled") : _("disabled"),
-        client.command,
-    });
-  }
-  fmt.PrintTable(headers, rows);
+  PrintClientListTable(fmt, kind, clients, status_map);
   return 0;
 }
 
@@ -241,38 +312,9 @@ int RunListen(std::string_view type_filter, Formatter& /*fmt*/, const CliContext
     return 1;
   }
 
-  sd_bus_slot* slot_partial = nullptr;
-  sd_bus_slot* slot_result = nullptr;
-  sd_bus_slot* slot_status = nullptr;
-
-  int ret = 0;
-  if (lctx.type_filter == "all" || lctx.type_filter == "partial") {
-    ret = sd_bus_match_signal(bus, &slot_partial, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                              vinput::dbus::kInterface, vinput::dbus::kSignalRecognitionPartial,
-                              OnRecognitionPartial, &lctx);
-  }
-  if (ret >= 0 && (lctx.type_filter == "all" || lctx.type_filter == "committed")) {
-    ret = sd_bus_match_signal(bus, &slot_result, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                              vinput::dbus::kInterface, vinput::dbus::kSignalRecognitionResult,
-                              OnRecognitionResult, &lctx);
-  }
-  if (ret >= 0 && (lctx.type_filter == "all" || lctx.type_filter == "status")) {
-    ret = sd_bus_match_signal(bus, &slot_status, vinput::dbus::kBusName, vinput::dbus::kObjectPath,
-                              vinput::dbus::kInterface, vinput::dbus::kSignalStatusChanged,
-                              OnStatusChanged, &lctx);
-  }
-
-  if (ret < 0) {
+  ListenSubscriptions subs;
+  if (!SubscribeSignals(bus, lctx, subs)) {
     std::cerr << _("Failed to subscribe to daemon signals.") << '\n';
-    if (slot_partial != nullptr) {
-      sd_bus_slot_unref(slot_partial);
-    }
-    if (slot_result != nullptr) {
-      sd_bus_slot_unref(slot_result);
-    }
-    if (slot_status != nullptr) {
-      sd_bus_slot_unref(slot_status);
-    }
     sd_bus_flush_close_unref(bus);
     return 1;
   }
@@ -281,35 +323,10 @@ int RunListen(std::string_view type_filter, Formatter& /*fmt*/, const CliContext
   const auto prev_int = std::signal(SIGINT, OnListenSignal);
   const auto prev_term = std::signal(SIGTERM, OnListenSignal);
 
-  int loop_error = 0;
-  while (!ListenInterrupted().load(std::memory_order_relaxed)) {
-    const int r = sd_bus_process(bus, nullptr);
-    if (r > 0) {
-      continue;
-    }
-    if (r < 0) {
-      loop_error = r;
-      break;
-    }
-    const int w = sd_bus_wait(bus, 250000); // 250ms
-    if (w < 0 && w != -EINTR) {
-      loop_error = w;
-      break;
-    }
-  }
+  const int loop_error = ProcessListenLoop(bus);
 
   std::signal(SIGINT, prev_int);
   std::signal(SIGTERM, prev_term);
-
-  if (slot_partial != nullptr) {
-    sd_bus_slot_unref(slot_partial);
-  }
-  if (slot_result != nullptr) {
-    sd_bus_slot_unref(slot_result);
-  }
-  if (slot_status != nullptr) {
-    sd_bus_slot_unref(slot_status);
-  }
   sd_bus_flush_close_unref(bus);
 
   if (loop_error < 0 && !ListenInterrupted().load(std::memory_order_relaxed)) {

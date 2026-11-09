@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -8,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -288,6 +290,53 @@ void TestAutoStartUsesInMemorySpec() {
              "Stop should succeed: " + stop_error);
 }
 
+void TestGetClientStatuses() {
+  const TestEnvFixture fixture;
+
+  CoreConfig config;
+  ClientSpec trigger;
+  trigger.id = "trigger.status.test";
+  trigger.command = "sh";
+  trigger.args = {"-c", "sleep 30"};
+  trigger.autoStart = true;
+  config.triggers.push_back(std::move(trigger));
+
+  ClientSpec receiver;
+  receiver.id = "receiver.status.test";
+  receiver.command = "sh";
+  receiver.args = {"-c", "sleep 30"};
+  receiver.autoStart = false;
+  config.receivers.push_back(std::move(receiver));
+
+  auto statuses = vinput::client::GetClientStatuses(config);
+  ExpectEq(std::to_string(statuses.size()), "2", "Statuses count before start");
+  ExpectEq(statuses[0].id, "trigger.status.test", "Trigger status ID");
+  ExpectEq(statuses[1].id, "receiver.status.test", "Receiver status ID");
+  ExpectTrue(!statuses[0].running && statuses[0].pid == -1, "Trigger should not be running");
+  ExpectTrue(!statuses[1].running && statuses[1].pid == -1, "Receiver should not be running");
+
+  vinput::client::AutoStart(config, nullptr, nullptr);
+  statuses = vinput::client::GetClientStatuses(config);
+  ExpectTrue(statuses[0].running && statuses[0].pid > 0,
+             "Trigger should be running with positive pid");
+  ExpectTrue(!statuses[1].running && statuses[1].pid == -1, "Receiver should still be stopped");
+
+  std::string stop_error;
+  ExpectTrue(vinput::client::Stop("trigger.status.test", &stop_error),
+             "Stop should succeed: " + stop_error);
+  statuses = vinput::client::GetClientStatuses(config);
+  ExpectTrue(!statuses[0].running && statuses[0].pid == -1, "Trigger should be stopped after Stop");
+
+  const auto self_pid = getpid();
+  std::string write_err;
+  ExpectTrue(vinput::client::WritePidFile("receiver.status.test", self_pid, &write_err),
+             "WritePidFile should succeed: " + write_err);
+  statuses = vinput::client::GetClientStatuses(config);
+  ExpectTrue(statuses[1].running && statuses[1].pid == static_cast<std::int64_t>(self_pid),
+             "Receiver should report running via on-disk PID record");
+  vinput::client::RemovePidFile("receiver.status.test");
+}
+
 } // namespace
 
 int main() {
@@ -296,6 +345,7 @@ int main() {
   TestClientImmediateExitDetected();
   TestClientNotFound();
   TestAutoStartUsesInMemorySpec();
+  TestGetClientStatuses();
   std::cout << "All client_manager tests passed!\n";
   return 0;
 }

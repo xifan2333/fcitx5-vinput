@@ -71,6 +71,8 @@ static const sd_bus_vtable vtable[] = {
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodStopClient, "s", "", &DbusService::handleStopClient,
                   SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD(kMethodGetClientStatuses, "", "a(sbx)", &DbusService::handleGetClientStatuses,
+                  SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_SIGNAL(kSignalRecognitionResult, "s", 0),
     SD_BUS_SIGNAL(kSignalRecognitionPartial, "s", 0),
     SD_BUS_SIGNAL(kSignalStatusChanged, "s", 0),
@@ -241,6 +243,11 @@ void DbusService::SetStopClientHandler(std::function<MethodResult(const std::str
   stop_client_handler_ = std::move(handler);
 }
 
+void DbusService::SetGetClientStatusesHandler(
+    std::function<std::vector<vinput::dbus::ClientStatus>()> handler) {
+  get_client_statuses_handler_ = std::move(handler);
+}
+
 int DbusService::handleStartRecording(sd_bus_message* m, void* userdata, sd_bus_error* error) {
   auto* self = static_cast<DbusService*>(userdata);
   MethodResult result;
@@ -390,4 +397,60 @@ int DbusService::handleStopClient(sd_bus_message* m, void* userdata, sd_bus_erro
     result = self->stop_client_handler_(client_id != nullptr ? client_id : "");
   }
   return ReplyWithMethodResult(m, error, result, "");
+}
+
+namespace {
+
+int AppendClientStatusItem(sd_bus_message* reply, const vinput::dbus::ClientStatus& item) {
+  int r = sd_bus_message_open_container(reply, 'r', "sbx");
+  if (r < 0) {
+    return r;
+  }
+  r = sd_bus_message_append(reply, "sbx", item.id.c_str(), item.running ? 1 : 0,
+                            static_cast<int64_t>(item.pid));
+  if (r < 0) {
+    return r;
+  }
+  return sd_bus_message_close_container(reply);
+}
+
+} // namespace
+
+int DbusService::handleGetClientStatuses(sd_bus_message* m, void* userdata, sd_bus_error* error) {
+  (void)error;
+  auto* self = static_cast<DbusService*>(userdata);
+  std::vector<vinput::dbus::ClientStatus> statuses;
+  if (self->get_client_statuses_handler_) {
+    statuses = self->get_client_statuses_handler_();
+  }
+
+  sd_bus_message* reply = nullptr;
+  int r = sd_bus_message_new_method_return(m, &reply);
+  if (r < 0) {
+    return r;
+  }
+
+  r = sd_bus_message_open_container(reply, 'a', "(sbx)");
+  if (r < 0) {
+    sd_bus_message_unref(reply);
+    return r;
+  }
+
+  for (const auto& item : statuses) {
+    r = AppendClientStatusItem(reply, item);
+    if (r < 0) {
+      sd_bus_message_unref(reply);
+      return r;
+    }
+  }
+
+  r = sd_bus_message_close_container(reply);
+  if (r < 0) {
+    sd_bus_message_unref(reply);
+    return r;
+  }
+
+  r = sd_bus_send(nullptr, reply, nullptr);
+  sd_bus_message_unref(reply);
+  return r;
 }

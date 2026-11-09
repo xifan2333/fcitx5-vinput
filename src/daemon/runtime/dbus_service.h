@@ -58,6 +58,8 @@ public:
   void SetReloadAsrBackendHandler(std::function<MethodResult()> handler);
   void SetStartClientHandler(std::function<MethodResult(const std::string& client_id)> handler);
   void SetStopClientHandler(std::function<MethodResult(const std::string& client_id)> handler);
+  void
+  SetGetClientStatusesHandler(std::function<std::vector<vinput::dbus::ClientStatus>()> handler);
 
   static int handleStartRecording(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStartCommandRecording(sd_bus_message* m, void* userdata, sd_bus_error* error);
@@ -68,6 +70,7 @@ public:
   static int handleReloadAsrBackend(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStartClient(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStopClient(sd_bus_message* m, void* userdata, sd_bus_error* error);
+  static int handleGetClientStatuses(sd_bus_message* m, void* userdata, sd_bus_error* error);
 
 private:
   sd_bus* bus_ = nullptr;
@@ -95,4 +98,5 @@ private:
   std::function<MethodResult()> reload_asr_backend_handler_;
   std::function<MethodResult(const std::string& client_id)> start_client_handler_;
   std::function<MethodResult(const std::string& client_id)> stop_client_handler_;
+  std::function<std::vector<vinput::dbus::ClientStatus>()> get_client_statuses_handler_;
 };

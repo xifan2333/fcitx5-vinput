@@ -98,6 +98,8 @@ private:
   bool callReloadAsrBackend(std::string* error = nullptr);
   bool callStartClient(const std::string& client_id, std::string* error = nullptr);
   bool callStopClient(const std::string& client_id, std::string* error = nullptr);
+  bool callGetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses) const;
+  bool isClientActive(const PaletteItem& item) const;
   bool callSyncRpc(const char* member, const std::string& fallback_error, std::string* error,
                    const std::string* arg = nullptr);
   void onRecognitionResult(fcitx::dbus::Message& msg);

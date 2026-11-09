@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fcitx-utils/dbus/message.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysymgen.h>
@@ -37,6 +39,7 @@
 #include "common/dbus/dbus_interface.h"
 #include "common/llm/provider_model_cache.h"
 #include "common/registry/registry_i18n.h"
+#include "common/runtime/runtime_defaults.h"
 #include "common/scene/postprocess_scene.h"
 
 #include "core/vinput.h"
@@ -571,9 +574,8 @@ std::string FormatClientComment(bool running, pid_t pid, bool auto_start) {
   return status;
 }
 
-PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger) {
-  const bool running = vinput::client::IsRunning(client.id);
-  const pid_t pid = vinput::client::GetPid(client.id);
+PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bool running,
+                                   pid_t pid) {
   const std::string type_label = is_trigger ? _("[Trigger]") : _("[Receiver]");
   std::string text = fmt::sprintf("%s %s", type_label.c_str(), client.id.c_str());
   std::string comment = FormatClientComment(running, pid, client.autoStart);
@@ -750,8 +752,19 @@ void VinputEngine::registerSceneCommand() {
   });
 }
 
+bool VinputEngine::isClientActive(const PaletteItem& item) const {
+  std::vector<vinput::dbus::ClientStatus> statuses;
+  if (callGetClientStatuses(&statuses)) {
+    const auto it = std::ranges::find_if(statuses, [&](const auto& s) { return s.id == item.id; });
+    if (it != statuses.end()) {
+      return it->running;
+    }
+  }
+  return vinput::client::IsRunning(item.id);
+}
+
 void VinputEngine::handleClientToggle(const PaletteItem& item) {
-  const bool is_running = vinput::client::IsRunning(item.id);
+  const bool is_running = isClientActive(item);
   std::string error;
   if (is_running) {
     if (!callStopClient(item.id, &error)) {
@@ -759,13 +772,14 @@ void VinputEngine::handleClientToggle(const PaletteItem& item) {
       return;
     }
     notifyInfo(fmt::sprintf(_("Client '%s' stopped."), item.id.c_str()));
-  } else {
-    if (!callStartClient(item.id, &error)) {
-      notifyError(error.empty() ? _("Failed to start client.") : error);
-      return;
-    }
-    notifyInfo(fmt::sprintf(_("Client '%s' started."), item.id.c_str()));
+    return;
   }
+
+  if (!callStartClient(item.id, &error)) {
+    notifyError(error.empty() ? _("Failed to start client.") : error);
+    return;
+  }
+  notifyInfo(fmt::sprintf(_("Client '%s' started."), item.id.c_str()));
 }
 
 void VinputEngine::registerProcessCommand() {
@@ -778,15 +792,37 @@ void VinputEngine::registerProcessCommand() {
       .description = _("Manage client processes"),
       .category = PaletteCategory::Process,
       .getItems =
-          [](VinputEngine* /*engine*/) {
+          [this](VinputEngine* /*engine*/) {
             std::vector<PaletteItem> items;
             const auto config = LoadCoreConfig();
             items.reserve(config.triggers.size() + config.receivers.size());
+
+            std::unordered_map<std::string, vinput::dbus::ClientStatus> status_map;
+            std::vector<vinput::dbus::ClientStatus> statuses;
+            if (callGetClientStatuses(&statuses)) {
+              for (auto& s : statuses) {
+                status_map.emplace(s.id, std::move(s));
+              }
+            }
+
+            const auto build_item = [&](const ClientSpec& client, bool is_trigger) {
+              bool running = false;
+              pid_t pid = -1;
+              if (const auto it = status_map.find(client.id); it != status_map.end()) {
+                running = it->second.running;
+                pid = static_cast<pid_t>(it->second.pid);
+              } else {
+                pid = vinput::client::GetPid(client.id);
+                running = (pid > 0);
+              }
+              return BuildClientPaletteItem(client, is_trigger, running, pid);
+            };
+
             for (const auto& client : config.triggers) {
-              items.push_back(BuildClientPaletteItem(client, true));
+              items.push_back(build_item(client, true));
             }
             for (const auto& client : config.receivers) {
-              items.push_back(BuildClientPaletteItem(client, false));
+              items.push_back(build_item(client, false));
             }
             return items;
           },
@@ -811,6 +847,41 @@ bool VinputEngine::callStartClient(const std::string& client_id, std::string* er
 bool VinputEngine::callStopClient(const std::string& client_id, std::string* error) {
   return callSyncRpc(vinput::dbus::kMethodStopClient, _("Failed to stop client."), error,
                      &client_id);
+}
+
+bool VinputEngine::callGetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses) const {
+  if (statuses == nullptr || bus_ == nullptr || !daemonSyncAllowed()) {
+    return false;
+  }
+  auto msg =
+      bus_->createMethodCall(vinput::dbus::kBusName, vinput::dbus::kObjectPath,
+                             vinput::dbus::kInterface, vinput::dbus::kMethodGetClientStatuses);
+  auto reply = msg.call(vinput::runtime::kDbusCallTimeoutUsec);
+  if (!reply) {
+    noteDaemonSyncFailure();
+    return false;
+  }
+  if (reply.isError()) {
+    return false;
+  }
+  clearDaemonSyncFailure();
+
+  std::vector<fcitx::dbus::DBusStruct<std::string, bool, int64_t>> raw_list;
+  reply >> raw_list;
+  if (!reply) {
+    return false;
+  }
+
+  statuses->clear();
+  statuses->reserve(raw_list.size());
+  for (const auto& item : raw_list) {
+    statuses->push_back({
+        .id = std::get<0>(item.data()),
+        .running = std::get<1>(item.data()),
+        .pid = std::get<2>(item.data()),
+    });
+  }
+  return true;
 }
 
 void VinputEngine::reloadPaletteItems() {
