@@ -327,29 +327,21 @@ public:
         res = cli->Get(path_and_query, headers, progress_fn);
         break;
       case HttpMethod::Post: {
-        std::string ct = "application/x-www-form-urlencoded";
-        const auto ct_opt = request.Header("Content-Type");
-        if (ct_opt.has_value()) {
-          ct = std::string(*ct_opt);
-        }
+        // An explicit header already owns the value; httplib appends nonempty ct.
+        const std::string ct =
+            request.Header("Content-Type").has_value() ? "" : "application/x-www-form-urlencoded";
         res = cli->Post(path_and_query, headers, request.body, ct, progress_fn);
         break;
       }
       case HttpMethod::Put: {
-        std::string ct = "application/octet-stream";
-        const auto ct_opt = request.Header("Content-Type");
-        if (ct_opt.has_value()) {
-          ct = std::string(*ct_opt);
-        }
+        const std::string ct =
+            request.Header("Content-Type").has_value() ? "" : "application/octet-stream";
         res = cli->Put(path_and_query, headers, request.body, ct, progress_fn);
         break;
       }
       case HttpMethod::Delete: {
-        std::string ct = "application/octet-stream";
-        const auto ct_opt = request.Header("Content-Type");
-        if (ct_opt.has_value()) {
-          ct = std::string(*ct_opt);
-        }
+        const std::string ct =
+            request.Header("Content-Type").has_value() ? "" : "application/octet-stream";
         res = cli->Delete(path_and_query, headers, request.body, ct, progress_fn);
         break;
       }
