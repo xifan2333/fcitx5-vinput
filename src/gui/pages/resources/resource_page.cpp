@@ -354,7 +354,7 @@ QString FormatClientCommand(const CoreConfig& config, vinput::script::Kind kind,
 QTableWidgetItem* CreateScriptDetailCell(vinput::script::Kind kind, const CoreConfig& config,
                                          const vinput::script::RegistryEntry& entry) {
   if (kind == vinput::script::Kind::kAsrProvider) {
-    return MakeCell(entry.stream ? ResourcePage::tr("stream") : ResourcePage::tr("non-stream"));
+    return MakeCell(entry.stream ? QObject::tr("stream") : QObject::tr("non-stream"));
   }
   return MakeCell(FormatClientCommand(config, kind, entry));
 }
@@ -366,7 +366,7 @@ QTableWidgetItem* CreateScriptStatusCell(const vinput::script::ResourceVersionIn
     effective_info.status = vinput::script::UpdateStatus::kUpToDate;
   }
   const QString status = (is_local_only && installed)
-                             ? ResourcePage::tr("Local")
+                             ? QObject::tr("Local")
                              : FormatScriptUpdateStatus(effective_info, installed);
   auto* stCell = MakeCell(status);
   stCell->setData(Qt::UserRole + 1, static_cast<int>(effective_info.status));
@@ -380,7 +380,7 @@ QTableWidgetItem* CreateReadmeCell(const std::string& readme_url) {
     emptyCell->setTextAlignment(Qt::AlignCenter);
     return emptyCell;
   }
-  auto* item = MakeCell(ResourcePage::tr("Open README"), QString::fromStdString(readme_url));
+  auto* item = MakeCell(QObject::tr("Open README"), QString::fromStdString(readme_url));
   item->setTextAlignment(Qt::AlignCenter);
   return item;
 }

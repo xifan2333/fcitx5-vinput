@@ -1213,11 +1213,6 @@ Found %2 model(s).</source>
         <translation>非流式</translation>
     </message>
     <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="366"/>
-        <source>Local</source>
-        <translation>本地</translation>
-    </message>
-    <message>
         <location filename="../src/gui/pages/resources/resource_page.cpp" line="526"/>
         <location filename="../src/gui/pages/resources/resource_page.cpp" line="568"/>
         <source>Open README</source>
