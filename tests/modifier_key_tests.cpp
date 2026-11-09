@@ -12,6 +12,7 @@
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
+#include <fcitx/text.h>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -20,6 +21,8 @@
 #include <system_error>
 #include <thread>
 #include <unistd.h>
+
+#include "common/config/vinput_config.h"
 
 #include "core/vinput.h"
 
@@ -69,6 +72,39 @@ struct ScopedConfigDir {
   ScopedConfigDir& operator=(ScopedConfigDir&&) = delete;
 };
 
+void TestEvaluateTapHoldTiming() {
+  std::cout << "--- 0. Testing EvaluateTapHoldTiming Pure Helper (#577) ---\n";
+  using Action = VinputEngine::TapHoldAction;
+  using std::chrono::milliseconds;
+
+  // Hold mode: always HoldStop regardless of duration
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Hold, milliseconds(50)) ==
+             Action::HoldStop,
+         "Hold mode short duration must yield HoldStop");
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Hold, milliseconds(500)) ==
+             Action::HoldStop,
+         "Hold mode long duration must yield HoldStop");
+
+  // Tap mode: always TapToggle regardless of duration
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Tap, milliseconds(50)) ==
+             Action::TapToggle,
+         "Tap mode short duration must yield TapToggle");
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Tap, milliseconds(500)) ==
+             Action::TapToggle,
+         "Tap mode long duration must yield TapToggle");
+
+  // Both mode: short duration (< 200ms) -> BothTapLock; duration >= 200ms -> HoldStop
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Both, milliseconds(100)) ==
+             Action::BothTapLock,
+         "Both mode duration < 200ms must yield BothTapLock");
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Both, milliseconds(200)) ==
+             Action::HoldStop,
+         "Both mode duration >= 200ms must yield HoldStop");
+  expect(VinputEngine::EvaluateTapHoldTiming(TriggerMode::Both, milliseconds(350)) ==
+             Action::HoldStop,
+         "Both mode duration > 200ms must yield HoldStop");
+}
+
 void TestSingleModifierTap(TestInputContext& ic, VinputEngine& engine) {
   std::cout << "--- 1. Testing Single-Modifier Tap (Start & Stop) ---\n";
   // Press Alt_R -> arms pending timer, exclusively consumed
@@ -113,6 +149,60 @@ void TestChordInterruption(TestInputContext& ic, VinputEngine& engine) {
   expect(chord_alt_r.filtered() && chord_alt_r.accepted(),
          "Interrupted Alt_R release is consumed without trigger");
   expect(!engine.isRecordingActive(), "Chord release must not start recording");
+}
+
+void TestChordInterruptionTapMode(TestInputContext& ic, VinputEngine& engine,
+                                  const fcitx::RawConfig& base_config) {
+  std::cout << "--- 2b. Testing Tap Mode Chord Interruption Regression (#577) ---\n";
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  fcitx::RawConfig tap_config = base_config;
+  tap_config.setValueByPath("TriggerMode", "Tap");
+  engine.setConfig(tap_config);
+
+  // 1. Positive control: Uninterrupted Alt_R release in Tap mode attempts to start recording
+  ic.inputPanel().setPreedit(fcitx::Text());
+  fcitx::KeyEvent tap_press(&ic, fcitx::Key(FcitxKey_Alt_R), false);
+  engine.handleKeyEvent(tap_press);
+  expect(tap_press.filtered() && tap_press.accepted(), "Tap Alt_R press is consumed");
+  expect(engine.isPendingStart(), "Tap Alt_R press arms pending start");
+  expect(ic.inputPanel().preedit().toString().empty(), "Tap mode press must not start recording");
+
+  fcitx::KeyEvent tap_release(&ic, fcitx::Key(FcitxKey_Alt_R), true);
+  engine.handleKeyEvent(tap_release);
+  expect(tap_release.filtered() && tap_release.accepted(), "Tap Alt_R release is consumed");
+  expect(!engine.isPendingStart(), "Tap Alt_R release clears pending start");
+  expect(!ic.inputPanel().preedit().toString().empty(),
+         "Uninterrupted Tap release must trigger start recording attempt");
+
+  // 2. Interrupted release: Intervening key cancels hotkey; release must NOT attempt start
+  ic.inputPanel().setPreedit(fcitx::Text());
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  fcitx::KeyEvent chord_press(&ic, fcitx::Key(FcitxKey_Alt_R), false);
+  engine.handleKeyEvent(chord_press);
+  expect(chord_press.filtered() && chord_press.accepted(), "Chord Alt_R press is consumed");
+  expect(engine.isPendingStart(), "Chord Alt_R press arms pending start");
+
+  fcitx::KeyEvent chord_key_p(&ic, fcitx::Key(FcitxKey_t, fcitx::KeyState::Alt), false);
+  engine.handleKeyEvent(chord_key_p);
+  expect(!chord_key_p.filtered() && !chord_key_p.accepted(), "T press passes untouched to app");
+  expect(!engine.isPendingStart(), "Intervening key cancels pending start");
+
+  fcitx::KeyEvent chord_key_r(&ic, fcitx::Key(FcitxKey_t, fcitx::KeyState::Alt), true);
+  engine.handleKeyEvent(chord_key_r);
+  expect(!chord_key_r.filtered() && !chord_key_r.accepted(), "T release passes untouched");
+
+  fcitx::KeyEvent chord_release(&ic, fcitx::Key(FcitxKey_Alt_R), true);
+  engine.handleKeyEvent(chord_release);
+  expect(chord_release.filtered() && chord_release.accepted(),
+         "Interrupted Alt_R release is consumed without trigger");
+  expect(!engine.isRecordingActive(), "Interrupted Alt_R release must not start recording");
+  expect(ic.inputPanel().preedit().toString().empty(),
+         "Interrupted Alt_R release in Tap mode must NOT attempt to start recording");
+
+  // Restore baseline config for subsequent tests
+  engine.setConfig(base_config);
+  ic.inputPanel().setPreedit(fcitx::Text());
 }
 
 void TestNonTriggerRegularKeys(TestInputContext& ic, VinputEngine& engine) {
@@ -366,8 +456,10 @@ void runAllTests() {
   test_config.setValueByPath("MenuKey/0", "Shift_R");
   engine.setConfig(test_config);
 
+  TestEvaluateTapHoldTiming();
   TestSingleModifierTap(ic, engine);
   TestChordInterruption(ic, engine);
+  TestChordInterruptionTapMode(ic, engine, test_config);
   TestNonTriggerRegularKeys(ic, engine);
   TestMultiTriggerIsolation(ic, engine);
   TestMenuKeyTriggerAndCombination(ic, engine);

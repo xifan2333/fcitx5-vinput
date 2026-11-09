@@ -1,16 +1,47 @@
 #include "cli/control/daemon_actions.h"
 
 #include <cstdio>
+#include <fmt/format.h>
 #include <fmt/printf.h>
 #include <string>
 
 #include "common/i18n.h"
 #include "common/utils/sandbox.h"
+#include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
 #include "cli/runtime/systemd_client.h"
 #include "cli/utils/cli_context.h"
 #include "cli/utils/formatter.h"
+
+namespace {
+
+void PrintSandboxMissingPermissions(Formatter& fmt) {
+  if (!vinput::sandbox::IsInSandbox()) {
+    return;
+  }
+  const auto missing = vinput::sandbox::MissingSandboxPermissions();
+  if (missing.empty()) {
+    return;
+  }
+  fmt.PrintWarning(_("Missing Flatpak permissions:"));
+  for (const auto& perm : missing) {
+    fmt.PrintWarning("  - " + perm);
+  }
+  const std::string override_cmds = vinput::sandbox::FormatOverrideCommands(missing);
+  if (override_cmds.empty()) {
+    return;
+  }
+  fmt.PrintInfo(_("To grant permissions, run:"));
+  for (const auto line : vinput::str::SplitLines(override_cmds)) {
+    if (!line.empty()) {
+      fmt.PrintInfo(fmt::format("  {}", line));
+    }
+  }
+}
+
+} // namespace
+
 int RunDaemonControlStatus(Formatter& fmt, const CliContext& ctx) {
   vinput::cli::DbusClient dbus;
 
@@ -22,30 +53,7 @@ int RunDaemonControlStatus(Formatter& fmt, const CliContext& ctx) {
       fmt.PrintJson({{"running", false}});
     } else {
       fmt.PrintError(_("Daemon is not running."));
-      if (vinput::sandbox::IsInSandbox()) {
-        const auto missing = vinput::sandbox::MissingSandboxPermissions();
-        if (!missing.empty()) {
-          fmt.PrintWarning(_("Missing Flatpak permissions:"));
-          for (const auto& perm : missing) {
-            fmt.PrintWarning("  - " + perm);
-          }
-          const std::string override_cmds = vinput::sandbox::FormatOverrideCommands(missing);
-          if (!override_cmds.empty()) {
-            fmt.PrintInfo(_("To grant permissions, run:"));
-            std::string::size_type start = 0;
-            while (start < override_cmds.size()) {
-              auto end = override_cmds.find('\n', start);
-              if (end == std::string::npos) {
-                end = override_cmds.size();
-              }
-              if (end > start) {
-                fmt.PrintInfo("  " + override_cmds.substr(start, end - start));
-              }
-              start = end + 1;
-            }
-          }
-        }
-      }
+      PrintSandboxMissingPermissions(fmt);
     }
     return 1;
   }
