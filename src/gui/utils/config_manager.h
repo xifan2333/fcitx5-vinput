@@ -2,6 +2,7 @@
 
 #include <QMutex>
 #include <QObject>
+#include <string>
 
 #include "common/config/core_config.h"
 
@@ -13,6 +14,7 @@ public:
   static ConfigManager& Get();
 
   CoreConfig Load();
+  bool TryLoad(CoreConfig* config, std::string* error = nullptr);
   bool Save(const CoreConfig& config);
 
 signals:
