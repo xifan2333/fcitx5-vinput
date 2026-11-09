@@ -21,6 +21,7 @@ set(VINPUT_GUI_SOURCES
     utils/i18n_cache.cpp
     dialogs/asr_provider_dialog.cpp
     dialogs/adapter_dialog.cpp
+    dialogs/client_dialog.cpp
     pages/control/control_page.cpp
     pages/resources/resource_page.cpp
     pages/llm/llm_page.cpp
@@ -32,6 +33,7 @@ set(VINPUT_GUI_HEADERS
     utils/config_manager.h
     utils/download_worker.h
     utils/i18n_cache.h
+    dialogs/client_dialog.h
     pages/control/control_page.h
     pages/resources/resource_page.h
     pages/llm/llm_page.h
