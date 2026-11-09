@@ -471,6 +471,9 @@ ControlPage::ControlPage(QWidget* parent)
   tableClients_->setSelectionBehavior(QAbstractItemView::SelectRows);
   tableClients_->setSelectionMode(QAbstractItemView::SingleSelection);
   tableClients_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  tableClients_->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+  tableClients_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+  tableClients_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   tableClients_->setMinimumHeight(100);
   tableClients_->setMaximumHeight(160);
 
