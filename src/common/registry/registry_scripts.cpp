@@ -661,9 +661,11 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
   return true;
 }
 
-static bool MaterializeClient(std::vector<ClientSpec>* clients, Kind kind,
-                              const RegistryEntry& entry, const fs::path& script_path,
-                              std::string_view type_label, std::string* error) {
+namespace {
+
+bool MaterializeClient(std::vector<ClientSpec>* clients, Kind kind, const RegistryEntry& entry,
+                       const fs::path& script_path, std::string_view type_label,
+                       std::string* error) {
   if (clients == nullptr) {
     if (error != nullptr) {
       *error = "client list is null";
@@ -707,6 +709,8 @@ static bool MaterializeClient(std::vector<ClientSpec>* clients, Kind kind,
   }
   return true;
 }
+
+} // namespace
 
 bool MaterializeTrigger(CoreConfig* config, const RegistryEntry& entry, const fs::path& script_path,
                         std::string* error) {
