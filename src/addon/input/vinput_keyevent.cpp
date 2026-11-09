@@ -254,9 +254,9 @@ bool VinputEngine::handleMenuNavigationKeyEvent(fcitx::KeyEvent& keyEvent) {
 VinputEngine::HotkeyMatch VinputEngine::classifyHotkey(const fcitx::Key& event_key,
                                                        bool is_release) const {
   struct HotkeyBinding {
-    HotkeyRole role;
+    HotkeyRole role = HotkeyRole::None;
     const fcitx::KeyList* keys = nullptr;
-    bool is_command;
+    bool is_command = false;
   };
 
   const std::array bindings = {
