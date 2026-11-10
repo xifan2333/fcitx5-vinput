@@ -44,7 +44,7 @@
 #include "common/utils/string_utils.h"
 #include "common/utils/url_utils.h"
 
-#include "cli/utils/dbus_client.h"
+#include "cli/runtime/dbus_client.h"
 
 #include "gui/utils/config_manager.h"
 
