@@ -193,6 +193,12 @@ void MergeExtraBody(glz::json_t& request, const glz::json_t& extra, const LlmPro
   }
 }
 
+bool IsCancellationRequested(const std::atomic<bool>* shutdown_flag,
+                             const std::atomic<bool>* request_cancel_flag) noexcept {
+  return (shutdown_flag != nullptr && shutdown_flag->load(std::memory_order_relaxed)) ||
+         (request_cancel_flag != nullptr && request_cancel_flag->load(std::memory_order_relaxed));
+}
+
 std::optional<std::vector<std::string>>
 RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Definition& scene,
                             const LlmProvider& provider, int max_llm_candidates,
@@ -201,8 +207,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
                             const std::atomic<bool>* request_cancel_flag = nullptr,
                             std::string_view asr_var = {}, std::string_view selected_var = {}) {
   const auto is_cancelled = [&]() noexcept {
-    return (shutdown_flag != nullptr && shutdown_flag->load(std::memory_order_relaxed)) ||
-           (request_cancel_flag != nullptr && request_cancel_flag->load(std::memory_order_relaxed));
+    return IsCancellationRequested(shutdown_flag, request_cancel_flag);
   };
 
   if (is_cancelled()) {
@@ -390,12 +395,7 @@ RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::D
                           vinput::notify::NotificationBridge* notification_bridge,
                           std::string* error_out, const std::atomic<bool>* shutdown_flag = nullptr,
                           const std::atomic<bool>* request_cancel_flag = nullptr) {
-  const auto is_cancelled = [&]() noexcept {
-    return (shutdown_flag != nullptr && shutdown_flag->load(std::memory_order_relaxed)) ||
-           (request_cancel_flag != nullptr && request_cancel_flag->load(std::memory_order_relaxed));
-  };
-
-  if (is_cancelled()) {
+  if (IsCancellationRequested(shutdown_flag, request_cancel_flag)) {
     if (error_out != nullptr) {
       error_out->clear();
     }
@@ -433,7 +433,7 @@ RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::D
         /*flush_tail=*/true);
   }
 
-  if (is_cancelled()) {
+  if (IsCancellationRequested(shutdown_flag, request_cancel_flag)) {
     if (error_out != nullptr) {
       error_out->clear();
     }
@@ -485,6 +485,29 @@ void AppendCandidate(vinput::result::Payload& payload, std::string text, const c
 
   payload.candidates.push_back(
       vinput::result::Candidate{.text = std::move(text), .source = source});
+}
+
+std::string CollectLlmCandidates(vinput::result::Payload& payload, std::set<std::string>& seen,
+                                 std::span<const std::string> rewritten, int max_candidates) {
+  std::string first_llm_text;
+  int accepted = 0;
+  for (const auto& text : rewritten) {
+    std::string trimmed(vinput::str::Trim(text));
+    if (trimmed.empty()) {
+      continue;
+    }
+    if (seen.insert(trimmed).second) {
+      if (first_llm_text.empty()) {
+        first_llm_text = trimmed;
+      }
+      AppendCandidate(payload, std::move(trimmed), vinput::result::kSourceLlm);
+      ++accepted;
+      if (accepted >= max_candidates) {
+        break;
+      }
+    }
+  }
+  return first_llm_text;
 }
 
 } // namespace
@@ -543,24 +566,8 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
     seen.insert(normalized);
   }
 
-  std::string first_llm_text;
-  int accepted_llm_candidates = 0;
-  for (auto& text : *rewritten) {
-    std::string trimmed(vinput::str::Trim(text));
-    if (trimmed.empty()) {
-      continue;
-    }
-    if (seen.insert(trimmed).second) {
-      if (first_llm_text.empty()) {
-        first_llm_text = trimmed;
-      }
-      AppendCandidate(payload, std::move(trimmed), vinput::result::kSourceLlm);
-      ++accepted_llm_candidates;
-      if (accepted_llm_candidates >= max_llm_candidates) {
-        break;
-      }
-    }
-  }
+  const std::string first_llm_text =
+      CollectLlmCandidates(payload, seen, *rewritten, max_llm_candidates);
 
   if (payload.candidates.empty()) {
     return fallback;
@@ -668,24 +675,8 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
 
   // 3rd+: LLM results (if available, deduplicated and capped)
   std::string first_llm_text;
-  int accepted_llm_candidates = 0;
   if (rewritten.has_value()) {
-    for (auto& text : *rewritten) {
-      std::string trimmed(vinput::str::Trim(text));
-      if (trimmed.empty()) {
-        continue;
-      }
-      if (seen.insert(trimmed).second) {
-        if (first_llm_text.empty()) {
-          first_llm_text = trimmed;
-        }
-        AppendCandidate(payload, std::move(trimmed), vinput::result::kSourceLlm);
-        ++accepted_llm_candidates;
-        if (accepted_llm_candidates >= command_max_llm_candidates) {
-          break;
-        }
-      }
-    }
+    first_llm_text = CollectLlmCandidates(payload, seen, *rewritten, command_max_llm_candidates);
   }
 
   payload.commitText = first_llm_text.empty() ? selected_text : first_llm_text;
