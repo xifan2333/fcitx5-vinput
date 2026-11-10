@@ -1569,5 +1569,9 @@ Found %2 model(s).</source>
         <source>Command must not be empty.</source>
         <translation>命令不能为空。</translation>
     </message>
+    <message>
+        <source>Error</source>
+        <translation>错误</translation>
+    </message>
 </context>
 </TS>

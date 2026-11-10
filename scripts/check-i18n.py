@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""Validate Gettext (.po) and Qt (.ts) translations against source code via ast-grep."""
+"""Validate Gettext (.po) and Qt (.ts) translations against C++ source code."""
 
-import json
 import re
-import shutil
-import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -15,68 +12,61 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 PO_FILE = PROJECT_ROOT / "po" / "zh_CN.po"
 TS_FILE = PROJECT_ROOT / "i18n" / "vinput-gui_zh_CN.ts"
 
+PO_DIRS = ["src/cli", "src/common", "src/addon", "src/daemon"]
+GUI_DIR = "src/gui"
+
 # Colors (disabled when not a terminal)
 if sys.stdout.isatty():
     RED, YELLOW, CYAN, RESET = "\033[0;31m", "\033[0;33m", "\033[0;36m", "\033[0m"
 else:
     RED = YELLOW = CYAN = RESET = ""
 
+# Regex patterns matching C++ localization macros/functions and string literal concatenation
+CALL_PO_RE = re.compile(
+    r'(?:^|[^a-zA-Z0-9_])(?:_|\bN_)\s*\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)', re.DOTALL
+)
+CALL_TS_RE = re.compile(
+    r'(?:^|[^a-zA-Z0-9_])(?:([a-zA-Z0-9_:]+)::)?tr\s*\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)(?:,[^)]*)?\)',
+    re.DOTALL,
+)
+STR_LITERAL_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
-def find_ast_grep() -> str | None:
-    return shutil.which("ast-grep") or shutil.which("sg")
 
-
-def extract_strings_from_ast_json(stdout: str) -> set[str]:
-    """Parse JSON output from ast-grep and extract concatenated string literals."""
-    if not stdout.strip():
-        return set()
-    data = json.loads(stdout)
+def extract_source_po_msgids() -> set[str]:
+    """Extract Gettext _("...") and N_("...") msgids from C++ source files."""
+    src_files = []
+    for d in PO_DIRS:
+        p = PROJECT_ROOT / d
+        if p.is_dir():
+            src_files.extend(sorted(str(f) for f in p.rglob("*") if f.suffix in (".cpp", ".h")))
     res = set()
-    for d in data:
-        txt = d.get("text", "").strip()
-        parts = re.findall(r'"((?:[^"\\]|\\.)*)"', txt)
-        if parts:
-            res.add("".join(p.encode().decode("unicode_escape", "ignore") for p in parts))
+    for f in src_files:
+        content = Path(f).read_text(encoding="utf-8")
+        for m in CALL_PO_RE.finditer(content):
+            parts = STR_LITERAL_RE.findall(m.group(1))
+            if parts:
+                res.add("".join(p.encode().decode("unicode_escape", "ignore") for p in parts))
     return res
 
 
-def extract_source_po_msgids(sg_bin: str) -> set[str]:
-    """Extract Gettext _("...") and N_("...") msgids from source code via ast-grep."""
-    p_ = subprocess.run(
-        [sg_bin, "-p", "_($$$A)", "--json", "src/"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
+def extract_source_ts_strings() -> tuple[set[str], list[tuple[str, str]]]:
+    """Extract Qt tr("...") and Class::tr("...") strings from src/gui/."""
+    gui_files = sorted(
+        str(f) for f in (PROJECT_ROOT / GUI_DIR).rglob("*") if f.suffix in (".cpp", ".h")
     )
-    p_n = subprocess.run(
-        [sg_bin, "-p", "N_($$$A)", "--json", "src/"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return extract_strings_from_ast_json(p_.stdout) | extract_strings_from_ast_json(p_n.stdout)
-
-
-def extract_source_ts_strings(sg_bin: str) -> set[str]:
-    """Extract Qt tr("...") and Class::tr("...") strings from src/gui via ast-grep."""
-    rule = """id: qt-tr-calls
-language: Cpp
-rule:
-  kind: call_expression
-  has:
-    field: function
-    regex: "(^|::)tr$"
-"""
-    p = subprocess.run(
-        [sg_bin, "scan", "--inline-rules", rule, "src/gui/", "--json"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return extract_strings_from_ast_json(p.stdout)
+    all_strings = set()
+    qualified_calls = []
+    for f in gui_files:
+        content = Path(f).read_text(encoding="utf-8")
+        for m in CALL_TS_RE.finditer(content):
+            qualifier = m.group(1) or ""
+            parts = STR_LITERAL_RE.findall(m.group(2))
+            if parts:
+                joined = "".join(p.encode().decode("unicode_escape", "ignore") for p in parts)
+                all_strings.add(joined)
+                if qualifier:
+                    qualified_calls.append((qualifier, joined))
+    return all_strings, qualified_calls
 
 
 def extract_po_msgids(path: Path) -> set[str]:
@@ -163,70 +153,43 @@ def extract_po_untranslated(path: Path) -> set[str]:
     return ids
 
 
-def ts_sources(path: Path, *, skip_vanished: bool = False) -> set[str]:
-    """Extract <source> texts from a .ts file via XML parser."""
+def parse_ts_catalog(path: Path) -> tuple[set[str], dict[str, set[str]], set[str], set[str]]:
+    """Parse .ts file returning (all_sources, context_sources, vanished, untranslated)."""
     if not path.is_file():
-        return set()
+        return set(), {}, set(), set()
     tree = ET.parse(path)
-    result = set()
-    for msg in tree.iter("message"):
-        if skip_vanished:
+    all_sources = set()
+    context_sources: dict[str, set[str]] = {}
+    vanished = set()
+    untranslated = set()
+
+    for ctx in tree.findall("context"):
+        cname = ctx.find("name").text if ctx.find("name") is not None else ""
+        context_sources.setdefault(cname, set())
+
+        for msg in ctx.findall("message"):
             tr = msg.find("translation")
-            if tr is not None and tr.get("type") in ("vanished", "obsolete"):
-                continue
-        src = msg.find("source")
-        if src is not None and src.text:
-            result.add(src.text)
-    return result
-
-
-def ts_vanished(path: Path) -> set[str]:
-    """Extract vanished/obsolete source texts from a .ts file."""
-    if not path.is_file():
-        return set()
-    tree = ET.parse(path)
-    result = set()
-    for msg in tree.iter("message"):
-        tr = msg.find("translation")
-        if tr is not None and tr.get("type") in ("vanished", "obsolete"):
+            is_vanished = tr is not None and tr.get("type") in ("vanished", "obsolete")
             src = msg.find("source")
             if src is not None and src.text:
-                result.add(src.text)
-    return result
+                if is_vanished:
+                    vanished.add(src.text)
+                else:
+                    all_sources.add(src.text)
+                    context_sources[cname].add(src.text)
+                    if tr is None or not (tr.text or "").strip():
+                        untranslated.add(src.text)
 
-
-def ts_untranslated(path: Path) -> set[str]:
-    """Find non-vanished entries with empty translation in a .ts file."""
-    if not path.is_file():
-        return set()
-    tree = ET.parse(path)
-    result = set()
-    for msg in tree.iter("message"):
-        tr = msg.find("translation")
-        if tr is None:
-            continue
-        if tr.get("type") in ("vanished", "obsolete"):
-            continue
-        if not tr.text or not tr.text.strip():
-            src = msg.find("source")
-            if src is not None and src.text:
-                result.add(src.text)
-    return result
+    return all_sources, context_sources, vanished, untranslated
 
 
 def main() -> int:
-    sg_bin = find_ast_grep()
-    if sg_bin is None:
-        print(f"{RED}ERROR:{RESET} ast-grep (or sg) is required to run i18n checks.")
-        print("       Please run `mise install` or install ast-grep.")
-        return 1
-
     po_missing = po_obsolete = po_untranslated = 0
     ts_missing_n = ts_vanished_n = ts_untranslated_n = 0
 
     # === Gettext (po) ===
     print(f"{CYAN}=== Gettext (po) ==={RESET}")
-    src_po_ids = extract_source_po_msgids(sg_bin)
+    src_po_ids = extract_source_po_msgids()
     catalog_po_ids = extract_po_msgids(PO_FILE)
 
     for mid in sorted(src_po_ids - catalog_po_ids):
@@ -246,18 +209,26 @@ def main() -> int:
 
     # === Qt (ts) ===
     print(f"{CYAN}=== Qt (ts) ==={RESET}")
-    src_ts_ids = extract_source_ts_strings(sg_bin)
-    catalog_ts_ids = ts_sources(TS_FILE, skip_vanished=True)
+    src_ts_ids, qualified_calls = extract_source_ts_strings()
+    catalog_ts_ids, context_sources, vanished_ts, untranslated_ts = parse_ts_catalog(TS_FILE)
 
+    # 1. Check flat coverage
     for s in sorted(src_ts_ids - catalog_ts_ids):
         print(f'{RED}MISSING:{RESET} "{s}"')
         ts_missing_n += 1
 
-    for s in sorted(ts_vanished(TS_FILE)):
+    # 2. Check context-qualified coverage (e.g. ClientDialog::tr("Error") must exist under ClientDialog)
+    for qual, s in qualified_calls:
+        matched_contexts = [c for c in context_sources if c == qual or c.endswith("::" + qual)]
+        if matched_contexts and not any(s in context_sources[c] for c in matched_contexts):
+            print(f'{RED}MISSING (context {qual}):{RESET} "{s}"')
+            ts_missing_n += 1
+
+    for s in sorted(vanished_ts):
         print(f'{YELLOW}VANISHED:{RESET} "{s}"')
         ts_vanished_n += 1
 
-    for s in sorted(ts_untranslated(TS_FILE)):
+    for s in sorted(untranslated_ts):
         print(f'{YELLOW}UNTRANSLATED:{RESET} "{s}"')
         ts_untranslated_n += 1
 
