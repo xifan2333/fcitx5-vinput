@@ -1,9 +1,12 @@
 #include "cli/utils/resource_utils.h"
 
+#include <algorithm>
+#include <filesystem>
 #include <fmt/printf.h>
 #include <functional>
 #include <glaze/json/json_t.hpp>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -237,84 +240,92 @@ bool ParseEnvOverrides(const std::vector<std::string>& env_overrides,
   return true;
 }
 
-void RenderRegistryScriptList(const std::vector<vinput::script::RegistryEntry>& entries,
-                              const ResourceDisplayMap& display_map,
-                              const vinput::registry::InstalledManifest& manifest,
-                              const std::function<bool(const std::string&)>& is_installed,
-                              vinput::script::Kind kind, Formatter& fmt, const CliContext& ctx) {
-  const bool is_asr = kind == vinput::script::Kind::kAsrProvider;
+std::string FormatScriptStatusJson(vinput::script::UpdateStatus status, bool installed) {
+  if (status == vinput::script::UpdateStatus::kIncompatible) {
+    return "incompatible";
+  }
+  if (installed) {
+    return status == vinput::script::UpdateStatus::kUpdateAvailable ? "update_available"
+                                                                    : "installed";
+  }
+  return "available";
+}
 
-  if (ctx.json_output) {
-    glz::json_t::array_t arr;
-    arr.reserve(entries.size());
-    for (const auto& entry : entries) {
-      glz::json_t::array_t envs;
-      envs.reserve(entry.envs.size());
-      for (const auto& env : entry.envs) {
-        glz::json_t json_entry = {{"name", env.name}, {"required", env.required}};
-        envs.emplace_back(std::move(json_entry));
-      }
-      const bool installed = is_installed(entry.id);
-      const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
-      std::string status_str = "available";
-      if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-        status_str = "incompatible";
-      } else if (installed) {
-        status_str = ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable
-                         ? "update_available"
-                         : "installed";
-      }
-
-      glz::json_t json_entry = {
-          {"id", HumanizeResourceId(entry.id, entry.short_id)},
-          {"machine_id", entry.id},
-          {"title", display_map.at(entry.id).title},
-          {"description", display_map.at(entry.id).description},
-          {"readme_url", entry.readme_url},
-          {"envs", glz::json_t(std::move(envs))},
-          {"status", status_str},
-          {"installed_version", ver_info.installed_version},
-          {"remote_version", ver_info.remote_version},
-          {"vinput_version", ver_info.vinput_version},
-      };
-      if (is_asr) {
-        json_entry["stream"] = entry.stream;
-      }
-      arr.emplace_back(std::move(json_entry));
+std::string FormatScriptStatusTable(const vinput::script::ResourceVersionInfo& ver_info,
+                                    bool installed) {
+  if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
+    return ::fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
+  }
+  if (!installed) {
+    return _("available");
+  }
+  if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
+    if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
+      return ::fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
+                            ver_info.remote_version);
     }
-    fmt.PrintJson(glz::json_t(std::move(arr)));
-    return;
+    return _("update available");
   }
+  if (!ver_info.installed_version.empty()) {
+    return ::fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
+  }
+  return _("installed");
+}
 
-  std::vector<std::string> headers;
-  if (is_asr) {
-    headers = {_("ID"), _("TITLE"), _("MODE"), _("STATUS"), _("README")};
-  } else {
-    headers = {_("ID"), _("TITLE"), _("STATUS"), _("README")};
+void RenderRegistryScriptListJson(const std::vector<vinput::script::RegistryEntry>& entries,
+                                  const ResourceDisplayMap& display_map,
+                                  const vinput::registry::InstalledManifest& manifest,
+                                  const std::function<bool(const std::string&)>& is_installed,
+                                  vinput::script::Kind kind, Formatter& fmt) {
+  const bool is_asr = kind == vinput::script::Kind::kAsrProvider;
+  glz::json_t::array_t arr;
+  arr.reserve(entries.size());
+  for (const auto& entry : entries) {
+    glz::json_t::array_t envs;
+    envs.reserve(entry.envs.size());
+    for (const auto& env : entry.envs) {
+      envs.emplace_back(glz::json_t{{"name", env.name}, {"required", env.required}});
+    }
+    const bool installed = is_installed(entry.id);
+    const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
+
+    glz::json_t json_entry = {
+        {"id", HumanizeResourceId(entry.id, entry.short_id)},
+        {"machine_id", entry.id},
+        {"title", display_map.at(entry.id).title},
+        {"description", display_map.at(entry.id).description},
+        {"readme_url", entry.readme_url},
+        {"envs", glz::json_t(std::move(envs))},
+        {"status", FormatScriptStatusJson(ver_info.status, installed)},
+        {"installed_version", ver_info.installed_version},
+        {"remote_version", ver_info.remote_version},
+        {"vinput_version", ver_info.vinput_version},
+    };
+    if (is_asr) {
+      json_entry["stream"] = entry.stream;
+    }
+    arr.emplace_back(std::move(json_entry));
   }
+  fmt.PrintJson(glz::json_t(std::move(arr)));
+}
+
+void RenderRegistryScriptListTable(const std::vector<vinput::script::RegistryEntry>& entries,
+                                   const ResourceDisplayMap& display_map,
+                                   const vinput::registry::InstalledManifest& manifest,
+                                   const std::function<bool(const std::string&)>& is_installed,
+                                   vinput::script::Kind kind, Formatter& fmt,
+                                   const CliContext& ctx) {
+  const bool is_asr = kind == vinput::script::Kind::kAsrProvider;
+  const std::vector<std::string> headers =
+      is_asr ? std::vector<std::string>{_("ID"), _("TITLE"), _("MODE"), _("STATUS"), _("README")}
+             : std::vector<std::string>{_("ID"), _("TITLE"), _("STATUS"), _("README")};
 
   std::vector<std::vector<std::string>> rows;
   rows.reserve(entries.size());
   for (const auto& entry : entries) {
     const bool installed = is_installed(entry.id);
     const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
-    std::string status_text = _("available");
-    if (ver_info.status == vinput::script::UpdateStatus::kIncompatible) {
-      status_text = ::fmt::sprintf(_("incompatible (requires vinput %s)"), ver_info.vinput_version);
-    } else if (installed) {
-      if (ver_info.status == vinput::script::UpdateStatus::kUpdateAvailable) {
-        if (!ver_info.installed_version.empty() && !ver_info.remote_version.empty()) {
-          status_text = ::fmt::sprintf(_("update available (%s -> %s)"), ver_info.installed_version,
-                                       ver_info.remote_version);
-        } else {
-          status_text = _("update available");
-        }
-      } else if (!ver_info.installed_version.empty()) {
-        status_text = ::fmt::sprintf(_("installed (%s)"), ver_info.installed_version);
-      } else {
-        status_text = _("installed");
-      }
-    }
+    const std::string status_text = FormatScriptStatusTable(ver_info, installed);
 
     if (is_asr) {
       rows.push_back({HumanizeResourceId(entry.id, entry.short_id), display_map.at(entry.id).title,
@@ -326,6 +337,83 @@ void RenderRegistryScriptList(const std::vector<vinput::script::RegistryEntry>& 
     }
   }
   fmt.PrintTable(headers, rows);
+}
+
+} // namespace
+
+void RenderRegistryScriptList(const std::vector<vinput::script::RegistryEntry>& entries,
+                              const ResourceDisplayMap& display_map,
+                              const vinput::registry::InstalledManifest& manifest,
+                              const std::function<bool(const std::string&)>& is_installed,
+                              vinput::script::Kind kind, Formatter& fmt, const CliContext& ctx) {
+  if (ctx.json_output) {
+    RenderRegistryScriptListJson(entries, display_map, manifest, is_installed, kind, fmt);
+  } else {
+    RenderRegistryScriptListTable(entries, display_map, manifest, is_installed, kind, fmt, ctx);
+  }
+}
+
+std::optional<std::vector<vinput::script::RegistryEntry>>
+FetchScriptRegistryEntries(const CoreConfig& config, vinput::script::Kind kind, Formatter& fmt) {
+  const CoreConfigView view(config);
+  const auto registry_urls = kind == vinput::script::Kind::kAsrProvider
+                                 ? view.AsrProviderRegistryUrls()
+                                 : view.LlmAdapterRegistryUrls();
+  if (registry_urls.empty()) {
+    if (kind == vinput::script::Kind::kAsrProvider) {
+      fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
+                       "registry.base_urls."));
+    } else {
+      fmt.PrintError(_("No LLM adapter registry base URLs configured. Edit config.json and set "
+                       "registry.base_urls."));
+    }
+    return std::nullopt;
+  }
+
+  std::string error;
+  auto entries = vinput::script::FetchRegistry(config, kind, registry_urls, &error);
+  if (!error.empty()) {
+    fmt.PrintError(error);
+    return std::nullopt;
+  }
+  return entries;
+}
+
+const vinput::script::RegistryEntry*
+FindRegistryScriptEntry(const std::vector<vinput::script::RegistryEntry>& entries,
+                        vinput::script::Kind kind, const std::string& selector, Formatter& fmt) {
+  const std::string kind_label =
+      kind == vinput::script::Kind::kAsrProvider ? "ASR provider" : "LLM adapter";
+  std::string error;
+  const std::string id = ResolveScriptSelectorByShortId(selector, entries, kind_label, &error);
+  if (id.empty()) {
+    fmt.PrintError(error);
+    return nullptr;
+  }
+
+  const auto it = std::ranges::find_if(
+      entries, [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
+  if (it == entries.end()) {
+    if (kind == vinput::script::Kind::kAsrProvider) {
+      fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found in registry."), id));
+    } else {
+      fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found in registry."), id));
+    }
+    return nullptr;
+  }
+  return &(*it);
+}
+
+std::optional<std::filesystem::path>
+DownloadRegistryScript(const vinput::script::RegistryEntry& entry, vinput::script::Kind kind,
+                       Formatter& fmt) {
+  std::filesystem::path script_path;
+  std::string error;
+  if (!vinput::script::DownloadScript(entry, kind, &script_path, &error)) {
+    fmt.PrintError(error);
+    return std::nullopt;
+  }
+  return script_path;
 }
 
 } // namespace vinput::cli
