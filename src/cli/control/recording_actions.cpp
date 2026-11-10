@@ -28,14 +28,7 @@ bool EnsureDaemon(vinput::cli::DbusClient& dbus, Formatter& fmt, const CliContex
   return true;
 }
 
-} // namespace
-
-int RunRecordingControlStart(Formatter& fmt, const CliContext& ctx) {
-  vinput::cli::DbusClient dbus;
-  if (!EnsureDaemon(dbus, fmt, ctx)) {
-    return 1;
-  }
-
+int DoStartRecording(vinput::cli::DbusClient& dbus, Formatter& fmt, const CliContext& ctx) {
   std::string err;
   if (!dbus.StartRecording(&err)) {
     if (ctx.json_output) {
@@ -54,12 +47,8 @@ int RunRecordingControlStart(Formatter& fmt, const CliContext& ctx) {
   return 0;
 }
 
-int RunRecordingControlStop(const std::string& scene_id, Formatter& fmt, const CliContext& ctx) {
-  vinput::cli::DbusClient dbus;
-  if (!EnsureDaemon(dbus, fmt, ctx)) {
-    return 1;
-  }
-
+int DoStopRecording(vinput::cli::DbusClient& dbus, const std::string& scene_id, Formatter& fmt,
+                    const CliContext& ctx) {
   const std::string resolved = ResolveSceneId(scene_id);
 
   std::string err;
@@ -86,6 +75,26 @@ int RunRecordingControlStop(const std::string& scene_id, Formatter& fmt, const C
   return 0;
 }
 
+} // namespace
+
+int RunRecordingControlStart(Formatter& fmt, const CliContext& ctx) {
+  vinput::cli::DbusClient dbus;
+  if (!EnsureDaemon(dbus, fmt, ctx)) {
+    return 1;
+  }
+
+  return DoStartRecording(dbus, fmt, ctx);
+}
+
+int RunRecordingControlStop(const std::string& scene_id, Formatter& fmt, const CliContext& ctx) {
+  vinput::cli::DbusClient dbus;
+  if (!EnsureDaemon(dbus, fmt, ctx)) {
+    return 1;
+  }
+
+  return DoStopRecording(dbus, scene_id, fmt, ctx);
+}
+
 int RunRecordingControlToggle(const std::string& scene_id, Formatter& fmt, const CliContext& ctx) {
   vinput::cli::DbusClient dbus;
   if (!EnsureDaemon(dbus, fmt, ctx)) {
@@ -104,30 +113,7 @@ int RunRecordingControlToggle(const std::string& scene_id, Formatter& fmt, const
   }
 
   if (status == vinput::dbus::kStatusRecording) {
-    const std::string resolved = ResolveSceneId(scene_id);
-
-    std::string stop_err;
-    if (!dbus.StopRecording(resolved, &stop_err)) {
-      if (ctx.json_output) {
-        fmt.PrintJson({{"ok", false}, {"error", stop_err}});
-      } else {
-        fmt.PrintError(stop_err);
-      }
-      return 1;
-    }
-
-    if (ctx.json_output) {
-      glz::json_t j = {{"ok", true}, {"action", "stop"}};
-      if (!resolved.empty()) {
-        j["scene"] = resolved;
-      }
-      fmt.PrintJson(j);
-    } else if (resolved.empty()) {
-      fmt.PrintInfo(_("Recording stopped."));
-    } else {
-      fmt.PrintInfo(::fmt::sprintf(_("Recording stopped (scene: %s)."), resolved.c_str()));
-    }
-    return 0;
+    return DoStopRecording(dbus, scene_id, fmt, ctx);
   }
 
   if (status == vinput::dbus::kStatusInferring || status == vinput::dbus::kStatusPostprocessing) {
@@ -150,20 +136,5 @@ int RunRecordingControlToggle(const std::string& scene_id, Formatter& fmt, const
     return 1;
   }
 
-  std::string err;
-  if (!dbus.StartRecording(&err)) {
-    if (ctx.json_output) {
-      fmt.PrintJson({{"ok", false}, {"error", err}});
-    } else {
-      fmt.PrintError(err);
-    }
-    return 1;
-  }
-
-  if (ctx.json_output) {
-    fmt.PrintJson({{"ok", true}, {"action", "start"}});
-  } else {
-    fmt.PrintInfo(_("Recording started."));
-  }
-  return 0;
+  return DoStartRecording(dbus, fmt, ctx);
 }

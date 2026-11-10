@@ -161,25 +161,12 @@ int RunLlmConfigListAdapters(bool available, Formatter& fmt, const CliContext& c
   CoreConfig config = LoadCoreConfig();
 
   if (available) {
-    const auto entries_opt =
-        vinput::cli::FetchScriptRegistryEntries(config, vinput::script::Kind::kLlmAdapter, fmt);
-    if (!entries_opt) {
-      return 1;
-    }
-    const auto& entries = *entries_opt;
-
-    const auto locale = vinput::registry::DetectPreferredLocale();
-    const auto i18nMap = vinput::registry::FetchMergedI18nMap(config, locale);
-    const auto display_map = vinput::cli::BuildScriptDisplayMap(entries, i18nMap);
-    const auto manifest = vinput::registry::InstalledManifest::Load();
-
-    auto isInstalled = [&config](const std::string& id) {
-      return CoreConfigView(config).LlmAdapter(id) != nullptr;
-    };
-
-    vinput::cli::RenderRegistryScriptList(entries, display_map, manifest, isInstalled,
-                                          vinput::script::Kind::kLlmAdapter, fmt, ctx);
-    return 0;
+    return vinput::cli::RunRegistryScriptList(
+        config, vinput::script::Kind::kLlmAdapter,
+        [&config](const std::string& id) {
+          return CoreConfigView(config).LlmAdapter(id) != nullptr;
+        },
+        fmt, ctx);
   }
 
   const auto installed_display_map =
@@ -329,33 +316,12 @@ namespace {
 bool UpdateSingleLlmAdapter(CoreConfig* config, const vinput::registry::InstalledManifest& manifest,
                             const vinput::script::RegistryEntry& entry, bool force,
                             Formatter& fmt) {
-  const auto version_info = vinput::script::CheckResourceVersion(
-      manifest, vinput::script::Kind::kLlmAdapter, entry, true);
-  if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
-    fmt.PrintInfo(::fmt::sprintf(_("Adapter '%s' is already up to date."), entry.short_id));
-    return true;
-  }
-
-  std::filesystem::path script_path;
-  std::string error;
-  if (!vinput::script::DownloadScript(entry, vinput::script::Kind::kLlmAdapter, &script_path,
-                                      &error)) {
-    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
-    return false;
-  }
-  if (!vinput::script::MaterializeLlmAdapter(config, entry, script_path, &error)) {
-    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
-    return false;
-  }
-
-  if (version_info.installed_version.empty() || version_info.remote_version.empty()) {
-    fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' updated."), entry.short_id));
-    return true;
-  }
-
-  fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' updated: %s -> %s"), entry.short_id,
-                                  version_info.installed_version, version_info.remote_version));
-  return true;
+  return vinput::cli::UpdateRegistryScript(
+      manifest, entry, vinput::script::Kind::kLlmAdapter, force,
+      [config, &entry](const std::filesystem::path& path, std::string* error) {
+        return vinput::script::MaterializeLlmAdapter(config, entry, path, error);
+      },
+      fmt);
 }
 
 bool UpdateAllLlmAdapters(CoreConfig* config, const vinput::registry::InstalledManifest& manifest,
@@ -469,18 +435,29 @@ int RunLlmConfigEditAdapter(const std::string& id, Formatter& fmt, const CliCont
   return 0;
 }
 
+namespace {
+
+auto FindLlmProviderOrReport(std::vector<LlmProvider>& providers, const std::string& id,
+                             Formatter& fmt) {
+  auto it = std::ranges::find_if(providers,
+                                 [&id](const LlmProvider& provider) { return provider.id == id; });
+  if (it == providers.end()) {
+    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
+  }
+  return it;
+}
+
+} // namespace
+
 int RunLlmConfigRemove(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  auto& providers = config.llm.providers;
-  const auto it = std::ranges::find_if(
-      providers, [&id](const LlmProvider& provider) { return provider.id == id; });
-  if (it == providers.end()) {
-    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
+  auto it = FindLlmProviderOrReport(config.llm.providers, id, fmt);
+  if (it == config.llm.providers.end()) {
     return 1;
   }
 
-  providers.erase(it);
+  config.llm.providers.erase(it);
   vinput::llm::RemoveProviderModels(id);
   if (!SaveConfigOrFail(config, fmt)) {
     return 1;
@@ -494,11 +471,8 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
                      bool hasExtraBody, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  auto& providers = config.llm.providers;
-  const auto it = std::ranges::find_if(
-      providers, [&id](const LlmProvider& provider) { return provider.id == id; });
-  if (it == providers.end()) {
-    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
+  auto it = FindLlmProviderOrReport(config.llm.providers, id, fmt);
+  if (it == config.llm.providers.end()) {
     return 1;
   }
 
