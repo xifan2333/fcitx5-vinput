@@ -15,6 +15,8 @@ fi
 # APT writes here instead of /var/cache/apt/archives so actions/cache can save it
 # without sudo; a cache hit keeps the archive download off the network entirely.
 vinput_apt_archives="${HOME}/.cache/vinput-apt-archives"
+# The runner lists azure/archive/security here, in priority order.
+apt_mirrors_file=/etc/apt/apt-mirrors.txt
 
 readonly qt6_apt_packages=(
   qt6-base-dev
@@ -109,45 +111,57 @@ finalize_apt_archives() {
   return "${status}"
 }
 
-# APT never abandons a mirror that trickles bytes, so drop the first (highest
-# priority) entry and let the next attempt use the following one.
-evict_first_mirror() {
-  local mirrors=/etc/apt/apt-mirrors.txt
-  [[ -s ${mirrors} ]] || return 0
-  echo "evicting $(head -n 1 "${mirrors}") after a download timeout" >&2
-  "${sudo_cmd[@]}" sed -i '1d' "${mirrors}"
+# APT never abandons a mirror that trickles bytes, so the only lever is to drop
+# the head entry and let the next attempt start from the following one.
+mirror_count() {
+  local count
+  count=$(grep -c '[^[:space:]]' "${apt_mirrors_file}" 2>/dev/null) || count=0
+  echo "${count:-0}"
 }
 
-download_ubuntu_archives() {
-  timeout "$1" "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
-    apt-get install -y --download-only --no-install-recommends \
-    "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"
+evict_first_mirror() {
+  if [[ $(mirror_count) -le 1 ]]; then
+    echo "no spare mirror left to evict" >&2
+    return 1
+  fi
+  echo "evicting $(head -n 1 "${apt_mirrors_file}") after a timeout" >&2
+  "${sudo_cmd[@]}" sed -i '1d' "${apt_mirrors_file}"
+}
+
+# Every timeout promotes the next mirror to the head, so retrying after an
+# eviction walks the whole list and always drops whichever entry is slow.
+run_with_mirror_failover() {
+  local budget=$1
+  shift
+  local attempts
+  attempts=$(($(mirror_count) + 1))
+  while ((attempts-- > 0)); do
+    if timeout "${budget}" "$@"; then
+      return 0
+    fi
+    evict_first_mirror || return 1
+  done
+  return 1
 }
 
 # Split download from install: only the download can hang on a slow mirror, and
 # only a shell timeout can interrupt a transfer that keeps trickling bytes.
 fetch_ubuntu_archives() {
-  if download_ubuntu_archives "$1"; then
-    return 0
-  fi
-  evict_first_mirror
-  download_ubuntu_archives "$1"
+  run_with_mirror_failover "$1" "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --download-only --no-install-recommends \
+    "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"
 }
 
 update_ubuntu_indices() {
-  if timeout "$1" "${sudo_cmd[@]}" apt-get update "${apt_opts[@]}"; then
-    return 0
-  fi
-  evict_first_mirror
-  timeout "$1" "${sudo_cmd[@]}" apt-get update "${apt_opts[@]}"
+  run_with_mirror_failover "$1" "${sudo_cmd[@]}" apt-get update "${apt_opts[@]}"
 }
 
 install_ubuntu_deps() {
   prepare_apt_archives
   trap finalize_apt_archives EXIT
 
-  update_ubuntu_indices 120
-  fetch_ubuntu_archives 240
+  update_ubuntu_indices 90
+  fetch_ubuntu_archives 150
   # Everything is in the archive dir now, so this install does no network I/O.
   "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"
