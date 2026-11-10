@@ -8,6 +8,7 @@
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <fstream>
+#include <functional>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
@@ -213,7 +214,7 @@ std::optional<std::string> ResolvePromptContent(std::string_view task_prompt,
       }
       return std::nullopt;
     }
-    return *loaded;
+    return loaded;
   }
   return base_prompt;
 }
@@ -252,7 +253,7 @@ std::string BuildUserContent(std::string_view base_prompt, std::string_view text
 std::string BuildOpenAiRequestBody(const std::string& model, std::string user_content,
                                    const LlmProvider& provider) {
   glz::json_t::array_t messages;
-  messages.emplace_back(glz::json_t{{"role", "user"}, {"content", std::move(user_content)}});
+  messages.push_back(glz::json_t{{"role", "user"}, {"content", std::move(user_content)}});
 
   glz::json_t request = {
       {"model", model},
@@ -410,7 +411,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
 constexpr std::size_t kMaxBatchNotifications = 4;
 
-void DrainAdapterStderr(std::string_view stderr_text, const LlmAdapter& adapter,
+void DrainAdapterStderr(std::string& stderr_text, const LlmAdapter& adapter,
                         vinput::notify::NotificationBridge* notification_bridge) {
   if (stderr_text.empty() || notification_bridge == nullptr) {
     return;
@@ -429,7 +430,7 @@ void DrainAdapterStderr(std::string_view stderr_text, const LlmAdapter& adapter,
       /*flush_tail=*/true);
 }
 
-bool ValidateAdapterProcessResult(const vinput::process::RunResult& result,
+bool ValidateAdapterProcessResult(const vinput::process::CommandResult& result,
                                   const LlmAdapter& adapter, std::string* error_out) {
   if (result.launch_failed) {
     const std::string msg = fmt::sprintf(_("Failed to start adapter '%s'."), adapter.id);
