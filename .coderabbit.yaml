@@ -13,5 +13,10 @@ reviews:
       enabled: true
     shellcheck:
       enabled: true
+  pre_merge_checks:
+    docstrings:
+      # This repo documents C++ with self-explanatory names and // comments, never
+      # docstrings, so a coverage threshold can only ever report 0%.
+      mode: "off"
 chat:
   auto_reply: true
