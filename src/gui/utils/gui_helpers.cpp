@@ -44,6 +44,8 @@
 #include "common/utils/string_utils.h"
 #include "common/utils/url_utils.h"
 
+#include "cli/utils/dbus_client.h"
+
 #include "gui/utils/config_manager.h"
 
 namespace vinput::gui {
@@ -564,6 +566,18 @@ void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
   }
 
   ApplyProviderSelectionState(comboProvider, comboModel, spinContextLines, providers);
+}
+
+bool ReloadAsrBackend(std::string* error) {
+  vinput::cli::DbusClient dbus;
+  std::string daemon_error;
+  if (!dbus.IsDaemonRunning(&daemon_error)) {
+    if (error != nullptr) {
+      *error = daemon_error;
+    }
+    return daemon_error.empty();
+  }
+  return dbus.ReloadAsrBackend(error);
 }
 
 } // namespace vinput::gui
