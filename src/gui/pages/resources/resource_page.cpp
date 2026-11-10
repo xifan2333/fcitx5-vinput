@@ -133,9 +133,14 @@ void SetupTable(QTableWidget* table, const QStringList& headers) {
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
   table->setSelectionMode(QAbstractItemView::SingleSelection);
   table->verticalHeader()->setVisible(false);
-  table->horizontalHeader()->setStretchLastSection(true);
+  table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+  table->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+  table->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  table->horizontalHeader()->setStretchLastSection(false);
   table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-  table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  if (headers.size() > 1) {
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  }
 }
 
 QLineEdit* CreateFilterEdit(const QString& placeholder, QWidget* parent) {
