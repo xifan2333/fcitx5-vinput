@@ -8,6 +8,7 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -133,7 +134,7 @@ std::string ResolveBackendNotReadyError(std::string_view last_error, bool reload
     return std::string(last_error);
   }
   if (reload_in_progress) {
-    return std::string(_("ASR backend is still loading. Please try again in a moment."));
+    return {_("ASR backend is still loading. Please try again in a moment.")};
   }
   return "ASR backend is not ready.";
 }
@@ -469,7 +470,7 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
   bool have_descriptor = false;
   {
     const std::scoped_lock lock(state_mutex_);
-    if (!effective_backend_.has_value()) {
+    if (!effective_backend_.has_value() || !effective_backend_->backend) {
       if (error != nullptr) {
         *error = ResolveBackendNotReadyError(last_reload_error_, reload_in_progress_);
       }

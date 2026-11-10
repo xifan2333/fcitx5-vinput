@@ -87,7 +87,7 @@ bool TryHandlePreDownloadCancellation(const Options& options, const std::string&
 
 template <typename RequestFn>
 bool ExecuteDownloadLoop(const std::vector<std::string>& urls, const Options& options,
-                         Result* out_result, RequestFn&& request_fn) {
+                         Result* out_result, const RequestFn& request_fn) {
   Result last_result;
   for (const auto& url : urls) {
     if (TryHandlePreDownloadCancellation(options, url, &last_result)) {
