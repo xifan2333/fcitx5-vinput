@@ -98,9 +98,15 @@ prepare_apt_archives() {
 
 # actions/cache runs as the runner user, so hand the directory back before the
 # post-step packs it; partial/ is ephemeral and would only bloat the cache.
+# Cache hygiene must never decide the build outcome: keep the install status and
+# only warn, or a failing chown would mask a real apt failure.
 finalize_apt_archives() {
-  "${sudo_cmd[@]}" rm -rf "${vinput_apt_archives}/partial"
-  "${sudo_cmd[@]}" chown -R "$(id -u):$(id -g)" "${vinput_apt_archives}"
+  local status=$?
+  "${sudo_cmd[@]}" rm -rf "${vinput_apt_archives}/partial" ||
+    echo "warning: could not drop ${vinput_apt_archives}/partial" >&2
+  "${sudo_cmd[@]}" chown -R "$(id -u):$(id -g)" "${vinput_apt_archives}" ||
+    echo "warning: could not hand ${vinput_apt_archives} back to the runner user" >&2
+  return "${status}"
 }
 
 # APT never abandons a mirror that trickles bytes, so drop the first (highest
