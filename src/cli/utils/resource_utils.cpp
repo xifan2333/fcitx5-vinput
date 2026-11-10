@@ -286,7 +286,7 @@ void RenderRegistryScriptListJson(const std::vector<vinput::script::RegistryEntr
     glz::json_t::array_t envs;
     envs.reserve(entry.envs.size());
     for (const auto& env : entry.envs) {
-      envs.push_back(glz::json_t{{"name", env.name}, {"required", env.required}});
+      envs.emplace_back(glz::json_t::object_t{{"name", env.name}, {"required", env.required}});
     }
     const bool installed = is_installed(entry.id);
     const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
