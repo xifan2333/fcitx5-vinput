@@ -24,14 +24,16 @@ To avoid process overhead on non-functional changes while strictly guarding runt
 
 ---
 
-## 2. Dual-Planning Model
+## 2. Planning & Research Model
 
 To avoid confusing functional planning with toolchain validation:
 
-1. **Phase A: Task Planning (Pre-development - BEFORE CODING)**:
-   - Defining *what* to build: Issue analysis, module boundaries, and opening the Draft PR with an unchecked `- [ ]` checklist.
-2. **Phase B: Quality Gate Pre-check (Post-edit - AFTER EDIT)**:
-   - Previewing *which* linter steps will execute on edited files via `mise run check:plan`.
+1. **Phase 0: Upfront Capability & Prior-Art Grounding (Pre-design Research - BEFORE BRANCHING)**:
+   - Discovering *how others solve it*: Inspect available search and retrieval tools (`deep_search_exa`, `google_search`, `context7`, `gh search`), benchmark mature open-source projects, analyze production post-mortems and official API docs, and report findings to the maintainer before opening Draft PRs.
+2. **Phase A: Task Planning & Micro-Slicing (Pre-development - BEFORE CODING)**:
+   - Defining *what* to build: Issue analysis, module boundaries, and opening the Draft PR with an unchecked `- [ ]` checklist (< 300 lines diff target).
+3. **Phase B: Quality Gate & Opportunistic Clean-Up (Post-edit - AFTER EDIT)**:
+   - Previewing steps via `mise run check:plan`, verifying with `mise run check:changed`, and opportunistically flattening deep `if-else` branching into guard clauses on touched files.
 
 ---
 
@@ -39,6 +41,13 @@ To avoid confusing functional planning with toolchain validation:
 
 ```
 +------------------------------------------------------------------------+
+| 0. Phase 0: Upfront Grounding & Research (MANDATORY BEFORE BRANCHING)  |
+|    Inspect available search tools (Exa, Google, Context7, gh)          |
+|    gh search / Exa / Context7 prior-art & incident retrieval           |
+|    Report evaluation & proposed design to maintainer in chat           |
++-----------------------------------+------------------------------------+
+                                    |
++-----------------------------------v------------------------------------+
 | 1. Pre-Code Initialization (MANDATORY BEFORE ANY CODE IS WRITTEN)       |
 |    gh issue view <id>                                                  |
 |    git checkout -b <type>/issue-<id>-<name>                            |
@@ -87,6 +96,20 @@ To avoid confusing functional planning with toolchain validation:
 
 ## 4. Detailed Execution Steps
 
+### Phase 0: Upfront Capability & Prior-Art Grounding (BEFORE BRANCHING)
+Before creating a branch or opening a Draft PR for any non-trivial issue, refactoring, or dependency proposal, the agent must perform upfront research:
+
+1. **Capability Discovery**:
+   Inspect available search tools in the current environment (`deep_search_exa`, `web_search_exa`, `google_search`, Context7 `/websites/...`, `gh` CLI).
+2. **Three-Dimensional Grounding**:
+   - **Code (`gh search`)**: Search how mature, high-trust open-source projects (Chromium, systemd, Fcitx5 addons, runner-images) solve similar challenges in production.
+   - **Ecosystem & Incidents (Exa / Google)**: Search for production post-mortems, RFCs, and vetted Tier 2 Header-Only libraries (e.g., investigating GitHub runner apt mirror failover mechanisms).
+   - **Official Docs (Context7)**: Retrieve primary upstream API specs and boundary guarantees.
+3. **SSOT & Two-Tier Dependency Check**:
+   Verify whether `src/common/` already provides canonical utilities, and ensure any third-party library strictly conforms to the Two-Tier and Pristine 3rdparty rules.
+4. **Pre-Action Report to Maintainer**:
+   Summarize open-source prior-art benchmarks, comparative trade-offs, and proposed implementation architecture in chat. Obtain confirmation before initializing the Draft PR.
+
 ### Phase 1: Pre-Code Initialization
 ```bash
 # 1. Inspect issue
@@ -115,6 +138,7 @@ If the issue incompatibly changes `config.json` or `vinput.conf` keys, the check
 ### Phase 2: Single-Item Execution Loop
 For each unchecked `- [ ]` task in order:
 1. **Code ONLY Task N**: Pick ONLY the topmost unchecked `- [ ]` item.
+   - *Opportunistic Boy-Scout Clean-Up*: While editing touched files, flatten deep `if-else` branching ($\ge 4$ levels) into guard clauses (early returns) and eliminate avoidable nested loops to resolve `ast-grep` (`check:ast`) advisory warnings without expanding scope to untouched files.
 2. **Quality Gate (CI-First)**:
    ```bash
    mise run check:plan

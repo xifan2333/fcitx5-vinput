@@ -45,6 +45,8 @@ gh run list --branch $(git branch --show-current) --status in_progress --json da
 - **Dialectical Review Bot Triage & Pre-Action Reporting**: Never blindly follow CodeRabbit/Greptile suggestions. Critically evaluate findings against C++20 and project architecture. Before writing fix code, the agent MUST explicitly report its analysis (true issues vs. false positives and next actions) to the user in chat.
 - **Non-Blocking Handover (No CI Polling)**: Never busy-wait on remote CI (`gh run watch` or sleep polling). After `gh pr ready`, output PR/run URLs and yield control. Further review triage or merge actions are event-driven upon user prompt.
 - **Issue Lifecycle Complete Closure**: After squash-merging, switch to `main`, pull latest, and verify originating issue is `CLOSED` (close manually via `gh issue close` if not automatically closed). Never leave completed issues orphaned.
+- **Upstream-First & Prior-Art Grounding (Phase 0)**: Before designing non-trivial features or refactoring, execute Phase 0 research: inspect available search tools (Exa, Google, Context7, `gh search`), benchmark mature open-source implementations, investigate incident post-mortems and official docs, and report findings to the maintainer before coding.
+- **Touched-File Opportunistic Clean-Up**: When modifying files in a PR, opportunistically flatten deep `if-else` branching ($\ge 4$ levels) into guard clauses and eliminate avoidable nested loops in touched files to resolve `ast-grep` advisory warnings.
 - **Upstream-First API Policy (Context7)**:
   - `src/addon/`: Fcitx5 (`fcitx/fcitx5`)
   - `src/daemon/asr/`: sherpa-onnx (`k2-fsa/sherpa-onnx`)
