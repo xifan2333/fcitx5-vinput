@@ -68,8 +68,6 @@
 #include "common/registry/registry_scripts.h"
 #include "common/utils/file_utils.h"
 
-#include "cli/runtime/dbus_client.h"
-
 #include "gui/utils/config_manager.h"
 #include "gui/utils/download_worker.h"
 #include "gui/utils/i18n_cache.h"
@@ -194,30 +192,18 @@ QString ResolveLocalizedTitle(const vinput::registry::I18nMap& i18n_map, const s
   return title.isEmpty() ? QString::fromStdString(id) : title;
 }
 
-bool ReloadAsrBackend(std::string* error = nullptr) {
-  vinput::cli::DbusClient dbus;
-  std::string daemon_error;
-  if (!dbus.IsDaemonRunning(&daemon_error)) {
-    if (error != nullptr) {
-      *error = daemon_error;
-    }
-    return daemon_error.empty();
+const char* NotFoundErrorForKind(vinput::script::Kind kind) {
+  switch (kind) {
+  case vinput::script::Kind::kAsrProvider:
+    return "Provider not found in registry.";
+  case vinput::script::Kind::kLlmAdapter:
+    return "Adapter not found in registry.";
+  case vinput::script::Kind::kTrigger:
+    return "Trigger not found in registry.";
+  case vinput::script::Kind::kReceiver:
+    return "Receiver not found in registry.";
   }
-  return dbus.ReloadAsrBackend(error);
-}
-
-template <typename Callback> void RunReloadAsrBackendAsync(ResourcePage* page, Callback callback) {
-  const QPointer<ResourcePage> self(page);
-  QThreadPool::globalInstance()->start([self, callback = std::move(callback)]() mutable {
-    std::string err;
-    const bool ok = ReloadAsrBackend(&err);
-    QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
-      if (!self) {
-        return;
-      }
-      callback(ok, err);
-    });
-  });
+  return "Item not found in registry.";
 }
 
 struct SelectedResourceItem {
@@ -267,14 +253,8 @@ bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::stri
 
   auto it = std::ranges::find_if(entries, [&](const auto& e) { return e.id == id; });
   if (it == entries.end()) {
-    if (kind == vinput::script::Kind::kAsrProvider) {
-      *err = "Provider not found in registry.";
-    } else if (kind == vinput::script::Kind::kLlmAdapter) {
-      *err = "Adapter not found in registry.";
-    } else if (kind == vinput::script::Kind::kTrigger) {
-      *err = "Trigger not found in registry.";
-    } else {
-      *err = "Receiver not found in registry.";
+    if (err != nullptr) {
+      *err = NotFoundErrorForKind(kind);
     }
     return false;
   }

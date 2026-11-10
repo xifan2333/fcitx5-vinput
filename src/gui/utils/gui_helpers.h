@@ -5,6 +5,7 @@
 #include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
+#include <QtCore/qthreadpool.h>
 #include <QtWidgets/qcombobox.h>
 #include <QtWidgets/qmessagebox.h>
 #include <QtWidgets/qpushbutton.h>
@@ -70,6 +71,24 @@ bool SaveProviderModels(const std::string& provider_id, const QStringList& model
 // Check if a background worker cancellation token has been signalled.
 [[nodiscard]] inline bool IsWorkerCancelled(const std::atomic<bool>* cancel_token) noexcept {
   return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
+}
+
+bool ReloadAsrBackend(std::string* error = nullptr);
+
+template <typename Callback> void RunReloadAsrBackendAsync(QObject* context, Callback&& callback) {
+  const QPointer<QObject> self(context);
+  QThreadPool::globalInstance()->start(
+      [self, callback = std::forward<Callback>(callback)]() mutable {
+        std::string err;
+        const bool ok = ReloadAsrBackend(&err);
+        QMetaObject::invokeMethod(
+            self, [self, callback = std::move(callback), ok, err = std::move(err)]() mutable {
+              if (!self) {
+                return;
+              }
+              callback(ok, err);
+            });
+      });
 }
 
 // Execute an asynchronous action while temporarily disabling buttons, re-enabling them upon
