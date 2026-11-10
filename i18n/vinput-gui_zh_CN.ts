@@ -1275,6 +1275,11 @@ Found %2 model(s).</source>
         <translation>警告</translation>
     </message>
     <message>
+        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1078"/>
+        <source>Config saved, but failed to reload ASR backend: %1</source>
+        <translation>配置已保存，但重新加载 ASR 后端失败：%1</translation>
+    </message>
+    <message>
         <location filename="../src/gui/pages/resources/resource_page.cpp" line="722"/>
         <source>Selected model &apos;%1&apos; saved as the preferred local ASR model. Backend reload is in progress.</source>
         <translation>已将所选模型&quot;%1&quot;保存为首选本地 ASR 模型。后端正在重新加载。</translation>
