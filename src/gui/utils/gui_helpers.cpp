@@ -27,6 +27,7 @@
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qmessagebox.h>
 #include <QtWidgets/qspinbox.h>
 #include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qtextedit.h>
