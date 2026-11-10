@@ -45,6 +45,7 @@
 #include <QtWidgets/qtextedit.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
@@ -67,8 +68,6 @@
 #include "common/registry/registry_models.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/file_utils.h"
-
-#include "cli/runtime/dbus_client.h"
 
 #include "gui/utils/config_manager.h"
 #include "gui/utils/download_worker.h"
@@ -235,9 +234,12 @@ const char* NotFoundErrorForKind(vinput::script::Kind kind) {
       {vinput::script::Kind::kTrigger, "Trigger not found in registry."},
       {vinput::script::Kind::kReceiver, "Receiver not found in registry."},
   }};
-  const auto it = std::ranges::find_if(kNotFoundErrors,
-                                       [kind](const auto& pair) { return pair.first == kind; });
-  return it != kNotFoundErrors.end() ? it->second : "Item not found in registry.";
+  for (const auto& [k, msg] : kNotFoundErrors) {
+    if (k == kind) {
+      return msg;
+    }
+  }
+  return "Item not found in registry.";
 }
 
 template <typename MaterializeFn>
