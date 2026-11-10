@@ -77,6 +77,10 @@ run = "hk fix"
 description = "Validate gettext and Qt translation files"
 run = "python3 scripts/check-i18n.py"
 
+[tasks."check:migration"]
+description = "Verify config schema changes are accompanied by ConfigMigration steps"
+run = "python3 scripts/check-config-migration.py"
+
 [tasks.configure]
 description = "Configure CMake build directory (Release by default, or: mise run configure Debug /usr)"
 run = """

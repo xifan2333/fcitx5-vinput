@@ -25,6 +25,11 @@ local linters = new Mapping<String, Step> {
     check = "python3 scripts/check-i18n.py"
   }
 
+  ["check-config-migration"] {
+    glob = List("data/config.json", "src/common/config/config.h", "src/common/config/config_migration.cpp", "scripts/check-config-migration.py")
+    check = "python3 scripts/check-config-migration.py"
+  }
+
   ["check-ast"] {
     glob = List("src/**/*.cpp", "src/**/*.h")
     check = "ast-grep scan"
