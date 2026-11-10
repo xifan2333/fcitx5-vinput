@@ -12,11 +12,54 @@ if [[ ${EUID} -ne 0 ]]; then
   sudo_cmd=(sudo)
 fi
 
+# archive.ubuntu.com measured 5.8-7.7 MB/s on GitHub-hosted runners; the Azure
+# and kernel.org mirrors are fallbacks for when it fluctuates.
+readonly UBUNTU_MIRRORS=(
+  "http://archive.ubuntu.com/ubuntu"
+  "http://azure.archive.ubuntu.com/ubuntu"
+  "http://mirrors.edge.kernel.org/ubuntu"
+)
+
+readonly qt6_apt_packages=(
+  qt6-base-dev
+  qt6-tools-dev
+  qt6-tools-dev-tools
+)
+
+readonly ubuntu_apt_packages=(
+  bzip2
+  clang
+  cmake
+  file
+  git
+  jq
+  make
+  mold
+  ninja-build
+  pkg-config
+  sccache
+  gettext
+  curl
+  patch
+  python3
+  zstd
+  libblas-dev
+  liblapack-dev
+  libopenblas-dev
+  libssl-dev
+  libarchive-dev
+  libpipewire-0.3-dev
+  libsystemd-dev
+  libfcitx5core-dev
+  libfcitx5config-dev
+  libfcitx5utils-dev
+  fcitx5-modules-dev
+  "${qt6_apt_packages[@]}"
+)
+
 install_qt_apt() {
   "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    qt6-base-dev \
-    qt6-tools-dev \
-    qt6-tools-dev-tools
+    "${qt6_apt_packages[@]}"
 }
 
 install_qt_dnf() {
@@ -38,91 +81,54 @@ install_qt_zypper() {
 }
 
 configure_ubuntu_mirror() {
-  local candidates=()
+  local mirror=$1
+  local file
 
-  # 1. 本地优先：读取 Worker/Runner 磁盘预置镜像列表 (0 网络开销)
+  # Ubuntu 24.04 routes every pocket through /etc/apt/apt-mirrors.txt
+  # (URIs: mirror+file:), so the list itself is the switch, not sources.list.
   if [[ -f /etc/apt/apt-mirrors.txt ]]; then
-    while IFS= read -r line; do
-      local url
-      url=$(echo "${line}" | awk '{print $1}')
-      [[ "${url}" =~ ^https?:// ]] && candidates+=("${url%/}")
-    done </etc/apt/apt-mirrors.txt
+    printf '%s\n' "${mirror}" | "${sudo_cmd[@]}" tee /etc/apt/apt-mirrors.txt >/dev/null
   fi
 
-  # 2. 内置高可用静态候选池（全本地定义，无任何网络依赖）
-  local built_in_mirrors=(
-    "http://azure.archive.ubuntu.com/ubuntu"
-    "http://mirrors.edge.kernel.org/ubuntu"
-    "http://archive.ubuntu.com/ubuntu"
+  # Only rewrite stanzas that already point at an Ubuntu archive, so the
+  # runner's packages.microsoft.com repo keeps working.
+  for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+    [[ -f ${file} ]] || continue
+    "${sudo_cmd[@]}" sed -i -E \
+      -e "s|^(URIs:)[[:space:]]*https?://(azure[.]archive[.]ubuntu[.]com\|archive[.]ubuntu[.]com\|security[.]ubuntu[.]com\|mirrors[.]edge[.]kernel[.]org\|ports[.]ubuntu[.]com)/ubuntu.*|\1 ${mirror}/|" \
+      -e "s|^(deb[[:space:]]+)https?://(azure[.]archive[.]ubuntu[.]com\|archive[.]ubuntu[.]com\|security[.]ubuntu[.]com\|mirrors[.]edge[.]kernel[.]org\|ports[.]ubuntu[.]com)/ubuntu|\1${mirror}|" \
+      "${file}"
+  done
+}
+
+install_ubuntu_deps() {
+  local mirror
+  local -a acquire=(
+    -o Acquire::Retries=2
+    -o Acquire::http::Timeout=20
+    -o Acquire::https::Timeout=20
   )
-  for m in "${built_in_mirrors[@]}"; do
-    candidates+=("${m}")
-  done
 
-  # 3. 本地去重后，使用严格短超时探测（连接 1 秒，总限时 2 秒）
-  local tested=()
-  local best_mirror=""
-  for m in "${candidates[@]}"; do
-    [[ " ${tested[*]:-} " =~ " ${m} " ]] && continue
-    tested+=("${m}")
-
-    if curl -s -f --connect-timeout 1 --max-time 2 -I "${m}/dists/noble/InRelease" >/dev/null 2>&1; then
-      best_mirror="${m}"
-      break
+  for mirror in "${UBUNTU_MIRRORS[@]}"; do
+    echo "Ubuntu mirror: ${mirror}" >&2
+    configure_ubuntu_mirror "${mirror}"
+    # Hard wall-clock caps turn a throttled mirror into a fast retry instead of
+    # a 15-minute job timeout; the ladder only advances on real failure.
+    if timeout 180 "${sudo_cmd[@]}" apt-get update "${acquire[@]}" &&
+      timeout 360 "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
+        apt-get install -y "${acquire[@]}" "${ubuntu_apt_packages[@]}"; then
+      return 0
     fi
+    echo "Ubuntu mirror ${mirror} failed or timed out, falling back" >&2
   done
 
-  if [[ -z "${best_mirror}" ]]; then
-    best_mirror="http://azure.archive.ubuntu.com/ubuntu"
-  fi
-
-  echo "Selected Ubuntu mirror: ${best_mirror}" >&2
-
-  # 4. 替换当前 sources 配置为选定的健康镜像
-  "${sudo_cmd[@]}" sed -i -E "s|https?://[^/]+/ubuntu/?|${best_mirror}/|g" \
-    /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
-
-  # 5. 注入短路快速失败配置，杜绝无意义等待
-  "${sudo_cmd[@]}" tee /etc/apt/apt.conf.d/99-ci-fail-fast >/dev/null <<'EOF'
-Acquire::Retries "1";
-Acquire::http::Timeout "15";
-Acquire::https::Timeout "15";
-EOF
+  echo "all Ubuntu mirrors failed" >&2
+  return 1
 }
 
 case "${target}" in
 ubuntu24.04)
-  configure_ubuntu_mirror
-  "${sudo_cmd[@]}" apt-get update
-  "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    bzip2 \
-    clang \
-    cmake \
-    file \
-    git \
-    jq \
-    make \
-    mold \
-    ninja-build \
-    pkg-config \
-    sccache \
-    gettext \
-    curl \
-    patch \
-    python3 \
-    zstd \
-    libblas-dev \
-    liblapack-dev \
-    libopenblas-dev \
-    libssl-dev \
-    libarchive-dev \
-    libpipewire-0.3-dev \
-    libsystemd-dev \
-    libfcitx5core-dev \
-    libfcitx5config-dev \
-    libfcitx5utils-dev \
-    fcitx5-modules-dev
-  install_qt_apt
+  install_ubuntu_deps
   ;;
 debian12)
   apt-get update
