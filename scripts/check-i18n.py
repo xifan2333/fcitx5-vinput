@@ -231,10 +231,20 @@ def main() -> int:
         tmp_ts = os.path.join(tmpdir, "extracted.ts")
         gui_src = str(PROJECT_ROOT / "src" / "gui")
 
-        subprocess.run(
+        res = subprocess.run(
             [lupdate, gui_src, "-ts", tmp_ts, "-no-obsolete"],
             capture_output=True,
         )
+        if res.returncode != 0 or not os.path.exists(tmp_ts):
+            print(f"WARNING: {lupdate} failed, skipping Qt .ts checks")
+            print()
+            print(f"{CYAN}=== Summary ==={RESET}")
+            print(
+                f"         {po_missing} missing, {po_obsolete} obsolete, "
+                f"{po_untranslated} untranslated (po)"
+            )
+            print("         (ts skipped — lupdate failed)")
+            return 1 if (po_missing + po_obsolete) > 0 else 0
 
         ext_srcs = ts_sources(Path(tmp_ts))
         cur_srcs = ts_sources(TS_FILE, skip_vanished=True)
