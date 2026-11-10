@@ -563,6 +563,82 @@
 
 %1</translation>
     </message>
+    <message>
+        <source>[Trigger]</source>
+        <translation>[触发器]</translation>
+    </message>
+    <message>
+        <source>[Receiver]</source>
+        <translation>[接收器]</translation>
+    </message>
+    <message>
+        <source>Enabled</source>
+        <translation>已启用</translation>
+    </message>
+    <message>
+        <source>Disabled</source>
+        <translation>已禁用</translation>
+    </message>
+    <message>
+        <source>Running</source>
+        <translation>运行中</translation>
+    </message>
+    <message>
+        <source>Running (%1)</source>
+        <translation>运行中 (%1)</translation>
+    </message>
+    <message>
+        <source>The provider '%1' was removed or modified by another process.</source>
+        <translation>提供商“%1”已被其他进程移除或修改。</translation>
+    </message>
+    <message>
+        <source>The provider '%1' was modified by another process.</source>
+        <translation>提供商“%1”已被其他进程修改。</translation>
+    </message>
+    <message>
+        <source>A provider with the ID '%1' already exists.</source>
+        <translation>ID 为“%1”的提供商已存在。</translation>
+    </message>
+    <message>
+        <source>Conflict</source>
+        <translation>冲突</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Client Processes&lt;/b&gt;</source>
+        <translation>&lt;b&gt;客户端进程&lt;/b&gt;</translation>
+    </message>
+    <message>
+        <source>ID</source>
+        <translation>ID</translation>
+    </message>
+    <message>
+        <source>Autostart</source>
+        <translation>自动启动</translation>
+    </message>
+    <message>
+        <source>Automatically start this client when the daemon starts.</source>
+        <translation>守护进程启动时自动启动此客户端。</translation>
+    </message>
+    <message>
+        <source>Failed to start client: %1</source>
+        <translation>启动客户端失败：%1</translation>
+    </message>
+    <message>
+        <source>Failed to stop client: %1</source>
+        <translation>停止客户端失败：%1</translation>
+    </message>
+    <message>
+        <source>Failed to load configuration: %1</source>
+        <translation>加载配置失败：%1</translation>
+    </message>
+    <message>
+        <source>Provider not found.</source>
+        <translation>未找到提供商。</translation>
+    </message>
+    <message>
+        <source>Configuration is corrupted or unreadable: %1</source>
+        <translation>配置文件已损坏或不可读：%1</translation>
+    </message>
 </context>
 <context>
     <name>vinput::gui::HotwordPage</name>
@@ -1397,6 +1473,105 @@ Found %2 model(s).</source>
         <location filename="../src/gui/pages/resources/resource_page.cpp" line="535"/>
         <source>incompatible (requires vinput %1)</source>
         <translation>不兼容（需要 vinput %1）</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Available Triggers&lt;/b&gt;</source>
+        <translation>&lt;b&gt;可用触发器&lt;/b&gt;</translation>
+    </message>
+    <message>
+        <source>Filter triggers...</source>
+        <translation>过滤触发器...</translation>
+    </message>
+    <message>
+        <source>Triggers</source>
+        <translation>触发器</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Available Receivers&lt;/b&gt;</source>
+        <translation>&lt;b&gt;可用接收器&lt;/b&gt;</translation>
+    </message>
+    <message>
+        <source>Filter receivers...</source>
+        <translation>过滤接收器...</translation>
+    </message>
+    <message>
+        <source>Receivers</source>
+        <translation>接收器</translation>
+    </message>
+    <message>
+        <source>Triggers fetch error: %1</source>
+        <translation>获取触发器失败：%1</translation>
+    </message>
+    <message>
+        <source>Receivers fetch error: %1</source>
+        <translation>获取接收器失败：%1</translation>
+    </message>
+    <message>
+        <source>Installing trigger %1...</source>
+        <translation>正在安装触发器 %1...</translation>
+    </message>
+    <message>
+        <source>Updating trigger %1...</source>
+        <translation>正在更新触发器 %1...</translation>
+    </message>
+    <message>
+        <source>Installing receiver %1...</source>
+        <translation>正在安装接收器 %1...</translation>
+    </message>
+    <message>
+        <source>Updating receiver %1...</source>
+        <translation>正在更新接收器 %1...</translation>
+    </message>
+    <message>
+        <source>Configure Trigger</source>
+        <translation>配置触发器</translation>
+    </message>
+    <message>
+        <source>Trigger '%1' updated.</source>
+        <translation>触发器“%1”已更新。</translation>
+    </message>
+    <message>
+        <source>Configure Receiver</source>
+        <translation>配置接收器</translation>
+    </message>
+    <message>
+        <source>Receiver '%1' updated.</source>
+        <translation>接收器“%1”已更新。</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove trigger '%1'?</source>
+        <translation>确定要移除触发器“%1”吗？</translation>
+    </message>
+    <message>
+        <source>Removed trigger %1.</source>
+        <translation>已移除触发器 %1。</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove receiver '%1'?</source>
+        <translation>确定要移除接收器“%1”吗？</translation>
+    </message>
+    <message>
+        <source>Removed receiver %1.</source>
+        <translation>已移除接收器 %1。</translation>
+    </message>
+</context>
+<context>
+    <name>ClientDialog</name>
+    <message>
+        <source>Client ID:</source>
+        <translation>客户端 ID：</translation>
+    </message>
+    <message>
+        <source>Auto-start with daemon</source>
+        <translation>随守护进程自动启动</translation>
+    </message>
+    <message>
+        <source>Command must not be empty.</source>
+        <translation>命令不能为空。</translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation>错误</translation>
     </message>
 </context>
 </TS>
