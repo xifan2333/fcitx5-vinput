@@ -194,32 +194,6 @@ QString ResolveLocalizedTitle(const vinput::registry::I18nMap& i18n_map, const s
   return title.isEmpty() ? QString::fromStdString(id) : title;
 }
 
-bool ReloadAsrBackend(std::string* error = nullptr) {
-  vinput::cli::DbusClient dbus;
-  std::string daemon_error;
-  if (!dbus.IsDaemonRunning(&daemon_error)) {
-    if (error != nullptr) {
-      *error = daemon_error;
-    }
-    return daemon_error.empty();
-  }
-  return dbus.ReloadAsrBackend(error);
-}
-
-template <typename Callback> void RunReloadAsrBackendAsync(ResourcePage* page, Callback callback) {
-  const QPointer<ResourcePage> self(page);
-  QThreadPool::globalInstance()->start([self, callback = std::move(callback)]() mutable {
-    std::string err;
-    const bool ok = ReloadAsrBackend(&err);
-    QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
-      if (!self) {
-        return;
-      }
-      callback(ok, err);
-    });
-  });
-}
-
 struct SelectedResourceItem {
   QString id;
   QString title;

@@ -74,18 +74,6 @@ namespace vinput::gui {
 
 namespace {
 
-bool ReloadAsrBackend(std::string* error = nullptr) {
-  vinput::cli::DbusClient dbus;
-  std::string daemon_error;
-  if (!dbus.IsDaemonRunning(&daemon_error)) {
-    if (error != nullptr) {
-      *error = daemon_error;
-    }
-    return daemon_error.empty();
-  }
-  return dbus.ReloadAsrBackend(error);
-}
-
 bool GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::string* error = nullptr) {
   vinput::cli::DbusClient dbus;
   std::string daemon_error;
@@ -96,20 +84,6 @@ bool GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::string* error
     return false;
   }
   return dbus.GetAsrBackendState(state, error);
-}
-
-template <typename Callback> void RunReloadAsrBackendAsync(ControlPage* page, Callback callback) {
-  const QPointer<ControlPage> self(page);
-  QThreadPool::globalInstance()->start([self, callback = std::move(callback)]() mutable {
-    std::string err;
-    const bool ok = ReloadAsrBackend(&err);
-    QMetaObject::invokeMethod(self, [self, callback = std::move(callback), ok, err]() mutable {
-      if (!self) {
-        return;
-      }
-      callback(ok, err);
-    });
-  });
 }
 
 template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, Callback callback) {
