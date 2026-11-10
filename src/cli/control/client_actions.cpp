@@ -237,7 +237,10 @@ int RunClientList(ClientKind kind, Formatter& fmt, const CliContext& ctx) {
   return 0;
 }
 
-int RunClientStart(ClientKind kind, const std::string& id, Formatter& fmt, const CliContext& ctx) {
+template <typename ActionFn>
+int RunClientLifecycleAction(ClientKind kind, const std::string& id, std::string_view action_name,
+                             const std::string& success_msg, ActionFn&& action, Formatter& fmt,
+                             const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   if (!HasClientWithId(config, kind, id)) {
     const std::string err =
@@ -252,7 +255,7 @@ int RunClientStart(ClientKind kind, const std::string& id, Formatter& fmt, const
 
   vinput::cli::DbusClient dbus;
   std::string error;
-  if (!dbus.StartClient(id, &error)) {
+  if (!action(dbus, id, &error)) {
     if (ctx.json_output) {
       fmt.PrintJson({{"ok", false}, {"error", error}});
     } else {
@@ -262,43 +265,29 @@ int RunClientStart(ClientKind kind, const std::string& id, Formatter& fmt, const
   }
 
   if (ctx.json_output) {
-    fmt.PrintJson({{"ok", true}, {"id", id}, {"action", "start"}});
+    fmt.PrintJson({{"ok", true}, {"id", id}, {"action", std::string(action_name)}});
   } else {
-    fmt.PrintSuccess(::fmt::sprintf(_("Client '%s' started."), id));
+    fmt.PrintSuccess(success_msg);
   }
   return 0;
 }
 
+int RunClientStart(ClientKind kind, const std::string& id, Formatter& fmt, const CliContext& ctx) {
+  return RunClientLifecycleAction(
+      kind, id, "start", ::fmt::sprintf(_("Client '%s' started."), id),
+      [](vinput::cli::DbusClient& dbus, const std::string& client_id, std::string* error) {
+        return dbus.StartClient(client_id, error);
+      },
+      fmt, ctx);
+}
+
 int RunClientStop(ClientKind kind, const std::string& id, Formatter& fmt, const CliContext& ctx) {
-  const CoreConfig config = LoadCoreConfig();
-  if (!HasClientWithId(config, kind, id)) {
-    const std::string err =
-        ::fmt::sprintf(_("'%s' is not configured as a %s."), id, KindLabel(kind));
-    if (ctx.json_output) {
-      fmt.PrintJson({{"ok", false}, {"error", err}});
-    } else {
-      fmt.PrintError(err);
-    }
-    return 1;
-  }
-
-  vinput::cli::DbusClient dbus;
-  std::string error;
-  if (!dbus.StopClient(id, &error)) {
-    if (ctx.json_output) {
-      fmt.PrintJson({{"ok", false}, {"error", error}});
-    } else {
-      fmt.PrintError(error);
-    }
-    return 1;
-  }
-
-  if (ctx.json_output) {
-    fmt.PrintJson({{"ok", true}, {"id", id}, {"action", "stop"}});
-  } else {
-    fmt.PrintSuccess(::fmt::sprintf(_("Client '%s' stopped."), id));
-  }
-  return 0;
+  return RunClientLifecycleAction(
+      kind, id, "stop", ::fmt::sprintf(_("Client '%s' stopped."), id),
+      [](vinput::cli::DbusClient& dbus, const std::string& client_id, std::string* error) {
+        return dbus.StopClient(client_id, error);
+      },
+      fmt, ctx);
 }
 
 int RunListen(std::string_view type_filter, Formatter& /*fmt*/, const CliContext& ctx) {
