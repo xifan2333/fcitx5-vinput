@@ -74,6 +74,48 @@ bool IsCancelled(const Options& options, const vinput::net::HttpResponse& res) {
          (options.cancel_token != nullptr && options.cancel_token->load(std::memory_order_relaxed));
 }
 
+bool TryHandlePreDownloadCancellation(const Options& options, const std::string& url,
+                                      Result* result) {
+  if (options.cancel_token != nullptr && options.cancel_token->load(std::memory_order_relaxed)) {
+    result->ok = false;
+    result->resolved_url = url;
+    result->error = "download cancelled";
+    return true;
+  }
+  return false;
+}
+
+template <typename RequestFn>
+bool ExecuteDownloadLoop(const std::vector<std::string>& urls, const Options& options,
+                         Result* out_result, RequestFn&& request_fn) {
+  Result last_result;
+  for (const auto& url : urls) {
+    if (TryHandlePreDownloadCancellation(options, url, &last_result)) {
+      break;
+    }
+    if (url.empty()) {
+      continue;
+    }
+
+    const auto [success, cancelled] = request_fn(url, &last_result);
+    if (success) {
+      if (out_result != nullptr) {
+        *out_result = std::move(last_result);
+      }
+      return true;
+    }
+
+    if (cancelled) {
+      break;
+    }
+  }
+
+  if (out_result != nullptr) {
+    *out_result = std::move(last_result);
+  }
+  return false;
+}
+
 } // namespace
 
 bool DownloadText(const std::vector<std::string>& urls, const Options& options,
@@ -82,90 +124,51 @@ bool DownloadText(const std::vector<std::string>& urls, const Options& options,
     content->clear();
   }
 
-  Result last_result;
-  for (const auto& url : urls) {
-    if (options.cancel_token != nullptr && options.cancel_token->load(std::memory_order_relaxed)) {
-      last_result.ok = false;
-      last_result.resolved_url = url;
-      last_result.error = "download cancelled";
-      break;
-    }
-    if (url.empty()) {
-      continue;
-    }
+  return ExecuteDownloadLoop(
+      urls, options, result, [&](const std::string& url, Result* last_result) {
+        auto req = MakeRequest(url, options);
+        req.max_response_bytes =
+            options.max_bytes > 0 ? options.max_bytes : std::numeric_limits<size_t>::max();
 
-    auto req = MakeRequest(url, options);
-    req.max_response_bytes =
-        options.max_bytes > 0 ? options.max_bytes : std::numeric_limits<size_t>::max();
+        auto res = vinput::net::HttpClient::Instance().Request(req);
+        PopulateResult(url, res, last_result);
+        last_result->bytes_received = res.body.size();
 
-    auto res = vinput::net::HttpClient::Instance().Request(req);
-    PopulateResult(url, res, &last_result);
-    last_result.bytes_received = res.body.size();
+        if (last_result->ok) {
+          if (content != nullptr) {
+            *content = std::move(res.body);
+          }
+          return std::make_pair(true, false);
+        }
 
-    if (last_result.ok) {
-      if (content != nullptr) {
-        *content = std::move(res.body);
-      }
-      if (result != nullptr) {
-        *result = std::move(last_result);
-      }
-      return true;
-    }
-
-    if (IsCancelled(options, res)) {
-      break;
-    }
-  }
-
-  if (result != nullptr) {
-    *result = std::move(last_result);
-  }
-  return false;
+        return std::make_pair(false, IsCancelled(options, res));
+      });
 }
 
 bool DownloadFile(const std::vector<std::string>& urls, const std::filesystem::path& dest,
                   const Options& options, Result* result) {
-  Result last_result;
-  for (const auto& url : urls) {
-    if (options.cancel_token != nullptr && options.cancel_token->load(std::memory_order_relaxed)) {
-      last_result.ok = false;
-      last_result.resolved_url = url;
-      last_result.error = "download cancelled";
-      break;
-    }
-    if (url.empty()) {
-      continue;
-    }
+  const bool ok =
+      ExecuteDownloadLoop(urls, options, result, [&](const std::string& url, Result* last_result) {
+        const auto req = MakeRequest(url, options);
+        auto res = vinput::net::HttpClient::Instance().DownloadToFile(req, dest);
+        PopulateResult(url, res, last_result);
 
-    const auto req = MakeRequest(url, options);
-    auto res = vinput::net::HttpClient::Instance().DownloadToFile(req, dest);
-    PopulateResult(url, res, &last_result);
+        if (last_result->ok) {
+          std::error_code ec;
+          const auto sz = std::filesystem::file_size(dest, ec);
+          last_result->bytes_received = ec ? 0 : sz;
+          return std::make_pair(true, false);
+        }
 
-    if (last_result.ok) {
-      std::error_code ec;
-      const auto sz = std::filesystem::file_size(dest, ec);
-      last_result.bytes_received = ec ? 0 : sz;
-      if (result != nullptr) {
-        *result = std::move(last_result);
-      }
-      return true;
-    }
+        last_result->bytes_received = 0;
+        return std::make_pair(false, IsCancelled(options, res));
+      });
 
-    last_result.bytes_received = 0;
-    if (IsCancelled(options, res)) {
-      break;
-    }
-  }
-
-  const bool success = last_result.ok;
-  if (result != nullptr) {
-    *result = std::move(last_result);
-  }
-  if (!success) {
+  if (!ok) {
     std::error_code ec;
     std::filesystem::remove(dest, ec);
   }
-  return false;
+  return ok;
 }
 
 } // namespace vinput::download
