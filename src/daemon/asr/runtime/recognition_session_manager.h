@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -81,6 +82,7 @@ private:
                                          std::string* error);
   void EnsureReloadWorkerStarted();
   void ReloadWorkerMain();
+  void ApplyPreparedBackendLocked(PreparedBackend prepared, bool sync_targets);
   void ResetEffectiveBackendLocked();
   void ApplyDisabledStateLocked();
   void NotifyReloadResult(bool success, const std::string& message);
@@ -94,12 +96,7 @@ private:
   std::string target_provider_id_;
   std::string target_model_id_;
   std::string target_backend_signature_;
-  std::shared_ptr<AsrBackend> effective_backend_;
-  BackendDescriptor effective_descriptor_;
-  bool has_effective_descriptor_ = false;
-  std::string effective_provider_id_;
-  std::string effective_model_id_;
-  std::string effective_backend_signature_;
+  std::optional<PreparedBackend> effective_backend_;
   std::string last_reload_error_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   std::thread reload_worker_;

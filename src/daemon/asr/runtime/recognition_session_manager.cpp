@@ -128,6 +128,16 @@ std::string BuildRuntimeSignature(const CoreConfig& config) {
   return vinput::json::ToText(j);
 }
 
+std::string ResolveBackendNotReadyError(std::string_view last_error, bool reload_in_progress) {
+  if (!last_error.empty()) {
+    return std::string(last_error);
+  }
+  if (reload_in_progress) {
+    return std::string(_("ASR backend is still loading. Please try again in a moment."));
+  }
+  return "ASR backend is not ready.";
+}
+
 void LogActiveBackend(const CoreConfig& config) {
   BackendDescriptor descriptor;
   std::string error;
@@ -208,7 +218,8 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
   const CoreConfigView view(settings);
   {
     const std::scoped_lock lock(state_mutex_);
-    if (effective_backend_ && effective_backend_signature_ == signature && !reload_in_progress_) {
+    if (effective_backend_.has_value() && effective_backend_->backend &&
+        effective_backend_->signature == signature && !reload_in_progress_) {
       const AsrProvider* provider = view.ActiveAsrProvider();
       target_provider_id_ = provider != nullptr ? AsrProviderId(*provider) : std::string{};
       target_model_id_ = view.PreferredLocalModel();
@@ -305,13 +316,17 @@ RecognitionSessionManager::ReloadSnapshot RecognitionSessionManager::GetReloadSn
   return ReloadSnapshot{
       .target_provider_id = target_provider_id_,
       .target_model_id = target_model_id_,
-      .effective_provider_id = effective_provider_id_,
-      .effective_model_id = effective_model_id_,
+      .effective_provider_id =
+          effective_backend_.has_value() ? effective_backend_->provider_id : std::string{},
+      .effective_model_id =
+          effective_backend_.has_value() ? effective_backend_->model_id : std::string{},
       .target_signature = target_backend_signature_,
-      .effective_signature = effective_backend_signature_,
+      .effective_signature =
+          effective_backend_.has_value() ? effective_backend_->signature : std::string{},
       .last_error = last_reload_error_,
       .reload_in_progress = reload_in_progress_,
-      .has_effective_backend = effective_backend_ != nullptr,
+      .has_effective_backend =
+          effective_backend_.has_value() && effective_backend_->backend != nullptr,
   };
 }
 
@@ -398,6 +413,17 @@ bool RecognitionSessionManager::CreatePreparedBackend(
   return true;
 }
 
+void RecognitionSessionManager::ApplyPreparedBackendLocked(PreparedBackend prepared,
+                                                           bool sync_targets) {
+  if (sync_targets) {
+    target_provider_id_ = prepared.provider_id;
+    target_model_id_ = prepared.model_id;
+    target_backend_signature_ = prepared.signature;
+  }
+  effective_backend_ = std::move(prepared);
+  last_reload_error_.clear();
+}
+
 bool RecognitionSessionManager::ActivatePreparedBackend(PreparedBackend prepared,
                                                         std::string* error) {
   if (!prepared.backend) {
@@ -409,16 +435,7 @@ bool RecognitionSessionManager::ActivatePreparedBackend(PreparedBackend prepared
 
   {
     const std::scoped_lock lock(state_mutex_);
-    effective_backend_ = std::move(prepared.backend);
-    effective_descriptor_ = std::move(prepared.descriptor);
-    has_effective_descriptor_ = true;
-    effective_provider_id_ = std::move(prepared.provider_id);
-    effective_model_id_ = std::move(prepared.model_id);
-    effective_backend_signature_ = std::move(prepared.signature);
-    target_provider_id_ = effective_provider_id_;
-    target_model_id_ = effective_model_id_;
-    target_backend_signature_ = effective_backend_signature_;
-    last_reload_error_.clear();
+    ApplyPreparedBackendLocked(std::move(prepared), /*sync_targets=*/true);
   }
 
   if (error != nullptr) {
@@ -452,30 +469,18 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
   bool have_descriptor = false;
   {
     const std::scoped_lock lock(state_mutex_);
-    if (!effective_backend_) {
+    if (!effective_backend_.has_value()) {
       if (error != nullptr) {
-        if (!last_reload_error_.empty()) {
-          *error = last_reload_error_;
-        } else if (reload_in_progress_) {
-          *error = _("ASR backend is still loading. Please try again in a moment.");
-        } else {
-          *error = "ASR backend is not ready.";
-        }
+        *error = ResolveBackendNotReadyError(last_reload_error_, reload_in_progress_);
       }
       return false;
     }
 
-    if (descriptor != nullptr && has_effective_descriptor_) {
-      local_descriptor = effective_descriptor_;
+    if (descriptor != nullptr) {
+      local_descriptor = effective_backend_->descriptor;
       have_descriptor = true;
     }
-    backend = effective_backend_;
-    if (!backend) {
-      if (error != nullptr) {
-        *error = "ASR backend is not ready.";
-      }
-      return false;
-    }
+    backend = effective_backend_->backend;
   }
 
   if (descriptor != nullptr && have_descriptor) {
@@ -529,13 +534,7 @@ void RecognitionSessionManager::ReloadWorkerMain() {
     if (ok) {
       {
         const std::scoped_lock lock(state_mutex_);
-        effective_backend_ = std::move(prepared.backend);
-        effective_descriptor_ = std::move(prepared.descriptor);
-        has_effective_descriptor_ = true;
-        effective_provider_id_ = std::move(prepared.provider_id);
-        effective_model_id_ = std::move(prepared.model_id);
-        effective_backend_signature_ = std::move(prepared.signature);
-        last_reload_error_.clear();
+        ApplyPreparedBackendLocked(std::move(prepared), /*sync_targets=*/false);
         reload_in_progress_ = false;
       }
       VLOG_DEBUG("ASR backend reload applied asynchronously in {} ms", reload_elapsed_ms);
@@ -555,11 +554,6 @@ void RecognitionSessionManager::ReloadWorkerMain() {
 
 void RecognitionSessionManager::ResetEffectiveBackendLocked() {
   effective_backend_.reset();
-  has_effective_descriptor_ = false;
-  effective_descriptor_ = {};
-  effective_provider_id_.clear();
-  effective_model_id_.clear();
-  effective_backend_signature_.clear();
 }
 
 void RecognitionSessionManager::ApplyDisabledStateLocked() {
