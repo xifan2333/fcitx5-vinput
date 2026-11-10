@@ -228,6 +228,18 @@ void CleanupInstalledScript(vinput::script::Kind kind, const std::string& id) {
   vinput::script::UnregisterInstalledScript(id);
 }
 
+const char* NotFoundErrorForKind(vinput::script::Kind kind) {
+  static constexpr std::array<std::pair<vinput::script::Kind, const char*>, 4> kNotFoundErrors{{
+      {vinput::script::Kind::kAsrProvider, "Provider not found in registry."},
+      {vinput::script::Kind::kLlmAdapter, "Adapter not found in registry."},
+      {vinput::script::Kind::kTrigger, "Trigger not found in registry."},
+      {vinput::script::Kind::kReceiver, "Receiver not found in registry."},
+  }};
+  const auto it = std::ranges::find_if(kNotFoundErrors,
+                                       [kind](const auto& pair) { return pair.first == kind; });
+  return it != kNotFoundErrors.end() ? it->second : "Item not found in registry.";
+}
+
 template <typename MaterializeFn>
 bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::string& id,
                                       const std::vector<std::string>& registry_urls,
@@ -241,14 +253,8 @@ bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::stri
 
   auto it = std::ranges::find_if(entries, [&](const auto& e) { return e.id == id; });
   if (it == entries.end()) {
-    if (kind == vinput::script::Kind::kAsrProvider) {
-      *err = "Provider not found in registry.";
-    } else if (kind == vinput::script::Kind::kLlmAdapter) {
-      *err = "Adapter not found in registry.";
-    } else if (kind == vinput::script::Kind::kTrigger) {
-      *err = "Trigger not found in registry.";
-    } else {
-      *err = "Receiver not found in registry.";
+    if (err != nullptr) {
+      *err = NotFoundErrorForKind(kind);
     }
     return false;
   }
