@@ -1,7 +1,9 @@
 #pragma once
 
+#include <filesystem>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -66,5 +68,16 @@ void RenderRegistryScriptList(const std::vector<vinput::script::RegistryEntry>& 
                               const vinput::registry::InstalledManifest& manifest,
                               const std::function<bool(const std::string&)>& is_installed,
                               vinput::script::Kind kind, Formatter& fmt, const CliContext& ctx);
+
+std::optional<std::vector<vinput::script::RegistryEntry>>
+FetchScriptRegistryEntries(const CoreConfig& config, vinput::script::Kind kind, Formatter& fmt);
+
+const vinput::script::RegistryEntry*
+FindRegistryScriptEntry(const std::vector<vinput::script::RegistryEntry>& entries,
+                        vinput::script::Kind kind, const std::string& selector, Formatter& fmt);
+
+std::optional<std::filesystem::path>
+DownloadRegistryScript(const vinput::script::RegistryEntry& entry, vinput::script::Kind kind,
+                       Formatter& fmt);
 
 } // namespace vinput::cli
