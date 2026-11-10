@@ -400,25 +400,12 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
   }
 
   CoreConfig config = LoadCoreConfig();
-  const auto entries_opt =
-      vinput::cli::FetchScriptRegistryEntries(config, vinput::script::Kind::kAsrProvider, fmt);
-  if (!entries_opt) {
-    return 1;
-  }
-  const auto& entries = *entries_opt;
-
-  const auto locale = vinput::registry::DetectPreferredLocale();
-  const auto i18nMap = vinput::registry::FetchMergedI18nMap(config, locale);
-  const auto display_map = vinput::cli::BuildScriptDisplayMap(entries, i18nMap);
-  const auto manifest = vinput::registry::InstalledManifest::Load();
-
-  auto isInstalled = [&config](const std::string& id) {
-    return CoreConfigView(config).AsrProvider(id) != nullptr;
-  };
-
-  vinput::cli::RenderRegistryScriptList(entries, display_map, manifest, isInstalled,
-                                        vinput::script::Kind::kAsrProvider, fmt, ctx);
-  return 0;
+  return vinput::cli::RunRegistryScriptList(
+      config, vinput::script::Kind::kAsrProvider,
+      [&config](const std::string& id) {
+        return CoreConfigView(config).AsrProvider(id) != nullptr;
+      },
+      fmt, ctx);
 }
 
 int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt,
@@ -466,33 +453,12 @@ bool UpdateSingleAsrProvider(CoreConfig* config,
                              const vinput::registry::InstalledManifest& manifest,
                              const vinput::script::RegistryEntry& entry, bool force,
                              Formatter& fmt) {
-  const auto version_info = vinput::script::CheckResourceVersion(
-      manifest, vinput::script::Kind::kAsrProvider, entry, true);
-  if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
-    fmt.PrintInfo(::fmt::sprintf(_("Provider '%s' is already up to date."), entry.short_id));
-    return true;
-  }
-
-  std::filesystem::path script_path;
-  std::string error;
-  if (!vinput::script::DownloadScript(entry, vinput::script::Kind::kAsrProvider, &script_path,
-                                      &error)) {
-    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
-    return false;
-  }
-  if (!vinput::script::MaterializeAsrProvider(config, entry, script_path, &error)) {
-    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
-    return false;
-  }
-
-  if (version_info.installed_version.empty() || version_info.remote_version.empty()) {
-    fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated."), entry.short_id));
-    return true;
-  }
-
-  fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated: %s -> %s"), entry.short_id,
-                                  version_info.installed_version, version_info.remote_version));
-  return true;
+  return vinput::cli::UpdateRegistryScript(
+      manifest, entry, vinput::script::Kind::kAsrProvider, force,
+      [config, &entry](const std::filesystem::path& path, std::string* error) {
+        return vinput::script::MaterializeAsrProvider(config, entry, path, error);
+      },
+      fmt);
 }
 
 bool UpdateAllAsrProviders(CoreConfig* config, const vinput::registry::InstalledManifest& manifest,

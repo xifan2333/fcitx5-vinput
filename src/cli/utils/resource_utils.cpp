@@ -418,4 +418,61 @@ DownloadRegistryScript(const vinput::script::RegistryEntry& entry, vinput::scrip
   return script_path;
 }
 
+int RunRegistryScriptList(const CoreConfig& config, vinput::script::Kind kind,
+                          const std::function<bool(const std::string&)>& is_installed,
+                          Formatter& fmt, const CliContext& ctx) {
+  const auto entries_opt = FetchScriptRegistryEntries(config, kind, fmt);
+  if (!entries_opt) {
+    return 1;
+  }
+  const auto& entries = *entries_opt;
+
+  const auto locale = vinput::registry::DetectPreferredLocale();
+  const auto i18nMap = vinput::registry::FetchMergedI18nMap(config, locale);
+  const auto display_map = BuildScriptDisplayMap(entries, i18nMap);
+  const auto manifest = vinput::registry::InstalledManifest::Load();
+
+  RenderRegistryScriptList(entries, display_map, manifest, is_installed, kind, fmt, ctx);
+  return 0;
+}
+
+bool UpdateRegistryScript(
+    const vinput::registry::InstalledManifest& manifest, const vinput::script::RegistryEntry& entry,
+    vinput::script::Kind kind, bool force,
+    const std::function<bool(const std::filesystem::path&, std::string*)>& materialize,
+    Formatter& fmt) {
+  const auto version_info = vinput::script::CheckResourceVersion(manifest, kind, entry, true);
+  const bool is_asr = kind == vinput::script::Kind::kAsrProvider;
+  if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
+    fmt.PrintInfo(is_asr
+                      ? ::fmt::sprintf(_("Provider '%s' is already up to date."), entry.short_id)
+                      : ::fmt::sprintf(_("Adapter '%s' is already up to date."), entry.short_id));
+    return true;
+  }
+
+  std::filesystem::path script_path;
+  std::string error;
+  if (!vinput::script::DownloadScript(entry, kind, &script_path, &error)) {
+    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
+    return false;
+  }
+  if (!materialize(script_path, &error)) {
+    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
+    return false;
+  }
+
+  if (version_info.installed_version.empty() || version_info.remote_version.empty()) {
+    fmt.PrintSuccess(is_asr ? ::fmt::sprintf(_("ASR provider '%s' updated."), entry.short_id)
+                            : ::fmt::sprintf(_("Adapter '%s' updated."), entry.short_id));
+    return true;
+  }
+
+  fmt.PrintSuccess(
+      is_asr ? ::fmt::sprintf(_("ASR provider '%s' updated: %s -> %s"), entry.short_id,
+                              version_info.installed_version, version_info.remote_version)
+             : ::fmt::sprintf(_("Adapter '%s' updated: %s -> %s"), entry.short_id,
+                              version_info.installed_version, version_info.remote_version));
+  return true;
+}
+
 } // namespace vinput::cli

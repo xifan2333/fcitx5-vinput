@@ -80,4 +80,14 @@ std::optional<std::filesystem::path>
 DownloadRegistryScript(const vinput::script::RegistryEntry& entry, vinput::script::Kind kind,
                        Formatter& fmt);
 
+int RunRegistryScriptList(const CoreConfig& config, vinput::script::Kind kind,
+                          const std::function<bool(const std::string&)>& is_installed,
+                          Formatter& fmt, const CliContext& ctx);
+
+bool UpdateRegistryScript(
+    const vinput::registry::InstalledManifest& manifest, const vinput::script::RegistryEntry& entry,
+    vinput::script::Kind kind, bool force,
+    const std::function<bool(const std::filesystem::path&, std::string*)>& materialize,
+    Formatter& fmt);
+
 } // namespace vinput::cli
