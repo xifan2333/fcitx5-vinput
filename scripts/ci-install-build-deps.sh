@@ -112,26 +112,35 @@ evict_first_mirror() {
   "${sudo_cmd[@]}" sed -i '1d' "${mirrors}"
 }
 
-fetch_ubuntu_archives() {
-  local budget=$1
-  # Split download from install: only the download can hang on a slow mirror,
-  # and only a shell timeout can interrupt a transfer that keeps trickling.
-  if timeout "${budget}" "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
+download_ubuntu_archives() {
+  timeout "$1" "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --download-only --no-install-recommends \
-    "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"; then
+    "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"
+}
+
+# Split download from install: only the download can hang on a slow mirror, and
+# only a shell timeout can interrupt a transfer that keeps trickling bytes.
+fetch_ubuntu_archives() {
+  if download_ubuntu_archives "$1"; then
     return 0
   fi
   evict_first_mirror
-  timeout "${budget}" "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
-    apt-get install -y --download-only --no-install-recommends \
-    "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"
+  download_ubuntu_archives "$1"
+}
+
+update_ubuntu_indices() {
+  if timeout "$1" "${sudo_cmd[@]}" apt-get update "${apt_opts[@]}"; then
+    return 0
+  fi
+  evict_first_mirror
+  timeout "$1" "${sudo_cmd[@]}" apt-get update "${apt_opts[@]}"
 }
 
 install_ubuntu_deps() {
   prepare_apt_archives
   trap finalize_apt_archives EXIT
 
-  timeout 120 "${sudo_cmd[@]}" apt-get update "${apt_opts[@]}"
+  update_ubuntu_indices 120
   fetch_ubuntu_archives 240
   # Everything is in the archive dir now, so this install does no network I/O.
   "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
