@@ -3,7 +3,6 @@
 
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -151,24 +150,10 @@ def ts_untranslated(path: Path) -> set[str]:
     return result
 
 
-# Qt ships lupdate outside PATH on several distros (Arch: qt6-tools, Fedora: qt6-linguist).
-LUPDATE_SEARCH_PATHS = (
-    "/usr/lib/qt6/bin/lupdate",
-    "/usr/lib64/qt6/bin/lupdate",
-    "/usr/lib/qt5/bin/lupdate",
-    "/opt/homebrew/opt/qt/bin/lupdate",
-    "/usr/local/opt/qt/bin/lupdate",
-)
-
-
 def find_lupdate() -> str | None:
     for cmd in ("lupdate-qt6", "lupdate6", "lupdate"):
-        path = shutil.which(cmd)
-        if path is not None:
-            return path
-    for candidate in LUPDATE_SEARCH_PATHS:
-        if os.access(candidate, os.X_OK):
-            return candidate
+        if subprocess.run(["which", cmd], capture_output=True).returncode == 0:
+            return cmd
     return None
 
 
@@ -233,10 +218,6 @@ def main() -> int:
     lupdate = find_lupdate()
     if lupdate is None:
         print("WARNING: lupdate not found, skipping Qt .ts checks")
-        print(
-            "         searched: lupdate-qt6, lupdate6, lupdate in PATH, "
-            + ", ".join(LUPDATE_SEARCH_PATHS)
-        )
         print()
         print(f"{CYAN}=== Summary ==={RESET}")
         print(
@@ -250,25 +231,10 @@ def main() -> int:
         tmp_ts = os.path.join(tmpdir, "extracted.ts")
         gui_src = str(PROJECT_ROOT / "src" / "gui")
 
-        result = subprocess.run(
+        subprocess.run(
             [lupdate, gui_src, "-ts", tmp_ts, "-no-obsolete"],
             capture_output=True,
-            text=True,
         )
-        if result.returncode != 0 or not os.path.exists(tmp_ts):
-            # Local-only inconvenience (e.g. Arch qt6-tools without qt6-declarative);
-            # CI runs this check in a complete Qt environment.
-            print(f"{YELLOW}WARNING:{RESET} {lupdate} failed, skipping Qt .ts checks")
-            for line in (result.stderr or result.stdout).strip().splitlines():
-                print(f"         {line}")
-            print()
-            print(f"{CYAN}=== Summary ==={RESET}")
-            print(
-                f"         {po_missing} missing, {po_obsolete} obsolete, "
-                f"{po_untranslated} untranslated (po)"
-            )
-            print(f"         {lupdate} unusable — ts skipped")
-            return 1 if (po_missing + po_obsolete) > 0 else 0
 
         ext_srcs = ts_sources(Path(tmp_ts))
         cur_srcs = ts_sources(TS_FILE, skip_vanished=True)
