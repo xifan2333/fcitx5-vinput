@@ -59,6 +59,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Restore apt archive cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vinput-apt-archives
+          key: apt-archives-${{ runner.os }}-${{ hashFiles('scripts/ci-install-build-deps.sh') }}
+          restore-keys: |
+            apt-archives-${{ runner.os }}-
+
       - name: Install build dependencies
         run: ./scripts/ci-install-build-deps.sh ubuntu24.04
 
@@ -137,6 +145,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+
+      - name: Restore apt archive cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vinput-apt-archives
+          key: apt-archives-${{ runner.os }}-${{ hashFiles('scripts/ci-install-build-deps.sh') }}
+          restore-keys: |
+            apt-archives-${{ runner.os }}-
 
       - name: Validate bundled JSON
         run: |
