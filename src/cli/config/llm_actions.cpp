@@ -435,18 +435,25 @@ int RunLlmConfigEditAdapter(const std::string& id, Formatter& fmt, const CliCont
   return 0;
 }
 
+auto FindLlmProviderOrReport(std::vector<LlmProvider>& providers, const std::string& id,
+                             Formatter& fmt) {
+  auto it = std::ranges::find_if(providers,
+                                 [&id](const LlmProvider& provider) { return provider.id == id; });
+  if (it == providers.end()) {
+    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
+  }
+  return it;
+}
+
 int RunLlmConfigRemove(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  auto& providers = config.llm.providers;
-  const auto it = std::ranges::find_if(
-      providers, [&id](const LlmProvider& provider) { return provider.id == id; });
-  if (it == providers.end()) {
-    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
+  auto it = FindLlmProviderOrReport(config.llm.providers, id, fmt);
+  if (it == config.llm.providers.end()) {
     return 1;
   }
 
-  providers.erase(it);
+  config.llm.providers.erase(it);
   vinput::llm::RemoveProviderModels(id);
   if (!SaveConfigOrFail(config, fmt)) {
     return 1;
@@ -460,11 +467,8 @@ int RunLlmConfigEdit(const std::string& id, const std::string& baseUrl, const st
                      bool hasExtraBody, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  auto& providers = config.llm.providers;
-  const auto it = std::ranges::find_if(
-      providers, [&id](const LlmProvider& provider) { return provider.id == id; });
-  if (it == providers.end()) {
-    fmt.PrintError(::fmt::sprintf(_("LLM provider '%s' not found."), id));
+  auto it = FindLlmProviderOrReport(config.llm.providers, id, fmt);
+  if (it == config.llm.providers.end()) {
     return 1;
   }
 

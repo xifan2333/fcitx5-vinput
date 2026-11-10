@@ -147,6 +147,22 @@ std::optional<std::string> ResolveInstalledModelOrReport(const CoreConfig& confi
   }
   return std::move(id);
 }
+
+std::optional<std::string> ResolveAndValidateModelOrReport(const CoreConfig& config,
+                                                           const ModelManager& manager,
+                                                           const std::string& selector,
+                                                           Formatter& fmt) {
+  const auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
+  if (!id_opt) {
+    return std::nullopt;
+  }
+  if (auto validate_result = manager.Validate(*id_opt); !validate_result) {
+    fmt.PrintError(::fmt::sprintf(_("Model '%s' is not valid: %s"), *id_opt,
+                                  std::move(validate_result).error()));
+    return std::nullopt;
+  }
+  return id_opt;
+}
 #endif
 
 std::filesystem::path ResolveExistingFilePath(const std::string& candidate) {
@@ -320,14 +336,22 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
   return 0;
 }
 
+std::string ResolveAsrProviderOrReport(const CoreConfig& config, const std::string& selector,
+                                       Formatter& fmt) {
+  std::string error;
+  const std::string resolved_id =
+      vinput::cli::ResolveInstalledAsrProviderSelector(config, selector, &error);
+  if (resolved_id.empty()) {
+    fmt.PrintError(error);
+  }
+  return resolved_id;
+}
+
 int RunAsrConfigRemove(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  std::string error;
-  const std::string resolved_id =
-      vinput::cli::ResolveInstalledAsrProviderSelector(config, id, &error);
+  const std::string resolved_id = ResolveAsrProviderOrReport(config, id, fmt);
   if (resolved_id.empty()) {
-    fmt.PrintError(error);
     return 1;
   }
   auto& providers = config.asr.providers;
@@ -368,11 +392,8 @@ int RunAsrConfigRemove(const std::string& id, Formatter& fmt, const CliContext& 
 int RunAsrConfigUse(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
-  std::string error;
-  const std::string resolved_id =
-      vinput::cli::ResolveInstalledAsrProviderSelector(config, id, &error);
+  const std::string resolved_id = ResolveAsrProviderOrReport(config, id, fmt);
   if (resolved_id.empty()) {
-    fmt.PrintError(error);
     return 1;
   }
 
@@ -804,16 +825,11 @@ int RunAsrConfigUseModel(const std::string& selector, Formatter& fmt, const CliC
   (void)ctx;
   CoreConfig config = LoadCoreConfig();
   const ModelManager manager(CoreConfigView::ModelBaseDir().string());
-  const auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
+  const auto id_opt = ResolveAndValidateModelOrReport(config, manager, selector, fmt);
   if (!id_opt) {
     return 1;
   }
   const std::string& id = *id_opt;
-  if (auto validate_result = manager.Validate(id); !validate_result) {
-    fmt.PrintError(
-        ::fmt::sprintf(_("Model '%s' is not valid: %s"), id, std::move(validate_result).error()));
-    return 1;
-  }
   std::string error;
   if (!SetPreferredLocalModel(&config, id, &error)) {
     fmt.PrintError(error);
@@ -832,16 +848,11 @@ int RunAsrConfigModelInfo(const std::string& selector, Formatter& fmt, const Cli
   const std::string baseDir = CoreConfigView::ModelBaseDir().string();
   const ModelManager manager(baseDir);
   const auto display_map = vinput::cli::FetchModelDisplayMap(config);
-  const auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
+  const auto id_opt = ResolveAndValidateModelOrReport(config, manager, selector, fmt);
   if (!id_opt) {
     return 1;
   }
   const std::string& id = *id_opt;
-  if (auto validate_result = manager.Validate(id); !validate_result) {
-    fmt.PrintError(
-        ::fmt::sprintf(_("Model '%s' is not valid: %s"), id, std::move(validate_result).error()));
-    return 1;
-  }
 
   const ModelManager selectedManager(baseDir, id);
   auto info_result = selectedManager.GetModelInfo();
