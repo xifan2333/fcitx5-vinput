@@ -253,9 +253,7 @@ bool ExecuteScriptInstallOrUpdateTask(vinput::script::Kind kind, const std::stri
 
   auto it = std::ranges::find_if(entries, [&](const auto& e) { return e.id == id; });
   if (it == entries.end()) {
-    if (err != nullptr) {
-      *err = NotFoundErrorForKind(kind);
-    }
+    *err = NotFoundErrorForKind(kind);
     return false;
   }
 
