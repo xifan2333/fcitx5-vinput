@@ -45,7 +45,6 @@
 #include <QtWidgets/qtextedit.h>
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
@@ -228,16 +227,15 @@ void CleanupInstalledScript(vinput::script::Kind kind, const std::string& id) {
 }
 
 const char* NotFoundErrorForKind(vinput::script::Kind kind) {
-  static constexpr std::array<std::pair<vinput::script::Kind, const char*>, 4> kNotFoundErrors{{
-      {vinput::script::Kind::kAsrProvider, "Provider not found in registry."},
-      {vinput::script::Kind::kLlmAdapter, "Adapter not found in registry."},
-      {vinput::script::Kind::kTrigger, "Trigger not found in registry."},
-      {vinput::script::Kind::kReceiver, "Receiver not found in registry."},
-  }};
-  for (const auto& [k, msg] : kNotFoundErrors) {
-    if (k == kind) {
-      return msg;
-    }
+  switch (kind) {
+  case vinput::script::Kind::kAsrProvider:
+    return "Provider not found in registry.";
+  case vinput::script::Kind::kLlmAdapter:
+    return "Adapter not found in registry.";
+  case vinput::script::Kind::kTrigger:
+    return "Trigger not found in registry.";
+  case vinput::script::Kind::kReceiver:
+    return "Receiver not found in registry.";
   }
   return "Item not found in registry.";
 }
