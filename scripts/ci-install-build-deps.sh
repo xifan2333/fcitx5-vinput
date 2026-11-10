@@ -103,11 +103,37 @@ finalize_apt_archives() {
   "${sudo_cmd[@]}" chown -R "$(id -u):$(id -g)" "${vinput_apt_archives}"
 }
 
+# APT never abandons a mirror that trickles bytes, so drop the first (highest
+# priority) entry and let the next attempt use the following one.
+evict_first_mirror() {
+  local mirrors=/etc/apt/apt-mirrors.txt
+  [[ -s ${mirrors} ]] || return 0
+  echo "evicting $(head -n 1 "${mirrors}") after a download timeout" >&2
+  "${sudo_cmd[@]}" sed -i '1d' "${mirrors}"
+}
+
+fetch_ubuntu_archives() {
+  local budget=$1
+  # Split download from install: only the download can hang on a slow mirror,
+  # and only a shell timeout can interrupt a transfer that keeps trickling.
+  if timeout "${budget}" "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --download-only --no-install-recommends \
+    "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"; then
+    return 0
+  fi
+  evict_first_mirror
+  timeout "${budget}" "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --download-only --no-install-recommends \
+    "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"
+}
+
 install_ubuntu_deps() {
   prepare_apt_archives
   trap finalize_apt_archives EXIT
 
   timeout 120 "${sudo_cmd[@]}" apt-get update "${apt_opts[@]}"
+  fetch_ubuntu_archives 240
+  # Everything is in the archive dir now, so this install does no network I/O.
   "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"
 }
