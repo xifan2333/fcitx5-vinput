@@ -580,4 +580,14 @@ bool ReloadAsrBackend(std::string* error) {
   return dbus.ReloadAsrBackend(error);
 }
 
+void RunReloadAsrBackendAsync(QObject* context) {
+  RunReloadAsrBackendAsync(context, [context](bool ok, const std::string& err) {
+    if (!ok) {
+      QMessageBox::warning(
+          qobject_cast<QWidget*>(context), GuiHelpers::tr("Warning"),
+          GuiHelpers::tr("Failed to reload ASR backend: %1").arg(QString::fromStdString(err)));
+    }
+  });
+}
+
 } // namespace vinput::gui

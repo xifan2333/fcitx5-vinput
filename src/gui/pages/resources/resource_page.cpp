@@ -1123,13 +1123,7 @@ void ResourcePage::onRemoveModelClicked() {
     refreshAll();
     emit configChanged();
     if (reload_backend) {
-      RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-        if (!ok) {
-          QMessageBox::warning(this, tr("Error"),
-                               tr("Config saved, but failed to reload ASR backend: %1")
-                                   .arg(QString::fromStdString(err)));
-        }
-      });
+      RunReloadAsrBackendAsync(this);
     }
   }
 #endif
@@ -1449,13 +1443,7 @@ void ResourcePage::onRemoveProviderClicked() {
       },
       [this, &was_active]() {
         if (was_active) {
-          RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-            if (!ok) {
-              QMessageBox::warning(this, tr("Warning"),
-                                   tr("Config saved, but failed to reload ASR backend: %1")
-                                       .arg(QString::fromStdString(err)));
-            }
-          });
+          RunReloadAsrBackendAsync(this);
         }
       });
 }

@@ -230,6 +230,14 @@
         <source>(Select a provider first)</source>
         <translation>(请先选择提供商)</translation>
     </message>
+    <message>
+        <source>Warning</source>
+        <translation>警告</translation>
+    </message>
+    <message>
+        <source>Failed to reload ASR backend: %1</source>
+        <translation>重新加载 ASR 后端失败：%1</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>
@@ -479,15 +487,8 @@
     </message>
     <message>
         <location filename="../src/gui/pages/control/control_page.cpp" line="514"/>
-        <location filename="../src/gui/pages/control/control_page.cpp" line="538"/>
         <source>Warning</source>
         <translation>警告</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/pages/control/control_page.cpp" line="515"/>
-        <location filename="../src/gui/pages/control/control_page.cpp" line="539"/>
-        <source>Config saved, but failed to reload ASR backend: %1</source>
-        <translation>配置已保存，但重新加载 ASR 后端失败：%1</translation>
     </message>
     <message>
         <location filename="../src/gui/pages/control/control_page.cpp" line="561"/>
@@ -1270,16 +1271,8 @@ Found %2 model(s).</source>
     </message>
     <message>
         <location filename="../src/gui/pages/resources/resource_page.cpp" line="717"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1063"/>
         <source>Warning</source>
         <translation>警告</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="718"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="773"/>
-        <location filename="../src/gui/pages/resources/resource_page.cpp" line="1064"/>
-        <source>Config saved, but failed to reload ASR backend: %1</source>
-        <translation>配置已保存，但重新加载 ASR 后端失败：%1</translation>
     </message>
     <message>
         <location filename="../src/gui/pages/resources/resource_page.cpp" line="722"/>

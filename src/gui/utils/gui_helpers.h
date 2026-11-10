@@ -73,10 +73,12 @@ bool SaveProviderModels(const std::string& provider_id, const QStringList& model
   return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
 }
 
-// Reload ASR backend via D-Bus client synchronously.
 bool ReloadAsrBackend(std::string* error = nullptr);
 
-// Asynchronously invoke ReloadAsrBackend in QThreadPool and dispatch callback on context thread.
+// Reload in the thread pool, reporting a failure with a warning box parented on context.
+void RunReloadAsrBackendAsync(QObject* context);
+
+// Reload in the thread pool, handing the result to callback on the context's thread instead.
 template <typename Callback> void RunReloadAsrBackendAsync(QObject* context, Callback&& callback) {
   const QPointer<QObject> self(context);
   QThreadPool::globalInstance()->start(
