@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
 #include "common/i18n.h"
 #include "common/json/json_access.h"
@@ -222,13 +223,12 @@ int RunLlmConfigAdd(const std::string& id, const std::string& baseUrl, const std
 
 namespace {
 
-void ValidateRequiredEnvs(const LlmAdapter* installed,
-                          const std::vector<vinput::script::EnvRequirement>& envs,
+void ValidateRequiredEnvs(const LlmAdapter* installed, const vinput::script::RegistryEntry& entry,
                           const std::string& selector, Formatter& fmt) {
   if (installed == nullptr) {
     return;
   }
-  for (const auto& spec : envs) {
+  for (const auto& spec : entry.envs) {
     if (!spec.required) {
       continue;
     }
@@ -285,7 +285,7 @@ int RunLlmConfigInstallAdapter(const std::string& selector,
     return 1;
   }
 
-  ValidateRequiredEnvs(CoreConfigView(config).LlmAdapter(entry->id), entry->envs, selector, fmt);
+  ValidateRequiredEnvs(CoreConfigView(config).LlmAdapter(entry->id), *entry, selector, fmt);
   fmt.PrintSuccess(::fmt::sprintf(_("Adapter '%s' added."), selector));
   return 0;
 }

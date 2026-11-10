@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fmt/printf.h>
+#include <functional>
 #include <glaze/json/json_t.hpp>
 #include <optional>
 #include <system_error>
