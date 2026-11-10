@@ -220,26 +220,9 @@ int ProcessListenLoop(sd_bus* bus) {
   return 0;
 }
 
-} // namespace
-
-int RunClientList(ClientKind kind, Formatter& fmt, const CliContext& ctx) {
-  const CoreConfig config = LoadCoreConfig();
-  const auto& clients = GetClientList(config, kind);
-  vinput::cli::DbusClient dbus;
-  const auto status_map = dbus.GetClientStatusesMap();
-
-  if (ctx.json_output) {
-    PrintClientListJson(fmt, clients, status_map);
-    return 0;
-  }
-
-  PrintClientListTable(fmt, kind, clients, status_map);
-  return 0;
-}
-
 template <typename ActionFn>
 int RunClientLifecycleAction(ClientKind kind, const std::string& id, std::string_view action_name,
-                             const std::string& success_msg, ActionFn&& action, Formatter& fmt,
+                             const std::string& success_msg, const ActionFn& action, Formatter& fmt,
                              const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   if (!HasClientWithId(config, kind, id)) {
@@ -269,6 +252,23 @@ int RunClientLifecycleAction(ClientKind kind, const std::string& id, std::string
   } else {
     fmt.PrintSuccess(success_msg);
   }
+  return 0;
+}
+
+} // namespace
+
+int RunClientList(ClientKind kind, Formatter& fmt, const CliContext& ctx) {
+  const CoreConfig config = LoadCoreConfig();
+  const auto& clients = GetClientList(config, kind);
+  vinput::cli::DbusClient dbus;
+  const auto status_map = dbus.GetClientStatusesMap();
+
+  if (ctx.json_output) {
+    PrintClientListJson(fmt, clients, status_map);
+    return 0;
+  }
+
+  PrintClientListTable(fmt, kind, clients, status_map);
   return 0;
 }
 

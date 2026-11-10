@@ -435,6 +435,8 @@ int RunLlmConfigEditAdapter(const std::string& id, Formatter& fmt, const CliCont
   return 0;
 }
 
+namespace {
+
 auto FindLlmProviderOrReport(std::vector<LlmProvider>& providers, const std::string& id,
                              Formatter& fmt) {
   auto it = std::ranges::find_if(providers,
@@ -444,6 +446,8 @@ auto FindLlmProviderOrReport(std::vector<LlmProvider>& providers, const std::str
   }
   return it;
 }
+
+} // namespace
 
 int RunLlmConfigRemove(const std::string& id, Formatter& fmt, const CliContext& ctx) {
   (void)ctx;

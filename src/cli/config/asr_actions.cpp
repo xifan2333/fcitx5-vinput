@@ -152,7 +152,7 @@ std::optional<std::string> ResolveAndValidateModelOrReport(const CoreConfig& con
                                                            const ModelManager& manager,
                                                            const std::string& selector,
                                                            Formatter& fmt) {
-  const auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
+  auto id_opt = ResolveInstalledModelOrReport(config, manager, selector, fmt);
   if (!id_opt) {
     return std::nullopt;
   }
@@ -309,6 +309,17 @@ void RenderAsrProviderListTable(const CoreConfig& config,
   fmt.PrintTable(headers, rows);
 }
 
+std::string ResolveAsrProviderOrReport(const CoreConfig& config, const std::string& selector,
+                                       Formatter& fmt) {
+  std::string error;
+  const std::string resolved_id =
+      vinput::cli::ResolveInstalledAsrProviderSelector(config, selector, &error);
+  if (resolved_id.empty()) {
+    fmt.PrintError(error);
+  }
+  return resolved_id;
+}
+
 } // namespace
 
 int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
@@ -334,17 +345,6 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
 #endif
                              fmt, ctx);
   return 0;
-}
-
-std::string ResolveAsrProviderOrReport(const CoreConfig& config, const std::string& selector,
-                                       Formatter& fmt) {
-  std::string error;
-  const std::string resolved_id =
-      vinput::cli::ResolveInstalledAsrProviderSelector(config, selector, &error);
-  if (resolved_id.empty()) {
-    fmt.PrintError(error);
-  }
-  return resolved_id;
 }
 
 int RunAsrConfigRemove(const std::string& id, Formatter& fmt, const CliContext& ctx) {
