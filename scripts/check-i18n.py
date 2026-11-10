@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Detect missing, obsolete, and untranslated strings in .po and .ts files."""
+"""Validate Gettext (.po) and Qt (.ts) translations against source code via ast-grep."""
 
-import os
+import json
 import re
+import shutil
 import subprocess
 import sys
-import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -15,8 +15,6 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 PO_FILE = PROJECT_ROOT / "po" / "zh_CN.po"
 TS_FILE = PROJECT_ROOT / "i18n" / "vinput-gui_zh_CN.ts"
 
-SRC_DIRS = ["src/cli", "src/common", "src/addon", "src/daemon"]
-
 # Colors (disabled when not a terminal)
 if sys.stdout.isatty():
     RED, YELLOW, CYAN, RESET = "\033[0;31m", "\033[0;33m", "\033[0;36m", "\033[0m"
@@ -24,11 +22,69 @@ else:
     RED = YELLOW = CYAN = RESET = ""
 
 
-def extract_po_msgids(path: str) -> set[str]:
-    """Extract msgid strings from a .po/.pot file (skip header and obsolete #~)."""
+def find_ast_grep() -> str | None:
+    return shutil.which("ast-grep") or shutil.which("sg")
+
+
+def extract_strings_from_ast_json(stdout: str) -> set[str]:
+    """Parse JSON output from ast-grep and extract concatenated string literals."""
+    if not stdout.strip():
+        return set()
+    data = json.loads(stdout)
+    res = set()
+    for d in data:
+        txt = d.get("text", "").strip()
+        parts = re.findall(r'"((?:[^"\\]|\\.)*)"', txt)
+        if parts:
+            res.add("".join(p.encode().decode("unicode_escape", "ignore") for p in parts))
+    return res
+
+
+def extract_source_po_msgids(sg_bin: str) -> set[str]:
+    """Extract Gettext _("...") and N_("...") msgids from source code via ast-grep."""
+    p_ = subprocess.run(
+        [sg_bin, "-p", "_($$$A)", "--json", "src/"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    p_n = subprocess.run(
+        [sg_bin, "-p", "N_($$$A)", "--json", "src/"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return extract_strings_from_ast_json(p_.stdout) | extract_strings_from_ast_json(p_n.stdout)
+
+
+def extract_source_ts_strings(sg_bin: str) -> set[str]:
+    """Extract Qt tr("...") and Class::tr("...") strings from src/gui via ast-grep."""
+    rule = """id: qt-tr-calls
+language: Cpp
+rule:
+  kind: call_expression
+  has:
+    field: function
+    regex: "(^|::)tr$"
+"""
+    p = subprocess.run(
+        [sg_bin, "scan", "--inline-rules", rule, "src/gui/", "--json"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return extract_strings_from_ast_json(p.stdout)
+
+
+def extract_po_msgids(path: Path) -> set[str]:
+    """Extract msgid strings from a .po file (skip header and obsolete #~)."""
     ids = set()
-    with open(path, encoding="utf-8") as f:
-        text = f.read()
+    if not path.is_file():
+        return ids
+    text = path.read_text(encoding="utf-8")
     for entry in re.split(r"\n\n+", text):
         lines = [line.strip() for line in entry.splitlines() if line.strip()]
         if not lines or lines[0].startswith("#~"):
@@ -53,22 +109,24 @@ def extract_po_msgids(path: str) -> set[str]:
     return ids
 
 
-def extract_po_obsolete_msgids(path: str) -> set[str]:
+def extract_po_obsolete_msgids(path: Path) -> set[str]:
     """Extract #~ msgid strings from a .po file."""
     ids = set()
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            m = re.match(r'^#~\s*msgid "(.*)"$', line)
-            if m and m.group(1):
-                ids.add(m.group(1))
+    if not path.is_file():
+        return ids
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r'^#~\s*msgid "(.*)"$', line.strip())
+        if m and m.group(1):
+            ids.add(m.group(1).encode().decode("unicode_escape", "ignore"))
     return ids
 
 
-def extract_po_untranslated(path: str) -> set[str]:
-    """Find non-obsolete msgids with empty msgstr."""
+def extract_po_untranslated(path: Path) -> set[str]:
+    """Find non-obsolete msgids with empty msgstr in a .po file."""
     ids = set()
-    with open(path, encoding="utf-8") as f:
-        text = f.read()
+    if not path.is_file():
+        return ids
+    text = path.read_text(encoding="utf-8")
     for entry in re.split(r"\n\n+", text):
         lines = [line.strip() for line in entry.splitlines() if line.strip()]
         if not lines or lines[0].startswith("#~"):
@@ -107,6 +165,8 @@ def extract_po_untranslated(path: str) -> set[str]:
 
 def ts_sources(path: Path, *, skip_vanished: bool = False) -> set[str]:
     """Extract <source> texts from a .ts file via XML parser."""
+    if not path.is_file():
+        return set()
     tree = ET.parse(path)
     result = set()
     for msg in tree.iter("message"):
@@ -122,6 +182,8 @@ def ts_sources(path: Path, *, skip_vanished: bool = False) -> set[str]:
 
 def ts_vanished(path: Path) -> set[str]:
     """Extract vanished/obsolete source texts from a .ts file."""
+    if not path.is_file():
+        return set()
     tree = ET.parse(path)
     result = set()
     for msg in tree.iter("message"):
@@ -134,7 +196,9 @@ def ts_vanished(path: Path) -> set[str]:
 
 
 def ts_untranslated(path: Path) -> set[str]:
-    """Find non-vanished entries with empty translation."""
+    """Find non-vanished entries with empty translation in a .ts file."""
+    if not path.is_file():
+        return set()
     tree = ET.parse(path)
     result = set()
     for msg in tree.iter("message"):
@@ -150,119 +214,52 @@ def ts_untranslated(path: Path) -> set[str]:
     return result
 
 
-def find_lupdate() -> str | None:
-    for cmd in ("lupdate-qt6", "lupdate6", "lupdate"):
-        if subprocess.run(["which", cmd], capture_output=True).returncode == 0:
-            return cmd
-    return None
-
-
 def main() -> int:
+    sg_bin = find_ast_grep()
+    if sg_bin is None:
+        print(f"{RED}ERROR:{RESET} ast-grep (or sg) is required to run i18n checks.")
+        print("       Please run `mise install` or install ast-grep.")
+        return 1
+
     po_missing = po_obsolete = po_untranslated = 0
     ts_missing_n = ts_vanished_n = ts_untranslated_n = 0
 
     # === Gettext (po) ===
     print(f"{CYAN}=== Gettext (po) ==={RESET}")
+    src_po_ids = extract_source_po_msgids(sg_bin)
+    catalog_po_ids = extract_po_msgids(PO_FILE)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_pot = os.path.join(tmpdir, "extracted.pot")
+    for mid in sorted(src_po_ids - catalog_po_ids):
+        print(f"{RED}MISSING:{RESET} {mid}")
+        po_missing += 1
 
-        # Collect source files
-        src_files = []
-        for d in SRC_DIRS:
-            p = PROJECT_ROOT / d
-            if p.is_dir():
-                src_files.extend(sorted(str(f) for f in p.rglob("*") if f.suffix in (".cpp", ".h")))
+    obsolete_ids = (catalog_po_ids - src_po_ids) | extract_po_obsolete_msgids(PO_FILE)
+    for mid in sorted(obsolete_ids):
+        print(f"{YELLOW}OBSOLETE:{RESET} {mid}")
+        po_obsolete += 1
 
-        subprocess.run(
-            [
-                "xgettext",
-                "--keyword=_",
-                "--keyword=N_",
-                "--language=C++",
-                "--from-code=UTF-8",
-                "--no-location",
-                "--sort-by-file",
-                "-o",
-                tmp_pot,
-                *src_files,
-            ],
-            check=True,
-            capture_output=True,
-        )
-
-        pot_ids = extract_po_msgids(tmp_pot)
-        po_ids = extract_po_msgids(str(PO_FILE))
-
-        # Missing: in source but not in .po
-        for mid in sorted(pot_ids - po_ids):
-            print(f"{RED}MISSING:{RESET} {mid}")
-            po_missing += 1
-
-        # Obsolete: in .po but no longer in source, or marked #~
-        obsolete_ids = (po_ids - pot_ids) | extract_po_obsolete_msgids(str(PO_FILE))
-        for mid in sorted(obsolete_ids):
-            print(f"{YELLOW}OBSOLETE:{RESET} {mid}")
-            po_obsolete += 1
-
-        # Untranslated
-        for mid in sorted(extract_po_untranslated(str(PO_FILE))):
-            print(f"{YELLOW}UNTRANSLATED:{RESET} {mid}")
-            po_untranslated += 1
+    for mid in sorted(extract_po_untranslated(PO_FILE)):
+        print(f"{YELLOW}UNTRANSLATED:{RESET} {mid}")
+        po_untranslated += 1
 
     print()
 
     # === Qt (ts) ===
     print(f"{CYAN}=== Qt (ts) ==={RESET}")
+    src_ts_ids = extract_source_ts_strings(sg_bin)
+    catalog_ts_ids = ts_sources(TS_FILE, skip_vanished=True)
 
-    lupdate = find_lupdate()
-    if lupdate is None:
-        print("WARNING: lupdate not found, skipping Qt .ts checks")
-        print()
-        print(f"{CYAN}=== Summary ==={RESET}")
-        print(
-            f"         {po_missing} missing, {po_obsolete} obsolete, "
-            f"{po_untranslated} untranslated (po)"
-        )
-        print("         (ts skipped — lupdate not available)")
-        return 1 if (po_missing + po_obsolete) > 0 else 0
+    for s in sorted(src_ts_ids - catalog_ts_ids):
+        print(f'{RED}MISSING:{RESET} "{s}"')
+        ts_missing_n += 1
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_ts = os.path.join(tmpdir, "extracted.ts")
-        gui_src = str(PROJECT_ROOT / "src" / "gui")
+    for s in sorted(ts_vanished(TS_FILE)):
+        print(f'{YELLOW}VANISHED:{RESET} "{s}"')
+        ts_vanished_n += 1
 
-        res = subprocess.run(
-            [lupdate, gui_src, "-ts", tmp_ts, "-no-obsolete"],
-            capture_output=True,
-        )
-        if res.returncode != 0 or not os.path.exists(tmp_ts):
-            print(f"WARNING: {lupdate} failed, skipping Qt .ts checks")
-            print()
-            print(f"{CYAN}=== Summary ==={RESET}")
-            print(
-                f"         {po_missing} missing, {po_obsolete} obsolete, "
-                f"{po_untranslated} untranslated (po)"
-            )
-            print("         (ts skipped — lupdate failed)")
-            return 1 if (po_missing + po_obsolete) > 0 else 0
-
-        ext_srcs = ts_sources(Path(tmp_ts))
-        cur_srcs = ts_sources(TS_FILE, skip_vanished=True)
-
-        # Missing
-        for s in sorted(ext_srcs - cur_srcs):
-            print(f'{RED}MISSING:{RESET} "{s}"')
-            ts_missing_n += 1
-
-        # Vanished
-        for s in sorted(ts_vanished(TS_FILE)):
-            print(f'{YELLOW}VANISHED:{RESET} "{s}"')
-            ts_vanished_n += 1
-
-        # Untranslated
-        for s in sorted(ts_untranslated(TS_FILE)):
-            print(f'{YELLOW}UNTRANSLATED:{RESET} "{s}"')
-            ts_untranslated_n += 1
+    for s in sorted(ts_untranslated(TS_FILE)):
+        print(f'{YELLOW}UNTRANSLATED:{RESET} "{s}"')
+        ts_untranslated_n += 1
 
     print()
 

@@ -1,0 +1,17 @@
+id: no-hardcoded-ui-strings
+message: "检测到直接向 UI 控件传递未国际化的硬编码字符串。请使用 tr(...) 包裹用户可见文案。"
+severity: warning
+language: Cpp
+files:
+  - "src/gui/**"
+rule:
+  any:
+    - pattern: $W->setText($A)
+    - pattern: $W->setToolTip($A)
+    - pattern: $W->setPlaceholderText($A)
+    - pattern: $W->setWindowTitle($A)
+constraints:
+  A:
+    kind: string_literal
+    not:
+      regex: '^""$'

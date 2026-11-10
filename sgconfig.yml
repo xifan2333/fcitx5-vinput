@@ -1,2 +1,5 @@
 ruleDirs:
   - .ast-grep/rules
+languageGlobs:
+  cpp:
+    - "*.h"
