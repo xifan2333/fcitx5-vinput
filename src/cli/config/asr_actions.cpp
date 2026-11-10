@@ -198,62 +198,68 @@ std::filesystem::path ResolveEditableScriptPath(const AsrProvider& provider) {
   return {};
 }
 
-} // namespace
-
-int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
-  const CoreConfig config = LoadCoreConfig();
-  const auto display_map =
-      vinput::cli::FetchScriptDisplayMap(config, vinput::script::Kind::kAsrProvider);
-#if VINPUT_ENABLE_LOCAL_ASR
-  const auto model_display_map = vinput::cli::FetchModelDisplayMap(config);
-#endif
-
-  if (ctx.json_output) {
-    glz::json_t::array_t providers;
-    for (const auto& provider : config.asr.providers) {
-#if !VINPUT_ENABLE_LOCAL_ASR
-      if (std::holds_alternative<LocalAsrProvider>(provider)) {
-        continue;
-      }
-#endif
-      const std::string machine_id = AsrProviderId(provider);
-      glz::json_t entry = {
-          {"id", vinput::cli::HumanizeResourceId(display_map, machine_id)},
-          {"machine_id", machine_id},
-          {"type", std::string(AsrProviderType(provider))},
-          {"active", machine_id == config.asr.activeProvider},
-          {"timeout_ms", AsrProviderTimeoutMs(provider)},
-      };
-      const auto display_it = display_map.find(machine_id);
-      if (display_it != display_map.end()) {
-        if (!display_it->second.title.empty()) {
-          entry["title"] = display_it->second.title;
-        }
-        if (!display_it->second.description.empty()) {
-          entry["description"] = display_it->second.description;
-        }
-        if (!display_it->second.readme_url.empty()) {
-          entry["readme_url"] = display_it->second.readme_url;
-        }
-      }
-
-#if VINPUT_ENABLE_LOCAL_ASR
-      if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
-        entry["model"] = vinput::cli::HumanizeResourceId(model_display_map, local->model);
-        entry["hotwords_file"] = local->hotwordsFile;
-      } else
-#endif
-          if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
-        entry["command"] = command->command;
-        entry["args"] = vinput::json::FromStrings(command->args);
-        entry["env"] = vinput::json::FromStringMap(command->env);
-      }
-      providers.emplace_back(std::move(entry));
-    }
-    fmt.PrintJson(glz::json_t(std::move(providers)));
-    return 0;
+void AppendDisplayInfo(glz::json_t& entry, const vinput::cli::ResourceDisplayMap& display_map,
+                       const std::string& machine_id) {
+  const auto display_it = display_map.find(machine_id);
+  if (display_it == display_map.end()) {
+    return;
   }
+  if (!display_it->second.title.empty()) {
+    entry["title"] = display_it->second.title;
+  }
+  if (!display_it->second.description.empty()) {
+    entry["description"] = display_it->second.description;
+  }
+  if (!display_it->second.readme_url.empty()) {
+    entry["readme_url"] = display_it->second.readme_url;
+  }
+}
 
+void RenderAsrProviderListJson(const CoreConfig& config,
+                               const vinput::cli::ResourceDisplayMap& display_map,
+#if VINPUT_ENABLE_LOCAL_ASR
+                               const vinput::cli::ResourceDisplayMap& model_display_map,
+#endif
+                               Formatter& fmt) {
+  glz::json_t::array_t providers;
+  for (const auto& provider : config.asr.providers) {
+#if !VINPUT_ENABLE_LOCAL_ASR
+    if (std::holds_alternative<LocalAsrProvider>(provider)) {
+      continue;
+    }
+#endif
+    const std::string machine_id = AsrProviderId(provider);
+    glz::json_t entry = {
+        {"id", vinput::cli::HumanizeResourceId(display_map, machine_id)},
+        {"machine_id", machine_id},
+        {"type", std::string(AsrProviderType(provider))},
+        {"active", machine_id == config.asr.activeProvider},
+        {"timeout_ms", AsrProviderTimeoutMs(provider)},
+    };
+    AppendDisplayInfo(entry, display_map, machine_id);
+
+#if VINPUT_ENABLE_LOCAL_ASR
+    if (const auto* local = std::get_if<LocalAsrProvider>(&provider)) {
+      entry["model"] = vinput::cli::HumanizeResourceId(model_display_map, local->model);
+      entry["hotwords_file"] = local->hotwordsFile;
+    } else
+#endif
+        if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
+      entry["command"] = command->command;
+      entry["args"] = vinput::json::FromStrings(command->args);
+      entry["env"] = vinput::json::FromStringMap(command->env);
+    }
+    providers.emplace_back(std::move(entry));
+  }
+  fmt.PrintJson(glz::json_t(std::move(providers)));
+}
+
+void RenderAsrProviderListTable(const CoreConfig& config,
+                                const vinput::cli::ResourceDisplayMap& display_map,
+#if VINPUT_ENABLE_LOCAL_ASR
+                                const vinput::cli::ResourceDisplayMap& model_display_map,
+#endif
+                                Formatter& fmt, const CliContext& ctx) {
   const std::vector<std::string> headers = {_("ID"),     _("TITLE"), _("TYPE"),
                                             _("ACTIVE"), _("MODEL"), _("README")};
   std::vector<std::vector<std::string>> rows;
@@ -284,6 +290,32 @@ int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
                                                           display_it->second.readme_url)});
   }
   fmt.PrintTable(headers, rows);
+}
+
+} // namespace
+
+int RunAsrConfigList(Formatter& fmt, const CliContext& ctx) {
+  const CoreConfig config = LoadCoreConfig();
+  const auto display_map =
+      vinput::cli::FetchScriptDisplayMap(config, vinput::script::Kind::kAsrProvider);
+#if VINPUT_ENABLE_LOCAL_ASR
+  const auto model_display_map = vinput::cli::FetchModelDisplayMap(config);
+#endif
+
+  if (ctx.json_output) {
+    RenderAsrProviderListJson(config, display_map,
+#if VINPUT_ENABLE_LOCAL_ASR
+                              model_display_map,
+#endif
+                              fmt);
+    return 0;
+  }
+
+  RenderAsrProviderListTable(config, display_map,
+#if VINPUT_ENABLE_LOCAL_ASR
+                             model_display_map,
+#endif
+                             fmt, ctx);
   return 0;
 }
 
@@ -367,20 +399,12 @@ int RunAsrConfigListProviders(bool available, Formatter& fmt, const CliContext& 
   }
 
   CoreConfig config = LoadCoreConfig();
-  const auto registryUrls = CoreConfigView(config).AsrProviderRegistryUrls();
-  if (registryUrls.empty()) {
-    fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
-                     "registry.base_urls."));
+  const auto entries_opt =
+      vinput::cli::FetchScriptRegistryEntries(config, vinput::script::Kind::kAsrProvider, fmt);
+  if (!entries_opt) {
     return 1;
   }
-
-  std::string error;
-  const auto entries = vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider,
-                                                     registryUrls, &error);
-  if (!error.empty()) {
-    fmt.PrintError(error);
-    return 1;
-  }
+  const auto& entries = *entries_opt;
 
   const auto locale = vinput::registry::DetectPreferredLocale();
   const auto i18nMap = vinput::registry::FetchMergedI18nMap(config, locale);
@@ -402,42 +426,27 @@ int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt,
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
 
-  const auto registryUrls = CoreConfigView(config).AsrProviderRegistryUrls();
-  if (registryUrls.empty()) {
-    fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
-                     "registry.base_urls."));
+  const auto entries_opt =
+      vinput::cli::FetchScriptRegistryEntries(config, vinput::script::Kind::kAsrProvider, fmt);
+  if (!entries_opt) {
+    return 1;
+  }
+  const auto& entries = *entries_opt;
+
+  const auto* entry = vinput::cli::FindRegistryScriptEntry(
+      entries, vinput::script::Kind::kAsrProvider, selector, fmt);
+  if (entry == nullptr) {
+    return 1;
+  }
+
+  const auto scriptPath =
+      vinput::cli::DownloadRegistryScript(*entry, vinput::script::Kind::kAsrProvider, fmt);
+  if (!scriptPath) {
     return 1;
   }
 
   std::string error;
-  const auto entries = vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider,
-                                                     registryUrls, &error);
-  if (!error.empty()) {
-    fmt.PrintError(error);
-    return 1;
-  }
-
-  const std::string id =
-      vinput::cli::ResolveScriptSelectorByShortId(selector, entries, "ASR provider", &error);
-  if (id.empty()) {
-    fmt.PrintError(error);
-    return 1;
-  }
-
-  const auto it = std::ranges::find_if(
-      entries, [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
-  if (it == entries.end()) {
-    fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found in registry."), id));
-    return 1;
-  }
-
-  std::filesystem::path scriptPath;
-  if (!vinput::script::DownloadScript(*it, vinput::script::Kind::kAsrProvider, &scriptPath,
-                                      &error)) {
-    fmt.PrintError(error);
-    return 1;
-  }
-  if (!vinput::script::MaterializeAsrProvider(&config, *it, scriptPath, &error)) {
+  if (!vinput::script::MaterializeAsrProvider(&config, *entry, *scriptPath, &error)) {
     fmt.PrintError(error);
     return 1;
   }
@@ -449,6 +458,63 @@ int RunAsrConfigInstallProvider(const std::string& selector, Formatter& fmt,
   fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' added."), selector));
   return 0;
 }
+
+namespace {
+
+bool UpdateSingleAsrProvider(CoreConfig* config,
+                             const vinput::registry::InstalledManifest& manifest,
+                             const vinput::script::RegistryEntry& entry, bool force,
+                             Formatter& fmt) {
+  const auto version_info = vinput::script::CheckResourceVersion(
+      manifest, vinput::script::Kind::kAsrProvider, entry, true);
+  if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
+    fmt.PrintInfo(::fmt::sprintf(_("Provider '%s' is already up to date."), entry.short_id));
+    return true;
+  }
+
+  std::filesystem::path script_path;
+  std::string error;
+  if (!vinput::script::DownloadScript(entry, vinput::script::Kind::kAsrProvider, &script_path,
+                                      &error)) {
+    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
+    return false;
+  }
+  if (!vinput::script::MaterializeAsrProvider(config, entry, script_path, &error)) {
+    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
+    return false;
+  }
+
+  if (version_info.installed_version.empty() || version_info.remote_version.empty()) {
+    fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated."), entry.short_id));
+    return true;
+  }
+
+  fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated: %s -> %s"), entry.short_id,
+                                  version_info.installed_version, version_info.remote_version));
+  return true;
+}
+
+bool UpdateAllAsrProviders(CoreConfig* config, const vinput::registry::InstalledManifest& manifest,
+                           const std::vector<vinput::script::RegistryEntry>& entries, bool force,
+                           Formatter& fmt) {
+  bool any_updated = false;
+  for (const auto& provider : config->asr.providers) {
+    if (std::holds_alternative<LocalAsrProvider>(provider)) {
+      continue;
+    }
+    const std::string id = AsrProviderId(provider);
+    auto it = std::ranges::find_if(entries, [&id](const auto& e) { return e.id == id; });
+    if (it == entries.end()) {
+      continue;
+    }
+    if (UpdateSingleAsrProvider(config, manifest, *it, force, fmt)) {
+      any_updated = true;
+    }
+  }
+  return any_updated;
+}
+
+} // namespace
 
 int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force, Formatter& fmt,
                                const CliContext& ctx) {
@@ -462,97 +528,41 @@ int RunAsrConfigUpdateProvider(const std::string& selector, bool all, bool force
   CoreConfig config = LoadCoreConfig();
   NormalizeCoreConfig(&config);
 
-  const auto registryUrls = CoreConfigView(config).AsrProviderRegistryUrls();
-  if (registryUrls.empty()) {
-    fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
-                     "registry.base_urls."));
+  const auto entries_opt =
+      vinput::cli::FetchScriptRegistryEntries(config, vinput::script::Kind::kAsrProvider, fmt);
+  if (!entries_opt) {
     return 1;
   }
-
-  std::string error;
-  const auto entries = vinput::script::FetchRegistry(config, vinput::script::Kind::kAsrProvider,
-                                                     registryUrls, &error);
-  if (!error.empty()) {
-    fmt.PrintError(error);
-    return 1;
-  }
-
+  const auto& entries = *entries_opt;
   const auto manifest = vinput::registry::InstalledManifest::Load();
 
-  auto updateSingle = [&](const vinput::script::RegistryEntry& entry) -> bool {
-    const auto version_info = vinput::script::CheckResourceVersion(
-        manifest, vinput::script::Kind::kAsrProvider, entry, true);
-    if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
-      fmt.PrintInfo(::fmt::sprintf(_("Provider '%s' is already up to date."), entry.short_id));
-      return true;
-    }
-
-    std::filesystem::path scriptPath;
-    if (!vinput::script::DownloadScript(entry, vinput::script::Kind::kAsrProvider, &scriptPath,
-                                        &error)) {
-      fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
-      return false;
-    }
-    if (!vinput::script::MaterializeAsrProvider(&config, entry, scriptPath, &error)) {
-      fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
-      return false;
-    }
-
-    if (!version_info.installed_version.empty() && !version_info.remote_version.empty()) {
-      fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated: %s -> %s"), entry.short_id,
-                                      version_info.installed_version, version_info.remote_version));
-    } else {
-      fmt.PrintSuccess(::fmt::sprintf(_("ASR provider '%s' updated."), entry.short_id));
-    }
-    return true;
-  };
-
-  bool any_updated = false;
   if (all) {
-    for (const auto& provider : config.asr.providers) {
-      if (std::holds_alternative<LocalAsrProvider>(provider)) {
-        continue;
-      }
-      const std::string id = AsrProviderId(provider);
-      auto it = std::ranges::find_if(entries, [&id](const auto& e) { return e.id == id; });
-      if (it != entries.end()) {
-        if (updateSingle(*it)) {
-          any_updated = true;
-        }
-      }
+    const bool any_updated = UpdateAllAsrProviders(&config, manifest, entries, force, fmt);
+    if (!any_updated) {
+      return 0;
     }
-  } else {
-    const std::string id =
-        vinput::cli::ResolveScriptSelectorByShortId(selector, entries, "ASR provider", &error);
-    if (id.empty()) {
-      fmt.PrintError(error);
-      return 1;
-    }
-    auto it = std::ranges::find_if(entries, [&id](const auto& e) { return e.id == id; });
-    if (it == entries.end()) {
-      fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found in registry."), selector));
-      return 1;
-    }
-    const auto* existing = CoreConfigView(config).AsrProvider(it->id);
-    if (existing == nullptr) {
-      fmt.PrintError(
-          ::fmt::sprintf(_("ASR provider '%s' is not installed. Use 'add' instead."), selector));
-      return 1;
-    }
-    if (!updateSingle(*it)) {
-      return 1;
-    }
-    any_updated = true;
-  }
-
-  if (any_updated) {
     NormalizeCoreConfig(&config);
-    if (!SaveAsrConfigAndReload(config, fmt)) {
-      return 1;
-    }
+    return SaveAsrConfigAndReload(config, fmt) ? 0 : 1;
   }
 
-  return 0;
+  const auto* entry = vinput::cli::FindRegistryScriptEntry(
+      entries, vinput::script::Kind::kAsrProvider, selector, fmt);
+  if (entry == nullptr) {
+    return 1;
+  }
+
+  if (CoreConfigView(config).AsrProvider(entry->id) == nullptr) {
+    fmt.PrintError(
+        ::fmt::sprintf(_("ASR provider '%s' is not installed. Use 'add' instead."), selector));
+    return 1;
+  }
+
+  if (!UpdateSingleAsrProvider(&config, manifest, *entry, force, fmt)) {
+    return 1;
+  }
+
+  NormalizeCoreConfig(&config);
+  return SaveAsrConfigAndReload(config, fmt) ? 0 : 1;
 }
 
 int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ctx) {
@@ -594,6 +604,104 @@ int RunAsrConfigEdit(const std::string& id, Formatter& fmt, const CliContext& ct
 }
 
 #if VINPUT_ENABLE_LOCAL_ASR
+namespace {
+
+void RenderAvailableModelsJson(const std::vector<RemoteModelEntry>& remoteModels,
+                               const vinput::cli::ResourceDisplayMap& display_map,
+                               const std::function<bool(const std::string&)>& isInstalled,
+                               Formatter& fmt) {
+  glz::json_t::array_t arr;
+  arr.reserve(remoteModels.size());
+  for (const auto& model : remoteModels) {
+    glz::json_t json_entry = {
+        {"id", vinput::cli::HumanizeResourceId(model.id, model.short_id)},
+        {"machine_id", model.id},
+        {"title", display_map.at(model.id).title},
+        {"description", display_map.at(model.id).description},
+        {"model_type", model.model_type()},
+        {"language", model.language},
+        {"supports_hotwords", model.supports_hotwords()},
+        {"size_bytes", model.size_bytes},
+        {"size", vinput::file::FormatFileSize(model.size_bytes)},
+        {"status", isInstalled(model.id) ? "installed" : "available"},
+    };
+    arr.emplace_back(std::move(json_entry));
+  }
+  fmt.PrintJson(glz::json_t(std::move(arr)));
+}
+
+void RenderAvailableModelsTable(const std::vector<RemoteModelEntry>& remoteModels,
+                                const vinput::cli::ResourceDisplayMap& display_map,
+                                const std::function<bool(const std::string&)>& isInstalled,
+                                Formatter& fmt) {
+  const std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
+                                            _("SIZE"), _("HOTWORDS"), _("STATUS")};
+  std::vector<std::vector<std::string>> rows;
+  rows.reserve(remoteModels.size());
+  for (const auto& model : remoteModels) {
+    rows.push_back({vinput::cli::HumanizeResourceId(model.id, model.short_id),
+                    display_map.at(model.id).title, model.model_type(), model.language,
+                    vinput::file::FormatFileSize(model.size_bytes),
+                    model.supports_hotwords() ? _("yes") : _("no"),
+                    isInstalled(model.id) ? _("installed") : _("available")});
+  }
+  fmt.PrintTable(headers, rows);
+}
+
+void RenderInstalledModelsJson(const std::vector<ModelSummary>& models,
+                               const vinput::cli::ResourceDisplayMap& installed_display_map,
+                               Formatter& fmt) {
+  glz::json_t::array_t arr;
+  arr.reserve(models.size());
+  for (const auto& model : models) {
+    std::string status = "installed";
+    if (model.state == ModelState::Active) {
+      status = "active";
+    } else if (model.state == ModelState::Broken) {
+      status = "broken";
+    }
+    const auto display_it = installed_display_map.find(model.id);
+    glz::json_t json_entry = {
+        {"id", vinput::cli::HumanizeResourceId(installed_display_map, model.id)},
+        {"machine_id", model.id},
+        {"title", display_it == installed_display_map.end() ? model.id : display_it->second.title},
+        {"model_type", model.model_type},
+        {"language", model.language},
+        {"supports_hotwords", model.supports_hotwords},
+        {"size_bytes", model.size_bytes},
+        {"size", vinput::file::FormatFileSize(model.size_bytes)},
+        {"status", status},
+    };
+    arr.emplace_back(std::move(json_entry));
+  }
+  fmt.PrintJson(glz::json_t(std::move(arr)));
+}
+
+void RenderInstalledModelsTable(const std::vector<ModelSummary>& models,
+                                const vinput::cli::ResourceDisplayMap& installed_display_map,
+                                Formatter& fmt) {
+  const std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
+                                            _("SIZE"), _("HOTWORDS"), _("STATUS")};
+  std::vector<std::vector<std::string>> rows;
+  for (const auto& model : models) {
+    std::string status = _("Installed");
+    if (model.state == ModelState::Active) {
+      status = std::string("[*] ") + _("Active");
+    } else if (model.state == ModelState::Broken) {
+      status = std::string("[!] ") + _("Broken");
+    }
+    const auto display_it = installed_display_map.find(model.id);
+    rows.push_back({vinput::cli::HumanizeResourceId(installed_display_map, model.id),
+                    display_it == installed_display_map.end() ? model.id : display_it->second.title,
+                    model.model_type, model.language,
+                    vinput::file::FormatFileSize(model.size_bytes),
+                    model.supports_hotwords ? _("yes") : _("no"), status});
+  }
+  fmt.PrintTable(headers, rows);
+}
+
+} // namespace
+
 int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   const ModelManager manager(CoreConfigView::ModelBaseDir().string());
@@ -627,91 +735,21 @@ int RunAsrConfigListModels(bool available, Formatter& fmt, const CliContext& ctx
     };
 
     if (ctx.json_output) {
-      glz::json_t::array_t arr;
-      arr.reserve(remoteModels.size());
-      for (const auto& model : remoteModels) {
-        glz::json_t json_entry = {
-            {"id", vinput::cli::HumanizeResourceId(model.id, model.short_id)},
-            {"machine_id", model.id},
-            {"title", display_map.at(model.id).title},
-            {"description", display_map.at(model.id).description},
-            {"model_type", model.model_type()},
-            {"language", model.language},
-            {"supports_hotwords", model.supports_hotwords()},
-            {"size_bytes", model.size_bytes},
-            {"size", vinput::file::FormatFileSize(model.size_bytes)},
-            {"status", isInstalled(model.id) ? "installed" : "available"},
-        };
-        arr.emplace_back(std::move(json_entry));
-      }
-      fmt.PrintJson(glz::json_t(std::move(arr)));
+      RenderAvailableModelsJson(remoteModels, display_map, isInstalled, fmt);
       return 0;
     }
 
-    const std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
-                                              _("SIZE"), _("HOTWORDS"), _("STATUS")};
-    std::vector<std::vector<std::string>> rows;
-    rows.reserve(remoteModels.size());
-    for (const auto& model : remoteModels) {
-      rows.push_back({vinput::cli::HumanizeResourceId(model.id, model.short_id),
-                      display_map.at(model.id).title, model.model_type(), model.language,
-                      vinput::file::FormatFileSize(model.size_bytes),
-                      model.supports_hotwords() ? _("yes") : _("no"),
-                      isInstalled(model.id) ? _("installed") : _("available")});
-    }
-    fmt.PrintTable(headers, rows);
+    RenderAvailableModelsTable(remoteModels, display_map, isInstalled, fmt);
     return 0;
   }
 
   const auto models = manager.ListDetailed(activeModel);
-
   if (ctx.json_output) {
-    glz::json_t::array_t arr;
-    arr.reserve(models.size());
-    for (const auto& model : models) {
-      std::string status = "installed";
-      if (model.state == ModelState::Active) {
-        status = "active";
-      } else if (model.state == ModelState::Broken) {
-        status = "broken";
-      }
-      const auto display_it = installed_display_map.find(model.id);
-      glz::json_t json_entry = {
-          {"id", vinput::cli::HumanizeResourceId(installed_display_map, model.id)},
-          {"machine_id", model.id},
-          {"title",
-           display_it == installed_display_map.end() ? model.id : display_it->second.title},
-          {"model_type", model.model_type},
-          {"language", model.language},
-          {"supports_hotwords", model.supports_hotwords},
-          {"size_bytes", model.size_bytes},
-          {"size", vinput::file::FormatFileSize(model.size_bytes)},
-          {"status", status},
-      };
-      arr.emplace_back(std::move(json_entry));
-    }
-    fmt.PrintJson(glz::json_t(std::move(arr)));
+    RenderInstalledModelsJson(models, installed_display_map, fmt);
     return 0;
   }
 
-  const std::vector<std::string> headers = {_("ID"),   _("TITLE"),    _("TYPE"),  _("LANGUAGE"),
-                                            _("SIZE"), _("HOTWORDS"), _("STATUS")};
-  std::vector<std::vector<std::string>> rows;
-  for (const auto& model : models) {
-    std::string status = _("Installed");
-    if (model.state == ModelState::Active) {
-      status = std::string("[*] ") + _("Active");
-    } else if (model.state == ModelState::Broken) {
-      status = std::string("[!] ") + _("Broken");
-    }
-    const auto display_it = installed_display_map.find(model.id);
-    rows.push_back({vinput::cli::HumanizeResourceId(installed_display_map, model.id),
-                    display_it == installed_display_map.end() ? model.id : display_it->second.title,
-                    model.model_type, model.language,
-                    vinput::file::FormatFileSize(model.size_bytes),
-                    model.supports_hotwords ? _("yes") : _("no"), status});
-  }
-  fmt.PrintTable(headers, rows);
+  RenderInstalledModelsTable(models, installed_display_map, fmt);
   return 0;
 }
 
