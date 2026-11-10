@@ -12,11 +12,50 @@ if [[ ${EUID} -ne 0 ]]; then
   sudo_cmd=(sudo)
 fi
 
+# APT writes here instead of /var/cache/apt/archives so actions/cache can save it
+# without sudo; a cache hit keeps the archive download off the network entirely.
+vinput_apt_archives="${HOME}/.cache/vinput-apt-archives"
+
+readonly qt6_apt_packages=(
+  qt6-base-dev
+  qt6-tools-dev
+  qt6-tools-dev-tools
+)
+
+readonly ubuntu_apt_packages=(
+  bzip2
+  clang
+  cmake
+  file
+  git
+  jq
+  make
+  mold
+  ninja-build
+  pkg-config
+  sccache
+  gettext
+  curl
+  patch
+  python3
+  zstd
+  libblas-dev
+  liblapack-dev
+  libopenblas-dev
+  libssl-dev
+  libarchive-dev
+  libpipewire-0.3-dev
+  libsystemd-dev
+  libfcitx5core-dev
+  libfcitx5config-dev
+  libfcitx5utils-dev
+  fcitx5-modules-dev
+  "${qt6_apt_packages[@]}"
+)
+
 install_qt_apt() {
   "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    qt6-base-dev \
-    qt6-tools-dev \
-    qt6-tools-dev-tools
+    "${qt6_apt_packages[@]}"
 }
 
 install_qt_dnf() {
@@ -37,92 +76,45 @@ install_qt_zypper() {
     qt6-tools-devel
 }
 
-configure_ubuntu_mirror() {
-  local candidates=()
+apt_opts=(
+  -o "Dir::Cache::Archives=${vinput_apt_archives}"
+  -o APT::Keep-Downloaded-Packages=true
+  -o Acquire::Retries=2
+  -o Acquire::http::Timeout=20
+  -o Acquire::https::Timeout=20
+  -o Acquire::Languages=none
+  -o DPkg::Lock::Timeout=300
+)
 
-  # 1. 本地优先：读取 Worker/Runner 磁盘预置镜像列表 (0 网络开销)
-  if [[ -f /etc/apt/apt-mirrors.txt ]]; then
-    while IFS= read -r line; do
-      local url
-      url=$(echo "${line}" | awk '{print $1}')
-      [[ "${url}" =~ ^https?:// ]] && candidates+=("${url%/}")
-    done </etc/apt/apt-mirrors.txt
+prepare_apt_archives() {
+  mkdir -p "${vinput_apt_archives}/partial"
+  # APT fetches through the _apt sandbox user; a root-owned 0755 partial/ would
+  # make it fall back to an unsandboxed root download.
+  if id _apt >/dev/null 2>&1; then
+    "${sudo_cmd[@]}" chown _apt:root "${vinput_apt_archives}/partial"
   fi
+  "${sudo_cmd[@]}" chmod 700 "${vinput_apt_archives}/partial"
+}
 
-  # 2. 内置高可用静态候选池（全本地定义，无任何网络依赖）
-  local built_in_mirrors=(
-    "http://azure.archive.ubuntu.com/ubuntu"
-    "http://mirrors.edge.kernel.org/ubuntu"
-    "http://archive.ubuntu.com/ubuntu"
-  )
-  for m in "${built_in_mirrors[@]}"; do
-    candidates+=("${m}")
-  done
+# actions/cache runs as the runner user, so hand the directory back before the
+# post-step packs it; partial/ is ephemeral and would only bloat the cache.
+finalize_apt_archives() {
+  "${sudo_cmd[@]}" rm -rf "${vinput_apt_archives}/partial"
+  "${sudo_cmd[@]}" chown -R "$(id -u):$(id -g)" "${vinput_apt_archives}"
+}
 
-  # 3. 本地去重后，使用严格短超时探测（连接 1 秒，总限时 2 秒）
-  local tested=()
-  local best_mirror=""
-  for m in "${candidates[@]}"; do
-    [[ " ${tested[*]:-} " =~ " ${m} " ]] && continue
-    tested+=("${m}")
+install_ubuntu_deps() {
+  prepare_apt_archives
+  trap finalize_apt_archives EXIT
 
-    if curl -s -f --connect-timeout 1 --max-time 2 -I "${m}/dists/noble/InRelease" >/dev/null 2>&1; then
-      best_mirror="${m}"
-      break
-    fi
-  done
-
-  if [[ -z "${best_mirror}" ]]; then
-    best_mirror="http://azure.archive.ubuntu.com/ubuntu"
-  fi
-
-  echo "Selected Ubuntu mirror: ${best_mirror}" >&2
-
-  # 4. 替换当前 sources 配置为选定的健康镜像
-  "${sudo_cmd[@]}" sed -i -E "s|https?://[^/]+/ubuntu/?|${best_mirror}/|g" \
-    /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
-
-  # 5. 注入短路快速失败配置，杜绝无意义等待
-  "${sudo_cmd[@]}" tee /etc/apt/apt.conf.d/99-ci-fail-fast >/dev/null <<'EOF'
-Acquire::Retries "1";
-Acquire::http::Timeout "15";
-Acquire::https::Timeout "15";
-EOF
+  timeout 120 "${sudo_cmd[@]}" apt-get update "${apt_opts[@]}"
+  "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --no-install-recommends "${apt_opts[@]}" "${ubuntu_apt_packages[@]}"
 }
 
 case "${target}" in
 ubuntu24.04)
-  configure_ubuntu_mirror
-  "${sudo_cmd[@]}" apt-get update
-  "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    bzip2 \
-    clang \
-    cmake \
-    file \
-    git \
-    jq \
-    make \
-    mold \
-    ninja-build \
-    pkg-config \
-    sccache \
-    gettext \
-    curl \
-    patch \
-    python3 \
-    zstd \
-    libblas-dev \
-    liblapack-dev \
-    libopenblas-dev \
-    libssl-dev \
-    libarchive-dev \
-    libpipewire-0.3-dev \
-    libsystemd-dev \
-    libfcitx5core-dev \
-    libfcitx5config-dev \
-    libfcitx5utils-dev \
-    fcitx5-modules-dev
-  install_qt_apt
+  install_ubuntu_deps
   ;;
 debian12)
   apt-get update
