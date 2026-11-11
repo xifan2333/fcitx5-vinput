@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -47,15 +48,16 @@ std::string_view StripBulletOrNumber(std::string_view line) {
   return line;
 }
 
-std::vector<std::string> TryExtractJsonCandidates(std::string_view content, int max_candidates) {
+std::optional<std::vector<std::string>> TryExtractJsonCandidates(std::string_view content,
+                                                                 int max_candidates) {
   glz::json_t json_val;
   if (bool(glz::read_json(json_val, content)) || !json_val.is_object()) {
-    return {};
+    return std::nullopt;
   }
 
   const auto* candidate_array = vinput::json::Find(json_val, "candidates");
   if (candidate_array == nullptr || !candidate_array->is_array()) {
-    return {};
+    return std::nullopt;
   }
 
   std::vector<std::string> candidates;
@@ -88,9 +90,8 @@ std::vector<std::string> ExtractCandidatesAuto(std::string_view raw, int max_can
   }
 
   // Format 1: JSON object with {"candidates": ["..."]}
-  auto json_candidates = TryExtractJsonCandidates(content, max_candidates);
-  if (!json_candidates.empty()) {
-    return json_candidates;
+  if (auto json_candidates = TryExtractJsonCandidates(content, max_candidates)) {
+    return std::move(*json_candidates);
   }
 
   // Format 2: Single candidate direct text when max_candidates == 1

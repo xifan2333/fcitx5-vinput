@@ -33,11 +33,11 @@ bool CheckSingleConstraint(const SemanticVersion& current, std::string_view toke
   };
 
   static constexpr std::array<PrefixOp, 5> kPrefixOps = {{
-      {">=", Op::GreaterEqual},
-      {"<=", Op::LessEqual},
-      {">", Op::Greater},
-      {"<", Op::Less},
-      {"=", Op::Equal},
+      {.prefix = ">=", .op = Op::GreaterEqual},
+      {.prefix = "<=", .op = Op::LessEqual},
+      {.prefix = ">", .op = Op::Greater},
+      {.prefix = "<", .op = Op::Less},
+      {.prefix = "=", .op = Op::Equal},
   }};
 
   Op op = Op::Equal;
