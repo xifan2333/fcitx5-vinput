@@ -4,6 +4,7 @@
 #include <bit>
 #include <cstdint>
 #include <ctime>
+#include <optional>
 #include <pipewire/context.h>
 #include <pipewire/core.h>
 #include <pipewire/keys.h>
@@ -170,6 +171,9 @@ struct ScopedEnumerationTimer {
   const spa_loop_utils_methods* utils = nullptr;
   void* u_data = nullptr;
 
+  ScopedEnumerationTimer(spa_source* t, const spa_loop_utils_methods* u, void* ud) noexcept
+      : timer(t), utils(u), u_data(ud) {}
+
   ~ScopedEnumerationTimer() {
     if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
       utils->destroy_source(u_data, timer);
@@ -198,7 +202,7 @@ std::optional<ScopedEnumerationTimer> ArmEnumerationTimeout(pw_loop* loop, PwDat
   if (loop == nullptr || loop->utils == nullptr || loop->utils->iface.cb.funcs == nullptr) {
     return std::nullopt;
   }
-  auto* utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
+  const auto* utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
   void* u_data = loop->utils->iface.cb.data;
   if (utils->add_timer == nullptr || utils->update_timer == nullptr) {
     return std::nullopt;
@@ -219,7 +223,14 @@ std::optional<ScopedEnumerationTimer> ArmEnumerationTimeout(pw_loop* loop, PwDat
     return std::nullopt;
   }
 
-  return ScopedEnumerationTimer{.timer = timer, .utils = utils, .u_data = u_data};
+  return ScopedEnumerationTimer(timer, utils, u_data);
+}
+
+bool CompareDevices(const DeviceInfo& a, const DeviceInfo& b) noexcept {
+  if (a.is_sink_monitor != b.is_sink_monitor) {
+    return !a.is_sink_monitor && b.is_sink_monitor;
+  }
+  return a.id < b.id;
 }
 
 } // namespace
@@ -231,17 +242,17 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   const PwResourceGuard guard{&data};
 
   data.loop = pw_main_loop_new(nullptr);
-  if (!data.loop) {
+  if (data.loop == nullptr) {
     return {};
   }
 
   data.context = pw_context_new(pw_main_loop_get_loop(data.loop), nullptr, 0);
-  if (!data.context) {
+  if (data.context == nullptr) {
     return {};
   }
 
   data.core = pw_context_connect(data.context, nullptr, 0);
-  if (!data.core) {
+  if (data.core == nullptr) {
     return {};
   }
 
@@ -259,13 +270,7 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
     }
   }
 
-  std::stable_sort(data.devices.begin(), data.devices.end(),
-                   [](const DeviceInfo& a, const DeviceInfo& b) {
-                     if (a.is_sink_monitor != b.is_sink_monitor) {
-                       return !a.is_sink_monitor && b.is_sink_monitor;
-                     }
-                     return a.id < b.id;
-                   });
+  std::stable_sort(data.devices.begin(), data.devices.end(), CompareDevices);
 
   return data.devices;
 }
