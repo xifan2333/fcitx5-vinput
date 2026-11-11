@@ -556,6 +556,15 @@ void DaemonRuntimeController::AbortRecordingStartupLocked() {
   audio_buffer_.Clear();
 }
 
+void DaemonRuntimeController::ResetRecordingStateLocked() {
+  audio_buffer_.Clear();
+  latest_final_text_.clear();
+  recording_started_at_.reset();
+  first_non_silent_at_.reset();
+  first_partial_logged_ = false;
+  active_backend_ = {};
+}
+
 void DaemonRuntimeController::ArmLiveRecordingLocked(
     std::shared_ptr<vinput::daemon::asr::RecognitionSession> session,
     const vinput::daemon::asr::BackendDescriptor& active_backend,
