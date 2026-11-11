@@ -4,9 +4,13 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <ios>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
+#include <utility>
 #include <vector>
 
 #include "common/registry/registry_models.h"
@@ -70,7 +74,7 @@ void CreateTarArchive(const fs::path& tar_path, const std::vector<ArchiveEntryDe
     TEST_ASSERT(archive_write_header(a, entry) == ARCHIVE_OK);
     if (item.file_type == AE_IFREG && !item.content.empty()) {
       const auto written = archive_write_data(a, item.content.data(), item.content.size());
-      TEST_ASSERT(written == static_cast<la_ssize_t>(item.content.size()));
+      TEST_ASSERT(std::cmp_equal(written, item.content.size()));
     }
     archive_entry_free(entry);
   }
@@ -116,8 +120,8 @@ void TestExtractValidArchive() {
   const fs::path tar_file = temp.path / "valid.tar.gz";
   const fs::path dest_dir = temp.path / "extracted";
 
-  std::vector<ArchiveEntryDesc> entries = {
-      {.path = "model/vinput-model.json", .content = "{\"family\":\"transducer\"}"},
+  const std::vector<ArchiveEntryDesc> entries = {
+      {.path = "model/vinput-model.json", .content = R"({"family":"transducer"})"},
       {.path = "model/tokens.txt", .content = "<blk> 0\n"}};
   CreateTarArchive(tar_file, entries);
 
@@ -130,8 +134,9 @@ void TestExtractValidArchive() {
   TEST_ASSERT(fs::is_regular_file(tokens_path));
 
   std::ifstream in(json_path);
-  std::string read_content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  TEST_ASSERT(read_content == "{\"family\":\"transducer\"}");
+  const std::string read_content((std::istreambuf_iterator<char>(in)),
+                                 std::istreambuf_iterator<char>());
+  TEST_ASSERT(read_content == R"({"family":"transducer"})");
 }
 
 void TestExtractRejectsAbsolutePath() {
@@ -139,7 +144,8 @@ void TestExtractRejectsAbsolutePath() {
   const fs::path tar_file = temp.path / "malicious_abs.tar.gz";
   const fs::path dest_dir = temp.path / "extracted";
 
-  std::vector<ArchiveEntryDesc> entries = {{.path = "/etc/evil_config.txt", .content = "payload"}};
+  const std::vector<ArchiveEntryDesc> entries = {
+      {.path = "/etc/evil_config.txt", .content = "payload"}};
   CreateTarArchive(tar_file, entries);
 
   std::string error;
@@ -152,7 +158,7 @@ void TestExtractRejectsPathTraversal() {
   const fs::path tar_file = temp.path / "malicious_traversal.tar.gz";
   const fs::path dest_dir = temp.path / "extracted";
 
-  std::vector<ArchiveEntryDesc> entries = {
+  const std::vector<ArchiveEntryDesc> entries = {
       {.path = "model/../../escape.txt", .content = "escaped payload"}};
   CreateTarArchive(tar_file, entries);
 
@@ -166,7 +172,7 @@ void TestExtractRejectsSymlink() {
   const fs::path tar_file = temp.path / "malicious_symlink.tar.gz";
   const fs::path dest_dir = temp.path / "extracted";
 
-  std::vector<ArchiveEntryDesc> entries = {
+  const std::vector<ArchiveEntryDesc> entries = {
       {.path = "model/link_target", .file_type = AE_IFLNK, .symlink_target = "/etc/passwd"}};
   CreateTarArchive(tar_file, entries);
 
@@ -180,7 +186,7 @@ void TestExtractRejectsHardlink() {
   const fs::path tar_file = temp.path / "malicious_hardlink.tar.gz";
   const fs::path dest_dir = temp.path / "extracted";
 
-  std::vector<ArchiveEntryDesc> entries = {
+  const std::vector<ArchiveEntryDesc> entries = {
       {.path = "model/existing", .content = "real content"},
       {.path = "model/hardlink", .hardlink_target = "model/existing"}};
   CreateTarArchive(tar_file, entries);

@@ -636,6 +636,7 @@ private:
         }
         return false;
       }
+      staged_backup_ = false;
     }
     if (error != nullptr) {
       *error = std::string(reason);
