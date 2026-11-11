@@ -1,16 +1,15 @@
 #include "common/audio/pipewire_device.h"
 
 #include <algorithm>
-#include <bit>
 #include <cstdint>
 #include <ctime>
 #include <optional>
 #include <pipewire/context.h>
 #include <pipewire/core.h>
-#include <pipewire/interfaces.h>
 #include <pipewire/keys.h>
 #include <pipewire/loop.h>
 #include <pipewire/main-loop.h>
+#include <pipewire/node.h>
 #include <pipewire/pipewire.h>
 #include <pipewire/proxy.h>
 #include <spa/support/loop.h>
@@ -33,8 +32,8 @@ struct PwData {
   pw_context* context = nullptr;
   pw_core* core = nullptr;
   pw_registry* registry = nullptr;
-  spa_hook registry_listener;
-  spa_hook core_listener;
+  spa_hook registry_listener{};
+  spa_hook core_listener{};
   int pending_sync = -1;
   std::vector<DeviceInfo> devices;
 };
@@ -147,6 +146,8 @@ struct PwResourceGuard {
     }
     if (d->registry != nullptr) {
       spa_hook_remove(&d->registry_listener);
+      // Same object, two C types: PipeWire returns registry as an incomplete pw_registry*
+      // but destroys it as pw_proxy* (see c-abi-boundaries.md Boundary 1).
       pw_proxy_destroy(reinterpret_cast<pw_proxy*>(d->registry));
     }
     if (d->core != nullptr) {
