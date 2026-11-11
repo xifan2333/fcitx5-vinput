@@ -1,109 +1,54 @@
 ---
 name: vinput-dev
-description: Complete development, fork contribution, code health check, Issue+PR workflow, dependency governance, and multi-repo ecosystem guide for fcitx5-vinput. Use when developing or refactoring daemon/addon C++20 code, introducing or managing third-party dependencies (CMake/flake.nix/3rdparty), contributing from a fork, syncing with upstream, running pre-PR clean-up inspections (代码体检), following the Issue+Draft PR lifecycle, working across related repositories (vinput-registry, aur-auto, flatpak-auto), debugging PipeWire audio or D-Bus services, or running CI and release pipelines. Trigger also on Chinese requests such as 开发 fcitx5-vinput、改代码、添加语音识别厂商/场景适配器、根据 issue 拆解开发、开 PR/提 PR、Fork 贡献与上游同步、代码体检与格式化自检、CI 编译/发版、调试 PipeWire 录音或排查 daemon 日志、引入/治理第三方依赖、配置 CMake/Nix 依赖、3rdparty 库内嵌.
+description: "Master development router and lifecycle engine for fcitx5-vinput. Automatically routes user intent to domain playbooks (feature/fix, audio forensics, packaging CI, fork contribution) and enforces C++20 architecture principles (laziness protocol, C ABI boundaries, module depth, two-tier dependencies). Use when developing, fixing, refactoring, debugging PipeWire, running CI, or contributing to fcitx5-vinput."
 ---
 
-# fcitx5-vinput Unified Development Skill
+# fcitx5-vinput Development Engine
 
-Master router and operational manual for developing, contributing via forks, performing code health checks, and managing workflows across the `fcitx5-vinput` ecosystem.
+Semi-automatic ("手自一体") development and governance engine for `fcitx5-vinput`.
 
 ---
 
-## 1. Ecosystem Repository Routing
+## 1. Intent Matching & Playbook Dispatch
 
-Verify target repository boundaries before making any changes:
+When receiving a task, match the user's intent to one of the 4 canonical playbooks below.
 
-| Target Component | Repository & Path | Primary Role |
+> **Execution Contract (Todo List Injection)**:
+> Open a task checklist whose first items are the matched playbook's steps, copied in verbatim, before any task-specific items. Execute steps in order; never skip a step without an explicit reason.
+
+| Playbook | Matching Intent & Triggers | Target File |
 | :--- | :--- | :--- |
-| **Core Engine** | `.` / [xifan2333/fcitx5-vinput](https://github.com/xifan2333/fcitx5-vinput) | C++20 Fcitx5 addon, background daemon, CLI, PipeWire capture, sherpa-onnx runtime. |
-| **Catalog Registry** | `~/Code/vinput-registry` / [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) | Cloud ASR provider scripts, LLM scene adapters, and offline model catalogs. |
-| **Arch Packaging** | `~/Code/aur-auto` / [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) | Arch User Repository (`fcitx5-vinput-bin`) release tracking and clean chroot builds. |
-| **Flatpak Automation** | `~/Code/flatpak-auto` / [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) | Flatpak bundle builds, OSTree repo importing, and `.flatpakref` generation. |
+| **Feature or Bug Fix** | New functionality, bug fixes, refactoring, ASR/LLM adapters, config changes. | [`playbooks/feature-or-fix.md`](playbooks/feature-or-fix.md) |
+| **Audio Forensics** | PipeWire capture drops (XRuns), swallowing initial syllables, daemon crashes, D-Bus failures. | [`playbooks/audio-forensics.md`](playbooks/audio-forensics.md) |
+| **Packaging & CI** | Remote matrix validation, Dry Runs, SemVer release tagging, Actions runner management. | [`playbooks/packaging-ci.md`](playbooks/packaging-ci.md) |
+| **Fork Contribution** | Contributing from an external fork, remote syncing, PR hygiene. | [`playbooks/fork-contribution.md`](playbooks/fork-contribution.md) |
 
 ---
 
-## 2. Universal Pre-Commit Quality Gate
+## 2. Architecture Principles (Disclosed Reference)
 
-Run local validation before any commit or reporting task completion:
+Consult these authoritative principles whenever entering the relevant domain:
 
-```bash
-# Preview matched rules and tools
-mise run check:plan
-
-# Fast validation on modified files (mandatory before git commit)
-mise run check:changed
-
-# Analyze code duplication across src/
-mise run check:dup
-
-# Automated JSONL diagnostics stream
-hk run check --safe --format jsonl
-
-# Auto-format C++ / JSON / Markdown
-mise run fix
-
-# Validate Gettext translations & JSON schema
-python3 scripts/check-i18n.py
-```
+- **[`principles/laziness-protocol.md`](principles/laziness-protocol.md)**: The smallest complete change. Reuse canonical `src/common/` infrastructure (`glaze`, `spdlog`, `process_utils`, `mio`, `readerwriterqueue`). Deletion beats addition. Fix root cause once in shared code.
+- **[`principles/c-abi-boundaries.md`](principles/c-abi-boundaries.md)**: 6 canonical C ABI boundaries (PipeWire, sd-bus, libarchive, OpenSSL, POSIX, Fcitx5 addon). Immunization rules against automated review bot false-positives.
+- **[`principles/dependency-spec.md`](principles/dependency-spec.md)**: Two-tier binary boundary (Tier 1 host `.so` vs Tier 2 `3rdparty/` header-only). Pristine 3rdparty (zero edits). Zero network downloads during build (`FetchContent` prohibited).
+- **[`principles/module-boundaries.md`](principles/module-boundaries.md)**: Strict separation of common primitives (`src/common/`) from domain orchestration (`src/cli/`, `src/daemon/`, `src/addon/`, `src/gui/`). Cognitive complexity $\le 15$.
+- **[`principles/ecosystem-routes.md`](principles/ecosystem-routes.md)**: Multi-repo ecosystem routing: `vinput-registry` (zero pip deps), `aur-auto`, and `flatpak-auto`.
 
 ---
 
-## 3. Task-Driven Progressive Pointers
+## 3. Review SSOT & Code Standards
 
-Agents must progressively load detailed operational manuals according to the current task branch:
-
-### Branch: Developing Features or Bugfixes
-Read **[references/issue-pr-workflow.md](references/issue-pr-workflow.md)**
-- **Trigger**: When starting any new feature, bugfix, or functional refactoring in `fcitx5-vinput` (pure documentation and agent skill changes follow the direct-to-main fast-track).
-- **Core Standard**: Strict Issue $\to$ Pre-code Draft PR (all `- [ ]` unchecked) $\to$ single-item atomic commit & progressive push with PR checklist sync $\to$ `gh pr ready` for full CI validation $\to$ review-fix triage loop.
-- **Micro-slicing**: Keep functional code diffs under 300 lines; break large epics into stacked micro-PRs.
-- **Anti-Slop Guardrails**: Always reuse canonical `src/common/` infrastructure. Run `mise run check:dup` and report duplication summary + triage logic for human confirmation before finalizing refactorings.
-- **Config Migration**: Breaking config changes require updating `src/common/config/config_migration.cpp` in the same PR.
-- **Fast-Track Policy**: Non-functional text, documentation, and agent rules bypass the Issue/PR lifecycle and may be committed directly to `main` with `[skip ci]`.
-
-### Branch: Compiling, Testing, or Triggering CI
-Read **[references/compilation-ci.md](references/compilation-ci.md)**
-- **Trigger**: When building, testing, verifying packaging matrices, or preparing releases.
-- **Core Standard**: If GitHub user is `xifan2333`, **local compilation is strictly prohibited (never run `mise run build-debug`)**; rely exclusively on `gh workflow run ci.yml` and `release.yml`. Config schema changes strictly require a MINOR version bump and ConfigMigration registration.
-
-### Branch: Working from an External Fork
-Read **[references/fork-guide.md](references/fork-guide.md)**
-- **Trigger**: When contributing from a personal fork or reviewing community contributions.
-- **Core Standard**: Follow the 4-step Pre-PR Code Health Check. Never force-push (`git push -f`) to external contributors' forks or branches.
-
-### Branch: Modifying Cloud ASR Providers, LLM Scenes, or Packaging
-Read **[references/ecosystem.md](references/ecosystem.md)**
-- **Trigger**: When adding cloud speech scripts, scene prompts, AUR PKGBUILD updates, or Flatpak manifests.
-- **Core Standard**: Cloud ASR and LLM scripts in `vinput-registry` must use Python standard library only (zero pip dependencies) and standard `VINPUT_ASR_*` environment variables.
-
-### Branch: Managing Dependencies & Third-Party Modernization
-Read **[references/dependency-spec.md](references/dependency-spec.md)**
-- **Trigger**: When adding or upgrading third-party C++ libraries, configuring CMake dependencies, updating `flake.nix` `buildInputs`, vendoring header-only libraries under `3rdparty/`, or touching `THIRD_PARTY_NOTICES.md`.
-- **Core Standard**: Strict Three-Tier Priority Cascade (System-First $\to$ 3rdparty Vendored Fallback). CMake must never download over network (`FetchContent` git clone prohibited for offline sandbox compatibility). Universal libraries use `find_package REQUIRED`. Vendored libraries in `3rdparty/` must be isolated via CMake `SYSTEM INTERFACE` to prevent `clang-tidy` diagnostic pollution without suppressing warnings. Hand-crafted infrastructure (e.g. ad-hoc Unicode/Base64 tables) is forbidden.
-
-### Branch: Diagnosing Audio Streams or Daemon Runtime
-Read **[references/audio-debugging.md](references/audio-debugging.md)**
-- **Trigger**: When audio capture fails, PipeWire reports XRuns, D-Bus service crashes, or analyzing daemon logs.
-- **Core Standard**: Inspect systemd user logs via `journalctl --user-unit vinput-daemon -f` and run with `VINPUT_LOG_LEVEL=debug`.
-
-### Branch: Auditing C ABI Boundaries & Review Bot Triage
-Read **[references/c-abi-boundaries.md](references/c-abi-boundaries.md)**
-- **Trigger**: When triaging review bot (CodeRabbit, Qodo) comments, handling C API callbacks, or planning C++20 refactoring.
-- **Core Standard**: Strict separation of the 6 canonical C ABI boundaries (PipeWire/SPA, sd-bus, libarchive, OpenSSL EVP, POSIX signal/poll, Fcitx5 addon factory) from pure C++20 business logic. Never modernize C ABI callbacks or raw arrays at these boundaries.
-
-### Branch: Enforcing Module Boundaries & Cognitive Complexity
-Read **[references/module-boundaries-and-complexity.md](references/module-boundaries-and-complexity.md)**
-- **Trigger**: When structuring new modules, abstracting shared utilities into `src/common/`, refactoring nested loops, or triaging cognitive complexity warnings.
-- **Core Standard**: Strict separation of generic infrastructure (`src/common/`) from business domain orchestration (`src/cli/`, `src/daemon/`, `src/addon/`, `src/gui/`). Hard ceiling of <= 15 cognitive complexity enforced by Clang-Tidy, with standard C++20 algorithms replacing manual loop steppers and intentional capacity reservation (`reserve()`) eliminating redundant heap allocations.
+- During implementation: Focus on minimal, working code under `principles/laziness-protocol.md`.
+- Before marking PR ready / during review: Audit diff strictly against [`CODING_STANDARDS.md`](../../CODING_STANDARDS.md) at the repository root.
 
 ---
 
-## 4. Upstream Pillar Grounding (Context7 Pointers)
+## 4. Upstream Pillar Grounding (Context7)
 
-Before implementing non-trivial logic across the five core pillars, query the authoritative Context7 library to prevent architectural hallucinations:
-
-- **Fcitx5 Addon (`src/addon/`)**: Fetch canonical API patterns via Context7: `/fcitx/fcitx5`.
-- **Local Speech Runtime (`src/daemon/asr/`)**: Fetch sherpa-onnx recognizer/VAD patterns via Context7: `/k2-fsa/sherpa-onnx`.
-- **PipeWire Capture (`src/daemon/audio/`)**: Fetch low-latency audio capture & SPA formats via Context7: `/pipewire/pipewire`.
-- **CLI Subcommand Tree (`src/cli/`)**: Fetch validator & subcommand architecture via Context7: `/cliutils/cli11`.
-- **Desktop GUI (`src/gui/`)**: Fetch Qt 6 widgets, delegates, and layouts via Context7: `/websites/doc_qt_io_qt-6`.
+Before modifying the five core pillars, query Context7 to anchor canonical APIs:
+- **Fcitx5 Addon (`src/addon/`)**: Context7: `/fcitx/fcitx5`.
+- **Speech Engine (`src/daemon/asr/`)**: Context7: `/k2-fsa/sherpa-onnx`.
+- **PipeWire Audio (`src/daemon/audio/`)**: Context7: `/pipewire/pipewire`.
+- **CLI Subcommands (`src/cli/`)**: Context7: `/cliutils/cli11`.
+- **Qt 6 GUI (`src/gui/`)**: Context7: `/websites/doc_qt_io_qt-6`.

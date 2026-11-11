@@ -1,0 +1,13 @@
+id: anti-raw-subprocess
+message: "严禁在守护进程或命令行中使用裸 system()/popen()。外部子进程请统一使用 src/common/utils/process_utils.h (vinput::process::Run)。"
+severity: error
+language: Cpp
+files:
+  - "src/daemon/**"
+  - "src/cli/**"
+rule:
+  any:
+    - pattern: system($$$ARGS)
+    - pattern: std::system($$$ARGS)
+    - pattern: popen($$$ARGS)
+    - pattern: ::popen($$$ARGS)
