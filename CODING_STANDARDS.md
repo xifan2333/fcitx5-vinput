@@ -17,6 +17,11 @@ Favor deep modules: substantial functionality hidden behind a compact, intuitive
 - **The Cost**: Shallow modules inflate cognitive load, scatter domain logic across multiple files, and obscure real defects.
 - **Review Test**: The Deletion Test—does deleting the wrapper concentrate complexity into one cohesive unit, or merely shift it?
 
+### State Machines must be Deep: Encapsulate transitions and actions
+State machines must not be anemic flag emitters. Avoid designs where a state machine merely returns a struct of boolean flags (e.g., `should_start_capture`, `should_stop_capture`) and forces callers into cascading `if` trees to execute the transitions.
+- **The Cost**: Callers degenerate into 1000+ line God controllers riddled with nested branches, inspecting internal phase enums and manually synchronizing threads.
+- **Review Test**: Does the state machine directly drive the transition lifecycle and coordinate underlying actions, or does it leak booleans that force callers to write `if/else` ladders?
+
 ### Seam Discipline & The Single-Implementation Rule
 Never introduce an interface, abstract base class, or virtual methods solely to facilitate mocking in unit tests.
 - **Rule of Two**: One implementation represents a hypothetical seam; at least two genuine production implementations justify an interface. Single-implementation interfaces are indirection debt.
@@ -66,7 +71,26 @@ When altering user-facing keys or schema types in `config.json` or `vinput.conf`
 
 ---
 
-## 5. Dependencies & 3rdparty Governance
+## 5. Control Flow & Structural Integrity
+
+### Exhaustive dispatch for enums via `switch`
+Prefer `switch-case` over cascading `else if` for `enum` / `enum class` types to guarantee compiler exhaustiveness (`-Wswitch`) and $O(1)$ jump-table dispatch. Never let enum branches silently drop when new states are introduced.
+
+### Guard Clauses & Straight Happy Path
+Precondition checks, boundary validations, and error paths must exit early (`return`, `continue`, `break`). Keep the primary business flow at root indentation (0–1 levels). Wrapping extensive logic in `if (valid) { ... }` is prohibited (C++ Core Guidelines ES.45).
+
+### Deferred cleanup via RAII Scope Guard
+When a function requires deferred cleanup or resource return (e.g. `pw_stream_queue_buffer`, unlocking, clearing pending states), manage the cleanup via RAII Scope Guard upon entry. Never nest business logic inside multi-level `if` blocks merely to reach a trailing cleanup statement.
+
+### Table-Driven Dispatch for homogeneous rules
+For homogeneous token/prefix matching or string rule dispatch ($N \ge 3$), replace procedural `if (starts_with(...))` cascades with `constexpr` lookup tables (`std::array` + search algorithm) to separate code from data and eliminate subtle branch-order hazards.
+
+### Nesting ceiling
+Logical nesting must not exceed 2 levels inside any compound statement. Decompose deeper nesting through early returns, state machines, or deep helper methods.
+
+---
+
+## 6. Dependencies & 3rdparty Governance
 
 ### Two-Tier Binary Boundary
 - **Tier 1 (Host System Shared Libraries)**: `fcitx5`, `pipewire`, `libsystemd`, `qt6`, `openssl`, `libarchive`, `gettext` must be resolved via host package managers (`find_package REQUIRED` / `pkg_check_modules`).
@@ -77,7 +101,7 @@ Code under `3rdparty/` must remain untouched upstream snapshots. Never patch, re
 
 ---
 
-## 6. Fowler Code Smell Baseline
+## 7. Fowler Code Smell Baseline
 
 During review, evaluate the diff against these baseline heuristics:
 
@@ -100,7 +124,7 @@ The following mechanical rules are strictly audited by local tooling and CI. Rev
 
 | Rule Category | Mechanical Enforcement | Command |
 | :--- | :--- | :--- |
-| **AST Anti-Patterns** | `ast-grep` (banned malloc in RT callback, banned daemon stdout, no diagnostic suppressions) | `mise run check:ast` |
+| **AST Anti-Patterns** | `ast-grep` (banned malloc in RT callback, banned daemon stdout, no diagnostic suppressions, deep if branching, enum switch dispatch) | `mise run check:ast` |
 | **Complexity Ceiling** | `lizard` ($\text{CCN} \le 15, \text{CogC} \le 15$, nesting $< 4$) | `mise run check:complexity` |
 | **Code Duplication** | `jscpd` across `src/` | `mise run check:dup` |
 | **Code Formatting** | `hk` (`clang-format`, `cmake-format`, `ruff`, `shfmt`) | `mise run fix` / `check:cmake` |
