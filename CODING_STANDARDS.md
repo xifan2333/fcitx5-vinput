@@ -76,6 +76,7 @@ When altering user-facing keys or schema types in `config.json` or `vinput.conf`
 ### Exhaustive dispatch for enums: Mandatory `Switch-Return` for mappings
 Prefer `switch` over cascading `else if` for `enum` / `enum class` types to guarantee compiler exhaustiveness (`-Wswitch`) and $O(1)$ jump-table dispatch. Never let enum branches silently drop when new states are introduced.
 - **Mandatory Switch-Return for value mapping**: When a `switch` maps or extracts a value, return directly from each `case` (`Switch-Return`). Declaring an intermediate mutable variable solely to assign it and `break` is prohibited.
+- **Omit `default:` to enforce compiler exhaustiveness**: In an enum `switch`, do not include a `default:` case. Omitting `default:` allows `-Wswitch` (enforced as `-Werror` in CI) to emit a compile-time failure whenever a new enum enumerator is added. Place unreachable fallback returns strictly *after* the `switch` block.
 - **Eliminate fallthrough hazards**: `return` structurally eliminates missing-break fallthrough bugs and mutable state. Use `break` only when genuine, shared tail logic must execute after all branches.
 
 ### Guard Clauses & Straight Happy Path
@@ -122,7 +123,7 @@ During review, evaluate the diff against these baseline heuristics:
 
 ## Appendix: Automated Quality Gates
 
-The following mechanical rules are strictly audited by local tooling and CI. Reviewers skip manual verification of these items:
+The following mechanical checks are audited by local tooling (`mise run check:ast`, `check:complexity`, `check:changed`) and CI. Reviewers focus on domain semantics, module depth, and architectural boundaries, relying on tooling reports for AST structural patterns and complexity baselines:
 
 | Rule Category | Mechanical Enforcement | Command |
 | :--- | :--- | :--- |

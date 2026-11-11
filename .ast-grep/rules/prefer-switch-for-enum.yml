@@ -5,13 +5,31 @@ language: Cpp
 files:
   - "src/**"
 rule:
-  pattern:
-    context: |
-      if ($X == $A::$B) {
-        $$$BODY1
-      } else if ($X == $A::$C) {
-        $$$BODY2
-      } else if ($X == $A::$D) {
-        $$$BODY3
-      }
-    strictness: relaxed
+  any:
+    - pattern:
+        context: |
+          if ($X == $A::$B) {
+            $$$BODY1
+          } else if ($X == $A::$C) {
+            $$$BODY2
+          } else if ($X == $A::$D) {
+            $$$BODY3
+          }
+        strictness: smart
+    - pattern:
+        context: |
+          if ($X == $A::$B) {
+            $$$BODY1
+          } else if ($X == $A::$C) {
+            $$$BODY2
+          } else if ($X == $A::$D) {
+            $$$BODY3
+          } else {
+            $$$ELSE
+          }
+        strictness: smart
+constraints:
+  X:
+    not:
+      has:
+        kind: call_expression
