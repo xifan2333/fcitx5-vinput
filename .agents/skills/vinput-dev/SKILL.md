@@ -1,97 +1,54 @@
 ---
 name: vinput-dev
-description: Complete development, fork contribution, code health check, Issue+PR workflow, dependency governance, and multi-repo ecosystem guide for fcitx5-vinput. Use when developing or refactoring daemon/addon C++20 code, introducing or managing third-party dependencies (CMake/flake.nix/3rdparty), contributing from a fork, syncing with upstream, running pre-PR clean-up inspections (代码体检), following the Issue+Draft PR lifecycle, working across related repositories (vinput-registry, aur-auto, flatpak-auto), debugging PipeWire audio or D-Bus services, or running CI and release pipelines. Trigger also on Chinese requests such as 开发 fcitx5-vinput、改代码、添加语音识别厂商/场景适配器、根据 issue 拆解开发、开 PR/提 PR、Fork 贡献与上游同步、代码体检与格式化自检、CI 编译/发版、调试 PipeWire 录音或排查 daemon 日志、引入/治理第三方依赖、配置 CMake/Nix 依赖、3rdparty 库内嵌.
+description: "Master development router and lifecycle engine for fcitx5-vinput. Automatically routes user intent to domain playbooks (feature/fix, audio forensics, packaging CI, fork contribution) and enforces C++20 architecture principles (laziness protocol, C ABI boundaries, module depth, two-tier dependencies). Use when developing, fixing, refactoring, debugging PipeWire, running CI, or contributing to fcitx5-vinput."
 ---
 
-# fcitx5-vinput Unified Development Skill
+# fcitx5-vinput Development Engine
 
-Master router and operational manual for developing, contributing via forks, performing code health checks, and managing workflows across the `fcitx5-vinput` ecosystem.
-
----
-
-## 1. Governance & Lifecycle Skills
-
-The development workflow in `fcitx5-vinput` separates implementation, architecture, review, and diagnostic phases into specialized, composable skills:
-
-```
-[Phase -1: Design]       vinput-architect  -> Settle deep modules, C++20 types, audio RT safety
-[Phase  0: Worktree]     git worktree      -> Isolate development from active main branches
-[Phase  1: Implement]    vinput-dev        -> Draft PR, atomic commits, progressive checklist sync
-[Phase  2: Pre-PR Check] vinput-review     -> Two-Axis review (Standards Axis + Spec Axis)
-[Phase  3: Self-Evolve]  vinput-correct    -> Convert review feedback into structural ast-grep/checks
-[Diagnosis: On Demand]   vinput-diagnose   -> PipeWire, SPA ringbuffer, XRuns, D-Bus triage
-```
-
-- **[`vinput-architect`](../vinput-architect/SKILL.md)**: Deep module boundaries, deletion test, RAII ownership, and zero-allocation audio callbacks.
-- **[`vinput-review`](../vinput-review/SKILL.md)**: Two-axis review along `CODING_STANDARDS.md` (Standards Axis) and Issue/Spec (Spec Axis) in parallel.
-- **[`vinput-correct`](../vinput-correct/SKILL.md)**: Continuous governance engine converting review corrections into AST/linter checks (5-level defense hierarchy).
-- **[`vinput-diagnose`](../vinput-diagnose/SKILL.md)**: PipeWire capture debugging, buffer dropouts (XRuns), D-Bus monitoring, and runtime tracing.
+Semi-automatic ("手自一体") development and governance engine for `fcitx5-vinput`.
 
 ---
 
-## 2. Universal Quality Gates
+## 1. Intent Matching & Playbook Dispatch
 
-Run local validation before any commit or reporting task completion:
+When receiving a task, match the user's intent to one of the 4 canonical playbooks below.
 
-```bash
-# Preview matched rules and tools
-mise run check:plan
+> **Execution Contract (Todo List Injection)**:
+> Open a task checklist whose first items are the matched playbook's steps, copied in verbatim, before any task-specific items. Execute steps in order; never skip a step without an explicit reason.
 
-# Fast validation on modified files (mandatory before git commit)
-mise run check:changed
-
-# Analyze code duplication across src/
-mise run check:dup
-
-# Audit C++ AST structural anti-patterns
-mise run check:ast
-
-# Audit cyclomatic & cognitive complexity (CCN <= 15, CogC <= 15)
-mise run check:complexity
-
-# Verify config schema migrations
-mise run check:migration
-
-# Auto-format C++ / JSON / Python / Markdown
-mise run fix
-```
-
----
-
-## 3. Ecosystem Repository Routing
-
-Verify target repository boundaries before making any changes:
-
-| Target Component | Repository & Path | Primary Role |
+| Playbook | Matching Intent & Triggers | Target File |
 | :--- | :--- | :--- |
-| **Core Engine** | `.` / [xifan2333/fcitx5-vinput](https://github.com/xifan2333/fcitx5-vinput) | C++20 Fcitx5 addon, background daemon, CLI, PipeWire capture, sherpa-onnx runtime. |
-| **Catalog Registry** | `~/Code/vinput-registry` / [xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry) | Cloud ASR provider scripts, LLM scene adapters, and offline model catalogs. |
-| **Arch Packaging** | `~/Code/aur-auto` / [xifan2333/aur-auto](https://github.com/xifan2333/aur-auto) | Arch User Repository (`fcitx5-vinput-bin`) release tracking and clean chroot builds. |
-| **Flatpak Automation** | `~/Code/flatpak-auto` / [xifan2333/flatpak-auto](https://github.com/xifan2333/flatpak-auto) | Flatpak bundle builds, OSTree repo importing, and `.flatpakref` generation. |
+| **Feature or Bug Fix** | New functionality, bug fixes, refactoring, ASR/LLM adapters, config changes. | [`playbooks/feature-or-fix.md`](playbooks/feature-or-fix.md) |
+| **Audio Forensics** | PipeWire capture drops (XRuns), swallowing initial syllables, daemon crashes, D-Bus failures. | [`playbooks/audio-forensics.md`](playbooks/audio-forensics.md) |
+| **Packaging & CI** | Remote matrix validation, Dry Runs, SemVer release tagging, Actions runner management. | [`playbooks/packaging-ci.md`](playbooks/packaging-ci.md) |
+| **Fork Contribution** | Contributing from an external fork, remote syncing, PR hygiene. | [`playbooks/fork-contribution.md`](playbooks/fork-contribution.md) |
 
 ---
 
-## 4. Task-Driven Reference Manuals
+## 2. Architecture Principles (Disclosed Reference)
 
-| Operational Need | Manual | Key Takeaways |
-| :--- | :--- | :--- |
-| **Issue + Draft PR Workflow** | [issue-pr-workflow.md](references/issue-pr-workflow.md) | Branch setup, PR checklists (`- [ ]`), single-item atomic commits, bot triage |
-| **Compilation & Release CI** | [compilation-ci.md](references/compilation-ci.md) | Maintainer no-local-build rule, multi-arch matrix dry runs, SemVer minor bumps |
-| **Fork Contribution & Sync** | [references/fork-guide.md](references/fork-guide.md) | Clean chroot builds, remote syncing, zero force-push to personal contributor forks |
-| **Multi-Repo Ecosystem** | [references/ecosystem.md](references/ecosystem.md) | Registry scripts (zero pip deps), AUR updates, Flatpak OSTree sync |
-| **Dependency Governance** | [references/dependency-spec.md](references/dependency-spec.md) | Tier 1 host packages vs. Tier 2 `3rdparty/` pristine vendoring (zero edits) |
-| **Audio & PipeWire Tracing** | [references/audio-debugging.md](references/audio-debugging.md) | Troubleshooting SPA buffer dropouts, XRuns, `VINPUT_DEBUG=1` |
-| **C ABI Hard Boundaries** | [references/c-abi-boundaries.md](references/c-abi-boundaries.md) | PipeWire/sd-bus/libarchive C boundaries vs. modern C++20 business logic |
-| **Module Depth & Complexity** | [references/module-boundaries-and-complexity.md](references/module-boundaries-and-complexity.md) | Deep modules over shallow wrappers; CogC $\le 15$ ceiling |
+Consult these authoritative principles whenever entering the relevant domain:
+
+- **[`principles/laziness-protocol.md`](principles/laziness-protocol.md)**: The smallest complete change. Reuse canonical `src/common/` infrastructure (`glaze`, `spdlog`, `process_utils`, `mio`, `readerwriterqueue`). Deletion beats addition. Fix root cause once in shared code.
+- **[`principles/c-abi-boundaries.md`](principles/c-abi-boundaries.md)**: 6 canonical C ABI boundaries (PipeWire, sd-bus, libarchive, OpenSSL, POSIX, Fcitx5 addon). Immunization rules against automated review bot false-positives.
+- **[`principles/dependency-spec.md`](principles/dependency-spec.md)**: Two-tier binary boundary (Tier 1 host `.so` vs Tier 2 `3rdparty/` header-only). Pristine 3rdparty (zero edits). Zero network downloads during build (`FetchContent` prohibited).
+- **[`principles/module-boundaries.md`](principles/module-boundaries.md)**: Strict separation of common primitives (`src/common/`) from domain orchestration (`src/cli/`, `src/daemon/`, `src/addon/`, `src/gui/`). Cognitive complexity $\le 15$.
+- **[`principles/ecosystem-routes.md`](principles/ecosystem-routes.md)**: Multi-repo ecosystem routing: `vinput-registry` (zero pip deps), `aur-auto`, and `flatpak-auto`.
 
 ---
 
-## 5. Upstream Pillar Grounding (Context7 Pointers)
+## 3. Review SSOT & Code Standards
 
-Before implementing non-trivial logic across the five core pillars, query the authoritative Context7 library to prevent architectural hallucinations:
+- During implementation: Focus on minimal, working code under `principles/laziness-protocol.md`.
+- Before marking PR ready / during review: Audit diff strictly against [`CODING_STANDARDS.md`](../../CODING_STANDARDS.md) at the repository root.
 
+---
+
+## 4. Upstream Pillar Grounding (Context7)
+
+Before modifying the five core pillars, query Context7 to anchor canonical APIs:
 - **Fcitx5 Addon (`src/addon/`)**: Context7: `/fcitx/fcitx5`.
-- **Local Speech Runtime (`src/daemon/asr/`)**: Context7: `/k2-fsa/sherpa-onnx`.
-- **PipeWire Capture (`src/daemon/audio/`)**: Context7: `/pipewire/pipewire`.
-- **CLI Subcommand Tree (`src/cli/`)**: Context7: `/cliutils/cli11`.
-- **Desktop GUI (`src/gui/`)**: Context7: `/websites/doc_qt_io_qt-6`.
+- **Speech Engine (`src/daemon/asr/`)**: Context7: `/k2-fsa/sherpa-onnx`.
+- **PipeWire Audio (`src/daemon/audio/`)**: Context7: `/pipewire/pipewire`.
+- **CLI Subcommands (`src/cli/`)**: Context7: `/cliutils/cli11`.
+- **Qt 6 GUI (`src/gui/`)**: Context7: `/websites/doc_qt_io_qt-6`.

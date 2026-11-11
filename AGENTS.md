@@ -29,8 +29,8 @@ Progressive operational guide, workflow red lines, and routing index for AI codi
 6. **No Force-Pushing to Contributor Forks**: Never `git push -f` to external contributors' personal forks or PR branches.
 7. **PR Micro-Slicing**: Keep functional code changes < 300 lines (excluding tests/generated docs); decompose complex epics into stacked micro-PRs.
 8. **AI Attribution & Disclosure**: Append `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*` to PR descriptions, review fixes, and substantive comments.
-9. **Dialectical Review Bot Triage**: Never treat automated review bots (CodeRabbit, Greptile) as unquestioned instructions. Critically evaluate findings against C++20 standards and project architecture. Report analysis to the human maintainer in chat before implementing fixes.
-10. **Non-Blocking Handover (No CI Polling)**: Never execute blocking polling loops (`gh run watch` or sleep loops). Immediately after running `gh pr ready`, output the PR and Actions run URLs and yield control.
+9. **Dialectical Review Bot Triage**: Never treat automated review bots (CodeRabbit, Greptile) as unquestioned instructions. Report 5W1H analysis to the human maintainer in chat before implementing fixes.
+10. **Non-Blocking Handover (No CI Polling)**: Never execute blocking polling loops (`gh run watch` or sleep loops). Immediately after running `gh pr ready`, output the PR and Actions run URLs and yield control. `pi-ghwebhook` wakes the agent on CI or review events.
 11. **Issue-PR Lifecycle Complete Closure**: After squash-merging a PR, switch back to `main`, pull latest, and verify the originating issue is in the `CLOSED` state (manually close via `gh issue close <id>` if needed).
 12. **Proactive CI Quota Cancellation**: Cancel stale in-progress runs (`gh run cancel`) before pushing follow-up fixes or amending commits. Never cancel runs on `main`.
 
@@ -39,7 +39,7 @@ Progressive operational guide, workflow red lines, and routing index for AI codi
 ## 3. Code Standards & Architecture Enforcement
 
 > **Implementation vs. Review Separation**:
-> Implementation agents focus on minimal, clean solutions. Detailed coding standards and Fowler code smells are evaluated during review against `CODING_STANDARDS.md`.
+> Implementation agents focus on minimal, clean solutions under [`principles/laziness-protocol.md`](.agents/skills/vinput-dev/principles/laziness-protocol.md). Detailed coding standards and Fowler code smells are evaluated during review against `CODING_STANDARDS.md`.
 
 - **Coding Standards (SSOT)**: See [`CODING_STANDARDS.md`](CODING_STANDARDS.md) for complete rules governing real-time audio safety, module depth, SSOT common infrastructure, cognitive complexity ($\le 15$), C++20 memory models, zero-diagnostic suppression, and pristine 3rdparty governance.
 - **Domain Modeling & Ubiquitous Language**: See [`GLOSSARY.md`](GLOSSARY.md). When naming domain concepts (in issue titles, function names, tests), strictly use the vocabulary defined in the glossary.
@@ -55,6 +55,7 @@ mise run check:changed    # Validate only touched files (safe, fast, < 0.3s)
 mise run check:ast        # Audit C++ AST structural anti-patterns via ast-grep
 mise run check:dup        # Analyze code duplication across src/ (jscpd)
 mise run check:complexity # Audit cyclomatic & cognitive complexity (CCN <= 15, CogC <= 15)
+mise run check:migration  # Verify config schema migrations
 mise run check:typos      # Audit identifier and code spelling integrity (typos)
 mise run check:cmake      # Validate CMake formatting (cmake-format)
 mise run fix              # Auto-format all files via hk (clang-format, cmake-format, ruff, shfmt)
@@ -73,17 +74,18 @@ gh run list --branch $(git branch --show-current) --status in_progress --json da
 
 | Topic | Pointer | When to Consult |
 | :--- | :--- | :--- |
+| **Master Development Engine** | [`vinput-dev`](.agents/skills/vinput-dev/SKILL.md) | Entry point for intent matching and playbook dispatch |
 | **Code Standards & Smells** | [`CODING_STANDARDS.md`](CODING_STANDARDS.md) | Writing C++20 code, reviewing PRs, checking linter rules |
 | **Domain Glossary** | [`GLOSSARY.md`](GLOSSARY.md) | Naming domain primitives, structs, D-Bus methods, and tests |
-| **Domain Docs Layout** | [`docs/agents/domain.md`](docs/agents/domain.md) | Exploring single-context vs multi-context documentation |
-| **Issue Tracker Protocol** | [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md) | Reading/creating GitHub issues, managing dependencies, wayfinding |
-| **Triage Labels** | [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md) | Mapping canonical triage roles to issue labels |
-| **Issue & PR Lifecycle** | [issue-pr-workflow.md](.agents/skills/vinput-dev/references/issue-pr-workflow.md) | Detailed branch setup, PR checklists, and bot triage |
-| **Compilation & Packaging** | [compilation-ci.md](.agents/skills/vinput-dev/references/compilation-ci.md) | Matrix builds, packaging channels, and SemVer release rules |
-| **Audio & PipeWire Tracing**| [audio-debugging.md](.agents/skills/vinput-dev/references/audio-debugging.md) | Troubleshooting audio capture, SPA ringbuffers, and XRuns |
-| **Multi-Repo Ecosystem** | [ecosystem.md](.agents/skills/vinput-dev/references/ecosystem.md) | Cross-repo links: vinput-registry, aur-auto, flatpak-auto |
-| **C ABI Hard Boundaries** | [c-abi-boundaries.md](.agents/skills/vinput-dev/references/c-abi-boundaries.md) | Interfacing with PipeWire, sd-bus, POSIX, and libarchive |
-| **Dependency Governance** | [dependency-spec.md](.agents/skills/vinput-dev/references/dependency-spec.md) | Tier 1 host packages vs. Tier 2 `3rdparty/` pristine vendoring |
+| **Feature & Fix Playbook** | [`playbooks/feature-or-fix.md`](.agents/skills/vinput-dev/playbooks/feature-or-fix.md) | Developing features, bug fixes, and atomic PR commits |
+| **Audio Forensics Playbook** | [`playbooks/audio-forensics.md`](.agents/skills/vinput-dev/playbooks/audio-forensics.md) | Diagnosing PipeWire, SPA buffers, XRuns, and crashes |
+| **Packaging & CI Playbook** | [`playbooks/packaging-ci.md`](.agents/skills/vinput-dev/playbooks/packaging-ci.md) | Multi-arch matrix dry runs, packaging channels, and SemVer |
+| **Fork Contribution Playbook**| [`playbooks/fork-contribution.md`](.agents/skills/vinput-dev/playbooks/fork-contribution.md) | Remote sync and fork hygiene (zero force-push) |
+| **Laziness & Minimal Diff** | [`principles/laziness-protocol.md`](.agents/skills/vinput-dev/principles/laziness-protocol.md) | Smallest complete change, reuse first, deletion beats addition |
+| **C ABI Hard Boundaries** | [`principles/c-abi-boundaries.md`](.agents/skills/vinput-dev/principles/c-abi-boundaries.md) | Interfacing with PipeWire, sd-bus, POSIX, and libarchive |
+| **Dependency Governance** | [`principles/dependency-spec.md`](.agents/skills/vinput-dev/principles/dependency-spec.md) | Host packages vs. `3rdparty/` pristine vendoring |
+| **Module Depth & Complexity** | [`principles/module-boundaries.md`](.agents/skills/vinput-dev/principles/module-boundaries.md) | Deep modules over shallow wrappers; CogC $\le 15$ ceiling |
+| **Multi-Repo Ecosystem** | [`principles/ecosystem-routes.md`](.agents/skills/vinput-dev/principles/ecosystem-routes.md) | Cross-repo links: vinput-registry, aur-auto, flatpak-auto |
 | **Fcitx5 Addon Pillar** | Context7: `/fcitx/fcitx5` | Modifying `src/addon/` key handling and configuration |
 | **Speech Engine Pillar** | Context7: `/k2-fsa/sherpa-onnx` | Modifying `src/daemon/asr/` models, recognizers, and VAD |
 | **PipeWire Capture Pillar** | Context7: `/pipewire/pipewire` | Modifying `src/daemon/audio/` capture loops and streams |
