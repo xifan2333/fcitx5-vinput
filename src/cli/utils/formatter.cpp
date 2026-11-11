@@ -19,118 +19,95 @@
 // two space indented output with explicit nulls, while the single value helpers
 // stay compact.
 
-// ---- TextFormatter ----
+namespace {
 
-TextFormatter::TextFormatter(bool use_color) : use_color_(use_color) {}
+class TextFormatter final : public Formatter {
+public:
+  explicit TextFormatter(bool use_color) : use_color_(use_color) {}
 
-std::string TextFormatter::Green(const std::string& s) const {
-  if (!use_color_) {
-    return s;
+  void PrintTable(const std::vector<std::string>& headers,
+                  const std::vector<std::vector<std::string>>& rows) override {
+    std::cout << vinput::cli::RenderTable(headers, rows, use_color_);
   }
-  return "\033[32m" + s + "\033[0m";
-}
-
-std::string TextFormatter::Red(const std::string& s) const {
-  if (!use_color_) {
-    return s;
+  void PrintKeyValue(const std::string& key, const std::string& value) override {
+    std::cout << Bold(key) << ": " << value << "\n";
   }
-  return "\033[31m" + s + "\033[0m";
-}
-
-std::string TextFormatter::Yellow(const std::string& s) const {
-  if (!use_color_) {
-    return s;
+  void PrintSuccess(const std::string& msg) override { std::cout << Green(msg) << "\n"; }
+  void PrintError(const std::string& msg) override { std::cerr << Red(msg) << "\n"; }
+  void PrintWarning(const std::string& msg) override { std::cout << Yellow(msg) << "\n"; }
+  void PrintJson(const glz::json_t& j) override {
+    std::cout << vinput::json::ToPrettyText(j) << "\n";
   }
-  return "\033[33m" + s + "\033[0m";
-}
+  void PrintInfo(const std::string& msg) override { std::cout << Gray(msg) << "\n"; }
 
-std::string TextFormatter::Gray(const std::string& s) const {
-  if (!use_color_) {
-    return s;
+private:
+  bool use_color_;
+  [[nodiscard]] std::string Green(const std::string& s) const {
+    return use_color_ ? ("\033[32m" + s + "\033[0m") : s;
   }
-  return "\033[90m" + s + "\033[0m";
-}
-
-std::string TextFormatter::Bold(const std::string& s) const {
-  if (!use_color_) {
-    return s;
+  [[nodiscard]] std::string Red(const std::string& s) const {
+    return use_color_ ? ("\033[31m" + s + "\033[0m") : s;
   }
-  return "\033[1m" + s + "\033[0m";
-}
+  [[nodiscard]] std::string Yellow(const std::string& s) const {
+    return use_color_ ? ("\033[33m" + s + "\033[0m") : s;
+  }
+  [[nodiscard]] std::string Gray(const std::string& s) const {
+    return use_color_ ? ("\033[90m" + s + "\033[0m") : s;
+  }
+  [[nodiscard]] std::string Bold(const std::string& s) const {
+    return use_color_ ? ("\033[1m" + s + "\033[0m") : s;
+  }
+};
 
-void TextFormatter::PrintTable(const std::vector<std::string>& headers,
-                               const std::vector<std::vector<std::string>>& rows) {
-  std::cout << vinput::cli::RenderTable(headers, rows, use_color_);
-}
-
-void TextFormatter::PrintKeyValue(const std::string& key, const std::string& value) {
-  std::cout << Bold(key) << ": " << value << "\n";
-}
-
-void TextFormatter::PrintSuccess(const std::string& msg) {
-  std::cout << Green(msg) << "\n";
-}
-
-void TextFormatter::PrintError(const std::string& msg) {
-  std::cerr << Red(msg) << "\n";
-}
-
-void TextFormatter::PrintWarning(const std::string& msg) {
-  std::cout << Yellow(msg) << "\n";
-}
-
-void TextFormatter::PrintJson(const glz::json_t& j) {
-  std::cout << vinput::json::ToPrettyText(j) << "\n";
-}
-
-void TextFormatter::PrintInfo(const std::string& msg) {
-  std::cout << Gray(msg) << "\n";
-}
-
-// ---- JsonFormatter ----
-
-void JsonFormatter::PrintTable(const std::vector<std::string>& headers,
-                               const std::vector<std::vector<std::string>>& rows) {
-  glz::json_t::array_t arr;
-  arr.reserve(rows.size());
-  for (const auto& row : rows) {
-    glz::json_t::object_t obj;
-    for (size_t i = 0; i < headers.size(); ++i) {
-      obj.emplace(headers[i], glz::json_t((i < row.size()) ? row[i] : std::string{}));
+class JsonFormatter final : public Formatter {
+public:
+  void PrintTable(const std::vector<std::string>& headers,
+                  const std::vector<std::vector<std::string>>& rows) override {
+    glz::json_t::array_t arr;
+    arr.reserve(rows.size());
+    for (const auto& row : rows) {
+      glz::json_t::object_t obj;
+      for (size_t i = 0; i < headers.size(); ++i) {
+        obj.emplace(headers[i], glz::json_t((i < row.size()) ? row[i] : std::string{}));
+      }
+      arr.emplace_back(std::move(obj));
     }
-    arr.emplace_back(std::move(obj));
+    std::cout << vinput::json::ToPrettyText(glz::json_t(std::move(arr))) << "\n";
   }
-  std::cout << vinput::json::ToPrettyText(glz::json_t(std::move(arr))) << "\n";
-}
 
-void JsonFormatter::PrintKeyValue(const std::string& key, const std::string& value) {
-  const glz::json_t obj = {{"key", key}, {"value", value}};
-  std::cout << vinput::json::ToText(obj) << "\n";
-}
+  void PrintKeyValue(const std::string& key, const std::string& value) override {
+    const glz::json_t obj = {{"key", key}, {"value", value}};
+    PrintJson(obj, /*pretty=*/false);
+  }
+  void PrintSuccess(const std::string& msg) override { PrintStatus("success", msg); }
+  void PrintError(const std::string& msg) override {
+    PrintStatus("error", msg, /*is_stderr=*/true);
+  }
+  void PrintWarning(const std::string& msg) override { PrintStatus("warning", msg); }
+  void PrintInfo(const std::string& msg) override { PrintStatus("info", msg); }
+  void PrintJson(const glz::json_t& j) override { PrintJson(j, /*pretty=*/true); }
 
-void JsonFormatter::PrintSuccess(const std::string& msg) {
-  const glz::json_t obj = {{"status", "success"}, {"message", msg}};
-  std::cout << vinput::json::ToText(obj) << "\n";
-}
+private:
+  static void PrintJson(const glz::json_t& j, bool pretty) {
+    if (pretty) {
+      std::cout << vinput::json::ToPrettyText(j) << "\n";
+    } else {
+      std::cout << vinput::json::ToText(j) << "\n";
+    }
+  }
 
-void JsonFormatter::PrintError(const std::string& msg) {
-  const glz::json_t obj = {{"status", "error"}, {"message", msg}};
-  std::cerr << vinput::json::ToText(obj) << "\n";
-}
+  static void PrintStatus(const std::string& status, const std::string& msg,
+                          bool is_stderr = false) {
+    const glz::json_t obj = {{"status", status}, {"message", msg}};
+    if (is_stderr) {
+      std::cerr << vinput::json::ToText(obj) << "\n";
+    } else {
+      std::cout << vinput::json::ToText(obj) << "\n";
+    }
+  }
+};
 
-void JsonFormatter::PrintWarning(const std::string& msg) {
-  const glz::json_t obj = {{"status", "warning"}, {"message", msg}};
-  std::cout << vinput::json::ToText(obj) << "\n";
-}
-
-void JsonFormatter::PrintJson(const glz::json_t& j) {
-  std::cout << vinput::json::ToPrettyText(j) << "\n";
-}
-
-void JsonFormatter::PrintInfo(const std::string& msg) {
-  const glz::json_t obj = {{"status", "info"}, {"message", msg}};
-  std::cout << vinput::json::ToText(obj) << "\n";
-}
+} // namespace
 
 // ---- Factory ----
 
