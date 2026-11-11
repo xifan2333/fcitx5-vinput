@@ -188,17 +188,7 @@ struct ScopedEnumerationTimer {
   ScopedEnumerationTimer(ScopedEnumerationTimer&& other) noexcept
       : timer(std::exchange(other.timer, nullptr)), utils(std::exchange(other.utils, nullptr)),
         u_data(std::exchange(other.u_data, nullptr)) {}
-  ScopedEnumerationTimer& operator=(ScopedEnumerationTimer&& other) noexcept {
-    if (this != &other) {
-      if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
-        utils->destroy_source(u_data, timer);
-      }
-      timer = std::exchange(other.timer, nullptr);
-      utils = std::exchange(other.utils, nullptr);
-      u_data = std::exchange(other.u_data, nullptr);
-    }
-    return *this;
-  }
+  ScopedEnumerationTimer& operator=(ScopedEnumerationTimer&&) = delete;
 };
 
 std::optional<ScopedEnumerationTimer> ArmEnumerationTimeout(pw_loop* loop, PwData& data) {
