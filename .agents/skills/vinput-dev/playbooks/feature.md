@@ -10,7 +10,7 @@ Canonical execution workflow for introducing new capabilities or altering extern
 ## Steps
 
 ### 1. Upfront Grounding (S0: EXPLORE)
-- Run `Grounding Scout` (or query Context7 / local source) to inspect existing subsystem architecture and call chains.
+- Dispatch read-only reconnaissance (`references/execution-adapters.md` section 1) over existing subsystem architecture and call chains.
 - Ground domain concepts against `GLOSSARY.md`.
 - Settle behavioral or protocol forks via `/tmp/vinput-proto-*` prototypes (Empirical Fork Rule: never ask humans what can be measured).
 
@@ -73,7 +73,7 @@ For each unchecked `- [ ]` task in order:
   mise run check:dup
   ```
   If clone blocks are detected, report Type A vs Type B breakdown to maintainer and await decision (S2.5).
-- Dispatch read-only Dual-Axis Reviewers (Spec + Standards) via `/vinput-review`.
+- Dispatch the two isolated reviews (Spec + Standards) via `/vinput-review`.
 - Mark PR ready:
   ```bash
   gh pr ready <pr-id>

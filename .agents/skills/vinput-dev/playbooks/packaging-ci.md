@@ -39,8 +39,5 @@ The canonical execution workflow for multi-architecture builds, packaging channe
    - Verify that `src/common/config/config_migration.cpp` contains the registered migration step (`mise run check:migration`).
 
 6. **Proactive CI Quota Cancellation**:
-   - Before pushing new commits or switching tasks, cancel stale runs:
-     ```bash
-     gh run list --branch $(git branch --show-current) --status in_progress --json databaseId,headSha --jq ".[] | select(.headSha != \"$(git rev-parse HEAD)\") | .databaseId" | xargs -r -n 1 gh run cancel
-     ```
-   - *Red Line*: Never cancel runs on `main`.
+   - Before pushing new commits or switching tasks, apply the quota rule in
+     `../references/lifecycle.md` (Quota).

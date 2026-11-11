@@ -56,7 +56,7 @@ Canonical execution workflow for diagnosing and repairing broken behaviors, cras
 
 ### 5. Self-Review & Gate Yield (S3: GATE_YIELD)
 - Run `mise run check:dup`.
-- Dispatch Dual-Axis Reviewer via `/vinput-review`.
+- Dispatch the two isolated reviews via `/vinput-review`.
 - Mark ready: `gh pr ready <pr-id>`.
 - Yield control immediately with PR and CI links. Zero polling.
 

@@ -15,7 +15,7 @@
   "jobs": {
     "ci-failure": {
       "if": "github.event.workflow_run.conclusion == 'failure'",
-      "prompt": "CI run failed on branch {{ branch }}.\n\nWorkflow: {{ workflow }}\nRun URL: {{ run_url }}\nCommit: {{ head_sha }}\n\nPlease cancel any obsolete runs on this branch, run `gh run view {{ run_id }} --log-failed` (or dispatch Forensics Investigator subagent) to diagnose the failure, and prepare a minimal fix.",
+      "prompt": "CI run failed on branch {{ branch }}.\n\nWorkflow: {{ workflow }}\nRun URL: {{ run_url }}\nCommit: {{ head_sha }}\n\nPlease cancel any obsolete runs on this branch, run `gh run view {{ run_id }} --log-failed` (or dispatch a read-only forensics subagent) to diagnose the failure, and prepare a minimal fix.",
       "deliverAs": "followUp"
     },
     "ci-success": {
