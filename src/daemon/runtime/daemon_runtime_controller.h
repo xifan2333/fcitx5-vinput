@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "common/client/client_command.h"
+#include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
@@ -92,6 +94,28 @@ private:
   void WakeMainThread() const;
   void RestoreOutputIfDucked();
   void ResetRecordingStateLocked();
+  void AbortRecordingStartupLocked();
+  bool TryBeginRecordingStartupLocked(bool ime);
+  void AbortAndScheduleCaptureStop();
+  void ArmLiveRecordingLocked(std::shared_ptr<vinput::daemon::asr::RecognitionSession> session,
+                              const vinput::daemon::asr::BackendDescriptor& active_backend,
+                              const CoreConfig& runtime_settings, bool is_command,
+                              const std::string& selected_text);
+  std::unique_ptr<vinput::daemon::asr::RecognitionSession>
+  WrapAsyncSessionIfNeeded(std::unique_ptr<vinput::daemon::asr::RecognitionSession> session,
+                           const vinput::daemon::asr::BackendDescriptor& active_backend) const;
+  bool PrepareAndBeginCapture(const std::string& capture_device, const CoreConfig& runtime_settings,
+                              bool is_command, AudioCapture::StartTiming* capture_timing,
+                              std::string* error_message);
+  void FeedOrderAudio(RecognitionOrder& order, bool normalize_audio);
+  void PushStreamingChunks(std::shared_ptr<vinput::daemon::asr::RecognitionSession> session,
+                           std::optional<std::vector<int16_t>> chunk_to_push);
+  std::vector<int16_t> StopCaptureAndDrainMetrics();
+  void ScheduleInferenceLocked(const std::string& scene_id, std::size_t total_samples,
+                               std::size_t captured_samples, vinput::dbus::Status next_phase);
+  bool ExecuteRecognitionSession(RecognitionOrder& order, const CoreConfig& runtime_settings);
+  void ExecutePostprocessingAndBroadcast(RecognitionOrder& order,
+                                         const CoreConfig& runtime_settings);
   void EnterPostprocessing(bool command_mode);
   void ResetToIdle();
   void WorkerMain();

@@ -16,6 +16,7 @@ StateTransitionResult Reject(vinput::dbus::Status phase, std::string reason = {}
   res.accepted = false;
   res.previous_phase = phase;
   res.new_phase = phase;
+  res.action = TransitionAction::None;
   res.rejection_reason = std::move(reason);
   return res;
 }
@@ -24,6 +25,14 @@ StateTransitionResult Reject(vinput::dbus::Status phase, std::string reason = {}
 
 vinput::dbus::Status RuntimeStateMachine::CurrentPhase() const noexcept {
   return phase_;
+}
+
+bool RuntimeStateMachine::IsIdle() const noexcept {
+  return phase_ == vinput::dbus::Status::Idle;
+}
+
+bool RuntimeStateMachine::IsRecording() const noexcept {
+  return phase_ == vinput::dbus::Status::Recording;
 }
 
 PostprocessingState RuntimeStateMachine::CurrentPostprocessingState() const noexcept {
@@ -55,7 +64,7 @@ StateTransitionResult RuntimeStateMachine::OnStartRecording(bool is_command,
   res.accepted = true;
   res.previous_phase = prev;
   res.new_phase = phase_;
-  res.should_start_capture = true;
+  res.action = TransitionAction::StartCapture;
   return res;
 }
 
@@ -67,7 +76,7 @@ StateTransitionResult RuntimeStateMachine::OnStopRecording(std::size_t sample_co
 
   const auto prev = phase_;
   if (sample_count < min_samples) {
-    return AbortRecordingToIdle(prev, /*is_too_short=*/true);
+    return AbortRecordingToIdle(prev, TransitionAction::DiscardTooShort);
   }
 
   phase_ = vinput::dbus::Status::Inferring;
@@ -75,8 +84,7 @@ StateTransitionResult RuntimeStateMachine::OnStopRecording(std::size_t sample_co
   res.accepted = true;
   res.previous_phase = prev;
   res.new_phase = phase_;
-  res.should_stop_capture = true;
-  res.should_submit_inference = true;
+  res.action = TransitionAction::SubmitInference;
   return res;
 }
 
@@ -87,11 +95,12 @@ StateTransitionResult RuntimeStateMachine::OnCancel(bool commit_raw_text) {
     res.accepted = true;
     res.previous_phase = prev;
     res.new_phase = prev;
+    res.action = TransitionAction::None;
     return res;
   }
 
   if (phase_ == vinput::dbus::Status::Recording) {
-    return AbortRecordingToIdle(prev, /*is_too_short=*/false);
+    return AbortRecordingToIdle(prev, TransitionAction::AbortCapture);
   }
 
   if (phase_ == vinput::dbus::Status::Postprocessing) {
@@ -109,8 +118,8 @@ StateTransitionResult RuntimeStateMachine::OnCancel(bool commit_raw_text) {
     res.accepted = true;
     res.previous_phase = prev;
     res.new_phase = prev;
-    res.should_commit_raw_text = commit_raw_text;
-    res.should_discard_text = !commit_raw_text;
+    res.action =
+        commit_raw_text ? TransitionAction::RequestCommitRaw : TransitionAction::RequestDiscard;
     return res;
   }
 
@@ -128,8 +137,7 @@ StateTransitionResult RuntimeStateMachine::OnAudioError() {
   res.accepted = true;
   res.previous_phase = prev;
   res.new_phase = phase_;
-  res.should_stop_capture = true;
-  res.should_cancel_session = true;
+  res.action = TransitionAction::AbortCapture;
   return res;
 }
 
@@ -147,7 +155,7 @@ StateTransitionResult RuntimeStateMachine::OnInferenceComplete(bool has_scene_to
     res.accepted = true;
     res.previous_phase = prev;
     res.new_phase = phase_;
-    res.should_enter_postprocessing = true;
+    res.action = TransitionAction::EnterPostprocessing;
     return res;
   }
 
@@ -165,6 +173,7 @@ StateTransitionResult RuntimeStateMachine::OnInferenceError() {
   res.accepted = true;
   res.previous_phase = prev;
   res.new_phase = phase_;
+  res.action = TransitionAction::None;
   return res;
 }
 
@@ -183,11 +192,12 @@ StateTransitionResult RuntimeStateMachine::OnResetToIdle() {
   res.accepted = true;
   res.previous_phase = prev;
   res.new_phase = vinput::dbus::Status::Idle;
+  res.action = TransitionAction::None;
   return res;
 }
 
 StateTransitionResult RuntimeStateMachine::AbortRecordingToIdle(vinput::dbus::Status prev,
-                                                                bool is_too_short) {
+                                                                TransitionAction action) {
   phase_ = vinput::dbus::Status::Idle;
   is_command_ = false;
   selected_text_.clear();
@@ -195,9 +205,7 @@ StateTransitionResult RuntimeStateMachine::AbortRecordingToIdle(vinput::dbus::St
   res.accepted = true;
   res.previous_phase = prev;
   res.new_phase = phase_;
-  res.should_stop_capture = true;
-  res.should_cancel_session = true;
-  res.is_too_short = is_too_short;
+  res.action = action;
   return res;
 }
 
@@ -210,7 +218,7 @@ StateTransitionResult RuntimeStateMachine::CompleteToIdle(vinput::dbus::Status p
   res.accepted = true;
   res.previous_phase = prev;
   res.new_phase = phase_;
-  res.should_commit_result = true;
+  res.action = TransitionAction::CommitResult;
   return res;
 }
 
