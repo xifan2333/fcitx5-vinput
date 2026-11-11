@@ -123,6 +123,46 @@ private:
   void CloseOutputChannel(bool is_stdout);
   detail::DrainOutcome DrainOutput(int fd, ChildEventKind kind);
   detail::DrainOutcome ServiceOutputChannel(bool is_stdout);
+  void ServiceInputChannel(short revents);
+
+  struct SessionPollPlan {
+    std::array<pollfd, 5> watch{};
+    std::size_t watch_count{0};
+    int cancel_index{-1};
+    int stdin_index{-1};
+    int in_index{-1};
+    int out_index{-1};
+    int err_index{-1};
+
+    [[nodiscard]] short revents_of(int index) const noexcept {
+      if (index < 0) {
+        return 0;
+      }
+      return watch.at(static_cast<std::size_t>(index)).revents;
+    }
+  };
+
+  struct SessionPumpState {
+    bool cancel_seen{false};
+    bool force_kill_sent{false};
+    std::optional<Clock::time_point> terminate_deadline;
+  };
+
+  void RefillPendingInput();
+  [[nodiscard]] SessionPollPlan BuildSessionPollPlan() const;
+  void DispatchPollEvents(const SessionPollPlan& plan, SessionPumpState& state);
+  void HandleCancelEvent(SessionPumpState& state);
+  bool CheckTerminateTimeout(SessionPumpState& state);
+  [[nodiscard]] bool ReapAndRecord(bool cancel_seen);
+  [[nodiscard]] bool PollOnce(SessionPumpState& state);
+
+  [[nodiscard]] bool OutputChannelOpen() const noexcept;
+  [[nodiscard]] std::size_t DrainAvailableOutput();
+  [[nodiscard]] bool PollOutputReadable(Clock::time_point deadline, Clock::time_point now) const;
+  void DrainPostExitPipes();
+
+  void CloseAllChannels();
+  void PublishExitEvent();
 
   StderrSink stderr_sink_;
   StdoutSink stdout_sink_;
@@ -178,6 +218,11 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, StderrSink stderr_sink,
     detail::SpawnMonitored(spec, proc_);
   } catch (const std::exception& exception) {
     *error = exception.what();
+    return false;
+  }
+
+  if (!proc_.has_value()) {
+    *error = "child process was not spawned.";
     return false;
   }
 
@@ -264,221 +309,264 @@ detail::DrainOutcome ProcessSession::Impl::ServiceOutputChannel(bool is_stdout) 
   return outcome;
 }
 
-void ProcessSession::Impl::Pump() {
-  stdin_channel_open_ = in_fd_ >= 0;
-  stdout_channel_open_ = out_fd_ >= 0;
-  stderr_channel_open_ = err_fd_ >= 0;
-
-  bool cancel_seen = false;
-  bool force_kill_sent = false;
-  std::optional<Clock::time_point> terminate_deadline;
-
-  const auto revents_of = [](const std::array<pollfd, 5>& watch, int index) -> short {
-    if (index < 0) {
-      return 0;
+void ProcessSession::Impl::ServiceInputChannel(short revents) {
+  if ((revents & detail::kInputFailureEvents) != 0 && (revents & POLLOUT) == 0) {
+    CloseStdinChannel();
+    return;
+  }
+  if ((revents & POLLOUT) == 0) {
+    return;
+  }
+  if (in_fd_ < 0 || pending_offset_ >= pending_.size()) {
+    if ((revents & detail::kInputFailureEvents) != 0) {
+      CloseStdinChannel();
     }
-    return watch.at(static_cast<std::size_t>(index)).revents;
-  };
-
-  while (true) {
-    // The child's exit is what ends the session; everything else either feeds it or observes it.
-    if (int code = -1; TryReapProcess(proc_->pid(), &code)) {
-      reaped_ = true;
-      exit_code_ = code;
-      if (cancel_seen) {
-        // The leader is gone, so its own grace window is over - but a helper that ignored SIGTERM
-        // would otherwise outlive the session it belongs to. The group is still addressable for as
-        // long as one of its members holds it, which is exactly this case.
-        proc_->kill(SIGKILL);
-      }
-      break;
-    }
-
-    if (terminate_deadline.has_value() && Clock::now() >= *terminate_deadline) {
-      if (!force_kill_sent) {
-        proc_->kill(SIGKILL);
-        force_kill_sent = true;
-        terminate_deadline = Clock::now() + kForceGrace;
-      } else {
-        // SIGKILL cannot be ignored, so only a child stuck in uninterruptible sleep survives it.
-        // Stop waiting here and let the destructor's last-resort reap account for it.
-        break;
-      }
-    }
-
-    // Only start a new block once the previous one is fully written, so stdin reaches the provider
-    // in the order the caller produced it.
-    if (stdin_channel_open_ && pending_offset_ >= pending_.size()) {
+    return;
+  }
+  const ssize_t written =
+      ::write(in_fd_, pending_.data() + pending_offset_, pending_.size() - pending_offset_);
+  if (written > 0) {
+    pending_offset_ += static_cast<std::size_t>(written);
+    if (pending_offset_ >= pending_.size()) {
       pending_.clear();
       pending_offset_ = 0;
-      if (std::vector<std::byte> next; stdin_queue_.try_dequeue(next)) {
-        pending_ = std::move(next);
-      } else if (stdin_closed_.load(std::memory_order_acquire)) {
-        // Every byte the caller handed over has been written, so the child sees a clean end of
-        // input instead of a truncated one.
-        CloseStdinChannel();
-      }
     }
-
-    std::array<pollfd, 5> watch{};
-    std::size_t watch_count = 0;
-    const auto watch_fd = [&](int fd, short events) -> int {
-      if (fd < 0) {
-        return -1;
-      }
-      const auto index = static_cast<int>(watch_count);
-      watch.at(watch_count) = pollfd{.fd = fd, .events = events, .revents = 0};
-      watch_count += 1;
-      return index;
-    };
-
-    const int cancel_index = watch_fd(cancel_event_, POLLIN);
-    const int stdin_index = watch_fd(stdin_event_, POLLIN);
-    const int in_index =
-        stdin_channel_open_ && pending_offset_ < pending_.size() ? watch_fd(in_fd_, POLLOUT) : -1;
-    // At the queued-byte cap the output channels are left out of the poll set entirely: poll()
-    // would otherwise report them readable for data the pump refuses to read, spinning until the
-    // caller catches up.
-    const bool output_pressure =
-        queued_output_bytes_.load(std::memory_order_relaxed) >= kMaxQueuedOutputBytes;
-    const int out_index = stdout_channel_open_ && !output_pressure ? watch_fd(out_fd_, POLLIN) : -1;
-    const int err_index = stderr_channel_open_ && !output_pressure ? watch_fd(err_fd_, POLLIN) : -1;
-
-    auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(kPollSlice);
-    if (terminate_deadline.has_value()) {
-      const auto remaining =
-          std::chrono::duration_cast<std::chrono::milliseconds>(*terminate_deadline - Clock::now());
-      wait = std::min(wait, std::max(remaining, kZeroMs));
-    }
-
-    if (watch_count == 0) {
-      // Every channel is closed but the child still runs: wait out the slice instead of spinning.
-      std::this_thread::sleep_for(std::max(wait, std::chrono::milliseconds{1}));
-      continue;
-    }
-
-    const int poll_rc =
-        ::poll(watch.data(), static_cast<nfds_t>(watch_count), static_cast<int>(wait.count()));
-    if (poll_rc < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      VLOG_ERROR("process session: poll failed: {}", std::strerror(errno));
-      break;
-    }
-    if (poll_rc == 0) {
-      continue;
-    }
-
-    if ((revents_of(watch, stdin_index) & POLLIN) != 0) {
-      (void)DrainEventFd(stdin_event_);
-    }
-
-    if (in_index >= 0) {
-      const short revents = revents_of(watch, in_index);
-      if ((revents & POLLOUT) != 0) {
-        const ssize_t written =
-            ::write(in_fd_, pending_.data() + pending_offset_, pending_.size() - pending_offset_);
-        if (written > 0) {
-          pending_offset_ += static_cast<std::size_t>(written);
-          if (pending_offset_ >= pending_.size()) {
-            pending_.clear();
-            pending_offset_ = 0;
-          }
-        } else if (written < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
-          CloseStdinChannel();
-        }
-      } else if ((revents & detail::kInputFailureEvents) != 0) {
-        CloseStdinChannel();
-      }
-    }
-
-    if (out_index >= 0 && (revents_of(watch, out_index) & detail::kReadableChannelEvents) != 0) {
-      (void)ServiceOutputChannel(true);
-    }
-
-    if (err_index >= 0 && (revents_of(watch, err_index) & detail::kReadableChannelEvents) != 0) {
-      (void)ServiceOutputChannel(false);
-    }
-
-    // Cancellation is handled last, after this iteration's input and output have been serviced: the
-    // events it publishes then describe a boundary the caller can trust - everything the provider
-    // produced before the cancel has already been queued, and nothing is written after it.
-    if ((revents_of(watch, cancel_index) & POLLIN) != 0) {
-      (void)DrainEventFd(cancel_event_);
-      if (!cancel_seen) {
-        cancel_seen = true;
-        killed_by_us_ = true;
-        // The provider already received everything it will ever get from this session, and a queued
-        // block written now would arrive after `Cancelled` had been published.
-        stdin_closed_.store(true, std::memory_order_release);
-        CloseStdinChannel();
-        QueueEvent(ChildEvent{
-            .kind = ChildEventKind::Cancelled, .data = {}, .exit_code = -1, .killed_by_us = false});
-        // Signalling the group covers the helpers a provider script forked; signalling the pid
-        // alone would leave them running with the session's pipes still open.
-        proc_->kill(SIGTERM);
-        terminate_deadline = Clock::now() + kTerminateGrace;
-      }
-    }
+    return;
   }
+  if (written < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+    CloseStdinChannel();
+    return;
+  }
+  if ((revents & detail::kInputFailureEvents) != 0) {
+    CloseStdinChannel();
+  }
+}
 
+void ProcessSession::Impl::RefillPendingInput() {
+  if (!stdin_channel_open_ || pending_offset_ < pending_.size()) {
+    return;
+  }
+  pending_.clear();
+  pending_offset_ = 0;
+  if (std::vector<std::byte> next; stdin_queue_.try_dequeue(next)) {
+    pending_ = std::move(next);
+  } else if (stdin_closed_.load(std::memory_order_acquire)) {
+    CloseStdinChannel();
+  }
+}
+
+ProcessSession::Impl::SessionPollPlan ProcessSession::Impl::BuildSessionPollPlan() const {
+  SessionPollPlan plan{};
+  const auto watch_fd = [&](int fd, short events) -> int {
+    if (fd < 0) {
+      return -1;
+    }
+    const auto index = static_cast<int>(plan.watch_count);
+    plan.watch.at(plan.watch_count) = pollfd{.fd = fd, .events = events, .revents = 0};
+    plan.watch_count += 1;
+    return index;
+  };
+
+  plan.cancel_index = watch_fd(cancel_event_, POLLIN);
+  plan.stdin_index = watch_fd(stdin_event_, POLLIN);
+  plan.in_index =
+      stdin_channel_open_ && pending_offset_ < pending_.size() ? watch_fd(in_fd_, POLLOUT) : -1;
+  const bool output_pressure =
+      queued_output_bytes_.load(std::memory_order_relaxed) >= kMaxQueuedOutputBytes;
+  plan.out_index = stdout_channel_open_ && !output_pressure ? watch_fd(out_fd_, POLLIN) : -1;
+  plan.err_index = stderr_channel_open_ && !output_pressure ? watch_fd(err_fd_, POLLIN) : -1;
+  return plan;
+}
+
+void ProcessSession::Impl::HandleCancelEvent(SessionPumpState& state) {
+  (void)DrainEventFd(cancel_event_);
+  if (state.cancel_seen) {
+    return;
+  }
+  state.cancel_seen = true;
+  killed_by_us_ = true;
+  // The provider already received everything it will ever get from this session, and a queued block
+  // written now would arrive after `Cancelled` had been published.
+  stdin_closed_.store(true, std::memory_order_release);
+  CloseStdinChannel();
+  QueueEvent(ChildEvent{
+      .kind = ChildEventKind::Cancelled, .data = {}, .exit_code = -1, .killed_by_us = false});
+  // Signalling the group covers the helpers a provider script forked; signalling the pid alone
+  // would leave them running with the session's pipes still open.
+  if (proc_.has_value()) {
+    proc_->kill(SIGTERM);
+  }
+  state.terminate_deadline = Clock::now() + kTerminateGrace;
+}
+
+bool ProcessSession::Impl::CheckTerminateTimeout(SessionPumpState& state) {
+  if (!state.terminate_deadline.has_value() || Clock::now() < *state.terminate_deadline) {
+    return false;
+  }
+  if (!state.force_kill_sent) {
+    if (proc_.has_value()) {
+      proc_->kill(SIGKILL);
+    }
+    state.force_kill_sent = true;
+    state.terminate_deadline = Clock::now() + kForceGrace;
+    return false;
+  }
+  // SIGKILL cannot be ignored, so only a child stuck in uninterruptible sleep survives it. Stop
+  // waiting here and let the destructor's last-resort reap account for it.
+  return true;
+}
+
+void ProcessSession::Impl::DispatchPollEvents(const SessionPollPlan& plan,
+                                              SessionPumpState& state) {
+  if ((plan.revents_of(plan.stdin_index) & POLLIN) != 0) {
+    (void)DrainEventFd(stdin_event_);
+  }
+  if (plan.in_index >= 0) {
+    ServiceInputChannel(plan.revents_of(plan.in_index));
+  }
+  if (plan.out_index >= 0 &&
+      (plan.revents_of(plan.out_index) & detail::kReadableChannelEvents) != 0) {
+    (void)ServiceOutputChannel(true);
+  }
+  if (plan.err_index >= 0 &&
+      (plan.revents_of(plan.err_index) & detail::kReadableChannelEvents) != 0) {
+    (void)ServiceOutputChannel(false);
+  }
+  // Cancellation is handled last, after this iteration's input and output have been serviced: the
+  // events it publishes then describe a boundary the caller can trust - everything the provider
+  // produced before the cancel has already been queued, and nothing is written after it.
+  if ((plan.revents_of(plan.cancel_index) & POLLIN) != 0) {
+    HandleCancelEvent(state);
+  }
+}
+
+bool ProcessSession::Impl::ReapAndRecord(bool cancel_seen) {
+  if (!proc_.has_value()) {
+    return false;
+  }
+  int code = -1;
+  if (!TryReapProcess(proc_->pid(), &code)) {
+    return false;
+  }
+  reaped_ = true;
+  exit_code_ = code;
+  // The leader is gone, so its own grace window is over - but a helper that ignored SIGTERM would
+  // otherwise outlive the session it belongs to. The group is still addressable for as long as one
+  // of its members holds it, which is exactly this case.
+  if (cancel_seen && proc_.has_value()) {
+    proc_->kill(SIGKILL);
+  }
+  return true;
+}
+
+bool ProcessSession::Impl::OutputChannelOpen() const noexcept {
+  return stdout_channel_open_ || stderr_channel_open_;
+}
+
+std::size_t ProcessSession::Impl::DrainAvailableOutput() {
+  std::size_t drained = 0;
+  if (stdout_channel_open_) {
+    drained += ServiceOutputChannel(true).bytes_read;
+  }
+  if (stderr_channel_open_) {
+    drained += ServiceOutputChannel(false).bytes_read;
+  }
+  return drained;
+}
+
+bool ProcessSession::Impl::PollOutputReadable(Clock::time_point deadline,
+                                              Clock::time_point now) const {
+  std::array<pollfd, 2> watch{};
+  std::size_t watch_count = 0;
+  if (stdout_channel_open_) {
+    watch.at(watch_count) = pollfd{.fd = out_fd_, .events = POLLIN, .revents = 0};
+    watch_count += 1;
+  }
+  if (stderr_channel_open_) {
+    watch.at(watch_count) = pollfd{.fd = err_fd_, .events = POLLIN, .revents = 0};
+    watch_count += 1;
+  }
+  if (watch_count == 0) {
+    return false;
+  }
+  const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+  const int wait =
+      static_cast<int>(std::min(std::max(remaining, kZeroMs),
+                                std::chrono::duration_cast<std::chrono::milliseconds>(kPollSlice))
+                           .count());
+  const int poll_rc = ::poll(watch.data(), static_cast<nfds_t>(watch_count), wait);
+  return poll_rc >= 0 || errno == EINTR;
+}
+
+void ProcessSession::Impl::DrainPostExitPipes() {
   // The child is gone, but its pipes may still hold whole lines - and a helper it forked may still
   // be writing them. Keep draining, but only while there is something to read and never past the
   // deadline, so an open write end cannot keep this thread here.
   const Clock::time_point drain_deadline = Clock::now() + kPostExitDrain;
-  while (stdout_channel_open_ || stderr_channel_open_) {
+  while (OutputChannelOpen()) {
     // Checked first: a helper that keeps writing would otherwise find new bytes on every iteration
     // and could hold this phase open for as long as it likes.
     const Clock::time_point now = Clock::now();
     if (now >= drain_deadline) {
       break;
     }
-
-    std::size_t drained = 0;
-    if (stdout_channel_open_) {
-      drained += ServiceOutputChannel(true).bytes_read;
-    }
-    if (stderr_channel_open_) {
-      drained += ServiceOutputChannel(false).bytes_read;
-    }
-    if (!stdout_channel_open_ && !stderr_channel_open_) {
+    const std::size_t drained = DrainAvailableOutput();
+    if (!OutputChannelOpen()) {
       break;
     }
     if (drained > 0) {
       continue;
     }
-
-    std::array<pollfd, 2> watch{};
-    std::size_t watch_count = 0;
-    if (stdout_channel_open_) {
-      watch.at(watch_count) = pollfd{.fd = out_fd_, .events = POLLIN, .revents = 0};
-      watch_count += 1;
-    }
-    if (stderr_channel_open_) {
-      watch.at(watch_count) = pollfd{.fd = err_fd_, .events = POLLIN, .revents = 0};
-      watch_count += 1;
-    }
-    const auto remaining =
-        std::chrono::duration_cast<std::chrono::milliseconds>(drain_deadline - now);
-    const int wait =
-        static_cast<int>(std::min(std::max(remaining, kZeroMs),
-                                  std::chrono::duration_cast<std::chrono::milliseconds>(kPollSlice))
-                             .count());
-    const int poll_rc = ::poll(watch.data(), static_cast<nfds_t>(watch_count), wait);
-    if (poll_rc < 0 && errno != EINTR) {
+    if (!PollOutputReadable(drain_deadline, now)) {
       break;
     }
   }
+}
 
-  // Last probe: the child may have exited while the pipes were still being drained.
-  if (!reaped_) {
-    if (int code = -1; TryReapProcess(proc_->pid(), &code)) {
-      reaped_ = true;
-      exit_code_ = code;
-    }
+bool ProcessSession::Impl::PollOnce(SessionPumpState& state) {
+  if (ReapAndRecord(state.cancel_seen)) {
+    return false;
+  }
+  if (CheckTerminateTimeout(state)) {
+    return false;
   }
 
+  // Only start a new block once the previous one is fully written, so stdin reaches the provider in
+  // the order the caller produced it.
+  RefillPendingInput();
+  auto plan = BuildSessionPollPlan();
+
+  auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(kPollSlice);
+  if (state.terminate_deadline.has_value()) {
+    const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+        *state.terminate_deadline - Clock::now());
+    wait = std::min(wait, std::max(remaining, kZeroMs));
+  }
+
+  if (plan.watch_count == 0) {
+    // Every channel is closed but the child still runs: wait out the slice instead of spinning.
+    std::this_thread::sleep_for(std::max(wait, std::chrono::milliseconds{1}));
+    return true;
+  }
+
+  const int poll_rc = ::poll(plan.watch.data(), static_cast<nfds_t>(plan.watch_count),
+                             static_cast<int>(wait.count()));
+  if (poll_rc < 0) {
+    if (errno == EINTR) {
+      return true;
+    }
+    VLOG_ERROR("process session: poll failed: {}", std::strerror(errno));
+    return false;
+  }
+  if (poll_rc == 0) {
+    return true;
+  }
+
+  DispatchPollEvents(plan, state);
+  return true;
+}
+
+void ProcessSession::Impl::CloseAllChannels() {
   if (stdin_channel_open_) {
     CloseStdinChannel();
   }
@@ -488,13 +576,33 @@ void ProcessSession::Impl::Pump() {
   if (stderr_channel_open_) {
     CloseOutputChannel(false);
   }
+}
 
+void ProcessSession::Impl::PublishExitEvent() {
   QueueEvent(ChildEvent{.kind = ChildEventKind::Exited,
                         .data = {},
                         .exit_code = reaped_ ? exit_code_ : -1,
                         .killed_by_us = killed_by_us_});
   pump_finished_.store(true, std::memory_order_release);
   SignalEventFd(wake_event_);
+}
+
+void ProcessSession::Impl::Pump() {
+  stdin_channel_open_ = in_fd_ >= 0;
+  stdout_channel_open_ = out_fd_ >= 0;
+  stderr_channel_open_ = err_fd_ >= 0;
+
+  SessionPumpState state;
+  while (PollOnce(state)) {
+  }
+
+  DrainPostExitPipes();
+  // Last probe: the child may have exited while the pipes were still being drained.
+  if (!reaped_) {
+    (void)ReapAndRecord(false);
+  }
+  CloseAllChannels();
+  PublishExitEvent();
 }
 
 void ProcessSession::Impl::QueueEvent(ChildEvent&& event) {
