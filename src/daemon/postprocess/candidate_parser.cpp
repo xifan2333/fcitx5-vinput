@@ -47,6 +47,34 @@ std::string_view StripBulletOrNumber(std::string_view line) {
   return line;
 }
 
+std::vector<std::string> TryExtractJsonCandidates(std::string_view content, int max_candidates) {
+  glz::json_t json_val;
+  if (bool(glz::read_json(json_val, content)) || !json_val.is_object()) {
+    return {};
+  }
+
+  const auto* candidate_array = vinput::json::Find(json_val, "candidates");
+  if (candidate_array == nullptr || !candidate_array->is_array()) {
+    return {};
+  }
+
+  std::vector<std::string> candidates;
+  for (const auto& item : candidate_array->get_array()) {
+    if (!item.is_string()) {
+      continue;
+    }
+    const auto trimmed = vinput::str::Trim(item.get_string());
+    if (trimmed.empty()) {
+      continue;
+    }
+    candidates.emplace_back(trimmed);
+    if (std::cmp_greater_equal(candidates.size(), max_candidates)) {
+      break;
+    }
+  }
+  return candidates;
+}
+
 } // namespace
 
 std::vector<std::string> ExtractCandidatesAuto(std::string_view raw, int max_candidates) {
@@ -60,27 +88,9 @@ std::vector<std::string> ExtractCandidatesAuto(std::string_view raw, int max_can
   }
 
   // Format 1: JSON object with {"candidates": ["..."]}
-  glz::json_t json_val;
-  if (!bool(glz::read_json(json_val, content))) {
-    if (json_val.is_object()) {
-      const auto* candidate_array = vinput::json::Find(json_val, "candidates");
-      if (candidate_array != nullptr && candidate_array->is_array()) {
-        std::vector<std::string> candidates;
-        for (const auto& item : candidate_array->get_array()) {
-          if (!item.is_string()) {
-            continue;
-          }
-          const auto trimmed = vinput::str::Trim(item.get_string());
-          if (!trimmed.empty()) {
-            candidates.emplace_back(trimmed);
-            if (std::cmp_greater_equal(candidates.size(), max_candidates)) {
-              break;
-            }
-          }
-        }
-        return candidates;
-      }
-    }
+  auto json_candidates = TryExtractJsonCandidates(content, max_candidates);
+  if (!json_candidates.empty()) {
+    return json_candidates;
   }
 
   // Format 2: Single candidate direct text when max_candidates == 1
