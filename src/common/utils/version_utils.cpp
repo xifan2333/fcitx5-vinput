@@ -1,6 +1,7 @@
 #include "common/utils/version_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cstddef>
@@ -25,23 +26,27 @@ bool CheckSingleConstraint(const SemanticVersion& current, std::string_view toke
   }
 
   enum class Op : std::uint8_t { Equal, Greater, GreaterEqual, Less, LessEqual };
-  Op op = Op::Equal;
 
-  if (token.starts_with(">=")) {
-    op = Op::GreaterEqual;
-    token.remove_prefix(2);
-  } else if (token.starts_with("<=")) {
-    op = Op::LessEqual;
-    token.remove_prefix(2);
-  } else if (token.starts_with('>')) {
-    op = Op::Greater;
-    token.remove_prefix(1);
-  } else if (token.starts_with('<')) {
-    op = Op::Less;
-    token.remove_prefix(1);
-  } else if (token.starts_with('=')) {
-    op = Op::Equal;
-    token.remove_prefix(1);
+  struct PrefixOp {
+    std::string_view prefix;
+    Op op;
+  };
+
+  static constexpr std::array<PrefixOp, 5> kPrefixOps = {{
+      {">=", Op::GreaterEqual},
+      {"<=", Op::LessEqual},
+      {">", Op::Greater},
+      {"<", Op::Less},
+      {"=", Op::Equal},
+  }};
+
+  Op op = Op::Equal;
+  for (const auto& entry : kPrefixOps) {
+    if (token.starts_with(entry.prefix)) {
+      op = entry.op;
+      token.remove_prefix(entry.prefix.size());
+      break;
+    }
   }
 
   token = vinput::str::Trim(token);
@@ -67,6 +72,11 @@ bool CheckSingleConstraint(const SemanticVersion& current, std::string_view toke
   return false;
 }
 
+bool ParseNonNegativeInt(std::string_view sv, int& out) {
+  const auto res = std::from_chars(sv.data(), sv.data() + sv.size(), out);
+  return res.ec == std::errc{} && res.ptr == sv.data() + sv.size() && out >= 0;
+}
+
 } // namespace
 
 std::optional<SemanticVersion> Parse(std::string_view str) {
@@ -84,15 +94,7 @@ std::optional<SemanticVersion> Parse(std::string_view str) {
   int minor = 0;
   int patch = 0;
 
-  const auto res1 =
-      std::from_chars(segments[0].data(), segments[0].data() + segments[0].size(), major);
-  if (res1.ec != std::errc{} || res1.ptr != segments[0].data() + segments[0].size() || major < 0) {
-    return std::nullopt;
-  }
-
-  const auto res2 =
-      std::from_chars(segments[1].data(), segments[1].data() + segments[1].size(), minor);
-  if (res2.ec != std::errc{} || res2.ptr != segments[1].data() + segments[1].size() || minor < 0) {
+  if (!ParseNonNegativeInt(segments[0], major) || !ParseNonNegativeInt(segments[1], minor)) {
     return std::nullopt;
   }
 
@@ -103,8 +105,7 @@ std::optional<SemanticVersion> Parse(std::string_view str) {
     if (dash != std::string_view::npos) {
       patch_str = patch_str.substr(0, dash);
     }
-    const auto res3 = std::from_chars(patch_str.data(), patch_str.data() + patch_str.size(), patch);
-    if (res3.ec != std::errc{} || res3.ptr != patch_str.data() + patch_str.size() || patch < 0) {
+    if (!ParseNonNegativeInt(patch_str, patch)) {
       return std::nullopt;
     }
   }
