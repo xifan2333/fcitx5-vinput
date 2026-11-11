@@ -8,6 +8,7 @@
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <fstream>
+#include <functional>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
@@ -193,35 +194,17 @@ void MergeExtraBody(glz::json_t& request, const glz::json_t& extra, const LlmPro
   }
 }
 
-std::optional<std::vector<std::string>>
-RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Definition& scene,
-                            const LlmProvider& provider, int max_llm_candidates,
-                            std::string* error_out, const std::string& task_prompt = {},
-                            const std::atomic<bool>* shutdown_flag = nullptr,
-                            const std::atomic<bool>* request_cancel_flag = nullptr,
-                            std::string_view asr_var = {}, std::string_view selected_var = {}) {
-  const auto is_cancelled = [&]() noexcept {
-    return (shutdown_flag != nullptr && shutdown_flag->load(std::memory_order_relaxed)) ||
-           (request_cancel_flag != nullptr && request_cancel_flag->load(std::memory_order_relaxed));
-  };
+bool IsCancellationRequested(const std::atomic<bool>* shutdown_flag,
+                             const std::atomic<bool>* request_cancel_flag) noexcept {
+  return (shutdown_flag != nullptr && shutdown_flag->load(std::memory_order_relaxed)) ||
+         (request_cancel_flag != nullptr && request_cancel_flag->load(std::memory_order_relaxed));
+}
 
-  if (is_cancelled()) {
-    if (error_out != nullptr) {
-      error_out->clear();
-    }
-    return std::nullopt;
-  }
-
-  const std::string url = BuildRequestUrl(provider.base_url);
-  if (url.empty()) {
-    return std::nullopt;
-  }
-
-  // For the regular path, scene.prompt may still be a `file:///` reference and
-  // needs resolution here. For the command path the caller (ProcessCommand)
-  // has already resolved command_scene.prompt before deciding whether to
-  // splice in the ASR command, so task_prompt is always content.
-  std::string base_prompt = task_prompt.empty() ? scene.prompt : task_prompt;
+std::optional<std::string> ResolvePromptContent(std::string_view task_prompt,
+                                                std::string_view scene_prompt,
+                                                std::string* error_out) {
+  std::string base_prompt =
+      task_prompt.empty() ? std::string(scene_prompt) : std::string(task_prompt);
   if (task_prompt.empty() && vinput::prompt_template::IsFileUri(base_prompt)) {
     std::string load_err;
     auto loaded = vinput::prompt_template::LoadFromFileUri(base_prompt, &load_err);
@@ -231,30 +214,24 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
       }
       return std::nullopt;
     }
-    base_prompt = std::move(*loaded);
+    return loaded;
   }
+  return base_prompt;
+}
 
-  const std::string context_prefix = BuildContextPrefix(scene.context_lines);
-  const std::string constraints_suffix =
-      BuildConstraintsSuffix(max_llm_candidates, provider.json_object);
-
-  // We send a single user message. The output-format constraints are appended
-  // verbatim at the end regardless of interpolation, since downstream parsing
-  // depends on that contract.
+std::string BuildUserContent(std::string_view base_prompt, std::string_view text,
+                             std::string_view context_prefix, std::string_view constraints_suffix,
+                             std::string_view asr_var, std::string_view selected_var) {
   std::string user_content;
   if (vinput::prompt_template::HasInterpolation(base_prompt)) {
-    // Author owns the layout: `{{asr}}`, `{{selected}}` and `{{context}}`
-    // get substituted in-place; no auto-append of context or data text.
     const vinput::prompt_template::Vars vars{
-        .asr = asr_var.empty() ? std::string_view(text) : asr_var,
+        .asr = asr_var.empty() ? text : asr_var,
         .selected = selected_var,
         .context = context_prefix,
     };
     user_content = vinput::prompt_template::Interpolate(base_prompt, vars);
   } else {
-    // No interpolation — wrap data in Vinput-scoped XML tags so prompt
-    // instructions and user-provided data remain clearly separated.
-    user_content = std::move(base_prompt);
+    user_content = std::string(base_prompt);
     if (!user_content.empty() && user_content.back() != '\n') {
       user_content.append("\n\n");
     } else if (!user_content.empty()) {
@@ -270,15 +247,17 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
     }
   }
   user_content.append(constraints_suffix);
+  return user_content;
+}
 
-  // TODO(#407): re-enable with modern JSON library: LogLlmInput(provider, url, text);
-
+std::string BuildOpenAiRequestBody(const std::string& model, std::string user_content,
+                                   const LlmProvider& provider) {
   glz::json_t::array_t messages;
-  glz::json_t json_entry = {{"role", "user"}, {"content", user_content}};
-  messages.emplace_back(std::move(json_entry));
+  glz::json_t message = {{"role", "user"}, {"content", std::move(user_content)}};
+  messages.push_back(std::move(message));
 
   glz::json_t request = {
-      {"model", scene.model},
+      {"model", model},
       {"stream", false},
       {"temperature", 0.2},
       {"messages", glz::json_t(std::move(messages))},
@@ -287,78 +266,20 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
     request["response_format"] = BuildCandidatesResponseFormat();
   }
   MergeExtraBody(request, provider.extra_body, provider);
-  const std::string request_body = vinput::json::ToText(request);
+  return vinput::json::ToText(request);
+}
 
-  const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider.api_key);
-  if (vinput::interpolate::HasInterpolation(provider.api_key) && resolved_api_key.empty()) {
-    VLOG_WARN("environment variable in api_key ('{}') for provider '{}' is unset or empty",
-              provider.api_key, provider.id);
-  }
-
-  std::atomic<bool> cancel_token{is_cancelled()};
-
-  vinput::net::HttpRequest req;
-  req.url = url;
-  req.method = vinput::net::HttpMethod::Post;
-  req.body = request_body;
-  req.timeout_ms = scene.timeout_ms;
-  req.connect_timeout_ms =
-      static_cast<long>(std::min(scene.timeout_ms, static_cast<int>(kDefaultConnectTimeoutMs)));
-  req.max_response_bytes = kMaxResponseBytes;
-  req.cancel_token = &cancel_token;
-  req.allow_auto_resend = false;
-  req.follow_redirects = false;
-  req.headers.push_back({"Content-Type", "application/json"});
-  req.headers.push_back({"User-Agent", std::string(vinput::llm::kHttpUserAgent)});
-  if (!resolved_api_key.empty()) {
-    req.headers.push_back({std::string(vinput::llm::kAuthorizationHeader),
-                           std::string(vinput::llm::kBearerPrefix) + resolved_api_key});
-  }
-
-  req.progress_cb = [&](const vinput::net::HttpProgress&) {
-    if (is_cancelled()) {
-      cancel_token.store(true, std::memory_order_relaxed);
-    }
-  };
-
-  // TODO(#407): re-enable with modern JSON library: LogLlmRequest(provider, url, req.headers,
-  // request_body);
-
-  const auto res = vinput::net::HttpClient::Instance().Request(req);
-
-  if (res.cancelled || is_cancelled()) {
-    VLOG_DEBUG("LLM request provider={} url={} cancelled after {:.1f}ms",
-               provider.id.empty() ? "(unnamed)" : provider.id, url, res.total_time_ms);
-    if (error_out != nullptr) {
-      error_out->clear();
-    }
-    return std::nullopt;
-  }
-
-  if (!res.error_message.empty()) {
-    const std::string msg = std::string(_("LLM request failed.")) + "\n" + res.error_message;
-    VLOG_ERROR("LLM request provider={} url={} failed after {:.1f}ms: {}",
-               provider.id.empty() ? "(unnamed)" : provider.id, url, res.total_time_ms,
-               res.error_message);
-    if (error_out != nullptr) {
-      *error_out = msg;
-    }
-    return std::nullopt;
-  }
-
-  LogResponseSummary(provider, url, res.status_code, res.total_time_ms);
-
+std::optional<std::vector<std::string>>
+ParseOpenAiChatResponse(const vinput::net::HttpResponse& res, const std::string& url,
+                        int max_llm_candidates, std::string* error_out) {
   if (res.status_code < 200 || res.status_code >= 300) {
     const std::string msg = std::string(_("LLM request returned an HTTP error.")) + "\nHTTP " +
                             std::to_string(res.status_code) + ": " + res.body;
-    // TODO(#407): LogResponseBody("LLM error response from", url, res.body);
     if (error_out != nullptr) {
       *error_out = msg;
     }
     return std::nullopt;
   }
-
-  // TODO(#407): LogResponseBody("LLM raw response from", url, res.body);
 
   glz::json_t response;
   if (const auto ec = glz::read_json(response, res.body); bool(ec)) {
@@ -369,7 +290,6 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 
   if (vinput::json::Find(response, "error") != nullptr) {
     VLOG_ERROR("LLM response from {} contains error", url);
-    // TODO(#407): LogResponseBody("LLM parsed error payload from", url, error_it->dump());
     return std::nullopt;
   }
 
@@ -382,7 +302,166 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   return candidates;
 }
 
+vinput::net::HttpRequest
+BuildOpenAiHttpRequest(const std::string& url, std::string request_body,
+                       const LlmProvider& provider, int timeout_ms, std::atomic<bool>* cancel_token,
+                       std::function<void(const vinput::net::HttpProgress&)> progress_cb) {
+  const std::string resolved_api_key = vinput::interpolate::InterpolateEnv(provider.api_key);
+  if (vinput::interpolate::HasInterpolation(provider.api_key) && resolved_api_key.empty()) {
+    VLOG_WARN("environment variable in api_key ('{}') for provider '{}' is unset or empty",
+              provider.api_key, provider.id);
+  }
+
+  vinput::net::HttpRequest req;
+  req.url = url;
+  req.method = vinput::net::HttpMethod::Post;
+  req.body = std::move(request_body);
+  req.timeout_ms = timeout_ms;
+  req.connect_timeout_ms =
+      static_cast<long>(std::min(timeout_ms, static_cast<int>(kDefaultConnectTimeoutMs)));
+  req.max_response_bytes = kMaxResponseBytes;
+  req.cancel_token = cancel_token;
+  req.allow_auto_resend = false;
+  req.follow_redirects = false;
+  req.headers.push_back({"Content-Type", "application/json"});
+  req.headers.push_back({"User-Agent", std::string(vinput::llm::kHttpUserAgent)});
+  if (!resolved_api_key.empty()) {
+    req.headers.push_back({std::string(vinput::llm::kAuthorizationHeader),
+                           std::string(vinput::llm::kBearerPrefix) + resolved_api_key});
+  }
+  req.progress_cb = std::move(progress_cb);
+  return req;
+}
+
+bool ValidateHttpExecution(const vinput::net::HttpResponse& res, bool is_cancelled,
+                           const LlmProvider& provider, const std::string& url,
+                           std::string* error_out) {
+  if (res.cancelled || is_cancelled) {
+    VLOG_DEBUG("LLM request provider={} url={} cancelled after {:.1f}ms",
+               provider.id.empty() ? "(unnamed)" : provider.id, url, res.total_time_ms);
+    if (error_out != nullptr) {
+      error_out->clear();
+    }
+    return false;
+  }
+
+  if (!res.error_message.empty()) {
+    const std::string msg = std::string(_("LLM request failed.")) + "\n" + res.error_message;
+    VLOG_ERROR("LLM request provider={} url={} failed after {:.1f}ms: {}",
+               provider.id.empty() ? "(unnamed)" : provider.id, url, res.total_time_ms,
+               res.error_message);
+    if (error_out != nullptr) {
+      *error_out = msg;
+    }
+    return false;
+  }
+  return true;
+}
+
+std::optional<std::vector<std::string>>
+RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Definition& scene,
+                            const LlmProvider& provider, int max_llm_candidates,
+                            std::string* error_out, const std::string& task_prompt = {},
+                            const std::atomic<bool>* shutdown_flag = nullptr,
+                            const std::atomic<bool>* request_cancel_flag = nullptr,
+                            std::string_view asr_var = {}, std::string_view selected_var = {}) {
+  const auto is_cancelled = [&]() noexcept {
+    return IsCancellationRequested(shutdown_flag, request_cancel_flag);
+  };
+
+  if (is_cancelled()) {
+    if (error_out != nullptr) {
+      error_out->clear();
+    }
+    return std::nullopt;
+  }
+
+  const std::string url = BuildRequestUrl(provider.base_url);
+  if (url.empty()) {
+    return std::nullopt;
+  }
+
+  auto base_prompt = ResolvePromptContent(task_prompt, scene.prompt, error_out);
+  if (!base_prompt) {
+    return std::nullopt;
+  }
+
+  const std::string context_prefix = BuildContextPrefix(scene.context_lines);
+  const std::string constraints_suffix =
+      BuildConstraintsSuffix(max_llm_candidates, provider.json_object);
+  const std::string user_content = BuildUserContent(*base_prompt, text, context_prefix,
+                                                    constraints_suffix, asr_var, selected_var);
+  std::string request_body = BuildOpenAiRequestBody(scene.model, user_content, provider);
+
+  std::atomic<bool> cancel_token{is_cancelled()};
+  auto req = BuildOpenAiHttpRequest(url, std::move(request_body), provider, scene.timeout_ms,
+                                    &cancel_token, [&](const vinput::net::HttpProgress&) {
+                                      if (is_cancelled()) {
+                                        cancel_token.store(true, std::memory_order_relaxed);
+                                      }
+                                    });
+
+  const auto res = vinput::net::HttpClient::Instance().Request(req);
+  if (!ValidateHttpExecution(res, is_cancelled(), provider, url, error_out)) {
+    return std::nullopt;
+  }
+
+  LogResponseSummary(provider, url, res.status_code, res.total_time_ms);
+  return ParseOpenAiChatResponse(res, url, max_llm_candidates, error_out);
+}
+
 constexpr std::size_t kMaxBatchNotifications = 4;
+
+void DrainAdapterStderr(std::string& stderr_text, const LlmAdapter& adapter,
+                        vinput::notify::NotificationBridge* notification_bridge) {
+  if (stderr_text.empty() || notification_bridge == nullptr) {
+    return;
+  }
+  std::size_t delivered = 0;
+  vinput::process::DrainLinesFromBuffer(
+      stderr_text,
+      [notification_bridge, &adapter, &delivered](std::string_view line) -> bool {
+        if (delivered >= kMaxBatchNotifications) {
+          return false;
+        }
+        notification_bridge->DeliverLine(adapter.id, line);
+        ++delivered;
+        return true;
+      },
+      /*flush_tail=*/true);
+}
+
+bool ValidateAdapterProcessResult(const vinput::process::CommandResult& result,
+                                  const LlmAdapter& adapter, std::string* error_out) {
+  if (result.launch_failed) {
+    const std::string msg = fmt::sprintf(_("Failed to start adapter '%s'."), adapter.id);
+    VLOG_ERROR("{}", msg);
+    if (error_out != nullptr) {
+      *error_out = msg;
+    }
+    return false;
+  }
+
+  if (result.timed_out) {
+    const std::string msg = fmt::sprintf(_("Adapter '%s' timed out."), adapter.id);
+    VLOG_ERROR("{}", msg);
+    if (error_out != nullptr) {
+      *error_out = msg;
+    }
+    return false;
+  }
+
+  if (result.exit_code != 0) {
+    const std::string msg =
+        fmt::sprintf(_("Adapter '%s' exited with code %d."), adapter.id, result.exit_code);
+    VLOG_WARN("{}", msg);
+    if (error_out != nullptr) {
+      *error_out = msg;
+    }
+    return false;
+  }
+  return true;
+}
 
 std::optional<std::vector<std::string>>
 RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::Definition& scene,
@@ -390,12 +469,7 @@ RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::D
                           vinput::notify::NotificationBridge* notification_bridge,
                           std::string* error_out, const std::atomic<bool>* shutdown_flag = nullptr,
                           const std::atomic<bool>* request_cancel_flag = nullptr) {
-  const auto is_cancelled = [&]() noexcept {
-    return (shutdown_flag != nullptr && shutdown_flag->load(std::memory_order_relaxed)) ||
-           (request_cancel_flag != nullptr && request_cancel_flag->load(std::memory_order_relaxed));
-  };
-
-  if (is_cancelled()) {
+  if (IsCancellationRequested(shutdown_flag, request_cancel_flag)) {
     if (error_out != nullptr) {
       error_out->clear();
     }
@@ -418,53 +492,16 @@ RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::D
   const auto stdin_bytes = std::as_bytes(std::span(stdin_content));
   auto result = vinput::process::Run(spec, stdin_bytes);
 
-  if (!result.stderr_text.empty() && notification_bridge != nullptr) {
-    std::size_t delivered = 0;
-    vinput::process::DrainLinesFromBuffer(
-        result.stderr_text,
-        [notification_bridge, &adapter, &delivered](std::string_view line) -> bool {
-          if (delivered >= kMaxBatchNotifications) {
-            return false;
-          }
-          notification_bridge->DeliverLine(adapter.id, line);
-          ++delivered;
-          return true;
-        },
-        /*flush_tail=*/true);
-  }
+  DrainAdapterStderr(result.stderr_text, adapter, notification_bridge);
 
-  if (is_cancelled()) {
+  if (IsCancellationRequested(shutdown_flag, request_cancel_flag)) {
     if (error_out != nullptr) {
       error_out->clear();
     }
     return std::nullopt;
   }
 
-  if (result.launch_failed) {
-    const std::string msg = fmt::sprintf(_("Failed to start adapter '%s'."), adapter.id);
-    VLOG_ERROR("{}", msg);
-    if (error_out != nullptr) {
-      *error_out = msg;
-    }
-    return std::nullopt;
-  }
-
-  if (result.timed_out) {
-    const std::string msg = fmt::sprintf(_("Adapter '%s' timed out."), adapter.id);
-    VLOG_ERROR("{}", msg);
-    if (error_out != nullptr) {
-      *error_out = msg;
-    }
-    return std::nullopt;
-  }
-
-  if (result.exit_code != 0) {
-    const std::string msg =
-        fmt::sprintf(_("Adapter '%s' exited with code %d."), adapter.id, result.exit_code);
-    VLOG_WARN("{}", msg);
-    if (error_out != nullptr) {
-      *error_out = msg;
-    }
+  if (!ValidateAdapterProcessResult(result, adapter, error_out)) {
     return std::nullopt;
   }
 
@@ -485,6 +522,91 @@ void AppendCandidate(vinput::result::Payload& payload, std::string text, const c
 
   payload.candidates.push_back(
       vinput::result::Candidate{.text = std::move(text), .source = source});
+}
+
+std::string CollectLlmCandidates(vinput::result::Payload& payload, std::set<std::string>& seen,
+                                 std::span<const std::string> rewritten, int max_candidates) {
+  std::string first_llm_text;
+  int accepted = 0;
+  for (const auto& text : rewritten) {
+    std::string trimmed(vinput::str::Trim(text));
+    if (trimmed.empty()) {
+      continue;
+    }
+    if (seen.insert(trimmed).second) {
+      if (first_llm_text.empty()) {
+        first_llm_text = trimmed;
+      }
+      payload.candidates.push_back(vinput::result::Candidate{.text = std::move(trimmed),
+                                                             .source = vinput::result::kSourceLlm});
+      ++accepted;
+      if (accepted >= max_candidates) {
+        break;
+      }
+    }
+  }
+  return first_llm_text;
+}
+
+std::optional<std::string>
+PrepareCommandTaskPrompt(std::string task_prompt, std::string_view normalized_asr,
+                         std::string_view selected_text, std::string_view* asr_var_out,
+                         std::string_view* selected_var_out, std::string* error_out) {
+  if (vinput::prompt_template::IsFileUri(task_prompt)) {
+    std::string load_err;
+    auto loaded = vinput::prompt_template::LoadFromFileUri(task_prompt, &load_err);
+    if (!loaded) {
+      if (error_out != nullptr) {
+        *error_out = fmt::sprintf(_("Failed to load prompt file '%s': %s"), task_prompt, load_err);
+      }
+      return std::nullopt;
+    }
+    task_prompt = std::move(*loaded);
+  }
+
+  if (vinput::prompt_template::HasInterpolation(task_prompt)) {
+    *asr_var_out = normalized_asr;
+    *selected_var_out = selected_text;
+  } else {
+    if (!task_prompt.empty() && task_prompt.back() != '\n') {
+      task_prompt.push_back('\n');
+    }
+    task_prompt += '\n';
+    task_prompt += WrapXmlBlock(kXmlTagAsr, normalized_asr);
+    task_prompt += "\n\n";
+    task_prompt += WrapXmlBlock(kXmlTagSelected, selected_text);
+    task_prompt += '\n';
+  }
+  return task_prompt;
+}
+
+std::optional<std::vector<std::string>>
+ExecuteCommandRewrite(const std::string& normalized_asr, const std::string& selected_text,
+                      const vinput::scene::Definition& command_scene, const LlmProvider* provider,
+                      const LlmAdapter* adapter, int max_candidates,
+                      vinput::notify::NotificationBridge* notification_bridge,
+                      const std::atomic<bool>* shutting_down, const std::atomic<bool>* cancel_flag,
+                      std::string* error_out) {
+  if (provider != nullptr) {
+    std::string_view asr_var;
+    std::string_view selected_var;
+    auto task_prompt = PrepareCommandTaskPrompt(command_scene.prompt, normalized_asr, selected_text,
+                                                &asr_var, &selected_var, error_out);
+    if (!task_prompt) {
+      return std::nullopt;
+    }
+    return RewriteWithOpenAiCompatible("", command_scene, *provider, max_candidates, error_out,
+                                       *task_prompt, shutting_down, cancel_flag, asr_var,
+                                       selected_var);
+  }
+
+  const glz::json_t cmd_input = {
+      {"text", normalized_asr},
+      {"selected", selected_text},
+  };
+  const std::string cmd_stdin = vinput::json::ToText(cmd_input);
+  return RewriteWithCommandAdapter(cmd_stdin, command_scene, *adapter, max_candidates,
+                                   notification_bridge, error_out, shutting_down, cancel_flag);
 }
 
 } // namespace
@@ -543,24 +665,8 @@ vinput::result::Payload PostProcessor::Process(const std::string& raw_text,
     seen.insert(normalized);
   }
 
-  std::string first_llm_text;
-  int accepted_llm_candidates = 0;
-  for (auto& text : *rewritten) {
-    std::string trimmed(vinput::str::Trim(text));
-    if (trimmed.empty()) {
-      continue;
-    }
-    if (seen.insert(trimmed).second) {
-      if (first_llm_text.empty()) {
-        first_llm_text = trimmed;
-      }
-      AppendCandidate(payload, std::move(trimmed), vinput::result::kSourceLlm);
-      ++accepted_llm_candidates;
-      if (accepted_llm_candidates >= max_llm_candidates) {
-        break;
-      }
-    }
-  }
+  const std::string first_llm_text =
+      CollectLlmCandidates(payload, seen, *rewritten, max_llm_candidates);
 
   if (payload.candidates.empty()) {
     return fallback;
@@ -597,62 +703,9 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
     return fallback;
   }
 
-  std::optional<std::vector<std::string>> rewritten;
-  if (provider != nullptr) {
-    // Resolve any `file:///` reference up front so the URI is not
-    // accidentally concatenated with data text.
-    std::string task_prompt = command_scene.prompt;
-    if (vinput::prompt_template::IsFileUri(task_prompt)) {
-      std::string load_err;
-      auto loaded = vinput::prompt_template::LoadFromFileUri(task_prompt, &load_err);
-      if (!loaded) {
-        if (error_out != nullptr) {
-          *error_out =
-              fmt::sprintf(_("Failed to load prompt file '%s': %s"), task_prompt, load_err);
-        }
-        return fallback;
-      }
-      task_prompt = std::move(*loaded);
-    }
-
-    // Interpolation mode ({{asr}}/{{selected}}/{{context}}): author owns layout.
-    // Legacy mode: wrap ASR command and selected text in Vinput-scoped XML tags
-    // so data is clearly separated from prompt instructions.
-    const bool use_template = vinput::prompt_template::HasInterpolation(task_prompt);
-    std::string_view asr_var;
-    std::string_view selected_var;
-    if (use_template) {
-      asr_var = normalized_asr;
-      selected_var = selected_text;
-    } else {
-      // Legacy mode: wrap data in Vinput-scoped XML tags.
-      if (!task_prompt.empty() && task_prompt.back() != '\n') {
-        task_prompt.push_back('\n');
-      }
-      task_prompt += '\n';
-      task_prompt += WrapXmlBlock(kXmlTagAsr, normalized_asr);
-      task_prompt += "\n\n";
-      task_prompt += WrapXmlBlock(kXmlTagSelected, selected_text);
-      task_prompt += '\n';
-    }
-
-    // Data is already embedded in task_prompt (legacy XML tags) or will be
-    // substituted via {{asr}}/{{selected}} (interpolation). Pass empty text to
-    // avoid double-appending.
-    rewritten = RewriteWithOpenAiCompatible("", command_scene, *provider,
-                                            command_max_llm_candidates, error_out, task_prompt,
-                                            &shutting_down_, cancel_flag, asr_var, selected_var);
-  } else {
-    // Command mode stdin: single-line JSON {"text": asr, "selected": selected}
-    const glz::json_t cmd_input = {
-        {"text", normalized_asr},
-        {"selected", selected_text},
-    };
-    const std::string cmd_stdin = vinput::json::ToText(cmd_input);
-    rewritten =
-        RewriteWithCommandAdapter(cmd_stdin, command_scene, *adapter, command_max_llm_candidates,
-                                  notification_bridge_, error_out, &shutting_down_, cancel_flag);
-  }
+  auto rewritten = ExecuteCommandRewrite(normalized_asr, selected_text, command_scene, provider,
+                                         adapter, command_max_llm_candidates, notification_bridge_,
+                                         &shutting_down_, cancel_flag, error_out);
 
   vinput::result::Payload payload;
   std::set<std::string> seen;
@@ -668,24 +721,8 @@ PostProcessor::ProcessCommand(const std::string& asr_text, const std::string& se
 
   // 3rd+: LLM results (if available, deduplicated and capped)
   std::string first_llm_text;
-  int accepted_llm_candidates = 0;
   if (rewritten.has_value()) {
-    for (auto& text : *rewritten) {
-      std::string trimmed(vinput::str::Trim(text));
-      if (trimmed.empty()) {
-        continue;
-      }
-      if (seen.insert(trimmed).second) {
-        if (first_llm_text.empty()) {
-          first_llm_text = trimmed;
-        }
-        AppendCandidate(payload, std::move(trimmed), vinput::result::kSourceLlm);
-        ++accepted_llm_candidates;
-        if (accepted_llm_candidates >= command_max_llm_candidates) {
-          break;
-        }
-      }
-    }
+    first_llm_text = CollectLlmCandidates(payload, seen, *rewritten, command_max_llm_candidates);
   }
 
   payload.commitText = first_llm_text.empty() ? selected_text : first_llm_text;

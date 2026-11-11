@@ -20,8 +20,9 @@ done
 if [ "$ALL" -eq 1 ]; then
   mapfile -t FILES < <(find src -name '*.cpp' -o -name '*.h' | sort)
 elif [ "${#FILES[@]}" -eq 0 ]; then
+  BASE_REF="$(git merge-base HEAD origin/main 2>/dev/null || echo "origin/main")"
   mapfile -t FILES < <({
-    git diff --name-only origin/main...HEAD 2>/dev/null
+    git diff --name-only "${BASE_REF}" 2>/dev/null
     git diff --name-only
     git diff --cached --name-only
     git ls-files --others --exclude-standard
@@ -33,5 +34,18 @@ if [ "${#FILES[@]}" -eq 0 ]; then
   exit 0
 fi
 
-echo "Auditing complexity on ${#FILES[@]} file(s) (CCN <= 15, CogC <= 15)..."
-lizard -Ecognitive -C 15 -T "cognitive_complexity=15" "${FILES[@]}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+NORMALIZED_FILES=()
+for f in "${FILES[@]}"; do
+  if [ -e "$f" ]; then
+    NORMALIZED_FILES+=("$(realpath --relative-to="${REPO_ROOT}" "$f" 2>/dev/null || echo "$f")")
+  else
+    NORMALIZED_FILES+=("$f")
+  fi
+done
+
+cd "${REPO_ROOT}"
+echo "Auditing complexity on ${#NORMALIZED_FILES[@]} file(s) (CCN <= 15, CogC <= 15)..."
+lizard -Ecognitive -C 15 -T "cognitive_complexity=15" "${NORMALIZED_FILES[@]}"
