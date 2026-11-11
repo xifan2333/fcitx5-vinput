@@ -4,19 +4,17 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <mutex>
 #include <optional>
-#include <pipewire/pipewire.h>
 #include <pipewire/stream.h>
 #include <pipewire/thread-loop.h>
 #include <readerwriterqueue.h>
-#include <spa/param/audio/format-utils.h>
-#include <span>
 #include <string>
 #include <vector>
 
 #include "daemon/audio/audio_types.h"
+
+struct spa_pod;
 
 class AudioCapture {
 public:
@@ -35,6 +33,11 @@ public:
 
   AudioCapture();
   ~AudioCapture();
+
+  AudioCapture(const AudioCapture&) = delete;
+  AudioCapture& operator=(const AudioCapture&) = delete;
+  AudioCapture(AudioCapture&&) = delete;
+  AudioCapture& operator=(AudioCapture&&) = delete;
 
   bool Start(std::string* error = nullptr);
   std::vector<int16_t> StopAndGetBuffer();
@@ -94,22 +97,12 @@ private:
   bool CanReuseStreamLocked() const;
   std::string CurrentTargetObject() const;
 
-  struct pw_thread_loop* loop_ = nullptr;
-  struct pw_stream* stream_ = nullptr;
-  struct pw_stream_events stream_events_{};
-  std::atomic<bool> recording_{false};
-  mutable std::mutex target_mutex_;
-  mutable std::mutex timing_mutex_;
-  std::mutex consumer_mutex_;
-  std::string target_object_;
-  std::string connected_target_object_;
-  bool stream_active_ = false;
-
   // SPSC Lock-free ringbuffer and real-time safe drop telemetry
   moodycamel::ReaderWriterQueue<vinput::audio::AudioPcmChunk> queue_{kDefaultQueueCapacity};
+  struct pw_thread_loop* loop_ = nullptr;
+  struct pw_stream* stream_ = nullptr;
   std::atomic<std::size_t> dropped_chunks_{0};
   std::atomic<std::size_t> dropped_samples_{0};
-  std::atomic<int> notify_fd_{-1};
 
   // Lock-free first-buffer timing (nanoseconds since epoch; 0 = unrecorded)
   std::atomic<int64_t> recording_armed_ns_{0};
@@ -119,6 +112,17 @@ private:
   std::optional<std::chrono::steady_clock::time_point> last_stream_destroyed_at_;
   std::optional<std::chrono::steady_clock::time_point> last_stream_deactivated_at_;
   std::optional<std::chrono::steady_clock::time_point> idle_destroy_deadline_;
+
+  std::string target_object_;
+  std::string connected_target_object_;
+  mutable std::mutex target_mutex_;
+  mutable std::mutex timing_mutex_;
+  std::mutex consumer_mutex_;
+
+  struct pw_stream_events stream_events_{};
+  std::atomic<int> notify_fd_{-1};
+  std::atomic<bool> recording_{false};
+  bool stream_active_ = false;
 
   void ScheduleIdleDestroy();
   void CancelIdleDestroy();
