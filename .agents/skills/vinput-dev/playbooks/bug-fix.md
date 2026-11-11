@@ -44,6 +44,7 @@ Canonical execution workflow for diagnosing and repairing broken behaviors, cras
 
 ### 4. Single-Item Atomic Loop (S2: TRACK_LOOP)
 - Fix the root cause in the shared component with the minimal working diff.
+- **Boy-Scout AST Ratchet**: `mise run check:changed` enforces zero AST violations on touched files (`ast-grep scan --error`). Any `deep-if-branching` or `nested-loops` in touched files must be resolved before committing. Untouched historical files are ignored.
 - Verify the reproduction test now passes (`Green`).
 - Run local sub-second gate:
   ```bash
@@ -51,7 +52,7 @@ Canonical execution workflow for diagnosing and repairing broken behaviors, cras
   ```
 - Push atomic commit and update Draft PR checklist (`- [x]`) in lockstep.
 
-*Completion criterion*: Failing test turns green, `check:changed` passes, and checklist task is checked off (`- [x]`).
+*Completion criterion*: Failing test turns green, `check:changed` passes with zero AST errors on touched files, and checklist task is checked off (`- [x]`).
 
 ### 5. Self-Review & Gate Yield (S3: GATE_YIELD)
 - Run `mise run check:dup`.

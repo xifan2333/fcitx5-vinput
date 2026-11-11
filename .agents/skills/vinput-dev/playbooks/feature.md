@@ -48,6 +48,7 @@ Canonical execution workflow for introducing new capabilities or altering extern
 ### 4. Single-Item Atomic Implementation Loop (S2: TRACK_LOOP)
 For each unchecked `- [ ]` task in order:
 - Implement only the topmost item using the shortest working diff conforming to `principles/laziness-protocol.md`.
+- **Boy-Scout AST Ratchet**: `mise run check:changed` enforces zero AST violations on touched files (`ast-grep scan --error`). Any `deep-if-branching` or `nested-loops` in touched files must be resolved before committing. Untouched historical files are ignored.
 - **Scrap Detector**: If implementation requires $\ge 2$ special-case branches or breaks initial interface assumptions, abort immediately. Run `git reset`, report friction, and redesign.
 - Run sub-second local quality gate:
   ```bash

@@ -32,7 +32,7 @@ local linters = new Mapping<String, Step> {
 
   ["check-ast"] {
     glob = List("src/**/*.cpp", "src/**/*.h")
-    check = "ast-grep scan"
+    check = "ast-grep scan --error"
   }
 
   ["check-complexity"] {
