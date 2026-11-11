@@ -614,7 +614,7 @@ public:
   }
 
   ModelInstallationTransaction(ModelInstallationTransaction&&) noexcept = default;
-  ModelInstallationTransaction& operator=(ModelInstallationTransaction&&) noexcept = default;
+  ModelInstallationTransaction& operator=(ModelInstallationTransaction&&) = delete;
   ModelInstallationTransaction(const ModelInstallationTransaction&) = delete;
   ModelInstallationTransaction& operator=(const ModelInstallationTransaction&) = delete;
 

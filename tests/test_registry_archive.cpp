@@ -47,6 +47,28 @@ struct ArchiveEntryDesc {
   mode_t file_type = AE_IFREG;
   std::string symlink_target;
   std::string hardlink_target;
+
+  static ArchiveEntryDesc Regular(std::string p, std::string c) {
+    ArchiveEntryDesc d;
+    d.path = std::move(p);
+    d.content = std::move(c);
+    return d;
+  }
+
+  static ArchiveEntryDesc Symlink(std::string p, std::string target) {
+    ArchiveEntryDesc d;
+    d.path = std::move(p);
+    d.file_type = AE_IFLNK;
+    d.symlink_target = std::move(target);
+    return d;
+  }
+
+  static ArchiveEntryDesc Hardlink(std::string p, std::string target) {
+    ArchiveEntryDesc d;
+    d.path = std::move(p);
+    d.hardlink_target = std::move(target);
+    return d;
+  }
 };
 
 void CreateTarArchive(const fs::path& tar_path, const std::vector<ArchiveEntryDesc>& entries) {
@@ -121,8 +143,8 @@ void TestExtractValidArchive() {
   const fs::path dest_dir = temp.path / "extracted";
 
   const std::vector<ArchiveEntryDesc> entries = {
-      {.path = "model/vinput-model.json", .content = R"({"family":"transducer"})"},
-      {.path = "model/tokens.txt", .content = "<blk> 0\n"}};
+      ArchiveEntryDesc::Regular("model/vinput-model.json", R"({"family":"transducer"})"),
+      ArchiveEntryDesc::Regular("model/tokens.txt", "<blk> 0\n")};
   CreateTarArchive(tar_file, entries);
 
   std::string error;
@@ -145,7 +167,7 @@ void TestExtractRejectsAbsolutePath() {
   const fs::path dest_dir = temp.path / "extracted";
 
   const std::vector<ArchiveEntryDesc> entries = {
-      {.path = "/etc/evil_config.txt", .content = "payload"}};
+      ArchiveEntryDesc::Regular("/etc/evil_config.txt", "payload")};
   CreateTarArchive(tar_file, entries);
 
   std::string error;
@@ -159,7 +181,7 @@ void TestExtractRejectsPathTraversal() {
   const fs::path dest_dir = temp.path / "extracted";
 
   const std::vector<ArchiveEntryDesc> entries = {
-      {.path = "model/../../escape.txt", .content = "escaped payload"}};
+      ArchiveEntryDesc::Regular("model/../../escape.txt", "escaped payload")};
   CreateTarArchive(tar_file, entries);
 
   std::string error;
@@ -173,7 +195,7 @@ void TestExtractRejectsSymlink() {
   const fs::path dest_dir = temp.path / "extracted";
 
   const std::vector<ArchiveEntryDesc> entries = {
-      {.path = "model/link_target", .file_type = AE_IFLNK, .symlink_target = "/etc/passwd"}};
+      ArchiveEntryDesc::Symlink("model/link_target", "/etc/passwd")};
   CreateTarArchive(tar_file, entries);
 
   std::string error;
@@ -187,8 +209,8 @@ void TestExtractRejectsHardlink() {
   const fs::path dest_dir = temp.path / "extracted";
 
   const std::vector<ArchiveEntryDesc> entries = {
-      {.path = "model/existing", .content = "real content"},
-      {.path = "model/hardlink", .hardlink_target = "model/existing"}};
+      ArchiveEntryDesc::Regular("model/existing", "real content"),
+      ArchiveEntryDesc::Hardlink("model/hardlink", "model/existing")};
   CreateTarArchive(tar_file, entries);
 
   std::string error;
