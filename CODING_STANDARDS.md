@@ -73,8 +73,10 @@ When altering user-facing keys or schema types in `config.json` or `vinput.conf`
 
 ## 5. Control Flow & Structural Integrity
 
-### Exhaustive dispatch for enums via `switch`
-Prefer `switch-case` over cascading `else if` for `enum` / `enum class` types to guarantee compiler exhaustiveness (`-Wswitch`) and $O(1)$ jump-table dispatch. Never let enum branches silently drop when new states are introduced.
+### Exhaustive dispatch for enums: Mandatory `Switch-Return` for mappings
+Prefer `switch` over cascading `else if` for `enum` / `enum class` types to guarantee compiler exhaustiveness (`-Wswitch`) and $O(1)$ jump-table dispatch. Never let enum branches silently drop when new states are introduced.
+- **Mandatory Switch-Return for value mapping**: When a `switch` maps or extracts a value, return directly from each `case` (`Switch-Return`). Declaring an intermediate mutable variable solely to assign it and `break` is prohibited.
+- **Eliminate fallthrough hazards**: `return` structurally eliminates missing-break fallthrough bugs and mutable state. Use `break` only when genuine, shared tail logic must execute after all branches.
 
 ### Guard Clauses & Straight Happy Path
 Precondition checks, boundary validations, and error paths must exit early (`return`, `continue`, `break`). Keep the primary business flow at root indentation (0–1 levels). Wrapping extensive logic in `if (valid) { ... }` is prohibited (C++ Core Guidelines ES.45).
