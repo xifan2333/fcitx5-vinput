@@ -23,4 +23,5 @@ __pycache__/
 fcitx5-vinput.flatpak
 node_modules/
 .astro/
-.pi/
+.pi/*
+!.pi/ghwebhook.json

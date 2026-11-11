@@ -97,12 +97,25 @@ local pre_push_guard = new Step {
       return 0
     }
 
+    get_gh_user() {
+      gh api user -q .login 2>/dev/null || echo ""
+    }
+
     audit_push() {
       local remote_name="${1:-}"
       local remote_url="${2:-$(git config --get "remote.${remote_name}.url" || true)}"
       local is_upstream=false
       if is_official_upstream "${remote_url}"; then
         is_upstream=true
+      fi
+
+      if [ "${is_upstream}" = true ]; then
+        local current_user
+        current_user=$(get_gh_user)
+        if [ -n "${current_user}" ] && [ "${current_user}" != "xifan2333" ]; then
+          echo "ERROR [hk pre-push]: Authenticated as '${current_user}'. Direct push to official upstream (xifan2333/fcitx5-vinput) is restricted to the maintainer. Please fork the repository and push to your fork." >&2
+          exit 1
+        fi
       fi
 
       while read -r local_ref local_oid remote_ref remote_oid; do

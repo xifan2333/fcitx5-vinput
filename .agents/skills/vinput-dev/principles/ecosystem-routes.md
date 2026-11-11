@@ -2,7 +2,14 @@
 
 ---
 
-## 1. Working with `vinput-registry` ([xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry), `~/Code/vinput-registry`)
+## 1. Architectural Boundary: Core vs Registry
+
+- **Core (`fcitx5-vinput`)**: 100% pure white-box foundation. Contains `daemon`, `cli`, `gui`, `common`, and co-located input method frontends (Fcitx5 + future IBus). Zero reverse-engineered or volatile third-party scraping logic allowed in core.
+- **Registry (`vinput-registry`)**: Downstream stateless implementation of the Three-Stream protocol (`stdin`, `stdout`, `stderr`). Core dictates the protocol; Registry implements adapters. Core never depends on Registry internals.
+
+---
+
+## 2. Working with `vinput-registry` ([xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry), `~/Code/vinput-registry`)
 
 When adding or updating ASR providers, LLM scenes, or local model catalogs, work in `~/Code/vinput-registry`.
 
