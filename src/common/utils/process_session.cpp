@@ -221,6 +221,11 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, StderrSink stderr_sink,
     return false;
   }
 
+  if (!proc_.has_value()) {
+    *error = "child process was not spawned.";
+    return false;
+  }
+
   in_fd_ = proc_->input() != nullptr ? subprocess_fileno(proc_->input()) : -1;
   out_fd_ = proc_->output() != nullptr ? subprocess_fileno(proc_->output()) : -1;
   err_fd_ = proc_->error() != nullptr ? subprocess_fileno(proc_->error()) : -1;
@@ -305,7 +310,7 @@ detail::DrainOutcome ProcessSession::Impl::ServiceOutputChannel(bool is_stdout) 
 }
 
 void ProcessSession::Impl::ServiceInputChannel(short revents) {
-  if ((revents & detail::kInputFailureEvents) != 0) {
+  if ((revents & detail::kInputFailureEvents) != 0 && (revents & POLLOUT) == 0) {
     CloseStdinChannel();
     return;
   }
@@ -313,6 +318,9 @@ void ProcessSession::Impl::ServiceInputChannel(short revents) {
     return;
   }
   if (in_fd_ < 0 || pending_offset_ >= pending_.size()) {
+    if ((revents & detail::kInputFailureEvents) != 0) {
+      CloseStdinChannel();
+    }
     return;
   }
   const ssize_t written =
@@ -326,6 +334,10 @@ void ProcessSession::Impl::ServiceInputChannel(short revents) {
     return;
   }
   if (written < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+    CloseStdinChannel();
+    return;
+  }
+  if ((revents & detail::kInputFailureEvents) != 0) {
     CloseStdinChannel();
   }
 }
@@ -381,7 +393,9 @@ void ProcessSession::Impl::HandleCancelEvent(SessionPumpState& state) {
       .kind = ChildEventKind::Cancelled, .data = {}, .exit_code = -1, .killed_by_us = false});
   // Signalling the group covers the helpers a provider script forked; signalling the pid alone
   // would leave them running with the session's pipes still open.
-  proc_->kill(SIGTERM);
+  if (proc_.has_value()) {
+    proc_->kill(SIGTERM);
+  }
   state.terminate_deadline = Clock::now() + kTerminateGrace;
 }
 
@@ -390,7 +404,9 @@ bool ProcessSession::Impl::CheckTerminateTimeout(SessionPumpState& state) {
     return false;
   }
   if (!state.force_kill_sent) {
-    proc_->kill(SIGKILL);
+    if (proc_.has_value()) {
+      proc_->kill(SIGKILL);
+    }
     state.force_kill_sent = true;
     state.terminate_deadline = Clock::now() + kForceGrace;
     return false;
@@ -425,6 +441,9 @@ void ProcessSession::Impl::DispatchPollEvents(const SessionPollPlan& plan,
 }
 
 bool ProcessSession::Impl::ReapAndRecord(bool cancel_seen) {
+  if (!proc_.has_value()) {
+    return false;
+  }
   int code = -1;
   if (!TryReapProcess(proc_->pid(), &code)) {
     return false;
@@ -434,7 +453,7 @@ bool ProcessSession::Impl::ReapAndRecord(bool cancel_seen) {
   // The leader is gone, so its own grace window is over - but a helper that ignored SIGTERM would
   // otherwise outlive the session it belongs to. The group is still addressable for as long as one
   // of its members holds it, which is exactly this case.
-  if (cancel_seen) {
+  if (cancel_seen && proc_.has_value()) {
     proc_->kill(SIGKILL);
   }
   return true;

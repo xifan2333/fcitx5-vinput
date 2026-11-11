@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -622,7 +623,7 @@ public:
     }
 
     std::string inference_error;
-    const auto text =
+    auto text =
         ExecuteAudioInference(recognizer_, vad_available_, vad_, samples_, &inference_error);
     if (!text.has_value()) {
       if (error != nullptr) {
