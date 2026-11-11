@@ -146,20 +146,26 @@ void DbusService::FlushEmitQueue() {
   }
 
   for (const auto& item : local) {
-    if (item.type == PendingEmit::Type::Result) {
+    // No default: -Wswitch makes a new PendingEmit::Type a build error.
+    switch (item.type) {
+    case PendingEmit::Type::Result:
       sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalRecognitionResult, "s",
                          item.payload.c_str());
-    } else if (item.type == PendingEmit::Type::Partial) {
+      break;
+    case PendingEmit::Type::Partial:
       sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalRecognitionPartial, "s",
                          item.payload.c_str());
-    } else if (item.type == PendingEmit::Type::Status) {
+      break;
+    case PendingEmit::Type::Status:
       sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalStatusChanged, "s",
                          item.payload.c_str());
-    } else if (item.type == PendingEmit::Type::DesktopNotification) {
+      break;
+    case PendingEmit::Type::DesktopNotification:
       if (!vinput::daemon::notify::SendDesktopNotification(bus_, item.desktop_notification)) {
         VLOG_WARN("failed to send desktop notification: title='{}'",
                   item.desktop_notification.title);
       }
+      break;
     }
   }
 

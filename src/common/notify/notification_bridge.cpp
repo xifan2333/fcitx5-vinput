@@ -51,6 +51,31 @@ std::string MakeDedupKey(std::string_view title, std::string_view body) {
   return key;
 }
 
+std::optional<Notification> TryParseJsonNotification(std::string_view trimmed,
+                                                     std::string_view default_title) {
+  if (!trimmed.starts_with('{') || !trimmed.ends_with('}')) {
+    return std::nullopt;
+  }
+
+  JsonNotificationWire wire;
+  if (bool(glz::read_json(wire, trimmed))) {
+    return std::nullopt;
+  }
+
+  if (!wire.title.has_value() || !wire.body.has_value()) {
+    return std::nullopt;
+  }
+
+  Notification n;
+  n.level = NotificationLevel::Warning;
+  n.title = std::move(*wire.title);
+  n.body = std::move(*wire.body);
+  if (n.title.empty()) {
+    n.title = default_title.empty() ? _("Voice Input") : std::string(default_title);
+  }
+  return n;
+}
+
 } // namespace
 
 struct NotificationBridge::Impl {
@@ -103,22 +128,9 @@ struct NotificationBridge::Impl {
     Notification n;
     n.level = NotificationLevel::Warning;
 
-    bool parsed_json = false;
-    if (trimmed.starts_with('{') && trimmed.ends_with('}')) {
-      JsonNotificationWire wire;
-      if (!bool(glz::read_json(wire, trimmed))) {
-        if (wire.title.has_value() && wire.body.has_value()) {
-          parsed_json = true;
-          n.title = std::move(*wire.title);
-          n.body = std::move(*wire.body);
-          if (n.title.empty()) {
-            n.title = default_title.empty() ? _("Voice Input") : std::string(default_title);
-          }
-        }
-      }
-    }
-
-    if (!parsed_json) {
+    if (auto parsed = TryParseJsonNotification(trimmed, default_title)) {
+      n = std::move(*parsed);
+    } else {
       n.body = std::string(raw_line);
       n.title = default_title.empty() ? _("Voice Input") : std::string(default_title);
     }
