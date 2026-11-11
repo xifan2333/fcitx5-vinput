@@ -81,12 +81,21 @@ install_qt_zypper() {
 apt_opts=(
   -o "Dir::Cache::Archives=${vinput_apt_archives}"
   -o APT::Keep-Downloaded-Packages=true
+  -o Acquire::ForceIPv4=true
   -o Acquire::Retries=2
-  -o Acquire::http::Timeout=20
-  -o Acquire::https::Timeout=20
+  -o Acquire::http::Timeout=15
+  -o Acquire::https::Timeout=15
   -o Acquire::Languages=none
   -o DPkg::Lock::Timeout=300
 )
+
+prepare_apt_mirrors() {
+  if [[ -f "${apt_mirrors_file}" ]]; then
+    if ! grep -q "mirrors.edge.kernel.org" "${apt_mirrors_file}" 2>/dev/null; then
+      echo "http://mirrors.edge.kernel.org/ubuntu/" | "${sudo_cmd[@]}" tee -a "${apt_mirrors_file}" >/dev/null
+    fi
+  fi
+}
 
 prepare_apt_archives() {
   mkdir -p "${vinput_apt_archives}/partial"
@@ -157,6 +166,7 @@ update_ubuntu_indices() {
 }
 
 install_ubuntu_deps() {
+  prepare_apt_mirrors
   prepare_apt_archives
   trap finalize_apt_archives EXIT
 
