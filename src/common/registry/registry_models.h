@@ -69,6 +69,10 @@ public:
                     const std::atomic<bool>* cancel_token = nullptr) const;
 
 private:
+  bool InstallModelImpl(const CoreConfig* config, const std::vector<std::string>& registry_urls,
+                        const std::string& model_id, const ProgressCallback& progress_cb,
+                        std::string* error, std::string* resolved_registry_url,
+                        const std::atomic<bool>* cancel_token) const;
   bool InstallModelEntry(const RemoteModelEntry& found, const ProgressCallback& progress_cb,
                          std::string* error, const std::atomic<bool>* cancel_token) const;
   static bool VerifySha256(const std::filesystem::path& file, const std::string& expected,
