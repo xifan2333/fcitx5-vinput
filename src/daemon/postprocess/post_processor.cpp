@@ -253,7 +253,8 @@ std::string BuildUserContent(std::string_view base_prompt, std::string_view text
 std::string BuildOpenAiRequestBody(const std::string& model, std::string user_content,
                                    const LlmProvider& provider) {
   glz::json_t::array_t messages;
-  messages.push_back(glz::json_t{{"role", "user"}, {"content", std::move(user_content)}});
+  glz::json_t message = {{"role", "user"}, {"content", std::move(user_content)}};
+  messages.push_back(std::move(message));
 
   glz::json_t request = {
       {"model", model},
