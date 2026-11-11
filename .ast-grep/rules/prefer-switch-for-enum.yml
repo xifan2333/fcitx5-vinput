@@ -1,0 +1,17 @@
+id: prefer-switch-for-enum
+message: "检测到枚举/类型标志使用了级联 else if。请改用 switch-case，以获得编译期穷举检查（-Wswitch）与跳转表优化。"
+severity: warning
+language: Cpp
+files:
+  - "src/**"
+rule:
+  pattern:
+    context: |
+      if ($X == $A::$B) {
+        $$$BODY1
+      } else if ($X == $A::$C) {
+        $$$BODY2
+      } else if ($X == $A::$D) {
+        $$$BODY3
+      }
+    strictness: relaxed
