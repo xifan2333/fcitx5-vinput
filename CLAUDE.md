@@ -59,6 +59,7 @@ gh run list --branch $(git branch --show-current) --status in_progress --json da
 | Need / Domain | Pointer | When to Reach |
 | :--- | :--- | :--- |
 | **Master Development Engine** | [`vinput-dev`](.agents/skills/vinput-dev/SKILL.md) | Entry point for intent matching and playbook dispatch |
+| **5W1H Triage & Design** | [`5w1h`](.agents/skills/5w1h/SKILL.md) | Structured 5W1H analysis for review, bug, CI, or RFC |
 | **Code Standards & Smells** | [`CODING_STANDARDS.md`](CODING_STANDARDS.md) | Writing C++20 code, reviewing PRs, checking linter rules |
 | **Domain Glossary** | [`GLOSSARY.md`](GLOSSARY.md) | Naming domain primitives, structs, D-Bus methods, and tests |
 | **Feature & Fix Playbook** | [`playbooks/feature-or-fix.md`](.agents/skills/vinput-dev/playbooks/feature-or-fix.md) | Developing features, bug fixes, and atomic PR commits |
