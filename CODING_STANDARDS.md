@@ -1,134 +1,108 @@
 # Coding Standards
 
-The authoritative engineering rules an agent or human contributor holds while writing and reviewing code in `fcitx5-vinput`.
+Authoritative engineering rules for code review in `fcitx5-vinput`.
 
 > **Implementation vs. Review Notice**:
-> - **Implementation Agents**: Keep your context focused on requirements, exploration, and minimal working code.
-> - **Reviewer Agents & Human Reviewers**: Load this file to rigorously audit diffs along the **Standards Axis**.
-> - **Mechanical Rules** are enforced by deterministic tools (`ast-grep`, `lizard`, `jscpd`, `clang-tidy`, `hk`).
-> - **Judgement Calls** require architectural evaluation against the principles below.
+> - **Implementation Agents**: Keep context focused on minimal working diffs under `principles/laziness-protocol.md`. Do not pre-load this entire file during active coding.
+> - **Review Agents (`/vinput-review`) & Human Reviewers**: Audit diffs against the judgement standards below.
+> - **Mechanical Checks**: Formatting, AST patterns, cognitive complexity, and duplication are strictly enforced by automated tooling (`mise run check:changed`). Reviewers skip anything tooling already enforces.
 
 ---
 
-## 1. Real-Time Audio & PipeWire (实时音频与线程安全)
+## 1. Architecture & Module Depth
+
+### Modules must be deep, not shallow
+Favor deep modules: substantial functionality hidden behind a compact, intuitive interface. Avoid shallow wrappers—classes or functions whose interface is as complex as their implementation, or one-line forwarding adapters that merely pass parameters through.
+
+- **The Cost**: Shallow modules inflate cognitive load, scatter domain logic across multiple files, and obscure real defects.
+- **Review Test**: The Deletion Test—does deleting the wrapper concentrate complexity into one cohesive unit, or merely shift it?
+
+### Seam Discipline & The Single-Implementation Rule
+Never introduce an interface, abstract base class, or virtual methods solely to facilitate mocking in unit tests.
+- **Rule of Two**: One implementation represents a hypothetical seam; at least two genuine production implementations justify an interface. Single-implementation interfaces are indirection debt.
+- **Test Surface**: The production interface is the test surface. Callers and tests cross the same seam. Tests verify observable behavior through public interfaces, never through test-only backdoors or synthetic mock interfaces.
+- **Hermetic I/O Testing**: For network or IPC interactions, use lightweight in-process loopback servers (such as ephemeral localhost socket listeners) or temporary sandboxed directories rather than mocking transport interfaces in production code.
+
+### Boundary Discipline: Guard the edges, trust the internals
+Concentrate defensive checks, type validation, and input sanitization strictly at system boundaries (CLI flags, D-Bus handlers, JSON decoders, PipeWire stream initialization). Once validated and translated into domain types, internal pure functions trust their inputs without redundant defensive null-checks or range guards.
+
+- **The Cost**: Scattered defensive checks create dead branches, mask root causes, and clutter tests with unreachable permutations.
+
+---
+
+## 2. Real-Time Audio & Thread Safety
 
 ### The audio callback is lock-free and allocation-free
-The PipeWire audio processing callback (`processCallback`) runs on a real-time (RT) thread. Inside this callback, never allocate memory (`malloc`, `new`, `std::make_unique`, `std::vector::push_back`) and never acquire blocking locks (`std::mutex::lock`). Transfer captured PCM frames exclusively via lock-free single-producer single-consumer queues (`readerwriterqueue`).
+The PipeWire audio processing callback (`processCallback`) runs on a real-time (RT) thread. Inside this callback, never allocate memory and never acquire blocking locks. Transfer captured PCM frames exclusively via lock-free single-producer single-consumer queues (`readerwriterqueue`).
 
-- **The Cost**: Memory allocations or lock contention in the RT callback cause priority inversion, pipewire buffer dropouts (XRuns), audio crackling, and desktop UI stutter.
-- **Enforcement**: Mechanically enforced by `ast-grep` (`.ast-grep/rules/no-alloc-in-audio-callback.yml`) and CI ASan thread checks.
+- **The Cost**: Allocations or lock contention in the RT callback cause priority inversion, buffer dropouts (XRuns), audio crackling, and desktop UI stutter.
 
 ### Return SPA buffers immediately
 When reading PipeWire SPA buffers, copy the raw PCM payload into the lock-free ring buffer and release the SPA buffer immediately. Never perform format conversion, VAD calculation, or ASR inference inside the PipeWire thread.
 
 - **The Cost**: Holding SPA buffers stalls the PipeWire graph, leading to stream termination and daemon audio starvation.
-- **Enforcement**: Reviewer judgement call (`vinput-diagnose` for tracing).
 
 ---
 
-## 2. Architecture & Module Depth (架构与深模块设计)
-
-### Modules must be deep, not shallow
-Favor deep modules: substantial functionality hidden behind a compact, intuitive interface (Ousterhout's *A Philosophy of Software Design*). Avoid "shallow wrappers"—classes or functions whose interface is as complex as their implementation, or one-line forwarding adapters that just pass parameters through.
-
-- **The Cost**: Shallow modules inflate cognitive load, scattering business logic across dozens of files, obscuring real bugs, and making AI agents hallucinate call chains.
-- **Enforcement**: Reviewer judgement call; apply the *Deletion Test* (does deleting the module concentrate complexity into one cohesive unit, or merely shift it?).
-
-### SSOT Infrastructure Mandate (Zero Ad-hoc Utils)
-Never re-implement generic utility functions (e.g. ad-hoc string split/trim, raw `popen`/`system`, hand-rolled JSON parsers, custom base64). Always reuse canonical infrastructure in `src/common/`:
-- **JSON Serialization & Reflection**: `glaze` (`#include <glaze/glaze.hpp>`)
-- **Subprocess Execution**: `src/common/utils/process_utils.h` (`subprocess.hpp`)
-- **Logging & Tracing**: `VLOG_INFO`, `VLOG_DEBUG`, `VLOG_ERROR` (`spdlog` wrappers)
-- **Memory-Mapped Files**: `mio`
-- **Lock-Free Buffers**: `readerwriterqueue`
-- **CLI Parsing**: `CLI11`
-
-- **The Cost**: Ad-hoc utilities introduce inconsistent error semantics, signal-handling vulnerabilities, buffer overflows, and maintenance fragmentation.
-- **Enforcement**: Mechanically enforced by `jscpd` (`check:dup`), `ast-grep` (`anti-ad-hoc-utils`), and Reviewer audit.
-
-### Boundary Discipline: Guard the edges, trust the internals
-Concentrate defensive checks, type validation, and input sanitization strictly at system boundaries (CLI flags, D-Bus RPC handlers, JSON config decoders, PipeWire stream setup). Once validated and translated into domain types, pure functions and internal modules trust their arguments without redundant nested defensive guards.
-
-- **The Cost**: Scattered defensive checks create dead branches, mask root causes, degrade runtime performance, and clutter tests with untestable permutations.
-- **Enforcement**: Reviewer judgement call (pstack `principle-boundary-discipline`).
-
----
-
-## 3. Control Flow & Cognitive Complexity (控制流与复杂度)
-
-### Functions stay simple ($\text{CCN} \le 15, \text{CogC} \le 15$)
-No function may exceed Cyclomatic Complexity (CCN) of 15 or Cognitive Complexity (CogC) of 15. If a function approaches this limit, decompose it into private helper functions, lookup tables, or composable standard algorithms (`std::ranges`).
-
-- **The Cost**: High-complexity functions hide critical edge-case defects, increase bug density exponentially, and cause AI code generators to fail.
-- **Enforcement**: Mechanically enforced by `lizard` (`scripts/check-complexity.sh`, `mise run check:complexity`).
-
-### Flatten branching into early guard clauses
-Prefer early return guard clauses over nested `if-else` blocks. Maximum nesting depth of conditional statements and loops must be $< 4$. Eliminate nested loops across dynamic collections; use hash lookups or indexed sets instead.
-
-- **The Cost**: The "arrow anti-pattern" forces developers and agents to maintain exponential state branches in memory, leading to off-by-one errors and missed edge cases.
-- **Enforcement**: Mechanically enforced by `ast-grep` (`deep-if-branching.yml`, `nested-loops.yml`).
-
----
-
-## 4. Types, Memory & Lifetime Safety (类型、内存与生命周期)
-
-### Make illegal states unrepresentable
-Prefer C++20 expressive types: `std::optional`, `std::variant`, and `tl::expected` / `std::expected` over nullable raw pointers with paired boolean flags or error codes. When an operation can fail, return `expected<T, Error>` instead of throwing runtime exceptions across module seams.
-
-- **The Cost**: Boolean flag out-of-sync bugs, null pointer dereferences, and silent error swallowing.
-- **Enforcement**: Clang-Tidy + Reviewer audit.
+## 3. C-ABI Boundaries & Resource Lifetimes
 
 ### Exclusive resource ownership via RAII
-Manual `delete`, raw owning pointers, and unmanaged file descriptors are forbidden. Encapsulate all POSIX and C API resources (PipeWire streams, sd-bus messages, libarchive handles) in custom RAII wrappers or smart pointers with custom deleters.
+Manual resource deallocation, raw owning pointers, and unmanaged file descriptors are prohibited. Encapsulate all POSIX and C API resources (PipeWire streams, sd-bus messages, libarchive handles) in custom RAII wrappers immediately at the system boundary.
 
-- **The Cost**: Memory leaks, double-free vulnerabilities, and file descriptor exhaustion on unexpected exit paths.
-- **Enforcement**: Clang-Tidy (`bugprone-*`, `cppcoreguidelines-*`) + CI ASan/UBSan suites.
+- **The Cost**: Resource leaks, double-free vulnerabilities, and file descriptor exhaustion on error exit paths.
 
-### Zero-Tolerance on diagnostic suppressions
-Never suppress warnings or errors using `// NOLINT`, `#pragma GCC/clang diagnostic ignored`, or `-Wno-*` compiler flags in CMakeLists.txt. Address the underlying root cause by refactoring types or importing required standard headers.
-
-- **The Cost**: Suppressions hide real compiler warnings, mask undefined behavior, and break portability across compilers (GCC vs Clang).
-- **Enforcement**: Mechanically enforced by `ast-grep` (`no-diagnostic-suppressions.yml`) and CMake `-DVINPUT_ENABLE_WERROR=ON`.
+### Hard C-ABI Isolation
+Keep C-ABI callback trampolines strictly separate from C++20 domain logic. C-ABI wrappers must translate raw pointers and error codes into standard C++ types (`std::span`, `std::string_view`, `tl::expected`) before passing data to internal components.
 
 ---
 
-## 5. Logging, Output & Localization (日志、输出与国际化)
+## 4. Types, Memory & Evolution Safety
 
-### Zero stdout/stderr pollution in daemon & addon
-`std::cout`, `std::cerr`, `printf`, and `puts` are strictly prohibited in `src/daemon/` and `src/addon/`. All operational diagnostics and error tracing must go through structured logging macros (`VLOG_INFO`, `VLOG_WARN`, `VLOG_ERROR`, `VLOG_DEBUG`).
+### Make illegal states unrepresentable
+Prefer C++20 expressive types: `std::optional`, `std::variant`, and `tl::expected` over nullable raw pointers with paired boolean flags or error codes. When an operation can fail, return `expected<T, Error>` instead of throwing runtime exceptions across module seams.
 
-- **The Cost**: Writing to stdout in the addon corrupts Fcitx5 IPC streams; unformatted stderr writes in the daemon break systemd journal rate-limiting and unit monitoring.
-- **Enforcement**: Mechanically enforced by `ast-grep` (`anti-daemon-stdout.yml`).
-
-### All user-visible strings must be localized
-Any string presented to the user (GUI labels, system notifications, CLI status messages) must be wrapped in `_("...")` or `ki18n`. Never hardcode raw user-facing English strings in UI or CLI outputs.
-
-- **The Cost**: Incomplete translation catalogs, broken multilingual desktop experience for non-English users.
-- **Enforcement**: Mechanically enforced by `ast-grep` (`no-hardcoded-ui-strings.yml`) and `scripts/check-i18n.py`.
+### Breaking config changes require ConfigMigration
+When altering user-facing keys or schema types in `config.json` or `vinput.conf`, provide an explicit versioned migration step in `src/common/config/config_migration.cpp`. Never maintain ad-hoc runtime fallback aliases or backward-compatibility spaghetti in domain logic.
 
 ---
 
-## 6. Configuration & Versioning (配置演进与架构兼容)
-
-### Breaking config changes require ConfigMigration in the same PR
-If altering user-facing keys or schema types in `config.json` or `vinput.conf`, add a versioned migration step in `src/common/config/config_migration.cpp` (`RegisteredSteps`). Never maintain ad-hoc runtime fallback aliases or backward-compatibility spaghetti in domain code.
-
-- **The Cost**: Broken user configurations upon upgrade, silent configuration loss, and creeping legacy technical debt.
-- **Enforcement**: Enforced by pre-commit migration audit script (`scripts/check-config-migration.py`) and Reviewer audit.
-
----
-
-## 7. Dependencies & 3rdparty Governance (依赖治理与两级边界)
+## 5. Dependencies & 3rdparty Governance
 
 ### Two-Tier Binary Boundary
 - **Tier 1 (Host System Shared Libraries)**: `fcitx5`, `pipewire`, `libsystemd`, `qt6`, `openssl`, `libarchive`, `gettext` must be resolved via host package managers (`find_package REQUIRED` / `pkg_check_modules`).
-- **Tier 2 (Header-Only C++ Libraries)**: Pure C++ dependencies (`glaze`, `spdlog`, `fmt`, `CLI11`, `httplib`, `mio`, `readerwriterqueue`, `subprocess`, `indicators`, `base64`, `unicodelib`) must be vendored under `3rdparty/` with CMake `SYSTEM INTERFACE` targets and registered in `THIRD_PARTY_NOTICES.md`. Build-time downloading (`FetchContent`) is strictly prohibited.
+- **Tier 2 (Header-Only C++ Libraries)**: Pure C++ dependencies (`glaze`, `spdlog`, `fmt`, `CLI11`, `httplib`, `mio`, `readerwriterqueue`, `subprocess`, `unicodelib`) must be vendored under `3rdparty/` as CMake `SYSTEM INTERFACE` targets. Build-time network downloading (`FetchContent`) is prohibited.
 
-- **The Cost**: Cross-distro header version skew, build failures behind firewalls or in offline chroots (Nix/OBS/Arch build systems).
-- **Enforcement**: CMake configuration checks + CI offline verification.
+### Pristine 3rdparty
+Code under `3rdparty/` must remain untouched upstream snapshots. Never patch, reformat, or modify vendored code directly. All adapters, shims, and workarounds must live inside `src/`.
 
-### Pristine 3rdparty (零篡改铁律)
-Code under `3rdparty/` must remain untouched upstream snapshots. Never patch, reformat, or modify vendored code. All adapters, shims, and workarounds must live inside `src/`.
+---
 
-- **The Cost**: Merge conflicts when upgrading vendored libraries, lost upstream fixes, and untracked divergence.
-- **Enforcement**: Mechanically enforced by `hk.pkl` exclusions and git diff checks.
+## 6. Fowler Code Smell Baseline
+
+During review, evaluate the diff against these baseline heuristics:
+
+- **Mysterious Name**: Name does not reveal what the entity does or holds. Rename it; if no honest name fits, the design is muddy.
+- **Duplicated Code**: Identical logic structure appears in more than one place. Extract the common structure.
+- **Feature Envy**: A function or method accesses data of another object more than its own. Move the logic closer to the data.
+- **Data Clumps**: The same group of variables or parameters travel together repeatedly. Encapsulate them into a domain type.
+- **Primitive Obsession**: Raw primitives or strings stand in for domain concepts that deserve a dedicated type.
+- **Repeated Switches**: The same conditional cascade recurs across multiple call sites. Replace with polymorphism or a lookup table.
+- **Shotgun Surgery**: A single logical change forces scattered modifications across unrelated files. Consolidate cohesive logic.
+- **Divergent Change**: A single module is repeatedly edited for unrelated business reasons. Split by responsibility.
+- **Speculative Generality**: Abstractions, hooks, or parameters added for hypothetical future needs. Delete them.
+- **Middle Man**: A class or function merely delegates calls without adding meaningful logic. Collapse it.
+
+---
+
+## Appendix: Automated Quality Gates
+
+The following mechanical rules are strictly audited by local tooling and CI. Reviewers skip manual verification of these items:
+
+| Rule Category | Mechanical Enforcement | Command |
+| :--- | :--- | :--- |
+| **AST Anti-Patterns** | `ast-grep` (banned malloc in RT callback, banned daemon stdout, no diagnostic suppressions) | `mise run check:ast` |
+| **Complexity Ceiling** | `lizard` ($\text{CCN} \le 15, \text{CogC} \le 15$, nesting $< 4$) | `mise run check:complexity` |
+| **Code Duplication** | `jscpd` across `src/` | `mise run check:dup` |
+| **Code Formatting** | `hk` (`clang-format`, `cmake-format`, `ruff`, `shfmt`) | `mise run fix` / `check:cmake` |
+| **Config Schema** | `scripts/check-config-migration.py` | `mise run check:migration` |
+| **Typos & Spelling** | `typos` | `mise run check:typos` |

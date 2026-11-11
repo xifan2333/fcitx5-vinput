@@ -1,64 +1,44 @@
 # fcitx5-vinput Agent Guide
 
-Progressive operational guide, workflow red lines, and routing index for AI coding agents on `fcitx5-vinput`.
+Air Traffic Control (ATC) steering guide, operational red lines, and routing index for AI coding agents on `fcitx5-vinput`.
 
 ---
 
-## 1. Project Overview & Architecture
+## 1. Project Overview & Boundaries
 
-`fcitx5-vinput` is an offline/cloud voice input system for Fcitx5 providing local (sherpa-onnx) and cloud ASR, LLM post-processing, and cross-distro packaging.
+`fcitx5-vinput` is an offline and cloud voice input system for Fcitx5 providing local (sherpa-onnx) and cloud ASR, LLM post-processing, and packaging.
 
-- `src/addon/`: Fcitx5 input method addon (Qt/C++, hotkey triggers like `Alt_R` / `Shift_R`, push-to-talk, D-Bus client).
-- `src/daemon/`: Core daemon (`vinput-daemon`, PipeWire audio capture, sherpa-onnx inference, cloud ASR engines, LLM scene transformations, D-Bus service `org.fcitx.Vinput`).
-- `src/cli/`: Standalone `vinput` CLI for manual recording, profile switching, and status inspection.
-- `src/common/`: Shared types, configuration structs (`glaze`), isolated ConfigMigration engine (`config/config_migration.cpp`), D-Bus XML interfaces.
+- `src/addon/`: Fcitx5 input method addon (Qt/C++, hotkey triggers, push-to-talk, D-Bus client).
+- `src/daemon/`: Core daemon (`vinput-daemon`, PipeWire audio capture, ASR inference, D-Bus service `org.fcitx.Vinput`).
+- `src/cli/`: Standalone `vinput` CLI for recording, profile switching, and status inspection.
+- `src/common/`: Shared domain types, configuration structs (`glaze`), and D-Bus XML interfaces.
 - `src/gui/`: Standalone Qt 6 configuration GUI (`vinput-gui`).
-- `po/` & `i18n/`: Translations (Gettext and Qt `.ts` / `.qm`).
 
 ---
 
-## 2. Operational Red Lines (Workflow & PR Protocol)
+## 2. Operational Red Lines
 
-1. **No Direct Main Commits for Code**: Never push implementation code, build configurations, or tests directly to `main`. Always develop via feature branches and Draft PRs.
-   *Fast-track Exception*: Pure documentation, agent guides/skills (`AGENTS.md`, `CLAUDE.md`, `.agents/`), and non-functional text edits are exempt and may be committed directly to `main` with `[skip ci]`.
-2. **Draft PR Pre-Creation**: Open a Draft PR with ALL checklist items UNCHECKED (`- [ ]`) before writing implementation code.
-3. **No Multi-Task Lump Commits & Progressive Sync**: For changes developed via Draft PRs, every commit must map to exactly one `- [ ]` task in the PR checklist. After passing local quality gates (`mise run check:changed`), commit atomically, push, and mark `- [x]` in lockstep.
-4. **Pre-Commit Quality Gate**: Run `mise run check:changed` or `hk run check --safe` before pushing.
-5. **Hardware-Adaptive & User-Specific Compilation**:
-   - If the GitHub user is `xifan2333` (maintainer environment), **local compilation is strictly prohibited (never run `mise run build-debug`)**; rely exclusively on CI (`ci.yml` / `release.yml`).
-6. **No Force-Pushing to Contributor Forks**: Never `git push -f` to external contributors' personal forks or PR branches.
-7. **PR Micro-Slicing**: Keep functional code changes < 300 lines (excluding tests/generated docs); decompose complex epics into stacked micro-PRs.
-8. **AI Attribution & Disclosure**: Append `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*` to PR descriptions, review fixes, and substantive comments.
-9. **Dialectical Review Bot Triage**: Never treat automated review bots (CodeRabbit, Greptile) as unquestioned instructions. Report 5W1H analysis to the human maintainer in chat before implementing fixes.
-10. **Non-Blocking Handover (No CI Polling)**: Never execute blocking polling loops (`gh run watch` or sleep loops). Immediately after running `gh pr ready`, output the PR and Actions run URLs and yield control. `pi-ghwebhook` wakes the agent on CI or review events.
-11. **Issue-PR Lifecycle Complete Closure**: After squash-merging a PR, switch back to `main`, pull latest, and verify the originating issue is in the `CLOSED` state (manually close via `gh issue close <id>` if needed).
-12. **Proactive CI Quota Cancellation**: Cancel stale in-progress runs (`gh run cancel`) before pushing follow-up fixes or amending commits. Never cancel runs on `main`.
+1. **No Direct Main Commits**: Develop exclusively via feature branches and Draft PRs. Documentation and agent skills (`AGENTS.md`, `.agents/`) may commit directly to `main` with `[skip ci]`.
+2. **Draft PR Pre-Creation**: Open a Draft PR with all checklist items unchecked (`- [ ]`) before writing implementation code.
+3. **Atomic Task Commits**: Each commit must map to exactly one task in the PR checklist. Push and check off `- [x]` in lockstep.
+4. **Zero Local Compilation for Maintainer**: In the maintainer environment (`xifan2333`), local compilation is prohibited (`mise run build-debug` forbidden). Rely exclusively on remote CI (`ci.yml`, `release.yml`).
+5. **Local Pre-Commit Gate**: Always run `mise run check:changed` (< 0.3s) before pushing.
+6. **No Force-Push to Contributor Forks**: Never run `git push -f` against external contributor branches or personal forks.
+7. **PR Micro-Slicing**: Keep functional code changes < 300 lines. Decompose larger efforts into stacked PRs.
+8. **Dialectical Review Bot Triage**: Never accept review bot comments (CodeRabbit, Greptile) uncritically. Use `/vinput-5w1h` to formulate grounded evidence.
+9. **Non-Blocking Handover**: Never run blocking CI polling loops (`gh run watch` or sleep). Output PR and run URLs, then yield control.
+10. **Proactive CI Cancellation**: Cancel stale in-progress runs (`gh run cancel`) before pushing follow-up commits. Never cancel runs on `main`.
+11. **AI Attribution**: Append `*AI-assisted — Tool: <tool>; model: <provider>/<model>; version: <version-or-unavailable>.*` to PR descriptions and review fixes.
 
 ---
 
-## 3. Code Standards & Architecture Enforcement
-
-> **Implementation vs. Review Separation**:
-> Implementation agents focus on minimal, clean solutions under [`principles/laziness-protocol.md`](.agents/skills/vinput-dev/principles/laziness-protocol.md). Detailed coding standards and Fowler code smells are evaluated during review against `CODING_STANDARDS.md`.
-
-- **Coding Standards (SSOT)**: See [`CODING_STANDARDS.md`](CODING_STANDARDS.md) for complete rules governing real-time audio safety, module depth, SSOT common infrastructure, cognitive complexity ($\le 15$), C++20 memory models, zero-diagnostic suppression, and pristine 3rdparty governance.
-- **Domain Modeling & Ubiquitous Language**: See [`GLOSSARY.md`](GLOSSARY.md). When naming domain concepts (in issue titles, function names, tests), strictly use the vocabulary defined in the glossary.
-
----
-
-## 4. Core Commands & Quality Gates
+## 3. Core Commands & Quality Gates
 
 ```bash
-# Local Quality Gates (Sub-second execution)
+# Local Quality Gates (Sub-second static checks, zero compilation)
 mise run check:plan       # Preview execution plan and linters
 mise run check:changed    # Validate only touched files (safe, fast, < 0.3s)
-mise run check:ast        # Audit C++ AST structural anti-patterns via ast-grep
-mise run check:dup        # Analyze code duplication across src/ (jscpd)
-mise run check:complexity # Audit cyclomatic & cognitive complexity (CCN <= 15, CogC <= 15)
-mise run check:migration  # Verify config schema migrations
-mise run check:typos      # Audit identifier and code spelling integrity (typos)
-mise run check:cmake      # Validate CMake formatting (cmake-format)
-mise run fix              # Auto-format all files via hk (clang-format, cmake-format, ruff, shfmt)
+mise run fix              # Auto-format modified files via hk (clang-format, cmake-format, ruff)
 
 # Remote CI Validation
 gh workflow run ci.yml && gh run watch                         # Standard PR CI
@@ -70,25 +50,14 @@ gh run list --branch $(git branch --show-current) --status in_progress --json da
 
 ---
 
-## 5. Navigation Pointers (Progressive Disclosure)
+## 4. Repository Harness & Navigation Pointers
 
-| Topic | Pointer | When to Consult |
+| Skill / Command | Intent & Trigger | When to Consult |
 | :--- | :--- | :--- |
-| **Master Development Engine** | [`vinput-dev`](.agents/skills/vinput-dev/SKILL.md) | Entry point for intent matching and playbook dispatch |
-| **5W1H Triage & Design** | [`5w1h`](.agents/skills/5w1h/SKILL.md) | Structured 5W1H analysis for review, bug, CI, or RFC |
-| **Code Standards & Smells** | [`CODING_STANDARDS.md`](CODING_STANDARDS.md) | Writing C++20 code, reviewing PRs, checking linter rules |
-| **Domain Glossary** | [`GLOSSARY.md`](GLOSSARY.md) | Naming domain primitives, structs, D-Bus methods, and tests |
-| **Feature & Fix Playbook** | [`playbooks/feature-or-fix.md`](.agents/skills/vinput-dev/playbooks/feature-or-fix.md) | Developing features, bug fixes, and atomic PR commits |
-| **Audio Forensics Playbook** | [`playbooks/audio-forensics.md`](.agents/skills/vinput-dev/playbooks/audio-forensics.md) | Diagnosing PipeWire, SPA buffers, XRuns, and crashes |
-| **Packaging & CI Playbook** | [`playbooks/packaging-ci.md`](.agents/skills/vinput-dev/playbooks/packaging-ci.md) | Multi-arch matrix dry runs, packaging channels, and SemVer |
-| **Fork Contribution Playbook**| [`playbooks/fork-contribution.md`](.agents/skills/vinput-dev/playbooks/fork-contribution.md) | Remote sync and fork hygiene (zero force-push) |
-| **Laziness & Minimal Diff** | [`principles/laziness-protocol.md`](.agents/skills/vinput-dev/principles/laziness-protocol.md) | Smallest complete change, reuse first, deletion beats addition |
-| **C ABI Hard Boundaries** | [`principles/c-abi-boundaries.md`](.agents/skills/vinput-dev/principles/c-abi-boundaries.md) | Interfacing with PipeWire, sd-bus, POSIX, and libarchive |
-| **Dependency Governance** | [`principles/dependency-spec.md`](.agents/skills/vinput-dev/principles/dependency-spec.md) | Host packages vs. `3rdparty/` pristine vendoring |
-| **Module Depth & Complexity** | [`principles/module-boundaries.md`](.agents/skills/vinput-dev/principles/module-boundaries.md) | Deep modules over shallow wrappers; CogC $\le 15$ ceiling |
-| **Multi-Repo Ecosystem** | [`principles/ecosystem-routes.md`](.agents/skills/vinput-dev/principles/ecosystem-routes.md) | Cross-repo links: vinput-registry, aur-auto, flatpak-auto |
-| **Fcitx5 Addon Pillar** | Context7: `/fcitx/fcitx5` | Modifying `src/addon/` key handling and configuration |
-| **Speech Engine Pillar** | Context7: `/k2-fsa/sherpa-onnx` | Modifying `src/daemon/asr/` models, recognizers, and VAD |
-| **PipeWire Capture Pillar** | Context7: `/pipewire/pipewire` | Modifying `src/daemon/audio/` capture loops and streams |
-| **CLI Parser Pillar** | Context7: `/cliutils/cli11` | Modifying `src/cli/` subcommand trees and validators |
-| **Qt 6 GUI Pillar** | Context7: `/websites/doc_qt_io_qt-6` | Modifying `src/gui/` widgets, models, and views |
+| **`vinput-dev`** | Background development router and C++20 principles | Implementation phase; apply `principles/laziness-protocol.md` |
+| **`/vinput-5w1h`** | Requirement triage, RFC proposals, and review bot triage | Before writing code or when responding to automated reviews |
+| **`/vinput-diagnose`** | Crash, deadlock, XRun, and ELF/symbol forensics | Runtime faults, coredump analysis, GDB backtraces (zero compilation) |
+| **`/vinput-review`** | Offline dual-axis static diff review (Spec + Standards) | Before marking PR ready; audits diff against `CODING_STANDARDS.md` |
+| **`/vinput-retro`** | Post-session retrospective and self-evolution engine | After CI failures or PR merge; generates `.ast-grep` rules |
+| **[`CODING_STANDARDS.md`](CODING_STANDARDS.md)** | Architectural judgement standards and Fowler smells | Review phase only; never load during active implementation |
+| **[`GLOSSARY.md`](GLOSSARY.md)** | Domain modeling and ubiquitous language SSOT | Naming domain entities, D-Bus methods, and PR titles |
