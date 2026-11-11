@@ -7,12 +7,14 @@
 #include <optional>
 #include <pipewire/context.h>
 #include <pipewire/core.h>
+#include <pipewire/interfaces.h>
 #include <pipewire/keys.h>
 #include <pipewire/loop.h>
 #include <pipewire/main-loop.h>
 #include <pipewire/pipewire.h>
 #include <pipewire/proxy.h>
 #include <spa/support/loop.h>
+#include <spa/utils/defs.h>
 #include <spa/utils/dict.h>
 #include <spa/utils/hook.h>
 #include <string>
@@ -60,7 +62,7 @@ void on_enumeration_timeout(void* data, uint64_t expirations) {
 }
 
 const struct pw_core_events core_events = []() {
-  struct pw_core_events ev;
+  struct pw_core_events ev{};
   spa_zero(ev);
   ev.version = PW_VERSION_CORE_EVENTS;
   ev.done = on_core_done;
@@ -130,9 +132,9 @@ void registry_event_global_remove(void* data, uint32_t id) {
 }
 
 const struct pw_registry_events registry_events = {
-    PW_VERSION_REGISTRY_EVENTS,
-    registry_event_global,
-    registry_event_global_remove,
+    .version = PW_VERSION_REGISTRY_EVENTS,
+    .global = registry_event_global,
+    .global_remove = registry_event_global_remove,
 };
 
 struct PwResourceGuard {
@@ -145,7 +147,7 @@ struct PwResourceGuard {
     }
     if (d->registry != nullptr) {
       spa_hook_remove(&d->registry_listener);
-      pw_proxy_destroy(std::bit_cast<pw_proxy*>(d->registry));
+      pw_proxy_destroy(reinterpret_cast<pw_proxy*>(d->registry));
     }
     if (d->core != nullptr) {
       spa_hook_remove(&d->core_listener);
@@ -233,6 +235,29 @@ bool CompareDevices(const DeviceInfo& a, const DeviceInfo& b) noexcept {
   return a.id < b.id;
 }
 
+bool ConnectAndListen(PwData& data) {
+  data.core = pw_context_connect(data.context, nullptr, 0);
+  if (data.core == nullptr) {
+    return false;
+  }
+  pw_core_add_listener(data.core, &data.core_listener, &core_events, &data);
+  data.registry = pw_core_get_registry(data.core, PW_VERSION_REGISTRY, 0);
+  spa_zero(data.registry_listener);
+  pw_registry_add_listener(data.registry, &data.registry_listener, &registry_events, &data);
+  return true;
+}
+
+void RunEnumerationLoop(PwData& data) {
+  data.pending_sync = pw_core_sync(data.core, PW_ID_CORE, 0);
+  if (data.pending_sync < 0) {
+    return;
+  }
+  if (auto timer = ArmEnumerationTimeout(pw_main_loop_get_loop(data.loop), data);
+      timer.has_value()) {
+    pw_main_loop_run(data.loop);
+  }
+}
+
 } // namespace
 
 std::vector<DeviceInfo> EnumerateAudioSources() {
@@ -251,26 +276,12 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
     return {};
   }
 
-  data.core = pw_context_connect(data.context, nullptr, 0);
-  if (data.core == nullptr) {
+  if (!ConnectAndListen(data)) {
     return {};
   }
 
-  pw_core_add_listener(data.core, &data.core_listener, &core_events, &data);
-  data.registry = pw_core_get_registry(data.core, PW_VERSION_REGISTRY, 0);
-  spa_zero(data.registry_listener);
-  pw_registry_add_listener(data.registry, &data.registry_listener, &registry_events, &data);
-
-  data.pending_sync = pw_core_sync(data.core, PW_ID_CORE, 0);
-  if (data.pending_sync >= 0) {
-    // Arm a 250ms bounded timer so enumeration never hangs if PipeWire is unresponsive.
-    if (auto timer = ArmEnumerationTimeout(pw_main_loop_get_loop(data.loop), data);
-        timer.has_value()) {
-      pw_main_loop_run(data.loop);
-    }
-  }
-
-  std::stable_sort(data.devices.begin(), data.devices.end(), CompareDevices);
+  RunEnumerationLoop(data);
+  std::ranges::stable_sort(data.devices, CompareDevices);
 
   return data.devices;
 }
