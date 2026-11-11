@@ -1,5 +1,5 @@
 id: prefer-switch-for-enum
-message: "检测到枚举/类型标志使用了级联 else if。请改用 switch-case，以获得编译期穷举检查（-Wswitch）与跳转表优化。"
+message: "检测到限定名常量的级联比较。若比较对象是枚举，请改用 switch-case 并通过省略 default 借助 -Wswitch 检查穷尽性；若为字符串常量，建议采用表驱动（Table-driven）扁平化。"
 severity: warning
 language: Cpp
 files:
