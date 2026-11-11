@@ -1,17 +1,24 @@
 id: deep-if-branching
-message: "分支嵌套过深 (>= 4 层)。建议优先采用卫语句（Guard Clauses / Early Return）提前返回，或使用静态查表（Table-driven），保持主业务逻辑处于扁平缩进。"
+message: "代码块内部分支嵌套过深 (>= 4 层)。建议优先采用卫语句（Guard Clauses / Early Return）提前返回、提取独立解析函数，或使用 Scope Guard 消除尾部清理包裹，保持主业务逻辑处于扁平缩进。"
 severity: warning
 language: Cpp
 files:
   - "src/**"
-rule:
-  kind: if_statement
-  inside:
-    stopBy: end
+utils:
+  block_if:
     kind: if_statement
-    inside:
-      stopBy: end
-      kind: if_statement
+    not:
       inside:
+        kind: else_clause
+        stopBy: neighbor
+rule:
+  matches: block_if
+  inside:
+    matches: block_if
+    stopBy: end
+    inside:
+      matches: block_if
+      stopBy: end
+      inside:
+        matches: block_if
         stopBy: end
-        kind: if_statement
