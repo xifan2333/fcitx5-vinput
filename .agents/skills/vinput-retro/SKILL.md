@@ -1,6 +1,6 @@
 ---
 name: vinput-retro
-description: "fcitx5-vinput 会话复盘与规则免疫自迭代引擎 (Retrospective engine to encode lessons into ast-grep rules, pointers, and standards refinement after CI runs or PR merges). Use after fixing CI failures, after PR merges, or during session retrospectives. Command: /vinput-retro."
+description: "Encode post-session lessons into ast-grep rules, hooks, and standards refinement. 触发：会话复盘、规则免疫、/vinput-retro。"
 ---
 
 # Retrospective & Self-Evolution Engine
@@ -9,11 +9,13 @@ Post-session retrospective engine to analyze defects, CI failures, or review fin
 
 ---
 
-## 1. Review the Session or Failure
+## 1. Failure Analysis
 
-Identify the breakdown:
+Identify the root cause of the miss:
 - What failed or required repeated correction? (Compiler error, CI matrix breakage, reviewer finding, runtime defect).
-- What was the root cause of the miss? (Missing linter check, ambiguous navigation pointer, architectural judgement gap, or stale rule).
+- What allowed the defect through? (Missing linter check, ambiguous pointer, architectural judgement gap, or stale rule).
+
+*Completion criterion*: Defect categorized into mechanical gap vs architectural judgement gap.
 
 ---
 
@@ -22,13 +24,13 @@ Identify the breakdown:
 Route the lesson strictly into one of the four categories:
 
 ### Tier 1: Structural Enforcement (Mechanical Rule)
-*Principle: If a machine can check it, never write a natural language instruction.*
+*If a machine can check it, never write a natural language instruction.*
 - If the fault is a fixed syntax pattern, banned API, missing header pattern, or unsafe call:
 - **Action**: Author a new `ast-grep` rule under `.ast-grep/rules/<rule-name>.yml`, or add a script to `mise run check:changed`.
 - **Constraint**: Do not add text warnings to `AGENTS.md` or `CODING_STANDARDS.md`.
 
 ### Tier 2: Navigation Refinement (Information Access)
-- If the agent struggled to find a file or lacked context:
+- If the agent struggled to locate a file or lacked context:
 - **Action**: Add or sharpen a navigation pointer in `AGENTS.md`.
 
 ### Tier 3: Standards Calibration (Architectural Judgement)
@@ -37,7 +39,9 @@ Route the lesson strictly into one of the four categories:
 
 ### Tier 4: Pruning (Sediment Removal)
 - Review existing instructions in `AGENTS.md` and `CODING_STANDARDS.md`:
-- **Action**: If a rule is now enforced by `ast-grep` or is a no-op that modern models follow by default, delete it.
+- **Action**: If a rule is now enforced by `ast-grep`, compiler options, or is followed by default, delete it from the prompt.
+
+*Completion criterion*: Exactly one tier selected and concrete artifact drafted.
 
 ---
 

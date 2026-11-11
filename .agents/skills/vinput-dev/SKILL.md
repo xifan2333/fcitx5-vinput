@@ -1,48 +1,59 @@
 ---
 name: vinput-dev
-description: "fcitx5-vinput 主开发路由与状态机执行引擎 (Master development router, S0-S4 state machine, playbooks, and C++20 architectural principles). Use when planning or implementing features, bug fixes, refactoring, or state machine routing. Command: /vinput-dev."
+description: "Develop C++20 features, bug fixes, and refactorings across S0-S4 state machine. 触发：开发新功能、修缺陷、重构、/vinput-dev。"
 ---
 
-# fcitx5-vinput Development & State Machine Engine
+# Development & State Machine Router
 
-Master development routing and lifecycle orchestration engine for `fcitx5-vinput`.
-
----
-
-## 1. Complexity Gates & The Macro State Machine (`S0 -> S4`)
-
-Every code modification proceeds through a state machine anchored in GitHub (PCB). The Main Agent is the **Single Writer** for the Git worktree.
-
-### Complexity Gates: Fast-Path vs. Full-Path
-- **Fast-Path (Single-module, low blast radius)**: Local logic within one module, CLI text formatting, pure documentation, or self-contained tests. Skip S0/S1 sub-issue slicing; proceed directly to Pre-Code Draft PR $\to$ S2 atomic loop.
-- **Full-Path (High blast radius, cross-process, or schema risk)**: Mandatory when touching PipeWire RT audio callbacks (`src/daemon/audio/`), D-Bus signatures, Three-stream IPC protocols, configuration schema migrations (`ConfigMigration`), or cross-module refactors. Must complete S0 (Explore) and S1 (Slice).
-
-### The Five-Stage State Machine
-
-| State | Role & Trigger | Core Action & Execution Carrier | Handshake / Exit Gate |
-| :--- | :--- | :--- | :--- |
-| **`S0: EXPLORE`** | Grounding & Empirical Fork | • Dispatch `Grounding Scout` subagent for high-noise code/doc search.<br>• Run `/tmp` disposable prototype/scripts for empirical verification.<br>• Grilling on architecture/product trade-offs. | **[HITL]** Maintainer confirms proposed design; conclusion recorded in Issue. |
-| **`S1: SLICE`** | Vertical Slicing & Task Prep | • Prefactor First: isolate structural preparation from behavioral change.<br>• Decompose into sub-issues with native `blocked_by` dependencies. | Top unblocked child issue marked `ready-for-agent`. |
-| **`S2: TRACK_LOOP`** | Single-Writer Atomic Coding | • Push empty commit and open Pre-Code Draft PR with all `- [ ]`.<br>• Follow `Feature`, `Bug-Fix`, or `Refactoring` track invariants.<br>• Run `<0.3s` local gate (`mise run check:changed`).<br>• Push commit and check off `- [x]` in lockstep.<br>• Detect Scrap friction: revert and redesign if $\ge 2$ ad-hoc workarounds emerge. | All Draft PR `- [ ]` tasks completed (`- [x]`). |
-| **`S2.5: TRIAGE_GATE`** | Anti-Slop & Duplication Audit | • Run `mise run check:dup` (`jscpd`).<br>• Triage clones: Type A (AI procedural slop) vs Type B (domain boilerplate). | **[HITL]** Maintainer confirms extraction or retention plan. |
-| **`S3: GATE_YIELD`** | Dual-Axis Review & Yield | • Dispatch parallel read-only subagents for dual-axis review (Spec + Standards).<br>• Run `gh pr ready` to trigger full remote matrix CI and bots.<br>• Output PR/CI URLs and concise briefing. | **[HALT]** Yield control immediately. Zero polling. |
-| **`S4: WEBHOOK_CLOSED`** | Event-Driven Wakeup & Merge | • Woken by `.pi/ghwebhook.json` on CI failure, Review Bot, or CI success.<br>• CI failure: dispatch `Forensics Investigator` subagent to diagnose.<br>• Review bot: triage into `[FIX] / [DISMISS] / [ASK]`.<br>• CI success: squash-merge, close child issue, advance parent state. | Branch deleted, main synced, next sub-issue unlocked. |
+Master execution router, state-machine transitions, and playbook dispatcher for `fcitx5-vinput`.
 
 ---
 
-## 2. Subagent Delegation & Context Isolation Slots
+## 1. Complexity Gates & S0–S4 State Machine
 
-To prevent context window bloat and eliminate self-defense review bias, the Main Agent dispatches subagents exclusively through **four standard slots**.
+The Main Agent is the **Single Writer** for the Git worktree. All work proceeds through discrete states:
 
-### Canonical Rules for Subagents
-1. **Single Writer**: The Main Agent is the sole writer of the worktree and branch. Subagents are read-only, except `Prototype Runner` which is restricted to `/tmp/`.
+### Complexity Gates
+- **Fast-Path**: Single-module changes, CLI formatting, or self-contained tests. Skip S0/S1 sub-issue slicing; proceed directly to Pre-Code Draft PR $\to$ S2 atomic loop.
+- **Full-Path**: PipeWire RT audio callbacks (`src/daemon/audio/`), D-Bus signatures, Three-stream IPC, configuration schema migrations (`ConfigMigration`), or cross-module interfaces. Mandatory S0 and S1 execution before coding.
+
+### States and Completion Criteria
+
+1. **`S0: EXPLORE` (Grounding & Empirical Verification)**
+   - *Action*: Dispatch `Grounding Scout` subagent for high-noise searches. Run `/tmp` disposable prototypes to settle behavioral or protocol forks.
+   - *Completion Criterion*: Proposed design and empirical findings verified. Maintainer confirms selection in chat. Conclusion recorded in GitHub Issue.
+2. **`S1: SLICE` (Vertical Slicing & Task Prep)**
+   - *Action*: Apply Prefactor First. Split structural refactoring from behavioral addition. Decompose into sub-issues linked by native `blocked_by` dependencies.
+   - *Completion Criterion*: Root child issue is unblocked (`blocked_by == 0`) and labelled `ready-for-agent`.
+3. **`S2: TRACK_LOOP` (Single-Writer Atomic Coding)**
+   - *Action*: Open Pre-Code Draft PR with all `- [ ]` tasks. Advance topmost task per playbook. Run `mise run check:changed` (< 0.3s). Push atomic commit and check off `- [x]` in lockstep.
+   - *Scrap Detector*: If implementation requires $\ge 2$ special-case branches or breaks initial interface assumptions, abort immediately. Run `git reset`, report friction, and redesign.
+   - *Completion Criterion*: Every task in the Draft PR body is verified and checked off (`- [x]`).
+4. **`S2.5: TRIAGE_GATE` (Duplication & Anti-Slop Audit)**
+   - *Action*: Run `mise run check:dup`. Triage clone blocks into Type A (procedural slop) vs Type B (domain boilerplate).
+   - *Completion Criterion*: Triage report delivered to maintainer. Extraction or retention confirmed.
+5. **`S3: GATE_YIELD` (Dual-Axis Review & Yield)**
+   - *Action*: Dispatch parallel read-only subagents for Spec + Standards review. Mark PR ready: `gh pr ready`. Output PR/CI URLs.
+   - *Completion Criterion*: Control yielded immediately (HALT). Zero polling.
+6. **`S4: WEBHOOK_CLOSED` (Asynchronous Event Loop & Merge)**
+   - *Action*: Woken by `.pi/ghwebhook.json`. On CI failure: dispatch `Forensics Investigator`. On review comments: triage via `[FIX] / [DISMISS] / [ASK]`. On CI success: squash-merge.
+   - *Completion Criterion*: PR squash-merged, remote branch deleted, local `main` synchronized, and child issue closed.
+
+---
+
+## 2. Subagent Delegation & Context Firewall
+
+Protect the main context window from token exhaustion and eliminate self-defense review bias.
+
+### Delegation Rules
+1. **Single Writer**: The Main Agent retains exclusive write access to the worktree and branch. Subagents are strictly read-only, except `Prototype Runner` which is restricted to `/tmp/`.
 2. **Fresh by Default**: Never resume an old subagent session. Always dispatch a fresh subagent with consolidated scope.
-3. **Least Context Ingestion (Input)**: Never pass conversational history. Inject only the 4-tuple: $\langle \text{Role}, \text{Scope}, \text{Artifacts / Context Pointers}, \text{Schema} \rangle$.
-4. **Synthesized Egress (Output)**: Discard the subagent's intermediate tokens upon process termination. The Main Agent receives only a structured, concise verdict (< 300 words).
+3. **Least Context Ingestion**: Never pass conversational history. Inject only the 4-tuple: $\langle \text{Role}, \text{Scope}, \text{Artifacts / Context Pointers}, \text{Schema} \rangle$.
+4. **Synthesized Egress**: Discard the subagent's intermediate tokens upon process termination. The Main Agent receives only a structured, concise verdict (< 300 words).
 
 ### The Four Slots
 
-| Slot | Source | Trigger | Injected Context (Input) | Synthesized Result (Output) |
+| Slot | Source | Trigger | Injected Input (Pointers) | Synthesized Output (< 300 words) |
 | :--- | :--- | :--- | :--- | :--- |
 | **`Grounding Scout`** | `how` / `why` | S0 Exploration; complex multi-file search or historical regression analysis. | Target file paths, symbols, research questions, search tool grants (`git log -S`, `context7`, `exa`). | 4-part summary: How it works, Why it is this way, Invariants to preserve, Key pointers (`file:line`). |
 | **`Prototype Runner`** | Empirical Fork | S0 Exploration; uncertain protocol, timing, or state machine behavior. | Premise to test, sandbox path (`/tmp/vinput-proto-*`), verification criteria. | Empirical verdict: Premise tested, command run, measured output, and conclusion. |
@@ -53,22 +64,20 @@ To prevent context window bloat and eliminate self-defense review bias, the Main
 
 ## 3. Scenario Playbooks
 
-Match task intent to the dedicated scenario playbook:
+Route the task to its dedicated scenario playbook:
 
-| Playbook | Matching Intent & Triggers | Target File |
-| :--- | :--- | :--- |
-| **Feature** | New functionality, added behaviors, external contract additions. | [`playbooks/feature.md`](playbooks/feature.md) |
-| **Bug Fix** | Correcting broken behavior, crashes, regressions, or audio artifacts. | [`playbooks/bug-fix.md`](playbooks/bug-fix.md) |
-| **Refactoring** | Restructuring code with 100% behavior preservation, removing dead code. | [`playbooks/refactoring.md`](playbooks/refactoring.md) |
-| **Audio Forensics** | PipeWire capture drops, XRuns, initial syllable clipping, daemon crashes. | [`playbooks/audio-forensics.md`](playbooks/audio-forensics.md) |
-| **Packaging & CI** | Remote matrix validation, Dry Runs, SemVer release tagging. | [`playbooks/packaging-ci.md`](playbooks/packaging-ci.md) |
-| **Fork Contribution** | Contributing from external forks, upstream sync, fork hygiene. | [`playbooks/fork-contribution.md`](playbooks/fork-contribution.md) |
+- **[`playbooks/feature.md`](playbooks/feature.md)**: New functionality, added behaviors, external contract additions.
+- **[`playbooks/bug-fix.md`](playbooks/bug-fix.md)**: Correcting broken behavior, crashes, regressions, or audio artifacts.
+- **[`playbooks/refactoring.md`](playbooks/refactoring.md)**: Restructuring code with 100% behavior preservation, removing dead weight.
+- **[`playbooks/audio-forensics.md`](playbooks/audio-forensics.md)**: PipeWire capture drops, XRuns, initial syllable clipping, daemon crashes.
+- **[`playbooks/packaging-ci.md`](playbooks/packaging-ci.md)**: Remote matrix validation, Dry Runs, SemVer release tagging.
+- **[`playbooks/fork-contribution.md`](playbooks/fork-contribution.md)**: Contributing from external forks, upstream sync, fork hygiene.
 
 ---
 
-## 4. Architectural Principles (Disclosed Reference)
+## 4. Architectural Principles
 
-Consult these authoritative principles when entering the relevant domain:
+Consult authoritative engineering principles when making design decisions:
 
 - **[`principles/laziness-protocol.md`](principles/laziness-protocol.md)**: Smallest complete change. Reuse canonical `src/common/` infrastructure (`glaze`, `spdlog`, `process_utils`, `mio`, `readerwriterqueue`). Deletion beats addition. Fix root cause once in shared code.
 - **[`principles/c-abi-boundaries.md`](principles/c-abi-boundaries.md)**: Six canonical C ABI boundaries (PipeWire, sd-bus, libarchive, OpenSSL, POSIX, Fcitx5 addon). Defensive wrapper guidelines.
