@@ -15,6 +15,7 @@
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <sys/types.h>
@@ -200,13 +201,20 @@ enum class BpeDecision : std::uint8_t { kSkip, kProvision, kError };
 
 BpeDecision ShouldProvisionBpe(const glz::json_t& vinput_model, const glz::json_t** model_out,
                                std::string* unit_out, std::string* error) {
-  // The validators report both "not applicable" and "invalid" through one bool,
-  // so an unset error is what separates a normal skip from a hard failure.
-  const auto rejection = [error] {
-    return error != nullptr && !error->empty() ? BpeDecision::kError : BpeDecision::kSkip;
+  // Use a local error buffer so external pointer state (nullness or pre-existing
+  // contents) never skews the decision between a normal skip and a hard error.
+  std::string local_error;
+  const auto rejection = [&] {
+    if (local_error.empty()) {
+      return BpeDecision::kSkip;
+    }
+    if (error != nullptr) {
+      *error = std::move(local_error);
+    }
+    return BpeDecision::kError;
   };
 
-  if (!ValidateModelFamilyAndHotwords(vinput_model, error)) {
+  if (!ValidateModelFamilyAndHotwords(vinput_model, &local_error)) {
     return rejection();
   }
   const auto* model_node = vinput::json::Find(vinput_model, "model");
@@ -216,7 +224,7 @@ BpeDecision ShouldProvisionBpe(const glz::json_t& vinput_model, const glz::json_
     }
     return BpeDecision::kError;
   }
-  if (!ValidateModelingUnit(*model_node, unit_out, error)) {
+  if (!ValidateModelingUnit(*model_node, unit_out, &local_error)) {
     return rejection();
   }
   *model_out = model_node;
@@ -550,61 +558,97 @@ bool WriteModelMetadataAndProvision(const fs::path& extracted_dir, const glz::js
   return true;
 }
 
-void RollbackStagedInstallation(const fs::path& backup_dir, const fs::path& dest_dir,
-                                vinput::file::ScopedTempDir* temp_dir,
-                                std::string_view primary_error, std::string* error) {
-  std::error_code rollback_ec;
-  fs::rename(backup_dir, dest_dir, rollback_ec);
-  if (rollback_ec) {
-    temp_dir->Dismiss();
-    if (error != nullptr) {
-      *error = std::string(primary_error) + "; rollback also failed: " + rollback_ec.message() +
-               "; previous installation preserved at: " + backup_dir.string();
+class ModelInstallationTransaction {
+public:
+  static std::optional<ModelInstallationTransaction>
+  Create(const fs::path& base_dir, fs::path dest_dir, bool had_existing, std::string* error) {
+    auto temp_dir = vinput::file::ScopedTempDir::Create(base_dir, ".tmp-", error);
+    if (!temp_dir) {
+      return std::nullopt;
     }
-    return;
+    return ModelInstallationTransaction(std::move(temp_dir), std::move(dest_dir), had_existing);
   }
-  if (error != nullptr) {
-    *error = std::string(primary_error);
-  }
-}
 
-bool SwapAndActivateModelDirectory(const fs::path& extracted_dir, const fs::path& dest_dir,
-                                   const fs::path& backup_dir, bool had_existing,
-                                   vinput::file::ScopedTempDir* temp_dir, std::string* error) {
-  std::error_code ec;
-  if (had_existing) {
-    fs::rename(dest_dir, backup_dir, ec);
-    if (ec) {
-      if (error != nullptr) {
-        *error = "failed to stage existing model for replacement: " + ec.message();
+  [[nodiscard]] const fs::path& TempDir() const { return temp_dir_->Path(); }
+  [[nodiscard]] fs::path ArchivePath(const RemoteModelEntry& found) const {
+    return TempDir() / DetermineArchiveFilename(found);
+  }
+  [[nodiscard]] fs::path ExtractedDir() const { return TempDir() / "extracted"; }
+  [[nodiscard]] fs::path BackupDir() const { return TempDir() / "previous-install"; }
+
+  bool Commit(std::string* error) {
+    std::error_code ec;
+    if (had_existing_) {
+      fs::rename(dest_dir_, BackupDir(), ec);
+      if (ec) {
+        if (error != nullptr) {
+          *error = "failed to stage existing model for replacement: " + ec.message();
+        }
+        return false;
       }
-      return false;
+      staged_backup_ = true;
+    }
+
+    fs::create_directories(dest_dir_.parent_path(), ec);
+    if (ec) {
+      return FailAndRollback("failed to create model parent directory: " + ec.message(), error);
+    }
+
+    fs::rename(ExtractedDir(), dest_dir_, ec);
+    if (ec) {
+      return FailAndRollback("failed to activate new model installation: " + ec.message(), error);
+    }
+
+    committed_ = true;
+    return true;
+  }
+
+  ~ModelInstallationTransaction() {
+    if (staged_backup_ && !committed_) {
+      std::error_code rollback_ec;
+      fs::rename(BackupDir(), dest_dir_, rollback_ec);
+      if (rollback_ec) {
+        temp_dir_->Dismiss();
+      }
     }
   }
 
-  fs::create_directories(dest_dir.parent_path(), ec);
-  if (ec) {
-    const std::string parent_err = "failed to create model parent directory: " + ec.message();
-    if (had_existing) {
-      RollbackStagedInstallation(backup_dir, dest_dir, temp_dir, parent_err, error);
-    } else if (error != nullptr) {
-      *error = parent_err;
+  ModelInstallationTransaction(ModelInstallationTransaction&&) noexcept = default;
+  ModelInstallationTransaction& operator=(ModelInstallationTransaction&&) noexcept = default;
+  ModelInstallationTransaction(const ModelInstallationTransaction&) = delete;
+  ModelInstallationTransaction& operator=(const ModelInstallationTransaction&) = delete;
+
+private:
+  ModelInstallationTransaction(std::unique_ptr<vinput::file::ScopedTempDir> temp_dir,
+                               fs::path dest_dir, bool had_existing)
+      : temp_dir_(std::move(temp_dir)), dest_dir_(std::move(dest_dir)),
+        had_existing_(had_existing) {}
+
+  bool FailAndRollback(std::string_view reason, std::string* error) {
+    if (had_existing_) {
+      std::error_code rollback_ec;
+      fs::rename(BackupDir(), dest_dir_, rollback_ec);
+      if (rollback_ec) {
+        temp_dir_->Dismiss();
+        if (error != nullptr) {
+          *error = std::string(reason) + "; rollback also failed: " + rollback_ec.message() +
+                   "; previous installation preserved at: " + BackupDir().string();
+        }
+        return false;
+      }
+    }
+    if (error != nullptr) {
+      *error = std::string(reason);
     }
     return false;
   }
 
-  fs::rename(extracted_dir, dest_dir, ec);
-  if (ec) {
-    const std::string install_error = "failed to activate new model installation: " + ec.message();
-    if (had_existing) {
-      RollbackStagedInstallation(backup_dir, dest_dir, temp_dir, install_error, error);
-    } else if (error != nullptr) {
-      *error = install_error;
-    }
-    return false;
-  }
-  return true;
-}
+  std::unique_ptr<vinput::file::ScopedTempDir> temp_dir_;
+  fs::path dest_dir_;
+  bool had_existing_ = false;
+  bool staged_backup_ = false;
+  bool committed_ = false;
+};
 
 bool ExtractAndFlattenModelArchive(const fs::path& archive_path, const fs::path& extracted_dir,
                                    const fs::path& tmp_dir, std::string* error) {
@@ -772,29 +816,29 @@ bool ExtractSingleArchiveEntry(struct archive* a, struct archive* out, struct ar
 bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
                                         const ProgressCallback& progress_cb, std::string* error,
                                         const std::atomic<bool>* cancel_token) const {
-  auto temp_dir = vinput::file::ScopedTempDir::Create(base_dir_, ".tmp-", error);
-  if (!temp_dir) {
+  bool had_existing = false;
+  auto dest_dir = ResolveModelDestinationDir(base_dir_, found.id, &had_existing, error);
+  if (!dest_dir) {
     return false;
   }
-  const fs::path& tmp_dir = temp_dir->Path();
-  const fs::path archive_path = tmp_dir / DetermineArchiveFilename(found);
 
+  auto tx =
+      ModelInstallationTransaction::Create(base_dir_, std::move(*dest_dir), had_existing, error);
+  if (!tx) {
+    return false;
+  }
+
+  const fs::path archive_path = tx->ArchivePath(found);
   if (!DownloadAndVerifyModelArchive(found, archive_path, progress_cb, cancel_token, error)) {
     return false;
   }
 
-  const fs::path extracted_dir = tmp_dir / "extracted";
-  if (!ExtractAndFlattenModelArchive(archive_path, extracted_dir, tmp_dir, error)) {
+  const fs::path extracted_dir = tx->ExtractedDir();
+  if (!ExtractAndFlattenModelArchive(archive_path, extracted_dir, tx->TempDir(), error)) {
     return false;
   }
 
   if (!WriteModelMetadataAndProvision(extracted_dir, found.vinput_model, error)) {
-    return false;
-  }
-
-  bool had_existing = false;
-  auto dest_dir = ResolveModelDestinationDir(base_dir_, found.id, &had_existing, error);
-  if (!dest_dir) {
     return false;
   }
 
@@ -805,9 +849,7 @@ bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
     return false;
   }
 
-  const fs::path backup_dir = tmp_dir / "previous-install";
-  return SwapAndActivateModelDirectory(extracted_dir, *dest_dir, backup_dir, had_existing,
-                                       temp_dir.get(), error);
+  return tx->Commit(error);
 }
 
 bool ModelRepository::VerifySha256(const fs::path& file, const std::string& expected,
