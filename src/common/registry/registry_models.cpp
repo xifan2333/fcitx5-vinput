@@ -1,5 +1,6 @@
 #include "common/registry/registry_models.h"
 
+#include <algorithm>
 #include <archive.h>
 #include <archive_entry.h>
 #include <atomic>
@@ -14,6 +15,7 @@
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <sys/types.h>
 #include <system_error>
@@ -192,23 +194,33 @@ bool ValidateModelingUnit(const glz::json_t& model, std::string* unit_out, std::
   return true;
 }
 
-bool ShouldProvisionBpe(const glz::json_t& vinput_model, const glz::json_t** model_out,
-                        std::string* unit_out, std::string* error) {
+// Tri-state precondition outcome: models that never need BPE assets are a
+// normal skip, manifest contradictions are hard errors.
+enum class BpeDecision : std::uint8_t { kSkip, kProvision, kError };
+
+BpeDecision ShouldProvisionBpe(const glz::json_t& vinput_model, const glz::json_t** model_out,
+                               std::string* unit_out, std::string* error) {
+  // The validators report both "not applicable" and "invalid" through one bool,
+  // so an unset error is what separates a normal skip from a hard failure.
+  const auto rejection = [error] {
+    return error != nullptr && !error->empty() ? BpeDecision::kError : BpeDecision::kSkip;
+  };
+
   if (!ValidateModelFamilyAndHotwords(vinput_model, error)) {
-    return false;
+    return rejection();
   }
   const auto* model_node = vinput::json::Find(vinput_model, "model");
   if (model_node == nullptr || !model_node->is_object()) {
     if (error != nullptr) {
       *error = "hotword-capable transducer is missing object field model";
     }
-    return false;
+    return BpeDecision::kError;
   }
   if (!ValidateModelingUnit(*model_node, unit_out, error)) {
-    return false;
+    return rejection();
   }
   *model_out = model_node;
-  return true;
+  return BpeDecision::kProvision;
 }
 
 bool VerifyExistingBpeVocab(const fs::path& model_dir, const glz::json_t& model,
@@ -283,8 +295,13 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
                             std::string* error) {
   const glz::json_t* model_node = nullptr;
   std::string unit;
-  if (!ShouldProvisionBpe(vinput_model, &model_node, &unit, error)) {
-    return error == nullptr || error->empty();
+  switch (ShouldProvisionBpe(vinput_model, &model_node, &unit, error)) {
+  case BpeDecision::kSkip:
+    return true;
+  case BpeDecision::kError:
+    return false;
+  case BpeDecision::kProvision:
+    break;
   }
 
   fs::path vocab_path;
@@ -415,6 +432,8 @@ bool ModelRepository::InstallModel(const CoreConfig& config,
                           resolved_registry_url, cancel_token);
 }
 
+namespace {
+
 std::string DetermineArchiveFilename(const RemoteModelEntry& found) {
   std::string archive_name = found.id + ".tar.gz";
   if (!found.urls.empty()) {
@@ -431,7 +450,7 @@ std::string DetermineArchiveFilename(const RemoteModelEntry& found) {
 }
 
 bool DownloadAndVerifyModelArchive(const RemoteModelEntry& found, const fs::path& archive_path,
-                                   const ModelRepository::ProgressCallback& progress_cb,
+                                   const ProgressCallback& progress_cb,
                                    const std::atomic<bool>* cancel_token, std::string* error) {
   vinput::download::Options download_options;
   download_options.timeout_seconds = 600;
@@ -608,7 +627,7 @@ std::optional<fs::path> ResolveModelDestinationDir(const fs::path& base_dir,
     }
     return std::nullopt;
   }
-  const fs::path dest_dir = base_dir / relative_path;
+  fs::path dest_dir = base_dir / relative_path;
   std::error_code exists_ec;
   *had_existing = fs::exists(dest_dir, exists_ec);
   if (exists_ec) {
@@ -620,71 +639,6 @@ std::optional<fs::path> ResolveModelDestinationDir(const fs::path& base_dir,
   return dest_dir;
 }
 
-bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
-                                        const ProgressCallback& progress_cb, std::string* error,
-                                        const std::atomic<bool>* cancel_token) const {
-  auto temp_dir = vinput::file::ScopedTempDir::Create(base_dir_, ".tmp-", error);
-  if (!temp_dir) {
-    return false;
-  }
-  const fs::path& tmp_dir = temp_dir->Path();
-  const fs::path archive_path = tmp_dir / DetermineArchiveFilename(found);
-
-  if (!DownloadAndVerifyModelArchive(found, archive_path, progress_cb, cancel_token, error)) {
-    return false;
-  }
-
-  const fs::path extracted_dir = tmp_dir / "extracted";
-  if (!ExtractAndFlattenModelArchive(archive_path, extracted_dir, tmp_dir, error)) {
-    return false;
-  }
-
-  if (!WriteModelMetadataAndProvision(extracted_dir, found.vinput_model, error)) {
-    return false;
-  }
-
-  bool had_existing = false;
-  auto dest_dir = ResolveModelDestinationDir(base_dir_, found.id, &had_existing, error);
-  if (!dest_dir) {
-    return false;
-  }
-
-  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
-    if (error != nullptr) {
-      *error = "download cancelled";
-    }
-    return false;
-  }
-
-  const fs::path backup_dir = tmp_dir / "previous-install";
-  return SwapAndActivateModelDirectory(extracted_dir, *dest_dir, backup_dir, had_existing,
-                                       temp_dir.get(), error);
-}
-
-bool ModelRepository::VerifySha256(const fs::path& file, const std::string& expected,
-                                   std::string* error) {
-  if (expected.empty()) {
-    return true;
-  }
-
-  const auto hex = vinput::file::ComputeFileSha256(file);
-  if (!hex) {
-    if (error != nullptr) {
-      *error = hex.error();
-    }
-    return false;
-  }
-
-  if (*hex != expected) {
-    if (error != nullptr) {
-      *error = "SHA256 mismatch: expected " + expected + ", got " + *hex;
-    }
-    return false;
-  }
-
-  return true;
-}
-
 bool IsArchiveEntryPathSafe(std::string_view entry_path, std::string* error) {
   if (!entry_path.empty() && entry_path[0] == '/') {
     if (error != nullptr) {
@@ -693,13 +647,11 @@ bool IsArchiveEntryPathSafe(std::string_view entry_path, std::string* error) {
     return false;
   }
   const fs::path check_path(entry_path);
-  for (const auto& component : check_path) {
-    if (component == "..") {
-      if (error != nullptr) {
-        *error = "archive contains path traversal component: " + std::string(entry_path);
-      }
-      return false;
+  if (std::ranges::any_of(check_path, [](const auto& component) { return component == ".."; })) {
+    if (error != nullptr) {
+      *error = "archive contains path traversal component: " + std::string(entry_path);
     }
+    return false;
   }
   return true;
 }
@@ -812,6 +764,73 @@ bool ExtractSingleArchiveEntry(struct archive* a, struct archive* out, struct ar
     }
   }
   archive_write_finish_entry(out);
+  return true;
+}
+
+} // namespace
+
+bool ModelRepository::InstallModelEntry(const RemoteModelEntry& found,
+                                        const ProgressCallback& progress_cb, std::string* error,
+                                        const std::atomic<bool>* cancel_token) const {
+  auto temp_dir = vinput::file::ScopedTempDir::Create(base_dir_, ".tmp-", error);
+  if (!temp_dir) {
+    return false;
+  }
+  const fs::path& tmp_dir = temp_dir->Path();
+  const fs::path archive_path = tmp_dir / DetermineArchiveFilename(found);
+
+  if (!DownloadAndVerifyModelArchive(found, archive_path, progress_cb, cancel_token, error)) {
+    return false;
+  }
+
+  const fs::path extracted_dir = tmp_dir / "extracted";
+  if (!ExtractAndFlattenModelArchive(archive_path, extracted_dir, tmp_dir, error)) {
+    return false;
+  }
+
+  if (!WriteModelMetadataAndProvision(extracted_dir, found.vinput_model, error)) {
+    return false;
+  }
+
+  bool had_existing = false;
+  auto dest_dir = ResolveModelDestinationDir(base_dir_, found.id, &had_existing, error);
+  if (!dest_dir) {
+    return false;
+  }
+
+  if (cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed)) {
+    if (error != nullptr) {
+      *error = "download cancelled";
+    }
+    return false;
+  }
+
+  const fs::path backup_dir = tmp_dir / "previous-install";
+  return SwapAndActivateModelDirectory(extracted_dir, *dest_dir, backup_dir, had_existing,
+                                       temp_dir.get(), error);
+}
+
+bool ModelRepository::VerifySha256(const fs::path& file, const std::string& expected,
+                                   std::string* error) {
+  if (expected.empty()) {
+    return true;
+  }
+
+  const auto hex = vinput::file::ComputeFileSha256(file);
+  if (!hex) {
+    if (error != nullptr) {
+      *error = hex.error();
+    }
+    return false;
+  }
+
+  if (*hex != expected) {
+    if (error != nullptr) {
+      *error = "SHA256 mismatch: expected " + expected + ", got " + *hex;
+    }
+    return false;
+  }
+
   return true;
 }
 
