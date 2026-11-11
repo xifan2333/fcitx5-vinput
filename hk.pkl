@@ -32,7 +32,7 @@ local linters = new Mapping<String, Step> {
 
   ["check-ast"] {
     glob = List("src/**/*.cpp", "src/**/*.h")
-    check = "bash scripts/check-ast-ratchet.sh {{files}}"
+    check = "ast-grep scan --error {{files}}"
   }
 
   ["check-complexity"] {

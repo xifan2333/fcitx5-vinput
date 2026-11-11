@@ -50,8 +50,30 @@ description = "Analyze code duplication across src/ using jscpd"
 run = "jscpd --config .jscpd.json"
 
 [tasks."check:ast"]
-description = "Audit C++ AST structural anti-patterns via ast-grep"
+description = "Audit C++ AST anti-patterns across the repo (full inventory)"
 run = "ast-grep scan"
+
+[tasks."check:ast:changed"]
+description = "Enforce the AST ratchet on modified/staged/untracked C++ files"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+files=()
+while IFS= read -r path; do
+  case "$path" in
+    src/*.cpp | src/*.h) files+=("$path") ;;
+  esac
+done < <({
+  git diff --name-only
+  git diff --cached --name-only
+  git ls-files --others --exclude-standard
+} | sort -u)
+if [ -z "${files[0]:-}" ]; then
+  echo "[check:ast:changed] no touched C++ files"
+  exit 0
+fi
+ast-grep scan --error "${files[@]}"
+"""
 
 [tasks."check:typos"]
 description = "Check spelling and identifier integrity via typos"
