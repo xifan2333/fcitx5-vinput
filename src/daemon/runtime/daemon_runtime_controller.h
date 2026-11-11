@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "common/client/client_command.h"
+#include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
