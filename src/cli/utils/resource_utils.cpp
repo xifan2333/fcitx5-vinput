@@ -311,12 +311,11 @@ void RenderRegistryScriptListJson(const std::vector<vinput::script::RegistryEntr
   fmt.PrintJson(glz::json_t(std::move(arr)));
 }
 
-void RenderRegistryScriptListTable(const std::vector<vinput::script::RegistryEntry>& entries,
+void RenderRegistryScriptListTable(const CliContext& ctx, Formatter& fmt, vinput::script::Kind kind,
+                                   const std::vector<vinput::script::RegistryEntry>& entries,
                                    const ResourceDisplayMap& display_map,
                                    const vinput::registry::InstalledManifest& manifest,
-                                   const std::function<bool(const std::string&)>& is_installed,
-                                   vinput::script::Kind kind, Formatter& fmt,
-                                   const CliContext& ctx) {
+                                   const std::function<bool(const std::string&)>& is_installed) {
   const bool is_asr = kind == vinput::script::Kind::kAsrProvider;
   const std::vector<std::string> headers =
       is_asr ? std::vector<std::string>{_("ID"), _("TITLE"), _("MODE"), _("STATUS"), _("README")}
@@ -329,14 +328,16 @@ void RenderRegistryScriptListTable(const std::vector<vinput::script::RegistryEnt
     const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
     const std::string status_text = FormatScriptStatusTable(ver_info, installed);
 
+    std::vector<std::string> row;
+    row.reserve(is_asr ? 5 : 4);
+    row.emplace_back(HumanizeResourceId(entry.id, entry.short_id));
+    row.emplace_back(display_map.at(entry.id).title);
     if (is_asr) {
-      rows.push_back({HumanizeResourceId(entry.id, entry.short_id), display_map.at(entry.id).title,
-                      entry.stream ? _("stream") : _("batch"), status_text,
-                      FormatTerminalLink(ctx, _("Open README"), entry.readme_url)});
-    } else {
-      rows.push_back({HumanizeResourceId(entry.id, entry.short_id), display_map.at(entry.id).title,
-                      status_text, FormatTerminalLink(ctx, _("Open README"), entry.readme_url)});
+      row.emplace_back(entry.stream ? _("stream") : _("batch"));
     }
+    row.emplace_back(status_text);
+    row.emplace_back(FormatTerminalLink(ctx, _("Open README"), entry.readme_url));
+    rows.emplace_back(std::move(row));
   }
   fmt.PrintTable(headers, rows);
 }
@@ -351,7 +352,7 @@ void RenderRegistryScriptList(const std::vector<vinput::script::RegistryEntry>& 
   if (ctx.json_output) {
     RenderRegistryScriptListJson(entries, display_map, manifest, is_installed, kind, fmt);
   } else {
-    RenderRegistryScriptListTable(entries, display_map, manifest, is_installed, kind, fmt, ctx);
+    RenderRegistryScriptListTable(ctx, fmt, kind, entries, display_map, manifest, is_installed);
   }
 }
 
