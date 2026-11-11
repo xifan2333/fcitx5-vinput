@@ -68,12 +68,19 @@ public:
                     std::string* error, std::string* resolved_registry_url = nullptr,
                     const std::atomic<bool>* cancel_token = nullptr) const;
 
-private:
-  bool InstallModelEntry(const RemoteModelEntry& found, const ProgressCallback& progress_cb,
-                         std::string* error, const std::atomic<bool>* cancel_token) const;
+  // Stateless utilities shared by the installation pipeline; public so archive
+  // integrity and extraction safety can be exercised directly by unit tests.
   static bool VerifySha256(const std::filesystem::path& file, const std::string& expected,
                            std::string* error);
   static bool ExtractArchive(const std::filesystem::path& archive,
                              const std::filesystem::path& dest, std::string* error);
+
+private:
+  bool InstallModelImpl(const CoreConfig* config, const std::vector<std::string>& registry_urls,
+                        const std::string& model_id, const ProgressCallback& progress_cb,
+                        std::string* error, std::string* resolved_registry_url,
+                        const std::atomic<bool>* cancel_token) const;
+  bool InstallModelEntry(const RemoteModelEntry& found, const ProgressCallback& progress_cb,
+                         std::string* error, const std::atomic<bool>* cancel_token) const;
   std::filesystem::path base_dir_;
 };
