@@ -67,45 +67,59 @@ const struct pw_core_events core_events = []() {
   return ev;
 }();
 
+void AppendSourceDevice(PwData* d, uint32_t id, const char* name, const char* desc) {
+  DeviceInfo info;
+  info.id = id;
+  if (name != nullptr) {
+    info.name = name;
+  }
+  if (desc != nullptr) {
+    info.description = desc;
+  }
+  info.is_sink_monitor = false;
+  d->devices.push_back(std::move(info));
+}
+
+void AppendSinkMonitorDevice(PwData* d, uint32_t id, const char* name, const char* desc) {
+  DeviceInfo info;
+  info.id = id;
+  if (name != nullptr) {
+    info.name = std::string(name) + ".monitor";
+  }
+  if (desc != nullptr) {
+    info.description = std::string(desc) + " (Monitor)";
+  } else if (name != nullptr) {
+    info.description = std::string(name) + " (Monitor)";
+  }
+  info.is_sink_monitor = true;
+  d->devices.push_back(std::move(info));
+}
+
 void registry_event_global(void* data, uint32_t id, uint32_t permissions, const char* type,
                            uint32_t version, const struct spa_dict* props) {
   (void)permissions;
   (void)version;
-  if (std::string(type) == PW_TYPE_INTERFACE_Node && props) {
-    const char* media_class = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
-    if (media_class == nullptr) {
-      return;
-    }
-    const std::string_view cls(media_class);
-    const char* name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
-    const char* desc = spa_dict_lookup(props, PW_KEY_NODE_DESCRIPTION);
+  if (data == nullptr || type == nullptr || props == nullptr) {
+    return;
+  }
+  if (std::string_view(type) != PW_TYPE_INTERFACE_Node) {
+    return;
+  }
 
-    auto* d = static_cast<PwData*>(data);
-    if (cls == "Audio/Source") {
-      DeviceInfo info;
-      info.id = id;
-      if (name != nullptr) {
-        info.name = name;
-      }
-      if (desc != nullptr) {
-        info.description = desc;
-      }
-      info.is_sink_monitor = false;
-      d->devices.push_back(std::move(info));
-    } else if (cls == "Audio/Sink") {
-      DeviceInfo info;
-      info.id = id;
-      if (name != nullptr) {
-        info.name = std::string(name) + ".monitor";
-      }
-      if (desc != nullptr) {
-        info.description = std::string(desc) + " (Monitor)";
-      } else if (name != nullptr) {
-        info.description = std::string(name) + " (Monitor)";
-      }
-      info.is_sink_monitor = true;
-      d->devices.push_back(std::move(info));
-    }
+  const char* media_class = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
+  if (media_class == nullptr) {
+    return;
+  }
+
+  const std::string_view cls(media_class);
+  auto* d = static_cast<PwData*>(data);
+  const char* name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
+  const char* desc = spa_dict_lookup(props, PW_KEY_NODE_DESCRIPTION);
+
+  if (cls == "Audio/Source") {
+    AppendSourceDevice(d, id, name, desc);
+  } else if (cls == "Audio/Sink") {
+    AppendSinkMonitorDevice(d, id, name, desc);
   }
 }
 
@@ -120,42 +134,100 @@ const struct pw_registry_events registry_events = {
     registry_event_global_remove,
 };
 
+struct PwResourceGuard {
+  PwData* d = nullptr;
+
+  explicit PwResourceGuard(PwData* data_ptr) : d(data_ptr) {}
+  ~PwResourceGuard() {
+    if (d == nullptr) {
+      return;
+    }
+    if (d->registry != nullptr) {
+      spa_hook_remove(&d->registry_listener);
+      pw_proxy_destroy(std::bit_cast<pw_proxy*>(d->registry));
+    }
+    if (d->core != nullptr) {
+      spa_hook_remove(&d->core_listener);
+      pw_core_disconnect(d->core);
+    }
+    if (d->context != nullptr) {
+      pw_context_destroy(d->context);
+    }
+    if (d->loop != nullptr) {
+      pw_main_loop_destroy(d->loop);
+    }
+    pw_deinit();
+  }
+
+  PwResourceGuard(const PwResourceGuard&) = delete;
+  PwResourceGuard& operator=(const PwResourceGuard&) = delete;
+  PwResourceGuard(PwResourceGuard&&) = delete;
+  PwResourceGuard& operator=(PwResourceGuard&&) = delete;
+};
+
+struct ScopedEnumerationTimer {
+  spa_source* timer = nullptr;
+  const spa_loop_utils_methods* utils = nullptr;
+  void* u_data = nullptr;
+
+  ~ScopedEnumerationTimer() {
+    if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
+      utils->destroy_source(u_data, timer);
+    }
+  }
+
+  ScopedEnumerationTimer(const ScopedEnumerationTimer&) = delete;
+  ScopedEnumerationTimer& operator=(const ScopedEnumerationTimer&) = delete;
+  ScopedEnumerationTimer(ScopedEnumerationTimer&& other) noexcept
+      : timer(std::exchange(other.timer, nullptr)), utils(std::exchange(other.utils, nullptr)),
+        u_data(std::exchange(other.u_data, nullptr)) {}
+  ScopedEnumerationTimer& operator=(ScopedEnumerationTimer&& other) noexcept {
+    if (this != &other) {
+      if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
+        utils->destroy_source(u_data, timer);
+      }
+      timer = std::exchange(other.timer, nullptr);
+      utils = std::exchange(other.utils, nullptr);
+      u_data = std::exchange(other.u_data, nullptr);
+    }
+    return *this;
+  }
+};
+
+std::optional<ScopedEnumerationTimer> ArmEnumerationTimeout(pw_loop* loop, PwData& data) {
+  if (loop == nullptr || loop->utils == nullptr || loop->utils->iface.cb.funcs == nullptr) {
+    return std::nullopt;
+  }
+  auto* utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
+  void* u_data = loop->utils->iface.cb.data;
+  if (utils->add_timer == nullptr || utils->update_timer == nullptr) {
+    return std::nullopt;
+  }
+
+  spa_source* timer = utils->add_timer(u_data, on_enumeration_timeout, &data);
+  if (timer == nullptr) {
+    return std::nullopt;
+  }
+
+  timespec value{};
+  value.tv_sec = 0;
+  value.tv_nsec = 250'000'000L;
+  if (utils->update_timer(u_data, timer, &value, nullptr, false) < 0) {
+    if (utils->destroy_source != nullptr) {
+      utils->destroy_source(u_data, timer);
+    }
+    return std::nullopt;
+  }
+
+  return ScopedEnumerationTimer{.timer = timer, .utils = utils, .u_data = u_data};
+}
+
 } // namespace
 
 std::vector<DeviceInfo> EnumerateAudioSources() {
   pw_init(nullptr, nullptr);
 
   PwData data{};
-  struct PwResourceGuard {
-    PwData* d = nullptr;
-
-    explicit PwResourceGuard(PwData* data_ptr) : d(data_ptr) {}
-    ~PwResourceGuard() {
-      if (d == nullptr) {
-        return;
-      }
-      if (d->registry != nullptr) {
-        spa_hook_remove(&d->registry_listener);
-        pw_proxy_destroy(std::bit_cast<pw_proxy*>(d->registry));
-      }
-      if (d->core != nullptr) {
-        spa_hook_remove(&d->core_listener);
-        pw_core_disconnect(d->core);
-      }
-      if (d->context != nullptr) {
-        pw_context_destroy(d->context);
-      }
-      if (d->loop != nullptr) {
-        pw_main_loop_destroy(d->loop);
-      }
-      pw_deinit();
-    }
-
-    PwResourceGuard(const PwResourceGuard&) = delete;
-    PwResourceGuard& operator=(const PwResourceGuard&) = delete;
-    PwResourceGuard(PwResourceGuard&&) = delete;
-    PwResourceGuard& operator=(PwResourceGuard&&) = delete;
-  };
   const PwResourceGuard guard{&data};
 
   data.loop = pw_main_loop_new(nullptr);
@@ -181,35 +253,9 @@ std::vector<DeviceInfo> EnumerateAudioSources() {
   data.pending_sync = pw_core_sync(data.core, PW_ID_CORE, 0);
   if (data.pending_sync >= 0) {
     // Arm a 250ms bounded timer so enumeration never hangs if PipeWire is unresponsive.
-    pw_loop* const loop = pw_main_loop_get_loop(data.loop);
-    spa_source* timer = nullptr;
-    const spa_loop_utils_methods* utils = nullptr;
-    void* u_data = nullptr;
-    bool timer_armed = false;
-
-    if (loop != nullptr && loop->utils != nullptr && loop->utils->iface.cb.funcs != nullptr) {
-      utils = static_cast<const spa_loop_utils_methods*>(loop->utils->iface.cb.funcs);
-      u_data = loop->utils->iface.cb.data;
-      if (utils->add_timer != nullptr && utils->update_timer != nullptr) {
-        timer = utils->add_timer(u_data, on_enumeration_timeout, &data);
-        if (timer != nullptr) {
-          timespec value{};
-          value.tv_sec = 0;
-          value.tv_nsec = 250'000'000L;
-          if (utils->update_timer(u_data, timer, &value, nullptr, false) >= 0) {
-            timer_armed = true;
-          }
-        }
-      }
-    }
-
-    // Only enter event loop if timeout protection is armed to prevent unbounded hang.
-    if (timer_armed) {
+    if (auto timer = ArmEnumerationTimeout(pw_main_loop_get_loop(data.loop), data);
+        timer.has_value()) {
       pw_main_loop_run(data.loop);
-    }
-
-    if (timer != nullptr && utils != nullptr && utils->destroy_source != nullptr) {
-      utils->destroy_source(u_data, timer);
     }
   }
 
