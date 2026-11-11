@@ -94,6 +94,8 @@ void SpawnMonitored(const CommandSpec& spec, std::optional<subprocess::Popen>& o
 
 namespace {
 
+using Clock = std::chrono::steady_clock;
+
 constexpr int kPollSliceMs = 50;
 constexpr auto kPostExitGrace = std::chrono::milliseconds(200);
 
@@ -104,6 +106,186 @@ struct PumpOutcome {
   int child_exit_code = -1;
 };
 
+struct PumpIoState {
+  int in_fd{-1};
+  int out_fd{-1};
+  int err_fd{-1};
+  bool in_open{false};
+  bool out_open{false};
+  bool err_open{false};
+  bool input_closed{false};
+  std::size_t input_offset{0};
+
+  void CloseInput(subprocess::Popen& proc) {
+    in_open = false;
+    if (!input_closed) {
+      input_closed = true;
+      proc.close_input();
+    }
+  }
+};
+
+struct PollPlan {
+  std::array<pollfd, 3> pfds{};
+  std::size_t count{0};
+  int in_idx{-1};
+  int out_idx{-1};
+  int err_idx{-1};
+};
+
+PollPlan BuildPollPlan(const PumpIoState& s) noexcept {
+  PollPlan plan{};
+  if (s.in_open) {
+    plan.in_idx = static_cast<int>(plan.count);
+    plan.pfds.at(plan.count) = pollfd{.fd = s.in_fd, .events = POLLOUT, .revents = 0};
+    plan.count += 1;
+  }
+  if (s.out_open) {
+    plan.out_idx = static_cast<int>(plan.count);
+    plan.pfds.at(plan.count) = pollfd{.fd = s.out_fd, .events = POLLIN, .revents = 0};
+    plan.count += 1;
+  }
+  if (s.err_open) {
+    plan.err_idx = static_cast<int>(plan.count);
+    plan.pfds.at(plan.count) = pollfd{.fd = s.err_fd, .events = POLLIN, .revents = 0};
+    plan.count += 1;
+  }
+  return plan;
+}
+
+int ComputePollWaitMs(Clock::time_point deadline, Clock::time_point now) noexcept {
+  auto wait_ms = std::clamp<int>(kPollSliceMs, 0, 1000);
+  if (deadline != Clock::time_point::max()) {
+    const auto remaining =
+        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+    wait_ms = std::min(wait_ms, static_cast<int>(std::clamp<std::int64_t>(remaining, 0, 1000)));
+  }
+  return wait_ms;
+}
+
+void PollChildExit(subprocess::Popen& proc, PumpIoState& s, PumpOutcome& outcome,
+                   std::optional<Clock::time_point>& child_exited_at) {
+  if (outcome.child_exited) {
+    return;
+  }
+  const int exit_code = proc.poll();
+  if (exit_code == -1) {
+    return;
+  }
+  outcome.child_exited = true;
+  outcome.child_exit_code = exit_code;
+  child_exited_at = Clock::now();
+  if (s.in_open) {
+    outcome.input_incomplete = true;
+    s.CloseInput(proc);
+  }
+}
+
+void ServicePumpInput(PumpIoState& s, subprocess::Popen& proc, std::span<const std::byte> input,
+                      short revents, PumpOutcome& outcome) {
+  if ((revents & detail::kInputFailureEvents) != 0) {
+    outcome.input_incomplete = true;
+    s.CloseInput(proc);
+    return;
+  }
+  if ((revents & POLLOUT) == 0) {
+    return;
+  }
+
+  const std::size_t remaining = input.size() - s.input_offset;
+  const ssize_t written = ::write(s.in_fd, input.data() + s.input_offset, remaining);
+  if (written > 0) {
+    s.input_offset += static_cast<std::size_t>(written);
+    if (s.input_offset >= input.size()) {
+      s.CloseInput(proc);
+    }
+    return;
+  }
+
+  if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+    outcome.input_incomplete = true;
+    s.CloseInput(proc);
+  }
+}
+
+void ServicePumpOutput(int fd, bool& open, short revents, std::string& out_text) {
+  if (!open || (revents & detail::kReadableChannelEvents) == 0) {
+    return;
+  }
+  const detail::DrainOutcome drained =
+      detail::DrainBudgeted(fd, detail::kReadBudgetBytes,
+                            [&out_text](std::string_view chunk) { out_text.append(chunk); });
+  open = !drained.closed;
+}
+
+void DispatchPollEvents(const PollPlan& plan, PumpIoState& s, subprocess::Popen& proc,
+                        std::span<const std::byte> input, PumpOutcome& outcome,
+                        std::string& stdout_text, std::string& stderr_text) {
+  if (plan.in_idx >= 0) {
+    ServicePumpInput(s, proc, input, plan.pfds.at(static_cast<std::size_t>(plan.in_idx)).revents,
+                     outcome);
+  }
+  if (plan.out_idx >= 0) {
+    ServicePumpOutput(s.out_fd, s.out_open,
+                      plan.pfds.at(static_cast<std::size_t>(plan.out_idx)).revents, stdout_text);
+  }
+  if (plan.err_idx >= 0) {
+    ServicePumpOutput(s.err_fd, s.err_open,
+                      plan.pfds.at(static_cast<std::size_t>(plan.err_idx)).revents, stderr_text);
+  }
+}
+
+PumpIoState InitPumpIoState(subprocess::Popen& proc, std::span<const std::byte> input,
+                            PumpOutcome& outcome) {
+  const auto make_non_blocking = [](int fd) { return fd < 0 || detail::MakeNonBlocking(fd); };
+  PumpIoState s{
+      .in_fd = proc.input() != nullptr ? subprocess_fileno(proc.input()) : -1,
+      .out_fd = proc.output() != nullptr ? subprocess_fileno(proc.output()) : -1,
+      .err_fd = proc.error() != nullptr ? subprocess_fileno(proc.error()) : -1,
+  };
+  const bool in_usable = make_non_blocking(s.in_fd);
+  const bool out_usable = make_non_blocking(s.out_fd);
+  const bool err_usable = make_non_blocking(s.err_fd);
+
+  s.in_open = (s.in_fd >= 0 && in_usable && !input.empty());
+  s.out_open = (s.out_fd >= 0 && out_usable);
+  s.err_open = (s.err_fd >= 0 && err_usable);
+  outcome.input_incomplete = !in_usable;
+
+  if (s.in_fd >= 0 && input.empty()) {
+    s.CloseInput(proc);
+  }
+  return s;
+}
+
+bool CheckPumpLoopBreak(Clock::time_point deadline, Clock::time_point now, bool child_exited,
+                        const std::optional<Clock::time_point>& child_exited_at, PumpIoState& s,
+                        PumpOutcome& outcome) noexcept {
+  if (now >= deadline) {
+    outcome.timed_out = true;
+    if (s.in_open) {
+      outcome.input_incomplete = true;
+      s.in_open = false;
+    }
+    return true;
+  }
+  if (child_exited && child_exited_at.has_value() && now - *child_exited_at >= kPostExitGrace) {
+    return true;
+  }
+  return false;
+}
+
+void ReapChildExitCode(subprocess::Popen& proc, PumpOutcome& outcome) {
+  if (outcome.child_exited) {
+    return;
+  }
+  const int exit_code = proc.poll();
+  if (exit_code != -1) {
+    outcome.child_exited = true;
+    outcome.child_exit_code = exit_code;
+  }
+}
+
 // Drives one child until it exits or `deadline` expires: feeds `input` to its stdin, appends
 // everything it prints to `stdout_text` / `stderr_text`, then reports how it ended.
 //
@@ -113,112 +295,31 @@ struct PumpOutcome {
 // is released before returning so a child that only exits on EOF never waits on a handle that is
 // still held here.
 PumpOutcome PumpProcess(subprocess::Popen& proc, std::span<const std::byte> input,
-                        std::chrono::steady_clock::time_point deadline, std::string& stdout_text,
+                        Clock::time_point deadline, std::string& stdout_text,
                         std::string& stderr_text) {
-  using Clock = std::chrono::steady_clock;
-
   PumpOutcome outcome;
-  const int in_fd = proc.input() != nullptr ? subprocess_fileno(proc.input()) : -1;
-  const int out_fd = proc.output() != nullptr ? subprocess_fileno(proc.output()) : -1;
-  const int err_fd = proc.error() != nullptr ? subprocess_fileno(proc.error()) : -1;
-
-  // poll() only announces readiness, so nothing below may block. A descriptor that refuses to
-  // switch is left out of the poll set instead of being read while it can still block.
-  const auto make_non_blocking = [](int fd) { return fd < 0 || detail::MakeNonBlocking(fd); };
-  const bool in_usable = make_non_blocking(in_fd);
-  const bool out_usable = make_non_blocking(out_fd);
-  const bool err_usable = make_non_blocking(err_fd);
-
-  std::size_t input_offset = 0;
-  bool in_open = (in_fd >= 0 && in_usable && !input.empty());
-  bool out_open = (out_fd >= 0 && out_usable);
-  bool err_open = (err_fd >= 0 && err_usable);
-  bool input_closed = false;
-  outcome.input_incomplete = !in_usable;
-
-  // Releases the caller's stdin handle exactly once, however this pump ends.
-  const auto finish_input = [&]() {
-    in_open = false;
-    if (!input_closed) {
-      input_closed = true;
-      proc.close_input();
-    }
-  };
-
-  if (in_fd >= 0 && input.empty()) {
-    finish_input();
-  }
-
+  PumpIoState s = InitPumpIoState(proc, input, outcome);
   std::optional<Clock::time_point> child_exited_at;
 
-  while (in_open || out_open || err_open || !outcome.child_exited) {
-    if (!outcome.child_exited) {
-      const int exit_code = proc.poll();
-      if (exit_code != -1) {
-        outcome.child_exited = true;
-        outcome.child_exit_code = exit_code;
-        child_exited_at = Clock::now();
-        if (in_open) {
-          // The child is gone, so the rest of the input can never be read.
-          outcome.input_incomplete = true;
-          finish_input();
-        }
-      }
-    }
+  while (s.in_open || s.out_open || s.err_open || !outcome.child_exited) {
+    PollChildExit(proc, s, outcome, child_exited_at);
 
     const auto now = Clock::now();
-    if (now >= deadline) {
-      outcome.timed_out = true;
-      if (in_open) {
-        outcome.input_incomplete = true;
-        in_open = false;
-      }
+    if (CheckPumpLoopBreak(deadline, now, outcome.child_exited, child_exited_at, s, outcome)) {
       break;
     }
 
-    // A closed child can still leave buffered output behind, so drain for a bounded grace only.
-    if (outcome.child_exited && child_exited_at.has_value() &&
-        now - *child_exited_at >= kPostExitGrace) {
-      break;
-    }
+    auto plan = BuildPollPlan(s);
+    const int wait_ms = ComputePollWaitMs(deadline, now);
 
-    std::array<pollfd, 3> pfds{};
-    std::size_t pfd_count = 0;
-    int in_idx = -1;
-    int out_idx = -1;
-    int err_idx = -1;
-
-    if (in_open) {
-      in_idx = static_cast<int>(pfd_count);
-      pfds.at(pfd_count) = pollfd{.fd = in_fd, .events = POLLOUT, .revents = 0};
-      pfd_count += 1;
-    }
-    if (out_open) {
-      out_idx = static_cast<int>(pfd_count);
-      pfds.at(pfd_count) = pollfd{.fd = out_fd, .events = POLLIN, .revents = 0};
-      pfd_count += 1;
-    }
-    if (err_open) {
-      err_idx = static_cast<int>(pfd_count);
-      pfds.at(pfd_count) = pollfd{.fd = err_fd, .events = POLLIN, .revents = 0};
-      pfd_count += 1;
-    }
-
-    auto wait_ms = std::clamp<int>(kPollSliceMs, 0, 1000);
-    if (deadline != Clock::time_point::max()) {
-      const auto remaining =
-          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-      wait_ms = std::min(wait_ms, static_cast<int>(std::clamp<std::int64_t>(remaining, 0, 1000)));
-    }
-
-    if (pfd_count == 0) {
+    if (plan.count == 0) {
       // Every channel is closed but the child still runs: keep the deadline in force instead of
       // handing the caller an unbounded wait, and sleep rather than spin while doing it.
       std::this_thread::sleep_for(std::chrono::milliseconds(std::max(wait_ms, 1)));
       continue;
     }
 
-    const int poll_rc = ::poll(pfds.data(), static_cast<nfds_t>(pfd_count), wait_ms);
+    const int poll_rc = ::poll(plan.pfds.data(), static_cast<nfds_t>(plan.count), wait_ms);
     if (poll_rc < 0) {
       if (errno == EINTR) {
         continue;
@@ -229,58 +330,15 @@ PumpOutcome PumpProcess(subprocess::Popen& proc, std::span<const std::byte> inpu
       continue;
     }
 
-    if (in_idx >= 0) {
-      const auto revents = pfds.at(static_cast<std::size_t>(in_idx)).revents;
-      if ((revents & POLLOUT) != 0) {
-        const std::size_t remaining = input.size() - input_offset;
-        const ssize_t written = ::write(in_fd, input.data() + input_offset, remaining);
-        if (written > 0) {
-          input_offset += static_cast<std::size_t>(written);
-          if (input_offset >= input.size()) {
-            finish_input();
-          }
-        } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-          outcome.input_incomplete = true;
-          finish_input();
-        }
-      } else if ((revents & detail::kInputFailureEvents) != 0) {
-        outcome.input_incomplete = true;
-        finish_input();
-      }
-    }
-
-    if (out_open && out_idx >= 0 &&
-        (pfds.at(static_cast<std::size_t>(out_idx)).revents & detail::kReadableChannelEvents) !=
-            0) {
-      const detail::DrainOutcome drained = detail::DrainBudgeted(
-          out_fd, detail::kReadBudgetBytes,
-          [&stdout_text](std::string_view chunk) { stdout_text.append(chunk); });
-      out_open = !drained.closed;
-    }
-
-    if (err_open && err_idx >= 0 &&
-        (pfds.at(static_cast<std::size_t>(err_idx)).revents & detail::kReadableChannelEvents) !=
-            0) {
-      const detail::DrainOutcome drained = detail::DrainBudgeted(
-          err_fd, detail::kReadBudgetBytes,
-          [&stderr_text](std::string_view chunk) { stderr_text.append(chunk); });
-      err_open = !drained.closed;
-    }
+    DispatchPollEvents(plan, s, proc, input, outcome, stdout_text, stderr_text);
   }
 
-  // The child may have exited while the last poll window was still open.
-  if (!outcome.child_exited) {
-    const int exit_code = proc.poll();
-    if (exit_code != -1) {
-      outcome.child_exited = true;
-      outcome.child_exit_code = exit_code;
-    }
-  }
+  ReapChildExitCode(proc, outcome);
 
   // However the loop ended - deadline, poll failure, unusable descriptor - the child must never be
   // left waiting for EOF on a stdin this function still holds.
-  if (in_fd >= 0) {
-    finish_input();
+  if (s.in_fd >= 0) {
+    s.CloseInput(proc);
   }
 
   return outcome;
