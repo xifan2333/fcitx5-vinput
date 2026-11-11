@@ -35,6 +35,7 @@
 
 #include "common/audio/pipewire_device.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/scope_guard.h"
 #include "common/utils/time_utils.h"
 
 #include "daemon/audio/audio_types.h"
@@ -55,6 +56,41 @@ bool EnvFalsey(const char* value) {
   }
   return value[0] == '0' || value[0] == 'f' || value[0] == 'F' || value[0] == 'n' ||
          value[0] == 'N';
+}
+
+pw_properties* BuildCaptureProperties(const vinput::pw::ResolvedCaptureTarget& resolved_target) {
+  const char* capture_sink_str = resolved_target.is_sink_capture ? "true" : "false";
+  auto* properties = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture",
+                                       PW_KEY_MEDIA_ROLE, "Communication",
+                                       PW_KEY_STREAM_CAPTURE_SINK, capture_sink_str, nullptr);
+  if (properties == nullptr) {
+    return nullptr;
+  }
+  if (!resolved_target.node_name.empty()) {
+    pw_properties_set(properties, PW_KEY_TARGET_OBJECT, resolved_target.node_name.c_str());
+    VLOG_INFO("using PipeWire target.object={} (stream.capture.sink={})", resolved_target.node_name,
+              capture_sink_str);
+  }
+  return properties;
+}
+
+int ConnectStream(struct pw_stream* stream, bool start_inactive) {
+  uint8_t pod_buffer[1024];
+  struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(pod_buffer, sizeof(pod_buffer));
+  struct spa_audio_info_raw raw_info{};
+  raw_info.format = SPA_AUDIO_FORMAT_S16_LE;
+  raw_info.rate = 16000;
+  raw_info.channels = 1;
+  raw_info.position[0] = SPA_AUDIO_CHANNEL_MONO;
+  const struct spa_pod* params[1];
+  params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &raw_info);
+
+  int flags = PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS;
+  if (start_inactive) {
+    flags |= PW_STREAM_FLAG_INACTIVE;
+  }
+  return pw_stream_connect(stream, PW_DIRECTION_INPUT, PW_ID_ANY,
+                           static_cast<pw_stream_flags>(flags), params, 1);
 }
 
 } // namespace
@@ -133,58 +169,62 @@ void AudioCapture::processCallback() {
     return;
   }
 
+  const auto cleanup_buffer = vinput::MakeScopeExit([s, b] { pw_stream_queue_buffer(s, b); });
+
   const struct spa_buffer* buf = b->buffer;
   if (buf == nullptr || buf->n_datas == 0 || buf->datas[0].data == nullptr ||
       buf->datas[0].chunk == nullptr) {
-    pw_stream_queue_buffer(s, b);
     return;
   }
 
-  if (recording_.load(std::memory_order_relaxed)) {
-    const auto* raw = static_cast<const uint8_t*>(buf->datas[0].data);
-    const uint32_t offset = buf->datas[0].chunk->offset;
-    const uint32_t size = buf->datas[0].chunk->size;
-    if (size > 0 && offset + size <= buf->datas[0].maxsize) {
-      const uint32_t n_samples = size / sizeof(int16_t);
-
-      if (n_samples > 0) {
-        int64_t expected_zero = 0;
-        const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                   std::chrono::steady_clock::now().time_since_epoch())
-                                   .count();
-        first_buffer_ns_.compare_exchange_strong(expected_zero, now_ns, std::memory_order_relaxed);
-
-        bool enqueued_any = false;
-        uint32_t offset_samples = 0;
-        while (offset_samples < n_samples) {
-          const uint32_t to_copy =
-              std::min<uint32_t>(n_samples - offset_samples, vinput::audio::kMaxChunkSamples);
-          vinput::audio::AudioPcmChunk chunk;
-          std::memcpy(chunk.samples.data(), raw + offset + (offset_samples * sizeof(int16_t)),
-                      to_copy * sizeof(int16_t));
-          chunk.size = to_copy;
-
-          if (!queue_.try_enqueue(chunk)) {
-            dropped_chunks_.fetch_add(1, std::memory_order_relaxed);
-            dropped_samples_.fetch_add(chunk.size, std::memory_order_relaxed);
-          } else {
-            enqueued_any = true;
-          }
-          offset_samples += to_copy;
-        }
-
-        if (enqueued_any) {
-          const int notify_fd = notify_fd_.load(std::memory_order_relaxed);
-          if (notify_fd >= 0) {
-            const uint64_t val = 1;
-            (void)write(notify_fd, &val, sizeof(val));
-          }
-        }
-      }
-    }
+  if (!recording_.load(std::memory_order_relaxed)) {
+    return;
   }
 
-  pw_stream_queue_buffer(s, b);
+  const auto* raw = static_cast<const uint8_t*>(buf->datas[0].data);
+  const uint32_t offset = buf->datas[0].chunk->offset;
+  const uint32_t size = buf->datas[0].chunk->size;
+  if (size == 0 || offset + size > buf->datas[0].maxsize) {
+    return;
+  }
+
+  const uint32_t n_samples = size / sizeof(int16_t);
+  if (n_samples == 0) {
+    return;
+  }
+
+  int64_t expected_zero = 0;
+  const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             std::chrono::steady_clock::now().time_since_epoch())
+                             .count();
+  first_buffer_ns_.compare_exchange_strong(expected_zero, now_ns, std::memory_order_relaxed);
+
+  bool enqueued_any = false;
+  uint32_t offset_samples = 0;
+  while (offset_samples < n_samples) {
+    const uint32_t to_copy =
+        std::min<uint32_t>(n_samples - offset_samples, vinput::audio::kMaxChunkSamples);
+    vinput::audio::AudioPcmChunk chunk;
+    std::memcpy(chunk.samples.data(), raw + offset + (offset_samples * sizeof(int16_t)),
+                to_copy * sizeof(int16_t));
+    chunk.size = to_copy;
+
+    if (!queue_.try_enqueue(chunk)) {
+      dropped_chunks_.fetch_add(1, std::memory_order_relaxed);
+      dropped_samples_.fetch_add(chunk.size, std::memory_order_relaxed);
+    } else {
+      enqueued_any = true;
+    }
+    offset_samples += to_copy;
+  }
+
+  if (enqueued_any) {
+    const int notify_fd = notify_fd_.load(std::memory_order_relaxed);
+    if (notify_fd >= 0) {
+      const uint64_t val = 1;
+      (void)write(notify_fd, &val, sizeof(val));
+    }
+  }
 }
 
 void AudioCapture::onParamChanged(void* userdata, uint32_t id, const struct spa_pod* param) {
@@ -279,23 +319,14 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
   const auto resolved_target = vinput::pw::ResolveCaptureTarget(target_object, known_devices);
 
   pw_thread_loop_lock(loop_);
+  const auto loop_unlock = vinput::MakeScopeExit([this] { pw_thread_loop_unlock(loop_); });
 
-  const char* capture_sink_str = resolved_target.is_sink_capture ? "true" : "false";
-  auto* properties = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture",
-                                       PW_KEY_MEDIA_ROLE, "Communication",
-                                       PW_KEY_STREAM_CAPTURE_SINK, capture_sink_str, nullptr);
+  auto* properties = BuildCaptureProperties(resolved_target);
   if (properties == nullptr) {
     if (error != nullptr) {
       *error = "failed to allocate PipeWire properties";
     }
-    pw_thread_loop_unlock(loop_);
     return false;
-  }
-
-  if (!resolved_target.node_name.empty()) {
-    pw_properties_set(properties, PW_KEY_TARGET_OBJECT, resolved_target.node_name.c_str());
-    VLOG_INFO("using PipeWire target.object={} (stream.capture.sink={})", resolved_target.node_name,
-              capture_sink_str);
   }
 
   stream_ = pw_stream_new_simple(pw_thread_loop_get_loop(loop_), "vinput-capture", properties,
@@ -305,28 +336,10 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
     if (error != nullptr) {
       *error = "failed to create PipeWire stream";
     }
-    pw_thread_loop_unlock(loop_);
     return false;
   }
 
-  uint8_t pod_buffer[1024];
-  struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(pod_buffer, sizeof(pod_buffer));
-  struct spa_audio_info_raw raw_info{};
-  raw_info.format = SPA_AUDIO_FORMAT_S16_LE;
-  raw_info.rate = 16000;
-  raw_info.channels = 1;
-  raw_info.position[0] = SPA_AUDIO_CHANNEL_MONO;
-  const struct spa_pod* params[1];
-  params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &raw_info);
-
-  int flags = PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS;
-  if (start_inactive) {
-    flags |= PW_STREAM_FLAG_INACTIVE;
-  }
-
-  const int ret = pw_stream_connect(stream_, PW_DIRECTION_INPUT, PW_ID_ANY,
-                                    static_cast<pw_stream_flags>(flags), params, 1);
-
+  const int ret = ConnectStream(stream_, start_inactive);
   if (ret < 0) {
     if (error != nullptr) {
       *error = std::string("failed to connect PipeWire stream: ") + strerror(-ret);
@@ -334,14 +347,12 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
     pw_stream_destroy(stream_);
     stream_ = nullptr;
     stream_active_ = false;
-    pw_thread_loop_unlock(loop_);
     return false;
   }
 
   stream_active_ = !start_inactive;
   connected_target_object_ =
       (target_object.empty() || target_object == "default") ? std::string{} : target_object;
-  pw_thread_loop_unlock(loop_);
   return true;
 }
 
@@ -457,6 +468,68 @@ void AudioCapture::DestroyStream() {
   MarkStreamDestroyed();
 }
 
+void AudioCapture::ArmRecording() noexcept {
+  const int64_t begin_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
+  first_buffer_ns_.store(0, std::memory_order_release);
+  recording_armed_ns_.store(begin_ns, std::memory_order_release);
+}
+
+bool AudioCapture::CreateAndActivateNewStream(StartTiming& local_timing, bool start_inactive,
+                                              std::string* error) {
+  DestroyStream();
+  local_timing.stream_reused = false;
+  local_timing.created_new_stream = true;
+
+  ArmRecording();
+  recording_.store(true, std::memory_order_relaxed);
+
+  const auto create_start = std::chrono::steady_clock::now();
+  if (!CreateStream(start_inactive, error)) {
+    recording_.store(false, std::memory_order_relaxed);
+    recording_armed_ns_.store(0, std::memory_order_release);
+    return false;
+  }
+  local_timing.create_stream_ms =
+      vinput::time::MillisecondsBetween(create_start, std::chrono::steady_clock::now());
+
+  if (start_inactive) {
+    const auto active_start = std::chrono::steady_clock::now();
+    if (!SetStreamActive(true, error)) {
+      recording_.store(false, std::memory_order_relaxed);
+      DestroyStream();
+      return false;
+    }
+    local_timing.set_active_ms =
+        vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
+  } else {
+    local_timing.set_active_ms = 0;
+  }
+  return true;
+}
+
+bool AudioCapture::ActivateReusedStream(StartTiming& local_timing, std::string* error) {
+  local_timing.stream_reused = true;
+  local_timing.created_new_stream = false;
+  local_timing.create_stream_ms = 0;
+
+  ArmRecording();
+  recording_.store(true, std::memory_order_relaxed);
+
+  const auto active_start = std::chrono::steady_clock::now();
+  if (SetStreamActive(true, error)) {
+    local_timing.set_active_ms =
+        vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
+    return true;
+  }
+
+  // Reuse path failed — fall back to full recreate once.
+  VLOG_DEBUG("capture set_active(true) on reused stream failed ({}), recreating",
+             error != nullptr && !error->empty() ? *error : "unknown");
+  return CreateAndActivateNewStream(local_timing, true, error);
+}
+
 bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
   StartTiming local_timing;
   local_timing.reuse_policy_enabled = StreamReuseEnabled();
@@ -480,90 +553,19 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
   }
   ResetDropCounters();
 
-  const auto arm_recording = [this]() {
-    const int64_t begin_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                 std::chrono::steady_clock::now().time_since_epoch())
-                                 .count();
-    first_buffer_ns_.store(0, std::memory_order_release);
-    recording_armed_ns_.store(begin_ns, std::memory_order_release);
-  };
-
   const bool reuse = local_timing.reuse_policy_enabled && CanReuseStreamLocked();
-  if (!reuse) {
-    DestroyStream();
-    local_timing.stream_reused = false;
-    local_timing.created_new_stream = true;
-
-    arm_recording();
-    recording_.store(true, std::memory_order_relaxed);
-
-    const auto create_start = std::chrono::steady_clock::now();
-    // When reuse policy is on, create inactive then activate so subsequent
-    // stops can deactivate without tearing down negotiation.
-    const bool start_inactive = local_timing.reuse_policy_enabled;
-    if (!CreateStream(start_inactive, error)) {
-      recording_.store(false, std::memory_order_relaxed);
-      recording_armed_ns_.store(0, std::memory_order_release);
-      return false;
-    }
-    local_timing.create_stream_ms =
-        vinput::time::MillisecondsBetween(create_start, std::chrono::steady_clock::now());
-
-    if (start_inactive) {
-      const auto active_start = std::chrono::steady_clock::now();
-      if (!SetStreamActive(true, error)) {
-        recording_.store(false, std::memory_order_relaxed);
-        DestroyStream();
-        return false;
-      }
-      local_timing.set_active_ms =
-          vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
-    } else {
-      local_timing.set_active_ms = 0;
-    }
-  } else {
-    local_timing.stream_reused = true;
-    local_timing.created_new_stream = false;
-    local_timing.create_stream_ms = 0;
-
-    arm_recording();
-    recording_.store(true, std::memory_order_relaxed);
-
-    const auto active_start = std::chrono::steady_clock::now();
-    if (!SetStreamActive(true, error)) {
-      // Reuse path failed — fall back to full recreate once.
-      VLOG_DEBUG("capture set_active(true) on reused stream failed ({}), recreating",
-                 error != nullptr && !error->empty() ? *error : "unknown");
-      DestroyStream();
-      local_timing.stream_reused = false;
-      local_timing.created_new_stream = true;
-      const auto create_start = std::chrono::steady_clock::now();
-      arm_recording();
-      if (!CreateStream(true, error)) {
-        recording_.store(false, std::memory_order_relaxed);
-        recording_armed_ns_.store(0, std::memory_order_release);
-        return false;
-      }
-      local_timing.create_stream_ms =
-          vinput::time::MillisecondsBetween(create_start, std::chrono::steady_clock::now());
-      if (!SetStreamActive(true, error)) {
-        recording_.store(false, std::memory_order_relaxed);
-        DestroyStream();
-        return false;
-      }
-      local_timing.set_active_ms =
-          vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
-    } else {
-      local_timing.set_active_ms =
-          vinput::time::MillisecondsBetween(active_start, std::chrono::steady_clock::now());
-    }
+  const bool ok =
+      reuse ? ActivateReusedStream(local_timing, error)
+            : CreateAndActivateNewStream(local_timing, local_timing.reuse_policy_enabled, error);
+  if (!ok) {
+    return false;
   }
 
   VLOG_DEBUG("capture begin idle_gap_ms={} create_stream_ms={} set_active_ms={} "
              "stream_reused={} created_new_stream={} reuse_policy={}",
              local_timing.idle_gap_ms, local_timing.create_stream_ms, local_timing.set_active_ms,
-             local_timing.stream_reused ? 1 : 0, local_timing.created_new_stream ? 1 : 0,
-             local_timing.reuse_policy_enabled ? 1 : 0);
+             local_timing.stream_reused, local_timing.created_new_stream,
+             local_timing.reuse_policy_enabled);
 
   if (timing != nullptr) {
     *timing = local_timing;

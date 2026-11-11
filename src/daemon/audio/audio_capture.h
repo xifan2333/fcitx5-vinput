@@ -82,6 +82,10 @@ private:
   static void onStateChanged(void* userdata, enum pw_stream_state old, enum pw_stream_state state,
                              const char* error);
   bool CreateStream(bool start_inactive, std::string* error = nullptr);
+  bool CreateAndActivateNewStream(StartTiming& local_timing, bool start_inactive,
+                                  std::string* error);
+  bool ActivateReusedStream(StartTiming& local_timing, std::string* error);
+  void ArmRecording() noexcept;
   bool SetStreamActive(bool active, std::string* error = nullptr);
   void DestroyStream();
   void processCallback();
