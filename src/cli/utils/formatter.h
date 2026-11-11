@@ -27,39 +27,6 @@ public:
   virtual void PrintInfo(const std::string& msg) = 0;
 };
 
-class TextFormatter : public Formatter {
-public:
-  explicit TextFormatter(bool use_color);
-  void PrintTable(const std::vector<std::string>& headers,
-                  const std::vector<std::vector<std::string>>& rows) override;
-  void PrintKeyValue(const std::string& key, const std::string& value) override;
-  void PrintSuccess(const std::string& msg) override;
-  void PrintError(const std::string& msg) override;
-  void PrintWarning(const std::string& msg) override;
-  void PrintJson(const glz::json_t& j) override;
-  void PrintInfo(const std::string& msg) override;
-
-private:
-  bool use_color_;
-  [[nodiscard]] std::string Green(const std::string& s) const;
-  [[nodiscard]] std::string Red(const std::string& s) const;
-  [[nodiscard]] std::string Yellow(const std::string& s) const;
-  [[nodiscard]] std::string Gray(const std::string& s) const;
-  [[nodiscard]] std::string Bold(const std::string& s) const;
-};
-
-class JsonFormatter : public Formatter {
-public:
-  void PrintTable(const std::vector<std::string>& headers,
-                  const std::vector<std::vector<std::string>>& rows) override;
-  void PrintKeyValue(const std::string& key, const std::string& value) override;
-  void PrintSuccess(const std::string& msg) override;
-  void PrintError(const std::string& msg) override;
-  void PrintWarning(const std::string& msg) override;
-  void PrintJson(const glz::json_t& j) override;
-  void PrintInfo(const std::string& msg) override;
-};
-
 std::unique_ptr<Formatter> CreateFormatter(const CliContext& ctx);
 
 namespace vinput::cli {
