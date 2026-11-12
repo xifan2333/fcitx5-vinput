@@ -55,6 +55,31 @@ glz::json_t* ChildAt(glz::json_t* node, const std::string& segment) {
   return &(*array)[index];
 }
 
+bool ExtractNextSegment(std::string_view pointer, std::size_t& pos, std::string& segment) {
+  while (pos < pointer.size() && pointer[pos] != '/') {
+    const char current = pointer[pos];
+    ++pos;
+    if (current != '~') {
+      segment.push_back(current);
+      continue;
+    }
+    // RFC 6901 escapes: `~1` is '/', `~0` is '~'. Anything else is invalid.
+    if (pos >= pointer.size()) {
+      return false;
+    }
+    const char escaped = pointer[pos];
+    ++pos;
+    if (escaped == '1') {
+      segment.push_back('/');
+    } else if (escaped == '0') {
+      segment.push_back('~');
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Resolves an RFC 6901 JSON pointer against a dynamic JSON tree. Returns nullptr
 // when any segment is missing.
 glz::json_t* SeekPointer(glz::json_t* root, std::string_view pointer) {
@@ -67,26 +92,8 @@ glz::json_t* SeekPointer(glz::json_t* root, std::string_view pointer) {
     ++pos;
 
     std::string segment;
-    while (pos < pointer.size() && pointer[pos] != '/') {
-      const char current = pointer[pos];
-      ++pos;
-      if (current != '~') {
-        segment.push_back(current);
-        continue;
-      }
-      // RFC 6901 escapes: `~1` is '/', `~0` is '~'. Anything else is invalid.
-      if (pos >= pointer.size()) {
-        return nullptr;
-      }
-      const char escaped = pointer[pos];
-      ++pos;
-      if (escaped == '1') {
-        segment.push_back('/');
-      } else if (escaped == '0') {
-        segment.push_back('~');
-      } else {
-        return nullptr;
-      }
+    if (!ExtractNextSegment(pointer, pos, segment)) {
+      return nullptr;
     }
 
     node = ChildAt(node, segment);

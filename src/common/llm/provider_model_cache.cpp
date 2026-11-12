@@ -8,6 +8,7 @@
 #include <glaze/json/read.hpp>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -59,6 +60,69 @@ bool WriteCacheFile(const glz::json_t& data, std::string* error) {
     return false;
   }
   return true;
+}
+
+void PruneOrphanedCacheProviders(glz::json_t* cache_providers,
+                                 const std::set<std::string>& active_provider_ids,
+                                 glz::json_t& cache) {
+  if (cache_providers == nullptr || !cache_providers->is_object()) {
+    return;
+  }
+  std::vector<std::string> orphaned_ids;
+  for (const auto& [cached_id, cached_value] : cache_providers->get_object()) {
+    if (!active_provider_ids.contains(cached_id)) {
+      orphaned_ids.push_back(cached_id);
+    }
+  }
+  if (orphaned_ids.empty()) {
+    return;
+  }
+  for (const auto& orphan : orphaned_ids) {
+    cache_providers->get_object().erase(orphan);
+  }
+  std::string err;
+  WriteCacheFile(cache, &err);
+}
+
+std::pair<std::string, std::string> FindActiveCommandModel(const CoreConfig& config) {
+  for (const auto& scene : config.scenes.definitions) {
+    if (scene.id == vinput::scene::kCommandSceneId) {
+      return {scene.provider_id, scene.model};
+    }
+  }
+  return {};
+}
+
+template <typename Fn>
+void AppendProviderModels(const glz::json_t& entry, std::string_view pid, Fn add_entry) {
+  for (const auto& model : vinput::json::Strings(entry, "models")) {
+    add_entry(std::string(pid), model);
+  }
+}
+
+template <typename Fn>
+void AppendCachedProviderModels(glz::json_t* cache_providers,
+                                const std::set<std::string>& active_provider_ids, Fn add_entry) {
+  if (cache_providers == nullptr || !cache_providers->is_object()) {
+    return;
+  }
+  for (const auto& pid : active_provider_ids) {
+    const auto* entry = vinput::json::Find(*cache_providers, pid);
+    if (entry != nullptr) {
+      AppendProviderModels(*entry, pid, add_entry);
+    }
+  }
+}
+
+template <typename Fn>
+void AppendSceneModels(const CoreConfig& config, const std::set<std::string>& active_provider_ids,
+                       Fn add_entry) {
+  for (const auto& scene : config.scenes.definitions) {
+    if (!scene.provider_id.empty() && !scene.model.empty() &&
+        active_provider_ids.contains(scene.provider_id)) {
+      add_entry(scene.provider_id, scene.model);
+    }
+  }
 }
 
 } // namespace
@@ -122,36 +186,10 @@ std::vector<ModelEntry> LoadActiveModels(const CoreConfig& config) {
 
   glz::json_t cache;
   const bool has_cache = ReadCacheFile(&cache);
-  bool cache_modified = false;
-
   auto* cache_providers = has_cache ? vinput::json::Find(cache, "providers") : nullptr;
-  if (cache_providers != nullptr && cache_providers->is_object()) {
-    std::vector<std::string> orphaned_ids;
-    for (const auto& [cached_id, cached_value] : cache_providers->get_object()) {
-      if (!active_provider_ids.contains(cached_id)) {
-        orphaned_ids.push_back(cached_id);
-      }
-    }
-    for (const auto& orphan : orphaned_ids) {
-      cache_providers->get_object().erase(orphan);
-      cache_modified = true;
-    }
-    if (cache_modified) {
-      std::string err;
-      WriteCacheFile(cache, &err);
-    }
-  }
+  PruneOrphanedCacheProviders(cache_providers, active_provider_ids, cache);
 
-  // Determine current active model for command mode
-  std::string active_cmd_provider;
-  std::string active_cmd_model;
-  for (const auto& scene : config.scenes.definitions) {
-    if (scene.id == vinput::scene::kCommandSceneId) {
-      active_cmd_provider = scene.provider_id;
-      active_cmd_model = scene.model;
-      break;
-    }
-  }
+  const auto [active_cmd_provider, active_cmd_model] = FindActiveCommandModel(config);
 
   std::vector<ModelEntry> results;
   std::set<std::string> seen_pairs;
@@ -173,25 +211,10 @@ std::vector<ModelEntry> LoadActiveModels(const CoreConfig& config) {
   };
 
   // 1. Models from active cached providers
-  if (cache_providers != nullptr && cache_providers->is_object()) {
-    for (const auto& pid : active_provider_ids) {
-      const auto* entry = vinput::json::Find(*cache_providers, pid);
-      if (entry == nullptr) {
-        continue;
-      }
-      for (const auto& model : vinput::json::Strings(*entry, "models")) {
-        add_entry(pid, model);
-      }
-    }
-  }
+  AppendCachedProviderModels(cache_providers, active_provider_ids, add_entry);
 
   // 2. Statically configured models from scenes (e.g. __command__ or custom scenes)
-  for (const auto& scene : config.scenes.definitions) {
-    if (!scene.provider_id.empty() && !scene.model.empty() &&
-        active_provider_ids.contains(scene.provider_id)) {
-      add_entry(scene.provider_id, scene.model);
-    }
-  }
+  AppendSceneModels(config, active_provider_ids, add_entry);
 
   return results;
 }

@@ -11,6 +11,7 @@
 #include <glaze/json/read.hpp>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -31,9 +32,35 @@ namespace fs = std::filesystem;
 
 namespace {
 
+bool IsValidModelSegment(std::string_view segment) {
+  return !segment.empty() && segment != "." && segment != "..";
+}
+
+bool LooksLikeRuntimeLanguage(std::string_view value) {
+  if (value.empty()) {
+    return false;
+  }
+  for (const char c : value) {
+    const bool ok = (c >= 'a' && c <= 'z') || c == '-' || c == '_';
+    if (!ok) {
+      return false;
+    }
+  }
+  return value != "multilingual" && value.find('_') == std::string_view::npos;
+}
+
+std::optional<std::string> FamilyLanguageField(const glz::json_t& family_config) {
+  if (family_config.contains("language") && family_config["language"].is_string()) {
+    return family_config["language"].get<std::string>();
+  }
+  if (family_config.contains("src_lang") && family_config["src_lang"].is_string()) {
+    return family_config["src_lang"].get<std::string>();
+  }
+  return std::nullopt;
+}
+
 std::vector<std::string> SplitModelId(std::string_view model_id) {
-  if (model_id.empty() || model_id == "." || model_id == ".." ||
-      model_id.find('/') != std::string_view::npos ||
+  if (!IsValidModelSegment(model_id) || model_id.find('/') != std::string_view::npos ||
       model_id.find('\\') != std::string_view::npos) {
     return {};
   }
@@ -46,7 +73,7 @@ std::vector<std::string> SplitModelId(std::string_view model_id) {
   std::vector<std::string> raw_segments;
   raw_segments.reserve(tokens.size());
   for (const auto& token : tokens) {
-    if (token.empty() || token == "." || token == "..") {
+    if (!IsValidModelSegment(token)) {
       return {};
     }
     raw_segments.emplace_back(token);
@@ -65,6 +92,43 @@ std::vector<std::string> SplitModelId(std::string_view model_id) {
   }
 
   return {"model", source, name};
+}
+
+// Scan one engine directory for installed models. Kept separate from
+// ForEachInstalledModelDir so the two traversal levels never nest lexically.
+template <typename Fn>
+void ForEachModelInEngineDir(const fs::path& engine_dir, const std::string& engine_name, Fn fn) {
+  std::error_code ec;
+  for (const auto& model_entry : fs::directory_iterator(engine_dir, ec)) {
+    if (ec) {
+      ec.clear();
+      break;
+    }
+    if (!model_entry.is_directory(ec) || ec) {
+      ec.clear();
+      continue;
+    }
+    const auto& model_dir = model_entry.path();
+    const std::string model_name = model_dir.filename().string();
+    if (model_name.empty() || model_name == "." || model_name == ".." ||
+        model_name.front() == '.') {
+      continue;
+    }
+
+    const fs::path relative_path = fs::path(engine_name) / model_name;
+    const std::string model_id = ModelManager::IdFromRelativePath(relative_path);
+    if (model_id.empty()) {
+      continue;
+    }
+
+    const fs::path json_path = model_dir / "vinput-model.json";
+    if (!fs::is_regular_file(json_path, ec) || ec) {
+      ec.clear();
+      continue;
+    }
+
+    fn(model_id, model_dir, json_path);
+  }
 }
 
 // Walk only the install layout produced by ModelRepository::InstallModel:
@@ -92,36 +156,7 @@ template <typename Fn> void ForEachInstalledModelDir(const std::string& base_dir
       continue;
     }
 
-    for (const auto& model_entry : fs::directory_iterator(engine_dir, ec)) {
-      if (ec) {
-        ec.clear();
-        break;
-      }
-      if (!model_entry.is_directory(ec) || ec) {
-        ec.clear();
-        continue;
-      }
-      const auto& model_dir = model_entry.path();
-      const std::string model_name = model_dir.filename().string();
-      if (model_name.empty() || model_name == "." || model_name == ".." ||
-          model_name.front() == '.') {
-        continue;
-      }
-
-      const fs::path relative_path = fs::path(engine_name) / model_name;
-      const std::string model_id = ModelManager::IdFromRelativePath(relative_path);
-      if (model_id.empty()) {
-        continue;
-      }
-
-      const fs::path json_path = model_dir / "vinput-model.json";
-      if (!fs::is_regular_file(json_path, ec) || ec) {
-        ec.clear();
-        continue;
-      }
-
-      fn(model_id, model_dir, json_path);
-    }
+    ForEachModelInEngineDir(engine_dir, engine_name, fn);
   }
 }
 
@@ -209,6 +244,66 @@ bool FamilyUsesTokenizerAsset(std::string_view family) {
   return family == "funasr_nano" || family == "qwen3_asr";
 }
 
+void ApplyLmConfig(const fs::path& dir, const fs::path& model_root, ModelInfo* info) {
+  if (const auto* lm_config = vinput::json::Find(info->recognizer_config, "lm_config");
+      lm_config != nullptr && lm_config->is_object()) {
+    ResolveModelFileField(dir, model_root, *lm_config, "model", "lm", info);
+    AddScalarParam(&info->params, "lm_scale", *lm_config, "scale", 0.0);
+  }
+}
+
+void PopulateRecognizerParams(const fs::path& dir, const fs::path& model_root, ModelInfo* info) {
+  ResolveModelFileField(dir, model_root, info->recognizer_config, "hotwords_file", "hotwords_file",
+                        info);
+  ResolveModelFileField(dir, model_root, info->recognizer_config, "rule_fsts", "rule_fsts", info);
+  ResolveModelFileField(dir, model_root, info->recognizer_config, "rule_fars", "rule_fars", info);
+  if (const auto* ctc_config =
+          vinput::json::Find(info->recognizer_config, "ctc_fst_decoder_config");
+      ctc_config != nullptr && ctc_config->is_object()) {
+    ResolveModelFileField(dir, model_root, *ctc_config, "graph", "graph", info);
+    AddScalarParam(&info->params, "ctc_fst_max_active", *ctc_config, "max_active", 0);
+  }
+  if (const auto* hr_config = vinput::json::Find(info->recognizer_config, "hr");
+      hr_config != nullptr && hr_config->is_object()) {
+    ResolveModelFileField(dir, model_root, *hr_config, "lexicon", "hr_lexicon", info);
+    ResolveModelFileField(dir, model_root, *hr_config, "rule_fsts", "hr_rule_fsts", info);
+  }
+  AddScalarParam(&info->params, "decoding_method", info->recognizer_config, "decoding_method",
+                 std::string{});
+  AddScalarParam(&info->params, "max_active_paths", info->recognizer_config, "max_active_paths", 0);
+  AddScalarParam(&info->params, "enable_endpoint", info->recognizer_config, "enable_endpoint", 0);
+  AddScalarParam(&info->params, "rule1_min_trailing_silence", info->recognizer_config,
+                 "rule1_min_trailing_silence", 0.0);
+  AddScalarParam(&info->params, "rule2_min_trailing_silence", info->recognizer_config,
+                 "rule2_min_trailing_silence", 0.0);
+  AddScalarParam(&info->params, "rule3_min_utterance_length", info->recognizer_config,
+                 "rule3_min_utterance_length", 0.0);
+  AddScalarParam(&info->params, "hotwords_score", info->recognizer_config, "hotwords_score", 0.0);
+  AddScalarParam(&info->params, "blank_penalty", info->recognizer_config, "blank_penalty", 0.0);
+}
+
+void ApplyModelScalarParams(ModelInfo* info) {
+  AddScalarParam(&info->params, "num_threads", info->model_config, "num_threads", 0);
+  AddScalarParam(&info->params, "debug", info->model_config, "debug", 0);
+  AddScalarParam(&info->params, "provider", info->model_config, "provider", std::string{});
+  AddScalarParam(&info->params, "model_type", info->model_config, "model_type", std::string{});
+  AddScalarParam(&info->params, "modeling_unit", info->model_config, "modeling_unit",
+                 std::string{});
+}
+
+void ApplyFamilyConfig(const fs::path& dir, const fs::path& model_root, ModelInfo* info) {
+  const auto& model_config = info->model_config;
+  if (const auto* family_config = vinput::json::Find(model_config, info->family);
+      family_config != nullptr && family_config->is_object()) {
+    for (const auto& [key, value] : family_config->get_object()) {
+      if (value.is_string()) {
+        ResolveModelFileField(dir, model_root, *family_config, key, key, info);
+      }
+      AddScalarParam(&info->params, key, value);
+    }
+  }
+}
+
 vinput::Expected<ModelInfo> ParseModelJson(const fs::path& dir, const fs::path& json_path) {
   ModelInfo info;
   std::ifstream file(json_path);
@@ -248,54 +343,10 @@ vinput::Expected<ModelInfo> ParseModelJson(const fs::path& dir, const fs::path& 
   ResolveModelFileField(dir, model_root, info.model_config, "telespeech_ctc", "telespeech_ctc",
                         &info);
 
-  if (const auto* lm_config = vinput::json::Find(info.recognizer_config, "lm_config");
-      lm_config != nullptr && lm_config->is_object()) {
-    ResolveModelFileField(dir, model_root, *lm_config, "model", "lm", &info);
-    AddScalarParam(&info.params, "lm_scale", *lm_config, "scale", 0.0);
-  }
-  ResolveModelFileField(dir, model_root, info.recognizer_config, "hotwords_file", "hotwords_file",
-                        &info);
-  ResolveModelFileField(dir, model_root, info.recognizer_config, "rule_fsts", "rule_fsts", &info);
-  ResolveModelFileField(dir, model_root, info.recognizer_config, "rule_fars", "rule_fars", &info);
-  if (const auto* ctc_config = vinput::json::Find(info.recognizer_config, "ctc_fst_decoder_config");
-      ctc_config != nullptr && ctc_config->is_object()) {
-    ResolveModelFileField(dir, model_root, *ctc_config, "graph", "graph", &info);
-    AddScalarParam(&info.params, "ctc_fst_max_active", *ctc_config, "max_active", 0);
-  }
-  if (const auto* hr_config = vinput::json::Find(info.recognizer_config, "hr");
-      hr_config != nullptr && hr_config->is_object()) {
-    ResolveModelFileField(dir, model_root, *hr_config, "lexicon", "hr_lexicon", &info);
-    ResolveModelFileField(dir, model_root, *hr_config, "rule_fsts", "hr_rule_fsts", &info);
-  }
-
-  AddScalarParam(&info.params, "decoding_method", info.recognizer_config, "decoding_method",
-                 std::string{});
-  AddScalarParam(&info.params, "max_active_paths", info.recognizer_config, "max_active_paths", 0);
-  AddScalarParam(&info.params, "enable_endpoint", info.recognizer_config, "enable_endpoint", 0);
-  AddScalarParam(&info.params, "rule1_min_trailing_silence", info.recognizer_config,
-                 "rule1_min_trailing_silence", 0.0);
-  AddScalarParam(&info.params, "rule2_min_trailing_silence", info.recognizer_config,
-                 "rule2_min_trailing_silence", 0.0);
-  AddScalarParam(&info.params, "rule3_min_utterance_length", info.recognizer_config,
-                 "rule3_min_utterance_length", 0.0);
-  AddScalarParam(&info.params, "hotwords_score", info.recognizer_config, "hotwords_score", 0.0);
-  AddScalarParam(&info.params, "blank_penalty", info.recognizer_config, "blank_penalty", 0.0);
-
-  AddScalarParam(&info.params, "num_threads", info.model_config, "num_threads", 0);
-  AddScalarParam(&info.params, "debug", info.model_config, "debug", 0);
-  AddScalarParam(&info.params, "provider", info.model_config, "provider", std::string{});
-  AddScalarParam(&info.params, "model_type", info.model_config, "model_type", std::string{});
-  AddScalarParam(&info.params, "modeling_unit", info.model_config, "modeling_unit", std::string{});
-
-  if (const auto* family_config = vinput::json::Find(info.model_config, info.family);
-      family_config != nullptr && family_config->is_object()) {
-    for (const auto& [key, value] : family_config->get_object()) {
-      if (value.is_string()) {
-        ResolveModelFileField(dir, model_root, *family_config, key, key, &info);
-      }
-      AddScalarParam(&info.params, key, value);
-    }
-  }
+  ApplyLmConfig(dir, model_root, &info);
+  PopulateRecognizerParams(dir, model_root, &info);
+  ApplyModelScalarParams(&info);
+  ApplyFamilyConfig(dir, model_root, &info);
 
   return info;
 }
@@ -337,30 +388,13 @@ bool HasModelFiles(const ModelInfo& info) {
 } // namespace
 
 std::string ModelInfo::RuntimeLanguageHint() const {
-  auto looks_like_runtime_hint = [](std::string_view value) {
-    if (value.empty()) {
-      return false;
-    }
-    for (const char c : value) {
-      const bool ok = (c >= 'a' && c <= 'z') || c == '-' || c == '_';
-      if (!ok) {
-        return false;
-      }
-    }
-    return value != "multilingual" && value.find('_') == std::string_view::npos;
-  };
-
   if (model_config.contains(family) && model_config[family].is_object()) {
-    const auto& family_config = model_config[family];
-    if (family_config.contains("language") && family_config["language"].is_string()) {
-      return family_config["language"].get<std::string>();
-    }
-    if (family_config.contains("src_lang") && family_config["src_lang"].is_string()) {
-      return family_config["src_lang"].get<std::string>();
+    if (auto hint = FamilyLanguageField(model_config[family]); hint.has_value()) {
+      return *hint;
     }
   }
 
-  if (looks_like_runtime_hint(language)) {
+  if (LooksLikeRuntimeLanguage(language)) {
     return language;
   }
 

@@ -1,5 +1,6 @@
 #include "common/notify/notification_bridge.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <functional>
@@ -107,14 +108,20 @@ struct NotificationBridge::Impl {
       return (now - item.second.timestamp) >= dedup_window_;
     });
 
-    while (dedup_cache_.size() > kMaxDedupCacheSize) {
-      auto oldest = dedup_cache_.begin();
-      for (auto it = dedup_cache_.begin(); it != dedup_cache_.end(); ++it) {
-        if (it->second.timestamp < oldest->second.timestamp) {
-          oldest = it;
-        }
-      }
-      dedup_cache_.erase(oldest);
+    if (dedup_cache_.size() <= kMaxDedupCacheSize) {
+      return;
+    }
+    const std::size_t excess = dedup_cache_.size() - kMaxDedupCacheSize;
+    std::vector<std::unordered_map<std::string, DedupEntry>::iterator> entries;
+    entries.reserve(dedup_cache_.size());
+    for (auto it = dedup_cache_.begin(); it != dedup_cache_.end(); ++it) {
+      entries.push_back(it);
+    }
+    std::nth_element(
+        entries.begin(), entries.begin() + static_cast<std::ptrdiff_t>(excess), entries.end(),
+        [](const auto& a, const auto& b) { return a->second.timestamp < b->second.timestamp; });
+    for (std::size_t i = 0; i < excess; ++i) {
+      dedup_cache_.erase(entries[i]);
     }
   }
 
