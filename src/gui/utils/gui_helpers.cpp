@@ -27,6 +27,7 @@
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qmessagebox.h>
 #include <QtWidgets/qspinbox.h>
 #include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qtextedit.h>
@@ -79,6 +80,38 @@ bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
     on_accepted();
   }
   return true;
+}
+
+bool RunValidatingFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
+                             const std::function<bool(QString* error)>& validator) {
+  if (form == nullptr) {
+    return false;
+  }
+  QDialog dialog(parent);
+  dialog.setWindowTitle(title);
+
+  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  if (validator) {
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&dialog, &validator]() {
+      QString error;
+      if (!validator(&error)) {
+        if (!error.isEmpty()) {
+          QMessageBox::warning(&dialog, dialog.windowTitle(), error);
+        }
+        return;
+      }
+      dialog.accept();
+    });
+  } else {
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  }
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+  auto* dlgLayout = new QVBoxLayout(&dialog);
+  dlgLayout->addLayout(form);
+  dlgLayout->addWidget(buttons);
+
+  return dialog.exec() == QDialog::Accepted;
 }
 
 bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
