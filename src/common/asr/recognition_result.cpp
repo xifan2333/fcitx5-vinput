@@ -46,6 +46,35 @@ template <> struct glz::meta<WirePayload> {
       object("commit_text", &WirePayload::commit_text, "candidates", &WirePayload::candidates);
 };
 
+namespace {
+
+std::vector<vinput::result::Candidate>
+ExtractValidCandidates(std::vector<WireCandidate> wire_candidates) {
+  std::vector<vinput::result::Candidate> result;
+  result.reserve(wire_candidates.size());
+  for (auto& candidate : wire_candidates) {
+    if (candidate.text.has_value() && !candidate.text->empty()) {
+      result.push_back(vinput::result::Candidate{
+          .text = std::move(*candidate.text),
+          .source = candidate.source.value_or(""),
+      });
+    }
+  }
+  return result;
+}
+
+void NormalizePayload(vinput::result::Payload& payload) {
+  if (payload.commitText.empty() && !payload.candidates.empty()) {
+    payload.commitText = payload.candidates.front().text;
+  }
+  if (payload.candidates.empty() && !payload.commitText.empty()) {
+    payload.candidates.push_back(vinput::result::Candidate{.text = payload.commitText,
+                                                           .source = vinput::result::kSourceRaw});
+  }
+}
+
+} // namespace
+
 namespace vinput::result {
 
 std::string Serialize(const Payload& payload) {
@@ -73,26 +102,11 @@ Payload Parse(std::string_view payload_text) {
   if (wire.commit_text.has_value()) {
     payload.commitText = std::move(*wire.commit_text);
   }
-
   if (wire.candidates.has_value()) {
-    payload.candidates.reserve(wire.candidates->size());
-    for (auto& candidate : *wire.candidates) {
-      if (candidate.text.has_value() && !candidate.text->empty()) {
-        payload.candidates.push_back(Candidate{
-            .text = std::move(*candidate.text),
-            .source = candidate.source.value_or(""),
-        });
-      }
-    }
+    payload.candidates = ExtractValidCandidates(std::move(*wire.candidates));
   }
 
-  if (payload.commitText.empty() && !payload.candidates.empty()) {
-    payload.commitText = payload.candidates.front().text;
-  }
-
-  if (payload.candidates.empty() && !payload.commitText.empty()) {
-    payload.candidates.push_back(Candidate{.text = payload.commitText, .source = kSourceRaw});
-  }
+  NormalizePayload(payload);
 
   if (payload.commitText.empty() && payload.candidates.empty()) {
     return {};
