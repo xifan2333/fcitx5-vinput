@@ -47,8 +47,10 @@ runner minutes.
 
 ## Slice Size
 
-Keep a functional diff under 300 lines. A larger change splits into stacked
-PRs, each anchored to its own child Issue.
+Scope each PR around logical cohesion and a single responsibility rather than
+an arbitrary line count. Split only when changes cross independent architectural
+boundaries, or when separating steps makes review and rollback substantially
+cleaner. Avoid artificial fragmentation solely to satisfy an arbitrary size limit.
 
 ## Quota
 
