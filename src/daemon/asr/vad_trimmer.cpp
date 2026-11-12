@@ -37,6 +37,75 @@ void FeedWaveformToVad(vinput::daemon::asr::sherpa::VoiceActivityDetector& vad,
   vad.Flush();
 }
 
+struct DetectedSegment {
+  int64_t start = 0;
+  int64_t end = 0;
+};
+
+std::vector<DetectedSegment>
+CollectDetectedSegments(vinput::daemon::asr::sherpa::VoiceActivityDetector& vad) {
+  std::vector<DetectedSegment> detected;
+  while (!vad.Empty()) {
+    auto seg = vad.Front();
+    vad.Pop();
+    if (!seg.samples.empty()) {
+      const int64_t seg_start = seg.start;
+      const int64_t seg_end = seg_start + static_cast<int64_t>(seg.samples.size());
+      detected.push_back({seg_start, seg_end});
+    }
+  }
+  return detected;
+}
+
+int64_t ComputeTrailingCutEnd(std::size_t i, const std::vector<DetectedSegment>& detected,
+                              int64_t total_n, int64_t padding_samples) {
+  const int64_t raw_end = detected[i].end;
+  if (i + 1 >= detected.size()) {
+    return std::min(total_n, raw_end + padding_samples);
+  }
+  const int64_t next_raw_start = detected[i + 1].start;
+  const int64_t gap = next_raw_start - raw_end;
+  if (gap >= 2 * padding_samples) {
+    return raw_end + padding_samples;
+  }
+  if (gap > 0) {
+    return raw_end + (gap / 2);
+  }
+  return raw_end;
+}
+
+std::vector<std::vector<float>> ExtractPaddedSegments(const std::vector<float>& samples,
+                                                      const std::vector<DetectedSegment>& detected,
+                                                      int64_t padding_samples, int64_t total_n) {
+  std::vector<std::vector<float>> raw_segments;
+  raw_segments.reserve(detected.size());
+
+  int64_t last_cut_end = 0;
+  for (std::size_t i = 0; i < detected.size(); ++i) {
+    const int64_t raw_start = detected[i].start;
+    const int64_t cut_start = std::max({last_cut_end, int64_t{0}, raw_start - padding_samples});
+    const int64_t unconstrained_cut_end =
+        ComputeTrailingCutEnd(i, detected, total_n, padding_samples);
+    const int64_t cut_end = std::clamp(unconstrained_cut_end, cut_start, total_n);
+    last_cut_end = cut_end;
+
+    if (cut_end > cut_start) {
+      raw_segments.emplace_back(samples.begin() + static_cast<std::ptrdiff_t>(cut_start),
+                                samples.begin() + static_cast<std::ptrdiff_t>(cut_end));
+    }
+  }
+  return raw_segments;
+}
+
+constexpr float kDefaultMaxSpeechDurationSec = 15.0F;
+
+float ResolveMaxSpeechDuration(float param_val) noexcept {
+  if (param_val > 0.0F && !std::isnan(param_val) && !std::isinf(param_val)) {
+    return param_val;
+  }
+  return kDefaultMaxSpeechDurationSec;
+}
+
 } // namespace
 
 VadTrimmer::VadTrimmer() = default;
@@ -164,21 +233,7 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
   const auto total_n = static_cast<int64_t>(samples.size());
   FeedWaveformToVad(vad, samples);
 
-  struct DetectedSegment {
-    int64_t start = 0;
-    int64_t end = 0;
-  };
-  std::vector<DetectedSegment> detected;
-  while (!vad.Empty()) {
-    auto seg = vad.Front();
-    vad.Pop();
-    if (!seg.samples.empty()) {
-      const int64_t seg_start = seg.start;
-      const int64_t seg_end = seg_start + static_cast<int64_t>(seg.samples.size());
-      detected.push_back({seg_start, seg_end});
-    }
-  }
-
+  const auto detected = CollectDetectedSegments(vad);
   if (detected.empty()) {
     VLOG_DEBUG("VAD found no speech segments in {} samples", total_n);
     return {};
@@ -188,48 +243,8 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
   const int64_t padding_samples =
       std::max(int64_t{0}, static_cast<int64_t>(params_.speech_pad_ms) * effective_sr / 1000);
 
-  std::vector<std::vector<float>> raw_segments;
-  raw_segments.reserve(detected.size());
-
-  int64_t last_cut_end = 0;
-  const auto detected_count = detected.size();
-  for (std::size_t i = 0; i < detected_count; ++i) {
-    const int64_t raw_start = detected[i].start;
-    const int64_t raw_end = detected[i].end;
-
-    // Expand leading boundary with speech_pad_ms, preventing cross-segment overlap
-    const int64_t cut_start = std::max({last_cut_end, int64_t{0}, raw_start - padding_samples});
-
-    // Expand trailing boundary with speech_pad_ms, fairly sharing inter-segment gaps
-    int64_t cut_end = [&] {
-      if (i + 1 >= detected_count) {
-        return std::min(total_n, raw_end + padding_samples);
-      }
-      const int64_t next_raw_start = detected[i + 1].start;
-      const int64_t gap = next_raw_start - raw_end;
-      if (gap >= 2 * padding_samples) {
-        return raw_end + padding_samples;
-      }
-      if (gap > 0) {
-        return raw_end + (gap / 2);
-      }
-      return raw_end;
-    }();
-
-    cut_end = std::clamp(cut_end, cut_start, total_n);
-    last_cut_end = cut_end;
-
-    if (cut_end > cut_start) {
-      raw_segments.emplace_back(samples.begin() + static_cast<std::ptrdiff_t>(cut_start),
-                                samples.begin() + static_cast<std::ptrdiff_t>(cut_end));
-    }
-  }
-
-  const float max_duration =
-      (params_.max_speech_duration > 0.0F && !std::isnan(params_.max_speech_duration) &&
-       !std::isinf(params_.max_speech_duration))
-          ? params_.max_speech_duration
-          : 15.0F;
+  auto raw_segments = ExtractPaddedSegments(samples, detected, padding_samples, total_n);
+  const float max_duration = ResolveMaxSpeechDuration(params_.max_speech_duration);
   auto final_segments =
       CoalesceAndSliceSegments(std::move(raw_segments), effective_sr, max_duration, 0.50F);
 
