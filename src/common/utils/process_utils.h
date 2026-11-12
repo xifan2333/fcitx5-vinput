@@ -100,6 +100,45 @@ TerminateResult TerminateGracefully(pid_t pid, std::uint64_t start_time,
                                     std::chrono::milliseconds graceful_timeout,
                                     std::chrono::milliseconds force_timeout);
 
+namespace detail {
+
+constexpr std::string_view StripTrailingCr(std::string_view s) noexcept {
+  if (!s.empty() && s.back() == '\r') {
+    s.remove_suffix(1);
+  }
+  return s;
+}
+
+template <typename Callback> bool DeliverLine(Callback& on_line, std::string_view line) {
+  if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
+    on_line(line);
+    return true;
+  } else {
+    return static_cast<bool>(on_line(line));
+  }
+}
+
+template <typename Callback>
+bool DrainDelimitedLines(std::string& buffer, Callback& on_line, size_t& processed) {
+  size_t start = 0;
+  while (start < buffer.size()) {
+    const size_t end = buffer.find('\n', start);
+    if (end == std::string::npos) {
+      break;
+    }
+    const std::string_view raw(buffer.data() + start, end - start);
+    start = end + 1;
+    processed = start;
+
+    if (!DeliverLine(on_line, StripTrailingCr(raw))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+} // namespace detail
+
 // Drains complete newline-terminated lines out of an incrementally filled
 // process output buffer, leaving any unterminated tail in place. A trailing
 // '\r' is stripped so CRLF streams behave like LF ones. When `flush_tail` is
@@ -107,49 +146,15 @@ TerminateResult TerminateGracefully(pid_t pid, std::uint64_t start_time,
 // buffer is cleared. A callback returning `false` stops draining immediately.
 template <typename Callback>
 void DrainLinesFromBuffer(std::string& buffer, Callback on_line, bool flush_tail = false) {
-  // 归一化回调结果：返回 void 的回调视为“继续”，返回 bool 的回调按其值决定
-  const auto deliver = [&on_line](std::string_view line) -> bool {
-    if constexpr (std::is_void_v<std::invoke_result_t<Callback, std::string_view>>) {
-      on_line(line);
-      return true;
-    } else {
-      return static_cast<bool>(on_line(line));
-    }
-  };
-
   size_t processed = 0;
-  size_t start = 0;
-  bool should_stop = false;
-
-  while (start < buffer.size()) {
-    const size_t end = buffer.find('\n', start);
-    if (end == std::string::npos) {
-      break;
-    }
-    size_t len = end - start;
-    if (len > 0 && buffer[start + len - 1] == '\r') {
-      --len;
-    }
-    const std::string_view line(buffer.data() + start, len);
-    start = end + 1;
-    processed = start;
-
-    if (!deliver(line)) {
-      should_stop = true;
-      break;
-    }
-  }
+  const bool drained_fully = detail::DrainDelimitedLines(buffer, on_line, processed);
 
   if (processed > 0) {
     buffer.erase(0, processed);
   }
 
-  if (flush_tail && !should_stop && !buffer.empty()) {
-    std::string_view tail(buffer);
-    if (tail.back() == '\r') {
-      tail.remove_suffix(1);
-    }
-    (void)deliver(tail);
+  if (flush_tail && drained_fully && !buffer.empty()) {
+    (void)detail::DeliverLine(on_line, detail::StripTrailingCr(buffer));
     buffer.clear();
   }
 }
