@@ -57,33 +57,9 @@ struct GuiHelpers {
 };
 } // namespace
 
-bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
-                   const std::function<void()>& on_accepted) {
-  if (form == nullptr) {
-    return false;
-  }
-  QDialog dialog(parent);
-  dialog.setWindowTitle(title);
-
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-  QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-  auto* dlgLayout = new QVBoxLayout(&dialog);
-  dlgLayout->addLayout(form);
-  dlgLayout->addWidget(buttons);
-
-  if (dialog.exec() != QDialog::Accepted) {
-    return false;
-  }
-  if (on_accepted) {
-    on_accepted();
-  }
-  return true;
-}
-
 bool RunValidatingFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
-                             const std::function<bool(QString* error)>& validator) {
+                             const std::function<bool(QString* error)>& validator,
+                             const QString& error_title) {
   if (form == nullptr) {
     return false;
   }
@@ -92,16 +68,18 @@ bool RunValidatingFormDialog(QWidget* parent, const QString& title, QFormLayout*
 
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
   if (validator) {
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&dialog, &validator]() {
-      QString error;
-      if (!validator(&error)) {
-        if (!error.isEmpty()) {
-          QMessageBox::warning(&dialog, dialog.windowTitle(), error);
-        }
-        return;
-      }
-      dialog.accept();
-    });
+    QObject::connect(
+        buttons, &QDialogButtonBox::accepted, &dialog, [&dialog, &validator, &error_title]() {
+          QString error;
+          if (!validator(&error)) {
+            if (!error.isEmpty()) {
+              const QString dlg_title = error_title.isEmpty() ? dialog.windowTitle() : error_title;
+              QMessageBox::warning(&dialog, dlg_title, error);
+            }
+            return;
+          }
+          dialog.accept();
+        });
   } else {
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
   }
@@ -112,6 +90,16 @@ bool RunValidatingFormDialog(QWidget* parent, const QString& title, QFormLayout*
   dlgLayout->addWidget(buttons);
 
   return dialog.exec() == QDialog::Accepted;
+}
+
+bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
+                   const std::function<void()>& on_accepted) {
+  return RunValidatingFormDialog(parent, title, form, [&](QString* /*error*/) {
+    if (on_accepted) {
+      on_accepted();
+    }
+    return true;
+  });
 }
 
 bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
