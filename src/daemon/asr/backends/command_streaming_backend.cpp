@@ -305,9 +305,7 @@ private:
       switch (event.kind) {
       case vinput::process::ChildEventKind::StdoutChunk: {
         stdout_buffer_.reserve(stdout_buffer_.size() + event.data.size());
-        for (const auto b : event.data) {
-          stdout_buffer_.push_back(static_cast<char>(b));
-        }
+        stdout_buffer_.append(reinterpret_cast<const char*>(event.data.data()), event.data.size());
         ConsumeStdoutLines(error);
         if (error != nullptr && !error->empty()) {
           return false;

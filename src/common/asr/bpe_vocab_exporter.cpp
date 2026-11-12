@@ -134,11 +134,7 @@ Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> mess
       if (!value.has_value()) {
         return UnexpectedError("invalid length-delimited string in piece record");
       }
-      record.piece.clear();
-      record.piece.reserve(value->size());
-      for (const auto b : *value) {
-        record.piece.push_back(static_cast<char>(b));
-      }
+      record.piece = std::string_view{reinterpret_cast<const char*>(value->data()), value->size()};
       found_piece = true;
     } else if (field == 2 && wire == 5) {
       const auto s = reader.ReadFloat();
