@@ -10,6 +10,7 @@
 #include <glaze/json/write.hpp>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -180,66 +181,96 @@ inline const glz::json_t& Object(const glz::json_t& object, std::string_view key
 // Glaze's reader stops after the first complete JSON value, so a document such
 // as `{"a":1} junk` would otherwise parse successfully. User supplied JSON is
 // validated to hold exactly one value before it reaches the reader.
-inline bool IsSingleJsonValue(std::string_view text) {
-  std::size_t pos = 0;
+namespace detail {
+
+inline std::size_t SkipWhitespace(std::string_view text, std::size_t pos) noexcept {
   while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos])) != 0) {
     ++pos;
   }
-  if (pos >= text.size()) {
-    return false;
-  }
+  return pos;
+}
 
+inline std::optional<std::size_t> ScanQuotedString(std::string_view text,
+                                                   std::size_t pos) noexcept {
+  if (pos >= text.size() || text[pos] != '"') {
+    return std::nullopt;
+  }
+  for (++pos; pos < text.size(); ++pos) {
+    if (text[pos] == '\\') {
+      ++pos;
+    } else if (text[pos] == '"') {
+      return pos + 1;
+    }
+  }
+  return std::nullopt;
+}
+
+inline int DelimiterDelta(char c) noexcept {
+  if (c == '{' || c == '[') {
+    return 1;
+  }
+  if (c == '}' || c == ']') {
+    return -1;
+  }
+  return 0;
+}
+
+inline std::optional<std::size_t> ScanCompoundValue(std::string_view text,
+                                                    std::size_t pos) noexcept {
+  int depth = 0;
+  while (pos < text.size()) {
+    const char c = text[pos];
+    if (c == '"') {
+      const auto next_pos = ScanQuotedString(text, pos);
+      if (!next_pos.has_value()) {
+        return std::nullopt;
+      }
+      pos = *next_pos;
+      continue;
+    }
+    depth += DelimiterDelta(c);
+    if (depth == 0) {
+      return pos + 1;
+    }
+    if (depth < 0) {
+      return std::nullopt;
+    }
+    ++pos;
+  }
+  return std::nullopt;
+}
+
+inline std::size_t ScanScalarValue(std::string_view text, std::size_t pos) noexcept {
+  while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos])) == 0) {
+    ++pos;
+  }
+  return pos;
+}
+
+inline std::optional<std::size_t> ScanSingleValue(std::string_view text, std::size_t pos) noexcept {
+  if (pos >= text.size()) {
+    return std::nullopt;
+  }
   const char first = text[pos];
   if (first == '{' || first == '[') {
-    int depth = 0;
-    bool in_string = false;
-    for (; pos < text.size(); ++pos) {
-      const char c = text[pos];
-      if (in_string) {
-        if (c == '\\') {
-          ++pos;
-        } else if (c == '"') {
-          in_string = false;
-        }
-        continue;
-      }
-      if (c == '"') {
-        in_string = true;
-      } else if (c == '{' || c == '[') {
-        ++depth;
-      } else if (c == '}' || c == ']') {
-        --depth;
-        if (depth == 0) {
-          ++pos;
-          break;
-        }
-        if (depth < 0) {
-          return false;
-        }
-      }
-    }
-    if (depth != 0 || in_string) {
-      return false;
-    }
-  } else if (first == '"') {
-    for (++pos; pos < text.size(); ++pos) {
-      if (text[pos] == '\\') {
-        ++pos;
-      } else if (text[pos] == '"') {
-        ++pos;
-        break;
-      }
-    }
-  } else {
-    while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos])) == 0) {
-      ++pos;
-    }
+    return ScanCompoundValue(text, pos);
   }
+  if (first == '"') {
+    return ScanQuotedString(text, pos);
+  }
+  return ScanScalarValue(text, pos);
+}
 
-  while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos])) != 0) {
-    ++pos;
+} // namespace detail
+
+inline bool IsSingleJsonValue(std::string_view text) {
+  const std::size_t start = detail::SkipWhitespace(text, 0);
+  const auto end = detail::ScanSingleValue(text, start);
+  if (!end.has_value()) {
+    return false;
   }
-  return pos == text.size();
+  const std::size_t trailing = detail::SkipWhitespace(text, *end);
+  return trailing == text.size();
 }
 
 // Compact JSON text of `value`; empty when serialization fails.

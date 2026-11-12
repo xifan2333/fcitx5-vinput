@@ -158,6 +158,47 @@ void TestLlmProviderJsonObjectRoundTrip() {
   TEST_EXPECT(reloaded.llm.providers[1].json_object == false);
 }
 
+void TestIsSingleJsonValue() {
+  using vinput::json::IsSingleJsonValue;
+
+  // Empty or whitespace-only
+  TEST_EXPECT(!IsSingleJsonValue(""));
+  TEST_EXPECT(!IsSingleJsonValue("   "));
+  TEST_EXPECT(!IsSingleJsonValue("\n\t  \r"));
+
+  // Scalars
+  TEST_EXPECT(IsSingleJsonValue("123"));
+  TEST_EXPECT(IsSingleJsonValue("-45.67"));
+  TEST_EXPECT(IsSingleJsonValue("true"));
+  TEST_EXPECT(IsSingleJsonValue("false"));
+  TEST_EXPECT(IsSingleJsonValue("null"));
+  TEST_EXPECT(IsSingleJsonValue("  \"hello world\"  "));
+  TEST_EXPECT(IsSingleJsonValue(R"("hello \"world\"")"));
+  TEST_EXPECT(IsSingleJsonValue(R"("")"));
+
+  // Invalid or multiple scalars
+  TEST_EXPECT(!IsSingleJsonValue(R"("unclosed)"));
+  TEST_EXPECT(!IsSingleJsonValue(R"("escaped quote \")"));
+  TEST_EXPECT(!IsSingleJsonValue("123 456"));
+  TEST_EXPECT(!IsSingleJsonValue("true false"));
+  TEST_EXPECT(!IsSingleJsonValue("\"foo\" \"bar\""));
+
+  // Objects and arrays
+  TEST_EXPECT(IsSingleJsonValue("{}"));
+  TEST_EXPECT(IsSingleJsonValue("[]"));
+  TEST_EXPECT(IsSingleJsonValue(R"({"a": 1, "b": [true, false, "str"]})"));
+  TEST_EXPECT(IsSingleJsonValue(R"([1, {"nested": "value"} , [3, 4]])"));
+  TEST_EXPECT(IsSingleJsonValue(R"({"key with } brace": "value with \" and { bracket"})"));
+
+  // Multiple or malformed compound values
+  TEST_EXPECT(!IsSingleJsonValue(R"({"a": 1} junk)"));
+  TEST_EXPECT(!IsSingleJsonValue(R"({"a": 1} {"b": 2})"));
+  TEST_EXPECT(!IsSingleJsonValue(R"([1, 2] [3, 4])"));
+  TEST_EXPECT(!IsSingleJsonValue(R"({"a": 1)"));
+  TEST_EXPECT(!IsSingleJsonValue(R"([1, 2)"));
+  TEST_EXPECT(!IsSingleJsonValue(R"({"a": "unclosed string})"));
+}
+
 } // namespace
 
 int main() {
@@ -166,6 +207,7 @@ int main() {
   TestEmptyObjectIsObject();
   TestCoreConfigRoundTrip();
   TestLlmProviderJsonObjectRoundTrip();
+  TestIsSingleJsonValue();
   std::cout << "test_json_access: all assertions passed\n";
   return 0;
 }
