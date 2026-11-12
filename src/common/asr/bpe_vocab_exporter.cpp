@@ -1,5 +1,6 @@
 #include "common/asr/bpe_vocab_exporter.h"
 
+#include <algorithm>
 #include <bit>
 #include <charconv>
 #include <cmath>
@@ -27,15 +28,15 @@ constexpr std::size_t kMaxPieceCount = 1000000;
 constexpr std::size_t kMaxPieceBytes = 1024ULL * 1024;
 constexpr std::size_t kInitialVocabBufferSize = 64ULL * 1024;
 
-// Views the raw model bytes as chars so every text payload is a plain
-// std::string_view / std::string assignment with no byte->char cast.
 class ByteReader {
 public:
-  constexpr explicit ByteReader(std::span<const char> buffer) noexcept : buffer_(buffer) {}
+  constexpr explicit ByteReader(std::span<const std::byte> buffer) noexcept : buffer_(buffer) {}
 
   [[nodiscard]] constexpr bool Empty() const noexcept { return buffer_.empty(); }
   [[nodiscard]] constexpr std::size_t Remaining() const noexcept { return buffer_.size(); }
-  [[nodiscard]] constexpr std::span<const char> RemainingSpan() const noexcept { return buffer_; }
+  [[nodiscard]] constexpr std::span<const std::byte> RemainingSpan() const noexcept {
+    return buffer_;
+  }
 
   std::optional<std::uint64_t> ReadVarint() noexcept {
     std::uint64_t result = 0;
@@ -56,7 +57,7 @@ public:
     return std::nullopt;
   }
 
-  std::optional<std::span<const char>> ReadLengthDelimited() noexcept {
+  std::optional<std::span<const std::byte>> ReadLengthDelimited() noexcept {
     const auto len = ReadVarint();
     if (!len.has_value() || *len > buffer_.size()) {
       return std::nullopt;
@@ -111,7 +112,7 @@ public:
   }
 
 private:
-  std::span<const char> buffer_;
+  std::span<const std::byte> buffer_;
 };
 
 } // namespace
@@ -135,7 +136,10 @@ vinput::Expected<void> ReadPieceField(ByteReader& reader, SentencePieceRecord& r
     if (!value.has_value()) {
       return vinput::UnexpectedError("invalid length-delimited string in piece record");
     }
-    record.piece.assign(value->data(), value->size());
+    record.piece.clear();
+    record.piece.reserve(value->size());
+    std::ranges::transform(*value, std::back_inserter(record.piece),
+                           [](std::byte b) { return static_cast<char>(b); });
     *found_piece = true;
   } else if (field == 2 && wire == 5) {
     const auto score = reader.ReadFloat();
@@ -151,7 +155,7 @@ vinput::Expected<void> ReadPieceField(ByteReader& reader, SentencePieceRecord& r
 
 } // namespace
 
-Expected<SentencePieceRecord> ParseSentencePiece(std::span<const char> message) {
+Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> message) {
   ByteReader reader(message);
   SentencePieceRecord record;
   bool found_piece = false;
@@ -187,33 +191,31 @@ vinput::Expected<std::string> RenderPieceLine(std::string_view piece, float scor
 // skipped. `piece_count` counts rendered records for the caller's limit check.
 vinput::Expected<void> HandleModelProtoField(ByteReader& reader, std::string& output,
                                              std::size_t& piece_count,
-                                             std::string_view model_path) {
+                                             const std::string& model_path) {
   const auto key = reader.ReadVarint();
   if (!key.has_value()) {
-    return vinput::UnexpectedError(std::string("invalid SentencePiece ModelProto: ") + model_path);
+    return vinput::UnexpectedError("invalid SentencePiece ModelProto: " + model_path);
   }
   const auto field = static_cast<std::uint32_t>(*key >> 3);
   const auto wire = static_cast<std::uint32_t>(*key & 7);
   if (field == 1 && wire == 2) {
     const auto message = reader.ReadLengthDelimited();
     if (!message.has_value()) {
-      return vinput::UnexpectedError(std::string("invalid SentencePiece piece record: ") +
-                                     model_path);
+      return vinput::UnexpectedError("invalid SentencePiece piece record: " + model_path);
     }
     auto record = vinput::asr::ParseSentencePiece(*message);
     if (!record) {
-      return vinput::UnexpectedError(std::string("invalid SentencePiece piece record (") +
-                                     record.error() + ") in: " + std::string(model_path));
+      return vinput::UnexpectedError("invalid SentencePiece piece record (" + record.error() +
+                                     ") in: " + model_path);
     }
     auto line = RenderPieceLine(record->piece, record->score);
     if (!line) {
-      return vinput::UnexpectedError(line.error() + " in: " + std::string(model_path));
+      return vinput::UnexpectedError(line.error() + " in: " + model_path);
     }
     output += *line;
     ++piece_count;
   } else if (!reader.SkipField(wire)) {
-    return vinput::UnexpectedError(std::string("unsupported SentencePiece ModelProto field in: ") +
-                                   model_path);
+    return vinput::UnexpectedError("unsupported SentencePiece ModelProto field in: " + model_path);
   }
   return {};
 }
@@ -266,7 +268,7 @@ vinput::Expected<void> ExportSentencePieceVocabulary(const std::filesystem::path
   std::string output_buffer;
   output_buffer.reserve(kInitialVocabBufferSize);
 
-  ByteReader reader(std::span(data.data(), data.size()));
+  ByteReader reader(std::as_bytes(std::span(data.data(), data.size())));
   std::size_t piece_count = 0;
   while (!reader.Empty()) {
     if (auto res = HandleModelProtoField(reader, output_buffer, piece_count, model_path.string());

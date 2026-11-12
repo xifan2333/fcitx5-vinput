@@ -11,6 +11,7 @@
 #include <glaze/json/read.hpp>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -48,14 +49,14 @@ bool LooksLikeRuntimeLanguage(std::string_view value) {
   return value != "multilingual" && value.find('_') == std::string_view::npos;
 }
 
-std::string FamilyLanguageField(const glz::json_t& family_config) {
+std::optional<std::string> FamilyLanguageField(const glz::json_t& family_config) {
   if (family_config.contains("language") && family_config["language"].is_string()) {
     return family_config["language"].get<std::string>();
   }
   if (family_config.contains("src_lang") && family_config["src_lang"].is_string()) {
     return family_config["src_lang"].get<std::string>();
   }
-  return {};
+  return std::nullopt;
 }
 
 std::vector<std::string> SplitModelId(std::string_view model_id) {
@@ -388,9 +389,8 @@ bool HasModelFiles(const ModelInfo& info) {
 
 std::string ModelInfo::RuntimeLanguageHint() const {
   if (model_config.contains(family) && model_config[family].is_object()) {
-    const auto hint = FamilyLanguageField(model_config[family]);
-    if (!hint.empty()) {
-      return hint;
+    if (auto hint = FamilyLanguageField(model_config[family]); hint.has_value()) {
+      return *hint;
     }
   }
 
