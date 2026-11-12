@@ -19,6 +19,50 @@ namespace {
 constexpr std::string_view kFileUriPrefix = "file:///";
 constexpr size_t kMaxPromptFileBytes = 256ULL * 1024ULL; // 256 KiB safety cap
 
+void SetError(std::string* error, std::string_view message) {
+  if (error != nullptr) {
+    *error = message;
+  }
+}
+
+std::optional<std::filesystem::path> ExtractFilePathFromFileUri(std::string_view uri,
+                                                                std::string* error) {
+  if (!IsFileUri(uri)) {
+    SetError(error, "not a file:/// URI");
+    return std::nullopt;
+  }
+  // Strip `file://` (two slashes) but keep the leading `/` of the absolute
+  // path. Result: `/abs/path`.
+  const std::string_view path_view = uri.substr(kFileUriPrefix.size() - 1);
+  if (path_view.empty() || path_view == "/") {
+    SetError(error, "empty path");
+    return std::nullopt;
+  }
+  return std::filesystem::path(path_view);
+}
+
+bool ValidateRegularFilePath(const std::filesystem::path& path, std::string* error) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec)) {
+    SetError(error, ec ? ec.message() : "file does not exist");
+    return false;
+  }
+  if (!std::filesystem::is_regular_file(path, ec)) {
+    SetError(error, "not a regular file");
+    return false;
+  }
+  return true;
+}
+
+void WarnIfTruncated(const std::filesystem::path& path) {
+  std::error_code ec;
+  const auto fsize = std::filesystem::file_size(path, ec);
+  if (!ec && fsize > kMaxPromptFileBytes) {
+    VLOG_DEBUG("prompt_template: file '{}' truncated to {} bytes (cap)", path.string(),
+               kMaxPromptFileBytes);
+  }
+}
+
 } // namespace
 
 bool IsFileUri(std::string_view s) noexcept {
@@ -30,50 +74,23 @@ bool HasInterpolation(std::string_view s) noexcept {
 }
 
 std::optional<std::string> LoadFromFileUri(std::string_view uri, std::string* error) {
-  auto fail = [&](const char* msg) -> std::optional<std::string> {
-    if (error != nullptr) {
-      *error = msg;
-    }
-    return std::nullopt;
-  };
-
-  if (!IsFileUri(uri)) {
-    return fail("not a file:/// URI");
-  }
-  // Strip `file://` (two slashes) but keep the leading `/` of the absolute
-  // path. Result: `/abs/path`.
-  const std::string_view path_view = uri.substr(kFileUriPrefix.size() - 1);
-  if (path_view.empty() || path_view == "/") {
-    return fail("empty path");
-  }
-  const std::filesystem::path path(path_view);
-
-  std::error_code ec;
-  if (!std::filesystem::exists(path, ec)) {
-    if (error != nullptr) {
-      *error = ec ? ec.message() : "file does not exist";
-    }
+  const auto path = ExtractFilePathFromFileUri(uri, error);
+  if (!path.has_value()) {
     return std::nullopt;
   }
-  if (!std::filesystem::is_regular_file(path, ec)) {
-    return fail("not a regular file");
+
+  if (!ValidateRegularFilePath(*path, error)) {
+    return std::nullopt;
   }
 
-  auto read_res = vinput::file::ReadTextFile(path, kMaxPromptFileBytes);
+  auto read_res = vinput::file::ReadTextFile(*path, kMaxPromptFileBytes);
   if (!read_res) {
-    if (error != nullptr) {
-      *error = read_res.error();
-    }
+    SetError(error, read_res.error());
     return std::nullopt;
   }
-  std::string content = std::move(*read_res);
 
-  const auto fsize = std::filesystem::file_size(path, ec);
-  if (!ec && fsize > kMaxPromptFileBytes) {
-    VLOG_DEBUG("prompt_template: file '{}' truncated to {} bytes (cap)", path.string(),
-               kMaxPromptFileBytes);
-  }
-  return content;
+  WarnIfTruncated(*path);
+  return std::move(*read_res);
 }
 
 std::string Interpolate(std::string_view tpl, const Vars& vars) {

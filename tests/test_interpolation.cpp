@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 
+#include "common/utils/file_utils.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
@@ -153,6 +154,47 @@ void TestProcessEnvInterpolation() {
   ExpectEq(std::string(vinput::str::Trim(res.stdout_text)), std::string(path_val));
 }
 
+void TestLoadFromFileUri() {
+  using vinput::prompt_template::IsFileUri;
+  using vinput::prompt_template::LoadFromFileUri;
+
+  ExpectTrue(IsFileUri("file:///path/to/file"));
+  ExpectTrue(!IsFileUri("http:///path/to/file"));
+  ExpectTrue(!IsFileUri("/path/to/file"));
+
+  std::string error;
+  ExpectTrue(!LoadFromFileUri("https://example.com/test", &error).has_value());
+  ExpectEq(error, "not a file:/// URI");
+
+  error.clear();
+  ExpectTrue(!LoadFromFileUri("file:///", &error).has_value());
+  ExpectEq(error, "empty path");
+
+  error.clear();
+  ExpectTrue(
+      !LoadFromFileUri("file:///tmp/definitely_non_existent_file_xyz123.txt", &error).has_value());
+  ExpectTrue(!error.empty());
+
+  // Null error pointer should not crash
+  ExpectTrue(
+      !LoadFromFileUri("file:///tmp/definitely_non_existent_file_xyz123.txt", nullptr).has_value());
+
+  auto temp_dir = vinput::file::ScopedTempDir::Create();
+  ExpectTrue(temp_dir != nullptr);
+  const auto test_file = temp_dir->Path() / "prompt.txt";
+  auto write_res = vinput::file::AtomicWriteTextFile(test_file, "hello from prompt template");
+  ExpectTrue(write_res.has_value());
+
+  error.clear();
+  const std::string file_uri = "file://" + test_file.string();
+  auto loaded = LoadFromFileUri(file_uri, &error);
+  ExpectTrue(loaded.has_value());
+  if (loaded.has_value()) {
+    ExpectEq(*loaded, "hello from prompt template");
+  }
+  ExpectTrue(error.empty());
+}
+
 } // namespace
 
 int main() {
@@ -162,6 +204,7 @@ int main() {
   TestPromptTemplateIntegration();
   TestPerformanceUnmatchedTokens();
   TestProcessEnvInterpolation();
+  TestLoadFromFileUri();
 
   std::cout << "All interpolation tests passed successfully!\n";
   return 0;
