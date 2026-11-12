@@ -62,6 +62,9 @@ bool FailSymlinkResolution(std::string* error, std::string_view message) {
   return false;
 }
 
+bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::path* resolved,
+                            std::string* error, int depth);
+
 Expected<std::filesystem::path> ResolveMissingPathParent(const std::filesystem::path& path,
                                                          int depth) {
   const auto parent = path.parent_path();
@@ -93,7 +96,7 @@ bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::
   if (ec == std::errc::no_such_file_or_directory) {
     auto missing = ResolveMissingPathParent(path, depth);
     if (!missing) {
-      return FailSymlinkResolution(error, missing.error().message);
+      return FailSymlinkResolution(error, missing.error());
     }
     *resolved = std::move(*missing);
     return true;
@@ -168,7 +171,7 @@ Expected<std::string> ComputeFileSha256StreamFallback(const std::filesystem::pat
 Expected<std::filesystem::path> ResolveTempBaseDir(const std::filesystem::path& base_dir) {
   std::error_code ec;
   if (base_dir.empty()) {
-    const auto dir = std::filesystem::temp_directory_path(ec);
+    auto dir = std::filesystem::temp_directory_path(ec);
     if (ec) {
       return UnexpectedError("Failed to determine system temporary directory: " + ec.message());
     }
@@ -240,7 +243,7 @@ std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path
   const auto dir = ResolveTempBaseDir(base_dir);
   if (!dir) {
     if (error != nullptr) {
-      *error = dir.error().message;
+      *error = dir.error();
     }
     return nullptr;
   }
