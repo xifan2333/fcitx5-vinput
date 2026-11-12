@@ -50,6 +50,15 @@ vinput::registry::I18nMap FetchRegistryI18nMap(const CoreConfig& config) {
                                               &error);
 }
 
+glz::json_t::array_t BuildEnvsJsonArray(const std::vector<vinput::script::EnvSpec>& envs) {
+  glz::json_t::array_t result;
+  result.reserve(envs.size());
+  for (const auto& env : envs) {
+    result.emplace_back(glz::json_t::object_t{{"name", env.name}, {"required", env.required}});
+  }
+  return result;
+}
+
 } // namespace
 
 std::string HumanizeResourceId(const std::string& id, const std::string& short_id) {
@@ -283,11 +292,6 @@ void RenderRegistryScriptListJson(const std::vector<vinput::script::RegistryEntr
   glz::json_t::array_t arr;
   arr.reserve(entries.size());
   for (const auto& entry : entries) {
-    glz::json_t::array_t envs;
-    envs.reserve(entry.envs.size());
-    for (const auto& env : entry.envs) {
-      envs.emplace_back(glz::json_t::object_t{{"name", env.name}, {"required", env.required}});
-    }
     const bool installed = is_installed(entry.id);
     const auto ver_info = vinput::script::CheckResourceVersion(manifest, kind, entry, installed);
 
@@ -297,7 +301,7 @@ void RenderRegistryScriptListJson(const std::vector<vinput::script::RegistryEntr
         {"title", display_map.at(entry.id).title},
         {"description", display_map.at(entry.id).description},
         {"readme_url", entry.readme_url},
-        {"envs", glz::json_t(std::move(envs))},
+        {"envs", glz::json_t(BuildEnvsJsonArray(entry.envs))},
         {"status", FormatScriptStatusJson(ver_info.status, installed)},
         {"installed_version", ver_info.installed_version},
         {"remote_version", ver_info.remote_version},

@@ -39,6 +39,23 @@ QStringList TranslationSearchPaths() {
   return paths;
 }
 
+bool TryLoadCandidatesFromRoot(QTranslator& translator, const QString& root,
+                               const QStringList& candidates) {
+  for (const auto& name : candidates) {
+    // System path pattern
+    QString path = QDir(root).filePath("fcitx5-vinput/i18n/" + name + ".qm");
+    if (translator.load(path)) {
+      return true;
+    }
+    // Local path pattern (for running directly from build dir)
+    path = QDir(root).filePath(name + ".qm");
+    if (translator.load(path)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool TryLoadTranslation(QTranslator& translator, const QString& base_name) {
   const QString locale = QLocale::system().name();
   const QStringList candidates = {
@@ -46,17 +63,8 @@ bool TryLoadTranslation(QTranslator& translator, const QString& base_name) {
       base_name + "_" + locale.left(2),
   };
   for (const auto& root : TranslationSearchPaths()) {
-    for (const auto& name : candidates) {
-      // System path pattern
-      QString path = QDir(root).filePath("fcitx5-vinput/i18n/" + name + ".qm");
-      if (translator.load(path)) {
-        return true;
-      }
-      // Local path pattern (for running directly from build dir)
-      path = QDir(root).filePath(name + ".qm");
-      if (translator.load(path)) {
-        return true;
-      }
+    if (TryLoadCandidatesFromRoot(translator, root, candidates)) {
+      return true;
     }
   }
   return false;

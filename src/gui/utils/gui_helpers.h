@@ -47,6 +47,13 @@ enum class ProviderEntryKind : std::uint8_t {
 [[nodiscard]] bool RunFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
                                  const std::function<void()>& on_accepted = {});
 
+// Create and display a modal form dialog with validation on accept.
+// If validator returns false, displays error (if non-empty) and keeps the dialog open.
+// Returns true if the user accepted and validator succeeded.
+[[nodiscard]] bool RunValidatingFormDialog(QWidget* parent, const QString& title, QFormLayout* form,
+                                           const std::function<bool(QString* error)>& validator,
+                                           const QString& error_title = {});
+
 // Parse OpenAI /v1/models JSON payload into a sorted, deduplicated list of model IDs.
 // Returns true on success; on failure returns false and sets error_out if provided.
 [[nodiscard]] bool ParseOpenAiModelsResponse(const QByteArray& payload, QStringList* models_out,
