@@ -55,47 +55,52 @@ std::filesystem::path ResolveRelativeSymlinkTarget(const std::filesystem::path& 
   return (parent / link_target).lexically_normal();
 }
 
-bool ResolveMissingPathParent(const std::filesystem::path& path, std::filesystem::path* resolved,
-                              std::string* error, int depth) {
+bool FailSymlinkResolution(std::string* error, std::string_view message) {
+  if (error != nullptr) {
+    *error = std::string(message);
+  }
+  return false;
+}
+
+Expected<std::filesystem::path> ResolveMissingPathParent(const std::filesystem::path& path,
+                                                         int depth) {
   const auto parent = path.parent_path();
   if (parent.empty()) {
-    *resolved = path;
-    return true;
+    return path;
   }
 
   std::filesystem::path resolved_parent;
-  if (!ResolveSymlinkPathImpl(parent, &resolved_parent, error, depth)) {
-    return false;
+  std::string err;
+  if (!ResolveSymlinkPathImpl(parent, &resolved_parent, &err, depth)) {
+    return UnexpectedError(err);
   }
 
   const auto filename = path.filename();
   if (filename.empty()) {
-    *resolved = resolved_parent;
-  } else {
-    *resolved = (resolved_parent / filename).lexically_normal();
+    return resolved_parent;
   }
-  return true;
+  return (resolved_parent / filename).lexically_normal();
 }
 
 bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::path* resolved,
                             std::string* error, int depth) {
   if (depth >= kMaxSymlinkDepth) {
-    if (error != nullptr) {
-      *error = "Too many symlink levels while resolving " + path.string();
-    }
-    return false;
+    return FailSymlinkResolution(error, "Too many symlink levels while resolving " + path.string());
   }
 
   std::error_code ec;
   const auto status = std::filesystem::symlink_status(path, ec);
   if (ec == std::errc::no_such_file_or_directory) {
-    return ResolveMissingPathParent(path, resolved, error, depth);
+    auto missing = ResolveMissingPathParent(path, depth);
+    if (!missing) {
+      return FailSymlinkResolution(error, missing.error().message);
+    }
+    *resolved = std::move(*missing);
+    return true;
   }
   if (ec) {
-    if (error != nullptr) {
-      *error = "Failed to inspect path " + path.string() + ": " + ec.message();
-    }
-    return false;
+    return FailSymlinkResolution(error,
+                                 "Failed to inspect path " + path.string() + ": " + ec.message());
   }
   if (status.type() != std::filesystem::file_type::symlink) {
     *resolved = path;
@@ -104,10 +109,8 @@ bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::
 
   const auto link_target = std::filesystem::read_symlink(path, ec);
   if (ec) {
-    if (error != nullptr) {
-      *error = "Failed to read symlink " + path.string() + ": " + ec.message();
-    }
-    return false;
+    return FailSymlinkResolution(error,
+                                 "Failed to read symlink " + path.string() + ": " + ec.message());
   }
 
   return ResolveSymlinkPathImpl(ResolveRelativeSymlinkTarget(path, link_target), resolved, error,
@@ -162,25 +165,18 @@ Expected<std::string> ComputeFileSha256StreamFallback(const std::filesystem::pat
   return FinalizeHashToHex(ctx.get());
 }
 
-std::optional<std::filesystem::path> ResolveTempBaseDir(const std::filesystem::path& base_dir,
-                                                        std::string* error) {
+Expected<std::filesystem::path> ResolveTempBaseDir(const std::filesystem::path& base_dir) {
   std::error_code ec;
   if (base_dir.empty()) {
     const auto dir = std::filesystem::temp_directory_path(ec);
     if (ec) {
-      if (error != nullptr) {
-        *error = "Failed to determine system temporary directory: " + ec.message();
-      }
-      return std::nullopt;
+      return UnexpectedError("Failed to determine system temporary directory: " + ec.message());
     }
     return dir;
   }
   std::filesystem::create_directories(base_dir, ec);
   if (ec) {
-    if (error != nullptr) {
-      *error = "Failed to create directory " + base_dir.string() + ": " + ec.message();
-    }
-    return std::nullopt;
+    return UnexpectedError("Failed to create directory " + base_dir.string() + ": " + ec.message());
   }
   return base_dir;
 }
@@ -190,17 +186,6 @@ std::string MakeMkdtempTemplate(const std::filesystem::path& dir, std::string_vi
     return (dir / prefix).string();
   }
   return (dir / (std::string(prefix) + "XXXXXX")).string();
-}
-
-std::optional<Expected<std::string>> CheckZeroByteFileSha256(const std::filesystem::path& path) {
-  std::ifstream probe(path, std::ios::binary);
-  if (!probe.is_open()) {
-    return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
-  }
-  if (probe.peek() == std::ifstream::traits_type::eof()) {
-    return std::string(kEmptyFileSha256);
-  }
-  return std::nullopt;
 }
 
 Expected<std::string> ComputeMappingSha256(const vinput::file::ReadOnlyFileMapping& mapping) {
@@ -252,8 +237,11 @@ ScopedTempDir& ScopedTempDir::operator=(ScopedTempDir&& other) noexcept {
 
 std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path& base_dir,
                                                      std::string_view prefix, std::string* error) {
-  const auto dir = ResolveTempBaseDir(base_dir, error);
-  if (!dir.has_value()) {
+  const auto dir = ResolveTempBaseDir(base_dir);
+  if (!dir) {
+    if (error != nullptr) {
+      *error = dir.error().message;
+    }
     return nullptr;
   }
 
@@ -522,8 +510,12 @@ Expected<std::string> ComputeFileSha256(const std::filesystem::path& path) {
 
   const auto file_size = std::filesystem::file_size(path, fs_ec);
   if (!fs_ec && file_size == 0) {
-    if (auto zero_res = CheckZeroByteFileSha256(path); zero_res.has_value()) {
-      return *zero_res;
+    std::ifstream probe(path, std::ios::binary);
+    if (!probe.is_open()) {
+      return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
+    }
+    if (probe.peek() == std::ifstream::traits_type::eof()) {
+      return std::string(kEmptyFileSha256);
     }
     return ComputeFileSha256StreamFallback(path);
   }

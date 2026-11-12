@@ -49,13 +49,10 @@ template <> struct glz::meta<WirePayload> {
 namespace {
 
 std::vector<vinput::result::Candidate>
-ExtractValidCandidates(std::optional<std::vector<WireCandidate>>& wire_candidates) {
-  if (!wire_candidates.has_value()) {
-    return {};
-  }
+ExtractValidCandidates(std::vector<WireCandidate> wire_candidates) {
   std::vector<vinput::result::Candidate> result;
-  result.reserve(wire_candidates->size());
-  for (auto& candidate : *wire_candidates) {
+  result.reserve(wire_candidates.size());
+  for (auto& candidate : wire_candidates) {
     if (candidate.text.has_value() && !candidate.text->empty()) {
       result.push_back(vinput::result::Candidate{
           .text = std::move(*candidate.text),
@@ -105,7 +102,9 @@ Payload Parse(std::string_view payload_text) {
   if (wire.commit_text.has_value()) {
     payload.commitText = std::move(*wire.commit_text);
   }
-  payload.candidates = ExtractValidCandidates(wire.candidates);
+  if (wire.candidates.has_value()) {
+    payload.candidates = ExtractValidCandidates(std::move(*wire.candidates));
+  }
 
   NormalizePayload(payload);
 

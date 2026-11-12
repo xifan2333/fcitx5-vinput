@@ -118,25 +118,6 @@ template <typename Callback> bool DeliverLine(Callback& on_line, std::string_vie
   }
 }
 
-template <typename Callback>
-bool DrainDelimitedLines(std::string& buffer, Callback& on_line, size_t& processed) {
-  size_t start = 0;
-  while (start < buffer.size()) {
-    const size_t end = buffer.find('\n', start);
-    if (end == std::string::npos) {
-      break;
-    }
-    const std::string_view raw(buffer.data() + start, end - start);
-    start = end + 1;
-    processed = start;
-
-    if (!DeliverLine(on_line, StripTrailingCr(raw))) {
-      return false;
-    }
-  }
-  return true;
-}
-
 } // namespace detail
 
 // Drains complete newline-terminated lines out of an incrementally filled
@@ -147,13 +128,29 @@ bool DrainDelimitedLines(std::string& buffer, Callback& on_line, size_t& process
 template <typename Callback>
 void DrainLinesFromBuffer(std::string& buffer, Callback on_line, bool flush_tail = false) {
   size_t processed = 0;
-  const bool drained_fully = detail::DrainDelimitedLines(buffer, on_line, processed);
+  size_t start = 0;
+  bool should_stop = false;
+
+  while (start < buffer.size()) {
+    const size_t end = buffer.find('\n', start);
+    if (end == std::string::npos) {
+      break;
+    }
+    const std::string_view line(buffer.data() + start, end - start);
+    start = end + 1;
+    processed = start;
+
+    if (!detail::DeliverLine(on_line, detail::StripTrailingCr(line))) {
+      should_stop = true;
+      break;
+    }
+  }
 
   if (processed > 0) {
     buffer.erase(0, processed);
   }
 
-  if (flush_tail && drained_fully && !buffer.empty()) {
+  if (flush_tail && !should_stop && !buffer.empty()) {
     (void)detail::DeliverLine(on_line, detail::StripTrailingCr(buffer));
     buffer.clear();
   }
