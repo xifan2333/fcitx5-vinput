@@ -18,6 +18,8 @@
 #include <fstream>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
+#include <optional>
+#include <string_view>
 
 #include "common/utils/downloader.h"
 #include "common/utils/file_utils.h"
@@ -177,6 +179,49 @@ void MainWindow::onOpenConfigClicked() {
 }
 
 namespace {
+std::optional<std::string_view> FindJsonString(const glz::json_t& node, std::string_view key) {
+  const auto* entry = vinput::json::Find(node, key);
+  if (entry == nullptr) {
+    return std::nullopt;
+  }
+  if (const auto* text = entry->get_if<std::string>()) {
+    return *text;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string_view> FindFirstJsonString(const glz::json_t& node) {
+  const auto* members = node.get_if<glz::json_t::object_t>();
+  if (members == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& [key, value] : *members) {
+    (void)key;
+    if (const auto* text = value.get_if<std::string>()) {
+      return *text;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string_view> ResolveLocalizedText(const glz::json_t& node) {
+  const std::string locale =
+      vinput::locale::NormalizeLocale(QLocale::system().name().toStdString());
+  if (const auto text = FindJsonString(node, locale); text.has_value()) {
+    return text;
+  }
+  const auto lang = std::string(vinput::locale::ExtractLanguageCode(locale));
+  if (lang != locale) {
+    if (const auto text = FindJsonString(node, lang); text.has_value()) {
+      return text;
+    }
+  }
+  if (const auto text = FindJsonString(node, "en"); text.has_value()) {
+    return text;
+  }
+  return FindFirstJsonString(node);
+}
+
 QString localizedString(const glz::json_t* node) {
   if (node == nullptr) {
     return {};
@@ -187,35 +232,60 @@ QString localizedString(const glz::json_t* node) {
   if (!node->is_object()) {
     return {};
   }
-  const std::string locale =
-      vinput::locale::NormalizeLocale(QLocale::system().name().toStdString());
-  if (const auto* entry = vinput::json::Find(*node, locale); entry != nullptr) {
-    if (const auto* text = entry->get_if<std::string>()) {
-      return QString::fromStdString(*text);
-    }
-  }
-  const auto lang = std::string(vinput::locale::ExtractLanguageCode(locale));
-  if (lang != locale) {
-    if (const auto* entry = vinput::json::Find(*node, lang); entry != nullptr) {
-      if (const auto* text = entry->get_if<std::string>()) {
-        return QString::fromStdString(*text);
-      }
-    }
-  }
-  if (const auto* english = vinput::json::Find(*node, "en"); english != nullptr) {
-    if (const auto* text = english->get_if<std::string>()) {
-      return QString::fromStdString(*text);
-    }
-  }
-  if (const auto* members = node->get_if<glz::json_t::object_t>()) {
-    for (const auto& [key, value] : *members) {
-      (void)key;
-      if (const auto* text = value.get_if<std::string>()) {
-        return QString::fromStdString(*text);
-      }
-    }
+  if (const auto text = ResolveLocalizedText(*node); text.has_value()) {
+    return QString::fromUtf8(text->data(), static_cast<int>(text->size()));
   }
   return {};
+}
+
+int ReadLastNotificationId() {
+  const auto read_path = vinput::path::ReadNotificationsPath();
+  int local_id = 0;
+  std::ifstream ifs(read_path);
+  if (ifs) {
+    ifs >> local_id;
+  }
+  return local_id;
+}
+
+struct NotificationPayload {
+  int id{0};
+  QString title;
+  QString text;
+  QString url;
+};
+
+std::optional<std::string> FetchNotificationJson(const std::atomic<bool>* cancel_token) {
+  const std::vector<std::string> urls = {
+      "https://raw.githubusercontent.com/xifan2333/fcitx5-vinput/main/"
+      "notification.json"};
+  std::string content;
+  vinput::download::Options opts;
+  opts.timeout_seconds = 5;
+  opts.cancel_token = cancel_token;
+  if (!vinput::download::DownloadText(urls, opts, &content)) {
+    return std::nullopt;
+  }
+  return content;
+}
+
+std::optional<NotificationPayload> ParseNotificationPayload(std::string_view content) {
+  glz::json_t j;
+  if (bool(glz::read_json(j, content))) {
+    return std::nullopt;
+  }
+
+  const int remote_id = vinput::json::Int(j, "id");
+  if (remote_id <= 0) {
+    return std::nullopt;
+  }
+
+  return NotificationPayload{
+      .id = remote_id,
+      .title = localizedString(vinput::json::Find(j, "title")),
+      .text = localizedString(vinput::json::Find(j, "text")),
+      .url = QString::fromStdString(vinput::json::String(j, "url")),
+  };
 }
 } // namespace
 
@@ -223,51 +293,14 @@ void MainWindow::checkNotification() {
   const QPointer<MainWindow> self(this);
   auto* worker = new vinput::gui::DownloadWorker(this);
   worker->SetTask([self](std::string* /*error*/, const std::atomic<bool>* cancel_token) -> bool {
-    const std::vector<std::string> urls = {
-        "https://raw.githubusercontent.com/xifan2333/fcitx5-vinput/main/"
-        "notification.json"};
-    std::string content;
-    vinput::download::Options opts;
-    opts.timeout_seconds = 5;
-    opts.cancel_token = cancel_token;
-    if (!vinput::download::DownloadText(urls, opts, &content)) {
-      return true; // silent fail or cancelled
-    }
-
-    if (vinput::gui::IsWorkerCancelled(cancel_token)) {
+    const auto content = FetchNotificationJson(cancel_token);
+    if (!content.has_value() || vinput::gui::IsWorkerCancelled(cancel_token)) {
       return true;
     }
 
-    glz::json_t j;
-    if (bool(glz::read_json(j, content))) {
-      return true;
-    }
-
-    const int remote_id = vinput::json::Int(j, "id");
-    if (remote_id <= 0) {
-      return true;
-    }
-
-    // Read local last-read id
-    const auto read_path = vinput::path::ReadNotificationsPath();
-    int local_id = 0;
-    {
-      std::ifstream ifs(read_path);
-      if (ifs) {
-        ifs >> local_id;
-      }
-    }
-
-    if (remote_id <= local_id) {
-      return true;
-    }
-
-    const QString title = localizedString(vinput::json::Find(j, "title"));
-    const QString text = localizedString(vinput::json::Find(j, "text"));
-    const QString url = QString::fromStdString(vinput::json::String(j, "url"));
-    const QString id = QString::number(remote_id);
-
-    if (vinput::gui::IsWorkerCancelled(cancel_token)) {
+    const auto payload = ParseNotificationPayload(*content);
+    if (!payload.has_value() || payload->id <= ReadLastNotificationId() ||
+        vinput::gui::IsWorkerCancelled(cancel_token)) {
       return true;
     }
 
@@ -277,9 +310,10 @@ void MainWindow::checkNotification() {
 
     QMetaObject::invokeMethod(
         self.data(),
-        [self, id, title, text, url]() {
+        [self, notification = *payload]() {
           if (!self.isNull()) {
-            self->onNotificationReady(id, title, text, url);
+            self->onNotificationReady(QString::number(notification.id), notification.title,
+                                      notification.text, notification.url);
           }
         },
         Qt::QueuedConnection);
