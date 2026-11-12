@@ -4,8 +4,22 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <span>
 #include <utility>
 #include <vector>
+
+namespace {
+
+void AppendSplitSegments(std::span<const float> seg, std::size_t max_segment_samples,
+                         std::vector<std::vector<float>>& result) {
+  for (std::size_t offset = 0; offset < seg.size(); offset += max_segment_samples) {
+    const std::size_t slice_len = std::min(max_segment_samples, seg.size() - offset);
+    result.emplace_back(seg.begin() + static_cast<std::ptrdiff_t>(offset),
+                        seg.begin() + static_cast<std::ptrdiff_t>(offset + slice_len));
+  }
+}
+
+} // namespace
 
 std::vector<std::vector<float>>
 CoalesceAndSliceSegments(std::vector<std::vector<float>> raw_segments, int sample_rate,
@@ -39,11 +53,7 @@ CoalesceAndSliceSegments(std::vector<std::vector<float>> raw_segments, int sampl
     }
 
     if (seg.size() > max_segment_samples) {
-      for (std::size_t offset = 0; offset < seg.size(); offset += max_segment_samples) {
-        const std::size_t slice_len = std::min(max_segment_samples, seg.size() - offset);
-        result.emplace_back(seg.begin() + static_cast<std::ptrdiff_t>(offset),
-                            seg.begin() + static_cast<std::ptrdiff_t>(offset + slice_len));
-      }
+      AppendSplitSegments(seg, max_segment_samples, result);
       continue;
     }
 

@@ -67,6 +67,43 @@ std::vector<std::string> SplitModelId(std::string_view model_id) {
   return {"model", source, name};
 }
 
+// Scan one engine directory for installed models. Kept separate from
+// ForEachInstalledModelDir so the two traversal levels never nest lexically.
+template <typename Fn>
+void ForEachModelInEngineDir(const fs::path& engine_dir, const std::string& engine_name, Fn fn) {
+  std::error_code ec;
+  for (const auto& model_entry : fs::directory_iterator(engine_dir, ec)) {
+    if (ec) {
+      ec.clear();
+      break;
+    }
+    if (!model_entry.is_directory(ec) || ec) {
+      ec.clear();
+      continue;
+    }
+    const auto& model_dir = model_entry.path();
+    const std::string model_name = model_dir.filename().string();
+    if (model_name.empty() || model_name == "." || model_name == ".." ||
+        model_name.front() == '.') {
+      continue;
+    }
+
+    const fs::path relative_path = fs::path(engine_name) / model_name;
+    const std::string model_id = ModelManager::IdFromRelativePath(relative_path);
+    if (model_id.empty()) {
+      continue;
+    }
+
+    const fs::path json_path = model_dir / "vinput-model.json";
+    if (!fs::is_regular_file(json_path, ec) || ec) {
+      ec.clear();
+      continue;
+    }
+
+    fn(model_id, model_dir, json_path);
+  }
+}
+
 // Walk only the install layout produced by ModelRepository::InstallModel:
 //   <base>/<engine>/<name>/vinput-model.json
 // corresponding to id model.<engine>.<name>. Never recurse into model file trees.
@@ -92,36 +129,7 @@ template <typename Fn> void ForEachInstalledModelDir(const std::string& base_dir
       continue;
     }
 
-    for (const auto& model_entry : fs::directory_iterator(engine_dir, ec)) {
-      if (ec) {
-        ec.clear();
-        break;
-      }
-      if (!model_entry.is_directory(ec) || ec) {
-        ec.clear();
-        continue;
-      }
-      const auto& model_dir = model_entry.path();
-      const std::string model_name = model_dir.filename().string();
-      if (model_name.empty() || model_name == "." || model_name == ".." ||
-          model_name.front() == '.') {
-        continue;
-      }
-
-      const fs::path relative_path = fs::path(engine_name) / model_name;
-      const std::string model_id = ModelManager::IdFromRelativePath(relative_path);
-      if (model_id.empty()) {
-        continue;
-      }
-
-      const fs::path json_path = model_dir / "vinput-model.json";
-      if (!fs::is_regular_file(json_path, ec) || ec) {
-        ec.clear();
-        continue;
-      }
-
-      fn(model_id, model_dir, json_path);
-    }
+    ForEachModelInEngineDir(engine_dir, engine_name, fn);
   }
 }
 

@@ -25,10 +25,14 @@ std::vector<std::string> ResolveRegistryUrlsForPath(const CoreConfig& config,
     if (baseUrl.empty()) {
       continue;
     }
-    std::string url = baseUrl;
-    while (!url.empty() && url.back() == '/') {
-      url.pop_back();
+    std::string_view base = baseUrl;
+    const auto last_non_slash = base.find_last_not_of('/');
+    if (last_non_slash != std::string_view::npos) {
+      base = base.substr(0, last_non_slash + 1);
+    } else {
+      base = {};
     }
+    std::string url(base);
     url += '/';
     url += suffix;
     if (seen.insert(url).second) {
