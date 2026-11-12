@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -26,24 +27,30 @@ namespace {
 
 constexpr std::uintmax_t kMaxHotwordFileBytes = 1024ULL * 1024ULL;
 
-// Hotword scores are passed through to sherpa-onnx, so only plain finite
-// decimals are accepted (no NaN/Inf, no locale-dependent parsing).
-bool ParseHotwordScore(std::string_view value, float* out = nullptr) noexcept {
+bool SetError(std::string* error, std::string message) {
+  if (error != nullptr) {
+    *error = std::move(message);
+  }
+  return false;
+}
+
+struct ScorePrefix {
+  std::string_view digits;
+  std::chars_format format = std::chars_format::general;
+  bool is_negative = false;
+};
+
+std::optional<ScorePrefix> StripScorePrefix(std::string_view value) noexcept {
   if (value.empty()) {
-    return false;
+    return std::nullopt;
   }
   std::string_view digits = value;
   bool is_negative = false;
-  if (digits.starts_with('+')) {
+  if (digits.starts_with('+') || digits.starts_with('-')) {
+    is_negative = digits.starts_with('-');
     digits.remove_prefix(1);
     if (digits.empty() || digits.starts_with('+') || digits.starts_with('-')) {
-      return false;
-    }
-  } else if (digits.starts_with('-')) {
-    is_negative = true;
-    digits.remove_prefix(1);
-    if (digits.empty() || digits.starts_with('+') || digits.starts_with('-')) {
-      return false;
+      return std::nullopt;
     }
   }
   std::chars_format format = std::chars_format::general;
@@ -51,17 +58,25 @@ bool ParseHotwordScore(std::string_view value, float* out = nullptr) noexcept {
     digits.remove_prefix(2);
     format = std::chars_format::hex;
   }
-  float parsed = 0.0F;
-  const auto [end, ec] =
-      std::from_chars(digits.data(), digits.data() + digits.size(), parsed, format);
-  if (ec != std::errc{} || end != digits.data() + digits.size() || !std::isfinite(parsed)) {
+  return ScorePrefix{.digits = digits, .format = format, .is_negative = is_negative};
+}
+
+// Hotword scores are passed through to sherpa-onnx, so only plain finite
+// decimals are accepted (no NaN/Inf, no locale-dependent parsing).
+bool ParseHotwordScore(std::string_view value, float* out = nullptr) noexcept {
+  const auto prefix = StripScorePrefix(value);
+  if (!prefix) {
     return false;
   }
-  if (is_negative) {
-    parsed = -parsed;
+  float parsed = 0.0F;
+  const auto [end, ec] = std::from_chars(
+      prefix->digits.data(), prefix->digits.data() + prefix->digits.size(), parsed, prefix->format);
+  if (ec != std::errc{} || end != prefix->digits.data() + prefix->digits.size() ||
+      !std::isfinite(parsed)) {
+    return false;
   }
   if (out != nullptr) {
-    *out = parsed;
+    *out = prefix->is_negative ? -parsed : parsed;
   }
   return true;
 }
@@ -102,6 +117,36 @@ constexpr bool IsHotwordWhitespace(char c) noexcept {
   return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
+bool CheckHotwordFileMetadata(const std::filesystem::path& file_path, std::string* error) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(file_path, ec) || ec) {
+    return SetError(error, "hotwords file is not a regular file: " + file_path.string());
+  }
+  const auto size = std::filesystem::file_size(file_path, ec);
+  if (ec) {
+    return SetError(error, "failed to inspect hotwords file '" + file_path.string() +
+                               "': " + ec.message());
+  }
+  if (size > kMaxHotwordFileBytes) {
+    return SetError(error, "hotwords file exceeds 1 MiB limit: " + file_path.string());
+  }
+  return true;
+}
+
+bool ValidateLoadedHotwordContent(const std::string& text, const std::string& path,
+                                  std::string* error) {
+  if (text.size() > kMaxHotwordFileBytes) {
+    return SetError(error, "hotwords file exceeds 1 MiB limit: " + path);
+  }
+  const auto utf8_res = ValidateHotwordText(text);
+  if (!utf8_res.valid) {
+    return SetError(error, "invalid hotwords file at byte " +
+                               std::to_string(utf8_res.error_offset) + ": " +
+                               utf8_res.error_reason);
+  }
+  return true;
+}
+
 bool ReadHotwordFile(const std::string& path, std::string* content, std::string* error) {
   if (path.empty()) {
     if (content != nullptr) {
@@ -113,52 +158,22 @@ bool ReadHotwordFile(const std::string& path, std::string* content, std::string*
     return true;
   }
 
-  std::error_code ec;
   const std::filesystem::path file_path(path);
-  if (!std::filesystem::is_regular_file(file_path, ec) || ec) {
-    if (error != nullptr) {
-      *error = "hotwords file is not a regular file: " + path;
-    }
-    return false;
-  }
-  const auto size = std::filesystem::file_size(file_path, ec);
-  if (ec) {
-    if (error != nullptr) {
-      *error = "failed to inspect hotwords file '" + path + "': " + ec.message();
-    }
-    return false;
-  }
-  if (size > kMaxHotwordFileBytes) {
-    if (error != nullptr) {
-      *error = "hotwords file exceeds 1 MiB limit: " + path;
-    }
+  if (!CheckHotwordFileMetadata(file_path, error)) {
     return false;
   }
 
   auto read_res = vinput::file::ReadTextFile(file_path, kMaxHotwordFileBytes + 1);
   if (!read_res) {
-    if (error != nullptr) {
-      *error = "failed to read hotwords file: " + path;
-    }
+    return SetError(error, "failed to read hotwords file: " + path);
+  }
+
+  if (!ValidateLoadedHotwordContent(*read_res, path, error)) {
     return false;
   }
-  std::string text = std::move(*read_res);
-  if (text.size() > kMaxHotwordFileBytes) {
-    if (error != nullptr) {
-      *error = "hotwords file exceeds 1 MiB limit: " + path;
-    }
-    return false;
-  }
-  const auto utf8_res = ValidateHotwordText(text);
-  if (!utf8_res.valid) {
-    if (error != nullptr) {
-      *error = "invalid hotwords file at byte " + std::to_string(utf8_res.error_offset) + ": " +
-               utf8_res.error_reason;
-    }
-    return false;
-  }
+
   if (content != nullptr) {
-    *content = std::move(text);
+    *content = std::move(*read_res);
   }
   if (error != nullptr) {
     error->clear();
@@ -190,6 +205,46 @@ bool LooksLikeScore(std::string_view value) {
          vinput::str::EqualsIgnoreCase(value, "infinity");
 }
 
+bool HasSpaceBeforeAnyColon(std::string_view line) noexcept {
+  for (std::size_t i = 1; i < line.size(); ++i) {
+    if (line[i] == ':' && IsHotwordWhitespace(line[i - 1])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ParseColonHotwordEntry(std::string_view raw_text, std::string_view raw_score,
+                            std::string_view line, HotwordEntry* entry, std::string* error) {
+  const std::string_view score = vinput::str::Trim(raw_score);
+  const std::string_view text = vinput::str::Trim(raw_text);
+  const bool has_whitespace =
+      (!raw_text.empty() && IsHotwordWhitespace(raw_text.back())) || (raw_score != score);
+
+  if (has_whitespace) {
+    return SetError(error,
+                    "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line));
+  }
+
+  if (IsValidScore(score)) {
+    if (text.empty()) {
+      return SetError(error, "hotword score has no preceding word or phrase: " + std::string(line));
+    }
+    entry->text = std::string(text);
+    entry->score = std::string(score);
+    return true;
+  }
+
+  if (LooksLikeScore(score)) {
+    return SetError(error,
+                    "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line));
+  }
+
+  entry->text = std::string(line);
+  entry->score.clear();
+  return true;
+}
+
 bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::string* error) {
   const std::string_view line = vinput::str::Trim(raw_line);
   if (line.empty()) {
@@ -198,13 +253,9 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
     return true;
   }
 
-  for (std::size_t i = 1; i < line.size(); ++i) {
-    if (line[i] == ':' && IsHotwordWhitespace(line[i - 1])) {
-      if (error != nullptr) {
-        *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
-      }
-      return false;
-    }
+  if (HasSpaceBeforeAnyColon(line)) {
+    return SetError(error,
+                    "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line));
   }
 
   const auto pair = vinput::str::RSplitOnce(line, ':');
@@ -214,45 +265,7 @@ bool ParseHotwordEntry(std::string_view raw_line, HotwordEntry* entry, std::stri
     return true;
   }
 
-  const std::string_view raw_text = pair->first;
-  const std::string_view raw_score = pair->second;
-  const std::string_view score = vinput::str::Trim(raw_score);
-  const std::string_view text = vinput::str::Trim(raw_text);
-  if (IsValidScore(score)) {
-    const bool whitespace_before = !raw_text.empty() && IsHotwordWhitespace(raw_text.back());
-    const bool whitespace_after = raw_score != score;
-    if (whitespace_before || whitespace_after) {
-      if (error != nullptr) {
-        *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
-      }
-      return false;
-    }
-    if (text.empty()) {
-      if (error != nullptr) {
-        *error = "hotword score has no preceding word or phrase: " + std::string(line);
-      }
-      return false;
-    }
-    entry->text = std::string(text);
-    entry->score = std::string(score);
-    return true;
-  }
-
-  // A separated ':...' token or an attached numeric-looking suffix is an
-  // invalid score. Other colon-containing terms (for example URLs) remain
-  // literal text.
-  const bool whitespace_before = !raw_text.empty() && IsHotwordWhitespace(raw_text.back());
-  const bool whitespace_after = raw_score != score;
-  if (whitespace_before || whitespace_after || LooksLikeScore(score)) {
-    if (error != nullptr) {
-      *error = "invalid hotword score; use 'word:3.5' without spaces: " + std::string(line);
-    }
-    return false;
-  }
-
-  entry->text = std::string(line);
-  entry->score.clear();
-  return true;
+  return ParseColonHotwordEntry(pair->first, pair->second, line, entry, error);
 }
 
 bool LoadHotwordEntries(const std::string& path, std::vector<HotwordEntry>* entries,
@@ -276,6 +289,28 @@ bool LoadHotwordEntries(const std::string& path, std::vector<HotwordEntry>* entr
   }
   if (error != nullptr) {
     error->clear();
+  }
+  return true;
+}
+
+constexpr bool IsSupportedTransducerUnit(std::string_view unit) noexcept {
+  return unit == "cjkchar" || unit == "bpe" || unit == "bbpe" || unit == "cjkchar+bpe";
+}
+
+constexpr bool RequiresBpeVocabulary(std::string_view unit) noexcept {
+  return unit == "bpe" || unit == "bbpe" || unit == "cjkchar+bpe";
+}
+
+bool ValidateTransducerBpeAsset(const ModelInfo& info, std::string_view modeling_unit,
+                                std::string* error) {
+  const std::string bpe_vocab = info.File("bpe_vocab");
+  if (bpe_vocab.empty() || !std::filesystem::is_regular_file(bpe_vocab)) {
+    return SetError(error,
+                    "modeling_unit '" + std::string(modeling_unit) + "' requires model.bpe_vocab");
+  }
+  auto valid_res = ValidateBpeVocabulary(bpe_vocab);
+  if (!valid_res) {
+    return SetError(error, valid_res.error());
   }
   return true;
 }
@@ -335,34 +370,16 @@ bool LoadPromptHotwordsCsv(const std::string& path, std::string* hotwords, std::
 bool ValidateTransducerHotwordAssets(const ModelInfo& info, std::string* error) {
   const std::string modeling_unit = JsonString(info.model_config, "modeling_unit");
   if (modeling_unit.empty()) {
-    if (error != nullptr) {
-      *error = "hotword-capable transducer is missing model.modeling_unit; "
-               "reinstall or update the model";
-    }
-    return false;
+    return SetError(error, "hotword-capable transducer is missing model.modeling_unit; "
+                           "reinstall or update the model");
   }
-  if (modeling_unit != "cjkchar" && modeling_unit != "bpe" && modeling_unit != "bbpe" &&
-      modeling_unit != "cjkchar+bpe") {
-    if (error != nullptr) {
-      *error = "unsupported sherpa-onnx hotword modeling_unit '" + modeling_unit + "'";
-    }
-    return false;
+  if (!IsSupportedTransducerUnit(modeling_unit)) {
+    return SetError(error, "unsupported sherpa-onnx hotword modeling_unit '" + modeling_unit + "'");
   }
 
-  if (modeling_unit == "bpe" || modeling_unit == "bbpe" || modeling_unit == "cjkchar+bpe") {
-    const std::string bpe_vocab = info.File("bpe_vocab");
-    if (bpe_vocab.empty() || !std::filesystem::is_regular_file(bpe_vocab)) {
-      if (error != nullptr) {
-        *error = "modeling_unit '" + modeling_unit + "' requires model.bpe_vocab";
-      }
-      return false;
-    }
-    if (auto valid_res = ValidateBpeVocabulary(bpe_vocab); !valid_res) {
-      if (error != nullptr) {
-        *error = valid_res.error();
-      }
-      return false;
-    }
+  if (RequiresBpeVocabulary(modeling_unit) &&
+      !ValidateTransducerBpeAsset(info, modeling_unit, error)) {
+    return false;
   }
 
   if (error != nullptr) {
