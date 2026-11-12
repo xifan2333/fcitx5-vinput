@@ -8,6 +8,7 @@
 #include <glaze/json/read.hpp>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -93,15 +94,29 @@ std::pair<std::string, std::string> FindActiveCommandModel(const CoreConfig& con
 }
 
 template <typename Fn>
-void AppendProviderModels(const glz::json_t& entry, std::string_view pid, Fn&& add_entry) {
+void AppendProviderModels(const glz::json_t& entry, std::string_view pid, Fn add_entry) {
   for (const auto& model : vinput::json::Strings(entry, "models")) {
     add_entry(std::string(pid), model);
   }
 }
 
 template <typename Fn>
+void AppendCachedProviderModels(glz::json_t* cache_providers,
+                                const std::set<std::string>& active_provider_ids, Fn add_entry) {
+  if (cache_providers == nullptr || !cache_providers->is_object()) {
+    return;
+  }
+  for (const auto& pid : active_provider_ids) {
+    const auto* entry = vinput::json::Find(*cache_providers, pid);
+    if (entry != nullptr) {
+      AppendProviderModels(*entry, pid, add_entry);
+    }
+  }
+}
+
+template <typename Fn>
 void AppendSceneModels(const CoreConfig& config, const std::set<std::string>& active_provider_ids,
-                       Fn&& add_entry) {
+                       Fn add_entry) {
   for (const auto& scene : config.scenes.definitions) {
     if (!scene.provider_id.empty() && !scene.model.empty() &&
         active_provider_ids.contains(scene.provider_id)) {
@@ -196,14 +211,7 @@ std::vector<ModelEntry> LoadActiveModels(const CoreConfig& config) {
   };
 
   // 1. Models from active cached providers
-  if (cache_providers != nullptr && cache_providers->is_object()) {
-    for (const auto& pid : active_provider_ids) {
-      const auto* entry = vinput::json::Find(*cache_providers, pid);
-      if (entry != nullptr) {
-        AppendProviderModels(*entry, pid, add_entry);
-      }
-    }
-  }
+  AppendCachedProviderModels(cache_providers, active_provider_ids, add_entry);
 
   // 2. Statically configured models from scenes (e.g. __command__ or custom scenes)
   AppendSceneModels(config, active_provider_ids, add_entry);

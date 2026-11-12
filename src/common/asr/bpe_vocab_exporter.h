@@ -14,7 +14,7 @@ struct SentencePieceRecord {
   float score{0.0F};
 };
 
-Expected<SentencePieceRecord> ParseSentencePiece(std::span<const std::byte> message);
+Expected<SentencePieceRecord> ParseSentencePiece(std::span<const char> message);
 
 } // namespace vinput::asr
 

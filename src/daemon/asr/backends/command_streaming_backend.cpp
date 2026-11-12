@@ -1,13 +1,16 @@
 #include "daemon/asr/backends/command_streaming_backend.h"
 
+#include <algorithm>
 #include <atomic>
 #include <base64.hpp>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <fmt/format.h>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -106,84 +109,18 @@ public:
       return true;
     }
 
-    if (!EnsureStarted(error)) {
+    if (!StartFinish(error)) {
       return false;
     }
-
-    finished_ = true;
-    if (!SendControlEvent("finish", error)) {
-      QueueError(error != nullptr && !error->empty() ? *error : "failed to send finish event.");
-      QueueCompleted();
-      Terminate();
+    if (!AwaitFinalText(error)) {
       return false;
-    }
-
-    if (session_.has_value()) {
-      session_->CloseStdin();
-    }
-    deadline_ = Clock::now() + std::chrono::milliseconds(kAwaitFinalTimeoutMs);
-
-    while (!saw_final_text_ && !completed_ && !child_exited_) {
-      if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
-        QueueError(error != nullptr && !error->empty() ? *error : "failed to poll provider.");
-        QueueCompleted();
-        Terminate();
-        return false;
-      }
-      if (HasTimedOut(deadline_)) {
-        QueueError("Streaming ASR provider timed out.");
-        QueueCompleted();
-        Terminate();
-        if (error != nullptr) {
-          *error = events_.back().error;
-        }
-        return false;
-      }
     }
 
     bool grace_pump_failed = false;
     if (saw_final_text_) {
-      const Clock::time_point grace_deadline =
-          Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
-      while (!HasTimedOut(grace_deadline) && !completed_ && !child_exited_) {
-        if (!DrainEvents(std::chrono::milliseconds(RemainingMs(grace_deadline, kPollSliceMs)),
-                         error)) {
-          grace_pump_failed = true;
-          break;
-        }
-      }
+      grace_pump_failed = !PumpGraceOutput(error);
     }
-
-    DrainEvents(std::chrono::milliseconds(0), nullptr);
-
-    if (!saw_final_text_ && !saw_error_ && !cancelled_ && !killed_by_us_) {
-      QueueError("Streaming ASR provider returned no text.");
-    }
-    QueueCompleted();
-    Terminate();
-
-    if (cancelled_ || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
-      if (error != nullptr) {
-        *error = "Recognition session was interrupted or cancelled.";
-      }
-      return false;
-    }
-
-    if (error != nullptr) {
-      if (saw_error_ && !events_.empty()) {
-        for (const auto& event : events_) {
-          if (event.kind == RecognitionEventKind::Error) {
-            *error = event.error;
-            return false;
-          }
-        }
-      }
-      if (grace_pump_failed) {
-        return false;
-      }
-      error->clear();
-    }
-    return !saw_error_ && !grace_pump_failed;
+    return FinalizeFinish(grace_pump_failed, error);
   }
 
   void Cancel() override {
@@ -212,6 +149,157 @@ public:
   }
 
 private:
+  // Assigns the error when the caller supplied an out-parameter; always reports
+  // failure so the teardown paths stay one-liners.
+  bool SetFinishError(std::string* error, std::string_view message) {
+    if (error != nullptr) {
+      *error = std::string(message);
+    }
+    return false;
+  }
+
+  // Sends the finish control event, closes stdin and arms the final-text
+  // deadline. Caller must have guarded against the idempotent re-entry.
+  bool StartFinish(std::string* error) {
+    if (!EnsureStarted(error)) {
+      return false;
+    }
+
+    finished_ = true;
+    if (!SendControlEvent("finish", error)) {
+      QueueError(error != nullptr && !error->empty() ? *error : "failed to send finish event.");
+      QueueCompleted();
+      Terminate();
+      return false;
+    }
+
+    if (session_.has_value()) {
+      session_->CloseStdin();
+    }
+    deadline_ = Clock::now() + std::chrono::milliseconds(kAwaitFinalTimeoutMs);
+    return true;
+  }
+
+  // Polls events until the provider emitted final text, the session completed,
+  // or the child exited. Injects the poll/timeout failure into the event queue.
+  bool AwaitFinalText(std::string* error) {
+    while (!saw_final_text_ && !completed_ && !child_exited_) {
+      if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
+        QueueError(error != nullptr && !error->empty() ? *error : "failed to poll provider.");
+        QueueCompleted();
+        Terminate();
+        return false;
+      }
+      if (HasTimedOut(deadline_)) {
+        QueueError("Streaming ASR provider timed out.");
+        QueueCompleted();
+        Terminate();
+        if (error != nullptr) {
+          *error = events_.back().error;
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Keeps draining for kFinalGraceMs after final text so trailing partial
+  // updates still arrive; returns false when the provider broke mid-grace.
+  bool PumpGraceOutput(std::string* error) {
+    if (!saw_final_text_) {
+      return true;
+    }
+    const Clock::time_point grace_deadline =
+        Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
+    bool pump_failed = false;
+    while (!HasTimedOut(grace_deadline) && !completed_ && !child_exited_) {
+      if (!DrainEvents(std::chrono::milliseconds(RemainingMs(grace_deadline, kPollSliceMs)),
+                       error)) {
+        pump_failed = true;
+        break;
+      }
+    }
+    return !pump_failed;
+  }
+
+  // First provider-reported error text, empty when the session never saw one.
+  std::string FirstError() const {
+    for (const auto& event : events_) {
+      if (event.kind == RecognitionEventKind::Error) {
+        return event.error;
+      }
+    }
+    return {};
+  }
+
+  // Resolves the final status contract: an observed provider error outranks a
+  // grace-pump failure, which outranks a clean teardown.
+  bool ResolveFinishFailure(bool grace_pump_failed, std::string* error) {
+    if (saw_error_) {
+      const std::string first_error = FirstError();
+      if (!first_error.empty()) {
+        if (error != nullptr) {
+          *error = first_error;
+        }
+        return false;
+      }
+    }
+    if (grace_pump_failed) {
+      return false;
+    }
+    if (error != nullptr) {
+      error->clear();
+    }
+    return !saw_error_ && !grace_pump_failed;
+  }
+
+  // Drains leftovers, reports the no-text / interruption cases and resolves the
+  // caller-visible outcome after the final-text wait.
+  bool FinalizeFinish(bool grace_pump_failed, std::string* error) {
+    DrainEvents(std::chrono::milliseconds(0), nullptr);
+
+    if (!saw_final_text_ && !saw_error_ && !cancelled_ && !killed_by_us_) {
+      QueueError("Streaming ASR provider returned no text.");
+    }
+    QueueCompleted();
+    Terminate();
+
+    if (cancelled_ || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
+      return SetFinishError(error, "Recognition session was interrupted or cancelled.");
+    }
+    return ResolveFinishFailure(grace_pump_failed, error);
+  }
+
+  bool HandleStdoutChunk(const std::vector<std::byte>& data, std::string* error) {
+    stdout_buffer_.reserve(stdout_buffer_.size() + data.size());
+    std::ranges::transform(data, std::back_inserter(stdout_buffer_),
+                           [](std::byte b) { return static_cast<char>(b); });
+    ConsumeStdoutLines(error);
+    return error == nullptr || error->empty();
+  }
+
+  void HandleStderrChunk(const std::vector<std::byte>& data) {
+    if (notification_bridge_ != nullptr) {
+      notification_bridge_->FeedStderr(source_id_, data);
+    }
+  }
+
+  void HandleChildExited(const vinput::process::ChildEvent& event) {
+    child_exited_ = true;
+    exit_code_ = event.exit_code;
+    killed_by_us_ = event.killed_by_us;
+    if (notification_bridge_ != nullptr) {
+      notification_bridge_->Flush(source_id_);
+    }
+    if (killed_by_us_) {
+      VLOG_DEBUG("streaming ASR provider '{}' terminated by session cancellation", provider_id_);
+    } else if (exit_code_ != 0 && !saw_error_ && !saw_final_text_) {
+      VLOG_WARN("streaming ASR provider '{}' exited abnormally with code {}", provider_id_,
+                exit_code_);
+      QueueError("Streaming ASR provider exited abnormally.");
+    }
+  }
+
   bool EnsureStarted(std::string* error) {
     if (cancelled_ || interrupted_.load(std::memory_order_acquire)) {
       if (error != nullptr) {
@@ -304,18 +392,13 @@ private:
       first = false;
       switch (event.kind) {
       case vinput::process::ChildEventKind::StdoutChunk: {
-        stdout_buffer_.reserve(stdout_buffer_.size() + event.data.size());
-        stdout_buffer_.append(reinterpret_cast<const char*>(event.data.data()), event.data.size());
-        ConsumeStdoutLines(error);
-        if (error != nullptr && !error->empty()) {
+        if (!HandleStdoutChunk(event.data, error)) {
           return false;
         }
         break;
       }
       case vinput::process::ChildEventKind::StderrChunk: {
-        if (notification_bridge_ != nullptr) {
-          notification_bridge_->FeedStderr(source_id_, event.data);
-        }
+        HandleStderrChunk(event.data);
         break;
       }
       case vinput::process::ChildEventKind::Cancelled: {
@@ -323,20 +406,7 @@ private:
         break;
       }
       case vinput::process::ChildEventKind::Exited: {
-        child_exited_ = true;
-        exit_code_ = event.exit_code;
-        killed_by_us_ = event.killed_by_us;
-        if (notification_bridge_ != nullptr) {
-          notification_bridge_->Flush(source_id_);
-        }
-        if (killed_by_us_) {
-          VLOG_DEBUG("streaming ASR provider '{}' terminated by session cancellation",
-                     provider_id_);
-        } else if (exit_code_ != 0 && !saw_error_ && !saw_final_text_) {
-          VLOG_WARN("streaming ASR provider '{}' exited abnormally with code {}", provider_id_,
-                    exit_code_);
-          QueueError("Streaming ASR provider exited abnormally.");
-        }
+        HandleChildExited(event);
         break;
       }
       }
