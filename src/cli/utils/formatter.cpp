@@ -66,11 +66,7 @@ public:
     glz::json_t::array_t arr;
     arr.reserve(rows.size());
     for (const auto& row : rows) {
-      glz::json_t::object_t obj;
-      for (size_t i = 0; i < headers.size(); ++i) {
-        obj.emplace(headers[i], glz::json_t((i < row.size()) ? row[i] : std::string{}));
-      }
-      arr.emplace_back(std::move(obj));
+      arr.emplace_back(RowToJsonObject(headers, row));
     }
     std::cout << vinput::json::ToPrettyText(glz::json_t(std::move(arr))) << "\n";
   }
@@ -88,6 +84,15 @@ public:
   void PrintJson(const glz::json_t& j) override { PrintJson(j, /*pretty=*/true); }
 
 private:
+  static glz::json_t::object_t RowToJsonObject(const std::vector<std::string>& headers,
+                                               const std::vector<std::string>& row) {
+    glz::json_t::object_t obj;
+    for (size_t i = 0; i < headers.size(); ++i) {
+      obj.emplace(headers[i], glz::json_t((i < row.size()) ? row[i] : std::string{}));
+    }
+    return obj;
+  }
+
   static void PrintJson(const glz::json_t& j, bool pretty) {
     if (pretty) {
       std::cout << vinput::json::ToPrettyText(j) << "\n";
@@ -130,6 +135,20 @@ struct TableGrid {
   std::vector<int> col_widths;
 };
 
+std::vector<Cell> ProcessGridRow(const std::vector<std::string>& row,
+                                 std::vector<int>& col_widths) {
+  std::vector<Cell> processed_row;
+  processed_row.reserve(row.size());
+  for (size_t i = 0; i < row.size(); ++i) {
+    auto cell = vinput::str::SanitizeTerminalCell(row[i]);
+    if (i < col_widths.size()) {
+      col_widths[i] = std::max(col_widths[i], cell.visible_width);
+    }
+    processed_row.push_back(std::move(cell));
+  }
+  return processed_row;
+}
+
 TableGrid BuildTableGrid(const std::vector<std::string>& headers,
                          const std::vector<std::vector<std::string>>& rows) {
   TableGrid grid{};
@@ -144,16 +163,7 @@ TableGrid BuildTableGrid(const std::vector<std::string>& headers,
 
   grid.rows.reserve(rows.size());
   for (const auto& row : rows) {
-    std::vector<Cell> processed_row;
-    processed_row.reserve(row.size());
-    for (size_t i = 0; i < row.size(); ++i) {
-      auto cell = vinput::str::SanitizeTerminalCell(row[i]);
-      if (i < grid.col_widths.size()) {
-        grid.col_widths[i] = std::max(grid.col_widths[i], cell.visible_width);
-      }
-      processed_row.push_back(std::move(cell));
-    }
-    grid.rows.push_back(std::move(processed_row));
+    grid.rows.push_back(ProcessGridRow(row, grid.col_widths));
   }
 
   return grid;
