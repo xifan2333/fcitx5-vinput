@@ -179,41 +179,44 @@ void MainWindow::onOpenConfigClicked() {
 }
 
 namespace {
-const std::string* FindJsonString(const glz::json_t& node, std::string_view key) {
+std::optional<std::string_view> FindJsonString(const glz::json_t& node, std::string_view key) {
   const auto* entry = vinput::json::Find(node, key);
   if (entry == nullptr) {
-    return nullptr;
+    return std::nullopt;
   }
-  return entry->get_if<std::string>();
+  if (const auto* text = entry->get_if<std::string>()) {
+    return *text;
+  }
+  return std::nullopt;
 }
 
-const std::string* FindFirstJsonString(const glz::json_t& node) {
+std::optional<std::string_view> FindFirstJsonString(const glz::json_t& node) {
   const auto* members = node.get_if<glz::json_t::object_t>();
   if (members == nullptr) {
-    return nullptr;
+    return std::nullopt;
   }
   for (const auto& [key, value] : *members) {
     (void)key;
     if (const auto* text = value.get_if<std::string>()) {
-      return text;
+      return *text;
     }
   }
-  return nullptr;
+  return std::nullopt;
 }
 
-const std::string* ResolveLocalizedText(const glz::json_t& node) {
+std::optional<std::string_view> ResolveLocalizedText(const glz::json_t& node) {
   const std::string locale =
       vinput::locale::NormalizeLocale(QLocale::system().name().toStdString());
-  if (const auto* text = FindJsonString(node, locale); text != nullptr) {
+  if (const auto text = FindJsonString(node, locale); text.has_value()) {
     return text;
   }
   const auto lang = std::string(vinput::locale::ExtractLanguageCode(locale));
   if (lang != locale) {
-    if (const auto* text = FindJsonString(node, lang); text != nullptr) {
+    if (const auto text = FindJsonString(node, lang); text.has_value()) {
       return text;
     }
   }
-  if (const auto* text = FindJsonString(node, "en"); text != nullptr) {
+  if (const auto text = FindJsonString(node, "en"); text.has_value()) {
     return text;
   }
   return FindFirstJsonString(node);
@@ -229,8 +232,8 @@ QString localizedString(const glz::json_t* node) {
   if (!node->is_object()) {
     return {};
   }
-  if (const auto* text = ResolveLocalizedText(*node); text != nullptr) {
-    return QString::fromStdString(*text);
+  if (const auto text = ResolveLocalizedText(*node); text.has_value()) {
+    return QString::fromUtf8(text->data(), static_cast<qsizetype>(text->size()));
   }
   return {};
 }
@@ -246,7 +249,7 @@ int ReadLastNotificationId() {
 }
 
 struct NotificationPayload {
-  QString id;
+  int id{0};
   QString title;
   QString text;
   QString url;
@@ -273,12 +276,12 @@ std::optional<NotificationPayload> ParseNotificationPayload(std::string_view con
   }
 
   const int remote_id = vinput::json::Int(j, "id");
-  if (remote_id <= 0 || remote_id <= ReadLastNotificationId()) {
+  if (remote_id <= 0) {
     return std::nullopt;
   }
 
   return NotificationPayload{
-      .id = QString::number(remote_id),
+      .id = remote_id,
       .title = localizedString(vinput::json::Find(j, "title")),
       .text = localizedString(vinput::json::Find(j, "text")),
       .url = QString::fromStdString(vinput::json::String(j, "url")),
@@ -296,7 +299,8 @@ void MainWindow::checkNotification() {
     }
 
     const auto payload = ParseNotificationPayload(*content);
-    if (!payload.has_value() || vinput::gui::IsWorkerCancelled(cancel_token)) {
+    if (!payload.has_value() || payload->id <= ReadLastNotificationId() ||
+        vinput::gui::IsWorkerCancelled(cancel_token)) {
       return true;
     }
 
@@ -308,8 +312,8 @@ void MainWindow::checkNotification() {
         self.data(),
         [self, notification = *payload]() {
           if (!self.isNull()) {
-            self->onNotificationReady(notification.id, notification.title, notification.text,
-                                      notification.url);
+            self->onNotificationReady(QString::number(notification.id), notification.title,
+                                      notification.text, notification.url);
           }
         },
         Qt::QueuedConnection);
