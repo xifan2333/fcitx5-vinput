@@ -52,6 +52,63 @@ bool SaveCachedText(const std::filesystem::path& cache_path, const std::string& 
   return true;
 }
 
+void SetError(std::string* error, std::string_view message) {
+  if (error != nullptr) {
+    *error = message;
+  }
+}
+
+void ClearError(std::string* error) {
+  if (error != nullptr) {
+    error->clear();
+  }
+}
+
+void AssignResult(vinput::download::Result* target, vinput::download::Result&& source) {
+  if (target != nullptr) {
+    *target = std::move(source);
+  }
+}
+
+std::string FormatFetchFailure(std::string_view download_error, std::string_view cache_error) {
+  if (!download_error.empty()) {
+    return std::string(download_error) + "; cache unavailable: " + std::string(cache_error);
+  }
+  return std::string(cache_error);
+}
+
+bool HandleDownloadSuccess(const std::filesystem::path& cache_path, std::string* content,
+                           vinput::download::Result&& download_result,
+                           vinput::download::Result* result, std::string* error) {
+  std::string write_error;
+  const std::string& cached_content = (content != nullptr) ? *content : std::string{};
+  const bool saved = SaveCachedText(cache_path, cached_content, &write_error);
+  AssignResult(result, std::move(download_result));
+  if (!saved) {
+    SetError(error, write_error);
+    return false;
+  }
+  ClearError(error);
+  return true;
+}
+
+bool TryLoadCachedFallback(const std::filesystem::path& cache_path, std::string_view download_error,
+                           std::string* content, vinput::download::Result* result,
+                           std::string* error, FetchStatus* status) {
+  std::string cache_error;
+  if (LoadCachedText(cache_path, content, result, &cache_error)) {
+    if (status != nullptr) {
+      status->used_cache = true;
+      status->fallback_error = std::string(download_error);
+    }
+    ClearError(error);
+    return true;
+  }
+
+  SetError(error, FormatFetchFailure(download_error, cache_error));
+  return false;
+}
+
 std::filesystem::path CachePath(std::string_view name) {
   return vinput::path::RegistryCacheDir() / name;
 }
@@ -70,48 +127,14 @@ bool FetchText(const std::vector<std::string>& urls, const std::filesystem::path
 
   vinput::download::Result download_result;
   if (vinput::download::DownloadText(urls, options, content, &download_result)) {
-    std::string write_error;
-    if (!SaveCachedText(cache_path, (content != nullptr) ? *content : std::string{},
-                        &write_error)) {
-      if (error != nullptr) {
-        *error = write_error;
-      }
-      if (result != nullptr) {
-        *result = std::move(download_result);
-      }
-      return false;
-    }
-    if (result != nullptr) {
-      *result = std::move(download_result);
-    }
-    if (error != nullptr) {
-      error->clear();
-    }
+    return HandleDownloadSuccess(cache_path, content, std::move(download_result), result, error);
+  }
+
+  if (TryLoadCachedFallback(cache_path, download_result.error, content, result, error, status)) {
     return true;
   }
 
-  std::string cache_error;
-  if (LoadCachedText(cache_path, content, result, &cache_error)) {
-    if (status != nullptr) {
-      status->used_cache = true;
-      status->fallback_error = download_result.error;
-    }
-    if (error != nullptr) {
-      error->clear();
-    }
-    return true;
-  }
-
-  if (error != nullptr) {
-    if (!download_result.error.empty()) {
-      *error = download_result.error + "; cache unavailable: " + cache_error;
-    } else {
-      *error = cache_error;
-    }
-  }
-  if (result != nullptr) {
-    *result = std::move(download_result);
-  }
+  AssignResult(result, std::move(download_result));
   return false;
 }
 
