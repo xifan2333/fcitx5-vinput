@@ -148,6 +148,28 @@ QLineEdit* CreateFilterEdit(const QString& placeholder, QWidget* parent) {
   return edit;
 }
 
+bool RowMatchesFilter(const QTableWidget* table, int row, const QString& needle) {
+  for (int col = 0; col < table->columnCount(); ++col) {
+    const auto* item = table->item(row, col);
+    if (item == nullptr) {
+      continue;
+    }
+    const QString haystack = item->text() + '\n' + item->data(Qt::UserRole).toString();
+    if (haystack.contains(needle, Qt::CaseInsensitive)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void DisableTableRowItems(QTableWidget* table, int row) {
+  for (int c = 0; c < table->columnCount(); ++c) {
+    if (auto* ci = table->item(row, c)) {
+      ci->setFlags(ci->flags() & ~Qt::ItemIsEnabled);
+    }
+  }
+}
+
 void ApplyTableFilter(QTableWidget* table, const QString& pattern) {
   const QString needle = pattern.trimmed();
   for (int row = 0; row < table->rowCount(); ++row) {
@@ -155,19 +177,7 @@ void ApplyTableFilter(QTableWidget* table, const QString& pattern) {
       table->setRowHidden(row, false);
       continue;
     }
-    bool matches = false;
-    for (int col = 0; col < table->columnCount(); ++col) {
-      const auto* item = table->item(row, col);
-      if (item == nullptr) {
-        continue;
-      }
-      const QString haystack = item->text() + '\n' + item->data(Qt::UserRole).toString();
-      if (haystack.contains(needle, Qt::CaseInsensitive)) {
-        matches = true;
-        break;
-      }
-    }
-    table->setRowHidden(row, !matches);
+    table->setRowHidden(row, !RowMatchesFilter(table, row, needle));
   }
 }
 
@@ -908,11 +918,7 @@ void ResourcePage::populateRemoteModels(const std::vector<RemoteModelEntry>& mod
 
     auto* stCell = MakeCell(status);
     if (installed) {
-      for (int c = 0; c < tableAvailableModels_->columnCount(); ++c) {
-        if (auto* ci = tableAvailableModels_->item(row, c)) {
-          ci->setFlags(ci->flags() & ~Qt::ItemIsEnabled);
-        }
-      }
+      DisableTableRowItems(tableAvailableModels_, row);
     }
     tableAvailableModels_->setItem(row, 6, stCell);
   }
