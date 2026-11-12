@@ -162,6 +162,7 @@ bool RowMatchesFilter(const QTableWidget* table, int row, const QString& needle)
   return false;
 }
 
+#if VINPUT_ENABLE_LOCAL_ASR
 void DisableTableRowItems(QTableWidget* table, int row) {
   for (int c = 0; c < table->columnCount(); ++c) {
     if (auto* ci = table->item(row, c)) {
@@ -169,6 +170,7 @@ void DisableTableRowItems(QTableWidget* table, int row) {
     }
   }
 }
+#endif
 
 void ApplyTableFilter(QTableWidget* table, const QString& pattern) {
   const QString needle = pattern.trimmed();
