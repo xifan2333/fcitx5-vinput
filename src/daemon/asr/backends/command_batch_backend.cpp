@@ -33,6 +33,26 @@ vinput::process::CommandSpec BuildCommandSpec(const CommandAsrProvider& provider
   return spec;
 }
 
+RecognitionEvent BuildResultEvent(const vinput::process::CommandResult& command_result,
+                                  std::string_view provider_id) {
+  if (command_result.launch_failed) {
+    return {RecognitionEventKind::Error, {}, _("Command ASR provider failed to start.")};
+  }
+  if (command_result.timed_out) {
+    return {RecognitionEventKind::Error, {}, _("Command ASR provider timed out.")};
+  }
+  if (command_result.exit_code != 0) {
+    VLOG_WARN("command ASR provider '{}' exited with code {}", provider_id,
+              command_result.exit_code);
+    return {RecognitionEventKind::Error, {}, _("Command ASR provider exited abnormally.")};
+  }
+  std::string text = std::string(vinput::str::Trim(command_result.stdout_text));
+  if (text.empty()) {
+    return {RecognitionEventKind::Error, {}, _("Command ASR provider returned no text.")};
+  }
+  return {RecognitionEventKind::FinalText, std::move(text), {}};
+}
+
 class CommandBatchSession : public RecognitionSession {
 public:
   CommandBatchSession(const CommandAsrProvider& provider,
@@ -71,26 +91,7 @@ public:
     // folded into this backend's own error text.
     DeliverStderr(command_result.stderr_text);
 
-    if (command_result.launch_failed) {
-      events_.push_back(
-          {RecognitionEventKind::Error, {}, _("Command ASR provider failed to start.")});
-    } else if (command_result.timed_out) {
-      events_.push_back({RecognitionEventKind::Error, {}, _("Command ASR provider timed out.")});
-    } else if (command_result.exit_code != 0) {
-      VLOG_WARN("command ASR provider '{}' exited with code {}", provider_id_,
-                command_result.exit_code);
-      events_.push_back(
-          {RecognitionEventKind::Error, {}, _("Command ASR provider exited abnormally.")});
-    } else {
-      std::string text = std::string(vinput::str::Trim(command_result.stdout_text));
-      if (text.empty()) {
-        events_.push_back(
-            {RecognitionEventKind::Error, {}, _("Command ASR provider returned no text.")});
-      } else {
-        events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
-      }
-    }
-
+    events_.push_back(BuildResultEvent(command_result, provider_id_));
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
     if (error != nullptr) {
       if (!events_.empty() && events_.front().kind == RecognitionEventKind::Error) {
