@@ -55,6 +55,28 @@ std::filesystem::path ResolveRelativeSymlinkTarget(const std::filesystem::path& 
   return (parent / link_target).lexically_normal();
 }
 
+bool ResolveMissingPathParent(const std::filesystem::path& path, std::filesystem::path* resolved,
+                              std::string* error, int depth) {
+  const auto parent = path.parent_path();
+  if (parent.empty()) {
+    *resolved = path;
+    return true;
+  }
+
+  std::filesystem::path resolved_parent;
+  if (!ResolveSymlinkPathImpl(parent, &resolved_parent, error, depth)) {
+    return false;
+  }
+
+  const auto filename = path.filename();
+  if (filename.empty()) {
+    *resolved = resolved_parent;
+  } else {
+    *resolved = (resolved_parent / filename).lexically_normal();
+  }
+  return true;
+}
+
 bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::path* resolved,
                             std::string* error, int depth) {
   if (depth >= kMaxSymlinkDepth) {
@@ -67,24 +89,7 @@ bool ResolveSymlinkPathImpl(const std::filesystem::path& path, std::filesystem::
   std::error_code ec;
   const auto status = std::filesystem::symlink_status(path, ec);
   if (ec == std::errc::no_such_file_or_directory) {
-    const auto parent = path.parent_path();
-    if (parent.empty()) {
-      *resolved = path;
-      return true;
-    }
-
-    std::filesystem::path resolved_parent;
-    if (!ResolveSymlinkPathImpl(parent, &resolved_parent, error, depth)) {
-      return false;
-    }
-
-    const auto filename = path.filename();
-    if (filename.empty()) {
-      *resolved = resolved_parent;
-    } else {
-      *resolved = (resolved_parent / filename).lexically_normal();
-    }
-    return true;
+    return ResolveMissingPathParent(path, resolved, error, depth);
   }
   if (ec) {
     if (error != nullptr) {
@@ -157,6 +162,66 @@ Expected<std::string> ComputeFileSha256StreamFallback(const std::filesystem::pat
   return FinalizeHashToHex(ctx.get());
 }
 
+std::optional<std::filesystem::path> ResolveTempBaseDir(const std::filesystem::path& base_dir,
+                                                        std::string* error) {
+  std::error_code ec;
+  if (base_dir.empty()) {
+    const auto dir = std::filesystem::temp_directory_path(ec);
+    if (ec) {
+      if (error != nullptr) {
+        *error = "Failed to determine system temporary directory: " + ec.message();
+      }
+      return std::nullopt;
+    }
+    return dir;
+  }
+  std::filesystem::create_directories(base_dir, ec);
+  if (ec) {
+    if (error != nullptr) {
+      *error = "Failed to create directory " + base_dir.string() + ": " + ec.message();
+    }
+    return std::nullopt;
+  }
+  return base_dir;
+}
+
+std::string MakeMkdtempTemplate(const std::filesystem::path& dir, std::string_view prefix) {
+  if (prefix.ends_with("XXXXXX")) {
+    return (dir / prefix).string();
+  }
+  return (dir / (std::string(prefix) + "XXXXXX")).string();
+}
+
+std::optional<Expected<std::string>> CheckZeroByteFileSha256(const std::filesystem::path& path) {
+  std::ifstream probe(path, std::ios::binary);
+  if (!probe.is_open()) {
+    return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
+  }
+  if (probe.peek() == std::ifstream::traits_type::eof()) {
+    return std::string(kEmptyFileSha256);
+  }
+  return std::nullopt;
+}
+
+Expected<std::string> ComputeMappingSha256(const vinput::file::ReadOnlyFileMapping& mapping) {
+  const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
+                                                                    &EVP_MD_CTX_free);
+  if (ctx == nullptr) {
+    return UnexpectedError("failed to allocate EVP_MD_CTX");
+  }
+
+  if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
+    return UnexpectedError("EVP_DigestInit_ex failed");
+  }
+
+  const auto sv = mapping.StringView();
+  if (!sv.empty() && EVP_DigestUpdate(ctx.get(), sv.data(), sv.size()) != 1) {
+    return UnexpectedError("EVP_DigestUpdate failed");
+  }
+
+  return FinalizeHashToHex(ctx.get());
+}
+
 } // namespace
 
 namespace vinput::file {
@@ -187,33 +252,12 @@ ScopedTempDir& ScopedTempDir::operator=(ScopedTempDir&& other) noexcept {
 
 std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path& base_dir,
                                                      std::string_view prefix, std::string* error) {
-  std::error_code ec;
-  std::filesystem::path dir = base_dir;
-  if (dir.empty()) {
-    dir = std::filesystem::temp_directory_path(ec);
-    if (ec) {
-      if (error != nullptr) {
-        *error = "Failed to determine system temporary directory: " + ec.message();
-      }
-      return nullptr;
-    }
-  } else {
-    std::filesystem::create_directories(dir, ec);
-    if (ec) {
-      if (error != nullptr) {
-        *error = "Failed to create directory " + dir.string() + ": " + ec.message();
-      }
-      return nullptr;
-    }
+  const auto dir = ResolveTempBaseDir(base_dir, error);
+  if (!dir.has_value()) {
+    return nullptr;
   }
 
-  std::string tmpl;
-  if (prefix.ends_with("XXXXXX")) {
-    tmpl = (dir / prefix).string();
-  } else {
-    tmpl = (dir / (std::string(prefix) + "XXXXXX")).string();
-  }
-
+  std::string tmpl = MakeMkdtempTemplate(*dir, prefix);
   const char* result = ::mkdtemp(tmpl.data());
   if (result == nullptr) {
     if (error != nullptr) {
@@ -472,50 +516,20 @@ Expected<void> AtomicWriteTextFile(const std::filesystem::path& target, std::str
 Expected<std::string> ComputeFileSha256(const std::filesystem::path& path) {
   std::error_code fs_ec;
   const auto status = std::filesystem::status(path, fs_ec);
-  if (fs_ec || !std::filesystem::exists(status)) {
-    return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
-  }
-
-  if (std::filesystem::is_directory(status)) {
+  if (fs_ec || !std::filesystem::exists(status) || std::filesystem::is_directory(status)) {
     return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
   }
 
   const auto file_size = std::filesystem::file_size(path, fs_ec);
   if (!fs_ec && file_size == 0) {
-    // Defense in depth: POSIX mmap returns EINVAL on 0-byte mappings.
-    // Verify file readability first.
-    std::ifstream probe(path, std::ios::binary);
-    if (!probe.is_open()) {
-      return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
+    if (auto zero_res = CheckZeroByteFileSha256(path); zero_res.has_value()) {
+      return *zero_res;
     }
-    // Confirm it's truly empty, rather than a virtual pseudo-file with st_size = 0 (e.g. /proc/...)
-    if (probe.peek() == std::ifstream::traits_type::eof()) {
-      return std::string(kEmptyFileSha256);
-    }
-    // If it yields bytes despite st_size == 0, fallback to streaming read.
     return ComputeFileSha256StreamFallback(path);
   }
 
-  auto mapping = ReadOnlyFileMapping::Map(path);
-  if (mapping) {
-    const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
-                                                                      &EVP_MD_CTX_free);
-    if (ctx == nullptr) {
-      return UnexpectedError("failed to allocate EVP_MD_CTX");
-    }
-
-    if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
-      return UnexpectedError("EVP_DigestInit_ex failed");
-    }
-
-    const auto sv = mapping->StringView();
-    if (!sv.empty()) {
-      if (EVP_DigestUpdate(ctx.get(), sv.data(), sv.size()) != 1) {
-        return UnexpectedError("EVP_DigestUpdate failed");
-      }
-    }
-
-    return FinalizeHashToHex(ctx.get());
+  if (auto mapping = ReadOnlyFileMapping::Map(path)) {
+    return ComputeMappingSha256(*mapping);
   }
 
   return ComputeFileSha256StreamFallback(path);
