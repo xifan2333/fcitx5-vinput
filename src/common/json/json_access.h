@@ -263,7 +263,7 @@ inline std::optional<std::size_t> ScanSingleValue(std::string_view text, std::si
 
 } // namespace detail
 
-inline bool IsSingleJsonValue(std::string_view text) {
+[[nodiscard]] inline bool IsSingleJsonValue(std::string_view text) {
   const std::size_t start = detail::SkipWhitespace(text, 0);
   const auto end = detail::ScanSingleValue(text, start);
   if (!end.has_value()) {

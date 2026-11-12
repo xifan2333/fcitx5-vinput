@@ -181,7 +181,7 @@ void TestLoadFromFileUri() {
 
   auto temp_dir = vinput::file::ScopedTempDir::Create();
   ExpectTrue(temp_dir != nullptr);
-  const auto test_file = temp_dir->path() / "prompt.txt";
+  const auto test_file = temp_dir->Path() / "prompt.txt";
   auto write_res = vinput::file::AtomicWriteTextFile(test_file, "hello from prompt template");
   ExpectTrue(write_res.has_value());
 
@@ -189,7 +189,9 @@ void TestLoadFromFileUri() {
   const std::string file_uri = "file://" + test_file.string();
   auto loaded = LoadFromFileUri(file_uri, &error);
   ExpectTrue(loaded.has_value());
-  ExpectEq(*loaded, "hello from prompt template");
+  if (loaded.has_value()) {
+    ExpectEq(*loaded, "hello from prompt template");
+  }
   ExpectTrue(error.empty());
 }
 
