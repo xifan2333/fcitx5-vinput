@@ -58,7 +58,7 @@ std::optional<ScorePrefix> StripScorePrefix(std::string_view value) noexcept {
     digits.remove_prefix(2);
     format = std::chars_format::hex;
   }
-  return ScorePrefix{digits, format, is_negative};
+  return ScorePrefix{.digits = digits, .format = format, .is_negative = is_negative};
 }
 
 // Hotword scores are passed through to sherpa-onnx, so only plain finite
@@ -293,6 +293,28 @@ bool LoadHotwordEntries(const std::string& path, std::vector<HotwordEntry>* entr
   return true;
 }
 
+constexpr bool IsSupportedTransducerUnit(std::string_view unit) noexcept {
+  return unit == "cjkchar" || unit == "bpe" || unit == "bbpe" || unit == "cjkchar+bpe";
+}
+
+constexpr bool RequiresBpeVocabulary(std::string_view unit) noexcept {
+  return unit == "bpe" || unit == "bbpe" || unit == "cjkchar+bpe";
+}
+
+bool ValidateTransducerBpeAsset(const ModelInfo& info, std::string_view modeling_unit,
+                                std::string* error) {
+  const std::string bpe_vocab = info.File("bpe_vocab");
+  if (bpe_vocab.empty() || !std::filesystem::is_regular_file(bpe_vocab)) {
+    return SetError(error,
+                    "modeling_unit '" + std::string(modeling_unit) + "' requires model.bpe_vocab");
+  }
+  auto valid_res = ValidateBpeVocabulary(bpe_vocab);
+  if (!valid_res) {
+    return SetError(error, valid_res.error());
+  }
+  return true;
+}
+
 } // namespace
 
 bool IsTransducerHotwordFamily(std::string_view family) {
@@ -342,28 +364,6 @@ bool LoadPromptHotwordsCsv(const std::string& path, std::string* hotwords, std::
     words.emplace_back(entry.text);
   }
   *hotwords = vinput::str::Join(words, ",");
-  return true;
-}
-
-constexpr bool IsSupportedTransducerUnit(std::string_view unit) noexcept {
-  return unit == "cjkchar" || unit == "bpe" || unit == "bbpe" || unit == "cjkchar+bpe";
-}
-
-constexpr bool RequiresBpeVocabulary(std::string_view unit) noexcept {
-  return unit == "bpe" || unit == "bbpe" || unit == "cjkchar+bpe";
-}
-
-bool ValidateTransducerBpeAsset(const ModelInfo& info, std::string_view modeling_unit,
-                                std::string* error) {
-  const std::string bpe_vocab = info.File("bpe_vocab");
-  if (bpe_vocab.empty() || !std::filesystem::is_regular_file(bpe_vocab)) {
-    return SetError(error,
-                    "modeling_unit '" + std::string(modeling_unit) + "' requires model.bpe_vocab");
-  }
-  auto valid_res = ValidateBpeVocabulary(bpe_vocab);
-  if (!valid_res) {
-    return SetError(error, valid_res.error());
-  }
   return true;
 }
 
