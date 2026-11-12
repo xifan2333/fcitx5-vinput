@@ -36,21 +36,29 @@ vinput::process::CommandSpec BuildCommandSpec(const CommandAsrProvider& provider
 RecognitionEvent BuildResultEvent(const vinput::process::CommandResult& command_result,
                                   std::string_view provider_id) {
   if (command_result.launch_failed) {
-    return {RecognitionEventKind::Error, {}, _("Command ASR provider failed to start.")};
+    return {.kind = RecognitionEventKind::Error,
+            .text = {},
+            .error = _("Command ASR provider failed to start.")};
   }
   if (command_result.timed_out) {
-    return {RecognitionEventKind::Error, {}, _("Command ASR provider timed out.")};
+    return {.kind = RecognitionEventKind::Error,
+            .text = {},
+            .error = _("Command ASR provider timed out.")};
   }
   if (command_result.exit_code != 0) {
     VLOG_WARN("command ASR provider '{}' exited with code {}", provider_id,
               command_result.exit_code);
-    return {RecognitionEventKind::Error, {}, _("Command ASR provider exited abnormally.")};
+    return {.kind = RecognitionEventKind::Error,
+            .text = {},
+            .error = _("Command ASR provider exited abnormally.")};
   }
   std::string text = std::string(vinput::str::Trim(command_result.stdout_text));
   if (text.empty()) {
-    return {RecognitionEventKind::Error, {}, _("Command ASR provider returned no text.")};
+    return {.kind = RecognitionEventKind::Error,
+            .text = {},
+            .error = _("Command ASR provider returned no text.")};
   }
-  return {RecognitionEventKind::FinalText, std::move(text), {}};
+  return {.kind = RecognitionEventKind::FinalText, .text = std::move(text), .error = {}};
 }
 
 class CommandBatchSession : public RecognitionSession {
@@ -92,7 +100,7 @@ public:
     DeliverStderr(command_result.stderr_text);
 
     events_.push_back(BuildResultEvent(command_result, provider_id_));
-    events_.push_back({RecognitionEventKind::Completed, {}, {}});
+    events_.push_back({.kind = RecognitionEventKind::Completed, .text = {}, .error = {}});
     if (error != nullptr) {
       if (!events_.empty() && events_.front().kind == RecognitionEventKind::Error) {
         *error = events_.front().error;
