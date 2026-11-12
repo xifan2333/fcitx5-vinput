@@ -7,6 +7,7 @@
 #include <ios>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -14,6 +15,67 @@
 #include "common/utils/debug_log.h"
 
 namespace vinput::addon {
+
+namespace {
+
+[[nodiscard]] bool AppendTaskLine(const std::filesystem::path& path, std::string_view json_line) {
+  std::ofstream ofs(path, std::ios::app);
+  if (!ofs) {
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec) {
+      VLOG_ERROR("failed to create context cache directory: {}", ec.message());
+      return false;
+    }
+    ofs.clear();
+    ofs.open(path, std::ios::app);
+    if (!ofs) {
+      VLOG_ERROR("failed to open context cache for append");
+      return false;
+    }
+  }
+  ofs << json_line << '\n';
+  return true;
+}
+
+void RotateContextFile(const std::filesystem::path& path, int max_lines) {
+  std::ifstream ifs(path);
+  if (!ifs) {
+    return;
+  }
+  std::vector<std::string> lines;
+  for (std::string line; std::getline(ifs, line);) {
+    if (!line.empty()) {
+      lines.push_back(std::move(line));
+    }
+  }
+  ifs.close();
+
+  if (lines.size() <= static_cast<std::size_t>(max_lines)) {
+    return;
+  }
+
+  const auto begin = lines.end() - max_lines;
+  const auto temp_path = path.string() + ".tmp";
+  std::ofstream out(temp_path, std::ios::trunc);
+  if (!out) {
+    return;
+  }
+  for (auto it = begin; it != lines.end(); ++it) {
+    out << *it << '\n';
+  }
+  out.close();
+  if (!out) {
+    return;
+  }
+  std::error_code ec;
+  std::filesystem::rename(temp_path, path, ec);
+  if (ec) {
+    VLOG_ERROR("failed to rotate context cache: {}", ec.message());
+  }
+}
+
+} // namespace
 
 AsyncContextWriter::AsyncContextWriter(std::filesystem::path path)
     : path_(std::move(path)), worker_([this] { Run(); }) {}
@@ -96,23 +158,8 @@ void AsyncContextWriter::Run() {
 }
 
 void AsyncContextWriter::Persist(const ContextWriteTask& task) {
-  {
-    std::ofstream ofs(path_, std::ios::app);
-    if (!ofs) {
-      std::error_code ec;
-      std::filesystem::create_directories(path_.parent_path(), ec);
-      if (ec) {
-        VLOG_ERROR("failed to create context cache directory: {}", ec.message());
-        return;
-      }
-      ofs.clear();
-      ofs.open(path_, std::ios::app);
-      if (!ofs) {
-        VLOG_ERROR("failed to open context cache for append");
-        return;
-      }
-    }
-    ofs << task.json_line << '\n';
+  if (!AppendTaskLine(path_, task.json_line)) {
+    return;
   }
 
   constexpr int kTruncateInterval = 100;
@@ -120,40 +167,7 @@ void AsyncContextWriter::Persist(const ContextWriteTask& task) {
     return;
   }
   write_count_ = 0;
-  std::ifstream ifs(path_);
-  if (!ifs) {
-    return;
-  }
-  std::vector<std::string> lines;
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (!line.empty()) {
-      lines.push_back(std::move(line));
-    }
-  }
-  ifs.close();
-
-  if (lines.size() <= static_cast<std::size_t>(task.max_lines)) {
-    return;
-  }
-  const auto begin = lines.end() - task.max_lines;
-  const auto temp_path = path_.string() + ".tmp";
-  std::ofstream out(temp_path, std::ios::trunc);
-  if (!out) {
-    return;
-  }
-  for (auto it = begin; it != lines.end(); ++it) {
-    out << *it << '\n';
-  }
-  out.close();
-  if (!out) {
-    return;
-  }
-  std::error_code ec;
-  std::filesystem::rename(temp_path, path_, ec);
-  if (ec) {
-    VLOG_ERROR("failed to rotate context cache: {}", ec.message());
-  }
+  RotateContextFile(path_, task.max_lines);
 }
 
 } // namespace vinput::addon
