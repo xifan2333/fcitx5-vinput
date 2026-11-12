@@ -151,7 +151,7 @@ public:
 private:
   // Assigns the error when the caller supplied an out-parameter; always reports
   // failure so the teardown paths stay one-liners.
-  bool SetFinishError(std::string* error, std::string_view message) {
+  static bool SetFinishError(std::string* error, std::string_view message) {
     if (error != nullptr) {
       *error = std::string(message);
     }
