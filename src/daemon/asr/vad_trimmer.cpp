@@ -97,15 +97,6 @@ std::vector<std::vector<float>> ExtractPaddedSegments(const std::vector<float>& 
   return raw_segments;
 }
 
-constexpr float kDefaultMaxSpeechDurationSec = 15.0F;
-
-float ResolveMaxSpeechDuration(float param_val) noexcept {
-  if (param_val > 0.0F && !std::isnan(param_val) && !std::isinf(param_val)) {
-    return param_val;
-  }
-  return kDefaultMaxSpeechDurationSec;
-}
-
 } // namespace
 
 VadTrimmer::VadTrimmer() = default;
@@ -244,9 +235,8 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
       std::max(int64_t{0}, static_cast<int64_t>(params_.speech_pad_ms) * effective_sr / 1000);
 
   auto raw_segments = ExtractPaddedSegments(samples, detected, padding_samples, total_n);
-  const float max_duration = ResolveMaxSpeechDuration(params_.max_speech_duration);
-  auto final_segments =
-      CoalesceAndSliceSegments(std::move(raw_segments), effective_sr, max_duration, 0.50F);
+  auto final_segments = CoalesceAndSliceSegments(std::move(raw_segments), effective_sr,
+                                                 params_.max_speech_duration, 0.50F);
 
   VLOG_DEBUG("VAD segmented {} samples into {} raw, {} coalesced speech segments", total_n,
              detected.size(), final_segments.size());

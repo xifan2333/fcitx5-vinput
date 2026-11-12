@@ -18,7 +18,7 @@ namespace vinput::addon {
 
 namespace {
 
-bool AppendTaskLine(const std::filesystem::path& path, std::string_view json_line) {
+[[nodiscard]] bool AppendTaskLine(const std::filesystem::path& path, std::string_view json_line) {
   std::ofstream ofs(path, std::ios::app);
   if (!ofs) {
     std::error_code ec;
@@ -73,15 +73,6 @@ void RotateContextFile(const std::filesystem::path& path, int max_lines) {
   if (ec) {
     VLOG_ERROR("failed to rotate context cache: {}", ec.message());
   }
-}
-
-void MaybeRotateContextFile(const std::filesystem::path& path, int max_lines, int& write_count) {
-  constexpr int kTruncateInterval = 100;
-  if (max_lines <= 0 || ++write_count < kTruncateInterval) {
-    return;
-  }
-  write_count = 0;
-  RotateContextFile(path, max_lines);
 }
 
 } // namespace
@@ -167,8 +158,16 @@ void AsyncContextWriter::Run() {
 }
 
 void AsyncContextWriter::Persist(const ContextWriteTask& task) {
-  AppendTaskLine(path_, task.json_line);
-  MaybeRotateContextFile(path_, task.max_lines, write_count_);
+  if (!AppendTaskLine(path_, task.json_line)) {
+    return;
+  }
+
+  constexpr int kTruncateInterval = 100;
+  if (task.max_lines <= 0 || ++write_count_ < kTruncateInterval) {
+    return;
+  }
+  write_count_ = 0;
+  RotateContextFile(path_, task.max_lines);
 }
 
 } // namespace vinput::addon
