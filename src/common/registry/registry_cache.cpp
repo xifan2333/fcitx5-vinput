@@ -52,24 +52,6 @@ bool SaveCachedText(const std::filesystem::path& cache_path, const std::string& 
   return true;
 }
 
-void SetError(std::string* error, std::string_view message) {
-  if (error != nullptr) {
-    *error = message;
-  }
-}
-
-void ClearError(std::string* error) {
-  if (error != nullptr) {
-    error->clear();
-  }
-}
-
-void AssignResult(vinput::download::Result* target, vinput::download::Result&& source) {
-  if (target != nullptr) {
-    *target = std::move(source);
-  }
-}
-
 std::string FormatFetchFailure(std::string_view download_error, std::string_view cache_error) {
   if (!download_error.empty()) {
     return std::string(download_error) + "; cache unavailable: " + std::string(cache_error);
@@ -83,12 +65,18 @@ bool HandleDownloadSuccess(const std::filesystem::path& cache_path, std::string*
   std::string write_error;
   const std::string& cached_content = (content != nullptr) ? *content : std::string{};
   const bool saved = SaveCachedText(cache_path, cached_content, &write_error);
-  AssignResult(result, std::move(download_result));
+  if (result != nullptr) {
+    *result = std::move(download_result);
+  }
   if (!saved) {
-    SetError(error, write_error);
+    if (error != nullptr) {
+      *error = write_error;
+    }
     return false;
   }
-  ClearError(error);
+  if (error != nullptr) {
+    error->clear();
+  }
   return true;
 }
 
@@ -101,11 +89,15 @@ bool TryLoadCachedFallback(const std::filesystem::path& cache_path, std::string_
       status->used_cache = true;
       status->fallback_error = std::string(download_error);
     }
-    ClearError(error);
+    if (error != nullptr) {
+      error->clear();
+    }
     return true;
   }
 
-  SetError(error, FormatFetchFailure(download_error, cache_error));
+  if (error != nullptr) {
+    *error = FormatFetchFailure(download_error, cache_error);
+  }
   return false;
 }
 
@@ -134,7 +126,9 @@ bool FetchText(const std::vector<std::string>& urls, const std::filesystem::path
     return true;
   }
 
-  AssignResult(result, std::move(download_result));
+  if (result != nullptr) {
+    *result = std::move(download_result);
+  }
   return false;
 }
 
