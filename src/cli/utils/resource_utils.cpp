@@ -50,7 +50,7 @@ vinput::registry::I18nMap FetchRegistryI18nMap(const CoreConfig& config) {
                                               &error);
 }
 
-glz::json_t::array_t BuildEnvsJsonArray(const std::vector<vinput::script::RegistryEnv>& envs) {
+glz::json_t::array_t BuildEnvsJsonArray(const std::vector<vinput::script::EnvSpec>& envs) {
   glz::json_t::array_t result;
   result.reserve(envs.size());
   for (const auto& env : envs) {

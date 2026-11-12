@@ -47,7 +47,7 @@ struct AsrProviderFields {
   QSpinBox* spinTimeout = nullptr;
 };
 
-void UpdateFieldState(const AsrProviderFields& fields) {
+void UpdateFieldState(AsrProviderFields& fields) {
   const bool is_local = fields.comboType->currentData().toString() == kLocalType;
   fields.comboModel->setEnabled(is_local);
   fields.cmd_editor.SetEnabled(!is_local);
