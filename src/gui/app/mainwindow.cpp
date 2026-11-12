@@ -233,7 +233,7 @@ QString localizedString(const glz::json_t* node) {
     return {};
   }
   if (const auto text = ResolveLocalizedText(*node); text.has_value()) {
-    return QString::fromUtf8(text->data(), static_cast<qsizetype>(text->size()));
+    return QString::fromUtf8(text->data(), static_cast<int>(text->size()));
   }
   return {};
 }
