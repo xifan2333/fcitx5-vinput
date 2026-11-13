@@ -117,6 +117,12 @@ private:
   void QueueEvent(ChildEvent&& event);
   bool PopEvent(ChildEvent& out);
 
+  // Outcome of one bounded poll on the wake eventfd. SliceElapsed means the poll
+  // window closed without the deadline being reached, so callers must re-check
+  // their own completion condition rather than report a timeout.
+  enum class WakeOutcome { Woken, SliceElapsed, Deadline, Broken };
+  WakeOutcome WaitForWake(std::chrono::time_point<Clock> deadline);
+
   // Channel bookkeeping is centralised so the poll set and the released descriptors can never
   // disagree about what is still live.
   void CloseStdinChannel();
@@ -671,24 +677,9 @@ bool ProcessSession::Impl::NextEvent(ChildEvent& out, std::chrono::milliseconds 
       return false;
     }
 
-    const auto remaining =
-        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
-    if (remaining <= kZeroMs) {
+    const auto outcome = WaitForWake(deadline);
+    if (outcome == WakeOutcome::Deadline || outcome == WakeOutcome::Broken) {
       return false;
-    }
-
-    auto wake = pollfd{.fd = wake_event_, .events = POLLIN, .revents = 0};
-    const auto wait_ms =
-        std::min(remaining, std::chrono::duration_cast<std::chrono::milliseconds>(kPollSlice));
-    const int poll_rc = ::poll(&wake, 1, static_cast<int>(wait_ms.count()));
-    if (poll_rc < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      return false;
-    }
-    if (poll_rc > 0) {
-      (void)DrainEventFd(wake_event_);
     }
   }
 }
@@ -722,10 +713,20 @@ bool ProcessSession::Impl::WaitForExit(std::chrono::milliseconds wait, int* exit
     if (HasExited(exit_code)) {
       return true;
     }
+    const auto outcome = WaitForWake(deadline);
+    if (outcome == WakeOutcome::Deadline || outcome == WakeOutcome::Broken) {
+      return HasExited(exit_code);
+    }
+  }
+}
+
+ProcessSession::Impl::WakeOutcome
+ProcessSession::Impl::WaitForWake(std::chrono::time_point<Clock> deadline) {
+  while (true) {
     const auto remaining =
         std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
     if (remaining <= kZeroMs) {
-      return HasExited(exit_code);
+      return WakeOutcome::Deadline;
     }
 
     auto wake = pollfd{.fd = wake_event_, .events = POLLIN, .revents = 0};
@@ -736,11 +737,13 @@ bool ProcessSession::Impl::WaitForExit(std::chrono::milliseconds wait, int* exit
       if (errno == EINTR) {
         continue;
       }
-      return HasExited(exit_code);
+      return WakeOutcome::Broken;
     }
     if (poll_rc > 0) {
       (void)DrainEventFd(wake_event_);
+      return WakeOutcome::Woken;
     }
+    return WakeOutcome::SliceElapsed;
   }
 }
 
