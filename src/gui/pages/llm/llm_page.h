@@ -57,9 +57,22 @@ private slots:
   void onSceneRemove();
   void onSceneSetActive();
 
+private:
   // Shared tail of the add/edit/remove scene actions: persist through
   // MutateSceneConfig, then refresh the list and notify listeners.
   void applySceneMutation(const std::function<bool(vinput::scene::Config*, std::string*)>& mutate);
+
+  // Snapshot of the scene currently selected in the list, with its id resolved
+  // once so callers never re-derive it. definition() re-resolves on demand, so
+  // no pointer outlives the snapshot.
+  struct SceneSelection {
+    QString id;
+    vinput::scene::Config scenes;
+
+    [[nodiscard]] const vinput::scene::Definition* definition() const;
+  };
+
+  [[nodiscard]] std::optional<SceneSelection> selectedScene() const;
 };
 
 } // namespace vinput::gui

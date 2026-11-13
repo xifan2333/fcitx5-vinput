@@ -806,7 +806,7 @@ void LlmPage::refreshSceneList() {
   }
 }
 
-const vinput::scene::Definition* LlmPage::SceneSelection::Definition() const {
+const vinput::scene::Definition* LlmPage::SceneSelection::definition() const {
   return vinput::scene::Find(scenes, id.toStdString());
 }
 
@@ -846,7 +846,7 @@ void LlmPage::onSceneEdit() {
   if (!selection.has_value()) {
     return;
   }
-  const vinput::scene::Definition* found = selection->Definition();
+  const vinput::scene::Definition* found = selection->definition();
   if (found == nullptr) {
     return;
   }
@@ -869,7 +869,7 @@ void LlmPage::onSceneRemove() {
   }
   const QString scene_id = selection->id;
   QString scene_label = scene_id;
-  if (const auto* scene = selection->Definition()) {
+  if (const auto* scene = selection->definition()) {
     scene_label = SceneLabelForGui(*scene);
   }
   auto response = QMessageBox::question(
@@ -884,12 +884,11 @@ void LlmPage::onSceneRemove() {
 }
 
 void LlmPage::onSceneSetActive() {
-  auto* item = listScenes_->currentItem();
-  if (item == nullptr) {
+  const auto selection = selectedScene();
+  if (!selection.has_value()) {
     return;
   }
-
-  const QString scene_id = item->data(Qt::UserRole).toString();
+  const QString scene_id = selection->id;
   applySceneMutation([&](vinput::scene::Config* sc, std::string* err) {
     return vinput::scene::SetActiveScene(sc, scene_id.toStdString(), err);
   });

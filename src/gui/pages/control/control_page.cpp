@@ -156,7 +156,7 @@ QList<QString> BuildProviderMarkers(const QString& id, const AsrDisplayContext& 
   if (id == ctx.selected_id) {
     markers << ControlPage::tr("configured");
   }
-  if (id == ctx.effective_id) {
+  if (labels.id == ctx.effective_id) {
     markers << ControlPage::tr("effective");
   }
   if (ctx.reload_in_progress && id == ctx.target_id && id != ctx.effective_id) {
@@ -189,7 +189,7 @@ struct AsrProviderLabels {
 };
 
 AsrProviderLabels ResolveAsrProviderLabels(const AsrProvider& provider,
-                                           const std::map<std::string, std::string>& i18n_map) {
+                                           const vinput::registry::I18nMap& i18n_map) {
   AsrProviderLabels labels;
   labels.id = QString::fromStdString(AsrProviderId(provider));
   labels.type = QString::fromStdString(std::string(AsrProviderType(provider)));
@@ -199,16 +199,15 @@ AsrProviderLabels ResolveAsrProviderLabels(const AsrProvider& provider,
   return labels;
 }
 
-QString BuildProviderDisplay(const AsrProvider& provider, const AsrDisplayContext& ctx) {
-  const AsrProviderLabels labels = ResolveAsrProviderLabels(provider, ctx.i18n_map);
-
+QString BuildProviderDisplay(const AsrProvider& provider, const AsrProviderLabels& labels,
+                             const AsrDisplayContext& ctx) {
   QString display = labels.title + " [" + labels.type + "]";
   const QString detail = FormatProviderDetail(provider, ctx.i18n_map);
   if (!detail.isEmpty()) {
     display += " · " + detail;
   }
 
-  const auto markers = BuildProviderMarkers(id, ctx);
+  const auto markers = BuildProviderMarkers(labels.id, ctx);
   if (!markers.isEmpty()) {
     display += " · " + markers.join(", ");
   }
@@ -639,7 +638,7 @@ void ControlPage::populateAsrList(const CoreConfig& config,
     }
 #endif
     const AsrProviderLabels labels = ResolveAsrProviderLabels(provider, ctx.i18n_map);
-    const QString display = BuildProviderDisplay(provider, ctx);
+    const QString display = BuildProviderDisplay(provider, labels, ctx);
 
     auto* item = new QListWidgetItem(display, listAsrProviders_);
     item->setData(Qt::UserRole, labels.id);
