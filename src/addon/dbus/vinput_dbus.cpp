@@ -80,30 +80,13 @@ std::string DaemonNotRespondingPreeditText() {
   return _("Voice input daemon is not responding.");
 }
 
-std::string LimitPreviewText(std::string_view text, int max_display_width) {
-  if (max_display_width <= 0 || text.empty()) {
-    return std::string(text);
-  }
-  const auto max_width = static_cast<size_t>(max_display_width);
-  std::u32string u32;
-  unicode::utf8::decode(text.data(), text.size(), u32);
-  const auto total_width =
-      static_cast<size_t>(std::max(0, unicode::width(u32, unicode::AmbiguousWidth::Wide)));
-  if (total_width <= max_width) {
-    return std::string(text);
-  }
+struct GraphemeInfo {
+  size_t start{0};
+  size_t length{0};
+  size_t width{0};
+};
 
-  constexpr std::string_view ellipsis = "...";
-  std::u32string ellipsis_u32;
-  unicode::utf8::decode(ellipsis.data(), ellipsis.size(), ellipsis_u32);
-  const auto ellipsis_width =
-      static_cast<size_t>(std::max(0, unicode::width(ellipsis_u32, unicode::AmbiguousWidth::Wide)));
-
-  struct GraphemeInfo {
-    size_t start;
-    size_t length;
-    size_t width;
-  };
+std::vector<GraphemeInfo> ExtractGraphemes(const std::u32string& u32) {
   std::vector<GraphemeInfo> graphemes;
   size_t i = 0;
   while (i < u32.size()) {
@@ -113,27 +96,38 @@ std::string LimitPreviewText(std::string_view text, int max_display_width) {
     graphemes.push_back({i, glen, gwidth});
     i += glen;
   }
+  return graphemes;
+}
 
-  if (max_width <= ellipsis_width + 4) {
-    size_t cur_width = 0;
-    size_t tail_start_idx = graphemes.size();
-    for (size_t g = graphemes.size(); g > 0; --g) {
-      const auto& gi = graphemes[g - 1];
-      if (cur_width + gi.width > max_width) {
-        break;
-      }
-      cur_width += gi.width;
-      tail_start_idx = g - 1;
+std::string SubstringUtf8(const std::u32string& u32, size_t pos,
+                          size_t count = std::u32string::npos) {
+  const std::u32string sub = u32.substr(pos, count);
+  std::string result;
+  unicode::utf8::encode(sub.data(), sub.size(), result);
+  return result;
+}
+
+std::string TruncateTailOnly(const std::u32string& u32, const std::vector<GraphemeInfo>& graphemes,
+                             size_t max_width) {
+  size_t cur_width = 0;
+  size_t tail_start_idx = graphemes.size();
+  for (size_t g = graphemes.size(); g > 0; --g) {
+    const auto& gi = graphemes[g - 1];
+    if (cur_width + gi.width > max_width) {
+      break;
     }
-    if (tail_start_idx >= graphemes.size()) {
-      return {};
-    }
-    const std::u32string tail_u32 = u32.substr(graphemes[tail_start_idx].start);
-    std::string result;
-    unicode::utf8::encode(tail_u32.data(), tail_u32.size(), result);
-    return result;
+    cur_width += gi.width;
+    tail_start_idx = g - 1;
   }
+  if (tail_start_idx >= graphemes.size()) {
+    return {};
+  }
+  return SubstringUtf8(u32, graphemes[tail_start_idx].start);
+}
 
+std::string TruncateHeadAndTail(const std::u32string& u32,
+                                const std::vector<GraphemeInfo>& graphemes, size_t max_width,
+                                size_t ellipsis_width, std::string_view ellipsis) {
   const size_t available_content_width = max_width - ellipsis_width;
   size_t target_head_width = std::max<size_t>(6, std::min<size_t>(14, available_content_width / 4));
   if (target_head_width >= available_content_width) {
@@ -162,18 +156,14 @@ std::string LimitPreviewText(std::string_view text, int max_display_width) {
     tail_start_idx = g - 1;
   }
 
-  const std::u32string head_u32 =
+  const std::string head_str =
       (head_count > 0)
-          ? u32.substr(0, graphemes[head_count - 1].start + graphemes[head_count - 1].length)
-          : std::u32string{};
-  const std::u32string tail_u32 = (tail_start_idx < graphemes.size())
-                                      ? u32.substr(graphemes[tail_start_idx].start)
-                                      : std::u32string{};
-
-  std::string head_str;
-  unicode::utf8::encode(head_u32.data(), head_u32.size(), head_str);
-  std::string tail_str;
-  unicode::utf8::encode(tail_u32.data(), tail_u32.size(), tail_str);
+          ? SubstringUtf8(u32, 0,
+                          graphemes[head_count - 1].start + graphemes[head_count - 1].length)
+          : std::string{};
+  const std::string tail_str = (tail_start_idx < graphemes.size())
+                                   ? SubstringUtf8(u32, graphemes[tail_start_idx].start)
+                                   : std::string{};
 
   std::string result;
   result.reserve(head_str.size() + ellipsis.size() + tail_str.size());
@@ -181,6 +171,32 @@ std::string LimitPreviewText(std::string_view text, int max_display_width) {
   result.append(ellipsis);
   result.append(tail_str);
   return result;
+}
+
+std::string LimitPreviewText(std::string_view text, int max_display_width) {
+  if (max_display_width <= 0 || text.empty()) {
+    return std::string(text);
+  }
+  const auto max_width = static_cast<size_t>(max_display_width);
+  std::u32string u32;
+  unicode::utf8::decode(text.data(), text.size(), u32);
+  const auto total_width =
+      static_cast<size_t>(std::max(0, unicode::width(u32, unicode::AmbiguousWidth::Wide)));
+  if (total_width <= max_width) {
+    return std::string(text);
+  }
+
+  constexpr std::string_view ellipsis = "...";
+  std::u32string ellipsis_u32;
+  unicode::utf8::decode(ellipsis.data(), ellipsis.size(), ellipsis_u32);
+  const auto ellipsis_width =
+      static_cast<size_t>(std::max(0, unicode::width(ellipsis_u32, unicode::AmbiguousWidth::Wide)));
+
+  const auto graphemes = ExtractGraphemes(u32);
+  if (max_width <= ellipsis_width + 4) {
+    return TruncateTailOnly(u32, graphemes, max_width);
+  }
+  return TruncateHeadAndTail(u32, graphemes, max_width, ellipsis_width, ellipsis);
 }
 
 std::string ComposeLivePreedit(const std::string& transcript_text, const std::string& fallback_text,
@@ -211,6 +227,66 @@ std::string RenderMethodCallFailure(std::string_view error_name, std::string_vie
     return std::string(error_message);
   }
   return fallback;
+}
+
+void AssignRpcError(std::string* error, std::string message) {
+  if (error != nullptr) {
+    *error = std::move(message);
+  }
+}
+
+const vinput::result::Candidate*
+FindAsrCandidate(const std::vector<vinput::result::Candidate>& candidates, bool is_command,
+                 std::string_view command_selected_text) {
+  for (const auto& candidate : candidates) {
+    if (candidate.source == vinput::result::kSourceAsr) {
+      return &candidate;
+    }
+  }
+  for (const auto& candidate : candidates) {
+    if (candidate.source != vinput::result::kSourceRaw) {
+      continue;
+    }
+    if (!is_command || candidate.text != command_selected_text) {
+      return &candidate;
+    }
+  }
+  return nullptr;
+}
+
+struct LlmCandidateSummary {
+  int distinct_count = 0;
+  bool commit_from_llm = false;
+};
+
+LlmCandidateSummary SummarizeLlmCandidates(const std::vector<vinput::result::Candidate>& candidates,
+                                           std::string_view commit_text) {
+  LlmCandidateSummary summary;
+  for (const auto& candidate : candidates) {
+    if (candidate.source != vinput::result::kSourceLlm) {
+      continue;
+    }
+    ++summary.distinct_count;
+    if (candidate.text == commit_text) {
+      summary.commit_from_llm = true;
+    }
+  }
+  return summary;
+}
+
+void DeleteSelectedSurroundingText(fcitx::InputContext* ic) {
+  if (ic == nullptr) {
+    return;
+  }
+  auto& surrounding = ic->surroundingText();
+  if (!surrounding.isValid() || surrounding.cursor() == surrounding.anchor()) {
+    return;
+  }
+  const int cursor = static_cast<int>(surrounding.cursor());
+  const int anchor = static_cast<int>(surrounding.anchor());
+  const int from = std::min(cursor, anchor);
+  const int len = std::abs(cursor - anchor);
+  ic->deleteSurroundingText(from - cursor, len);
 }
 
 } // namespace
@@ -563,11 +639,13 @@ std::string VinputEngine::queryDaemonStatus() const {
 
 bool VinputEngine::callSyncRpc(const char* member, const std::string& fallback_error,
                                std::string* error, const std::string* arg) {
-  if (bus_ == nullptr || !daemonSyncAllowed()) {
-    if (error != nullptr) {
-      *error = (bus_ != nullptr) ? _("Daemon access is temporarily throttled.")
-                                 : "D-Bus is unavailable.";
-    }
+  if (bus_ == nullptr) {
+    AssignRpcError(error, "D-Bus is unavailable.");
+    noteDaemonSyncFailure();
+    return false;
+  }
+  if (!daemonSyncAllowed()) {
+    AssignRpcError(error, _("Daemon access is temporarily throttled."));
     noteDaemonSyncFailure();
     return false;
   }
@@ -580,9 +658,7 @@ bool VinputEngine::callSyncRpc(const char* member, const std::string& fallback_e
   if (!reply) {
     VLOG_DEBUG("D-Bus RPC '{}' failed: no reply", member);
     noteDaemonSyncFailure();
-    if (error != nullptr) {
-      *error = _("Failed to contact vinput-daemon.");
-    }
+    AssignRpcError(error, _("Failed to contact vinput-daemon."));
     return false;
   }
 
@@ -590,19 +666,13 @@ bool VinputEngine::callSyncRpc(const char* member, const std::string& fallback_e
     VLOG_DEBUG("D-Bus RPC '{}' failed reply={} error={}", member, reply.errorName(),
                reply.errorMessage());
     noteDaemonSyncFailure();
-    if (error != nullptr) {
-      *error = reply.errorMessage();
-      if (error->empty()) {
-        *error = fallback_error;
-      }
-    }
+    std::string err_msg = reply.errorMessage();
+    AssignRpcError(error, err_msg.empty() ? fallback_error : std::move(err_msg));
     return false;
   }
-  clearDaemonSyncFailure();
 
-  if (error != nullptr) {
-    error->clear();
-  }
+  clearDaemonSyncFailure();
+  AssignRpcError(error, {});
   return true;
 }
 
@@ -627,6 +697,42 @@ void VinputEngine::clearDaemonSyncFailure() const {
   daemon_sync_blocked_until_ = std::chrono::steady_clock::time_point{};
 }
 
+bool VinputEngine::shouldDelayPolledIdleStatus(const std::string& status) {
+  if (status != kStatusIdle || !session_) {
+    polled_idle_since_.reset();
+    return false;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  if (!polled_idle_since_) {
+    polled_idle_since_ = now;
+  }
+  if (now - *polled_idle_since_ < kPolledIdleRecoveryDelay) {
+    return true;
+  }
+  polled_idle_since_.reset();
+  return false;
+}
+
+void VinputEngine::handleDaemonStatusReply(fcitx::dbus::Message& reply) {
+  if (!reply || reply.isError()) {
+    noteDaemonSyncFailure();
+    return;
+  }
+  clearDaemonSyncFailure();
+
+  std::string status;
+  reply >> status;
+  last_known_daemon_status_ = status;
+  if (status.empty() || (!session_ && status_ic_ == nullptr)) {
+    return;
+  }
+
+  if (shouldDelayPolledIdleStatus(status)) {
+    return;
+  }
+  applyDaemonStatusLocally(status);
+}
+
 void VinputEngine::syncFrontendWithDaemonStatus() {
   if (bus_ == nullptr || !daemonSyncAllowed()) {
     return;
@@ -648,35 +754,20 @@ void VinputEngine::syncFrontendWithDaemonStatus() {
                       if (!status_poll_gate_.Complete(ticket)) {
                         return true; // A newer session or status signal superseded this query.
                       }
-                      if (!reply || reply.isError()) {
-                        noteDaemonSyncFailure();
-                        return true;
-                      }
-                      clearDaemonSyncFailure();
-                      std::string status;
-                      reply >> status;
-                      last_known_daemon_status_ = status;
-                      if (status.empty() || (!session_ && status_ic_ == nullptr)) {
-                        return true;
-                      }
-
-                      if (status == kStatusIdle && session_) {
-                        const auto now = std::chrono::steady_clock::now();
-                        if (!polled_idle_since_) {
-                          polled_idle_since_ = now;
-                        }
-                        if (now - *polled_idle_since_ < kPolledIdleRecoveryDelay) {
-                          return true;
-                        }
-                      }
-                      polled_idle_since_.reset();
-                      applyDaemonStatusLocally(status);
+                      handleDaemonStatusReply(reply);
                       return true;
                     });
   if (!pending_status_call_slot_) {
     status_poll_gate_.Cancel();
     noteDaemonSyncFailure();
   }
+}
+
+bool VinputEngine::resolveSessionRawPrev() const {
+  if (session_.has_value()) {
+    return session_->raw_prev;
+  }
+  return vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
 }
 
 void VinputEngine::applyDaemonStatusLocally(const std::string& status,
@@ -691,26 +782,21 @@ void VinputEngine::applyDaemonStatusLocally(const std::string& status,
     return;
   }
 
+  const bool command_mode = session_ ? session_->command_mode : prefer_command_mode;
+
   if (status == kStatusRecording) {
-    enterRecordingState(ic, session_ ? session_->trigger : fcitx::Key(),
-                        session_ ? session_->command_mode : prefer_command_mode);
+    const auto trigger = session_ ? session_->trigger : fcitx::Key();
+    enterRecordingState(ic, trigger, command_mode);
     return;
   }
 
   if (status == kStatusInferring) {
-    const bool raw_prev = session_
-                              ? session_->raw_prev
-                              : vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
-    enterBusyState(ic, session_ ? session_->command_mode : prefer_command_mode,
-                   InferringPreeditText(), false, raw_prev);
+    enterBusyState(ic, command_mode, InferringPreeditText(), false, resolveSessionRawPrev());
     return;
   }
 
   if (status == kStatusPostprocessing) {
-    const bool command_mode = session_ ? session_->command_mode : prefer_command_mode;
-    const bool raw_prev = session_
-                              ? session_->raw_prev
-                              : vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
+    const bool raw_prev = resolveSessionRawPrev();
     enterBusyState(ic, command_mode, PostprocessingPreeditText(command_mode, raw_prev), true,
                    raw_prev);
     return;
@@ -741,44 +827,19 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
     return;
   }
 
-  const vinput::result::Candidate* asr_candidate = nullptr;
-  for (const auto& candidate : payload.candidates) {
-    if (candidate.source == vinput::result::kSourceAsr) {
-      asr_candidate = &candidate;
-      break;
-    }
-  }
-  if (asr_candidate == nullptr) {
-    for (const auto& candidate : payload.candidates) {
-      if (candidate.source != vinput::result::kSourceRaw) {
-        continue;
-      }
-      if (!is_command || candidate.text != command_selected_text) {
-        asr_candidate = &candidate;
-        break;
-      }
-    }
-  }
+  const auto* asr_candidate =
+      FindAsrCandidate(payload.candidates, is_command, command_selected_text);
   if (asr_candidate != nullptr && !asr_candidate->text.empty()) {
     appendContextEntry(asr_candidate->text, "asr");
   }
 
-  int distinct_llm_candidate_count = 0;
-  bool commit_from_llm = false;
-  for (const auto& candidate : payload.candidates) {
-    if (candidate.source == vinput::result::kSourceLlm) {
-      ++distinct_llm_candidate_count;
-    }
-    if (candidate.source == vinput::result::kSourceLlm && candidate.text == payload.commitText) {
-      commit_from_llm = true;
-    }
-  }
+  const auto llm_summary = SummarizeLlmCandidates(payload.candidates, payload.commitText);
 
   // Dictation presents every distinct choice: raw is option 1 and the primary LLM rewrite is
   // focused. Command mode keeps its existing behavior because its payload also contains the
   // selected text and spoken command as metadata candidates.
   const bool should_show_result_menu =
-      is_command ? distinct_llm_candidate_count > 1 : payload.candidates.size() > 1;
+      is_command ? llm_summary.distinct_count > 1 : payload.candidates.size() > 1;
   if (should_show_result_menu) {
     // Save command mode for result menu interaction
     result_is_command_ = is_command;
@@ -786,20 +847,13 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
     return;
   }
 
-  if (commit_from_llm) {
+  if (llm_summary.commit_from_llm) {
     appendContextEntry(payload.commitText, "llm");
   }
   suppressNextCommitContext(payload.commitText);
 
   if (is_command) {
-    auto& surrounding = ic->surroundingText();
-    if (surrounding.isValid() && surrounding.cursor() != surrounding.anchor()) {
-      const int cursor = static_cast<int>(surrounding.cursor());
-      const int anchor = static_cast<int>(surrounding.anchor());
-      const int from = std::min(cursor, anchor);
-      const int len = std::abs(cursor - anchor);
-      ic->deleteSurroundingText(from - cursor, len);
-    }
+    DeleteSelectedSurroundingText(ic);
   }
 
   ic->commitString(payload.commitText);
