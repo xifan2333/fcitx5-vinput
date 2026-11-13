@@ -272,6 +272,16 @@ void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
   candidate_list->setGlobalCursorIndex(0);
 }
 
+// Palette and result menus both render a vertical page with digit-selection keys.
+std::unique_ptr<fcitx::CommonCandidateList> MakeVerticalDigitCandidateList(int page_size) {
+  auto candidate_list = std::make_unique<fcitx::CommonCandidateList>();
+  candidate_list->setPageSize(page_size);
+  candidate_list->setSelectionKey(fcitx::Key::keyListFromString("1 2 3 4 5 6 7 8 9 0"));
+  candidate_list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
+  candidate_list->setCursorPositionAfterPaging(fcitx::CursorPositionAfterPaging::ResetToFirst);
+  return candidate_list;
+}
+
 bool ChangeCandidatePage(fcitx::InputContext* ic, const std::string& base_title, bool next_page) {
   if (ic == nullptr) {
     return false;
@@ -913,11 +923,7 @@ void VinputEngine::rebuildPaletteMenu(fcitx::InputContext* ic) {
     }
   }
 
-  auto candidate_list = std::make_unique<fcitx::CommonCandidateList>();
-  candidate_list->setPageSize(instance_->globalConfig().defaultPageSize());
-  candidate_list->setSelectionKey(fcitx::Key::keyListFromString("1 2 3 4 5 6 7 8 9 0"));
-  candidate_list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
-  candidate_list->setCursorPositionAfterPaging(fcitx::CursorPositionAfterPaging::ResetToFirst);
+  auto candidate_list = MakeVerticalDigitCandidateList(instance_->globalConfig().defaultPageSize());
 
   for (const std::size_t idx : palette_filtered_indices_) {
     const auto& item = palette_items_[idx];
@@ -1046,11 +1052,7 @@ void VinputEngine::showResultMenu(fcitx::InputContext* ic, const vinput::result:
   result_menu_visible_ = true;
   result_candidates_ = payload.candidates;
 
-  auto candidate_list = std::make_unique<fcitx::CommonCandidateList>();
-  candidate_list->setPageSize(instance_->globalConfig().defaultPageSize());
-  candidate_list->setSelectionKey(fcitx::Key::keyListFromString("1 2 3 4 5 6 7 8 9 0"));
-  candidate_list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
-  candidate_list->setCursorPositionAfterPaging(fcitx::CursorPositionAfterPaging::ResetToFirst);
+  auto candidate_list = MakeVerticalDigitCandidateList(instance_->globalConfig().defaultPageSize());
 
   for (std::size_t i = 0; i < result_candidates_.size(); ++i) {
     const auto& candidate = result_candidates_[i];
