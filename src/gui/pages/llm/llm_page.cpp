@@ -806,59 +806,70 @@ void LlmPage::refreshSceneList() {
   }
 }
 
+const vinput::scene::Definition* LlmPage::SceneSelection::Definition() const {
+  return vinput::scene::Find(scenes, id.toStdString());
+}
+
+std::optional<LlmPage::SceneSelection> LlmPage::selectedScene() const {
+  const auto* item = listScenes_->currentItem();
+  if (item == nullptr) {
+    return std::nullopt;
+  }
+  SceneSelection selection;
+  selection.id = item->data(Qt::UserRole).toString();
+  selection.scenes = ToSceneConfig(ConfigManager::Get().Load().scenes);
+  return selection;
+}
+
+void LlmPage::applySceneMutation(
+    const std::function<bool(vinput::scene::Config*, std::string*)>& mutate) {
+  if (!MutateSceneConfig(this, mutate)) {
+    return;
+  }
+  refreshSceneList();
+  configChanged();
+}
+
 void LlmPage::onSceneAdd() {
   const auto def = ShowSceneDialog(this, tr("Add Scene"));
   if (!def.has_value()) {
     return;
   }
 
-  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
-        return vinput::scene::AddScene(sc, *def, err);
-      })) {
-    refreshSceneList();
-    configChanged();
-  }
+  applySceneMutation([&](vinput::scene::Config* sc, std::string* err) {
+    return vinput::scene::AddScene(sc, *def, err);
+  });
 }
 
 void LlmPage::onSceneEdit() {
-  auto* item = listScenes_->currentItem();
-  if (item == nullptr) {
+  const auto selection = selectedScene();
+  if (!selection.has_value()) {
     return;
   }
-
-  const QString scene_id = item->data(Qt::UserRole).toString();
-
-  const CoreConfig config = ConfigManager::Get().Load();
-  const vinput::scene::Config sc = ToSceneConfig(config.scenes);
-  const vinput::scene::Definition* found = vinput::scene::Find(sc, scene_id.toStdString());
+  const vinput::scene::Definition* found = selection->Definition();
   if (found == nullptr) {
     return;
   }
+  const QString scene_id = selection->id;
 
   const auto def = ShowSceneDialog(this, tr("Edit Scene"), found);
   if (!def.has_value()) {
     return;
   }
 
-  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
-        return vinput::scene::UpdateScene(sc, scene_id.toStdString(), *def, err);
-      })) {
-    refreshSceneList();
-    configChanged();
-  }
+  applySceneMutation([&](vinput::scene::Config* sc, std::string* err) {
+    return vinput::scene::UpdateScene(sc, scene_id.toStdString(), *def, err);
+  });
 }
 
 void LlmPage::onSceneRemove() {
-  auto* item = listScenes_->currentItem();
-  if (item == nullptr) {
+  const auto selection = selectedScene();
+  if (!selection.has_value()) {
     return;
   }
-
-  const QString scene_id = item->data(Qt::UserRole).toString();
-  const CoreConfig config = ConfigManager::Get().Load();
-  const vinput::scene::Config sc = ToSceneConfig(config.scenes);
+  const QString scene_id = selection->id;
   QString scene_label = scene_id;
-  if (const auto* scene = vinput::scene::Find(sc, scene_id.toStdString())) {
+  if (const auto* scene = selection->Definition()) {
     scene_label = SceneLabelForGui(*scene);
   }
   auto response = QMessageBox::question(
@@ -867,12 +878,9 @@ void LlmPage::onSceneRemove() {
     return;
   }
 
-  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
-        return vinput::scene::RemoveScene(sc, scene_id.toStdString(), true, err);
-      })) {
-    refreshSceneList();
-    configChanged();
-  }
+  applySceneMutation([&](vinput::scene::Config* sc, std::string* err) {
+    return vinput::scene::RemoveScene(sc, scene_id.toStdString(), true, err);
+  });
 }
 
 void LlmPage::onSceneSetActive() {
@@ -882,12 +890,9 @@ void LlmPage::onSceneSetActive() {
   }
 
   const QString scene_id = item->data(Qt::UserRole).toString();
-  if (MutateSceneConfig(this, [&](vinput::scene::Config* sc, std::string* err) {
-        return vinput::scene::SetActiveScene(sc, scene_id.toStdString(), err);
-      })) {
-    refreshSceneList();
-    configChanged();
-  }
+  applySceneMutation([&](vinput::scene::Config* sc, std::string* err) {
+    return vinput::scene::SetActiveScene(sc, scene_id.toStdString(), err);
+  });
 }
 
 } // namespace vinput::gui

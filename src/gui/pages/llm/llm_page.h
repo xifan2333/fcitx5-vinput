@@ -5,6 +5,11 @@
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qwidget.h>
+#include <functional>
+#include <optional>
+#include <string>
+
+#include "common/scene/postprocess_scene.h"
 
 namespace vinput::gui {
 
@@ -51,6 +56,10 @@ private slots:
   void onSceneEdit();
   void onSceneRemove();
   void onSceneSetActive();
+
+  // Shared tail of the add/edit/remove scene actions: persist through
+  // MutateSceneConfig, then refresh the list and notify listeners.
+  void applySceneMutation(const std::function<bool(vinput::scene::Config*, std::string*)>& mutate);
 };
 
 } // namespace vinput::gui
