@@ -337,16 +337,15 @@ void VinputEngine::setupDBusWatcher() {
 
 bool VinputEngine::callStartRecording() {
   command_selected_text_.clear();
-  return beginRecordingCall(kMethodStartRecording, nullptr, "StartRecording");
+  return beginRecordingCall(kMethodStartRecording, nullptr);
 }
 
 bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
   command_selected_text_ = selected_text;
-  return beginRecordingCall(kMethodStartCommandRecording, &selected_text, "StartCommandRecording");
+  return beginRecordingCall(kMethodStartCommandRecording, &selected_text);
 }
 
-bool VinputEngine::beginRecordingCall(const char* method, const std::string* selected_text,
-                                      const char* log_label) {
+bool VinputEngine::beginRecordingCall(const char* method, const std::string* selected_text) {
   flushContextBuffer();
   if (bus_ == nullptr || !daemonSyncAllowed()) {
     noteDaemonSyncFailure();
@@ -357,20 +356,19 @@ bool VinputEngine::beginRecordingCall(const char* method, const std::string* sel
     msg << *selected_text;
   }
   const std::weak_ptr<bool> token = lifetime_token_;
-  pending_start_call_slot_ =
-      msg.callAsync(vinput::runtime::kDbusCallTimeoutUsec,
-                    [this, token, label = std::string(log_label)](fcitx::dbus::Message& reply) {
-                      if (token.expired()) {
-                        return true;
-                      }
-                      auto slot = std::move(pending_start_call_slot_);
-                      if (!reply || reply.isError()) {
-                        handleRecordingStartRejected(reply, label);
-                        return true;
-                      }
-                      clearDaemonSyncFailure();
-                      return true;
-                    });
+  pending_start_call_slot_ = msg.callAsync(vinput::runtime::kDbusCallTimeoutUsec,
+                                           [this, token, method](fcitx::dbus::Message& reply) {
+                                             if (token.expired()) {
+                                               return true;
+                                             }
+                                             auto slot = std::move(pending_start_call_slot_);
+                                             if (!reply || reply.isError()) {
+                                               handleRecordingStartRejected(reply, method);
+                                               return true;
+                                             }
+                                             clearDaemonSyncFailure();
+                                             return true;
+                                           });
   if (!pending_start_call_slot_) {
     noteDaemonSyncFailure();
     return false;
