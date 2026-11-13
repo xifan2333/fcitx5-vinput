@@ -32,6 +32,55 @@ AsyncRecognitionSession::~AsyncRecognitionSession() {
   }
 }
 
+bool AsyncRecognitionSession::IsAcceptingAudioLocked(std::string* error) const {
+  if (cancel_requested_ || finish_requested_ || complete_) {
+    if (error != nullptr) {
+      *error = error_.empty() ? "Streaming session is no longer recording." : error_;
+    }
+    return false;
+  }
+  return true;
+}
+
+bool AsyncRecognitionSession::HasCapacityLocked(std::size_t incoming_samples) const {
+  if (queued_samples_ >= max_queued_samples_) {
+    return false;
+  }
+  return incoming_samples <= max_queued_samples_ - queued_samples_;
+}
+
+void AsyncRecognitionSession::RecordDroppedSamplesLocked(std::size_t incoming_samples) {
+  if (dropped_chunks_ < std::numeric_limits<std::size_t>::max()) {
+    ++dropped_chunks_;
+  }
+  const std::size_t max_samples = std::numeric_limits<std::size_t>::max();
+  if (incoming_samples > max_samples - dropped_samples_) {
+    dropped_samples_ = max_samples;
+  } else {
+    dropped_samples_ += incoming_samples;
+  }
+}
+
+void AsyncRecognitionSession::HandleQueueOverflowLocked(std::size_t incoming_samples,
+                                                        std::deque<std::vector<int16_t>>& discarded,
+                                                        std::string* error) {
+  // Bounded queue is full: fail the session explicitly instead of
+  // silently dropping audio and later reporting an incomplete recording
+  // as successful. Blocking here would stall the capture callback, which
+  // must stay realtime-safe, so wake the worker to run the existing
+  // cancel/failure path instead of waiting for queue space.
+  RecordDroppedSamplesLocked(incoming_samples);
+  error_ = "Streaming recognition queue overflowed; audio chunk was dropped.";
+  cancel_requested_ = true;
+  discarded = std::move(queue_);
+  queue_.clear();
+  queued_samples_ = 0;
+  wake_.notify_one();
+  if (error != nullptr) {
+    *error = error_;
+  }
+}
+
 bool AsyncRecognitionSession::PushAudio(std::span<const int16_t> pcm, std::string* error) {
   // On overflow the queued chunks are moved here and destroyed after the
   // lock is released below, so freeing them does not extend the time the
@@ -39,41 +88,22 @@ bool AsyncRecognitionSession::PushAudio(std::span<const int16_t> pcm, std::strin
   std::deque<std::vector<int16_t>> discarded;
   {
     const std::scoped_lock lock(mutex_);
-    if (cancel_requested_ || finish_requested_ || complete_) {
-      if (error != nullptr) {
-        *error = error_.empty() ? "Streaming session is no longer recording." : error_;
-      }
+    if (!IsAcceptingAudioLocked(error)) {
       return false;
     }
-    if (!pcm.empty() && (queued_samples_ >= max_queued_samples_ ||
-                         pcm.size() > max_queued_samples_ - queued_samples_)) {
-      // Bounded queue is full: fail the session explicitly instead of
-      // silently dropping audio and later reporting an incomplete recording
-      // as successful. Blocking here would stall the capture callback, which
-      // must stay realtime-safe, so wake the worker to run the existing
-      // cancel/failure path instead of waiting for queue space.
-      if (dropped_chunks_ < std::numeric_limits<std::size_t>::max()) {
-        ++dropped_chunks_;
-      }
-      const std::size_t max_samples = std::numeric_limits<std::size_t>::max();
-      dropped_samples_ =
-          pcm.size() > max_samples - dropped_samples_ ? max_samples : dropped_samples_ + pcm.size();
-      error_ = "Streaming recognition queue overflowed; audio chunk was dropped.";
-      cancel_requested_ = true;
-      discarded = std::move(queue_);
-      queue_.clear();
-      queued_samples_ = 0;
-      wake_.notify_one();
+    if (pcm.empty()) {
       if (error != nullptr) {
-        *error = error_;
+        error->clear();
       }
+      return true;
+    }
+    if (!HasCapacityLocked(pcm.size())) {
+      HandleQueueOverflowLocked(pcm.size(), discarded, error);
       return false;
     }
-    if (!pcm.empty()) {
-      queue_.emplace_back(pcm.begin(), pcm.end());
-      queued_samples_ += pcm.size();
-      wake_.notify_one();
-    }
+    queue_.emplace_back(pcm.begin(), pcm.end());
+    queued_samples_ += pcm.size();
+    wake_.notify_one();
   }
   if (error != nullptr) {
     error->clear();
