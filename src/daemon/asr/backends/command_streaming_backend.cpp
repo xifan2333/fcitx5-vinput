@@ -367,7 +367,15 @@ private:
     if (!session_->PushStdin(bytes)) {
       DrainEvents(std::chrono::milliseconds(0), nullptr);
       if (error != nullptr) {
-        *error = "Provider closed stdin or input buffer is full.";
+        int exit_code = -1;
+        if (session_->HasExited(&exit_code)) {
+          *error =
+              fmt::format("Streaming ASR provider exited prematurely with code {}.", exit_code);
+        } else {
+          const auto queued = session_->StdinQueueSizeApprox();
+          *error = fmt::format("Provider closed stdin or input buffer is full (queued_blocks={}).",
+                               queued);
+        }
       }
       return false;
     }
