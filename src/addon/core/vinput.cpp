@@ -91,21 +91,17 @@ bool EndsWithSentenceTerminal(std::string_view text) noexcept {
   return unicode::is_sentence_terminal(cp) || cp == U'…' || cp == U'\n';
 }
 
-// Auto-install systemd service when running inside a sandbox.
-void ensureDaemonServiceInstalled() {
-  if (!vinput::sandbox::IsInSandbox()) {
-    return;
-  }
-
+void WarnMissingPermissions() {
   const auto missing = vinput::sandbox::MissingSandboxPermissions();
   if (!missing.empty()) {
     FCITX_LOG(Warn) << "vinput: missing sandbox permissions, run override commands:\n"
                     << vinput::sandbox::FormatOverrideCommands(missing);
   }
+}
 
-  const std::filesystem::path dest = vinput::path::DaemonServiceUnitInstallPath();
+bool IsServiceUnitInstallNeeded(const std::filesystem::path& dest) {
   if (dest.empty()) {
-    return;
+    return false;
   }
 
   std::error_code ec_exists;
@@ -113,17 +109,17 @@ void ensureDaemonServiceInstalled() {
   if (ec_exists) {
     FCITX_LOG(Error) << "vinput: failed to check existence of " << dest << ": "
                      << ec_exists.message();
-    return;
+    return false;
   }
-  if (destExists) {
-    return;
-  }
+  return !destExists;
+}
 
+bool WriteServiceUnit(const std::filesystem::path& dest) {
   const auto src = vinput::path::DaemonServiceUnitTemplatePath();
   std::ifstream src_f(src);
   if (!src_f) {
     FCITX_LOG(Error) << "vinput: service file not found at " << src;
-    return;
+    return false;
   }
 
   std::string content((std::istreambuf_iterator<char>(src_f)), {});
@@ -132,15 +128,18 @@ void ensureDaemonServiceInstalled() {
   std::string file_error;
   if (!vinput::file::EnsureParentDirectory(dest, &file_error)) {
     FCITX_LOG(Error) << "vinput: failed to prepare systemd user dir: " << file_error;
-    return;
+    return false;
   }
   if (auto res = vinput::file::AtomicWriteTextFile(dest, content); !res) {
     FCITX_LOG(Error) << "vinput: failed to write service file to " << dest;
     FCITX_LOG(Error) << "vinput: write error: " << res.error();
-    return;
+    return false;
   }
   FCITX_LOG(Info) << "vinput: installed vinput-daemon.service to " << dest;
+  return true;
+}
 
+void ReloadSystemdDaemon() {
   auto reload_cmd = vinput::sandbox::WrapHostCommand({"systemctl", "--user", "daemon-reload"});
   std::string cmd;
   for (const auto& arg : reload_cmd) {
@@ -154,83 +153,107 @@ void ensureDaemonServiceInstalled() {
     FCITX_LOG(Error) << "vinput: failed to reload systemd user daemon, return code: " << ret;
   }
 }
+
+// Auto-install systemd service when running inside a sandbox.
+void ensureDaemonServiceInstalled() {
+  if (!vinput::sandbox::IsInSandbox()) {
+    return;
+  }
+
+  WarnMissingPermissions();
+
+  const std::filesystem::path dest = vinput::path::DaemonServiceUnitInstallPath();
+  if (!IsServiceUnitInstallNeeded(dest)) {
+    return;
+  }
+
+  if (WriteServiceUnit(dest)) {
+    ReloadSystemdDaemon();
+  }
+}
 } // namespace
 
-VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
-  vinput::i18n::Init();
-  ensureDaemonServiceInstalled();
-  initializePaletteRegistry();
-  VinputEngine::reloadConfig();
-  event_dispatcher_.attach(&instance_->eventLoop());
+void VinputEngine::onInputContextCreated(fcitx::InputContext* ic) {
+  if (ic == nullptr) {
+    return;
+  }
+  ic->setCapabilityFlags(ic->capabilityFlags() | fcitx::CapabilityFlag::SurroundingText);
+  rememberInputContext(ic);
+}
 
+void VinputEngine::onInputContextDestroyed(fcitx::InputContext* ic) {
+  if (session_ && session_->ic == ic) {
+    if (session_->phase == Session::Phase::PendingStart ||
+        session_->phase == Session::Phase::Recording ||
+        session_->phase == Session::Phase::Postprocessing) {
+      callCancelOperation(false);
+    }
+    session_.reset();
+    polled_idle_since_.reset();
+  }
+  if (pending_start_ic_.get() == ic) {
+    cancelPendingStart();
+  }
+  if (status_ic_ == ic) {
+    status_ic_ = nullptr;
+    stopStatusSyncIfIdle();
+  }
+  if (last_active_ic_ == ic) {
+    last_active_ic_ = nullptr;
+  }
+  if (palette_menu_ic_ == ic) {
+    resetPaletteMenuState();
+  }
+  if (result_menu_ic_ == ic) {
+    resetResultMenuState();
+  }
+  if (context_buffer_ic_ == ic) {
+    flushContextBuffer();
+  }
+}
+
+void VinputEngine::onInputContextFocusOut(fcitx::InputContext* ic) {
+  if (pending_start_ic_.get() == ic) {
+    cancelPendingStart();
+    chord_interrupted_ = true;
+  }
+  held_key_sym_.reset();
+  held_role_ = HotkeyRole::None;
+  chord_interrupted_ = true;
+  if (session_ && session_->ic == ic) {
+    if (session_->stop_on_release) {
+      callCancelOperation(false);
+      finishFrontendSession(ic);
+      clearVoicePresentation(ic);
+      chord_interrupted_ = true;
+    }
+  }
+}
+
+void VinputEngine::registerEventHandlers() {
   eventHandlers_.emplace_back(instance_->watchEvent(
       fcitx::EventType::InputContextKeyEvent, fcitx::EventWatcherPhase::PreInputMethod,
       [this](fcitx::Event& event) { handleKeyEvent(event); }));
 
-  eventHandlers_.emplace_back(instance_->watchEvent(
-      fcitx::EventType::InputContextCreated, fcitx::EventWatcherPhase::PreInputMethod,
-      [this](fcitx::Event& event) {
-        auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
-        auto* ic = icEvent.inputContext();
-        ic->setCapabilityFlags(ic->capabilityFlags() | fcitx::CapabilityFlag::SurroundingText);
-        rememberInputContext(ic);
-      }));
+  eventHandlers_.emplace_back(
+      instance_->watchEvent(fcitx::EventType::InputContextCreated,
+                            fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
+                              auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
+                              onInputContextCreated(icEvent.inputContext());
+                            }));
 
   eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextDestroyed,
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
                               auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
-                              auto* ic = icEvent.inputContext();
-                              if (session_ && session_->ic == ic) {
-                                if (session_->phase == Session::Phase::PendingStart ||
-                                    session_->phase == Session::Phase::Recording ||
-                                    session_->phase == Session::Phase::Postprocessing) {
-                                  callCancelOperation(false);
-                                }
-                                session_.reset();
-                                polled_idle_since_.reset();
-                              }
-                              if (pending_start_ic_.get() == ic) {
-                                cancelPendingStart();
-                              }
-                              if (status_ic_ == ic) {
-                                status_ic_ = nullptr;
-                                stopStatusSyncIfIdle();
-                              }
-                              if (last_active_ic_ == ic) {
-                                last_active_ic_ = nullptr;
-                              }
-                              if (palette_menu_ic_ == ic) {
-                                resetPaletteMenuState();
-                              }
-                              if (result_menu_ic_ == ic) {
-                                resetResultMenuState();
-                              }
-                              if (context_buffer_ic_ == ic) {
-                                flushContextBuffer();
-                              }
+                              onInputContextDestroyed(icEvent.inputContext());
                             }));
 
   eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextFocusOut,
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
                               if (auto* icEvent = dynamic_cast<fcitx::InputContextEvent*>(&event)) {
-                                auto* ic = icEvent->inputContext();
-                                if (pending_start_ic_.get() == ic) {
-                                  cancelPendingStart();
-                                  chord_interrupted_ = true;
-                                }
-                                held_key_sym_.reset();
-                                held_role_ = HotkeyRole::None;
-                                chord_interrupted_ = true;
-                                if (session_ && session_->ic == ic) {
-                                  if (session_->stop_on_release) {
-                                    callCancelOperation(false);
-                                    finishFrontendSession(ic);
-                                    clearVoicePresentation(ic);
-                                    chord_interrupted_ = true;
-                                  }
-                                }
+                                onInputContextFocusOut(icEvent->inputContext());
                               }
                             }));
 
@@ -240,12 +263,25 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                               auto& commitEvent = dynamic_cast<fcitx::CommitStringEvent&>(event);
                               onCommitString(commitEvent.text(), commitEvent.inputContext());
                             }));
+}
 
+void VinputEngine::connectDBus() {
   auto* dbus_addon = instance_->addonManager().addon("dbus");
   if (dbus_addon != nullptr) {
     bus_ = dbus_addon->call<fcitx::IDBusModule::bus>();
     setupDBusWatcher();
   }
+}
+
+VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
+  vinput::i18n::Init();
+  ensureDaemonServiceInstalled();
+  initializePaletteRegistry();
+  VinputEngine::reloadConfig();
+  event_dispatcher_.attach(&instance_->eventLoop());
+
+  registerEventHandlers();
+  connectDBus();
 }
 
 VinputEngine::~VinputEngine() {
