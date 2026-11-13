@@ -180,25 +180,39 @@ QString FormatRemoteEndpoints(const vinput::dbus::AsrBackendState* backend_state
   return urls.join(" / ");
 }
 
-QString BuildProviderDisplay(const AsrProvider& provider, const AsrDisplayContext& ctx) {
-  const QString id = QString::fromStdString(AsrProviderId(provider));
-  const QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
-  const std::string id_str = id.toStdString();
-  const QString title =
-      QString::fromStdString(vinput::registry::LookupI18n(ctx.i18n_map, id_str + ".title", id_str));
+// Every ASR provider row and display string needs the same three labels; the
+// i18n lookup must stay in one place so both agree on the fallback title.
+struct AsrProviderLabels {
+  QString id;
+  QString type;
+  QString title;
+};
 
-  QString display = title + " [" + type + "]";
+AsrProviderLabels ResolveAsrProviderLabels(const AsrProvider& provider,
+                                           const vinput::registry::I18nMap& i18n_map) {
+  AsrProviderLabels labels;
+  labels.id = QString::fromStdString(AsrProviderId(provider));
+  labels.type = QString::fromStdString(std::string(AsrProviderType(provider)));
+  const std::string id_str = labels.id.toStdString();
+  labels.title =
+      QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id_str + ".title", id_str));
+  return labels;
+}
+
+QString BuildProviderDisplay(const AsrProvider& provider, const AsrProviderLabels& labels,
+                             const AsrDisplayContext& ctx) {
+  QString display = labels.title + " [" + labels.type + "]";
   const QString detail = FormatProviderDetail(provider, ctx.i18n_map);
   if (!detail.isEmpty()) {
     display += " · " + detail;
   }
 
-  const auto markers = BuildProviderMarkers(id, ctx);
+  const auto markers = BuildProviderMarkers(labels.id, ctx);
   if (!markers.isEmpty()) {
     display += " · " + markers.join(", ");
   }
 
-  if (id == ctx.effective_id) {
+  if (labels.id == ctx.effective_id) {
     const QString endpoints = FormatRemoteEndpoints(ctx.backend_state);
     if (!endpoints.isEmpty()) {
       display += " · " + endpoints;
@@ -623,18 +637,14 @@ void ControlPage::populateAsrList(const CoreConfig& config,
       continue;
     }
 #endif
-    const QString id = QString::fromStdString(AsrProviderId(provider));
-    const QString type = QString::fromStdString(std::string(AsrProviderType(provider)));
-    const std::string id_str = id.toStdString();
-    const QString title = QString::fromStdString(
-        vinput::registry::LookupI18n(ctx.i18n_map, id_str + ".title", id_str));
-    const QString display = BuildProviderDisplay(provider, ctx);
+    const AsrProviderLabels labels = ResolveAsrProviderLabels(provider, ctx.i18n_map);
+    const QString display = BuildProviderDisplay(provider, labels, ctx);
 
     auto* item = new QListWidgetItem(display, listAsrProviders_);
-    item->setData(Qt::UserRole, id);
-    item->setData(Qt::UserRole + 1, type);
-    item->setData(Qt::UserRole + 2, title);
-    if (id == current_selection) {
+    item->setData(Qt::UserRole, labels.id);
+    item->setData(Qt::UserRole + 1, labels.type);
+    item->setData(Qt::UserRole + 2, labels.title);
+    if (labels.id == current_selection) {
       listAsrProviders_->setCurrentItem(item);
     }
   }
@@ -797,6 +807,18 @@ void ControlPage::onClientAutoStartToggled(bool checked) {
   emit configChanged();
 }
 
+void ControlPage::applyAsrConfigChange() {
+  refreshAsrList();
+  emit configChanged();
+  RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
+    if (!ok) {
+      QMessageBox::warning(this, tr("Warning"),
+                           tr("Config saved, but failed to reload ASR backend: %1")
+                               .arg(QString::fromStdString(err)));
+    }
+  });
+}
+
 void ControlPage::onAsrEdit() {
   auto* item = listAsrProviders_->currentItem();
   if (item == nullptr) {
@@ -857,15 +879,7 @@ void ControlPage::onAsrEdit() {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
-  refreshAsrList();
-  emit configChanged();
-  RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-    if (!ok) {
-      QMessageBox::warning(this, tr("Warning"),
-                           tr("Config saved, but failed to reload ASR backend: %1")
-                               .arg(QString::fromStdString(err)));
-    }
-  });
+  applyAsrConfigChange();
 }
 
 void ControlPage::onAsrSetActive() {
@@ -882,15 +896,7 @@ void ControlPage::onAsrSetActive() {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
-  refreshAsrList();
-  emit configChanged();
-  RunReloadAsrBackendAsync(this, [this](bool ok, const std::string& err) {
-    if (!ok) {
-      QMessageBox::warning(this, tr("Warning"),
-                           tr("Config saved, but failed to reload ASR backend: %1")
-                               .arg(QString::fromStdString(err)));
-    }
-  });
+  applyAsrConfigChange();
 }
 
 void ControlPage::refreshDaemonStatus() {

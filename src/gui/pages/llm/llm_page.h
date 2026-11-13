@@ -5,6 +5,11 @@
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qwidget.h>
+#include <functional>
+#include <optional>
+#include <string>
+
+#include "common/scene/postprocess_scene.h"
 
 namespace vinput::gui {
 
@@ -17,6 +22,22 @@ public:
   void reload();
 
 private:
+  // Shared tail of the add/edit/remove scene actions: persist through
+  // MutateSceneConfig, then refresh the list and notify listeners.
+  void applySceneMutation(const std::function<bool(vinput::scene::Config*, std::string*)>& mutate);
+
+  // Snapshot of the scene currently selected in the list, with its id resolved
+  // once so callers never re-derive it. definition() re-resolves on demand, so
+  // no pointer outlives the snapshot.
+  struct SceneSelection {
+    QString id;
+    vinput::scene::Config scenes;
+
+    [[nodiscard]] const vinput::scene::Definition* definition() const;
+  };
+
+  [[nodiscard]] std::optional<SceneSelection> selectedScene() const;
+
   QListWidget* listProviders_;
   QPushButton* btnLlmAdd_;
   QPushButton* btnLlmEdit_;
