@@ -156,7 +156,7 @@ QList<QString> BuildProviderMarkers(const QString& id, const AsrDisplayContext& 
   if (id == ctx.selected_id) {
     markers << ControlPage::tr("configured");
   }
-  if (labels.id == ctx.effective_id) {
+  if (id == ctx.effective_id) {
     markers << ControlPage::tr("effective");
   }
   if (ctx.reload_in_progress && id == ctx.target_id && id != ctx.effective_id) {
@@ -212,7 +212,7 @@ QString BuildProviderDisplay(const AsrProvider& provider, const AsrProviderLabel
     display += " · " + markers.join(", ");
   }
 
-  if (id == ctx.effective_id) {
+  if (labels.id == ctx.effective_id) {
     const QString endpoints = FormatRemoteEndpoints(ctx.backend_state);
     if (!endpoints.isEmpty()) {
       display += " · " + endpoints;
