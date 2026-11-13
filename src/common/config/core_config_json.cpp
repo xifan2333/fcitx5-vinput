@@ -600,9 +600,8 @@ template <typename T> bool ReadSection(const glz::json_t& root, std::string_view
   return !bool(glz::read<kConfigReadOpts>(*out, section_text));
 }
 
-} // namespace
-
-bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* error) {
+bool ParseAndValidateRoot(std::string_view text, CoreConfig* config, glz::json_t* root,
+                          std::string* error) {
   if (config == nullptr) {
     if (error != nullptr) {
       *error = "Config is null.";
@@ -616,69 +615,71 @@ bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* 
     return false;
   }
 
-  glz::json_t root;
-  if (const auto ec = glz::read_json(root, text); bool(ec)) {
+  if (const auto ec = glz::read_json(*root, text); bool(ec)) {
     if (error != nullptr) {
       *error = glz::format_error(ec, text);
     }
     return false;
   }
-  if (!root.is_object()) {
+  if (!root->is_object()) {
     if (error != nullptr) {
       *error = "Config root is not a JSON object.";
     }
     return false;
   }
+  return true;
+}
+
+void ParseVersion(const glz::json_t& root, std::string* version) {
+  const auto* node = vinput::json::Find(root, "version");
+  if (node == nullptr) {
+    return;
+  }
+  if (const auto* text = node->get_if<std::string>()) {
+    *version = *text;
+  } else if (const auto* numeric = node->get_if<double>()) {
+    *version = std::to_string(static_cast<int>(*numeric));
+  }
+}
+
+template <typename WireT, typename DomainT>
+void ParseSection(const glz::json_t& root, std::string_view key, DomainT* out) {
+  WireT wire;
+  if (ReadSection(root, key, &wire)) {
+    FromWire(wire, out);
+  }
+}
+
+void ParseClientSpecs(const glz::json_t& root, std::string_view key, std::vector<ClientSpec>* out) {
+  std::vector<ClientSpecWire> wires;
+  if (!ReadSection(root, key, &wires)) {
+    return;
+  }
+  out->reserve(wires.size());
+  for (const auto& entry : wires) {
+    ClientSpec item;
+    FromWire(entry, &item);
+    out->push_back(std::move(item));
+  }
+}
+
+} // namespace
+
+bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* error) {
+  glz::json_t root;
+  if (!ParseAndValidateRoot(text, config, &root, error)) {
+    return false;
+  }
 
   CoreConfig parsed;
-  if (const auto* version = vinput::json::Find(root, "version"); version != nullptr) {
-    if (const auto* version_text = version->get_if<std::string>()) {
-      parsed.version = *version_text;
-    } else if (const auto* numeric = version->get_if<double>()) {
-      parsed.version = std::to_string(static_cast<int>(*numeric));
-    }
-  }
-
-  RegistryWire registry;
-  if (ReadSection(root, "registry", &registry)) {
-    FromWire(registry, &parsed.registry);
-  }
-  GlobalWire global;
-  if (ReadSection(root, "global", &global)) {
-    FromWire(global, &parsed.global);
-  }
-  LlmWire llm;
-  if (ReadSection(root, "llm", &llm)) {
-    FromWire(llm, &parsed.llm);
-  }
-  ScenesWire scenes;
-  if (ReadSection(root, "scenes", &scenes)) {
-    FromWire(scenes, &parsed.scenes);
-  }
-  AsrWire asr;
-  if (ReadSection(root, "asr", &asr)) {
-    FromWire(asr, &parsed.asr);
-  }
-
-  std::vector<ClientSpecWire> triggers;
-  if (ReadSection(root, "triggers", &triggers)) {
-    parsed.triggers.reserve(triggers.size());
-    for (const auto& entry : triggers) {
-      ClientSpec item;
-      FromWire(entry, &item);
-      parsed.triggers.push_back(std::move(item));
-    }
-  }
-
-  std::vector<ClientSpecWire> receivers;
-  if (ReadSection(root, "receivers", &receivers)) {
-    parsed.receivers.reserve(receivers.size());
-    for (const auto& entry : receivers) {
-      ClientSpec item;
-      FromWire(entry, &item);
-      parsed.receivers.push_back(std::move(item));
-    }
-  }
+  ParseVersion(root, &parsed.version);
+  ParseSection<RegistryWire>(root, "registry", &parsed.registry);
+  ParseSection<GlobalWire>(root, "global", &parsed.global);
+  ParseSection<LlmWire>(root, "llm", &parsed.llm);
+  ParseSection<ScenesWire>(root, "scenes", &parsed.scenes);
+  ParseSection<AsrWire>(root, "asr", &parsed.asr);
+  ParseClientSpecs(root, "triggers", &parsed.triggers);
+  ParseClientSpecs(root, "receivers", &parsed.receivers);
 
   *config = std::move(parsed);
   if (error != nullptr) {
