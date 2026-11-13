@@ -97,6 +97,10 @@ private slots:
   void onAsrEdit();
   void onAsrSetActive();
 
+  // Shared post-save tail of the ASR edits: refresh the list, notify listeners,
+  // and reload the backend while surfacing a salvageable reload failure.
+  void applyAsrConfigChange();
+
   void refreshDaemonStatus();
   void onDaemonStart();
   void onDaemonStop();
