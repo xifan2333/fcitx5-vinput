@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "common/asr/recognition_result.h"
@@ -112,6 +113,14 @@ private:
   void setupDBusWatcher();
   bool callStartRecording();
   bool callStartCommandRecording(const std::string& selected_text);
+  // Shared StartRecording/StartCommandRecording flow. Callers own the
+  // command_selected_text_ pre-state; selected_text is appended to the D-Bus
+  // message only when non-null. The rejected method is logged from `method`.
+  bool beginRecordingCall(const char* method, const std::string* selected_text);
+  // Daemon rejected a recording start: drop the frontend session and surface
+  // the failure preedit, degrading to DaemonUnavailablePreeditText when the
+  // reply is not a usable message.
+  void handleRecordingStartRejected(fcitx::dbus::Message& reply, std::string_view log_label);
   bool callStopRecording(const std::string& scene_id);
   void callCancelOperation(bool commit_raw_text);
   bool callReloadAsrBackend(std::string* error = nullptr);

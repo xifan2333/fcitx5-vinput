@@ -272,6 +272,16 @@ void SelectFirstCandidate(fcitx::CommonCandidateList* candidate_list) {
   candidate_list->setGlobalCursorIndex(0);
 }
 
+// Palette and result menus both render a vertical page with digit-selection keys.
+std::unique_ptr<fcitx::CommonCandidateList> MakeVerticalDigitCandidateList(int page_size) {
+  auto candidate_list = std::make_unique<fcitx::CommonCandidateList>();
+  candidate_list->setPageSize(page_size);
+  candidate_list->setSelectionKey(fcitx::Key::keyListFromString("1 2 3 4 5 6 7 8 9 0"));
+  candidate_list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
+  candidate_list->setCursorPositionAfterPaging(fcitx::CursorPositionAfterPaging::ResetToFirst);
+  return candidate_list;
+}
+
 bool ChangeCandidatePage(fcitx::InputContext* ic, const std::string& base_title, bool next_page) {
   if (ic == nullptr) {
     return false;
@@ -300,9 +310,12 @@ bool ChangeCandidatePage(fcitx::InputContext* ic, const std::string& base_title,
   return true;
 }
 
-class PaletteCandidateWord : public fcitx::CandidateWord {
+// Palette and result menus render identical candidate words and differ only in
+// which engine handler receives the selection, so the target is the parameter.
+template <void (VinputEngine::*Select)(std::size_t, fcitx::InputContext*)>
+class IndexedCandidateWord : public fcitx::CandidateWord {
 public:
-  PaletteCandidateWord(VinputEngine* engine, std::size_t index, const std::string& text,
+  IndexedCandidateWord(VinputEngine* engine, std::size_t index, const std::string& text,
                        const std::string& comment)
       : fcitx::CandidateWord(fcitx::Text(text)), engine_(engine), index_(index) {
     if (!comment.empty()) {
@@ -313,7 +326,7 @@ public:
   }
 
   void select(fcitx::InputContext* inputContext) const override {
-    engine_->selectPaletteItem(index_, inputContext);
+    (engine_->*Select)(index_, inputContext);
   }
 
 private:
@@ -321,26 +334,8 @@ private:
   std::size_t index_;
 };
 
-class ResultCandidateWord : public fcitx::CandidateWord {
-public:
-  ResultCandidateWord(VinputEngine* engine, std::size_t index, const std::string& text,
-                      const std::string& comment)
-      : fcitx::CandidateWord(fcitx::Text(text)), engine_(engine), index_(index) {
-    if (!comment.empty()) {
-#ifdef VINPUT_FCITX5_CORE_HAVE_SET_COMMENT
-      setComment(fcitx::Text(comment));
-#endif
-    }
-  }
-
-  void select(fcitx::InputContext* inputContext) const override {
-    engine_->selectResultCandidate(index_, inputContext);
-  }
-
-private:
-  VinputEngine* engine_;
-  std::size_t index_;
-};
+using PaletteCandidateWord = IndexedCandidateWord<&VinputEngine::selectPaletteItem>;
+using ResultCandidateWord = IndexedCandidateWord<&VinputEngine::selectResultCandidate>;
 
 bool IsPaletteItemVisible(const PaletteItem& item, const ParsedPaletteQuery& parsed,
                           std::string_view query) {
@@ -396,8 +391,14 @@ bool HandlePaletteQueryEditing(const fcitx::Key& key, bool printable, std::strin
   return false;
 }
 
-bool HandlePaletteCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
-                                  fcitx::InputContext* ic) {
+// Palette and result menus share digit/cursor/enter dispatch, but their key
+// predicates genuinely differ: the palette uses the normalizing `IsUpKey` family
+// while the result menu tests raw key syms. Callers therefore supply predicates
+// instead of the helpers being unified.
+template <typename UpPred, typename DownPred, typename EnterPred>
+bool HandleIndexedCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
+                                  fcitx::InputContext* ic, UpPred is_up, DownPred is_down,
+                                  EnterPred is_enter) {
   if (list == nullptr) {
     return false;
   }
@@ -407,28 +408,33 @@ bool HandlePaletteCandidateAction(const fcitx::Key& key, fcitx::CandidateList* l
     return true;
   }
   auto* cursor_list = list->toCursorMovable();
-  if (cursor_list != nullptr && IsUpKey(key)) {
+  if (cursor_list != nullptr && is_up(key)) {
     cursor_list->prevCandidate();
     ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     return true;
   }
-  if (cursor_list != nullptr && IsDownKey(key)) {
+  if (cursor_list != nullptr && is_down(key)) {
     cursor_list->nextCandidate();
     ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     return true;
   }
-  if (IsEnterKey(key)) {
-    if (list->empty()) {
-      return false;
-    }
-    const int index = std::max(list->cursorIndex(), 0);
-    if (index >= 0 && index < list->size()) {
-      list->candidate(index).select(ic);
-      return true;
-    }
+  if (!is_enter(key)) {
     return false;
   }
+  if (list->empty()) {
+    return false;
+  }
+  const int index = std::max(list->cursorIndex(), 0);
+  if (index >= 0 && index < list->size()) {
+    list->candidate(index).select(ic);
+    return true;
+  }
   return false;
+}
+
+bool HandlePaletteCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
+                                  fcitx::InputContext* ic) {
+  return HandleIndexedCandidateAction(key, list, ic, IsUpKey, IsDownKey, IsEnterKey);
 }
 
 bool IsHandledResultMenuKey(const fcitx::Key& key, const std::vector<fcitx::Key>& prev_keys,
@@ -440,37 +446,10 @@ bool IsHandledResultMenuKey(const fcitx::Key& key, const std::vector<fcitx::Key>
 
 bool HandleResultCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
                                  fcitx::InputContext* ic) {
-  if (list == nullptr) {
-    return false;
-  }
-  const int digit = key.digitSelection();
-  if (digit >= 0 && digit < list->size()) {
-    list->candidate(digit).select(ic);
-    return true;
-  }
-  auto* cursor_list = list->toCursorMovable();
-  if (cursor_list != nullptr && key.check(FcitxKey_Up)) {
-    cursor_list->prevCandidate();
-    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    return true;
-  }
-  if (cursor_list != nullptr && key.check(FcitxKey_Down)) {
-    cursor_list->nextCandidate();
-    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    return true;
-  }
-  if (key.check(FcitxKey_Return) || key.check(FcitxKey_KP_Enter)) {
-    if (list->empty()) {
-      return false;
-    }
-    const int index = std::max(list->cursorIndex(), 0);
-    if (index >= 0 && index < list->size()) {
-      list->candidate(index).select(ic);
-      return true;
-    }
-    return false;
-  }
-  return false;
+  return HandleIndexedCandidateAction(
+      key, list, ic, [](const fcitx::Key& k) { return k.check(FcitxKey_Up); },
+      [](const fcitx::Key& k) { return k.check(FcitxKey_Down); },
+      [](const fcitx::Key& k) { return k.check(FcitxKey_Return) || k.check(FcitxKey_KP_Enter); });
 }
 
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -944,11 +923,7 @@ void VinputEngine::rebuildPaletteMenu(fcitx::InputContext* ic) {
     }
   }
 
-  auto candidate_list = std::make_unique<fcitx::CommonCandidateList>();
-  candidate_list->setPageSize(instance_->globalConfig().defaultPageSize());
-  candidate_list->setSelectionKey(fcitx::Key::keyListFromString("1 2 3 4 5 6 7 8 9 0"));
-  candidate_list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
-  candidate_list->setCursorPositionAfterPaging(fcitx::CursorPositionAfterPaging::ResetToFirst);
+  auto candidate_list = MakeVerticalDigitCandidateList(instance_->globalConfig().defaultPageSize());
 
   for (const std::size_t idx : palette_filtered_indices_) {
     const auto& item = palette_items_[idx];
@@ -1077,11 +1052,7 @@ void VinputEngine::showResultMenu(fcitx::InputContext* ic, const vinput::result:
   result_menu_visible_ = true;
   result_candidates_ = payload.candidates;
 
-  auto candidate_list = std::make_unique<fcitx::CommonCandidateList>();
-  candidate_list->setPageSize(instance_->globalConfig().defaultPageSize());
-  candidate_list->setSelectionKey(fcitx::Key::keyListFromString("1 2 3 4 5 6 7 8 9 0"));
-  candidate_list->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
-  candidate_list->setCursorPositionAfterPaging(fcitx::CursorPositionAfterPaging::ResetToFirst);
+  auto candidate_list = MakeVerticalDigitCandidateList(instance_->globalConfig().defaultPageSize());
 
   for (std::size_t i = 0; i < result_candidates_.size(); ++i) {
     const auto& candidate = result_candidates_[i];
