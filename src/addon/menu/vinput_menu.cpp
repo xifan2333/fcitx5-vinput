@@ -381,8 +381,14 @@ bool HandlePaletteQueryEditing(const fcitx::Key& key, bool printable, std::strin
   return false;
 }
 
-bool HandlePaletteCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
-                                  fcitx::InputContext* ic) {
+// Palette and result menus share digit/cursor/enter dispatch, but their key
+// predicates genuinely differ: the palette uses the normalizing `IsUpKey` family
+// while the result menu tests raw key syms. Callers therefore supply predicates
+// instead of the helpers being unified.
+template <typename UpPred, typename DownPred, typename EnterPred>
+bool HandleIndexedCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
+                                  fcitx::InputContext* ic, UpPred is_up, DownPred is_down,
+                                  EnterPred is_enter) {
   if (list == nullptr) {
     return false;
   }
@@ -392,28 +398,33 @@ bool HandlePaletteCandidateAction(const fcitx::Key& key, fcitx::CandidateList* l
     return true;
   }
   auto* cursor_list = list->toCursorMovable();
-  if (cursor_list != nullptr && IsUpKey(key)) {
+  if (cursor_list != nullptr && is_up(key)) {
     cursor_list->prevCandidate();
     ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     return true;
   }
-  if (cursor_list != nullptr && IsDownKey(key)) {
+  if (cursor_list != nullptr && is_down(key)) {
     cursor_list->nextCandidate();
     ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     return true;
   }
-  if (IsEnterKey(key)) {
-    if (list->empty()) {
-      return false;
-    }
-    const int index = std::max(list->cursorIndex(), 0);
-    if (index >= 0 && index < list->size()) {
-      list->candidate(index).select(ic);
-      return true;
-    }
+  if (!is_enter(key)) {
     return false;
   }
+  if (list->empty()) {
+    return false;
+  }
+  const int index = std::max(list->cursorIndex(), 0);
+  if (index >= 0 && index < list->size()) {
+    list->candidate(index).select(ic);
+    return true;
+  }
   return false;
+}
+
+bool HandlePaletteCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
+                                  fcitx::InputContext* ic) {
+  return HandleIndexedCandidateAction(key, list, ic, IsUpKey, IsDownKey, IsEnterKey);
 }
 
 bool IsHandledResultMenuKey(const fcitx::Key& key, const std::vector<fcitx::Key>& prev_keys,
@@ -425,37 +436,10 @@ bool IsHandledResultMenuKey(const fcitx::Key& key, const std::vector<fcitx::Key>
 
 bool HandleResultCandidateAction(const fcitx::Key& key, fcitx::CandidateList* list,
                                  fcitx::InputContext* ic) {
-  if (list == nullptr) {
-    return false;
-  }
-  const int digit = key.digitSelection();
-  if (digit >= 0 && digit < list->size()) {
-    list->candidate(digit).select(ic);
-    return true;
-  }
-  auto* cursor_list = list->toCursorMovable();
-  if (cursor_list != nullptr && key.check(FcitxKey_Up)) {
-    cursor_list->prevCandidate();
-    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    return true;
-  }
-  if (cursor_list != nullptr && key.check(FcitxKey_Down)) {
-    cursor_list->nextCandidate();
-    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    return true;
-  }
-  if (key.check(FcitxKey_Return) || key.check(FcitxKey_KP_Enter)) {
-    if (list->empty()) {
-      return false;
-    }
-    const int index = std::max(list->cursorIndex(), 0);
-    if (index >= 0 && index < list->size()) {
-      list->candidate(index).select(ic);
-      return true;
-    }
-    return false;
-  }
-  return false;
+  return HandleIndexedCandidateAction(
+      key, list, ic, [](const fcitx::Key& k) { return k.check(FcitxKey_Up); },
+      [](const fcitx::Key& k) { return k.check(FcitxKey_Down); },
+      [](const fcitx::Key& k) { return k.check(FcitxKey_Return) || k.check(FcitxKey_KP_Enter); });
 }
 
 #if VINPUT_ENABLE_LOCAL_ASR
