@@ -62,6 +62,11 @@ private:
   void AppendEvents(std::vector<RecognitionEvent> events);
   void Complete(bool success, std::string error);
   void InvokeWakeCallback();
+  [[nodiscard]] bool IsAcceptingAudioLocked(std::string* error) const;
+  [[nodiscard]] bool HasCapacityLocked(std::size_t incoming_samples) const;
+  void RecordDroppedSamplesLocked(std::size_t incoming_samples);
+  void HandleQueueOverflowLocked(std::size_t incoming_samples,
+                                 std::deque<std::vector<int16_t>>& discarded, std::string* error);
 
   std::unique_ptr<RecognitionSession> backend_;
   const std::size_t max_queued_samples_;

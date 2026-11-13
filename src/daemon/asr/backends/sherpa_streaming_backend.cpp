@@ -44,6 +44,20 @@ int ChooseNumThreads(const glz::json_t& model_cfg, int runtime_default) {
   return JsonInt(model_cfg, "num_threads", 1);
 }
 
+// Callers pass a nullable error sink throughout this backend; these two helpers
+// keep the null check in one place instead of repeating it at every exit path.
+void SetError(std::string* error, std::string message) {
+  if (error != nullptr) {
+    *error = std::move(message);
+  }
+}
+
+void ClearError(std::string* error) {
+  if (error != nullptr) {
+    error->clear();
+  }
+}
+
 class SherpaStreamingSession : public RecognitionSession {
 public:
   SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer, sherpa::OnlineStream stream)
@@ -216,6 +230,201 @@ private:
   std::vector<RecognitionEvent> events_;
 };
 
+struct StreamingRecognizerConfigContext {
+  std::string tokens_path;
+  std::string f_model;
+  std::string f_encoder;
+  std::string f_decoder;
+  std::string f_joiner;
+  std::string f_bpe_vocab;
+  std::string f_rule_fsts;
+  std::string f_rule_fars;
+  std::string f_hotwords_file;
+  std::string f_graph;
+  std::string f_hr_lexicon;
+  std::string f_hr_rule_fsts;
+  std::string explicit_model_type;
+  std::string modeling_unit;
+  std::string tokens_buf;
+  std::string hotwords_buf;
+  std::string selected_hotwords_file;
+  std::string normalized_transducer_hotwords;
+  std::string p_provider;
+  std::string p_decoding_method;
+  bool use_hotwords_buf = false;
+};
+
+void ResolveAssetPaths(const ModelInfo& info, StreamingRecognizerConfigContext& ctx) {
+  const auto& recognizer_cfg = info.recognizer_config;
+  const auto& model_cfg = info.model_config;
+
+  ctx.tokens_path = info.File("tokens");
+  ctx.f_model = info.File("model");
+  ctx.f_encoder = info.File("encoder");
+  ctx.f_decoder = info.File("decoder");
+  ctx.f_joiner = info.File("joiner");
+  ctx.f_bpe_vocab = info.File("bpe_vocab");
+  ctx.f_rule_fsts = info.File("rule_fsts");
+  ctx.f_rule_fars = info.File("rule_fars");
+  ctx.f_hotwords_file = info.File("hotwords_file");
+  ctx.f_graph = info.File("graph");
+  ctx.f_hr_lexicon = info.File("hr_lexicon");
+  ctx.f_hr_rule_fsts = info.File("hr_rule_fsts");
+  ctx.explicit_model_type = JsonString(model_cfg, "model_type");
+  ctx.modeling_unit = JsonString(model_cfg, "modeling_unit");
+  ctx.tokens_buf = JsonString(model_cfg, "tokens_buf");
+  ctx.hotwords_buf = JsonString(recognizer_cfg, "hotwords_buf");
+}
+
+void ConfigureCommonSettings(const ModelInfo& info, const AsrConfig& asr_config,
+                             StreamingRecognizerConfigContext& ctx,
+                             SherpaOnnxOnlineRecognizerConfig& config) {
+  const auto& recognizer_cfg = info.recognizer_config;
+  const auto& model_cfg = info.model_config;
+  const auto& feat_cfg = vinput::json::Object(recognizer_cfg, "feat_config");
+
+  config.feat_config.sample_rate = JsonInt(feat_cfg, "sample_rate", 16000);
+  config.feat_config.feature_dim = JsonInt(feat_cfg, "feature_dim", 80);
+
+  config.model_config.tokens = ctx.tokens_path.c_str();
+  config.model_config.num_threads = ChooseNumThreads(model_cfg, asr_config.thread_num);
+  ctx.p_provider = JsonString(model_cfg, "provider", "cpu");
+  config.model_config.provider = ctx.p_provider.c_str();
+  ctx.p_decoding_method = JsonString(recognizer_cfg, "decoding_method", "greedy_search");
+  config.decoding_method = ctx.p_decoding_method.c_str();
+  config.max_active_paths = JsonInt(recognizer_cfg, "max_active_paths", 4);
+  config.blank_penalty = JsonFloat(recognizer_cfg, "blank_penalty", 0.0F);
+  config.enable_endpoint = JsonBool(recognizer_cfg, "enable_endpoint", true) ? 1 : 0;
+  config.rule1_min_trailing_silence = JsonFloat(recognizer_cfg, "rule1_min_trailing_silence", 2.4F);
+  config.rule2_min_trailing_silence = JsonFloat(recognizer_cfg, "rule2_min_trailing_silence", 1.2F);
+  config.rule3_min_utterance_length =
+      JsonFloat(recognizer_cfg, "rule3_min_utterance_length", 20.0F);
+  config.hotwords_score = JsonFloat(recognizer_cfg, "hotwords_score", 1.5F);
+
+  if (!ctx.explicit_model_type.empty()) {
+    config.model_config.model_type = ctx.explicit_model_type.c_str();
+  }
+  if (!ctx.modeling_unit.empty()) {
+    config.model_config.modeling_unit = ctx.modeling_unit.c_str();
+  }
+  if (!ctx.f_bpe_vocab.empty()) {
+    config.model_config.bpe_vocab = ctx.f_bpe_vocab.c_str();
+  }
+  if (!ctx.tokens_buf.empty()) {
+    config.model_config.tokens_buf = ctx.tokens_buf.c_str();
+    config.model_config.tokens_buf_size = static_cast<int32_t>(ctx.tokens_buf.size());
+  }
+  if (!ctx.f_rule_fsts.empty()) {
+    config.rule_fsts = ctx.f_rule_fsts.c_str();
+  }
+  if (!ctx.f_rule_fars.empty()) {
+    config.rule_fars = ctx.f_rule_fars.c_str();
+  }
+  if (!ctx.f_graph.empty()) {
+    config.ctc_fst_decoder_config.graph = ctx.f_graph.c_str();
+    config.ctc_fst_decoder_config.max_active =
+        JsonInt(vinput::json::Object(recognizer_cfg, "ctc_fst_decoder_config"), "max_active", 3000);
+  }
+  if (!ctx.f_hr_lexicon.empty()) {
+    config.hr.lexicon = ctx.f_hr_lexicon.c_str();
+  }
+  if (!ctx.f_hr_rule_fsts.empty()) {
+    config.hr.rule_fsts = ctx.f_hr_rule_fsts.c_str();
+  }
+}
+
+bool ResolveHotwordsBuffer(const ModelInfo& info, const AsrConfig& asr_config,
+                           StreamingRecognizerConfigContext& ctx, std::string* error) {
+  const bool provider_hotwords_configured =
+      info.supports_hotwords && !asr_config.hotwords_file.empty();
+  if (provider_hotwords_configured && !IsTransducerHotwordFamily(info.family)) {
+    if (error != nullptr) {
+      *error = "model family '" + info.family +
+               "' does not expose streaming ASR hotwords in sherpa-onnx";
+    }
+    return false;
+  }
+
+  if (!info.supports_hotwords || !IsTransducerHotwordFamily(info.family)) {
+    return true;
+  }
+
+  ctx.selected_hotwords_file =
+      !asr_config.hotwords_file.empty() ? asr_config.hotwords_file : ctx.f_hotwords_file;
+  bool hotwords_active = false;
+  if (!ctx.selected_hotwords_file.empty()) {
+    if (!LoadTransducerHotwords(ctx.selected_hotwords_file, &ctx.normalized_transducer_hotwords,
+                                error)) {
+      return false;
+    }
+    hotwords_active = !ctx.normalized_transducer_hotwords.empty();
+  } else if (!ctx.hotwords_buf.empty()) {
+    ctx.use_hotwords_buf = true;
+    hotwords_active = true;
+  }
+
+  if (hotwords_active && !ValidateTransducerHotwordAssets(info, error)) {
+    return false;
+  }
+  return true;
+}
+
+void ApplyHotwordsConfig(const StreamingRecognizerConfigContext& ctx,
+                         SherpaOnnxOnlineRecognizerConfig& config) {
+  if (!ctx.normalized_transducer_hotwords.empty()) {
+    config.hotwords_buf = ctx.normalized_transducer_hotwords.c_str();
+    config.hotwords_buf_size = static_cast<int32_t>(ctx.normalized_transducer_hotwords.size());
+    config.decoding_method = "modified_beam_search";
+    return;
+  }
+  if (ctx.use_hotwords_buf) {
+    config.hotwords_buf = ctx.hotwords_buf.c_str();
+    config.hotwords_buf_size = static_cast<int32_t>(ctx.hotwords_buf.size());
+    config.decoding_method = "modified_beam_search";
+  }
+}
+
+bool ConfigureHotwords(const ModelInfo& info, const AsrConfig& asr_config,
+                       StreamingRecognizerConfigContext& ctx,
+                       SherpaOnnxOnlineRecognizerConfig& config, std::string* error) {
+  if (!ResolveHotwordsBuffer(info, asr_config, ctx, error)) {
+    return false;
+  }
+  ApplyHotwordsConfig(ctx, config);
+  return true;
+}
+
+bool ConfigureModelFamily(const ModelInfo& info, const StreamingRecognizerConfigContext& ctx,
+                          SherpaOnnxOnlineRecognizerConfig& config, std::string* error) {
+  if (info.family == "transducer") {
+    config.model_config.transducer.encoder = ctx.f_encoder.c_str();
+    config.model_config.transducer.decoder = ctx.f_decoder.c_str();
+    config.model_config.transducer.joiner = ctx.f_joiner.c_str();
+    return true;
+  }
+  if (info.family == "zipformer2_ctc") {
+    config.model_config.zipformer2_ctc.model = ctx.f_model.c_str();
+    return true;
+  }
+  if (info.family == "paraformer") {
+    config.model_config.paraformer.encoder = ctx.f_encoder.c_str();
+    config.model_config.paraformer.decoder = ctx.f_decoder.c_str();
+    return true;
+  }
+  if (info.family == "nemo_ctc") {
+    config.model_config.nemo_ctc.model = ctx.f_model.c_str();
+    return true;
+  }
+  if (info.family == "t_one_ctc") {
+    config.model_config.t_one_ctc.model = ctx.f_model.c_str();
+    return true;
+  }
+  if (error != nullptr) {
+    *error = "Unsupported sherpa-streaming model family '" + info.family + "'";
+  }
+  return false;
+}
+
 class SherpaStreamingBackend : public AsrBackend {
 public:
   SherpaStreamingBackend(ModelInfo model_info, AsrConfig asr_config, std::string provider_id)
@@ -264,151 +473,28 @@ public:
 private:
   bool InitializeRecognizerLocked(std::string* error) {
     if (recognizer_.has_value() && recognizer_->Valid()) {
-      if (error != nullptr) {
-        error->clear();
-      }
+      ClearError(error);
       return true;
     }
 
+    StreamingRecognizerConfigContext ctx;
+    ResolveAssetPaths(model_info_, ctx);
+
     SherpaOnnxOnlineRecognizerConfig config = {};
-    const auto& recognizer_cfg = model_info_.recognizer_config;
-    const auto& model_cfg = model_info_.model_config;
-    const auto& feat_cfg = vinput::json::Object(recognizer_cfg, "feat_config");
-    config.feat_config.sample_rate = JsonInt(feat_cfg, "sample_rate", 16000);
-    config.feat_config.feature_dim = JsonInt(feat_cfg, "feature_dim", 80);
+    ConfigureCommonSettings(model_info_, asr_config_, ctx, config);
 
-    const std::string tokens_path = model_info_.File("tokens");
-    const std::string f_model = model_info_.File("model");
-    const std::string f_encoder = model_info_.File("encoder");
-    const std::string f_decoder = model_info_.File("decoder");
-    const std::string f_joiner = model_info_.File("joiner");
-    const std::string f_bpe_vocab = model_info_.File("bpe_vocab");
-    const std::string f_rule_fsts = model_info_.File("rule_fsts");
-    const std::string f_rule_fars = model_info_.File("rule_fars");
-    const std::string f_hotwords_file = model_info_.File("hotwords_file");
-    const std::string f_graph = model_info_.File("graph");
-    const std::string f_hr_lexicon = model_info_.File("hr_lexicon");
-    const std::string f_hr_rule_fsts = model_info_.File("hr_rule_fsts");
-    const std::string explicit_model_type = JsonString(model_cfg, "model_type");
-    const std::string modeling_unit = JsonString(model_cfg, "modeling_unit");
-    const std::string tokens_buf = JsonString(model_cfg, "tokens_buf");
-    const std::string hotwords_buf = JsonString(recognizer_cfg, "hotwords_buf");
-    std::string selected_hotwords_file;
-    std::string normalized_transducer_hotwords;
-    std::string p_provider;
-    std::string p_decoding_method;
-    bool use_hotwords_buf = false;
-
-    const bool provider_hotwords_configured =
-        model_info_.supports_hotwords && !asr_config_.hotwords_file.empty();
-    if (provider_hotwords_configured && !IsTransducerHotwordFamily(model_info_.family)) {
-      if (error != nullptr) {
-        *error = "model family '" + model_info_.family +
-                 "' does not expose streaming ASR hotwords in sherpa-onnx";
-      }
+    if (!ConfigureHotwords(model_info_, asr_config_, ctx, config, error)) {
       return false;
     }
-    if (model_info_.supports_hotwords && IsTransducerHotwordFamily(model_info_.family)) {
-      selected_hotwords_file =
-          !asr_config_.hotwords_file.empty() ? asr_config_.hotwords_file : f_hotwords_file;
-      bool hotwords_active = false;
-      if (!selected_hotwords_file.empty()) {
-        if (!LoadTransducerHotwords(selected_hotwords_file, &normalized_transducer_hotwords,
-                                    error)) {
-          return false;
-        }
-        hotwords_active = !normalized_transducer_hotwords.empty();
-      } else if (!hotwords_buf.empty()) {
-        use_hotwords_buf = true;
-        hotwords_active = true;
-      }
-      if (hotwords_active && !ValidateTransducerHotwordAssets(model_info_, error)) {
-        return false;
-      }
-    }
 
-    config.model_config.tokens = tokens_path.c_str();
-    config.model_config.num_threads = ChooseNumThreads(model_cfg, asr_config_.thread_num);
-    p_provider = JsonString(model_cfg, "provider", "cpu");
-    config.model_config.provider = p_provider.c_str();
-    p_decoding_method = JsonString(recognizer_cfg, "decoding_method", "greedy_search");
-    config.decoding_method = p_decoding_method.c_str();
-    config.max_active_paths = JsonInt(recognizer_cfg, "max_active_paths", 4);
-    config.blank_penalty = JsonFloat(recognizer_cfg, "blank_penalty", 0.0F);
-    config.enable_endpoint = JsonBool(recognizer_cfg, "enable_endpoint", true) ? 1 : 0;
-    config.rule1_min_trailing_silence =
-        JsonFloat(recognizer_cfg, "rule1_min_trailing_silence", 2.4F);
-    config.rule2_min_trailing_silence =
-        JsonFloat(recognizer_cfg, "rule2_min_trailing_silence", 1.2F);
-    config.rule3_min_utterance_length =
-        JsonFloat(recognizer_cfg, "rule3_min_utterance_length", 20.0F);
-    config.hotwords_score = JsonFloat(recognizer_cfg, "hotwords_score", 1.5F);
-    if (!explicit_model_type.empty()) {
-      config.model_config.model_type = explicit_model_type.c_str();
-    }
-    if (!modeling_unit.empty()) {
-      config.model_config.modeling_unit = modeling_unit.c_str();
-    }
-    if (!f_bpe_vocab.empty()) {
-      config.model_config.bpe_vocab = f_bpe_vocab.c_str();
-    }
-    if (!tokens_buf.empty()) {
-      config.model_config.tokens_buf = tokens_buf.c_str();
-      config.model_config.tokens_buf_size = static_cast<int32_t>(tokens_buf.size());
-    }
-    if (!f_rule_fsts.empty()) {
-      config.rule_fsts = f_rule_fsts.c_str();
-    }
-    if (!f_rule_fars.empty()) {
-      config.rule_fars = f_rule_fars.c_str();
-    }
-    if (!f_graph.empty()) {
-      config.ctc_fst_decoder_config.graph = f_graph.c_str();
-      config.ctc_fst_decoder_config.max_active = JsonInt(
-          vinput::json::Object(recognizer_cfg, "ctc_fst_decoder_config"), "max_active", 3000);
-    }
-    if (!normalized_transducer_hotwords.empty()) {
-      config.hotwords_buf = normalized_transducer_hotwords.c_str();
-      config.hotwords_buf_size = static_cast<int32_t>(normalized_transducer_hotwords.size());
-      config.decoding_method = "modified_beam_search";
-    } else if (use_hotwords_buf) {
-      config.hotwords_buf = hotwords_buf.c_str();
-      config.hotwords_buf_size = static_cast<int32_t>(hotwords_buf.size());
-      config.decoding_method = "modified_beam_search";
-    }
-    if (!f_hr_lexicon.empty()) {
-      config.hr.lexicon = f_hr_lexicon.c_str();
-    }
-    if (!f_hr_rule_fsts.empty()) {
-      config.hr.rule_fsts = f_hr_rule_fsts.c_str();
-    }
-
-    if (model_info_.family == "transducer") {
-      config.model_config.transducer.encoder = f_encoder.c_str();
-      config.model_config.transducer.decoder = f_decoder.c_str();
-      config.model_config.transducer.joiner = f_joiner.c_str();
-    } else if (model_info_.family == "zipformer2_ctc") {
-      config.model_config.zipformer2_ctc.model = f_model.c_str();
-    } else if (model_info_.family == "paraformer") {
-      config.model_config.paraformer.encoder = f_encoder.c_str();
-      config.model_config.paraformer.decoder = f_decoder.c_str();
-    } else if (model_info_.family == "nemo_ctc") {
-      config.model_config.nemo_ctc.model = f_model.c_str();
-    } else if (model_info_.family == "t_one_ctc") {
-      config.model_config.t_one_ctc.model = f_model.c_str();
-    } else {
-      if (error != nullptr) {
-        *error = "Unsupported sherpa-streaming model family '" + model_info_.family + "'";
-      }
+    if (!ConfigureModelFamily(model_info_, ctx, config, error)) {
       return false;
     }
 
     auto recognizer = sherpa::OnlineRecognizer::Create(config);
     if (!recognizer.has_value()) {
-      if (error != nullptr) {
-        *error =
-            "failed to create sherpa-streaming recognizer for family '" + model_info_.family + "'";
-      }
+      SetError(error, "failed to create sherpa-streaming recognizer for family '" +
+                          model_info_.family + "'");
       return false;
     }
 
@@ -420,9 +506,7 @@ private:
 
     WarmupRecognizerLocked();
 
-    if (error != nullptr) {
-      error->clear();
-    }
+    ClearError(error);
     return true;
   }
 

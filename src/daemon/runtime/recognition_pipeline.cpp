@@ -16,6 +16,8 @@
 
 #include "daemon/postprocess/post_processor.h"
 
+namespace vinput::daemon::runtime {
+
 namespace {
 
 constexpr std::size_t kMaxLoggedRecognitionBytes = 2048;
@@ -34,12 +36,87 @@ void LogRecognizedText(const std::string& text, bool is_command, std::string_vie
              scene_id.empty() ? "(default)" : scene_id, QuoteRecognitionText(text));
 }
 
-} // namespace
+const vinput::scene::Definition* FindSceneDefinition(const CoreConfig& settings,
+                                                     std::string_view target_scene_id) {
+  for (const auto& def : settings.scenes.definitions) {
+    if (def.id == target_scene_id) {
+      return &def;
+    }
+  }
+  return nullptr;
+}
 
-namespace vinput::daemon::runtime {
+vinput::scene::Definition ResolveCommandScene(const CoreConfig& settings) {
+  const auto* cmd_scene = CoreConfigView(settings).CommandScene();
+  if (cmd_scene != nullptr) {
+    return *cmd_scene;
+  }
+  vinput::scene::Definition fallback_cmd;
+  fallback_cmd.id = std::string(vinput::scene::kCommandSceneId);
+  fallback_cmd.builtin = true;
+  return fallback_cmd;
+}
+
+template <typename Fn>
+RecognitionPipelineResult
+InvokePostProcessor(const PostprocessRequest& request, const vinput::scene::Definition& scene,
+                    const std::function<void()>& on_enter_postprocessing, const Fn& run_proc) {
+  RecognitionPipelineResult output;
+  if (scene.llm_max_candidates <= 0 || scene.provider_id.empty()) {
+    output.payload.commitText = request.text;
+    return output;
+  }
+
+  if (on_enter_postprocessing) {
+    on_enter_postprocessing();
+  }
+
+  std::string llm_error;
+  output.payload = run_proc(&llm_error);
+  if (!llm_error.empty()) {
+    output.errors.push_back(std::move(llm_error));
+  }
+  return output;
+}
+
+} // namespace
 
 RecognitionPipeline::RecognitionPipeline(PostProcessor* post_processor)
     : post_processor_(post_processor) {}
+
+RecognitionPipelineResult
+RecognitionPipeline::ProcessCommand(const PostprocessRequest& request, const CoreConfig& settings,
+                                    const std::function<void()>& on_enter_postprocessing,
+                                    const std::atomic<bool>* cancel_flag) const {
+  const auto command_scene = ResolveCommandScene(settings);
+  return InvokePostProcessor(
+      request, command_scene, on_enter_postprocessing, [&](std::string* err) {
+        return post_processor_->ProcessCommand(request.text, request.selected_text, command_scene,
+                                               settings, err, cancel_flag);
+      });
+}
+
+RecognitionPipelineResult
+RecognitionPipeline::ProcessDictation(const PostprocessRequest& request, const CoreConfig& settings,
+                                      const std::function<void()>& on_enter_postprocessing,
+                                      const std::atomic<bool>* cancel_flag) const {
+  const std::string_view target_scene_id = request.scene_id.empty()
+                                               ? std::string_view(settings.scenes.activeScene)
+                                               : std::string_view(request.scene_id);
+
+  const auto* target_scene = FindSceneDefinition(settings, target_scene_id);
+  if (target_scene == nullptr) {
+    RecognitionPipelineResult output;
+    output.payload.commitText = request.text;
+    output.errors.push_back(fmt::sprintf(_("Scene '%s' not found."), target_scene_id));
+    return output;
+  }
+
+  return InvokePostProcessor(
+      request, *target_scene, on_enter_postprocessing, [&](std::string* err) {
+        return post_processor_->Process(request.text, *target_scene, settings, err, cancel_flag);
+      });
+}
 
 RecognitionPipelineResult
 RecognitionPipeline::Process(const PostprocessRequest& request, const CoreConfig& settings,
@@ -57,64 +134,10 @@ RecognitionPipeline::Process(const PostprocessRequest& request, const CoreConfig
 
   LogRecognizedText(request.text, request.is_command, request.scene_id);
 
-  auto invoke_processor = [&](auto&& proc_fn) {
-    std::string llm_error;
-    output.payload = proc_fn(&llm_error);
-    if (!llm_error.empty()) {
-      output.errors.push_back(std::move(llm_error));
-    }
-  };
-
   if (request.is_command) {
-    const auto* cmd_scene = CoreConfigView(settings).CommandScene();
-    vinput::scene::Definition fallback_cmd;
-    fallback_cmd.id = std::string(vinput::scene::kCommandSceneId);
-    fallback_cmd.builtin = true;
-    const auto& command_scene = (cmd_scene != nullptr) ? *cmd_scene : fallback_cmd;
-
-    if (command_scene.llm_max_candidates > 0 && !command_scene.provider_id.empty()) {
-      if (on_enter_postprocessing) {
-        on_enter_postprocessing();
-      }
-      invoke_processor([&](std::string* err) {
-        return post_processor_->ProcessCommand(request.text, request.selected_text, command_scene,
-                                               settings, err, cancel_flag);
-      });
-    } else {
-      output.payload.commitText = request.text;
-    }
-    return output;
+    return ProcessCommand(request, settings, on_enter_postprocessing, cancel_flag);
   }
-
-  const std::string_view target_scene_id = request.scene_id.empty()
-                                               ? std::string_view(settings.scenes.activeScene)
-                                               : std::string_view(request.scene_id);
-
-  const vinput::scene::Definition* target_scene = nullptr;
-  for (const auto& def : settings.scenes.definitions) {
-    if (def.id == target_scene_id) {
-      target_scene = &def;
-      break;
-    }
-  }
-
-  if (target_scene == nullptr) {
-    output.payload.commitText = request.text;
-    output.errors.push_back(fmt::sprintf(_("Scene '%s' not found."), target_scene_id));
-    return output;
-  }
-
-  if (target_scene->llm_max_candidates > 0 && !target_scene->provider_id.empty()) {
-    if (on_enter_postprocessing) {
-      on_enter_postprocessing();
-    }
-    invoke_processor([&](std::string* err) {
-      return post_processor_->Process(request.text, *target_scene, settings, err, cancel_flag);
-    });
-  } else {
-    output.payload.commitText = request.text;
-  }
-  return output;
+  return ProcessDictation(request, settings, on_enter_postprocessing, cancel_flag);
 }
 
 } // namespace vinput::daemon::runtime
