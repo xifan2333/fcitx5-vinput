@@ -600,14 +600,7 @@ template <typename T> bool ReadSection(const glz::json_t& root, std::string_view
   return !bool(glz::read<kConfigReadOpts>(*out, section_text));
 }
 
-bool ParseAndValidateRoot(std::string_view text, CoreConfig* config, glz::json_t* root,
-                          std::string* error) {
-  if (config == nullptr) {
-    if (error != nullptr) {
-      *error = "Config is null.";
-    }
-    return false;
-  }
+bool ParseAndValidateRoot(std::string_view text, glz::json_t* root, std::string* error) {
   if (text.empty()) {
     if (error != nullptr) {
       *error = "Config is empty.";
@@ -666,8 +659,15 @@ void ParseClientSpecs(const glz::json_t& root, std::string_view key, std::vector
 } // namespace
 
 bool CoreConfigFromJson(std::string_view text, CoreConfig* config, std::string* error) {
+  if (config == nullptr) {
+    if (error != nullptr) {
+      *error = "Config is null.";
+    }
+    return false;
+  }
+
   glz::json_t root;
-  if (!ParseAndValidateRoot(text, config, &root, error)) {
+  if (!ParseAndValidateRoot(text, &root, error)) {
     return false;
   }
 

@@ -10,7 +10,6 @@
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
-#include "common/config/core_config_view.h"
 #include "common/scene/postprocess_scene.h"
 
 namespace {
@@ -143,11 +142,6 @@ void NormalizeLlmAdapters(std::vector<LlmAdapter>* adapters) {
   *adapters = std::move(normalized);
 }
 
-void NormalizeLlmSection(CoreConfig::Llm* llm) {
-  NormalizeLlmProviders(&llm->providers);
-  NormalizeLlmAdapters(&llm->adapters);
-}
-
 void NormalizeClientList(std::vector<ClientSpec>* clients, const char* label,
                          std::set<std::string>* client_ids) {
   std::vector<ClientSpec> normalized;
@@ -198,11 +192,15 @@ void NormalizeAsrProviders(std::vector<AsrProvider>* providers) {
   *providers = std::move(normalized);
 }
 
-void NormalizeAsrSection(CoreConfig::Asr* asr, const CoreConfig& root_config) {
+void NormalizeAsrSection(CoreConfig::Asr* asr) {
   NormalizeAsrProviders(&asr->providers);
-  if (!asr->activeProvider.empty() &&
-      CoreConfigView(root_config).AsrProvider(asr->activeProvider) == nullptr) {
-    asr->activeProvider.clear();
+  if (!asr->activeProvider.empty()) {
+    const auto it = std::ranges::find_if(asr->providers, [&](const AsrProvider& provider) {
+      return AsrProviderId(provider) == asr->activeProvider;
+    });
+    if (it == asr->providers.end()) {
+      asr->activeProvider.clear();
+    }
   }
 }
 
@@ -262,8 +260,9 @@ void NormalizeCoreConfig(CoreConfig* config) {
 
   ClampAudioKnobs(config);
   NormalizeRegistrySection(&config->registry);
-  NormalizeLlmSection(&config->llm);
+  NormalizeLlmProviders(&config->llm.providers);
+  NormalizeLlmAdapters(&config->llm.adapters);
   NormalizeClientsSection(&config->triggers, &config->receivers);
-  NormalizeAsrSection(&config->asr, *config);
+  NormalizeAsrSection(&config->asr);
   NormalizeScenesSection(&config->scenes);
 }
