@@ -48,6 +48,10 @@ private:
   void executeDaemonAction(bool restart);
   void executeClientAction(bool start);
 
+  // Shared post-save tail of the ASR edits: refresh the list, notify listeners,
+  // and reload the backend while surfacing a salvageable reload failure.
+  void applyAsrConfigChange();
+
   struct SelectedClient {
     int row = -1;
     std::string id;
@@ -107,10 +111,6 @@ private slots:
   void onClientAutoStartToggled(bool checked);
 
   void checkSandboxPermissions();
-
-  // Shared post-save tail of the ASR edits: refresh the list, notify listeners,
-  // and reload the backend while surfacing a salvageable reload failure.
-  void applyAsrConfigChange();
 };
 
 } // namespace vinput::gui
