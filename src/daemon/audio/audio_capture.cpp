@@ -575,24 +575,31 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
 
 void AudioCapture::EndRecording() {
   recording_.store(false, std::memory_order_relaxed);
-  if (StreamReuseEnabled() && stream_ != nullptr) {
-    std::string error;
-    if (!SetStreamActive(false, &error)) {
-      VLOG_DEBUG("capture EndRecording set_active(false) failed: {}", error);
-      DestroyStream();
-    } else if (IdleDestroyMs() <= 0) {
-      DestroyStream();
-    } else {
-      ScheduleIdleDestroy();
+  const auto drain_queue = vinput::MakeScopeExit([this] {
+    const std::scoped_lock lock(consumer_mutex_);
+    vinput::audio::AudioPcmChunk discard;
+    while (queue_.try_dequeue(discard)) {
     }
-  } else {
+  });
+
+  if (!StreamReuseEnabled() || stream_ == nullptr) {
     DestroyStream();
+    return;
   }
 
-  const std::scoped_lock lock(consumer_mutex_);
-  vinput::audio::AudioPcmChunk discard;
-  while (queue_.try_dequeue(discard)) {
+  std::string error;
+  if (!SetStreamActive(false, &error)) {
+    VLOG_DEBUG("capture EndRecording set_active(false) failed: {}", error);
+    DestroyStream();
+    return;
   }
+
+  if (IdleDestroyMs() <= 0) {
+    DestroyStream();
+    return;
+  }
+
+  ScheduleIdleDestroy();
 }
 
 std::vector<int16_t> AudioCapture::StopAndGetBuffer() {

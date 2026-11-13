@@ -85,17 +85,22 @@ void SignalEventFd(int fd) noexcept {
   (void)written;
 }
 
-bool InitSessionEventFds(int& cancel_event, int& stdin_event, int& wake_event, std::string* error) {
-  cancel_event = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  stdin_event = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  wake_event = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (cancel_event < 0 || stdin_event < 0 || wake_event < 0) {
-    if (error != nullptr) {
-      *error = std::string("eventfd failed: ") + std::strerror(errno);
-    }
-    return false;
+struct SessionEventFds {
+  int cancel = -1;
+  int stdin_event = -1;
+  int wake = -1;
+};
+
+Expected<SessionEventFds> CreateSessionEventFds() {
+  SessionEventFds fds{
+      .cancel = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC),
+      .stdin_event = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC),
+      .wake = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC),
+  };
+  if (fds.cancel < 0 || fds.stdin_event < 0 || fds.wake < 0) {
+    return UnexpectedError(std::string("eventfd failed: ") + std::strerror(errno));
   }
-  return true;
+  return fds;
 }
 
 void OptimizeChildInputPipeCapacity(int fd) noexcept {
@@ -236,9 +241,16 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, StderrSink stderr_sink,
   stdout_sink_ = std::move(stdout_sink);
   // O_CLOEXEC keeps these out of the child, so nothing it forks can hold the session's wakeups
   // open.
-  if (!InitSessionEventFds(cancel_event_, stdin_event_, wake_event_, error)) {
+  auto fds_res = CreateSessionEventFds();
+  if (!fds_res.has_value()) {
+    if (error != nullptr) {
+      *error = fds_res.error();
+    }
     return false;
   }
+  cancel_event_ = fds_res->cancel;
+  stdin_event_ = fds_res->stdin_event;
+  wake_event_ = fds_res->wake;
 
   // Done before the spawn, so the child inherits it too: a provider whose own output pipe is closed
   // is better off raising an error in its own language than dying on a signal.

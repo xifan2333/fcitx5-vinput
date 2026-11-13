@@ -90,6 +90,7 @@ public:
       if (!SendJsonLine(payload, error)) {
         return false;
       }
+      ++sent_chunks_count_;
     }
 
     if (!DrainEvents(std::chrono::milliseconds(0), error)) {
@@ -131,6 +132,8 @@ public:
         SendControlEvent("cancel", nullptr);
       }
     }
+    stdout_buffer_.clear();
+    last_partial_text_.clear();
     QueueCompleted();
     Terminate();
   }
@@ -373,8 +376,9 @@ private:
               fmt::format("Streaming ASR provider exited prematurely with code {}.", exit_code);
         } else {
           const auto queued = session_->StdinQueueSizeApprox();
-          *error = fmt::format("Provider closed stdin or input buffer is full (queued_blocks={}).",
-                               queued);
+          *error = fmt::format(
+              "Provider closed stdin or input buffer is full (queued_blocks={}, sent_chunks={}).",
+              queued, sent_chunks_count_);
         }
       }
       return false;
@@ -536,6 +540,7 @@ private:
   int exit_code_ = -1;
   std::string stdout_buffer_;
   std::string last_partial_text_;
+  std::size_t sent_chunks_count_ = 0;
   std::vector<RecognitionEvent> events_;
 };
 
