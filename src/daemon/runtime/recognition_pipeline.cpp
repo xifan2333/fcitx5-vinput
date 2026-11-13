@@ -55,6 +55,28 @@ vinput::scene::Definition ResolveCommandScene(const CoreConfig& settings) {
   return fallback_cmd;
 }
 
+template <typename Fn>
+RecognitionPipelineResult
+InvokePostProcessor(const PostprocessRequest& request, const vinput::scene::Definition& scene,
+                    const std::function<void()>& on_enter_postprocessing, Fn&& run_proc) {
+  RecognitionPipelineResult output;
+  if (scene.llm_max_candidates <= 0 || scene.provider_id.empty()) {
+    output.payload.commitText = request.text;
+    return output;
+  }
+
+  if (on_enter_postprocessing) {
+    on_enter_postprocessing();
+  }
+
+  std::string llm_error;
+  output.payload = run_proc(&llm_error);
+  if (!llm_error.empty()) {
+    output.errors.push_back(std::move(llm_error));
+  }
+  return output;
+}
+
 } // namespace
 
 namespace vinput::daemon::runtime {
@@ -66,59 +88,34 @@ RecognitionPipelineResult
 RecognitionPipeline::ProcessCommand(const PostprocessRequest& request, const CoreConfig& settings,
                                     const std::function<void()>& on_enter_postprocessing,
                                     const std::atomic<bool>* cancel_flag) const {
-  RecognitionPipelineResult output;
   const auto command_scene = ResolveCommandScene(settings);
-
-  if (command_scene.llm_max_candidates <= 0 || command_scene.provider_id.empty()) {
-    output.payload.commitText = request.text;
-    return output;
-  }
-
-  if (on_enter_postprocessing) {
-    on_enter_postprocessing();
-  }
-
-  std::string llm_error;
-  output.payload = post_processor_->ProcessCommand(
-      request.text, request.selected_text, command_scene, settings, &llm_error, cancel_flag);
-  if (!llm_error.empty()) {
-    output.errors.push_back(std::move(llm_error));
-  }
-  return output;
+  return InvokePostProcessor(
+      request, command_scene, on_enter_postprocessing, [&](std::string* err) {
+        return post_processor_->ProcessCommand(request.text, request.selected_text, command_scene,
+                                               settings, err, cancel_flag);
+      });
 }
 
 RecognitionPipelineResult
 RecognitionPipeline::ProcessDictation(const PostprocessRequest& request, const CoreConfig& settings,
                                       const std::function<void()>& on_enter_postprocessing,
                                       const std::atomic<bool>* cancel_flag) const {
-  RecognitionPipelineResult output;
   const std::string_view target_scene_id = request.scene_id.empty()
                                                ? std::string_view(settings.scenes.activeScene)
                                                : std::string_view(request.scene_id);
 
   const auto* target_scene = FindSceneDefinition(settings, target_scene_id);
   if (target_scene == nullptr) {
+    RecognitionPipelineResult output;
     output.payload.commitText = request.text;
     output.errors.push_back(fmt::sprintf(_("Scene '%s' not found."), target_scene_id));
     return output;
   }
 
-  if (target_scene->llm_max_candidates <= 0 || target_scene->provider_id.empty()) {
-    output.payload.commitText = request.text;
-    return output;
-  }
-
-  if (on_enter_postprocessing) {
-    on_enter_postprocessing();
-  }
-
-  std::string llm_error;
-  output.payload =
-      post_processor_->Process(request.text, *target_scene, settings, &llm_error, cancel_flag);
-  if (!llm_error.empty()) {
-    output.errors.push_back(std::move(llm_error));
-  }
-  return output;
+  return InvokePostProcessor(
+      request, *target_scene, on_enter_postprocessing, [&](std::string* err) {
+        return post_processor_->Process(request.text, *target_scene, settings, err, cancel_flag);
+      });
 }
 
 RecognitionPipelineResult
