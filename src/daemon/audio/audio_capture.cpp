@@ -112,10 +112,10 @@ bool AudioCapture::StreamReuseEnabled() {
 
 long AudioCapture::IdleDestroyMs() {
   // Keep an inactive connected stream briefly after stop so a cold re-press
-  // can set_active instead of full reconnect. Default 15s. 0 = destroy ASAP.
+  // can set_active instead of full reconnect. Default 60s. 0 = destroy ASAP.
   const char* value = std::getenv("VINPUT_CAPTURE_IDLE_DESTROY_MS");
   if (value == nullptr || value[0] == '\0') {
-    return 15000;
+    return 60000;
   }
   std::string_view sv(value);
   while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t')) {
@@ -128,12 +128,12 @@ long AudioCapture::IdleDestroyMs() {
     sv.remove_suffix(1);
   }
   if (sv.empty()) {
-    return 15000;
+    return 60000;
   }
   long parsed = 0;
   const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), parsed);
   if (ec != std::errc{} || ptr != sv.data() + sv.size() || parsed < 0) {
-    return 15000;
+    return 60000;
   }
   // Cap to 10 minutes to avoid accidental always-on connect.
   return std::min(parsed, 600000L);
@@ -275,6 +275,14 @@ bool AudioCapture::Start(std::string* error) {
     pw_thread_loop_destroy(loop_);
     loop_ = nullptr;
     return false;
+  }
+
+  // Pre-warm the inactive stream so the first recording session starts instantaneously.
+  if (StreamReuseEnabled()) {
+    std::string prewarm_error;
+    if (!CreateStream(true /* start_inactive */, &prewarm_error)) {
+      VLOG_DEBUG("pre-warmed capture stream initialization deferred: {}", prewarm_error);
+    }
   }
 
   return true;
