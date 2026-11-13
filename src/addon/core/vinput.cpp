@@ -91,21 +91,17 @@ bool EndsWithSentenceTerminal(std::string_view text) noexcept {
   return unicode::is_sentence_terminal(cp) || cp == U'…' || cp == U'\n';
 }
 
-// Auto-install systemd service when running inside a sandbox.
-void ensureDaemonServiceInstalled() {
-  if (!vinput::sandbox::IsInSandbox()) {
-    return;
-  }
-
+void WarnMissingPermissions() {
   const auto missing = vinput::sandbox::MissingSandboxPermissions();
   if (!missing.empty()) {
     FCITX_LOG(Warn) << "vinput: missing sandbox permissions, run override commands:\n"
                     << vinput::sandbox::FormatOverrideCommands(missing);
   }
+}
 
-  const std::filesystem::path dest = vinput::path::DaemonServiceUnitInstallPath();
+bool IsServiceUnitInstallNeeded(const std::filesystem::path& dest) {
   if (dest.empty()) {
-    return;
+    return false;
   }
 
   std::error_code ec_exists;
@@ -113,17 +109,17 @@ void ensureDaemonServiceInstalled() {
   if (ec_exists) {
     FCITX_LOG(Error) << "vinput: failed to check existence of " << dest << ": "
                      << ec_exists.message();
-    return;
+    return false;
   }
-  if (destExists) {
-    return;
-  }
+  return !destExists;
+}
 
+bool WriteServiceUnit(const std::filesystem::path& dest) {
   const auto src = vinput::path::DaemonServiceUnitTemplatePath();
   std::ifstream src_f(src);
   if (!src_f) {
     FCITX_LOG(Error) << "vinput: service file not found at " << src;
-    return;
+    return false;
   }
 
   std::string content((std::istreambuf_iterator<char>(src_f)), {});
@@ -132,15 +128,18 @@ void ensureDaemonServiceInstalled() {
   std::string file_error;
   if (!vinput::file::EnsureParentDirectory(dest, &file_error)) {
     FCITX_LOG(Error) << "vinput: failed to prepare systemd user dir: " << file_error;
-    return;
+    return false;
   }
   if (auto res = vinput::file::AtomicWriteTextFile(dest, content); !res) {
     FCITX_LOG(Error) << "vinput: failed to write service file to " << dest;
     FCITX_LOG(Error) << "vinput: write error: " << res.error();
-    return;
+    return false;
   }
   FCITX_LOG(Info) << "vinput: installed vinput-daemon.service to " << dest;
+  return true;
+}
 
+void ReloadSystemdDaemon() {
   auto reload_cmd = vinput::sandbox::WrapHostCommand({"systemctl", "--user", "daemon-reload"});
   std::string cmd;
   for (const auto& arg : reload_cmd) {
@@ -152,6 +151,24 @@ void ensureDaemonServiceInstalled() {
   const int ret = system(cmd.c_str());
   if (ret != 0) {
     FCITX_LOG(Error) << "vinput: failed to reload systemd user daemon, return code: " << ret;
+  }
+}
+
+// Auto-install systemd service when running inside a sandbox.
+void ensureDaemonServiceInstalled() {
+  if (!vinput::sandbox::IsInSandbox()) {
+    return;
+  }
+
+  WarnMissingPermissions();
+
+  const std::filesystem::path dest = vinput::path::DaemonServiceUnitInstallPath();
+  if (!IsServiceUnitInstallNeeded(dest)) {
+    return;
+  }
+
+  if (WriteServiceUnit(dest)) {
+    ReloadSystemdDaemon();
   }
 }
 } // namespace
@@ -196,9 +213,6 @@ void VinputEngine::onInputContextDestroyed(fcitx::InputContext* ic) {
 }
 
 void VinputEngine::onInputContextFocusOut(fcitx::InputContext* ic) {
-  if (ic == nullptr) {
-    return;
-  }
   if (pending_start_ic_.get() == ic) {
     cancelPendingStart();
     chord_interrupted_ = true;
