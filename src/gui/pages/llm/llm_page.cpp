@@ -53,6 +53,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>

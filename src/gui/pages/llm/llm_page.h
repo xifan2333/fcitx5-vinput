@@ -57,7 +57,6 @@ private slots:
   void onSceneRemove();
   void onSceneSetActive();
 
-private:
   // Shared tail of the add/edit/remove scene actions: persist through
   // MutateSceneConfig, then refresh the list and notify listeners.
   void applySceneMutation(const std::function<bool(vinput::scene::Config*, std::string*)>& mutate);
