@@ -300,9 +300,11 @@ bool ApplyActionToTarget(glz::json_t& parent, const std::string& key, std::strin
   case ActionType::ReplaceIfDefault:
     return ApplyReplaceIfDefaultAction(parent, key, desc_prefix, rule.expected_value, rule.to_value,
                                        changes);
-  default:
+  case ActionType::IniReplaceKey:
+  case ActionType::IniRemoveKey:
     return false;
   }
+  return false;
 }
 
 bool WalkAndApply(glz::json_t& node, std::span<const std::string_view> segments,
@@ -441,42 +443,56 @@ std::pair<fcitx::RawConfig*, std::string> ResolveIniParentAndKey(fcitx::RawConfi
           std::string(path.substr(slash + 1))};
 }
 
-bool ApplySingleIniRule(fcitx::RawConfig& parent, const std::string& key, const MigrationRule& rule,
-                        std::vector<MigrationChange>& changes) {
-  if (rule.action == ActionType::IniReplaceKey) {
-    const auto old_node = parent.get(key);
-    if (old_node == nullptr) {
-      return false;
-    }
-    const std::string new_key(rule.new_key);
-    if (parent.get(new_key) == nullptr) {
-      auto new_node = parent.get(new_key, true);
-      *new_node = *old_node;
-      changes.push_back({
-          .file = "vinput.conf",
-          .description = "replaced key '" + std::string(rule.path) + "' with '" + new_key + "'",
-      });
-    } else {
-      changes.push_back({
-          .file = "vinput.conf",
-          .description = "removed obsolete duplicate key '" + std::string(rule.path) + "'",
-      });
-    }
-    parent.remove(key);
-    return true;
-  }
-
-  if (rule.action == ActionType::IniRemoveKey) {
-    if (parent.remove(key)) {
-      changes.push_back({
-          .file = "vinput.conf",
-          .description = "removed obsolete key '" + std::string(rule.path) + "'",
-      });
-      return true;
-    }
+bool ApplyIniReplaceKeyAction(fcitx::RawConfig& parent, const std::string& key,
+                              std::string_view rule_path, std::string_view rule_new_key,
+                              std::vector<MigrationChange>& changes) {
+  const auto old_node = parent.get(key);
+  if (old_node == nullptr) {
     return false;
   }
+  const std::string new_key(rule_new_key);
+  if (parent.get(new_key) == nullptr) {
+    auto new_node = parent.get(new_key, true);
+    *new_node = *old_node;
+    changes.push_back({
+        .file = "vinput.conf",
+        .description = "replaced key '" + std::string(rule_path) + "' with '" + new_key + "'",
+    });
+  } else {
+    changes.push_back({
+        .file = "vinput.conf",
+        .description = "removed obsolete duplicate key '" + std::string(rule_path) + "'",
+    });
+  }
+  parent.remove(key);
+  return true;
+}
 
+bool ApplyIniRemoveKeyAction(fcitx::RawConfig& parent, const std::string& key,
+                             std::string_view rule_path, std::vector<MigrationChange>& changes) {
+  if (parent.remove(key)) {
+    changes.push_back({
+        .file = "vinput.conf",
+        .description = "removed obsolete key '" + std::string(rule_path) + "'",
+    });
+    return true;
+  }
+  return false;
+}
+
+bool ApplySingleIniRule(fcitx::RawConfig& parent, const std::string& key, const MigrationRule& rule,
+                        std::vector<MigrationChange>& changes) {
+  switch (rule.action) {
+  case ActionType::IniReplaceKey:
+    return ApplyIniReplaceKeyAction(parent, key, rule.path, rule.new_key, changes);
+  case ActionType::IniRemoveKey:
+    return ApplyIniRemoveKeyAction(parent, key, rule.path, changes);
+  case ActionType::Rename:
+  case ActionType::Remove:
+  case ActionType::Ensure:
+  case ActionType::ReplaceIfDefault:
+    return false;
+  }
   return false;
 }
 
