@@ -300,9 +300,12 @@ bool ChangeCandidatePage(fcitx::InputContext* ic, const std::string& base_title,
   return true;
 }
 
-class PaletteCandidateWord : public fcitx::CandidateWord {
+// Palette and result menus render identical candidate words and differ only in
+// which engine handler receives the selection, so the target is the parameter.
+template <void (VinputEngine::*Select)(std::size_t, fcitx::InputContext*)>
+class IndexedCandidateWord : public fcitx::CandidateWord {
 public:
-  PaletteCandidateWord(VinputEngine* engine, std::size_t index, const std::string& text,
+  IndexedCandidateWord(VinputEngine* engine, std::size_t index, const std::string& text,
                        const std::string& comment)
       : fcitx::CandidateWord(fcitx::Text(text)), engine_(engine), index_(index) {
     if (!comment.empty()) {
@@ -313,7 +316,7 @@ public:
   }
 
   void select(fcitx::InputContext* inputContext) const override {
-    engine_->selectPaletteItem(index_, inputContext);
+    (engine_->*Select)(index_, inputContext);
   }
 
 private:
@@ -321,26 +324,8 @@ private:
   std::size_t index_;
 };
 
-class ResultCandidateWord : public fcitx::CandidateWord {
-public:
-  ResultCandidateWord(VinputEngine* engine, std::size_t index, const std::string& text,
-                      const std::string& comment)
-      : fcitx::CandidateWord(fcitx::Text(text)), engine_(engine), index_(index) {
-    if (!comment.empty()) {
-#ifdef VINPUT_FCITX5_CORE_HAVE_SET_COMMENT
-      setComment(fcitx::Text(comment));
-#endif
-    }
-  }
-
-  void select(fcitx::InputContext* inputContext) const override {
-    engine_->selectResultCandidate(index_, inputContext);
-  }
-
-private:
-  VinputEngine* engine_;
-  std::size_t index_;
-};
+using PaletteCandidateWord = IndexedCandidateWord<&VinputEngine::selectPaletteItem>;
+using ResultCandidateWord = IndexedCandidateWord<&VinputEngine::selectResultCandidate>;
 
 bool IsPaletteItemVisible(const PaletteItem& item, const ParsedPaletteQuery& parsed,
                           std::string_view query) {
