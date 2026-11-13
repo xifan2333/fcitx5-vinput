@@ -26,6 +26,7 @@
 #include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/llm/defaults.h"
+#include "common/llm/request_headers.h"
 #include "common/net/http_client.h"
 #include "common/net/http_types.h"
 #include "common/notify/notification_bridge.h"
@@ -324,11 +325,7 @@ BuildOpenAiHttpRequest(const std::string& url, std::string request_body,
   req.allow_auto_resend = false;
   req.follow_redirects = false;
   req.headers.push_back({"Content-Type", "application/json"});
-  req.headers.push_back({"User-Agent", std::string(vinput::llm::kHttpUserAgent)});
-  if (!resolved_api_key.empty()) {
-    req.headers.push_back({std::string(vinput::llm::kAuthorizationHeader),
-                           std::string(vinput::llm::kBearerPrefix) + resolved_api_key});
-  }
+  vinput::llm::AppendProviderHeaders(&req, resolved_api_key);
   req.progress_cb = std::move(progress_cb);
   return req;
 }

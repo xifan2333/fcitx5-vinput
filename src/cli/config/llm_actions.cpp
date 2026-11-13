@@ -22,6 +22,7 @@
 #include "common/json/json_access.h"
 #include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
+#include "common/llm/request_headers.h"
 #include "common/net/http_client.h"
 #include "common/net/http_types.h"
 #include "common/registry/installed_manifest.h"
@@ -558,11 +559,7 @@ int RunLlmConfigTest(const std::string& id, Formatter& fmt, const CliContext& ct
   req.timeout_ms = 10000;
   req.max_response_bytes = 1024ULL * 1024ULL;
   req.follow_redirects = true;
-  req.headers.push_back({"User-Agent", std::string(vinput::llm::kHttpUserAgent)});
-  if (!resolved_api_key.empty()) {
-    req.headers.push_back({std::string(vinput::llm::kAuthorizationHeader),
-                           std::string(vinput::llm::kBearerPrefix) + resolved_api_key});
-  }
+  vinput::llm::AppendProviderHeaders(&req, resolved_api_key);
 
   const auto res = vinput::net::HttpClient::Instance().Request(req);
   if (!res.Ok()) {
