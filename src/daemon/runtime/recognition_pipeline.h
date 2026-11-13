@@ -34,6 +34,16 @@ public:
           const std::atomic<bool>* cancel_flag = nullptr) const;
 
 private:
+  [[nodiscard]] RecognitionPipelineResult
+  ProcessCommand(const PostprocessRequest& request, const CoreConfig& settings,
+                 const std::function<void()>& on_enter_postprocessing,
+                 const std::atomic<bool>* cancel_flag) const;
+
+  [[nodiscard]] RecognitionPipelineResult
+  ProcessDictation(const PostprocessRequest& request, const CoreConfig& settings,
+                   const std::function<void()>& on_enter_postprocessing,
+                   const std::atomic<bool>* cancel_flag) const;
+
   PostProcessor* post_processor_ = nullptr;
 };
 
