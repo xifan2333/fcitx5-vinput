@@ -42,6 +42,8 @@
 
 namespace {
 
+constexpr long kDefaultIdleDestroyMs = 60000;
+
 bool EnvTruthy(const char* value) {
   if (value == nullptr || value[0] == '\0') {
     return false;
@@ -115,7 +117,7 @@ long AudioCapture::IdleDestroyMs() {
   // can set_active instead of full reconnect. Default 60s. 0 = destroy ASAP.
   const char* value = std::getenv("VINPUT_CAPTURE_IDLE_DESTROY_MS");
   if (value == nullptr || value[0] == '\0') {
-    return 60000;
+    return kDefaultIdleDestroyMs;
   }
   std::string_view sv(value);
   while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t')) {
@@ -128,12 +130,12 @@ long AudioCapture::IdleDestroyMs() {
     sv.remove_suffix(1);
   }
   if (sv.empty()) {
-    return 60000;
+    return kDefaultIdleDestroyMs;
   }
   long parsed = 0;
   const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), parsed);
   if (ec != std::errc{} || ptr != sv.data() + sv.size() || parsed < 0) {
-    return 60000;
+    return kDefaultIdleDestroyMs;
   }
   // Cap to 10 minutes to avoid accidental always-on connect.
   return std::min(parsed, 600000L);
