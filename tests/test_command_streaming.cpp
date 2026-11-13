@@ -654,6 +654,37 @@ void TestStdoutErrorNotQueuedAsEvent() {
              "Expected stderr notification body, got " + received_notifications[0].body);
 }
 
+/**
+ * Issue #598 regression test:
+ * When a streaming provider child process crashes or exits prematurely,
+ * subsequent PushAudio/SendJsonLine must report a precise error identifying the exit code.
+ */
+void TestPrematureExitErrorReporting() {
+  CommandAsrProvider provider;
+  provider.id = "test-premature-exit";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "exit 42"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  // Allow child to exit
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  std::vector<int16_t> chunk(800, 100);
+  const bool ok = session->PushAudio(chunk, &error);
+  ExpectTrue(!ok, "PushAudio must fail when provider exited prematurely");
+  ExpectTrue(error.find("exited prematurely with code") != std::string::npos ||
+                 error.find("42") != std::string::npos ||
+                 error.find("Provider closed stdin") != std::string::npos,
+             "error message should report exit details: " + error);
+}
+
 } // namespace
 
 int main() {
@@ -671,6 +702,7 @@ int main() {
   TestInterruptWakesBlockedFinish();
   TestStderrPipedToNotificationBridge();
   TestKilledByUsVsAbnormalExit();
+  TestPrematureExitErrorReporting();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }
