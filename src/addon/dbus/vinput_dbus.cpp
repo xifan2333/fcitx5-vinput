@@ -337,35 +337,40 @@ void VinputEngine::setupDBusWatcher() {
 
 bool VinputEngine::callStartRecording() {
   command_selected_text_.clear();
+  return beginRecordingCall(kMethodStartRecording, nullptr, "StartRecording");
+}
+
+bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
+  command_selected_text_ = selected_text;
+  return beginRecordingCall(kMethodStartCommandRecording, &selected_text, "StartCommandRecording");
+}
+
+bool VinputEngine::beginRecordingCall(const char* method, const std::string* selected_text,
+                                      const char* log_label) {
   flushContextBuffer();
   if (bus_ == nullptr || !daemonSyncAllowed()) {
     noteDaemonSyncFailure();
     return false;
   }
-  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStartRecording);
+  auto msg = bus_->createMethodCall(kBusName, kObjectPath, kInterface, method);
+  if (selected_text != nullptr) {
+    msg << *selected_text;
+  }
   const std::weak_ptr<bool> token = lifetime_token_;
-  pending_start_call_slot_ = msg.callAsync(
-      vinput::runtime::kDbusCallTimeoutUsec, [this, token](fcitx::dbus::Message& reply) {
-        if (token.expired()) {
-          return true;
-        }
-        auto slot = std::move(pending_start_call_slot_);
-        if (!reply || reply.isError()) {
-          noteDaemonSyncFailure();
-          VLOG_ERROR("StartRecording rejected by daemon");
-          auto* ic = resolveFrontendInputContext();
-          finishFrontendSession(ic);
-          if (ic) {
-            updateVoicePresentation(
-                ic, reply ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
-                                                    DaemonUnavailablePreeditText())
-                          : DaemonUnavailablePreeditText());
-          }
-          return true;
-        }
-        clearDaemonSyncFailure();
-        return true;
-      });
+  pending_start_call_slot_ =
+      msg.callAsync(vinput::runtime::kDbusCallTimeoutUsec,
+                    [this, token, label = std::string(log_label)](fcitx::dbus::Message& reply) {
+                      if (token.expired()) {
+                        return true;
+                      }
+                      auto slot = std::move(pending_start_call_slot_);
+                      if (!reply || reply.isError()) {
+                        handleRecordingStartRejected(reply, label);
+                        return true;
+                      }
+                      clearDaemonSyncFailure();
+                      return true;
+                    });
   if (!pending_start_call_slot_) {
     noteDaemonSyncFailure();
     return false;
@@ -373,44 +378,19 @@ bool VinputEngine::callStartRecording() {
   return true;
 }
 
-bool VinputEngine::callStartCommandRecording(const std::string& selected_text) {
-  command_selected_text_ = selected_text;
-  flushContextBuffer();
-  if (bus_ == nullptr || !daemonSyncAllowed()) {
-    noteDaemonSyncFailure();
-    return false;
+void VinputEngine::handleRecordingStartRejected(fcitx::dbus::Message& reply,
+                                                std::string_view log_label) {
+  noteDaemonSyncFailure();
+  VLOG_ERROR("{} rejected by daemon", log_label);
+  auto* ic = resolveFrontendInputContext();
+  finishFrontendSession(ic);
+  if (ic == nullptr) {
+    return;
   }
-  auto msg =
-      bus_->createMethodCall(kBusName, kObjectPath, kInterface, kMethodStartCommandRecording);
-  msg << selected_text;
-  const std::weak_ptr<bool> token = lifetime_token_;
-  pending_start_call_slot_ = msg.callAsync(
-      vinput::runtime::kDbusCallTimeoutUsec, [this, token](fcitx::dbus::Message& reply) {
-        if (token.expired()) {
-          return true;
-        }
-        auto slot = std::move(pending_start_call_slot_);
-        if (!reply || reply.isError()) {
-          noteDaemonSyncFailure();
-          VLOG_ERROR("StartCommandRecording rejected by daemon");
-          auto* ic = resolveFrontendInputContext();
-          finishFrontendSession(ic);
-          if (ic) {
-            updateVoicePresentation(
-                ic, reply ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
-                                                    DaemonUnavailablePreeditText())
-                          : DaemonUnavailablePreeditText());
-          }
-          return true;
-        }
-        clearDaemonSyncFailure();
-        return true;
-      });
-  if (!pending_start_call_slot_) {
-    noteDaemonSyncFailure();
-    return false;
-  }
-  return true;
+  updateVoicePresentation(ic, reply
+                                  ? RenderMethodCallFailure(reply.errorName(), reply.errorMessage(),
+                                                            DaemonUnavailablePreeditText())
+                                  : DaemonUnavailablePreeditText());
 }
 
 bool VinputEngine::callStopRecording(const std::string& scene_id) {
