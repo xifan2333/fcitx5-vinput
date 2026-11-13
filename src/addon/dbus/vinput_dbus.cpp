@@ -229,9 +229,13 @@ std::string RenderMethodCallFailure(std::string_view error_name, std::string_vie
   return fallback;
 }
 
-void AssignRpcError(std::string* error, std::string message) {
+void AssignRpcError(std::string* error, std::string_view message) {
   if (error != nullptr) {
-    *error = std::move(message);
+    if (message.empty()) {
+      error->clear();
+    } else {
+      *error = message;
+    }
   }
 }
 
@@ -666,8 +670,8 @@ bool VinputEngine::callSyncRpc(const char* member, const std::string& fallback_e
     VLOG_DEBUG("D-Bus RPC '{}' failed reply={} error={}", member, reply.errorName(),
                reply.errorMessage());
     noteDaemonSyncFailure();
-    std::string err_msg = reply.errorMessage();
-    AssignRpcError(error, err_msg.empty() ? fallback_error : std::move(err_msg));
+    const std::string err_msg = reply.errorMessage();
+    AssignRpcError(error, err_msg.empty() ? fallback_error : err_msg);
     return false;
   }
 
