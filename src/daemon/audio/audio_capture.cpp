@@ -580,13 +580,18 @@ void AudioCapture::EndRecording() {
     if (!SetStreamActive(false, &error)) {
       VLOG_DEBUG("capture EndRecording set_active(false) failed: {}", error);
       DestroyStream();
-      return;
-    }
-    if (IdleDestroyMs() <= 0) {
+    } else if (IdleDestroyMs() <= 0) {
       DestroyStream();
     } else {
       ScheduleIdleDestroy();
     }
+  } else {
+    DestroyStream();
+  }
+
+  const std::scoped_lock lock(consumer_mutex_);
+  vinput::audio::AudioPcmChunk discard;
+  while (queue_.try_dequeue(discard)) {
   }
 }
 
