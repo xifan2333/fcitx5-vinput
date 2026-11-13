@@ -29,6 +29,7 @@
 #include "common/utils/string_utils.h"
 #include "common/utils/time_utils.h"
 
+#include "daemon/asr/backends/command_backend_factory.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 
 namespace vinput::daemon::asr {
@@ -572,16 +573,7 @@ private:
 std::unique_ptr<AsrBackend>
 CreateCommandStreamingBackend(const CommandAsrProvider& provider, std::string* error,
                               vinput::notify::NotificationBridge* notification_bridge) {
-  if (provider.command.empty()) {
-    if (error != nullptr) {
-      *error = "Command ASR provider has empty command.";
-    }
-    return nullptr;
-  }
-  if (error != nullptr) {
-    error->clear();
-  }
-  return std::make_unique<CommandStreamingBackend>(provider, notification_bridge);
+  return MakeCommandBackend<CommandStreamingBackend>(provider, error, notification_bridge);
 }
 
 } // namespace vinput::daemon::asr
