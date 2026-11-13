@@ -120,6 +120,18 @@ int main() {
     }
   }
 
+  // Regression test for Issue #596: Default capture target must resolve instantly without
+  // requiring known_devices enumeration to avoid start latency.
+  {
+    const auto res_empty = ResolveCaptureTarget("");
+    CHECK(res_empty.node_name.empty());
+    CHECK(!res_empty.is_sink_capture);
+
+    const auto res_default = ResolveCaptureTarget("default");
+    CHECK(res_default.node_name.empty());
+    CHECK(!res_default.is_sink_capture);
+  }
+
   std::cout << "All pipewire capture target tests passed!\n";
   return 0;
 }
