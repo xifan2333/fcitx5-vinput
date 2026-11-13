@@ -98,6 +98,18 @@ struct RecognitionDispatchContext {
   bool ime = true;
 };
 
+// Partial and final text share one publication path: mirror into the context,
+// push the preedit to the IME, then tell every client.
+void PublishRecognitionText(const std::string& text, const RecognitionDispatchContext& ctx) {
+  if (ctx.latest_partial_text != nullptr) {
+    *ctx.latest_partial_text = text;
+  }
+  if (ctx.ime && ctx.dbus != nullptr) {
+    ctx.dbus->EmitRecognitionPartial(text);
+  }
+  vinput::client::Broadcast(vinput::client::SerializePartialEvent(text, ctx.ime));
+}
+
 void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
                        const RecognitionDispatchContext& ctx) {
   if (event.text.empty()) {
@@ -114,18 +126,6 @@ void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
                vinput::time::MillisecondsSince(ctx.recording_started_at, now), first_non_silent_ms);
   }
   PublishRecognitionText(event.text, ctx);
-}
-
-// Partial and final text share one publication path: mirror into the context,
-// push the preedit to the IME, then tell every client.
-void PublishRecognitionText(const std::string& text, const RecognitionDispatchContext& ctx) {
-  if (ctx.latest_partial_text != nullptr) {
-    *ctx.latest_partial_text = text;
-  }
-  if (ctx.ime && ctx.dbus != nullptr) {
-    ctx.dbus->EmitRecognitionPartial(text);
-  }
-  vinput::client::Broadcast(vinput::client::SerializePartialEvent(text, ctx.ime));
 }
 
 void HandleFinalText(const vinput::daemon::asr::RecognitionEvent& event,
