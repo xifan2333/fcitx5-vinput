@@ -285,6 +285,29 @@ std::string AudioCapture::CurrentTargetObject() const {
   return target_object_;
 }
 
+std::vector<vinput::pw::DeviceInfo> AudioCapture::GetAudioSources() {
+  const std::scoped_lock lock(device_cache_mutex_);
+  const auto now = std::chrono::steady_clock::now();
+  if (cached_devices_.empty() || (now - last_device_scan_) > std::chrono::seconds(10)) {
+    cached_devices_ = vinput::pw::EnumerateAudioSources();
+    last_device_scan_ = now;
+  }
+  return cached_devices_;
+}
+
+void AudioCapture::InvalidateDeviceCache() {
+  const std::scoped_lock lock(device_cache_mutex_);
+  cached_devices_.clear();
+  last_device_scan_ = {};
+}
+
+vinput::pw::ResolvedCaptureTarget AudioCapture::ResolveTarget(const std::string& target_object) {
+  if (target_object.empty() || target_object == "default") {
+    return {};
+  }
+  return vinput::pw::ResolveCaptureTarget(target_object, GetAudioSources());
+}
+
 bool AudioCapture::CanReuseStreamLocked() const {
   if (stream_ == nullptr) {
     return false;
@@ -315,8 +338,7 @@ bool AudioCapture::CreateStream(bool start_inactive, std::string* error) {
   stream_events_.state_changed = onStateChanged;
 
   const std::string target_object = CurrentTargetObject();
-  const auto known_devices = vinput::pw::EnumerateAudioSources();
-  const auto resolved_target = vinput::pw::ResolveCaptureTarget(target_object, known_devices);
+  const auto resolved_target = ResolveTarget(target_object);
 
   pw_thread_loop_lock(loop_);
   const auto loop_unlock = vinput::MakeScopeExit([this] { pw_thread_loop_unlock(loop_); });
@@ -677,6 +699,7 @@ void AudioCapture::SetTargetObject(std::string target_object) {
   if (!changed) {
     return;
   }
+  InvalidateDeviceCache();
   // Target change invalidates a connected stream. Destroy when not recording so
   // the next BeginRecording reconnects to the new source.
   if (!recording_.load(std::memory_order_relaxed) && stream_ != nullptr) {

@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "common/audio/pipewire_device.h"
+
 #include "daemon/audio/audio_types.h"
 
 struct spa_pod;
@@ -46,6 +48,8 @@ public:
   void EndRecording();
   bool IsRecording() const;
   void SetTargetObject(std::string target_object);
+  std::vector<vinput::pw::DeviceInfo> GetAudioSources();
+  void InvalidateDeviceCache();
 
   // SPSC lock-free dequeue for downstream audio consumers.
   // Returns true if a chunk was dequeued, false if queue is empty.
@@ -95,6 +99,7 @@ private:
   void MarkStreamDestroyed();
   void MarkStreamDeactivated();
   bool CanReuseStreamLocked() const;
+  vinput::pw::ResolvedCaptureTarget ResolveTarget(const std::string& target_object);
   std::string CurrentTargetObject() const;
 
   // SPSC Lock-free ringbuffer and real-time safe drop telemetry
@@ -117,7 +122,10 @@ private:
   std::string connected_target_object_;
   mutable std::mutex target_mutex_;
   mutable std::mutex timing_mutex_;
+  mutable std::mutex device_cache_mutex_;
   std::mutex consumer_mutex_;
+  std::vector<vinput::pw::DeviceInfo> cached_devices_;
+  std::chrono::steady_clock::time_point last_device_scan_{};
 
   struct pw_stream_events stream_events_{};
   std::atomic<int> notify_fd_{-1};
