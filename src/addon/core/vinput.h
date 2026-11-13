@@ -159,6 +159,11 @@ private:
   void accumulateContextBuffer(const std::string& text, fcitx::InputContext* ic);
   void suppressNextCommitContext(const std::string& text);
   void onCommitString(const std::string& text, fcitx::InputContext* ic);
+  void registerEventHandlers();
+  void connectDBus();
+  void onInputContextCreated(fcitx::InputContext* ic);
+  void onInputContextDestroyed(fcitx::InputContext* ic);
+  void onInputContextFocusOut(fcitx::InputContext* ic);
 
   fcitx::Instance* instance_;
   fcitx::EventDispatcher event_dispatcher_;

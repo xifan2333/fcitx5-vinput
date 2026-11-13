@@ -156,81 +156,90 @@ void ensureDaemonServiceInstalled() {
 }
 } // namespace
 
-VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
-  vinput::i18n::Init();
-  ensureDaemonServiceInstalled();
-  initializePaletteRegistry();
-  VinputEngine::reloadConfig();
-  event_dispatcher_.attach(&instance_->eventLoop());
+void VinputEngine::onInputContextCreated(fcitx::InputContext* ic) {
+  if (ic == nullptr) {
+    return;
+  }
+  ic->setCapabilityFlags(ic->capabilityFlags() | fcitx::CapabilityFlag::SurroundingText);
+  rememberInputContext(ic);
+}
 
+void VinputEngine::onInputContextDestroyed(fcitx::InputContext* ic) {
+  if (session_ && session_->ic == ic) {
+    if (session_->phase == Session::Phase::PendingStart ||
+        session_->phase == Session::Phase::Recording ||
+        session_->phase == Session::Phase::Postprocessing) {
+      callCancelOperation(false);
+    }
+    session_.reset();
+    polled_idle_since_.reset();
+  }
+  if (pending_start_ic_.get() == ic) {
+    cancelPendingStart();
+  }
+  if (status_ic_ == ic) {
+    status_ic_ = nullptr;
+    stopStatusSyncIfIdle();
+  }
+  if (last_active_ic_ == ic) {
+    last_active_ic_ = nullptr;
+  }
+  if (palette_menu_ic_ == ic) {
+    resetPaletteMenuState();
+  }
+  if (result_menu_ic_ == ic) {
+    resetResultMenuState();
+  }
+  if (context_buffer_ic_ == ic) {
+    flushContextBuffer();
+  }
+}
+
+void VinputEngine::onInputContextFocusOut(fcitx::InputContext* ic) {
+  if (ic == nullptr) {
+    return;
+  }
+  if (pending_start_ic_.get() == ic) {
+    cancelPendingStart();
+    chord_interrupted_ = true;
+  }
+  held_key_sym_.reset();
+  held_role_ = HotkeyRole::None;
+  chord_interrupted_ = true;
+  if (session_ && session_->ic == ic) {
+    if (session_->stop_on_release) {
+      callCancelOperation(false);
+      finishFrontendSession(ic);
+      clearVoicePresentation(ic);
+      chord_interrupted_ = true;
+    }
+  }
+}
+
+void VinputEngine::registerEventHandlers() {
   eventHandlers_.emplace_back(instance_->watchEvent(
       fcitx::EventType::InputContextKeyEvent, fcitx::EventWatcherPhase::PreInputMethod,
       [this](fcitx::Event& event) { handleKeyEvent(event); }));
 
-  eventHandlers_.emplace_back(instance_->watchEvent(
-      fcitx::EventType::InputContextCreated, fcitx::EventWatcherPhase::PreInputMethod,
-      [this](fcitx::Event& event) {
-        auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
-        auto* ic = icEvent.inputContext();
-        ic->setCapabilityFlags(ic->capabilityFlags() | fcitx::CapabilityFlag::SurroundingText);
-        rememberInputContext(ic);
-      }));
+  eventHandlers_.emplace_back(
+      instance_->watchEvent(fcitx::EventType::InputContextCreated,
+                            fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
+                              auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
+                              onInputContextCreated(icEvent.inputContext());
+                            }));
 
   eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextDestroyed,
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
                               auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
-                              auto* ic = icEvent.inputContext();
-                              if (session_ && session_->ic == ic) {
-                                if (session_->phase == Session::Phase::PendingStart ||
-                                    session_->phase == Session::Phase::Recording ||
-                                    session_->phase == Session::Phase::Postprocessing) {
-                                  callCancelOperation(false);
-                                }
-                                session_.reset();
-                                polled_idle_since_.reset();
-                              }
-                              if (pending_start_ic_.get() == ic) {
-                                cancelPendingStart();
-                              }
-                              if (status_ic_ == ic) {
-                                status_ic_ = nullptr;
-                                stopStatusSyncIfIdle();
-                              }
-                              if (last_active_ic_ == ic) {
-                                last_active_ic_ = nullptr;
-                              }
-                              if (palette_menu_ic_ == ic) {
-                                resetPaletteMenuState();
-                              }
-                              if (result_menu_ic_ == ic) {
-                                resetResultMenuState();
-                              }
-                              if (context_buffer_ic_ == ic) {
-                                flushContextBuffer();
-                              }
+                              onInputContextDestroyed(icEvent.inputContext());
                             }));
 
   eventHandlers_.emplace_back(
       instance_->watchEvent(fcitx::EventType::InputContextFocusOut,
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
                               if (auto* icEvent = dynamic_cast<fcitx::InputContextEvent*>(&event)) {
-                                auto* ic = icEvent->inputContext();
-                                if (pending_start_ic_.get() == ic) {
-                                  cancelPendingStart();
-                                  chord_interrupted_ = true;
-                                }
-                                held_key_sym_.reset();
-                                held_role_ = HotkeyRole::None;
-                                chord_interrupted_ = true;
-                                if (session_ && session_->ic == ic) {
-                                  if (session_->stop_on_release) {
-                                    callCancelOperation(false);
-                                    finishFrontendSession(ic);
-                                    clearVoicePresentation(ic);
-                                    chord_interrupted_ = true;
-                                  }
-                                }
+                                onInputContextFocusOut(icEvent->inputContext());
                               }
                             }));
 
@@ -240,12 +249,25 @@ VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
                               auto& commitEvent = dynamic_cast<fcitx::CommitStringEvent&>(event);
                               onCommitString(commitEvent.text(), commitEvent.inputContext());
                             }));
+}
 
+void VinputEngine::connectDBus() {
   auto* dbus_addon = instance_->addonManager().addon("dbus");
   if (dbus_addon != nullptr) {
     bus_ = dbus_addon->call<fcitx::IDBusModule::bus>();
     setupDBusWatcher();
   }
+}
+
+VinputEngine::VinputEngine(fcitx::Instance* instance) : instance_(instance) {
+  vinput::i18n::Init();
+  ensureDaemonServiceInstalled();
+  initializePaletteRegistry();
+  VinputEngine::reloadConfig();
+  event_dispatcher_.attach(&instance_->eventLoop());
+
+  registerEventHandlers();
+  connectDBus();
 }
 
 VinputEngine::~VinputEngine() {
