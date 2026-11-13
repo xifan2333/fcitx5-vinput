@@ -82,6 +82,11 @@ void AsyncRecognitionSession::HandleQueueOverflowLocked(std::size_t incoming_sam
 }
 
 bool AsyncRecognitionSession::PushAudio(std::span<const int16_t> pcm, std::string* error) {
+  // Every success path returns a clean error sink and every failure path below
+  // overwrites it, so clear once on entry instead of at each exit.
+  if (error != nullptr) {
+    error->clear();
+  }
   // On overflow the queued chunks are moved here and destroyed after the
   // lock is released below, so freeing them does not extend the time the
   // capture callback holds mutex_ (the queue is bounded, see header).
@@ -92,9 +97,6 @@ bool AsyncRecognitionSession::PushAudio(std::span<const int16_t> pcm, std::strin
       return false;
     }
     if (pcm.empty()) {
-      if (error != nullptr) {
-        error->clear();
-      }
       return true;
     }
     if (!HasCapacityLocked(pcm.size())) {
@@ -104,9 +106,6 @@ bool AsyncRecognitionSession::PushAudio(std::span<const int16_t> pcm, std::strin
     queue_.emplace_back(pcm.begin(), pcm.end());
     queued_samples_ += pcm.size();
     wake_.notify_one();
-  }
-  if (error != nullptr) {
-    error->clear();
   }
   return true;
 }

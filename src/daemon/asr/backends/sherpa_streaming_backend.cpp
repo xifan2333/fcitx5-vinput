@@ -44,6 +44,20 @@ int ChooseNumThreads(const glz::json_t& model_cfg, int runtime_default) {
   return JsonInt(model_cfg, "num_threads", 1);
 }
 
+// Callers pass a nullable error sink throughout this backend; these two helpers
+// keep the null check in one place instead of repeating it at every exit path.
+void SetError(std::string* error, std::string message) {
+  if (error != nullptr) {
+    *error = std::move(message);
+  }
+}
+
+void ClearError(std::string* error) {
+  if (error != nullptr) {
+    error->clear();
+  }
+}
+
 class SherpaStreamingSession : public RecognitionSession {
 public:
   SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer, sherpa::OnlineStream stream)
@@ -459,9 +473,7 @@ public:
 private:
   bool InitializeRecognizerLocked(std::string* error) {
     if (recognizer_.has_value() && recognizer_->Valid()) {
-      if (error != nullptr) {
-        error->clear();
-      }
+      ClearError(error);
       return true;
     }
 
@@ -481,10 +493,8 @@ private:
 
     auto recognizer = sherpa::OnlineRecognizer::Create(config);
     if (!recognizer.has_value()) {
-      if (error != nullptr) {
-        *error =
-            "failed to create sherpa-streaming recognizer for family '" + model_info_.family + "'";
-      }
+      SetError(error, "failed to create sherpa-streaming recognizer for family '" +
+                          model_info_.family + "'");
       return false;
     }
 
@@ -496,9 +506,7 @@ private:
 
     WarmupRecognizerLocked();
 
-    if (error != nullptr) {
-      error->clear();
-    }
+    ClearError(error);
     return true;
   }
 
