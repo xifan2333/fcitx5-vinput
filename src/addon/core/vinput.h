@@ -135,6 +135,9 @@ private:
   void applyDaemonStatusLocally(const std::string& status,
                                 fcitx::InputContext* fallback_ic = nullptr,
                                 bool prefer_command_mode = false);
+  bool resolveSessionRawPrev() const;
+  bool shouldDelayPolledIdleStatus(const std::string& status);
+  void handleDaemonStatusReply(fcitx::dbus::Message& reply);
   void ensureStatusSync();
   void stopStatusSyncIfIdle();
   void enterPendingStartState(fcitx::InputContext* ic, const fcitx::Key& trigger,
