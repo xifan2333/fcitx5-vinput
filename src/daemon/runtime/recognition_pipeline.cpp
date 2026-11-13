@@ -16,6 +16,8 @@
 
 #include "daemon/postprocess/post_processor.h"
 
+namespace vinput::daemon::runtime {
+
 namespace {
 
 constexpr std::size_t kMaxLoggedRecognitionBytes = 2048;
@@ -58,7 +60,7 @@ vinput::scene::Definition ResolveCommandScene(const CoreConfig& settings) {
 template <typename Fn>
 RecognitionPipelineResult
 InvokePostProcessor(const PostprocessRequest& request, const vinput::scene::Definition& scene,
-                    const std::function<void()>& on_enter_postprocessing, Fn&& run_proc) {
+                    const std::function<void()>& on_enter_postprocessing, const Fn& run_proc) {
   RecognitionPipelineResult output;
   if (scene.llm_max_candidates <= 0 || scene.provider_id.empty()) {
     output.payload.commitText = request.text;
@@ -78,8 +80,6 @@ InvokePostProcessor(const PostprocessRequest& request, const vinput::scene::Defi
 }
 
 } // namespace
-
-namespace vinput::daemon::runtime {
 
 RecognitionPipeline::RecognitionPipeline(PostProcessor* post_processor)
     : post_processor_(post_processor) {}
