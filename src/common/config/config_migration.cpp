@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <tl/expected.hpp>
 #include <utility>
 #include <vector>
 
@@ -211,74 +212,155 @@ void EraseMember(glz::json_t& node, const std::string& key) {
   }
 }
 
+bool ApplyRenameAction(glz::json_t& parent, const std::string& key, std::string_view desc_prefix,
+                       std::string_view new_key_view, std::vector<MigrationChange>& changes) {
+  if (!parent.contains(key)) {
+    return false;
+  }
+  const std::string new_key(new_key_view);
+  auto& object = parent.get_object();
+  if (!parent.contains(new_key)) {
+    object.emplace(new_key, std::move(object[key]));
+    object.erase(key);
+    changes.push_back({
+        .file = "config.json",
+        .description = std::string(desc_prefix) + ": renamed '" + key + "' to '" + new_key + "'",
+    });
+  } else {
+    EraseMember(parent, key);
+    changes.push_back({
+        .file = "config.json",
+        .description = std::string(desc_prefix) + ": removed obsolete duplicate key '" + key + "'",
+    });
+  }
+  return true;
+}
+
+bool ApplyRemoveAction(glz::json_t& parent, const std::string& key, std::string_view target_desc,
+                       std::vector<MigrationChange>& changes) {
+  if (!parent.contains(key)) {
+    return false;
+  }
+  EraseMember(parent, key);
+  changes.push_back({
+      .file = "config.json",
+      .description = std::string(target_desc) + ": removed obsolete field '" + key + "'",
+  });
+  return true;
+}
+
+bool ApplyEnsureAction(glz::json_t& parent, const std::string& key, std::string_view target_desc,
+                       const glz::json_t& default_val, std::vector<MigrationChange>& changes) {
+  if (parent.contains(key)) {
+    return false;
+  }
+  parent[key] = default_val;
+  changes.push_back({
+      .file = "config.json",
+      .description = std::string(target_desc) + ": added '" + key + "'",
+  });
+  return true;
+}
+
+bool ApplyReplaceIfDefaultAction(glz::json_t& parent, const std::string& key,
+                                 std::string_view desc_prefix, const glz::json_t& expected_val,
+                                 const glz::json_t& to_val, std::vector<MigrationChange>& changes) {
+  if (!parent.contains(key)) {
+    return false;
+  }
+  const auto& val = parent[key];
+  if (!JsonEquals(val, expected_val)) {
+    return false;
+  }
+  parent[key] = to_val;
+  changes.push_back({
+      .file = "config.json",
+      .description = std::string(desc_prefix) + ": upgraded legacy default " +
+                     FormatJson(expected_val) + " to " + FormatJson(to_val),
+  });
+  return true;
+}
+
 bool ApplyActionToTarget(glz::json_t& parent, const std::string& key, std::string_view desc,
                          const MigrationRule& rule, std::vector<MigrationChange>& changes) {
+  if (!parent.is_object()) {
+    return false;
+  }
+
   const std::string desc_prefix = desc.empty() ? key : std::string(desc) + "." + key;
+  const std::string target_desc = desc.empty() ? key : std::string(desc);
 
   switch (rule.action) {
-  case ActionType::Rename: {
-    if (parent.is_object() && parent.contains(key)) {
-      const std::string new_key(rule.new_key);
-      auto& object = parent.get_object();
-      if (!parent.contains(new_key)) {
-        object.emplace(new_key, std::move(object[key]));
-        object.erase(key);
-        changes.push_back({
-            .file = "config.json",
-            .description = desc_prefix + ": renamed '" + key + "' to '" + new_key + "'",
-        });
-      } else {
-        EraseMember(parent, key);
-        changes.push_back({
-            .file = "config.json",
-            .description = desc_prefix + ": removed obsolete duplicate key '" + key + "'",
-        });
-      }
-      return true;
+  case ActionType::Rename:
+    return ApplyRenameAction(parent, key, desc_prefix, rule.new_key, changes);
+  case ActionType::Remove:
+    return ApplyRemoveAction(parent, key, target_desc, changes);
+  case ActionType::Ensure:
+    return ApplyEnsureAction(parent, key, target_desc, rule.default_value, changes);
+  case ActionType::ReplaceIfDefault:
+    return ApplyReplaceIfDefaultAction(parent, key, desc_prefix, rule.expected_value, rule.to_value,
+                                       changes);
+  case ActionType::IniReplaceKey:
+  case ActionType::IniRemoveKey:
+    return false;
+  }
+  return false;
+}
+
+bool WalkAndApply(glz::json_t& node, std::span<const std::string_view> segments,
+                  std::string_view desc, const MigrationRule& rule,
+                  std::vector<MigrationChange>& changes);
+
+bool WalkWildcardObject(glz::json_t& node, std::span<const std::string_view> sub_segments,
+                        std::string_view desc, const MigrationRule& rule,
+                        std::vector<MigrationChange>& changes) {
+  if (!node.is_object()) {
+    return false;
+  }
+  bool any_changed = false;
+  for (auto& [child_key, child_value] : node.get_object()) {
+    const std::string child_desc = desc.empty() ? child_key : std::string(desc) + "." + child_key;
+    if (WalkAndApply(child_value, sub_segments, child_desc, rule, changes)) {
+      any_changed = true;
     }
+  }
+  return any_changed;
+}
+
+bool WalkWildcardArray(glz::json_t& node, std::span<const std::string_view> sub_segments,
+                       std::string_view desc, const MigrationRule& rule,
+                       std::vector<MigrationChange>& changes) {
+  if (!node.is_array()) {
     return false;
   }
-  case ActionType::Remove: {
-    if (parent.is_object() && parent.contains(key)) {
-      EraseMember(parent, key);
-      changes.push_back({
-          .file = "config.json",
-          .description =
-              (desc.empty() ? key : std::string(desc)) + ": removed obsolete field '" + key + "'",
-      });
-      return true;
+  bool any_changed = false;
+  auto& array = node.get_array();
+  for (std::size_t idx = 0; idx < array.size(); ++idx) {
+    auto& child = array[idx];
+    std::string child_id;
+    if (child.is_object() && child.contains("id") && child["id"].is_string()) {
+      child_id = child["id"].get<std::string>();
+    } else {
+      child_id = std::to_string(idx);
     }
-    return false;
-  }
-  case ActionType::Ensure: {
-    if (parent.is_object() && !parent.contains(key)) {
-      parent[key] = rule.default_value;
-      changes.push_back({
-          .file = "config.json",
-          .description = (desc.empty() ? key : std::string(desc)) + ": added '" + key + "'",
-      });
-      return true;
+    const std::string child_desc =
+        desc.empty() ? "[" + child_id + "]" : std::string(desc) + "[" + child_id + "]";
+    if (WalkAndApply(child, sub_segments, child_desc, rule, changes)) {
+      any_changed = true;
     }
+  }
+  return any_changed;
+}
+
+bool WalkObjectProperty(glz::json_t& node, std::string_view seg,
+                        std::span<const std::string_view> sub_segments, std::string_view desc,
+                        const MigrationRule& rule, std::vector<MigrationChange>& changes) {
+  if (!node.is_object() || !node.contains(seg)) {
     return false;
   }
-  case ActionType::ReplaceIfDefault: {
-    if (parent.is_object() && parent.contains(key)) {
-      const auto& val = parent[key];
-      if (JsonEquals(val, rule.expected_value)) {
-        parent[key] = rule.to_value;
-        changes.push_back({
-            .file = "config.json",
-            .description = desc_prefix + ": upgraded legacy default " +
-                           FormatJson(rule.expected_value) + " to " + FormatJson(rule.to_value),
-        });
-        return true;
-      }
-    }
-    return false;
-  }
-  default:
-    return false;
-  }
+  const std::string child_desc =
+      desc.empty() ? std::string(seg) : std::string(desc) + "." + std::string(seg);
+  return WalkAndApply(node[seg], sub_segments, child_desc, rule, changes);
 }
 
 bool WalkAndApply(glz::json_t& node, std::span<const std::string_view> segments,
@@ -289,9 +371,7 @@ bool WalkAndApply(glz::json_t& node, std::span<const std::string_view> segments,
   }
 
   const auto seg = segments[0];
-  const bool is_leaf = (segments.size() == 1);
-
-  if (is_leaf) {
+  if (segments.size() == 1) {
     if (node.is_object()) {
       return ApplyActionToTarget(node, std::string(seg), desc, rule, changes);
     }
@@ -299,43 +379,17 @@ bool WalkAndApply(glz::json_t& node, std::span<const std::string_view> segments,
   }
 
   const auto sub_segments = segments.subspan(1);
-  bool any_changed = false;
-
   if (seg == "*") {
     if (node.is_object()) {
-      for (auto& [child_key, child_value] : node.get_object()) {
-        const std::string child_desc =
-            desc.empty() ? child_key : std::string(desc) + "." + child_key;
-        if (WalkAndApply(child_value, sub_segments, child_desc, rule, changes)) {
-          any_changed = true;
-        }
-      }
-    } else if (node.is_array()) {
-      auto& array = node.get_array();
-      for (std::size_t idx = 0; idx < array.size(); ++idx) {
-        auto& child = array[idx];
-        std::string child_id;
-        if (child.is_object() && child.contains("id") && child["id"].is_string()) {
-          child_id = child["id"].get<std::string>();
-        } else {
-          child_id = std::to_string(idx);
-        }
-        const std::string child_desc =
-            desc.empty() ? "[" + child_id + "]" : std::string(desc) + "[" + child_id + "]";
-        if (WalkAndApply(child, sub_segments, child_desc, rule, changes)) {
-          any_changed = true;
-        }
-      }
+      return WalkWildcardObject(node, sub_segments, desc, rule, changes);
     }
-  } else if (node.is_object() && node.contains(seg)) {
-    const std::string child_desc =
-        desc.empty() ? std::string(seg) : std::string(desc) + "." + std::string(seg);
-    if (WalkAndApply(node[seg], sub_segments, child_desc, rule, changes)) {
-      any_changed = true;
+    if (node.is_array()) {
+      return WalkWildcardArray(node, sub_segments, desc, rule, changes);
     }
+    return false;
   }
 
-  return any_changed;
+  return WalkObjectProperty(node, seg, sub_segments, desc, rule, changes);
 }
 
 bool HasOutdatedIniKeys(const fcitx::RawConfig& conf) {
@@ -359,78 +413,341 @@ bool HasOutdatedIniKeys(const fcitx::RawConfig& conf) {
   return found;
 }
 
-bool ApplyIniRule(fcitx::RawConfig& root, const MigrationRule& rule,
-                  std::vector<MigrationChange>& changes) {
+std::vector<std::string> CollectMatchingIniPaths(const fcitx::RawConfig& root,
+                                                 std::string_view target_path) {
   std::vector<std::string> matching_paths;
+  const bool has_slash = (target_path.find('/') != std::string_view::npos);
   root.visitSubItems(
       [&](const fcitx::RawConfig& node, const std::string& path) {
-        if (rule.path.find('/') != std::string_view::npos) {
-          if (path == rule.path) {
+        if (has_slash) {
+          if (path == target_path) {
             matching_paths.push_back(path);
           }
-        } else {
-          if (node.name() == rule.path) {
-            matching_paths.push_back(path);
-          }
+        } else if (node.name() == target_path) {
+          matching_paths.push_back(path);
         }
         return true;
       },
       "", true);
+  return matching_paths;
+}
 
+std::pair<fcitx::RawConfig*, std::string> ResolveIniParentAndKey(fcitx::RawConfig& root,
+                                                                 std::string_view path) {
+  const auto slash = path.rfind('/');
+  if (slash == std::string_view::npos) {
+    return {&root, std::string(path)};
+  }
+  const auto parent_node = root.get(std::string(path.substr(0, slash)));
+  return {parent_node != nullptr ? parent_node.get() : nullptr,
+          std::string(path.substr(slash + 1))};
+}
+
+bool ApplyIniReplaceKeyAction(fcitx::RawConfig& parent, const std::string& key,
+                              std::string_view rule_path, std::string_view rule_new_key,
+                              std::vector<MigrationChange>& changes) {
+  const auto old_node = parent.get(key);
+  if (old_node == nullptr) {
+    return false;
+  }
+  const std::string new_key(rule_new_key);
+  if (parent.get(new_key) == nullptr) {
+    auto new_node = parent.get(new_key, true);
+    *new_node = *old_node;
+    changes.push_back({
+        .file = "vinput.conf",
+        .description = "replaced key '" + std::string(rule_path) + "' with '" + new_key + "'",
+    });
+  } else {
+    changes.push_back({
+        .file = "vinput.conf",
+        .description = "removed obsolete duplicate key '" + std::string(rule_path) + "'",
+    });
+  }
+  parent.remove(key);
+  return true;
+}
+
+bool ApplyIniRemoveKeyAction(fcitx::RawConfig& parent, const std::string& key,
+                             std::string_view rule_path, std::vector<MigrationChange>& changes) {
+  if (parent.remove(key)) {
+    changes.push_back({
+        .file = "vinput.conf",
+        .description = "removed obsolete key '" + std::string(rule_path) + "'",
+    });
+    return true;
+  }
+  return false;
+}
+
+bool ApplySingleIniRule(fcitx::RawConfig& parent, const std::string& key, const MigrationRule& rule,
+                        std::vector<MigrationChange>& changes) {
+  switch (rule.action) {
+  case ActionType::IniReplaceKey:
+    return ApplyIniReplaceKeyAction(parent, key, rule.path, rule.new_key, changes);
+  case ActionType::IniRemoveKey:
+    return ApplyIniRemoveKeyAction(parent, key, rule.path, changes);
+  case ActionType::Rename:
+  case ActionType::Remove:
+  case ActionType::Ensure:
+  case ActionType::ReplaceIfDefault:
+    return false;
+  }
+  return false;
+}
+
+bool ApplyIniRule(fcitx::RawConfig& root, const MigrationRule& rule,
+                  std::vector<MigrationChange>& changes) {
+  const auto matching_paths = CollectMatchingIniPaths(root, rule.path);
   if (matching_paths.empty()) {
     return false;
   }
 
   bool changed = false;
   for (const auto& path : matching_paths) {
-    const auto slash = path.rfind('/');
-    fcitx::RawConfig* parent = nullptr;
-    std::string key;
-    if (slash != std::string::npos) {
-      const auto parent_node = root.get(path.substr(0, slash));
-      if (parent_node != nullptr) {
-        parent = parent_node.get();
-      }
-      key = path.substr(slash + 1);
-    } else {
-      parent = &root;
-      key = path;
+    auto [parent, key] = ResolveIniParentAndKey(root, path);
+    if (parent != nullptr && ApplySingleIniRule(*parent, key, rule, changes)) {
+      changed = true;
     }
-    if (parent == nullptr) {
-      continue;
-    }
+  }
+  return changed;
+}
 
-    if (rule.action == ActionType::IniReplaceKey) {
-      const auto old_node = parent->get(key);
-      if (old_node != nullptr) {
-        const std::string new_key(rule.new_key);
-        if (parent->get(new_key) == nullptr) {
-          auto new_node = parent->get(new_key, true);
-          *new_node = *old_node;
-          changes.push_back({
-              .file = "vinput.conf",
-              .description = "replaced key '" + std::string(rule.path) + "' with '" + new_key + "'",
-          });
-        } else {
-          changes.push_back({
-              .file = "vinput.conf",
-              .description = "removed obsolete duplicate key '" + std::string(rule.path) + "'",
-          });
-        }
-        parent->remove(key);
-        changed = true;
-      }
-    } else if (rule.action == ActionType::IniRemoveKey) {
-      if (parent->remove(key)) {
-        changes.push_back({
-            .file = "vinput.conf",
-            .description = "removed obsolete key '" + std::string(rule.path) + "'",
-        });
+struct LoadedInputs {
+  std::filesystem::path real_config_path;
+  std::filesystem::path real_conf_path;
+  bool config_exists{false};
+  bool conf_exists{false};
+  std::string raw_config;
+  std::string raw_conf;
+  glz::json_t config_data;
+  fcitx::RawConfig conf_raw_config;
+};
+
+std::optional<LoadedInputs> ResolveAndLoadInputs(MigrationReport& report) {
+  LoadedInputs inputs;
+  if (!vinput::file::ResolveSymlinkPath(report.config_file, &inputs.real_config_path,
+                                        &report.error)) {
+    return std::nullopt;
+  }
+  if (!vinput::file::ResolveSymlinkPath(report.conf_file, &inputs.real_conf_path, &report.error)) {
+    return std::nullopt;
+  }
+
+  std::error_code ec;
+  inputs.config_exists = std::filesystem::is_regular_file(inputs.real_config_path, ec);
+  inputs.conf_exists = std::filesystem::is_regular_file(inputs.real_conf_path, ec);
+
+  if (!inputs.config_exists && !inputs.conf_exists) {
+    report.needed = false;
+    report.applied = false;
+    return inputs;
+  }
+
+  if (inputs.config_exists) {
+    auto read_res = vinput::file::ReadTextFile(inputs.real_config_path);
+    if (!read_res) {
+      report.error = read_res.error();
+      return std::nullopt;
+    }
+    inputs.raw_config = std::move(*read_res);
+    if (bool(glz::read<kMigrationReadOpts>(inputs.config_data, inputs.raw_config))) {
+      report.error = "Failed to parse " + inputs.real_config_path.string() + ": invalid JSON";
+      return std::nullopt;
+    }
+  }
+
+  if (inputs.conf_exists) {
+    auto read_res = vinput::file::ReadTextFile(inputs.real_conf_path);
+    if (!read_res) {
+      report.error = read_res.error();
+      return std::nullopt;
+    }
+    inputs.raw_conf = std::move(*read_res);
+    fcitx::readAsIni(inputs.conf_raw_config, inputs.real_conf_path.string());
+  }
+
+  return inputs;
+}
+
+bool IsFastPathSatisfied(const LoadedInputs& inputs,
+                         const vinput::version::SemanticVersion& max_rule_ver) {
+  if (inputs.conf_exists && HasOutdatedIniKeys(inputs.conf_raw_config)) {
+    return false;
+  }
+
+  if (!inputs.config_exists) {
+    return true;
+  }
+
+  const auto& cfg = inputs.config_data;
+  if (!cfg.is_object() || !cfg.contains("version") || !cfg["version"].is_string() ||
+      cfg.contains("vinput_version")) {
+    return false;
+  }
+
+  const auto ver_str = cfg["version"].get<std::string>();
+  const auto lower_bound = ParseConfigLowerBoundVersion(ver_str);
+  return lower_bound.has_value() && *lower_bound >= max_rule_ver &&
+         vinput::version::Satisfies(vinput::version::CurrentHostVersion(), ver_str);
+}
+
+bool ShouldApplyRule(const MigrationRule& rule,
+                     const std::optional<vinput::version::SemanticVersion>& config_ver) {
+  if (rule.target_file != "config.json") {
+    return false;
+  }
+  const auto rule_ver_opt = vinput::version::Parse(rule.version);
+  if (!rule_ver_opt.has_value()) {
+    return false;
+  }
+  return !config_ver.has_value() || *config_ver < *rule_ver_opt;
+}
+
+bool ApplyRulesToJson(glz::json_t& config_data, const std::vector<MigrationRule>& rules,
+                      const std::optional<vinput::version::SemanticVersion>& config_ver,
+                      std::vector<MigrationChange>& changes) {
+  bool changed = false;
+  for (const auto& rule : rules) {
+    if (ShouldApplyRule(rule, config_ver)) {
+      const auto segments = vinput::str::Split(rule.path, '.');
+      if (WalkAndApply(config_data, segments, "", rule, changes)) {
         changed = true;
       }
     }
   }
   return changed;
+}
+
+bool StandardizeVersionFields(glz::json_t& config_data, std::vector<MigrationChange>& changes) {
+  bool changed = false;
+  if (config_data.contains("vinput_version")) {
+    EraseMember(config_data, "vinput_version");
+    changed = true;
+    changes.push_back({
+        .file = "config.json",
+        .description = "removed legacy 'vinput_version' field",
+    });
+  }
+
+  const std::string target_ver = GetTargetVersionConstraint();
+  const bool needs_ver_update = !config_data.contains("version") ||
+                                !config_data["version"].is_string() ||
+                                config_data["version"].get<std::string>() != target_ver;
+  if (needs_ver_update) {
+    config_data["version"] = glz::json_t(target_ver);
+    changed = true;
+    changes.push_back({
+        .file = "config.json",
+        .description = "version: standardized constraint to '" + target_ver + "'",
+    });
+  }
+  return changed;
+}
+
+std::optional<vinput::version::SemanticVersion>
+ExtractConfigVersion(const glz::json_t& config_data) {
+  if (config_data.contains("version") && config_data["version"].is_string()) {
+    return ParseConfigLowerBoundVersion(config_data["version"].get<std::string>());
+  }
+  return std::nullopt;
+}
+
+bool MigrateJsonConfig(glz::json_t& config_data, const std::vector<MigrationRule>& rules,
+                       std::vector<MigrationChange>& changes) {
+  if (!config_data.is_object()) {
+    return false;
+  }
+  const auto config_ver = ExtractConfigVersion(config_data);
+  const bool rules_changed = ApplyRulesToJson(config_data, rules, config_ver, changes);
+  const bool ver_changed = StandardizeVersionFields(config_data, changes);
+  return rules_changed || ver_changed;
+}
+
+bool MigrateIniConfig(fcitx::RawConfig& conf_raw, const std::vector<MigrationRule>& rules,
+                      std::vector<MigrationChange>& changes) {
+  bool conf_changed = false;
+  for (const auto& rule : rules) {
+    if (rule.target_file != "vinput.conf") {
+      continue;
+    }
+    if (ApplyIniRule(conf_raw, rule, changes)) {
+      conf_changed = true;
+    }
+  }
+  return conf_changed;
+}
+
+tl::expected<std::filesystem::path, std::string>
+CreateBackupFile(const std::filesystem::path& target_path, std::string_view raw_content,
+                 std::string_view timestamp) {
+  std::error_code ec;
+  const auto backup_dir = target_path.parent_path() / "backups";
+  std::filesystem::create_directories(backup_dir, ec);
+  auto backup_file =
+      backup_dir / (target_path.filename().string() + ".bak." + std::string(timestamp));
+  auto res = vinput::file::AtomicWriteTextFile(backup_file, raw_content);
+  if (!res) {
+    return tl::make_unexpected("Failed to create backup for " + target_path.string() + ": " +
+                               res.error());
+  }
+  return backup_file;
+}
+
+bool SaveMigratedConfig(const LoadedInputs& inputs, const glz::json_t& config_data,
+                        std::string_view timestamp, MigrationReport& report) {
+  auto backup_res = CreateBackupFile(inputs.real_config_path, inputs.raw_config, timestamp);
+  if (!backup_res) {
+    report.error = backup_res.error();
+    return false;
+  }
+  report.config_backup = *backup_res;
+
+  const std::string new_json_str = FormatPrettyJson(config_data) + "\n";
+  if (auto res = vinput::file::AtomicWriteTextFile(inputs.real_config_path, new_json_str); !res) {
+    report.error =
+        "Failed to write migrated " + inputs.real_config_path.string() + ": " + res.error();
+    return false;
+  }
+  return true;
+}
+
+bool SaveMigratedConf(const LoadedInputs& inputs, fcitx::RawConfig& conf_raw_config,
+                      std::string_view timestamp, MigrationReport& report) {
+  auto backup_res = CreateBackupFile(inputs.real_conf_path, inputs.raw_conf, timestamp);
+  if (!backup_res) {
+    report.error = backup_res.error();
+    return false;
+  }
+  report.conf_backup = *backup_res;
+
+  if (!fcitx::safeSaveAsIni(conf_raw_config, inputs.real_conf_path.string())) {
+    report.error = "Failed to write migrated " + inputs.real_conf_path.string();
+    return false;
+  }
+  return true;
+}
+
+void ResolveReportPaths(const std::filesystem::path& config_path,
+                        const std::filesystem::path& conf_path, MigrationReport& report) {
+  report.config_file = config_path.empty() ? vinput::path::CoreConfigPath() : config_path;
+  report.conf_file = conf_path.empty() ? vinput::path::FcitxAddonConfigPath() : conf_path;
+}
+
+bool SaveMigratedFiles(LoadedInputs& inputs, bool config_changed, bool conf_changed,
+                       MigrationReport& report) {
+  const std::string ts = GenerateTimestamp();
+  if (config_changed) {
+    if (!SaveMigratedConfig(inputs, inputs.config_data, ts, report)) {
+      return false;
+    }
+  }
+  if (conf_changed) {
+    if (!SaveMigratedConf(inputs, inputs.conf_raw_config, ts, report)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace
@@ -444,185 +761,38 @@ bool HasPendingMigrations(const std::filesystem::path& config_path,
 MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& config_path,
                                    const std::filesystem::path& conf_path) {
   MigrationReport report;
-  report.config_file = config_path.empty() ? vinput::path::CoreConfigPath() : config_path;
-  report.conf_file = conf_path.empty() ? vinput::path::FcitxAddonConfigPath() : conf_path;
+  ResolveReportPaths(config_path, conf_path, report);
 
-  std::filesystem::path real_config_path;
-  if (!vinput::file::ResolveSymlinkPath(report.config_file, &real_config_path, &report.error)) {
+  auto loaded_inputs = ResolveAndLoadInputs(report);
+  if (!loaded_inputs.has_value()) {
     return report;
   }
-  std::filesystem::path real_conf_path;
-  if (!vinput::file::ResolveSymlinkPath(report.conf_file, &real_conf_path, &report.error)) {
+  auto& inputs = *loaded_inputs;
+  if (!inputs.config_exists && !inputs.conf_exists) {
     return report;
   }
 
-  std::error_code ec;
-  const bool config_exists = std::filesystem::is_regular_file(real_config_path, ec);
-  const bool conf_exists = std::filesystem::is_regular_file(real_conf_path, ec);
-
-  if (!config_exists && !conf_exists) {
+  if (IsFastPathSatisfied(inputs, GetMaxRuleVersion())) {
     report.needed = false;
     report.applied = false;
     return report;
-  }
-
-  std::string raw_config;
-  glz::json_t config_data;
-  if (config_exists) {
-    auto read_res = vinput::file::ReadTextFile(real_config_path);
-    if (!read_res) {
-      report.error = read_res.error();
-      return report;
-    }
-    raw_config = std::move(*read_res);
-    if (bool(glz::read<kMigrationReadOpts>(config_data, raw_config))) {
-      report.error = "Failed to parse " + real_config_path.string() + ": invalid JSON";
-      return report;
-    }
-  }
-
-  std::string raw_conf;
-  fcitx::RawConfig conf_raw_config;
-  if (conf_exists) {
-    auto read_res = vinput::file::ReadTextFile(real_conf_path);
-    if (!read_res) {
-      report.error = read_res.error();
-      return report;
-    }
-    raw_conf = std::move(*read_res);
-    fcitx::readAsIni(conf_raw_config, real_conf_path.string());
-  }
-
-  const auto max_rule_ver = GetMaxRuleVersion();
-
-  // Fast-Path: if config version constraint satisfies host version, meets max rule version, and INI
-  // has no outdated keys
-  bool config_satisfies = true;
-  if (config_exists) {
-    if (config_data.is_object() && config_data.contains("version") &&
-        config_data["version"].is_string() && !config_data.contains("vinput_version")) {
-      const auto ver_str = config_data["version"].get<std::string>();
-      const auto lower_bound = ParseConfigLowerBoundVersion(ver_str);
-      config_satisfies = lower_bound.has_value() && *lower_bound >= max_rule_ver &&
-                         vinput::version::Satisfies(vinput::version::CurrentHostVersion(), ver_str);
-    } else {
-      config_satisfies = false;
-    }
-  }
-
-  const bool conf_has_outdated = conf_exists && HasOutdatedIniKeys(conf_raw_config);
-
-  if (config_satisfies && !conf_has_outdated) {
-    report.needed = false;
-    report.applied = false;
-    return report;
-  }
-
-  // Slow-Path: execute table-driven rules
-  vinput::version::SemanticVersion config_ver{};
-  bool is_unversioned = true;
-  if (config_exists && config_data.is_object()) {
-    if (config_data.contains("version") && config_data["version"].is_string()) {
-      const auto parsed = ParseConfigLowerBoundVersion(config_data["version"].get<std::string>());
-      if (parsed.has_value()) {
-        config_ver = *parsed;
-        is_unversioned = false;
-      }
-    }
   }
 
   const auto& rules = GetRules();
-  bool config_changed = false;
-  bool conf_changed = false;
+  const bool config_changed =
+      inputs.config_exists ? MigrateJsonConfig(inputs.config_data, rules, report.changes) : false;
+  const bool conf_changed =
+      inputs.conf_exists ? MigrateIniConfig(inputs.conf_raw_config, rules, report.changes) : false;
 
-  if (config_exists && config_data.is_object()) {
-    for (const auto& rule : rules) {
-      if (rule.target_file != "config.json") {
-        continue;
-      }
-      const auto rule_ver_opt = vinput::version::Parse(rule.version);
-      if (!rule_ver_opt.has_value()) {
-        continue;
-      }
-      if (is_unversioned || config_ver < *rule_ver_opt) {
-        const auto segments = vinput::str::Split(rule.path, '.');
-        if (WalkAndApply(config_data, segments, "", rule, report.changes)) {
-          config_changed = true;
-        }
-      }
-    }
-
-    if (config_data.contains("vinput_version")) {
-      EraseMember(config_data, "vinput_version");
-      config_changed = true;
-      report.changes.push_back({
-          .file = "config.json",
-          .description = "removed legacy 'vinput_version' field",
-      });
-    }
-
-    const std::string target_ver = GetTargetVersionConstraint();
-    if (!config_data.contains("version") || !config_data["version"].is_string() ||
-        config_data["version"].get<std::string>() != target_ver) {
-      config_data["version"] = glz::json_t(target_ver);
-      config_changed = true;
-      report.changes.push_back({
-          .file = "config.json",
-          .description = "version: standardized constraint to '" + target_ver + "'",
-      });
-    }
-  }
-
-  if (conf_exists) {
-    for (const auto& rule : rules) {
-      if (rule.target_file != "vinput.conf") {
-        continue;
-      }
-      if (ApplyIniRule(conf_raw_config, rule, report.changes)) {
-        conf_changed = true;
-      }
-    }
-  }
-
-  report.needed = !report.changes.empty() || config_changed || conf_changed;
-  if (!report.needed || dry_run) {
+  const bool has_changes = !report.changes.empty() || config_changed || conf_changed;
+  report.needed = has_changes;
+  if (!has_changes || dry_run) {
     report.applied = false;
     return report;
   }
 
-  const std::string ts = GenerateTimestamp();
-  if (config_changed && config_exists) {
-    const auto backup_dir = real_config_path.parent_path() / "backups";
-    std::filesystem::create_directories(backup_dir, ec);
-    const auto backup_file = backup_dir / (real_config_path.filename().string() + ".bak." + ts);
-    if (auto res = vinput::file::AtomicWriteTextFile(backup_file, raw_config); !res) {
-      report.error =
-          "Failed to create backup for " + real_config_path.string() + ": " + res.error();
-      return report;
-    }
-    report.config_backup = backup_file;
-
-    const std::string new_json_str = FormatPrettyJson(config_data) + "\n";
-    if (auto res = vinput::file::AtomicWriteTextFile(real_config_path, new_json_str); !res) {
-      report.error = "Failed to write migrated " + real_config_path.string() + ": " + res.error();
-      return report;
-    }
-  }
-
-  if (conf_changed && conf_exists) {
-    const auto backup_dir = real_conf_path.parent_path() / "backups";
-    std::filesystem::create_directories(backup_dir, ec);
-    const auto backup_file = backup_dir / (real_conf_path.filename().string() + ".bak." + ts);
-    if (auto res = vinput::file::AtomicWriteTextFile(backup_file, raw_conf); !res) {
-      report.error = "Failed to create backup for " + real_conf_path.string() + ": " + res.error();
-      return report;
-    }
-    report.conf_backup = backup_file;
-
-    if (!fcitx::safeSaveAsIni(conf_raw_config, real_conf_path.string())) {
-      report.error = "Failed to write migrated " + real_conf_path.string();
-      return report;
-    }
+  if (!SaveMigratedFiles(inputs, config_changed, conf_changed, report)) {
+    return report;
   }
 
   report.applied = true;
