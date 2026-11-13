@@ -154,6 +154,30 @@ void TestSetGainAndClear() {
   Expect(buffer.DrainStreamingTail().empty(), "Clear should empty streaming pcm");
 }
 
+void TestCancellationBeforeActivation() {
+  vinput::daemon::runtime::AudioRecordingBuffer buffer;
+  buffer.Reset(1.0F);
+
+  // Pre-roll startup samples arriving during startup
+  const std::array<int16_t, 5> startup{10, 20, 30, 40, 50};
+  buffer.AppendStartup(startup);
+  Expect(buffer.TotalSampleCount() == 5, "TotalSampleCount should be 5 after startup arrival");
+
+  // Chord interruption / cancellation before session activation
+  buffer.Clear();
+  Expect(buffer.TotalSampleCount() == 0, "Clear after cancellation should reset TotalSampleCount");
+  Expect(buffer.TakeBufferedPcm().empty(), "Buffered PCM should be empty after cancellation");
+  Expect(buffer.DrainStreamingTail().empty(), "Streaming PCM should be empty after cancellation");
+
+  // Verify subsequent new session starts completely fresh
+  buffer.Activate(/*is_buffered=*/true);
+  const std::array<int16_t, 2> new_session_samples{100, 200};
+  buffer.Append(new_session_samples);
+  Expect(buffer.TotalSampleCount() == 2,
+         "New session TotalSampleCount should only reflect new samples");
+  ExpectSamples(buffer.TakeBufferedPcm(), {100, 200});
+}
+
 } // namespace
 
 int main() {
@@ -162,6 +186,7 @@ int main() {
   TestStreamingChunkingAndTail();
   TestAppendBeforeActivate();
   TestSetGainAndClear();
+  TestCancellationBeforeActivation();
   std::cout << "All AudioRecordingBuffer tests passed!\n";
   return 0;
 }
