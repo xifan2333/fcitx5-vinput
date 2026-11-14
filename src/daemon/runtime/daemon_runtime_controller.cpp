@@ -492,9 +492,10 @@ void DaemonRuntimeController::DrainIncomingAudio() {
   }
   vinput::audio::AudioPcmChunk chunk;
   while (capture_->TryDequeue(chunk)) {
-    if (chunk.size > 0) {
-      HandleIncomingAudio(chunk.AsSpan());
+    if (chunk.size <= 0) {
+      continue;
     }
+    HandleIncomingAudio(chunk.AsSpan());
   }
 }
 
@@ -637,19 +638,13 @@ void DaemonRuntimeController::PushStreamingChunks(
       return;
     }
 
-    bool session_retired = false;
     {
       const std::scoped_lock lock(state_mutex_);
       if (!session_lifecycle_.IsActiveSession(session)) {
-        session_retired = true;
-      } else {
-        chunk_to_push = audio_buffer_.PopStreamingChunk();
+        session_lifecycle_.RetireSession(std::move(session));
+        return;
       }
-    }
-
-    if (session_retired) {
-      session_lifecycle_.RetireSession(std::move(session));
-      return;
+      chunk_to_push = audio_buffer_.PopStreamingChunk();
     }
 
     if (!chunk_to_push.has_value()) {
@@ -806,20 +801,30 @@ void DaemonRuntimeController::ExecutePostprocessingAndBroadcast(
     const std::scoped_lock lock(state_mutex_);
     postprocessing_action = state_machine_.TakePostprocessingState();
   }
-  if (postprocessing_action == PostprocessingState::CommitRaw) {
+  switch (postprocessing_action) {
+  case PostprocessingState::CommitRaw:
     pipeline_result.payload.commitText = order.postprocess_request.text;
     pipeline_result.payload.candidates = {
         {.text = order.postprocess_request.text, .source = vinput::result::kSourceRaw}};
     pipeline_result.errors.clear();
-  } else if (postprocessing_action == PostprocessingState::Discard) {
+    break;
+  case PostprocessingState::Discard:
     pipeline_result.payload = {};
     pipeline_result.errors.clear();
+    break;
+  case PostprocessingState::Inactive:
+  case PostprocessingState::Dictation:
+  case PostprocessingState::Command:
+    break;
   }
   for (const auto& error : pipeline_result.errors) {
-    if (!error.empty()) {
-      VLOG_ERROR("processing error: {}", error);
+    if (error.empty()) {
+      continue;
     }
-    dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(error));
+    VLOG_ERROR("processing error: {}", error);
+    if (dbus_ != nullptr) {
+      dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(error));
+    }
   }
   if (order.ime && dbus_ != nullptr) {
     dbus_->EmitRecognitionResult(vinput::result::Serialize(pipeline_result.payload));
@@ -906,6 +911,33 @@ void DaemonRuntimeController::ScheduleCaptureStopOnMainThread() {
   WakeMainThread();
 }
 
+void DaemonRuntimeController::FinalizeActiveRecordingLocked(
+    const std::string& scene_id, std::span<const int16_t> captured_pcm,
+    std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session_to_cancel,
+    bool& apply_pending_reload) {
+  if (!captured_pcm.empty()) {
+    audio_buffer_.Append(captured_pcm);
+  }
+
+  const auto total_samples = audio_buffer_.TotalSampleCount();
+  const auto transition =
+      state_machine_.OnStopRecording(total_samples, vinput::daemon::asr::kMinSamplesForRecognition);
+
+  if (transition.action != TransitionAction::DiscardTooShort) {
+    ScheduleInferenceLocked(scene_id, total_samples, captured_pcm.size(), transition.new_phase);
+    return;
+  }
+
+  VLOG_DEBUG("recording too short, skipping inference: {} samples ({:.1f} ms)", total_samples,
+             static_cast<double>(total_samples) * 1000.0 / 16000.0);
+  ResetRecordingStateLocked();
+  session_to_cancel = session_lifecycle_.DetachActive();
+  current_order_.reset();
+  NotifyStatusChanged(transition.new_phase);
+  VLOG_DEBUG("phase -> idle");
+  apply_pending_reload = true;
+}
+
 DbusService::MethodResult DaemonRuntimeController::StopRecording(bool ime,
                                                                  const std::string& scene_id) {
   bool stop_capture = false;
@@ -938,26 +970,8 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(bool ime,
       VLOG_DEBUG("phase -> idle");
       apply_pending_reload = true;
     } else {
-      if (!captured_pcm.empty()) {
-        audio_buffer_.Append(captured_pcm);
-      }
-
-      const auto total_samples = audio_buffer_.TotalSampleCount();
-      auto transition = state_machine_.OnStopRecording(
-          total_samples, vinput::daemon::asr::kMinSamplesForRecognition);
-
-      if (transition.action == TransitionAction::DiscardTooShort) {
-        VLOG_DEBUG("recording too short, skipping inference: {} samples ({:.1f} ms)", total_samples,
-                   static_cast<double>(total_samples) * 1000.0 / 16000.0);
-        ResetRecordingStateLocked();
-        session_to_cancel = session_lifecycle_.DetachActive();
-        current_order_.reset();
-        NotifyStatusChanged(transition.new_phase);
-        VLOG_DEBUG("phase -> idle");
-        apply_pending_reload = true;
-      } else {
-        ScheduleInferenceLocked(scene_id, total_samples, captured_pcm.size(), transition.new_phase);
-      }
+      FinalizeActiveRecordingLocked(scene_id, captured_pcm, session_to_cancel,
+                                    apply_pending_reload);
     }
   }
 
@@ -1095,6 +1109,7 @@ void DaemonRuntimeController::StartWorker() {
 }
 
 void DaemonRuntimeController::Shutdown() {
+  shutting_down_.store(true, std::memory_order_release);
   if (owner_client_id_.empty()) {
     std::map<std::string, std::shared_ptr<HeadlessClientLane>, std::less<>> to_shutdown;
     {
@@ -1329,8 +1344,14 @@ void DaemonRuntimeController::DispatchClientLine(std::string_view client_id,
 
 std::shared_ptr<DaemonRuntimeController>
 DaemonRuntimeController::GetOrCreateHeadlessLane(std::string_view client_id) {
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    return nullptr;
+  }
   const std::string key(client_id.empty() ? "__anonymous_headless__" : client_id);
   const std::scoped_lock lock(headless_lanes_mutex_);
+  if (shutting_down_.load(std::memory_order_relaxed)) {
+    return nullptr;
+  }
   auto it = headless_lanes_.find(key);
   if (it != headless_lanes_.end() && it->second != nullptr) {
     return it->second->controller;

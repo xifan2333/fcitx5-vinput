@@ -127,6 +127,10 @@ private:
   void EnterPostprocessing(bool command_mode);
   void ResetToIdle();
   void ProcessSingleOrder(RecognitionOrder order);
+  void FinalizeActiveRecordingLocked(
+      const std::string& scene_id, std::span<const int16_t> captured_pcm,
+      std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session_to_cancel,
+      bool& apply_pending_reload);
   void WorkerMain();
 
   AudioCapture* capture_ = nullptr;
@@ -170,6 +174,7 @@ private:
 
   std::string owner_client_id_;
   bool owns_notify_fd_ = true;
+  std::atomic<bool> shutting_down_{false};
   mutable std::mutex headless_lanes_mutex_;
   std::map<std::string, std::shared_ptr<HeadlessClientLane>, std::less<>> headless_lanes_;
 };

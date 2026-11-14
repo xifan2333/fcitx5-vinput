@@ -213,9 +213,9 @@ int main(int argc, char* argv[]) {
   RunEventLoop(dbus, runtime_controller);
 
   VLOG_INFO("shutting down");
+  vinput::client::Shutdown();
   post_processor.Shutdown();
   runtime_controller.Shutdown();
   recognition_manager.Shutdown();
-  vinput::client::Shutdown();
   return 0;
 }
