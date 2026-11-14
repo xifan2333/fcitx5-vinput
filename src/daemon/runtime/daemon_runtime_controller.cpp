@@ -1100,6 +1100,23 @@ void DaemonRuntimeController::MaybeDestroyExpiredStreams() {
   }
 }
 
+void DaemonRuntimeController::ReclaimHeadlessLane(std::string_view client_id) {
+  if (client_id.empty()) {
+    return;
+  }
+  std::shared_ptr<HeadlessClientLane> lane_to_reclaim;
+  {
+    const std::scoped_lock lock(headless_lanes_mutex_);
+    if (const auto it = headless_lanes_.find(client_id); it != headless_lanes_.end()) {
+      lane_to_reclaim = std::move(it->second);
+      headless_lanes_.erase(it);
+    }
+  }
+  if (lane_to_reclaim != nullptr && lane_to_reclaim->controller != nullptr) {
+    lane_to_reclaim->controller->Shutdown();
+  }
+}
+
 void DaemonRuntimeController::StartWorker() {
   if (worker_running_) {
     return;
@@ -1316,7 +1333,7 @@ void DaemonRuntimeController::DispatchClientCommand(const vinput::client::Client
 void DaemonRuntimeController::DispatchClientCommand(std::string_view client_id,
                                                     const vinput::client::ClientCommand& command) {
   const bool is_ime = std::visit([](const auto& cmd) { return cmd.ime; }, command);
-  if (is_ime || !owner_client_id_.empty()) {
+  if (is_ime || !owner_client_id_.empty() || client_id.empty()) {
     DispatchSingleCommand(command);
     return;
   }
@@ -1344,10 +1361,10 @@ void DaemonRuntimeController::DispatchClientLine(std::string_view client_id,
 
 std::shared_ptr<DaemonRuntimeController>
 DaemonRuntimeController::GetOrCreateHeadlessLane(std::string_view client_id) {
-  if (shutting_down_.load(std::memory_order_acquire)) {
+  if (shutting_down_.load(std::memory_order_acquire) || client_id.empty()) {
     return nullptr;
   }
-  const std::string key(client_id.empty() ? "__anonymous_headless__" : client_id);
+  const std::string key(client_id);
   const std::scoped_lock lock(headless_lanes_mutex_);
   if (shutting_down_.load(std::memory_order_relaxed)) {
     return nullptr;

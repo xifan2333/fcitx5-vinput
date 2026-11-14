@@ -91,6 +91,7 @@ void WireDbusHandlers(DbusService& dbus,
   });
 
   dbus.SetStopClientHandler([&](const std::string& client_id) -> DbusService::MethodResult {
+    runtime_controller.ReclaimHeadlessLane(client_id);
     std::string error;
     if (!vinput::client::Stop(client_id, &error, &notification_bridge)) {
       return DbusService::MethodResult::Failure(error.empty() ? "failed to stop client" : error);

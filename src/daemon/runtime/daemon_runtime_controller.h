@@ -82,6 +82,7 @@ public:
   int GetNotifyFd() const;
   void FlushDeferredActions();
   void MaybeDestroyExpiredStreams();
+  void ReclaimHeadlessLane(std::string_view client_id);
 
   void StartWorker();
   void Shutdown();
