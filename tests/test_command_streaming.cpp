@@ -319,7 +319,7 @@ void TestStalledProviderWriteIsBounded() {
   const auto started = std::chrono::steady_clock::now();
   alarm(6);
   bool ok = true;
-  for (int i = 0; i < 200; ++i) {
+  for (int i = 0; i < 1000; ++i) {
     ok = session->PushAudio(long_chunk, &error);
     if (!ok) {
       break;
@@ -654,6 +654,42 @@ void TestStdoutErrorNotQueuedAsEvent() {
              "Expected stderr notification body, got " + received_notifications[0].body);
 }
 
+/**
+ * Issue #598 regression test:
+ * When a streaming provider child process crashes or exits prematurely,
+ * subsequent PushAudio/SendJsonLine must report a precise error identifying the exit code.
+ */
+void TestPrematureExitErrorReporting() {
+  CommandAsrProvider provider;
+  provider.id = "test-premature-exit";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "exit 42"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  // Push minimal audio to ensure provider child process is started
+  std::vector<int16_t> initial_chunk(160, 0);
+  (void)session->PushAudio(initial_chunk, &error);
+
+  // Await child process exit
+  for (int i = 0; i < 50; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    (void)session->PollEvents();
+  }
+
+  std::vector<int16_t> chunk(800, 100);
+  const bool ok = session->PushAudio(chunk, &error);
+  ExpectTrue(!ok, "PushAudio must fail when provider exited prematurely");
+  ExpectTrue(error.find("exited prematurely with code 42") != std::string::npos,
+             "error message should report precise premature exit code 42: " + error);
+}
+
 } // namespace
 
 int main() {
@@ -671,6 +707,7 @@ int main() {
   TestInterruptWakesBlockedFinish();
   TestStderrPipedToNotificationBridge();
   TestKilledByUsVsAbnormalExit();
+  TestPrematureExitErrorReporting();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

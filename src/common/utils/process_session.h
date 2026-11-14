@@ -97,6 +97,9 @@ public:
   // Waits up to `wait` for the child process to exit. Returns true if exited within the window.
   bool WaitForExit(std::chrono::milliseconds wait, int* exit_code = nullptr);
 
+  // Approximate number of pending blocks queued for child stdin. Diagnostics only.
+  [[nodiscard]] std::size_t StdinQueueSizeApprox() const noexcept;
+
   // The child's pid. Diagnostics only: the session owns the child, and the pid stops being a valid
   // handle the moment the session reaps it.
   [[nodiscard]] int Pid() const noexcept;

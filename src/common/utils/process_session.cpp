@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <fcntl.h>
 #include <memory>
 #include <optional>
 #include <readerwriterqueue.h>
@@ -54,7 +55,7 @@ constexpr auto kForceGrace = std::chrono::milliseconds(1000);
 
 // stdin crosses the thread boundary in whole blocks. The bound is what turns a provider that stops
 // reading into a reported write failure instead of unbounded memory growth.
-constexpr std::size_t kStdinQueueCapacity = 64;
+constexpr std::size_t kStdinQueueCapacity = 256;
 
 // The event queue's first block. Further blocks are allocated on demand, so backpressure comes from
 // kMaxQueuedOutputBytes alone: the queue itself must never refuse an event, because the terminal
@@ -84,6 +85,49 @@ void SignalEventFd(int fd) noexcept {
   (void)written;
 }
 
+struct SessionEventFds {
+  int cancel = -1;
+  int stdin_event = -1;
+  int wake = -1;
+};
+
+Expected<SessionEventFds> CreateSessionEventFds() {
+  SessionEventFds fds{
+      .cancel = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC),
+      .stdin_event = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC),
+      .wake = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC),
+  };
+  if (fds.cancel < 0 || fds.stdin_event < 0 || fds.wake < 0) {
+    const std::string err = std::string("eventfd failed: ") + std::strerror(errno);
+    if (fds.cancel >= 0) {
+      ::close(fds.cancel);
+    }
+    if (fds.stdin_event >= 0) {
+      ::close(fds.stdin_event);
+    }
+    if (fds.wake >= 0) {
+      ::close(fds.wake);
+    }
+    return UnexpectedError(err);
+  }
+  return fds;
+}
+
+void OptimizeChildInputPipeCapacity(int fd) noexcept {
+#if defined(F_SETPIPE_SZ)
+  if (fd < 0) {
+    return;
+  }
+  constexpr int kOptimalPipeCapacity = 1024 * 1024; // 1 MB (~470 chunks / ~24s audio)
+  const int new_sz = ::fcntl(fd, F_SETPIPE_SZ, kOptimalPipeCapacity);
+  if (new_sz < 0) {
+    VLOG_DEBUG("process session: fcntl F_SETPIPE_SZ on in_fd failed: {}", std::strerror(errno));
+  }
+#else
+  (void)fd;
+#endif
+}
+
 } // namespace
 
 // The pump thread's world: the child, its three pipes, and the two queues that cross the thread
@@ -110,6 +154,9 @@ struct ProcessSession::Impl {
   void Cancel() const noexcept;
   [[nodiscard]] bool HasExited(int* exit_code) const noexcept;
   bool WaitForExit(std::chrono::milliseconds wait, int* exit_code);
+  [[nodiscard]] std::size_t StdinQueueSizeApprox() const noexcept {
+    return stdin_queue_.size_approx();
+  }
   [[nodiscard]] int Pid() const noexcept { return proc_.has_value() ? proc_->pid() : -1; }
 
 private:
@@ -205,13 +252,16 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, StderrSink stderr_sink,
   stdout_sink_ = std::move(stdout_sink);
   // O_CLOEXEC keeps these out of the child, so nothing it forks can hold the session's wakeups
   // open.
-  cancel_event_ = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  stdin_event_ = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  wake_event_ = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (cancel_event_ < 0 || stdin_event_ < 0 || wake_event_ < 0) {
-    *error = std::string("eventfd failed: ") + std::strerror(errno);
+  auto fds_res = CreateSessionEventFds();
+  if (!fds_res.has_value()) {
+    if (error != nullptr) {
+      *error = fds_res.error();
+    }
     return false;
   }
+  cancel_event_ = fds_res->cancel;
+  stdin_event_ = fds_res->stdin_event;
+  wake_event_ = fds_res->wake;
 
   // Done before the spawn, so the child inherits it too: a provider whose own output pipe is closed
   // is better off raising an error in its own language than dying on a signal.
@@ -246,13 +296,19 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, StderrSink stderr_sink,
     *error = std::string("fcntl failed: ") + std::strerror(errno);
     return false;
   }
+
+  OptimizeChildInputPipeCapacity(in_fd_);
   return true;
 }
 
 void ProcessSession::Impl::CloseStdinChannel() {
+  stdin_closed_.store(true, std::memory_order_release);
   stdin_channel_open_ = false;
   pending_.clear();
   pending_offset_ = 0;
+  std::vector<std::byte> discard;
+  while (stdin_queue_.try_dequeue(discard)) {
+  }
   in_fd_ = -1;
   if (proc_.has_value()) {
     proc_->close_input();
@@ -647,10 +703,10 @@ bool ProcessSession::Impl::PushStdin(std::span<const std::byte> bytes) {
     return false;
   }
 
-  std::vector<std::byte> block(bytes.begin(), bytes.end());
-  if (!stdin_queue_.try_enqueue(std::move(block))) {
+  if (!stdin_queue_.try_emplace(bytes.begin(), bytes.end())) {
     return false;
   }
+
   SignalEventFd(stdin_event_);
   return true;
 }
@@ -838,6 +894,10 @@ bool ProcessSession::HasExited(int* exit_code) const noexcept {
 
 bool ProcessSession::WaitForExit(std::chrono::milliseconds wait, int* exit_code) {
   return impl_ && impl_->WaitForExit(wait, exit_code);
+}
+
+std::size_t ProcessSession::StdinQueueSizeApprox() const noexcept {
+  return impl_ ? impl_->StdinQueueSizeApprox() : 0;
 }
 
 int ProcessSession::Pid() const noexcept {

@@ -422,6 +422,30 @@ void TestWaitForExitAndHasExited() {
 }
 
 /**
+ * Issue #598 regression test:
+ * A burst of blocks (>64 blocks) delivered to child stdin while child sleeps briefly
+ * must be absorbed cleanly by the expanded 1MB pipe buffer and 256-slot queue without dropping or
+ * write failures.
+ */
+void TestStdinBurstSurvivesSlowReader() {
+  // Child sleeps 100ms before draining stdin with wc -l
+  auto session = MustStart("sleep 0.1 && wc -l");
+
+  constexpr int kBurstBlocks = 120;
+  for (int i = 0; i < kBurstBlocks; ++i) {
+    const std::string line = "chunk_" + std::to_string(i) + "\n";
+    ExpectTrue(session.PushStdin(AsBytes(line)),
+               "burst block " + std::to_string(i) + " must be accepted by expanded queue/pipe");
+  }
+
+  session.CloseStdin();
+  const std::string stdout_text = DrainUntilExit(session, nullptr, kTestTimeout);
+  ExpectTrue(stdout_text.find(std::to_string(kBurstBlocks)) != std::string::npos,
+             "child wc -l should count all " + std::to_string(kBurstBlocks) +
+                 " blocks (got: " + stdout_text + ")");
+}
+
+/**
  * The destructor is the last owner of the child: it has to stop it and reap it, because a zombie
  * out lives the session otherwise.
  */
@@ -454,6 +478,7 @@ int main() {
   TestDestructorReapsTheChild();
   TestStderrSinkReceivesBytesDirectly();
   TestWaitForExitAndHasExited();
+  TestStdinBurstSurvivesSlowReader();
   std::cout << "All test_process_session passed!\n";
   return 0;
 }

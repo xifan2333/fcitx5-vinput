@@ -17,6 +17,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -90,6 +91,7 @@ public:
       if (!SendJsonLine(payload, error)) {
         return false;
       }
+      ++sent_chunks_count_;
     }
 
     if (!DrainEvents(std::chrono::milliseconds(0), error)) {
@@ -131,6 +133,8 @@ public:
         SendControlEvent("cancel", nullptr);
       }
     }
+    stdout_buffer_.clear();
+    last_partial_text_.clear();
     QueueCompleted();
     Terminate();
   }
@@ -353,6 +357,30 @@ private:
     return SendJsonLine(payload, error);
   }
 
+  bool RetryPushStdinWithBackoff(std::span<const std::byte> bytes, std::string* error) {
+    constexpr auto kMaxWait = std::chrono::milliseconds(200);
+    constexpr auto kRetrySlice = std::chrono::milliseconds(2);
+    const auto deadline = std::chrono::steady_clock::now() + kMaxWait;
+
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (!session_.has_value()) {
+        return false;
+      }
+      int exit_code = -1;
+      if (session_->HasExited(&exit_code)) {
+        return false;
+      }
+      if (!DrainEvents(std::chrono::milliseconds(0), error) || !session_.has_value()) {
+        return false;
+      }
+      std::this_thread::sleep_for(kRetrySlice);
+      if (session_->PushStdin(bytes)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool SendJsonLine(const glz::json_t& payload, std::string* error) {
     if (!session_.has_value()) {
       if (error != nullptr) {
@@ -364,18 +392,33 @@ private:
     std::string line = vinput::json::ToText(payload);
     line.push_back('\n');
     const auto bytes = std::as_bytes(std::span(line));
-    if (!session_->PushStdin(bytes)) {
-      DrainEvents(std::chrono::milliseconds(0), nullptr);
+    if (session_->PushStdin(bytes) || RetryPushStdinWithBackoff(bytes, error)) {
       if (error != nullptr) {
-        *error = "Provider closed stdin or input buffer is full.";
+        error->clear();
       }
+      return true;
+    }
+
+    if (error != nullptr && !error->empty()) {
       return false;
     }
 
-    if (error != nullptr) {
-      error->clear();
+    DrainEvents(std::chrono::milliseconds(0), nullptr);
+    if (error == nullptr || !session_.has_value()) {
+      return false;
     }
-    return true;
+
+    int exit_code = -1;
+    if (session_->HasExited(&exit_code)) {
+      *error = fmt::format("Streaming ASR provider exited prematurely with code {}.", exit_code);
+      return false;
+    }
+
+    const auto queued = session_->StdinQueueSizeApprox();
+    *error = fmt::format(
+        "Provider closed stdin or input buffer is full (queued_blocks={}, sent_chunks={}).", queued,
+        sent_chunks_count_);
+    return false;
   }
 
   bool DrainEvents(std::chrono::milliseconds wait, std::string* error) {
@@ -528,6 +571,7 @@ private:
   int exit_code_ = -1;
   std::string stdout_buffer_;
   std::string last_partial_text_;
+  std::size_t sent_chunks_count_ = 0;
   std::vector<RecognitionEvent> events_;
 };
 
