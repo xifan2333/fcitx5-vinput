@@ -81,7 +81,10 @@ void WireDbusHandlers(DbusService& dbus,
     std::string error;
     if (!vinput::client::Start(
             client_id, &notification_bridge,
-            [&](std::string_view line) { runtime_controller.DispatchClientLine(line); }, &error)) {
+            [&](std::string_view cid, std::string_view line) {
+              runtime_controller.DispatchClientLine(cid, line);
+            },
+            &error)) {
       return DbusService::MethodResult::Failure(error.empty() ? "failed to start client" : error);
     }
     return DbusService::MethodResult::Success();
@@ -200,9 +203,10 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  vinput::client::AutoStart(startup_settings, &notification_bridge, [&](std::string_view line) {
-    runtime_controller.DispatchClientLine(line);
-  });
+  vinput::client::AutoStart(startup_settings, &notification_bridge,
+                            [&](std::string_view cid, std::string_view line) {
+                              runtime_controller.DispatchClientLine(cid, line);
+                            });
 
   runtime_controller.StartWorker();
 

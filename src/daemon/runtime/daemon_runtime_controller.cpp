@@ -1189,6 +1189,11 @@ DbusService::MethodResult DaemonRuntimeController::InjectText(bool ime,
 }
 
 void DaemonRuntimeController::DispatchClientCommand(const vinput::client::ClientCommand& command) {
+  DispatchClientCommand({}, command);
+}
+
+void DaemonRuntimeController::DispatchClientCommand(std::string_view /*client_id*/,
+                                                    const vinput::client::ClientCommand& command) {
   const auto result = std::visit(Overloaded{
                                      [this](const vinput::client::StartCommand& cmd) {
                                        const bool is_command = (cmd.mode == "command");
@@ -1212,13 +1217,18 @@ void DaemonRuntimeController::DispatchClientCommand(const vinput::client::Client
 }
 
 void DaemonRuntimeController::DispatchClientLine(std::string_view line) {
+  DispatchClientLine({}, line);
+}
+
+void DaemonRuntimeController::DispatchClientLine(std::string_view client_id,
+                                                 std::string_view line) {
   std::string err;
   const auto cmd = vinput::client::ParseClientCommand(line, &err);
   if (!cmd.has_value()) {
     VLOG_WARN("invalid client command: {}", err);
     return;
   }
-  DispatchClientCommand(*cmd);
+  DispatchClientCommand(client_id, *cmd);
 }
 
 } // namespace vinput::daemon::runtime

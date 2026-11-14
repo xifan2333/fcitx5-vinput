@@ -67,7 +67,10 @@ public:
                                        const std::string& text, const std::string& scene_id = {});
 
   void DispatchClientCommand(const vinput::client::ClientCommand& command);
+  void DispatchClientCommand(std::string_view client_id,
+                             const vinput::client::ClientCommand& command);
   void DispatchClientLine(std::string_view line);
+  void DispatchClientLine(std::string_view client_id, std::string_view line);
 
   DbusService::MethodResult ReloadAsrBackend();
   std::string GetStatus() const;
