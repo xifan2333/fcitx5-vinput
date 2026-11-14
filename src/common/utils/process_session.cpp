@@ -691,8 +691,7 @@ bool ProcessSession::Impl::PushStdin(std::span<const std::byte> bytes) {
     return false;
   }
 
-  std::vector<std::byte> block(bytes.begin(), bytes.end());
-  if (stdin_queue_.try_enqueue(std::move(block))) {
+  if (stdin_queue_.try_emplace(bytes.begin(), bytes.end())) {
     SignalEventFd(stdin_event_);
     return true;
   }
@@ -710,7 +709,7 @@ bool ProcessSession::Impl::PushStdin(std::span<const std::byte> bytes) {
       return false;
     }
     std::this_thread::sleep_for(kRetrySlice);
-    if (stdin_queue_.try_enqueue(std::move(block))) {
+    if (stdin_queue_.try_emplace(bytes.begin(), bytes.end())) {
       SignalEventFd(stdin_event_);
       return true;
     }

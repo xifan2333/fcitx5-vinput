@@ -370,6 +370,10 @@ private:
     if (!session_->PushStdin(bytes)) {
       DrainEvents(std::chrono::milliseconds(0), nullptr);
       if (error != nullptr) {
+        if (!session_.has_value()) {
+          *error = "Streaming ASR provider session terminated.";
+          return false;
+        }
         int exit_code = -1;
         if (session_->HasExited(&exit_code)) {
           *error =
