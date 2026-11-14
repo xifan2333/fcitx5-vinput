@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -38,6 +39,7 @@ struct RecognitionOrder {
   vinput::daemon::asr::BackendDescriptor backend;
   std::vector<int16_t> pcm;
   PostprocessRequest postprocess_request;
+  std::string owner_client_id;
   bool ime = true;
 };
 
@@ -155,9 +157,9 @@ private:
   std::thread worker_;
 
   struct HeadlessClientLane {
-    std::string client_id;
     AudioCapture capture;
     std::shared_ptr<DaemonRuntimeController> controller;
+    std::string client_id;
   };
 
   void EmitClientEvent(std::string_view line);

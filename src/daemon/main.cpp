@@ -119,8 +119,7 @@ void DispatchPollEvents(const pollfd* fds, DbusService& dbus,
 }
 
 void RunEventLoop(DbusService& dbus,
-                  vinput::daemon::runtime::DaemonRuntimeController& runtime_controller,
-                  AudioCapture& capture) {
+                  vinput::daemon::runtime::DaemonRuntimeController& runtime_controller) {
   const int dbus_fd = dbus.GetFd();
   const int notify_fd = dbus.GetNotifyFd();
   const int runtime_notify_fd = runtime_controller.GetNotifyFd();
@@ -211,7 +210,7 @@ int main(int argc, char* argv[]) {
   runtime_controller.StartWorker();
 
   VLOG_INFO("running");
-  RunEventLoop(dbus, runtime_controller, capture);
+  RunEventLoop(dbus, runtime_controller);
 
   VLOG_INFO("shutting down");
   post_processor.Shutdown();

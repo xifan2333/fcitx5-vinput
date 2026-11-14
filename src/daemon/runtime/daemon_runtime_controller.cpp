@@ -10,12 +10,15 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <sys/eventfd.h>
 #include <thread>
 #include <unistd.h>
@@ -104,7 +107,7 @@ struct RecognitionDispatchContext {
   std::optional<std::chrono::steady_clock::time_point> first_non_silent_at;
   DbusService* dbus = nullptr;
   bool ime = true;
-  std::string_view owner_client_id = {};
+  std::string_view owner_client_id;
 };
 
 // Partial and final text share one publication path: mirror into the context,

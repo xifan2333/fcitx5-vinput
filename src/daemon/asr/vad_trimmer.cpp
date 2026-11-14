@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
 #include <string>
 #include <utility>
@@ -101,23 +102,6 @@ std::vector<std::vector<float>> ExtractPaddedSegments(const std::vector<float>& 
 
 VadTrimmer::VadTrimmer() = default;
 VadTrimmer::~VadTrimmer() = default;
-
-VadTrimmer::VadTrimmer(VadTrimmer&& other) noexcept {
-  const std::scoped_lock lock(other.mutex_);
-  vad_ = std::move(other.vad_);
-  sample_rate_ = other.sample_rate_;
-  params_ = other.params_;
-}
-
-VadTrimmer& VadTrimmer::operator=(VadTrimmer&& other) noexcept {
-  if (this != &other) {
-    std::scoped_lock lock(mutex_, other.mutex_);
-    vad_ = std::move(other.vad_);
-    sample_rate_ = other.sample_rate_;
-    params_ = other.params_;
-  }
-  return *this;
-}
 
 bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std::string& provider,
                       const VadTrimParams& params, std::string* error) {
