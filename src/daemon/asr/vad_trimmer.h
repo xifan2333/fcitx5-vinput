@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -43,6 +44,7 @@ public:
   void Shutdown();
 
 private:
+  mutable std::mutex mutex_;
   std::optional<vinput::daemon::asr::sherpa::VoiceActivityDetector> vad_;
   int sample_rate_ = 16000;
   VadTrimParams params_{};
