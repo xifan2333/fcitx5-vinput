@@ -26,6 +26,7 @@ readonly qt6_apt_packages=(
 
 readonly ubuntu_apt_packages=(
   bzip2
+  ca-certificates
   clang
   cmake
   file
@@ -185,6 +186,7 @@ debian12)
   apt-get update
   apt-get install -y \
     bzip2 \
+    ca-certificates \
     clang-16 \
     cmake \
     make \
