@@ -34,7 +34,7 @@ struct ClientPidRecord {
 // Invoked once per complete stdout line emitted by a client (JSONL framing is
 // applied internally). Runs on the session pump thread: handlers must be cheap,
 // non-blocking, and must never call back into this manager.
-using CommandHandler = std::function<void(std::string_view line)>;
+using CommandHandler = std::function<void(std::string_view client_id, std::string_view line)>;
 
 vinput::process::CommandSpec BuildCommandSpec(const ClientSpec& client);
 std::filesystem::path PidPath(std::string_view client_id);
@@ -64,6 +64,11 @@ void AutoStart(const CoreConfig& config, vinput::notify::NotificationBridge* bri
 // Appends '\n' to line and pushes it to the stdin of every tracked client.
 // Clients that reject the write (exited or backpressured) are skipped.
 void Broadcast(std::string_view line);
+
+// Appends '\n' to line and pushes it to the stdin of the specific client named by client_id.
+// Returns true if the block was enqueued successfully to that client's stdin.
+// Returns false if client is not found, not running, or if its stdin queue rejected the write.
+bool SendTo(std::string_view client_id, std::string_view line);
 
 // Shuts down all running clients tracked in this process.
 void Shutdown();

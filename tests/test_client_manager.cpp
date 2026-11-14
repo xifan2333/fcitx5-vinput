@@ -142,8 +142,11 @@ void TestTriggerStartStopWithStdoutFramingAndStderrSink() {
       [&](const vinput::notify::Notification& n) { notifications.Add(n); });
 
   CollectedLines commands;
-  const vinput::client::CommandHandler handler = [&](std::string_view line) {
+  std::string captured_client_id;
+  const vinput::client::CommandHandler handler = [&](std::string_view client_id,
+                                                     std::string_view line) {
     const std::scoped_lock lock(commands.mutex);
+    captured_client_id = std::string(client_id);
     commands.lines.emplace_back(line);
   };
 
@@ -161,6 +164,7 @@ void TestTriggerStartStopWithStdoutFramingAndStderrSink() {
   // Both JSONL command lines must survive chunk boundaries intact.
   ExpectTrue(WaitFor([&] { return commands.Count() >= 2; }),
              "Two framed stdout lines should arrive");
+  ExpectEq(captured_client_id, "trigger.mock.button", "CommandHandler client_id mismatch");
   ExpectEq(commands.At(0), R"({"type":"start"})", "First command line mismatch");
   ExpectEq(commands.At(1), R"({"type":"stop"})", "Second command line mismatch");
 
@@ -194,7 +198,13 @@ void TestReceiverLookupAndBroadcastEcho() {
     "version": ">=2.4.0",
     "receivers": [
       {
-        "id": "receiver.mock.echo",
+        "id": "receiver.mock.echo.a",
+        "command": "cat",
+        "args": [],
+        "auto_start": false
+      },
+      {
+        "id": "receiver.mock.echo.b",
         "command": "cat",
         "args": [],
         "auto_start": false
@@ -202,27 +212,60 @@ void TestReceiverLookupAndBroadcastEcho() {
     ]
   })");
 
-  CollectedLines echoed;
-  const vinput::client::CommandHandler handler = [&](std::string_view line) {
-    const std::scoped_lock lock(echoed.mutex);
-    echoed.lines.emplace_back(line);
+  CollectedLines echoed_a;
+  CollectedLines echoed_b;
+  const vinput::client::CommandHandler handler = [&](std::string_view client_id,
+                                                     std::string_view line) {
+    if (client_id == "receiver.mock.echo.a") {
+      const std::scoped_lock lock(echoed_a.mutex);
+      echoed_a.lines.emplace_back(line);
+      return;
+    }
+    if (client_id == "receiver.mock.echo.b") {
+      const std::scoped_lock lock(echoed_b.mutex);
+      echoed_b.lines.emplace_back(line);
+    }
   };
 
-  std::string error;
-  ExpectTrue(vinput::client::Start("receiver.mock.echo", nullptr, handler, &error),
-             "Receiver under the receivers domain should start: " + error);
-  ExpectTrue(vinput::client::IsRunning("receiver.mock.echo"),
-             "receiver.mock.echo should be reported as running");
+  std::string error_a;
+  ExpectTrue(vinput::client::Start("receiver.mock.echo.a", nullptr, handler, &error_a),
+             "Receiver A under the receivers domain should start: " + error_a);
+  std::string error_b;
+  ExpectTrue(vinput::client::Start("receiver.mock.echo.b", nullptr, handler, &error_b),
+             "Receiver B under the receivers domain should start: " + error_b);
 
-  // cat echoes stdin back to stdout, proving the broadcast path end to end.
+  ExpectTrue(vinput::client::IsRunning("receiver.mock.echo.a"),
+             "receiver.mock.echo.a should be reported as running");
+  ExpectTrue(vinput::client::IsRunning("receiver.mock.echo.b"),
+             "receiver.mock.echo.b should be reported as running");
+
+  // Targeted SendTo nonexistent client must return false
+  ExpectTrue(!vinput::client::SendTo("nonexistent.client", "test"),
+             "SendTo on nonexistent client must return false");
+
+  // Targeted SendTo to Receiver A: ONLY A receives it, B receives 0
+  ExpectTrue(
+      vinput::client::SendTo("receiver.mock.echo.a", R"({"type":"partial","text":"hello_a"})"),
+      "SendTo on receiver A must succeed");
+  ExpectTrue(WaitFor([&] { return echoed_a.Count() >= 1; }),
+             "Targeted SendTo line should be echoed back by receiver A");
+  ExpectEq(echoed_a.At(0), R"({"type":"partial","text":"hello_a"})", "Echoed line on A mismatch");
+  ExpectEq(std::to_string(echoed_b.Count()), "0",
+           "Receiver B must not receive targeted message sent to A");
+
+  // cat echoes stdin back to stdout, proving the broadcast path reaches BOTH receivers.
   vinput::client::Broadcast(R"({"type":"status","status":"idle"})");
-  ExpectTrue(WaitFor([&] { return echoed.Count() >= 1; }),
-             "Broadcast line should be echoed back by cat");
-  ExpectEq(echoed.At(0), R"({"type":"status","status":"idle"})", "Echoed line mismatch");
+  ExpectTrue(WaitFor([&] { return echoed_a.Count() >= 2 && echoed_b.Count() >= 1; }),
+             "Broadcast line should reach both receivers");
+  ExpectEq(echoed_a.At(1), R"({"type":"status","status":"idle"})", "Echoed line on A mismatch");
+  ExpectEq(echoed_b.At(0), R"({"type":"status","status":"idle"})", "Echoed line on B mismatch");
 
-  std::string stop_error;
-  ExpectTrue(vinput::client::Stop("receiver.mock.echo", &stop_error),
-             "Stop should succeed: " + stop_error);
+  std::string stop_error_a;
+  ExpectTrue(vinput::client::Stop("receiver.mock.echo.a", &stop_error_a),
+             "Stop A should succeed: " + stop_error_a);
+  std::string stop_error_b;
+  ExpectTrue(vinput::client::Stop("receiver.mock.echo.b", &stop_error_b),
+             "Stop B should succeed: " + stop_error_b);
 }
 
 void TestClientImmediateExitDetected() {

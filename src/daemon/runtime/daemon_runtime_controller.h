@@ -5,6 +5,8 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -37,6 +39,7 @@ struct RecognitionOrder {
   vinput::daemon::asr::BackendDescriptor backend;
   std::vector<int16_t> pcm;
   PostprocessRequest postprocess_request;
+  std::string owner_client_id;
   bool ime = true;
 };
 
@@ -44,7 +47,8 @@ class DaemonRuntimeController {
 public:
   DaemonRuntimeController(AudioCapture* capture, DbusService* dbus,
                           vinput::daemon::asr::RecognitionSessionManager* recognition_manager,
-                          RecognitionPipeline* pipeline);
+                          RecognitionPipeline* pipeline, std::string owner_client_id = {},
+                          int shared_notify_fd = -1);
   ~DaemonRuntimeController();
 
   DaemonRuntimeController(const DaemonRuntimeController&) = delete;
@@ -67,13 +71,18 @@ public:
                                        const std::string& text, const std::string& scene_id = {});
 
   void DispatchClientCommand(const vinput::client::ClientCommand& command);
+  void DispatchClientCommand(std::string_view client_id,
+                             const vinput::client::ClientCommand& command);
   void DispatchClientLine(std::string_view line);
+  void DispatchClientLine(std::string_view client_id, std::string_view line);
 
   DbusService::MethodResult ReloadAsrBackend();
   std::string GetStatus() const;
   vinput::dbus::AsrBackendState GetAsrBackendState() const;
   int GetNotifyFd() const;
   void FlushDeferredActions();
+  void MaybeDestroyExpiredStreams();
+  void ReclaimHeadlessLane(std::string_view client_id);
 
   void StartWorker();
   void Shutdown();
@@ -118,6 +127,11 @@ private:
                                          const CoreConfig& runtime_settings);
   void EnterPostprocessing(bool command_mode);
   void ResetToIdle();
+  void ProcessSingleOrder(RecognitionOrder order);
+  void FinalizeActiveRecordingLocked(
+      const std::string& scene_id, std::span<const int16_t> captured_pcm,
+      std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session_to_cancel,
+      bool& apply_pending_reload);
   void WorkerMain();
 
   AudioCapture* capture_ = nullptr;
@@ -146,6 +160,24 @@ private:
   std::atomic<bool> accepting_chunks_{false};
   std::atomic<bool> worker_running_{false};
   std::thread worker_;
+
+  struct HeadlessClientLane {
+    AudioCapture capture;
+    std::shared_ptr<DaemonRuntimeController> controller;
+    std::string client_id;
+  };
+
+  void EmitClientEvent(std::string_view line);
+  void FlushSingleLaneDeferredActions();
+  void DispatchSingleCommand(const vinput::client::ClientCommand& command);
+  std::shared_ptr<DaemonRuntimeController> GetOrCreateHeadlessLane(std::string_view client_id);
+  [[nodiscard]] std::vector<std::shared_ptr<HeadlessClientLane>> SnapshotHeadlessLanes() const;
+
+  std::string owner_client_id_;
+  bool owns_notify_fd_ = true;
+  std::atomic<bool> shutting_down_{false};
+  mutable std::mutex headless_lanes_mutex_;
+  std::map<std::string, std::shared_ptr<HeadlessClientLane>, std::less<>> headless_lanes_;
 };
 
 } // namespace vinput::daemon::runtime

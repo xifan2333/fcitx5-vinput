@@ -81,13 +81,17 @@ void WireDbusHandlers(DbusService& dbus,
     std::string error;
     if (!vinput::client::Start(
             client_id, &notification_bridge,
-            [&](std::string_view line) { runtime_controller.DispatchClientLine(line); }, &error)) {
+            [&](std::string_view cid, std::string_view line) {
+              runtime_controller.DispatchClientLine(cid, line);
+            },
+            &error)) {
       return DbusService::MethodResult::Failure(error.empty() ? "failed to start client" : error);
     }
     return DbusService::MethodResult::Success();
   });
 
   dbus.SetStopClientHandler([&](const std::string& client_id) -> DbusService::MethodResult {
+    runtime_controller.ReclaimHeadlessLane(client_id);
     std::string error;
     if (!vinput::client::Stop(client_id, &error, &notification_bridge)) {
       return DbusService::MethodResult::Failure(error.empty() ? "failed to stop client" : error);
@@ -116,8 +120,7 @@ void DispatchPollEvents(const pollfd* fds, DbusService& dbus,
 }
 
 void RunEventLoop(DbusService& dbus,
-                  vinput::daemon::runtime::DaemonRuntimeController& runtime_controller,
-                  AudioCapture& capture) {
+                  vinput::daemon::runtime::DaemonRuntimeController& runtime_controller) {
   const int dbus_fd = dbus.GetFd();
   const int notify_fd = dbus.GetNotifyFd();
   const int runtime_notify_fd = runtime_controller.GetNotifyFd();
@@ -138,7 +141,7 @@ void RunEventLoop(DbusService& dbus,
     }
 
     // Bounded warm grace: destroy inactive reusable streams after idle timeout.
-    capture.MaybeDestroyExpiredStream();
+    runtime_controller.MaybeDestroyExpiredStreams();
 
     if (ret > 0) {
       DispatchPollEvents(fds, dbus, runtime_controller);
@@ -200,19 +203,20 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  vinput::client::AutoStart(startup_settings, &notification_bridge, [&](std::string_view line) {
-    runtime_controller.DispatchClientLine(line);
-  });
+  vinput::client::AutoStart(startup_settings, &notification_bridge,
+                            [&](std::string_view cid, std::string_view line) {
+                              runtime_controller.DispatchClientLine(cid, line);
+                            });
 
   runtime_controller.StartWorker();
 
   VLOG_INFO("running");
-  RunEventLoop(dbus, runtime_controller, capture);
+  RunEventLoop(dbus, runtime_controller);
 
   VLOG_INFO("shutting down");
+  vinput::client::Shutdown();
   post_processor.Shutdown();
   runtime_controller.Shutdown();
   recognition_manager.Shutdown();
-  vinput::client::Shutdown();
   return 0;
 }

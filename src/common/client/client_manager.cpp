@@ -93,12 +93,13 @@ struct StdoutFramer {
     }
     if (handler) {
       for (const auto& line : lines) {
-        handler(line);
+        handler(client_id, line);
       }
     }
   }
 
   std::mutex mutex;
+  std::string client_id;
   std::string pending;
   bool overflow = false;
   CommandHandler handler;
@@ -229,6 +230,7 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
   const auto spec = BuildCommandSpec(client);
   const std::string source_id = SourceId(client_id);
   auto framer = std::make_shared<StdoutFramer>();
+  framer->client_id = client_id;
   framer->handler = std::move(on_command);
 
   auto started = vinput::process::ProcessSession::Start(
@@ -508,6 +510,18 @@ void Broadcast(std::string_view line) {
       VLOG_DEBUG("client stdin rejected broadcast id={}", id);
     }
   }
+}
+
+bool SendTo(std::string_view client_id, std::string_view line) {
+  const std::string frame = std::string(line) + '\n';
+  const std::span<const std::byte> bytes = std::as_bytes(std::span(frame));
+  auto& state = GetTrackedState();
+  const std::scoped_lock lock(state.mutex);
+  const auto it = state.sessions.find(client_id);
+  if (it == state.sessions.end() || it->second == nullptr) {
+    return false;
+  }
+  return it->second->session.PushStdin(bytes);
 }
 
 void Shutdown() {

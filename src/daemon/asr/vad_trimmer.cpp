@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
 #include <string>
 #include <utility>
@@ -101,12 +102,11 @@ std::vector<std::vector<float>> ExtractPaddedSegments(const std::vector<float>& 
 
 VadTrimmer::VadTrimmer() = default;
 VadTrimmer::~VadTrimmer() = default;
-VadTrimmer::VadTrimmer(VadTrimmer&&) noexcept = default;
-VadTrimmer& VadTrimmer::operator=(VadTrimmer&&) noexcept = default;
 
 bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std::string& provider,
                       const VadTrimParams& params, std::string* error) {
-  if (Available()) {
+  const std::scoped_lock lock(mutex_);
+  if (vad_.has_value() && vad_->Valid()) {
     return true;
   }
 
@@ -154,6 +154,7 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
 }
 
 std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sample_rate*/) {
+  const std::scoped_lock lock(mutex_);
   if (!vad_.has_value() || !vad_->Valid() || samples.empty()) {
     return samples;
   }
@@ -216,6 +217,7 @@ std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sam
 
 std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& samples,
                                                     int sample_rate) {
+  const std::scoped_lock lock(mutex_);
   if (!vad_.has_value() || !vad_->Valid() || samples.empty()) {
     return {samples};
   }
@@ -244,9 +246,11 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
 }
 
 bool VadTrimmer::Available() const {
+  const std::scoped_lock lock(mutex_);
   return vad_.has_value() && vad_->Valid();
 }
 
 void VadTrimmer::Shutdown() {
+  const std::scoped_lock lock(mutex_);
   vad_.reset();
 }

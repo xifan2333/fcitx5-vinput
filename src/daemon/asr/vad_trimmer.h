@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,8 +23,8 @@ public:
   VadTrimmer(const VadTrimmer&) = delete;
   VadTrimmer& operator=(const VadTrimmer&) = delete;
 
-  VadTrimmer(VadTrimmer&&) noexcept;
-  VadTrimmer& operator=(VadTrimmer&&) noexcept;
+  VadTrimmer(VadTrimmer&&) = delete;
+  VadTrimmer& operator=(VadTrimmer&&) = delete;
 
   // Load silero_vad.onnx from `model_path`. Returns true on success.
   bool Init(const std::string& model_path, int sample_rate = 16000,
@@ -43,6 +44,7 @@ public:
   void Shutdown();
 
 private:
+  mutable std::mutex mutex_;
   std::optional<vinput::daemon::asr::sherpa::VoiceActivityDetector> vad_;
   int sample_rate_ = 16000;
   VadTrimParams params_{};
