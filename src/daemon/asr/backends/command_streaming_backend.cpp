@@ -17,6 +17,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -356,7 +357,10 @@ private:
     return SendJsonLine(payload, error);
   }
 
-  bool RetryPushStdinWithBackoff(std::span<const std::byte> bytes) {
+  bool RetryPushStdinWithBackoff(std::span<const std::byte> bytes, std::string* error) {
+    if (!session_.has_value()) {
+      return false;
+    }
     constexpr auto kMaxWait = std::chrono::milliseconds(200);
     constexpr auto kRetrySlice = std::chrono::milliseconds(2);
     const auto deadline = std::chrono::steady_clock::now() + kMaxWait;
@@ -364,6 +368,9 @@ private:
     while (std::chrono::steady_clock::now() < deadline) {
       int exit_code = -1;
       if (session_->HasExited(&exit_code)) {
+        return false;
+      }
+      if (!DrainEvents(std::chrono::milliseconds(0), error)) {
         return false;
       }
       std::this_thread::sleep_for(kRetrySlice);
@@ -385,15 +392,19 @@ private:
     std::string line = vinput::json::ToText(payload);
     line.push_back('\n');
     const auto bytes = std::as_bytes(std::span(line));
-    if (session_->PushStdin(bytes) || RetryPushStdinWithBackoff(bytes)) {
+    if (session_->PushStdin(bytes) || RetryPushStdinWithBackoff(bytes, error)) {
       if (error != nullptr) {
         error->clear();
       }
       return true;
     }
 
+    if (error != nullptr && !error->empty()) {
+      return false;
+    }
+
     DrainEvents(std::chrono::milliseconds(0), nullptr);
-    if (error == nullptr) {
+    if (error == nullptr || !session_.has_value()) {
       return false;
     }
 

@@ -90,6 +90,7 @@ private:
   bool ActivateReusedStream(StartTiming& local_timing, std::string* error);
   void ArmRecording() noexcept;
   bool SetStreamActive(bool active, std::string* error = nullptr);
+  void DeactivateOrDestroyStream(std::string_view caller);
   void DestroyStream();
   void processCallback();
   void MarkStreamDestroyed();

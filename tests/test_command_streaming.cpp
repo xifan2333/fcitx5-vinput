@@ -680,7 +680,7 @@ void TestPrematureExitErrorReporting() {
   // Await child process exit
   for (int i = 0; i < 50; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    (void)session->DrainEvents(std::chrono::milliseconds(0), nullptr);
+    (void)session->PollEvents();
   }
 
   std::vector<int16_t> chunk(800, 100);
