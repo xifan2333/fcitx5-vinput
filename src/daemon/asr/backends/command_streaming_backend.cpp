@@ -358,19 +358,19 @@ private:
   }
 
   bool RetryPushStdinWithBackoff(std::span<const std::byte> bytes, std::string* error) {
-    if (!session_.has_value()) {
-      return false;
-    }
     constexpr auto kMaxWait = std::chrono::milliseconds(200);
     constexpr auto kRetrySlice = std::chrono::milliseconds(2);
     const auto deadline = std::chrono::steady_clock::now() + kMaxWait;
 
     while (std::chrono::steady_clock::now() < deadline) {
+      if (!session_.has_value()) {
+        return false;
+      }
       int exit_code = -1;
       if (session_->HasExited(&exit_code)) {
         return false;
       }
-      if (!DrainEvents(std::chrono::milliseconds(0), error)) {
+      if (!DrainEvents(std::chrono::milliseconds(0), error) || !session_.has_value()) {
         return false;
       }
       std::this_thread::sleep_for(kRetrySlice);

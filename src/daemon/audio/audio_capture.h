@@ -10,6 +10,7 @@
 #include <pipewire/thread-loop.h>
 #include <readerwriterqueue.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "daemon/audio/audio_types.h"
