@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <string_view>
 #include <vector>
@@ -119,9 +120,7 @@ bool TestSourceMonitorDisambiguation() {
 // Regression test for Issue #301: EnumerateAudioSources RAII initialization and teardown lifecycle.
 bool TestEnumerateAudioSources() {
   const auto sources = vinput::pw::EnumerateAudioSources();
-  for (const auto& dev : sources) {
-    CHECK(dev.id > 0);
-  }
+  CHECK(std::ranges::all_of(sources, [](const auto& dev) { return dev.id > 0; }));
   return true;
 }
 
