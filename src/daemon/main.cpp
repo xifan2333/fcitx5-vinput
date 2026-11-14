@@ -141,7 +141,7 @@ void RunEventLoop(DbusService& dbus,
     }
 
     // Bounded warm grace: destroy inactive reusable streams after idle timeout.
-    capture.MaybeDestroyExpiredStream();
+    runtime_controller.MaybeDestroyExpiredStreams();
 
     if (ret > 0) {
       DispatchPollEvents(fds, dbus, runtime_controller);

@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -44,7 +45,8 @@ class DaemonRuntimeController {
 public:
   DaemonRuntimeController(AudioCapture* capture, DbusService* dbus,
                           vinput::daemon::asr::RecognitionSessionManager* recognition_manager,
-                          RecognitionPipeline* pipeline);
+                          RecognitionPipeline* pipeline, std::string owner_client_id = {},
+                          int shared_notify_fd = -1);
   ~DaemonRuntimeController();
 
   DaemonRuntimeController(const DaemonRuntimeController&) = delete;
@@ -77,6 +79,7 @@ public:
   vinput::dbus::AsrBackendState GetAsrBackendState() const;
   int GetNotifyFd() const;
   void FlushDeferredActions();
+  void MaybeDestroyExpiredStreams();
 
   void StartWorker();
   void Shutdown();
@@ -121,6 +124,7 @@ private:
                                          const CoreConfig& runtime_settings);
   void EnterPostprocessing(bool command_mode);
   void ResetToIdle();
+  void ProcessSingleOrder(RecognitionOrder order);
   void WorkerMain();
 
   AudioCapture* capture_ = nullptr;
@@ -149,6 +153,23 @@ private:
   std::atomic<bool> accepting_chunks_{false};
   std::atomic<bool> worker_running_{false};
   std::thread worker_;
+
+  struct HeadlessClientLane {
+    std::string client_id;
+    AudioCapture capture;
+    std::shared_ptr<DaemonRuntimeController> controller;
+  };
+
+  void EmitClientEvent(std::string_view line);
+  void FlushSingleLaneDeferredActions();
+  void DispatchSingleCommand(const vinput::client::ClientCommand& command);
+  std::shared_ptr<DaemonRuntimeController> GetOrCreateHeadlessLane(std::string_view client_id);
+  [[nodiscard]] std::vector<std::shared_ptr<HeadlessClientLane>> SnapshotHeadlessLanes() const;
+
+  std::string owner_client_id_;
+  bool owns_notify_fd_ = true;
+  mutable std::mutex headless_lanes_mutex_;
+  std::map<std::string, std::shared_ptr<HeadlessClientLane>, std::less<>> headless_lanes_;
 };
 
 } // namespace vinput::daemon::runtime
