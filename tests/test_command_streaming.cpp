@@ -319,7 +319,7 @@ void TestStalledProviderWriteIsBounded() {
   const auto started = std::chrono::steady_clock::now();
   alarm(6);
   bool ok = true;
-  for (int i = 0; i < 400; ++i) {
+  for (int i = 0; i < 1000; ++i) {
     ok = session->PushAudio(long_chunk, &error);
     if (!ok) {
       break;
@@ -673,16 +673,21 @@ void TestPrematureExitErrorReporting() {
   auto session = backend->CreateSession(&error);
   ExpectTrue(session != nullptr, "CreateSession failed: " + error);
 
-  // Allow child to exit
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  // Push minimal audio to ensure provider child process is started
+  std::vector<int16_t> initial_chunk(160, 0);
+  (void)session->PushAudio(initial_chunk, &error);
+
+  // Await child process exit
+  for (int i = 0; i < 50; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    (void)session->DrainEvents(std::chrono::milliseconds(0), nullptr);
+  }
 
   std::vector<int16_t> chunk(800, 100);
   const bool ok = session->PushAudio(chunk, &error);
   ExpectTrue(!ok, "PushAudio must fail when provider exited prematurely");
-  ExpectTrue(error.find("exited prematurely with code") != std::string::npos ||
-                 error.find("42") != std::string::npos ||
-                 error.find("Provider closed stdin") != std::string::npos,
-             "error message should report exit details: " + error);
+  ExpectTrue(error.find("exited prematurely with code 42") != std::string::npos,
+             "error message should report precise premature exit code 42: " + error);
 }
 
 } // namespace

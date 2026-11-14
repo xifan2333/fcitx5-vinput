@@ -356,6 +356,24 @@ private:
     return SendJsonLine(payload, error);
   }
 
+  bool RetryPushStdinWithBackoff(std::span<const std::byte> bytes) {
+    constexpr auto kMaxWait = std::chrono::milliseconds(200);
+    constexpr auto kRetrySlice = std::chrono::milliseconds(2);
+    const auto deadline = std::chrono::steady_clock::now() + kMaxWait;
+
+    while (std::chrono::steady_clock::now() < deadline) {
+      int exit_code = -1;
+      if (session_->HasExited(&exit_code)) {
+        return false;
+      }
+      std::this_thread::sleep_for(kRetrySlice);
+      if (session_->PushStdin(bytes)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool SendJsonLine(const glz::json_t& payload, std::string* error) {
     if (!session_.has_value()) {
       if (error != nullptr) {
@@ -367,31 +385,29 @@ private:
     std::string line = vinput::json::ToText(payload);
     line.push_back('\n');
     const auto bytes = std::as_bytes(std::span(line));
-    if (!session_->PushStdin(bytes)) {
-      DrainEvents(std::chrono::milliseconds(0), nullptr);
+    if (session_->PushStdin(bytes) || RetryPushStdinWithBackoff(bytes)) {
       if (error != nullptr) {
-        if (!session_.has_value()) {
-          *error = "Streaming ASR provider session terminated.";
-          return false;
-        }
-        int exit_code = -1;
-        if (session_->HasExited(&exit_code)) {
-          *error =
-              fmt::format("Streaming ASR provider exited prematurely with code {}.", exit_code);
-        } else {
-          const auto queued = session_->StdinQueueSizeApprox();
-          *error = fmt::format(
-              "Provider closed stdin or input buffer is full (queued_blocks={}, sent_chunks={}).",
-              queued, sent_chunks_count_);
-        }
+        error->clear();
       }
+      return true;
+    }
+
+    DrainEvents(std::chrono::milliseconds(0), nullptr);
+    if (error == nullptr) {
       return false;
     }
 
-    if (error != nullptr) {
-      error->clear();
+    int exit_code = -1;
+    if (session_->HasExited(&exit_code)) {
+      *error = fmt::format("Streaming ASR provider exited prematurely with code {}.", exit_code);
+      return false;
     }
-    return true;
+
+    const auto queued = session_->StdinQueueSizeApprox();
+    *error = fmt::format(
+        "Provider closed stdin or input buffer is full (queued_blocks={}, sent_chunks={}).", queued,
+        sent_chunks_count_);
+    return false;
   }
 
   bool DrainEvents(std::chrono::milliseconds wait, std::string* error) {

@@ -98,19 +98,30 @@ Expected<SessionEventFds> CreateSessionEventFds() {
       .wake = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC),
   };
   if (fds.cancel < 0 || fds.stdin_event < 0 || fds.wake < 0) {
-    return UnexpectedError(std::string("eventfd failed: ") + std::strerror(errno));
+    const std::string err = std::string("eventfd failed: ") + std::strerror(errno);
+    if (fds.cancel >= 0) {
+      ::close(fds.cancel);
+    }
+    if (fds.stdin_event >= 0) {
+      ::close(fds.stdin_event);
+    }
+    if (fds.wake >= 0) {
+      ::close(fds.wake);
+    }
+    return UnexpectedError(err);
   }
   return fds;
 }
 
 void OptimizeChildInputPipeCapacity(int fd) noexcept {
 #if defined(F_SETPIPE_SZ)
+  if (fd < 0) {
+    return;
+  }
   constexpr int kOptimalPipeCapacity = 1024 * 1024; // 1 MB (~470 chunks / ~24s audio)
-  if (fd >= 0) {
-    const int new_sz = ::fcntl(fd, F_SETPIPE_SZ, kOptimalPipeCapacity);
-    if (new_sz < 0) {
-      VLOG_DEBUG("process session: fcntl F_SETPIPE_SZ on in_fd failed: {}", std::strerror(errno));
-    }
+  const int new_sz = ::fcntl(fd, F_SETPIPE_SZ, kOptimalPipeCapacity);
+  if (new_sz < 0) {
+    VLOG_DEBUG("process session: fcntl F_SETPIPE_SZ on in_fd failed: {}", std::strerror(errno));
   }
 #else
   (void)fd;
@@ -291,6 +302,7 @@ bool ProcessSession::Impl::Open(const CommandSpec& spec, StderrSink stderr_sink,
 }
 
 void ProcessSession::Impl::CloseStdinChannel() {
+  stdin_closed_.store(true, std::memory_order_release);
   stdin_channel_open_ = false;
   pending_.clear();
   pending_offset_ = 0;
@@ -691,32 +703,12 @@ bool ProcessSession::Impl::PushStdin(std::span<const std::byte> bytes) {
     return false;
   }
 
-  if (stdin_queue_.try_emplace(bytes.begin(), bytes.end())) {
-    SignalEventFd(stdin_event_);
-    return true;
+  if (!stdin_queue_.try_emplace(bytes.begin(), bytes.end())) {
+    return false;
   }
 
-  // Bounded retry/backoff: if the queue is temporarily saturated by a surge, give the pump
-  // thread brief slices to drain to the pipe before declaring backpressure failure.
   SignalEventFd(stdin_event_);
-  constexpr auto kMaxWait = std::chrono::milliseconds(200);
-  constexpr auto kRetrySlice = std::chrono::milliseconds(2);
-  const auto deadline = Clock::now() + kMaxWait;
-
-  while (Clock::now() < deadline) {
-    if (pump_finished_.load(std::memory_order_acquire) ||
-        stdin_closed_.load(std::memory_order_acquire)) {
-      return false;
-    }
-    std::this_thread::sleep_for(kRetrySlice);
-    if (stdin_queue_.try_emplace(bytes.begin(), bytes.end())) {
-      SignalEventFd(stdin_event_);
-      return true;
-    }
-    SignalEventFd(stdin_event_);
-  }
-
-  return false;
+  return true;
 }
 
 void ProcessSession::Impl::CloseStdin() {
