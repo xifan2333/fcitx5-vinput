@@ -16,12 +16,10 @@ bool Check(bool cond, std::string_view expr, const char* file, int line) {
 
 #define CHECK(expr)                                                                                \
   if (!Check((expr), #expr, __FILE__, __LINE__)) {                                                 \
-    return 1;                                                                                      \
+    return false;                                                                                  \
   }
 
-} // namespace
-
-int main() {
+bool TestBasicTargets() {
   using vinput::pw::ResolveCaptureTarget;
 
   {
@@ -67,69 +65,90 @@ int main() {
     CHECK(!res.is_sink_capture);
   }
 
-  // Regression tests for Issue #232: real Audio/Source named with .monitor suffix.
-  {
-    std::vector<vinput::pw::DeviceInfo> known_devices;
-    known_devices.push_back({
-        .id = 100,
-        .name = "clean.monitor",
-        .description = "Remapped source",
-        .is_sink_monitor = false,
-    });
-    known_devices.push_back({
-        .id = 101,
-        .name = "probe.monitor",
-        .description = "Null sink (Monitor)",
-        .is_sink_monitor = true,
-    });
-    known_devices.push_back({
-        .id = 102,
-        .name = "alsa_input.pci-0000_00_1b.0.analog-stereo",
-        .description = "Built-in microphone",
-        .is_sink_monitor = false,
-    });
+  return true;
+}
 
-    // 1. Real Audio/Source named clean.monitor must NOT have its suffix stripped or be marked sink.
-    const auto res_source = ResolveCaptureTarget("clean.monitor", known_devices);
-    CHECK(res_source.node_name == "clean.monitor");
-    CHECK(!res_source.is_sink_capture);
+// Regression tests for Issue #232: real Audio/Source named with .monitor suffix.
+bool TestSourceMonitorDisambiguation() {
+  using vinput::pw::ResolveCaptureTarget;
 
-    // 2. Real Audio/Sink monitor must have suffix stripped and be marked sink.
-    const auto res_sink = ResolveCaptureTarget("probe.monitor", known_devices);
-    CHECK(res_sink.node_name == "probe");
-    CHECK(res_sink.is_sink_capture);
+  std::vector<vinput::pw::DeviceInfo> known_devices;
+  known_devices.push_back({
+      .id = 100,
+      .name = "clean.monitor",
+      .description = "Remapped source",
+      .is_sink_monitor = false,
+  });
+  known_devices.push_back({
+      .id = 101,
+      .name = "probe.monitor",
+      .description = "Null sink (Monitor)",
+      .is_sink_monitor = true,
+  });
+  known_devices.push_back({
+      .id = 102,
+      .name = "alsa_input.pci-0000_00_1b.0.analog-stereo",
+      .description = "Built-in microphone",
+      .is_sink_monitor = false,
+  });
 
-    // 3. Regular source must be preserved.
-    const auto res_mic =
-        ResolveCaptureTarget("alsa_input.pci-0000_00_1b.0.analog-stereo", known_devices);
-    CHECK(res_mic.node_name == "alsa_input.pci-0000_00_1b.0.analog-stereo");
-    CHECK(!res_mic.is_sink_capture);
+  // 1. Real Audio/Source named clean.monitor must NOT have its suffix stripped or be marked sink.
+  const auto res_source = ResolveCaptureTarget("clean.monitor", known_devices);
+  CHECK(res_source.node_name == "clean.monitor");
+  CHECK(!res_source.is_sink_capture);
 
-    // 4. Unknown/offline device ending in .monitor falls back to stripping.
-    const auto res_fallback = ResolveCaptureTarget("offline.monitor", known_devices);
-    CHECK(res_fallback.node_name == "offline");
-    CHECK(res_fallback.is_sink_capture);
+  // 2. Real Audio/Sink monitor must have suffix stripped and be marked sink.
+  const auto res_sink = ResolveCaptureTarget("probe.monitor", known_devices);
+  CHECK(res_sink.node_name == "probe");
+  CHECK(res_sink.is_sink_capture);
+
+  // 3. Regular source must be preserved.
+  const auto res_mic =
+      ResolveCaptureTarget("alsa_input.pci-0000_00_1b.0.analog-stereo", known_devices);
+  CHECK(res_mic.node_name == "alsa_input.pci-0000_00_1b.0.analog-stereo");
+  CHECK(!res_mic.is_sink_capture);
+
+  // 4. Unknown/offline device ending in .monitor falls back to stripping.
+  const auto res_fallback = ResolveCaptureTarget("offline.monitor", known_devices);
+  CHECK(res_fallback.node_name == "offline");
+  CHECK(res_fallback.is_sink_capture);
+
+  return true;
+}
+
+// Regression test for Issue #301: EnumerateAudioSources RAII initialization and teardown lifecycle.
+bool TestEnumerateAudioSources() {
+  const auto sources = vinput::pw::EnumerateAudioSources();
+  for (const auto& dev : sources) {
+    CHECK(dev.id > 0);
   }
+  return true;
+}
 
-  // Regression test for Issue #301: EnumerateAudioSources RAII initialization and teardown
-  // lifecycle.
-  {
-    const auto sources = vinput::pw::EnumerateAudioSources();
-    for (const auto& dev : sources) {
-      CHECK(dev.id > 0);
-    }
-  }
+// Regression test for Issue #596: Default capture target must resolve instantly without
+// requiring known_devices enumeration to avoid start latency.
+bool TestDefaultTargetInstantResolution() {
+  using vinput::pw::ResolveCaptureTarget;
 
-  // Regression test for Issue #596: Default capture target must resolve instantly without
-  // requiring known_devices enumeration to avoid start latency.
-  {
-    const auto res_empty = ResolveCaptureTarget("");
-    CHECK(res_empty.node_name.empty());
-    CHECK(!res_empty.is_sink_capture);
+  const auto res_empty = ResolveCaptureTarget("");
+  CHECK(res_empty.node_name.empty());
+  CHECK(!res_empty.is_sink_capture);
 
-    const auto res_default = ResolveCaptureTarget("default");
-    CHECK(res_default.node_name.empty());
-    CHECK(!res_default.is_sink_capture);
+  const auto res_default = ResolveCaptureTarget("default");
+  CHECK(res_default.node_name.empty());
+  CHECK(!res_default.is_sink_capture);
+
+  return true;
+}
+
+#undef CHECK
+
+} // namespace
+
+int main() {
+  if (!TestBasicTargets() || !TestSourceMonitorDisambiguation() || !TestEnumerateAudioSources() ||
+      !TestDefaultTargetInstantResolution()) {
+    return 1;
   }
 
   std::cout << "All pipewire capture target tests passed!\n";

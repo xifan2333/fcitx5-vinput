@@ -127,7 +127,7 @@ private:
   mutable std::mutex device_cache_mutex_;
   std::mutex consumer_mutex_;
   std::vector<vinput::pw::DeviceInfo> cached_devices_;
-  std::chrono::steady_clock::time_point last_device_scan_{};
+  std::chrono::steady_clock::time_point last_device_scan_;
 
   struct pw_stream_events stream_events_{};
   std::atomic<int> notify_fd_{-1};
