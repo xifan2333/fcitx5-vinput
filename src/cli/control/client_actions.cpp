@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
-#include <csignal>
 #include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <iostream>
@@ -13,6 +12,7 @@
 #include <vector>
 
 extern "C" {
+#include <signal.h>
 #include <systemd/sd-bus.h>
 }
 

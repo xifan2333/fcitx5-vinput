@@ -2,7 +2,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "cli/action.h"
@@ -26,7 +25,7 @@ struct CliParseResult {
   std::string error_message;
 };
 
-CliParseResult ParseArgs(std::vector<std::string> args) {
+CliParseResult ParseArgs(const std::vector<std::string>& args) {
   CLI::App app{"vinput test"};
   app.require_subcommand(0, 1);
   bool json_output = false;

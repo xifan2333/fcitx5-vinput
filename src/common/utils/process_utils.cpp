@@ -5,7 +5,6 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
-#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>

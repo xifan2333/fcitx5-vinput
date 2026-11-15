@@ -1458,7 +1458,7 @@ void DaemonRuntimeController::PumpAudioStream(int read_fd) {
     return;
   }
 
-  const size_t probed_bytes = static_cast<size_t>(probed);
+  const auto probed_bytes = static_cast<size_t>(probed);
   const size_t offset =
       vinput::audio::DetectWavDataOffset(std::span<const uint8_t>(probe_buf.data(), probed_bytes));
   if (offset < probed_bytes) {

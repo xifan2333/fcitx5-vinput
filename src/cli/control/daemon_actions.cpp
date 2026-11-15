@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <cerrno>
-#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -10,8 +9,12 @@
 #include <fmt/printf.h>
 #include <iostream>
 #include <string>
-#include <systemd/sd-bus.h>
 #include <unistd.h>
+
+extern "C" {
+#include <signal.h>
+#include <systemd/sd-bus.h>
+}
 
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
@@ -233,7 +236,7 @@ int RunDaemonControlPipe(const std::string& scene_id, bool ime, Formatter& /*fmt
   PipeInterruptedFlag().store(false, std::memory_order_relaxed);
   const auto prev_int = std::signal(SIGINT, OnPipeSignal);
   const auto prev_term = std::signal(SIGTERM, OnPipeSignal);
-  const auto prev_pipe = std::signal(SIGPIPE, [](int /*sig*/) {});
+  const auto prev_pipe = std::signal(SIGPIPE, SIG_IGN);
 
   const int loop_rc = ProcessPipeLoop(dbus.GetBus(), pctx);
 
