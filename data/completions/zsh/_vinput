@@ -40,6 +40,22 @@ _vinput_installed_adapters() {
     fi
 }
 
+_vinput_installed_triggers() {
+    local -a triggers
+    triggers=(${(f)"$(vinput -j trigger list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)"})
+    if (( $#triggers )); then
+        _describe -t triggers 'configured trigger' triggers
+    fi
+}
+
+_vinput_installed_receivers() {
+    local -a receivers
+    receivers=(${(f)"$(vinput -j receiver list 2>/dev/null | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)"})
+    if (( $#receivers )); then
+        _describe -t receivers 'configured receiver' receivers
+    fi
+}
+
 _vinput_is_lite() {
     if [[ -z "${_VINPUT_IS_LITE:-}" ]]; then
         if vinput -v 2>/dev/null | grep -q -- '-lite'; then
@@ -54,20 +70,28 @@ _vinput_is_lite() {
 _vinput_subcommands() {
     local -a subcommands
     subcommands=(
-        'init:Initialize default config and directories'
-        'provider:Manage cloud ASR providers'
-        'llm:Manage LLM providers'
-        'adapter:Manage LLM adapters'
-        'device:Manage audio capture devices'
-        'scene:Manage recognition scenes'
-        'config:Read or write configuration values'
         'daemon:Control daemon lifecycle'
+        'd:Control daemon lifecycle (alias)'
         'recording:Control voice recording'
         'rec:Control voice recording (alias)'
+        'config:Read or write configuration values'
+        'cfg:Read or write configuration values (alias)'
+        'device:Manage audio capture devices'
+        'dev:Manage audio capture devices (alias)'
+        'provider:Manage cloud ASR providers'
+        'prov:Manage cloud ASR providers (alias)'
+        'trigger:Manage voice triggers'
+        'trig:Manage voice triggers (alias)'
+        'receiver:Manage voice receivers'
+        'recv:Manage voice receivers (alias)'
+        'scene:Manage recognition scenes'
+        'adapter:Manage LLM adapters'
+        'llm:Manage LLM providers'
     )
     if ! _vinput_is_lite; then
         subcommands+=(
             'model:Manage offline local ASR models'
+            'mod:Manage offline local ASR models (alias)'
             'hotword:Manage hotword file'
         )
     fi
@@ -179,6 +203,7 @@ _vinput_config_cmds() {
         'edit:Open config file in editor'
         'e:Open config file in editor'
         'migrate:Migrate legacy configuration files to current format'
+        'init:Initialize default config and directories'
     )
     _describe -t config_cmds 'config command' config_cmds
 }
@@ -187,12 +212,36 @@ _vinput_daemon_cmds() {
     local -a daemon_cmds
     daemon_cmds=(
         'status:Show daemon status'
+        'st:Show daemon status (alias)'
         'start:Start daemon service'
         'stop:Stop daemon service'
         'restart:Restart daemon service'
         'log:Show daemon logs'
+        'pipe:Stream audio from STDIN to daemon for transcription'
     )
     _describe -t daemon_cmds 'daemon command' daemon_cmds
+}
+
+_vinput_trigger_cmds() {
+    local -a trigger_cmds
+    trigger_cmds=(
+        'list:List configured triggers'
+        'ls:List configured triggers (alias)'
+        'start:Start a trigger'
+        'stop:Stop a trigger'
+    )
+    _describe -t trigger_cmds 'trigger command' trigger_cmds
+}
+
+_vinput_receiver_cmds() {
+    local -a receiver_cmds
+    receiver_cmds=(
+        'list:List configured receivers'
+        'ls:List configured receivers (alias)'
+        'start:Start a receiver'
+        'stop:Stop a receiver'
+    )
+    _describe -t receiver_cmds 'receiver command' receiver_cmds
 }
 
 _vinput_rec_cmds() {
@@ -221,12 +270,7 @@ _vinput() {
             local cmd=$words[1]
             curcontext="${curcontext%:*:*}:vinput-${cmd}:"
             case $cmd in
-                init)
-                    _arguments \
-                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
-                        '(-f --force)'{-f,--force}'[Overwrite existing config]'
-                    ;;
-                model)
+                model|mod)
                     _vinput_is_lite && return 0
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
@@ -247,7 +291,7 @@ _vinput() {
                             ;;
                     esac
                     ;;
-                provider)
+                provider|prov)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                         '1:command:_vinput_provider_cmds' \
@@ -340,7 +384,7 @@ _vinput() {
                             ;;
                     esac
                     ;;
-                device)
+                device|dev)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                         '1:command:_vinput_device_cmds' \
@@ -376,7 +420,7 @@ _vinput() {
                             ;;
                     esac
                     ;;
-                config)
+                config|cfg)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                         '1:command:_vinput_config_cmds' \
@@ -402,11 +446,15 @@ _vinput() {
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '(-n --dry-run)'{-n,--dry-run}'[Preview migration changes without modifying files]' ;;
+                                init)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-f --force)'{-f,--force}'[Overwrite existing config]' ;;
                             esac
                             ;;
                     esac
                     ;;
-                daemon)
+                daemon|d)
                     _arguments -C \
                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                         '1:command:_vinput_daemon_cmds' \
@@ -418,7 +466,45 @@ _vinput() {
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '(-f --follow)'{-f,--follow}'[Follow log output]' \
-                                        '(-n --lines)'{-n,--lines}'[Number of log lines]:lines:' ;;
+                                        '(-n --lines)'{-n,--lines}'[Number of log lines]:lines:' \
+                                        '(-l --level)'{-l,--level}'[Log level filter (trace, debug, info, warn, error)]:level:(trace debug info warn error)' ;;
+                                pipe)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-s --scene)'{-s,--scene}'[Scene ID for postprocessing]:scene:_vinput_installed_scenes' \
+                                        '--ime[Commit recognized text to desktop IME input context]' ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                trigger|trig)
+                    _arguments -C \
+                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                        '1:command:_vinput_trigger_cmds' \
+                        '*::arg:->trigger_args' && return 0
+                    case $state in
+                        trigger_args)
+                            case $words[1] in
+                                start|stop)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '1:trigger:_vinput_installed_triggers' ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                receiver|recv)
+                    _arguments -C \
+                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                        '1:command:_vinput_receiver_cmds' \
+                        '*::arg:->receiver_args' && return 0
+                    case $state in
+                        receiver_args)
+                            case $words[1] in
+                                start|stop)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '1:receiver:_vinput_installed_receivers' ;;
                             esac
                             ;;
                     esac
