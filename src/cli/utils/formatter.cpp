@@ -23,7 +23,7 @@ namespace {
 
 class TextFormatter final : public Formatter {
 public:
-  explicit TextFormatter(bool use_color) : use_color_(use_color) {}
+  explicit TextFormatter(bool use_color, bool is_tty) : use_color_(use_color), is_tty_(is_tty) {}
 
   void PrintTable(const std::vector<std::string>& headers,
                   const std::vector<std::vector<std::string>>& rows) override {
@@ -34,14 +34,27 @@ public:
   }
   void PrintSuccess(const std::string& msg) override { std::cout << Green(msg) << "\n"; }
   void PrintError(const std::string& msg) override { std::cerr << Red(msg) << "\n"; }
-  void PrintWarning(const std::string& msg) override { std::cout << Yellow(msg) << "\n"; }
+  void PrintWarning(const std::string& msg) override {
+    if (!is_tty_) {
+      std::cerr << Yellow(msg) << "\n";
+      return;
+    }
+    std::cout << Yellow(msg) << "\n";
+  }
   void PrintJson(const glz::json_t& j) override {
     std::cout << vinput::json::ToPrettyText(j) << "\n";
   }
-  void PrintInfo(const std::string& msg) override { std::cout << Gray(msg) << "\n"; }
+  void PrintInfo(const std::string& msg) override {
+    if (!is_tty_) {
+      std::cerr << Gray(msg) << "\n";
+      return;
+    }
+    std::cout << Gray(msg) << "\n";
+  }
 
 private:
   bool use_color_;
+  bool is_tty_;
   [[nodiscard]] std::string Green(const std::string& s) const {
     return use_color_ ? ("\033[32m" + s + "\033[0m") : s;
   }
@@ -79,8 +92,10 @@ public:
   void PrintError(const std::string& msg) override {
     PrintStatus("error", msg, /*is_stderr=*/true);
   }
-  void PrintWarning(const std::string& msg) override { PrintStatus("warning", msg); }
-  void PrintInfo(const std::string& msg) override { PrintStatus("info", msg); }
+  void PrintWarning(const std::string& msg) override {
+    PrintStatus("warning", msg, /*is_stderr=*/true);
+  }
+  void PrintInfo(const std::string& msg) override { PrintStatus("info", msg, /*is_stderr=*/true); }
   void PrintJson(const glz::json_t& j) override { PrintJson(j, /*pretty=*/true); }
 
 private:
@@ -120,7 +135,7 @@ std::unique_ptr<Formatter> CreateFormatter(const CliContext& ctx) {
   if (ctx.json_output) {
     return std::make_unique<JsonFormatter>();
   }
-  return std::make_unique<TextFormatter>(ctx.is_tty);
+  return std::make_unique<TextFormatter>(ctx.is_tty, ctx.is_tty);
 }
 
 namespace vinput::cli {

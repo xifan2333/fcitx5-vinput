@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
-#include <csignal>
 #include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <iostream>
@@ -13,6 +12,7 @@
 #include <vector>
 
 extern "C" {
+#include <signal.h>
 #include <systemd/sd-bus.h>
 }
 
@@ -309,13 +309,13 @@ int RunListen(std::string_view type_filter, Formatter& /*fmt*/, const CliContext
   }
 
   ListenInterrupted().store(false, std::memory_order_relaxed);
-  const auto prev_int = std::signal(SIGINT, OnListenSignal);
-  const auto prev_term = std::signal(SIGTERM, OnListenSignal);
+  const auto prev_int = signal(SIGINT, OnListenSignal);
+  const auto prev_term = signal(SIGTERM, OnListenSignal);
 
   const int loop_error = ProcessListenLoop(bus);
 
-  std::signal(SIGINT, prev_int);
-  std::signal(SIGTERM, prev_term);
+  signal(SIGINT, prev_int);
+  signal(SIGTERM, prev_term);
   sd_bus_flush_close_unref(bus);
 
   if (loop_error < 0 && !ListenInterrupted().load(std::memory_order_relaxed)) {

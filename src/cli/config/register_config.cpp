@@ -14,7 +14,10 @@ namespace vinput::cli::config {
 
 void RegisterConfigCommands(CLI::App& app, CliAction* action) {
   auto* config = app.add_subcommand("config", _("Read or write configuration values"));
+  config->alias("cfg");
   config->require_subcommand(1);
+
+  RegisterInitCommands(*config, action);
 
   auto getPath = std::make_shared<std::string>();
   auto* get = config->add_subcommand("get", _("Get a config value by JSON Pointer"));

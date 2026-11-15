@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "common/asr/recognition_result.h"
+#include "common/audio/wav_probe.h"
 #include "common/client/client_command.h"
 #include "common/client/client_event.h"
 #include "common/client/client_manager.h"
@@ -119,7 +120,11 @@ void PublishRecognitionText(const std::string& text, const RecognitionDispatchCo
   if (ctx.ime && ctx.dbus != nullptr) {
     ctx.dbus->EmitRecognitionPartial(text);
   }
-  EmitClientLine(ctx.owner_client_id, vinput::client::SerializePartialEvent(text, ctx.ime));
+  const auto line = vinput::client::SerializePartialEvent(text, ctx.ime);
+  EmitClientLine(ctx.owner_client_id, line);
+  if (ctx.dbus != nullptr && !ctx.owner_client_id.empty()) {
+    ctx.dbus->EmitStreamEvent(std::string(ctx.owner_client_id), line);
+  }
 }
 
 void HandlePartialText(const vinput::daemon::asr::RecognitionEvent& event,
@@ -185,6 +190,9 @@ void ApplyRecognitionEvents(const std::vector<vinput::daemon::asr::RecognitionEv
     DispatchSingleEvent(event, ctx);
   }
 }
+
+constexpr size_t kInitialProbeBytes = 1024;
+constexpr size_t kStreamChunkBytes = 1600; // 50ms of 16kHz 16-bit mono PCM (16000 * 2 * 0.05)
 
 } // namespace
 
@@ -302,7 +310,9 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, boo
   }
 
   if (stop_capture) {
-    capture_->StopAndGetBuffer();
+    if (capture_ != nullptr) {
+      capture_->StopAndGetBuffer();
+    }
     RestoreOutputIfDucked();
   }
 
@@ -379,6 +389,9 @@ void DaemonRuntimeController::MaybeApplyPendingAsrBackendReload() {
 
 void DaemonRuntimeController::EmitClientEvent(std::string_view line) {
   EmitClientLine(owner_client_id_, line);
+  if (dbus_ != nullptr && !owner_client_id_.empty()) {
+    dbus_->EmitStreamEvent(owner_client_id_, std::string(line));
+  }
 }
 
 void DaemonRuntimeController::NotifyStatusChanged(vinput::dbus::Status status) {
@@ -565,7 +578,9 @@ bool DaemonRuntimeController::TryBeginRecordingStartupLocked(bool ime) {
 }
 
 void DaemonRuntimeController::AbortAndScheduleCaptureStop() {
-  capture_->EndRecording();
+  if (capture_ != nullptr) {
+    capture_->EndRecording();
+  }
   {
     const std::scoped_lock lock(state_mutex_);
     AbortRecordingStartupLocked();
@@ -658,6 +673,9 @@ bool DaemonRuntimeController::PrepareAndBeginCapture(const std::string& capture_
                                                      bool is_command,
                                                      AudioCapture::StartTiming* capture_timing,
                                                      std::string* error_message) {
+  if (capture_ == nullptr) {
+    return true;
+  }
   std::string error;
   const std::string target_device =
       capture_device.empty() ? runtime_settings.global.captureDevice : capture_device;
@@ -707,6 +725,10 @@ void DaemonRuntimeController::FeedOrderAudio(RecognitionOrder& order, bool norma
 }
 
 std::vector<int16_t> DaemonRuntimeController::StopCaptureAndDrainMetrics() {
+  if (capture_ == nullptr) {
+    RestoreOutputIfDucked();
+    return {};
+  }
   if (const auto first_buffer_ms = capture_->FirstBufferLatencyMs()) {
     VLOG_DEBUG("capture first_buffer_ms={} (at stop)", *first_buffer_ms);
   } else {
@@ -866,7 +888,9 @@ bool DaemonRuntimeController::FailActiveSession(
     dbus_->EmitDesktopNotification(
         vinput::daemon::notify::MakeDaemonErrorNotification(error_message));
   }
-  capture_->EndRecording();
+  if (capture_ != nullptr) {
+    capture_->EndRecording();
+  }
   RestoreOutputIfDucked();
   ScheduleCaptureStopOnMainThread();
   return true;
@@ -1093,10 +1117,22 @@ void DaemonRuntimeController::MaybeDestroyExpiredStreams() {
   if (!owner_client_id_.empty()) {
     return;
   }
+  std::vector<std::string> to_reclaim;
   for (const auto& lane : SnapshotHeadlessLanes()) {
-    if (lane != nullptr) {
-      lane->capture.MaybeDestroyExpiredStream();
+    if (lane == nullptr) {
+      continue;
     }
+    if (lane->capture != nullptr) {
+      lane->capture->MaybeDestroyExpiredStream();
+      continue;
+    }
+    if (lane->stream_fd.load(std::memory_order_relaxed) < 0 && lane->controller != nullptr &&
+        lane->controller->GetStatus() == vinput::dbus::kStatusIdle) {
+      to_reclaim.push_back(lane->client_id);
+    }
+  }
+  for (const auto& id : to_reclaim) {
+    ReclaimHeadlessLane(id);
   }
 }
 
@@ -1112,8 +1148,17 @@ void DaemonRuntimeController::ReclaimHeadlessLane(std::string_view client_id) {
       headless_lanes_.erase(it);
     }
   }
-  if (lane_to_reclaim != nullptr && lane_to_reclaim->controller != nullptr) {
-    lane_to_reclaim->controller->Shutdown();
+  if (lane_to_reclaim != nullptr) {
+    const int fd = lane_to_reclaim->stream_fd.exchange(-1);
+    if (fd >= 0) {
+      close(fd);
+    }
+    if (lane_to_reclaim->controller != nullptr) {
+      lane_to_reclaim->controller->Shutdown();
+    }
+    if (lane_to_reclaim->stream_reader.joinable()) {
+      lane_to_reclaim->stream_reader.join();
+    }
   }
 }
 
@@ -1125,20 +1170,35 @@ void DaemonRuntimeController::StartWorker() {
   worker_ = std::thread([this]() { WorkerMain(); });
 }
 
-void DaemonRuntimeController::Shutdown() {
-  shutting_down_.store(true, std::memory_order_release);
-  if (owner_client_id_.empty()) {
-    std::map<std::string, std::shared_ptr<HeadlessClientLane>, std::less<>> to_shutdown;
-    {
-      const std::scoped_lock lock(headless_lanes_mutex_);
-      to_shutdown = std::move(headless_lanes_);
+void DaemonRuntimeController::ShutdownHeadlessLanes() {
+  if (!owner_client_id_.empty()) {
+    return;
+  }
+  std::map<std::string, std::shared_ptr<HeadlessClientLane>, std::less<>> to_shutdown;
+  {
+    const std::scoped_lock lock(headless_lanes_mutex_);
+    to_shutdown = std::move(headless_lanes_);
+  }
+  for (auto& [id, lane] : to_shutdown) {
+    if (lane == nullptr) {
+      continue;
     }
-    for (auto& [id, lane] : to_shutdown) {
-      if (lane != nullptr && lane->controller != nullptr) {
-        lane->controller->Shutdown();
-      }
+    const int fd = lane->stream_fd.exchange(-1);
+    if (fd >= 0) {
+      close(fd);
+    }
+    if (lane->controller != nullptr) {
+      lane->controller->Shutdown();
+    }
+    if (lane->stream_reader.joinable()) {
+      lane->stream_reader.join();
     }
   }
+}
+
+void DaemonRuntimeController::Shutdown() {
+  shutting_down_.store(true, std::memory_order_release);
+  ShutdownHeadlessLanes();
 
   accepting_chunks_.store(false, std::memory_order_relaxed);
   pending_capture_stop_.store(false, std::memory_order_relaxed);
@@ -1376,18 +1436,107 @@ DaemonRuntimeController::GetOrCreateHeadlessLane(std::string_view client_id) {
 
   auto lane = std::make_shared<HeadlessClientLane>();
   lane->client_id = key;
+  lane->capture = std::make_unique<AudioCapture>();
   std::string cap_err;
-  if (!lane->capture.Start(&cap_err)) {
+  if (!lane->capture->Start(&cap_err)) {
     VLOG_ERROR("failed to start audio capture for headless lane '{}': {}", key, cap_err);
     return nullptr;
   }
 
   lane->controller = std::make_shared<DaemonRuntimeController>(
-      &lane->capture, /*dbus=*/nullptr, recognition_manager_, pipeline_, key, notify_fd_);
+      lane->capture.get(), /*dbus=*/nullptr, recognition_manager_, pipeline_, key, notify_fd_);
   lane->controller->StartWorker();
 
   headless_lanes_.emplace(key, lane);
   return lane->controller;
+}
+
+void DaemonRuntimeController::PumpAudioStream(int read_fd) {
+  std::vector<uint8_t> probe_buf(kInitialProbeBytes);
+  const ssize_t probed = read(read_fd, probe_buf.data(), probe_buf.size());
+  if (probed <= 0) {
+    return;
+  }
+
+  const auto probed_bytes = static_cast<size_t>(probed);
+  const size_t offset =
+      vinput::audio::DetectWavDataOffset(std::span<const uint8_t>(probe_buf.data(), probed_bytes));
+  if (offset < probed_bytes) {
+    const size_t pcm_bytes = probed_bytes - offset;
+    const size_t num_samples = pcm_bytes / sizeof(int16_t);
+    if (num_samples > 0) {
+      std::vector<int16_t> initial_samples(num_samples);
+      std::memcpy(initial_samples.data(), probe_buf.data() + offset, num_samples * sizeof(int16_t));
+      HandleIncomingAudio(initial_samples);
+    }
+  }
+
+  std::vector<int16_t> chunk(kStreamChunkBytes / sizeof(int16_t));
+  while (!shutting_down_.load(std::memory_order_relaxed)) {
+    const ssize_t n = read(read_fd, chunk.data(), chunk.size() * sizeof(int16_t));
+    if (n < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    if (n == 0) {
+      break;
+    }
+    const size_t samples_read = static_cast<size_t>(n) / sizeof(int16_t);
+    if (samples_read > 0) {
+      HandleIncomingAudio(std::span<const int16_t>(chunk.data(), samples_read));
+    }
+  }
+}
+
+DbusService::MethodResult
+DaemonRuntimeController::TranscribeStream(int fd, const std::string& scene_id, bool ime) {
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    close(fd);
+    return DbusService::MethodResult::Failure("daemon is shutting down");
+  }
+
+  static std::atomic<uint64_t> s_stream_seq{0};
+  const std::string client_id = "stream-" + std::to_string(++s_stream_seq);
+
+  auto lane = std::make_shared<HeadlessClientLane>();
+  lane->client_id = client_id;
+  lane->capture = nullptr;
+  lane->stream_fd.store(fd, std::memory_order_relaxed);
+  lane->controller = std::make_shared<DaemonRuntimeController>(
+      /*capture=*/nullptr, dbus_, recognition_manager_, pipeline_, client_id, notify_fd_);
+  lane->controller->StartWorker();
+
+  {
+    const std::scoped_lock lock(headless_lanes_mutex_);
+    headless_lanes_.emplace(client_id, lane);
+  }
+
+  auto start_result = lane->controller->StartRecording(ime, /*is_command=*/false,
+                                                       /*selected_text=*/"", /*capture_device=*/"");
+  if (!start_result.ok) {
+    close(fd);
+    lane->stream_fd.store(-1, std::memory_order_relaxed);
+    ReclaimHeadlessLane(client_id);
+    return start_result;
+  }
+
+  lane->stream_reader = std::thread([lane, scene_id, ime]() {
+    const int read_fd = lane->stream_fd.load(std::memory_order_relaxed);
+    if (read_fd < 0) {
+      lane->controller->StopRecording(ime, scene_id);
+      return;
+    }
+    lane->controller->PumpAudioStream(read_fd);
+    const int fd_to_close = lane->stream_fd.exchange(-1);
+    if (fd_to_close >= 0) {
+      close(fd_to_close);
+    }
+    lane->controller->StopRecording(ime, scene_id);
+  });
+
+  return DbusService::MethodResult::Success(client_id);
 }
 
 } // namespace vinput::daemon::runtime

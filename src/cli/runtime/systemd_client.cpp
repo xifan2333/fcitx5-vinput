@@ -1,9 +1,12 @@
 #include "cli/runtime/systemd_client.h"
 
+#include <array>
 #include <exception>
 #include <fmt/printf.h>
 #include <string>
+#include <string_view>
 #include <subprocess.hpp>
+#include <utility>
 #include <vector>
 
 #include "common/utils/path_utils.h"
@@ -17,13 +20,32 @@ std::vector<std::string> BuildCommand(const std::vector<std::string>& args) {
   return vinput::sandbox::WrapHostCommand(std::vector<std::string>(args.begin(), args.end()));
 }
 
-std::vector<std::string> BuildJournalctlCommand(bool follow, int lines) {
+constexpr std::string_view MapJournalctlPriority(std::string_view level) {
+  constexpr std::array<std::pair<std::string_view, std::string_view>, 3> kPriorityMap{{
+      {"error", "err"},
+      {"warn", "warning"},
+      {"trace", "debug"},
+  }};
+  for (const auto& [from, to] : kPriorityMap) {
+    if (level == from) {
+      return to;
+    }
+  }
+  return level;
+}
+
+std::vector<std::string> BuildJournalctlCommand(bool follow, int lines,
+                                                const std::string& level = {}) {
   auto args = vinput::sandbox::DaemonLogFilter();
   const std::string lines_str = std::to_string(lines);
   args.emplace_back("-n");
   args.push_back(lines_str);
   if (follow) {
     args.emplace_back("-f");
+  }
+  if (!level.empty()) {
+    args.emplace_back("-p");
+    args.emplace_back(MapJournalctlPriority(level));
   }
   return args;
 }
@@ -89,8 +111,8 @@ int SystemctlStop() {
       {"systemctl", "--user", "stop", std::string(vinput::path::DaemonServiceUnitName())});
 }
 
-int JournalctlLogs(bool follow, int lines) {
-  return RunCommand(BuildJournalctlCommand(follow, lines));
+int JournalctlLogs(bool follow, int lines, const std::string& level) {
+  return RunCommand(BuildJournalctlCommand(follow, lines, level));
 }
 
 std::string JournalctlLogsText(int lines) {

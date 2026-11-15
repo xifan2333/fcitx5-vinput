@@ -1,0 +1,15 @@
+id: posix-signal-header-enclosure
+message: "POSIX 信号头文件必须通过 extern \"C\" { #include <signal.h> } 包裹以确保 C 链接规范，禁止使用裸 #include <csignal> 或未包裹的 #include <signal.h>。"
+severity: error
+language: Cpp
+files:
+  - "src/**"
+rule:
+  any:
+    - pattern: "#include <csignal>"
+    - all:
+        - pattern: "#include <signal.h>"
+        - not:
+            inside:
+              stopBy: end
+              kind: linkage_specification

@@ -8,9 +8,8 @@ target_include_directories(client_runtime PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(client_runtime PUBLIC config PkgConfig::SDBUS)
 
-add_executable(
-  cli
-  main.cpp
+add_library(
+  cli_lib STATIC
   utils/formatter.cpp
   utils/editor_utils.cpp
   utils/resource_utils.cpp
@@ -36,12 +35,20 @@ add_executable(
   config/scene_actions.cpp
 )
 
+set_target_properties(cli_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_include_directories(cli_lib PUBLIC ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(
+  cli_lib PUBLIC common pipewire_device client_runtime CLI11::CLI11 unicodelib::unicodelib
+)
+
+add_executable(cli main.cpp)
+
 set_target_properties(cli PROPERTIES OUTPUT_NAME "vinput")
 
 target_include_directories(cli PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(
-  cli PRIVATE common pipewire_device client_runtime CLI11::CLI11 unicodelib::unicodelib
-)
+target_link_libraries(cli PRIVATE cli_lib)
 
 install(TARGETS cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

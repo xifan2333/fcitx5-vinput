@@ -1,0 +1,13 @@
+id: signal-handler-no-lambda
+message: "严禁向 std::signal / signal 传递 lambda 表达式。忽略信号请使用标准宏 SIG_IGN，恢复默认请使用 SIG_DFL，自定义处理请使用独立命名函数。"
+severity: error
+language: Cpp
+files:
+  - "src/**"
+rule:
+  any:
+    - pattern: std::signal($SIG, $HANDLER)
+    - pattern: signal($SIG, $HANDLER)
+constraints:
+  HANDLER:
+    kind: lambda_expression

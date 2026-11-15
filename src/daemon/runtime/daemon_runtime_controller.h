@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include "common/client/client_command.h"
@@ -69,6 +70,7 @@ public:
   DbusService::MethodResult CancelOperation(bool ime, bool commit_raw_text);
   DbusService::MethodResult InjectText(bool ime, vinput::client::InjectStage stage,
                                        const std::string& text, const std::string& scene_id = {});
+  DbusService::MethodResult TranscribeStream(int fd, const std::string& scene_id, bool ime);
 
   void DispatchClientCommand(const vinput::client::ClientCommand& command);
   void DispatchClientCommand(std::string_view client_id,
@@ -96,6 +98,7 @@ private:
   void MaybeApplyPendingAsrBackendReload();
   void DrainIncomingAudio();
   void HandleIncomingAudio(std::span<const int16_t> pcm);
+  void PumpAudioStream(int read_fd);
   void PollActiveSessionEvents();
   bool FailActiveSession(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
                          const std::string& error_message);
@@ -162,14 +165,32 @@ private:
   std::thread worker_;
 
   struct HeadlessClientLane {
-    AudioCapture capture;
+    HeadlessClientLane() = default;
+    ~HeadlessClientLane() {
+      const int fd = stream_fd.exchange(-1);
+      if (fd >= 0) {
+        close(fd);
+      }
+      if (stream_reader.joinable()) {
+        stream_reader.join();
+      }
+    }
+    HeadlessClientLane(const HeadlessClientLane&) = delete;
+    HeadlessClientLane& operator=(const HeadlessClientLane&) = delete;
+    HeadlessClientLane(HeadlessClientLane&&) = delete;
+    HeadlessClientLane& operator=(HeadlessClientLane&&) = delete;
+
+    std::unique_ptr<AudioCapture> capture;
     std::shared_ptr<DaemonRuntimeController> controller;
     std::string client_id;
+    std::thread stream_reader;
+    std::atomic<int> stream_fd{-1};
   };
 
   void EmitClientEvent(std::string_view line);
   void FlushSingleLaneDeferredActions();
   void DispatchSingleCommand(const vinput::client::ClientCommand& command);
+  void ShutdownHeadlessLanes();
   std::shared_ptr<DaemonRuntimeController> GetOrCreateHeadlessLane(std::string_view client_id);
   [[nodiscard]] std::vector<std::shared_ptr<HeadlessClientLane>> SnapshotHeadlessLanes() const;
 

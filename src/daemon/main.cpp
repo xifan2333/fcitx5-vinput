@@ -77,6 +77,10 @@ void WireDbusHandlers(DbusService& dbus,
       [&]() -> vinput::dbus::AsrBackendState { return runtime_controller.GetAsrBackendState(); });
   dbus.SetReloadAsrBackendHandler([&]() { return runtime_controller.ReloadAsrBackend(); });
 
+  dbus.SetTranscribeStreamHandler([&](int fd, const std::string& scene_id, bool ime) {
+    return runtime_controller.TranscribeStream(fd, scene_id, ime);
+  });
+
   dbus.SetStartClientHandler([&](const std::string& client_id) -> DbusService::MethodResult {
     std::string error;
     if (!vinput::client::Start(

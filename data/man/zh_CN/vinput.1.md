@@ -14,7 +14,11 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 # 描述
 **vinput** 是 **fcitx5-vinput** 的命令行客户端。**fcitx5-vinput** 是为 Fcitx5 输入法框架开发的离线/云端双模语音输入插件。
 
-**vinput** 提供了对离线语音识别模型、云端 ASR 脚本、LLM 后处理提供商及适配器、识别场景、音频采集设备、热词表、守护进程生命周期以及录音状态的完整控制。
+**vinput** 提供了对离线语音识别模型、云端 ASR 脚本、LLM 后处理提供商及适配器、识别场景、音频采集设备、热词表、守护进程生命周期、录音状态、音频触发器以及音频接收器的完整控制。
+
+全局统一支持标准 Unix 短别名：
+- 名词：**d** (**daemon**)、**rec** (**recording**)、**cfg** (**config**)、**dev** (**device**)、**mod** (**model**)、**prov** (**provider**)、**trig** (**trigger**)、**recv** (**receiver**)。
+- 动词：**ls** (**list**)、**rm** (**remove**)、**e** (**edit**)、**st** (**status**)、**up** (**update**)。
 
 # 全局选项
 **-h**, **--help**
@@ -27,10 +31,6 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 :   以 JSON 格式输出结果，便于脚本解析。
 
 # 命令
-
-## 初始化
-**init** [**-f**, **--force**]
-:   初始化默认配置文件及相关目录（创建于 *~/.config/vinput* 和 *~/.local/share/vinput*）。若指定 **-f**，则会覆盖已有配置。
 
 ## 本地模型管理
 管理基于 **sherpa-onnx** 的离线语音识别模型（在 Lite 轻量版中不可用）。
@@ -144,7 +144,34 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 **scene remove** *ID*
 :   删除场景（`__raw__` 等内置基础场景不可删除）。
 
-## 配置读写
+## 触发器管理
+管理音频触发器插件。
+
+**trigger list**
+:   列出已配置的音频触发器。
+
+**trigger start** *ID*
+:   启动指定的音频触发器。
+
+**trigger stop** *ID*
+:   停止指定的音频触发器。
+
+## 接收器管理
+管理音频接收器插件。
+
+**receiver list**
+:   列出已配置的音频接收器。
+
+**receiver start** *ID*
+:   启动指定的音频接收器。
+
+**receiver stop** *ID*
+:   停止指定的音频接收器。
+
+## 配置管理
+**config init** [**-f**, **--force**]
+:   初始化默认配置文件及相关目录（创建于 *~/.config/vinput* 和 *~/.local/share/vinput*）。若指定 **-f**，则会覆盖已有配置。
+
 **config get** *POINTER*
 :   通过 JSON Pointer 路径读取配置值（例如 `/global/capture_device` 或 `/asr/input_gain`）。
 
@@ -159,7 +186,7 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 
 ## 守护进程控制
 **daemon status**
-:   查看 **vinput-daemon** 的运行状态（PID、活动模型、D-Bus 连接等）。
+:   查看 **vinput-daemon** 的运行状态（PID、活动模型、D-Bus 连接等）。亦可使用短别名 **st**。
 
 **daemon start**
 :   通过 systemd user 服务启动守护进程。
@@ -169,6 +196,12 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 
 **daemon restart**
 :   重启守护进程。
+
+**daemon log** [**-f**, **--follow**] [**-n**, **--lines** *N*] [**-l**, **--level** *LEVEL*]
+:   查看守护进程日志。*LEVEL* 可过滤日志级别：**trace**、**debug**、**info**、**warn**、**error**。
+
+**daemon pipe** [**-s**, **--scene** *SCENE_ID*] [**--ime**]
+:   从标准输入 STDIN 读取音频流（16kHz 16-bit 单声道 PCM 或 WAV）并送入守护进程识别。识别过程的换行符分隔 JSON 事件（`status`、`partial`、`committed`）输出至标准输出 STDOUT。所有诊断信息与日志均输出至标准错误 STDERR。若传入 **--ime**，识别完成的文本将直接上屏至当前桌面输入焦点。
 
 ## 录音控制
 **recording start**

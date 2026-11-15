@@ -12,7 +12,16 @@ vinput \- fcitx5\-vinput 命令行控制与管理工具
 输入法框架开发的离线/云端双模语音输入插件。
 .PP
 \f[B]vinput\f[R] 提供了对离线语音识别模型、云端 ASR 脚本、LLM
-后处理提供商及适配器、识别场景、音频采集设备、热词表、守护进程生命周期以及录音状态的完整控制。
+后处理提供商及适配器、识别场景、音频采集设备、热词表、守护进程生命周期、录音状态、音频触发器以及音频接收器的完整控制。
+.PP
+全局统一支持标准 Unix 短别名： \- 名词：\f[B]d\f[R]
+(\f[B]daemon\f[R])、\f[B]rec\f[R] (\f[B]recording\f[R])、\f[B]cfg\f[R]
+(\f[B]config\f[R])、\f[B]dev\f[R] (\f[B]device\f[R])、\f[B]mod\f[R]
+(\f[B]model\f[R])、\f[B]prov\f[R] (\f[B]provider\f[R])、\f[B]trig\f[R]
+(\f[B]trigger\f[R])、\f[B]recv\f[R] (\f[B]receiver\f[R])。 \-
+动词：\f[B]ls\f[R] (\f[B]list\f[R])、\f[B]rm\f[R]
+(\f[B]remove\f[R])、\f[B]e\f[R] (\f[B]edit\f[R])、\f[B]st\f[R]
+(\f[B]status\f[R])、\f[B]up\f[R] (\f[B]update\f[R])。
 .SH 全局选项
 .TP
 \f[B]\-h\f[R], \f[B]\-\-help\f[R]
@@ -24,12 +33,6 @@ vinput \- fcitx5\-vinput 命令行控制与管理工具
 \f[B]\-j\f[R], \f[B]\-\-json\f[R]
 以 JSON 格式输出结果，便于脚本解析。
 .SH 命令
-.SS 初始化
-.TP
-\f[B]init\f[R] [\f[B]\-f\f[R], \f[B]\-\-force\f[R]]
-初始化默认配置文件及相关目录（创建于 \f[I]\(ti/.config/vinput\f[R] 和
-\f[I]\(ti/.local/share/vinput\f[R]）。若指定
-\f[B]\-f\f[R]，则会覆盖已有配置。
 .SS 本地模型管理
 管理基于 \f[B]sherpa\-onnx\f[R] 的离线语音识别模型（在 Lite
 轻量版中不可用）。
@@ -148,7 +151,34 @@ ASR 识别出的原始文本进行重写与润色。
 .TP
 \f[B]scene remove\f[R] \f[I]ID\f[R]
 删除场景（\f[CR]__raw__\f[R] 等内置基础场景不可删除）。
-.SS 配置读写
+.SS 触发器管理
+管理音频触发器插件。
+.TP
+\f[B]trigger list\f[R]
+列出已配置的音频触发器。
+.TP
+\f[B]trigger start\f[R] \f[I]ID\f[R]
+启动指定的音频触发器。
+.TP
+\f[B]trigger stop\f[R] \f[I]ID\f[R]
+停止指定的音频触发器。
+.SS 接收器管理
+管理音频接收器插件。
+.TP
+\f[B]receiver list\f[R]
+列出已配置的音频接收器。
+.TP
+\f[B]receiver start\f[R] \f[I]ID\f[R]
+启动指定的音频接收器。
+.TP
+\f[B]receiver stop\f[R] \f[I]ID\f[R]
+停止指定的音频接收器。
+.SS 配置管理
+.TP
+\f[B]config init\f[R] [\f[B]\-f\f[R], \f[B]\-\-force\f[R]]
+初始化默认配置文件及相关目录（创建于 \f[I]\(ti/.config/vinput\f[R] 和
+\f[I]\(ti/.local/share/vinput\f[R]）。若指定
+\f[B]\-f\f[R]，则会覆盖已有配置。
 .TP
 \f[B]config get\f[R] \f[I]POINTER\f[R]
 通过 JSON Pointer 路径读取配置值（例如 \f[CR]/global/capture_device\f[R]
@@ -170,7 +200,7 @@ ASR 识别出的原始文本进行重写与润色。
 .TP
 \f[B]daemon status\f[R]
 查看 \f[B]vinput\-daemon\f[R] 的运行状态（PID、活动模型、D\-Bus
-连接等）。
+连接等）。亦可使用短别名 \f[B]st\f[R]。
 .TP
 \f[B]daemon start\f[R]
 通过 systemd user 服务启动守护进程。
@@ -180,6 +210,17 @@ ASR 识别出的原始文本进行重写与润色。
 .TP
 \f[B]daemon restart\f[R]
 重启守护进程。
+.TP
+\f[B]daemon log\f[R] [\f[B]\-f\f[R], \f[B]\-\-follow\f[R]] [\f[B]\-n\f[R], \f[B]\-\-lines\f[R] \f[I]N\f[R]] [\f[B]\-l\f[R], \f[B]\-\-level\f[R] \f[I]LEVEL\f[R]]
+查看守护进程日志。\f[I]LEVEL\f[R]
+可过滤日志级别：\f[B]trace\f[R]、\f[B]debug\f[R]、\f[B]info\f[R]、\f[B]warn\f[R]、\f[B]error\f[R]。
+.TP
+\f[B]daemon pipe\f[R] [\f[B]\-s\f[R], \f[B]\-\-scene\f[R] \f[I]SCENE_ID\f[R]] [\f[B]\-\-ime\f[R]]
+从标准输入 STDIN 读取音频流（16kHz 16\-bit 单声道 PCM 或
+WAV）并送入守护进程识别。识别过程的换行符分隔 JSON
+事件（\f[CR]status\f[R]、\f[CR]partial\f[R]、\f[CR]committed\f[R]）输出至标准输出
+STDOUT。所有诊断信息与日志均输出至标准错误 STDERR。若传入
+\f[B]\-\-ime\f[R]，识别完成的文本将直接上屏至当前桌面输入焦点。
 .SS 录音控制
 .TP
 \f[B]recording start\f[R]

@@ -14,7 +14,11 @@ vinput - Command-line control and management tool for fcitx5-vinput
 # DESCRIPTION
 **vinput** is the command-line interface for **fcitx5-vinput**, an offline and cloud-assisted voice input addon for the Fcitx5 input method framework.
 
-It allows users to manage offline speech recognition (ASR) models, cloud ASR provider scripts, LLM providers and adapters, recognition scenes, audio input devices, hotwords, daemon lifecycle, and recording state.
+It allows users to manage offline speech recognition (ASR) models, cloud ASR provider scripts, LLM providers and adapters, recognition scenes, audio input devices, hotwords, daemon lifecycle, recording state, audio triggers, and receivers.
+
+Standard Unix short aliases are supported throughout:
+- Nouns: **d** (**daemon**), **rec** (**recording**), **cfg** (**config**), **dev** (**device**), **mod** (**model**), **prov** (**provider**), **trig** (**trigger**), **recv** (**receiver**).
+- Verbs: **ls** (**list**), **rm** (**remove**), **e** (**edit**), **st** (**status**), **up** (**update**).
 
 # GLOBAL OPTIONS
 **-h**, **--help**
@@ -27,10 +31,6 @@ It allows users to manage offline speech recognition (ASR) models, cloud ASR pro
 :   Output results in machine-readable JSON format.
 
 # COMMANDS
-
-## INITIALIZATION
-**init** [**-f**, **--force**]
-:   Initialize default configuration files and directories under *~/.config/vinput* and *~/.local/share/vinput*. If **-f** is specified, existing configuration will be overwritten.
 
 ## MODEL MANAGEMENT
 Manage offline local speech recognition models powered by **sherpa-onnx** (not available in the Lite package).
@@ -144,7 +144,34 @@ Scenes define prompt templates and bound LLM configurations used to rewrite raw 
 **scene remove** *ID*
 :   Delete a scene definition (built-in scenes like `__raw__` cannot be deleted).
 
+## TRIGGER MANAGEMENT
+Manage audio trigger plugins.
+
+**trigger list**
+:   List configured audio triggers.
+
+**trigger start** *ID*
+:   Start the specified audio trigger.
+
+**trigger stop** *ID*
+:   Stop the specified audio trigger.
+
+## RECEIVER MANAGEMENT
+Manage audio receiver plugins.
+
+**receiver list**
+:   List configured audio receivers.
+
+**receiver start** *ID*
+:   Start the specified audio receiver.
+
+**receiver stop** *ID*
+:   Stop the specified audio receiver.
+
 ## CONFIGURATION MANAGEMENT
+**config init** [**-f**, **--force**]
+:   Initialize default configuration files and directories under *~/.config/vinput* and *~/.local/share/vinput*. If **-f** is specified, existing configuration will be overwritten.
+
 **config get** *POINTER*
 :   Query a configuration value using a JSON Pointer path (e.g. `/global/capture_device` or `/asr/input_gain`).
 
@@ -159,7 +186,7 @@ Scenes define prompt templates and bound LLM configurations used to rewrite raw 
 
 ## DAEMON CONTROL
 **daemon status**
-:   Show the runtime status of **vinput-daemon** (PID, active model, D-Bus connection).
+:   Show the runtime status of **vinput-daemon** (PID, active model, D-Bus connection). Also accepts **st**.
 
 **daemon start**
 :   Start the background daemon via systemd user service.
@@ -169,6 +196,12 @@ Scenes define prompt templates and bound LLM configurations used to rewrite raw 
 
 **daemon restart**
 :   Restart the daemon.
+
+**daemon log** [**-f**, **--follow**] [**-n**, **--lines** *N*] [**-l**, **--level** *LEVEL*]
+:   Show daemon logs via journalctl. *LEVEL* filters by log severity: **trace**, **debug**, **info**, **warn**, **error**.
+
+**daemon pipe** [**-s**, **--scene** *SCENE_ID*] [**--ime**]
+:   Stream audio from STDIN (16kHz 16-bit mono PCM or WAV) to the daemon for transcription. Outputs newline-delimited JSON events to STDOUT. All status messages, diagnostics, and errors are printed to STDERR. If **--ime** is passed, commits recognized text to the desktop IME input context.
 
 ## RECORDING CONTROL
 **recording start**

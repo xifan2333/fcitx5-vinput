@@ -5,7 +5,6 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
-#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -45,7 +44,7 @@ namespace detail {
 void EnsureSigpipeIgnored() {
   static std::once_flag once;
   std::call_once(once, [] {
-    if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
       VLOG_WARN("process: SIGPIPE could not be ignored; a pipe write may end the process");
     }
   });

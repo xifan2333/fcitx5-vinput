@@ -1,8 +1,10 @@
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "utils/cli_context.h"
 #include "utils/formatter.h"
 
 namespace {
@@ -203,6 +205,57 @@ void TestRenderTableWithUnclosedEscapes() {
   TEST_ASSERT(rendered.find("Doc\033]8;;\a (v1.0)") != std::string::npos);
 }
 
+void TestTextFormatterNonTtyRouting() {
+  const CliContext ctx{.json_output = false, .is_tty = false};
+  const auto fmt = CreateFormatter(ctx);
+
+  std::stringstream out_ss;
+  std::stringstream err_ss;
+  out_ss.str("");
+  err_ss.str("");
+  auto* old_cout = std::cout.rdbuf(out_ss.rdbuf());
+  auto* old_cerr = std::cerr.rdbuf(err_ss.rdbuf());
+
+  fmt->PrintWarning("warn test");
+  fmt->PrintInfo("info test");
+  fmt->PrintError("error test");
+
+  std::cout.rdbuf(old_cout);
+  std::cerr.rdbuf(old_cerr);
+
+  // In non-TTY mode, warnings, info, and errors must route to cerr
+  TEST_ASSERT(out_ss.str().empty());
+  TEST_ASSERT(err_ss.str().find("warn test") != std::string::npos);
+  TEST_ASSERT(err_ss.str().find("info test") != std::string::npos);
+  TEST_ASSERT(err_ss.str().find("error test") != std::string::npos);
+}
+
+void TestJsonFormatterNonTtyRouting() {
+  const CliContext ctx{.json_output = true, .is_tty = false};
+  const auto fmt = CreateFormatter(ctx);
+
+  std::stringstream out_ss;
+  std::stringstream err_ss;
+  out_ss.str("");
+  err_ss.str("");
+  auto* old_cout = std::cout.rdbuf(out_ss.rdbuf());
+  auto* old_cerr = std::cerr.rdbuf(err_ss.rdbuf());
+
+  fmt->PrintWarning("json warn");
+  fmt->PrintInfo("json info");
+  fmt->PrintJson(glz::json_t{{"key", "value"}});
+
+  std::cout.rdbuf(old_cout);
+  std::cerr.rdbuf(old_cerr);
+
+  // In JsonFormatter, warning and info route to cerr
+  TEST_ASSERT(err_ss.str().find("json warn") != std::string::npos);
+  TEST_ASSERT(err_ss.str().find("json info") != std::string::npos);
+  // Json payload routes to cout
+  TEST_ASSERT(out_ss.str().find("\"key\"") != std::string::npos &&
+              out_ss.str().find("\"value\"") != std::string::npos);
+}
+
 } // namespace
 
 int main() {
@@ -215,6 +268,8 @@ int main() {
   TestRenderTableWithNewlines();
   TestRenderTableWithColor();
   TestRenderTableWithUnclosedEscapes();
+  TestTextFormatterNonTtyRouting();
+  TestJsonFormatterNonTtyRouting();
   std::cout << "All formatter tests passed successfully.\n";
   return 0;
 }

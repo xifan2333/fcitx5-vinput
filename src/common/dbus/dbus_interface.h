@@ -20,10 +20,12 @@ constexpr const char* kMethodReloadAsrBackend = "ReloadAsrBackend";
 constexpr const char* kMethodStartClient = "StartClient";
 constexpr const char* kMethodStopClient = "StopClient";
 constexpr const char* kMethodGetClientStatuses = "GetClientStatuses";
+constexpr const char* kMethodTranscribeStream = "TranscribeStream";
 
 constexpr const char* kSignalRecognitionResult = "RecognitionResult";
 constexpr const char* kSignalRecognitionPartial = "RecognitionPartial";
 constexpr const char* kSignalStatusChanged = "StatusChanged";
+constexpr const char* kSignalStreamEvent = "StreamEvent";
 
 constexpr const char* kErrorOperationFailed = "org.fcitx.Vinput.Error.OperationFailed";
 constexpr const char* kStatusIdle = "idle";

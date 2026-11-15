@@ -13,7 +13,17 @@ addon for the Fcitx5 input method framework.
 .PP
 It allows users to manage offline speech recognition (ASR) models, cloud
 ASR provider scripts, LLM providers and adapters, recognition scenes,
-audio input devices, hotwords, daemon lifecycle, and recording state.
+audio input devices, hotwords, daemon lifecycle, recording state, audio
+triggers, and receivers.
+.PP
+Standard Unix short aliases are supported throughout: \- Nouns:
+\f[B]d\f[R] (\f[B]daemon\f[R]), \f[B]rec\f[R] (\f[B]recording\f[R]),
+\f[B]cfg\f[R] (\f[B]config\f[R]), \f[B]dev\f[R] (\f[B]device\f[R]),
+\f[B]mod\f[R] (\f[B]model\f[R]), \f[B]prov\f[R] (\f[B]provider\f[R]),
+\f[B]trig\f[R] (\f[B]trigger\f[R]), \f[B]recv\f[R] (\f[B]receiver\f[R]).
+\- Verbs: \f[B]ls\f[R] (\f[B]list\f[R]), \f[B]rm\f[R]
+(\f[B]remove\f[R]), \f[B]e\f[R] (\f[B]edit\f[R]), \f[B]st\f[R]
+(\f[B]status\f[R]), \f[B]up\f[R] (\f[B]update\f[R]).
 .SH GLOBAL OPTIONS
 .TP
 \f[B]\-h\f[R], \f[B]\-\-help\f[R]
@@ -25,13 +35,6 @@ Display program version and exit.
 \f[B]\-j\f[R], \f[B]\-\-json\f[R]
 Output results in machine\-readable JSON format.
 .SH COMMANDS
-.SS INITIALIZATION
-.TP
-\f[B]init\f[R] [\f[B]\-f\f[R], \f[B]\-\-force\f[R]]
-Initialize default configuration files and directories under
-\f[I]\(ti/.config/vinput\f[R] and \f[I]\(ti/.local/share/vinput\f[R].
-If \f[B]\-f\f[R] is specified, existing configuration will be
-overwritten.
 .SS MODEL MANAGEMENT
 Manage offline local speech recognition models powered by
 \f[B]sherpa\-onnx\f[R] (not available in the Lite package).
@@ -160,7 +163,35 @@ Set the active recognition scene.
 \f[B]scene remove\f[R] \f[I]ID\f[R]
 Delete a scene definition (built\-in scenes like \f[CR]__raw__\f[R]
 cannot be deleted).
+.SS TRIGGER MANAGEMENT
+Manage audio trigger plugins.
+.TP
+\f[B]trigger list\f[R]
+List configured audio triggers.
+.TP
+\f[B]trigger start\f[R] \f[I]ID\f[R]
+Start the specified audio trigger.
+.TP
+\f[B]trigger stop\f[R] \f[I]ID\f[R]
+Stop the specified audio trigger.
+.SS RECEIVER MANAGEMENT
+Manage audio receiver plugins.
+.TP
+\f[B]receiver list\f[R]
+List configured audio receivers.
+.TP
+\f[B]receiver start\f[R] \f[I]ID\f[R]
+Start the specified audio receiver.
+.TP
+\f[B]receiver stop\f[R] \f[I]ID\f[R]
+Stop the specified audio receiver.
 .SS CONFIGURATION MANAGEMENT
+.TP
+\f[B]config init\f[R] [\f[B]\-f\f[R], \f[B]\-\-force\f[R]]
+Initialize default configuration files and directories under
+\f[I]\(ti/.config/vinput\f[R] and \f[I]\(ti/.local/share/vinput\f[R].
+If \f[B]\-f\f[R] is specified, existing configuration will be
+overwritten.
 .TP
 \f[B]config get\f[R] \f[I]POINTER\f[R]
 Query a configuration value using a JSON Pointer path (e.g.
@@ -184,6 +215,7 @@ Pass \f[B]\-n\f[R] to preview pending changes without modifying files.
 \f[B]daemon status\f[R]
 Show the runtime status of \f[B]vinput\-daemon\f[R] (PID, active model,
 D\-Bus connection).
+Also accepts \f[B]st\f[R].
 .TP
 \f[B]daemon start\f[R]
 Start the background daemon via systemd user service.
@@ -193,6 +225,19 @@ Stop the daemon.
 .TP
 \f[B]daemon restart\f[R]
 Restart the daemon.
+.TP
+\f[B]daemon log\f[R] [\f[B]\-f\f[R], \f[B]\-\-follow\f[R]] [\f[B]\-n\f[R], \f[B]\-\-lines\f[R] \f[I]N\f[R]] [\f[B]\-l\f[R], \f[B]\-\-level\f[R] \f[I]LEVEL\f[R]]
+Show daemon logs via journalctl.
+\f[I]LEVEL\f[R] filters by log severity: \f[B]trace\f[R],
+\f[B]debug\f[R], \f[B]info\f[R], \f[B]warn\f[R], \f[B]error\f[R].
+.TP
+\f[B]daemon pipe\f[R] [\f[B]\-s\f[R], \f[B]\-\-scene\f[R] \f[I]SCENE_ID\f[R]] [\f[B]\-\-ime\f[R]]
+Stream audio from STDIN (16kHz 16\-bit mono PCM or WAV) to the daemon
+for transcription.
+Outputs newline\-delimited JSON events to STDOUT.
+All status messages, diagnostics, and errors are printed to STDERR.
+If \f[B]\-\-ime\f[R] is passed, commits recognized text to the desktop
+IME input context.
 .SS RECORDING CONTROL
 .TP
 \f[B]recording start\f[R]

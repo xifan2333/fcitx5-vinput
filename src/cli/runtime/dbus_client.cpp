@@ -259,6 +259,24 @@ bool DbusClient::ReloadAsrBackend(std::string* error) {
   return CallDaemonVoid(bus_, vinput::dbus::kMethodReloadAsrBackend, error);
 }
 
+bool DbusClient::TranscribeStream(int fd, const std::string& scene_id, bool ime,
+                                  std::string* out_client_id, std::string* error) {
+  ScopedMessage reply;
+  const bool ok = CallDaemonMethod(bus_, vinput::dbus::kMethodTranscribeStream,
+                                   out_client_id != nullptr ? &reply : nullptr, error, "hsb", fd,
+                                   scene_id.c_str(), ime ? 1 : 0);
+  if (!ok) {
+    return false;
+  }
+  if (out_client_id != nullptr && reply.get() != nullptr) {
+    const char* cid = nullptr;
+    if (sd_bus_message_read(reply.get(), "s", &cid) >= 0 && cid != nullptr) {
+      *out_client_id = cid;
+    }
+  }
+  return true;
+}
+
 bool DbusClient::StartClient(const std::string& client_id, std::string* error) {
   return CallDaemonStringArg(bus_, vinput::dbus::kMethodStartClient, client_id, error);
 }
