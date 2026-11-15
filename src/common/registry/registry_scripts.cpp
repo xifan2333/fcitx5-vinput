@@ -72,8 +72,7 @@ bool IsValidPathComponent(const fs::path& component) {
   if (!IsValidSegment(part)) {
     return false;
   }
-  return part.find('/') == std::string::npos && part.find('\\') == std::string::npos &&
-         part.find('.') == std::string::npos;
+  return part.find('/') == std::string::npos && part.find('\\') == std::string::npos;
 }
 
 std::vector<std::string> SplitResourceId(std::string_view id) {
