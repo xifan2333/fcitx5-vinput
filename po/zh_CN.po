@@ -1532,14 +1532,6 @@ msgstr "接收器 ID"
 msgid "Stop a receiver"
 msgstr "停止接收器"
 
-#: src/cli/control/register_client.cpp:75
-msgid "Listen to live speech events from daemon"
-msgstr "监听来自守护进程的实时语音事件"
-
-#: src/cli/control/register_client.cpp:77
-msgid "Event type filter (committed, partial, status, all; default: committed)"
-msgstr "事件类型过滤 (committed, partial, status, all; 默认: committed)"
-
 #: src/cli/control/client_actions.cpp:189
 #, c-format
 msgid "'%s' is not configured as a %s."

@@ -14,6 +14,7 @@ namespace vinput::cli::config {
 
 void RegisterDeviceCommands(CLI::App& app, CliAction* action) {
   auto* device = app.add_subcommand("device", _("Manage capture devices"));
+  device->alias("dev");
   device->require_subcommand(1);
 
   auto* list = device->add_subcommand("list", _("List available audio input devices"));

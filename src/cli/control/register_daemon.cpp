@@ -13,9 +13,11 @@ namespace vinput::cli::control {
 
 void RegisterDaemonCommands(CLI::App& app, CliAction* action) {
   auto* daemon = app.add_subcommand("daemon", _("Control daemon lifecycle"));
+  daemon->alias("d");
   daemon->require_subcommand(1);
 
   auto* status = daemon->add_subcommand("status", _("Show daemon status"));
+  status->alias("st");
   status->callback([action]() {
     *action = [](Formatter& fmt, const CliContext& ctx) {
       return RunDaemonControlStatus(fmt, ctx);

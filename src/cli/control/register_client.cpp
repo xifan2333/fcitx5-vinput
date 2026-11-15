@@ -15,9 +15,11 @@ namespace vinput::cli::control {
 void RegisterClientCommands(CLI::App& app, CliAction* action) {
   // 1. vinput trigger (list, start, stop)
   auto* trigger = app.add_subcommand("trigger", _("Manage voice triggers"));
+  trigger->alias("trig");
   trigger->require_subcommand(1);
 
   auto* trigger_list = trigger->add_subcommand("list", _("List configured triggers"));
+  trigger_list->alias("ls");
   trigger_list->callback([action]() {
     *action = [](Formatter& fmt, const CliContext& ctx) {
       return RunClientList(ClientKind::Trigger, fmt, ctx);
@@ -44,9 +46,11 @@ void RegisterClientCommands(CLI::App& app, CliAction* action) {
 
   // 2. vinput receiver (list, start, stop)
   auto* receiver = app.add_subcommand("receiver", _("Manage voice receivers"));
+  receiver->alias("recv");
   receiver->require_subcommand(1);
 
   auto* receiver_list = receiver->add_subcommand("list", _("List configured receivers"));
+  receiver_list->alias("ls");
   receiver_list->callback([action]() {
     *action = [](Formatter& fmt, const CliContext& ctx) {
       return RunClientList(ClientKind::Receiver, fmt, ctx);
@@ -68,19 +72,6 @@ void RegisterClientCommands(CLI::App& app, CliAction* action) {
   receiver_stop->callback([action, receiver_stop_id]() {
     *action = [receiver_stop_id](Formatter& fmt, const CliContext& ctx) {
       return RunClientStop(ClientKind::Receiver, *receiver_stop_id, fmt, ctx);
-    };
-  });
-
-  // 3. vinput listen
-  auto listen_type = std::make_shared<std::string>("committed");
-  auto* listen = app.add_subcommand("listen", _("Listen to live speech events from daemon"));
-  listen
-      ->add_option("-t,--type", *listen_type,
-                   _("Event type filter (committed, partial, status, all; default: committed)"))
-      ->check(CLI::IsMember({"committed", "partial", "status", "all"}));
-  listen->callback([action, listen_type]() {
-    *action = [listen_type](Formatter& fmt, const CliContext& ctx) {
-      return RunListen(*listen_type, fmt, ctx);
     };
   });
 }

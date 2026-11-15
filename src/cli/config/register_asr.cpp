@@ -55,6 +55,7 @@ void RegisterHotwordCommands(CLI::App& app, CliAction* action) {
 #if VINPUT_ENABLE_LOCAL_ASR
 void RegisterModelCommands(CLI::App& app, CliAction* action) {
   auto* model = app.add_subcommand("model", _("Manage local ASR models"));
+  model->alias("mod");
   model->require_subcommand(1);
 
   auto available = std::make_shared<bool>(false);
@@ -108,6 +109,7 @@ void RegisterModelCommands(CLI::App& app, CliAction* action) {
 
 void RegisterProviderCommands(CLI::App& app, CliAction* action) {
   auto* provider = app.add_subcommand("provider", _("Manage ASR providers"));
+  provider->alias("prov");
   provider->require_subcommand(1);
 
   auto available = std::make_shared<bool>(false);

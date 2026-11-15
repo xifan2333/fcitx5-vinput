@@ -9,7 +9,6 @@
 namespace vinput::cli::config {
 
 void RegisterConfigCli(CLI::App& app, CliAction* action) {
-  RegisterInitCommands(app, action);
 #if VINPUT_ENABLE_LOCAL_ASR
   RegisterModelCommands(app, action);
   RegisterHotwordCommands(app, action);
