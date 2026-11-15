@@ -17,6 +17,19 @@ std::vector<std::string> BuildCommand(const std::vector<std::string>& args) {
   return vinput::sandbox::WrapHostCommand(std::vector<std::string>(args.begin(), args.end()));
 }
 
+constexpr std::string_view MapJournalctlPriority(std::string_view level) {
+  if (level == "error") {
+    return "err";
+  }
+  if (level == "warn") {
+    return "warning";
+  }
+  if (level == "trace") {
+    return "debug";
+  }
+  return level;
+}
+
 std::vector<std::string> BuildJournalctlCommand(bool follow, int lines,
                                                 const std::string& level = {}) {
   auto args = vinput::sandbox::DaemonLogFilter();
@@ -27,16 +40,8 @@ std::vector<std::string> BuildJournalctlCommand(bool follow, int lines,
     args.emplace_back("-f");
   }
   if (!level.empty()) {
-    std::string priority = level;
-    if (level == "error") {
-      priority = "err";
-    } else if (level == "warn") {
-      priority = "warning";
-    } else if (level == "trace") {
-      priority = "debug";
-    }
     args.emplace_back("-p");
-    args.push_back(priority);
+    args.emplace_back(MapJournalctlPriority(level));
   }
   return args;
 }

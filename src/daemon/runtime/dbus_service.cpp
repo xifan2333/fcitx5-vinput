@@ -287,14 +287,13 @@ int DbusService::handleTranscribeStream(sd_bus_message* m, void* userdata, sd_bu
     return sd_bus_error_set(error, kErrorOperationFailed,
                             "failed to duplicate stream file descriptor");
   }
-  MethodResult result;
-  if (self->transcribe_stream_handler_) {
-    result =
-        self->transcribe_stream_handler_(dup_fd, (scene_id != nullptr) ? scene_id : "", ime != 0);
-  } else {
+  if (!self->transcribe_stream_handler_) {
     close(dup_fd);
-    result = MethodResult::Failure("transcribe stream handler not configured");
+    return ReplyWithMethodResult(
+        m, error, MethodResult::Failure("transcribe stream handler not configured"), "");
   }
+  const auto result =
+      self->transcribe_stream_handler_(dup_fd, (scene_id != nullptr) ? scene_id : "", ime != 0);
   return ReplyWithMethodResult(m, error, result, "");
 }
 

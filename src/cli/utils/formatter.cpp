@@ -37,9 +37,9 @@ public:
   void PrintWarning(const std::string& msg) override {
     if (!is_tty_) {
       std::cerr << Yellow(msg) << "\n";
-    } else {
-      std::cout << Yellow(msg) << "\n";
+      return;
     }
+    std::cout << Yellow(msg) << "\n";
   }
   void PrintJson(const glz::json_t& j) override {
     std::cout << vinput::json::ToPrettyText(j) << "\n";
@@ -47,9 +47,9 @@ public:
   void PrintInfo(const std::string& msg) override {
     if (!is_tty_) {
       std::cerr << Gray(msg) << "\n";
-    } else {
-      std::cout << Gray(msg) << "\n";
+      return;
     }
+    std::cout << Gray(msg) << "\n";
   }
 
 private:

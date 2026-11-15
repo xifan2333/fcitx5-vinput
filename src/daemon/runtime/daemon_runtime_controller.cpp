@@ -1158,14 +1158,16 @@ void DaemonRuntimeController::MaybeDestroyExpiredStreams() {
   }
   std::vector<std::string> to_reclaim;
   for (const auto& lane : SnapshotHeadlessLanes()) {
-    if (lane != nullptr) {
-      if (lane->capture != nullptr) {
-        lane->capture->MaybeDestroyExpiredStream();
-      } else if (lane->stream_fd.load(std::memory_order_relaxed) < 0 &&
-                 lane->controller != nullptr &&
-                 lane->controller->GetStatus() == vinput::dbus::kStatusIdle) {
-        to_reclaim.push_back(lane->client_id);
-      }
+    if (lane == nullptr) {
+      continue;
+    }
+    if (lane->capture != nullptr) {
+      lane->capture->MaybeDestroyExpiredStream();
+      continue;
+    }
+    if (lane->stream_fd.load(std::memory_order_relaxed) < 0 && lane->controller != nullptr &&
+        lane->controller->GetStatus() == vinput::dbus::kStatusIdle) {
+      to_reclaim.push_back(lane->client_id);
     }
   }
   for (const auto& id : to_reclaim) {
@@ -1522,12 +1524,14 @@ DaemonRuntimeController::TranscribeStream(int fd, const std::string& scene_id, b
 
   lane->stream_reader = std::thread([this, lane, scene_id, ime]() {
     const int read_fd = lane->stream_fd.load(std::memory_order_relaxed);
-    if (read_fd >= 0) {
-      PumpAudioStream(read_fd, shutting_down_, *lane->controller);
-      const int fd_to_close = lane->stream_fd.exchange(-1);
-      if (fd_to_close >= 0) {
-        close(fd_to_close);
-      }
+    if (read_fd < 0) {
+      lane->controller->StopRecording(ime, scene_id);
+      return;
+    }
+    PumpAudioStream(read_fd, shutting_down_, *lane->controller);
+    const int fd_to_close = lane->stream_fd.exchange(-1);
+    if (fd_to_close >= 0) {
+      close(fd_to_close);
     }
     lane->controller->StopRecording(ime, scene_id);
   });
