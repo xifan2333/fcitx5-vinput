@@ -697,8 +697,8 @@ ResourcePage::ResourcePage(QWidget* parent)
 
   AttachTableLinkDoubleClickHandler(tableAvailableProviders_, 4);
   AttachTableLinkDoubleClickHandler(tableAvailableAdapters_, 3);
-  AttachTableLinkDoubleClickHandler(tableAvailableTriggers_, 4);
-  AttachTableLinkDoubleClickHandler(tableAvailableReceivers_, 4);
+  AttachTableLinkDoubleClickHandler(tableAvailableTriggers_, 3);
+  AttachTableLinkDoubleClickHandler(tableAvailableReceivers_, 3);
 
   connect(filterAvailableProviders_, &QLineEdit::textChanged, this,
           [this](const QString& text) { ApplyTableFilter(tableAvailableProviders_, text); });

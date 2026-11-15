@@ -648,6 +648,10 @@
         <translation>加载配置失败：%1</translation>
     </message>
     <message>
+        <source>Client not found.</source>
+        <translation>未找到该客户端。</translation>
+    </message>
+    <message>
         <source>Provider not found.</source>
         <translation>未找到提供商。</translation>
     </message>

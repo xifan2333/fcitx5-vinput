@@ -806,19 +806,48 @@ void ControlPage::onClientEdit() {
   if (!client.has_value()) {
     return;
   }
-  CoreConfig config = ConfigManager::Get().Load();
-  ClientSpec* spec = FindClientSpec(config, client->kind, client->id);
-  if (spec == nullptr) {
+
+  CoreConfig config;
+  std::string load_error;
+  if (!ConfigManager::Get().TryLoad(&config, &load_error)) {
+    QMessageBox::critical(
+        this, tr("Error"),
+        tr("Failed to load configuration: %1").arg(QString::fromStdString(load_error)));
     return;
   }
+
+  const ClientSpec* spec = FindClientSpec(config, client->kind, client->id);
+  if (spec == nullptr) {
+    QMessageBox::warning(this, tr("Warning"), tr("Client not found."));
+    populateClientList();
+    return;
+  }
+
   const bool is_trigger = client->kind == "trigger";
   ClientSpec updated;
   if (!ShowClientDialog(this, is_trigger ? tr("Edit Trigger") : tr("Edit Receiver"), *spec,
                         &updated)) {
     return;
   }
-  *spec = std::move(updated);
-  if (!ConfigManager::Get().Save(config)) {
+
+  // The dialog stays open across config writes from other processes, so re-read
+  // before applying: saving the pre-dialog snapshot would roll them back.
+  CoreConfig fresh_config;
+  if (!ConfigManager::Get().TryLoad(&fresh_config, &load_error)) {
+    QMessageBox::critical(
+        this, tr("Error"),
+        tr("Configuration is corrupted or unreadable: %1").arg(QString::fromStdString(load_error)));
+    return;
+  }
+  ClientSpec* target = FindClientSpec(fresh_config, client->kind, client->id);
+  if (target == nullptr) {
+    QMessageBox::warning(this, tr("Warning"), tr("Client not found."));
+    populateClientList();
+    return;
+  }
+
+  *target = std::move(updated);
+  if (!ConfigManager::Get().Save(fresh_config)) {
     QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
     return;
   }
