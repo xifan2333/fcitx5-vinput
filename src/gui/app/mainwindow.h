@@ -54,6 +54,8 @@ private:
   static void onOpenConfigClicked();
   void onCheckUpdateClicked();
   void resetCheckUpdateButton();
+  void dispatchNotificationResult(bool manual, const std::optional<UpdatePayload>& payload,
+                                  bool fetch_ok);
   void onManualCheckCompleted(UpdateCheckResult result,
                               const std::optional<UpdatePayload>& payload = std::nullopt);
   void reloadAll();

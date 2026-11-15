@@ -238,6 +238,9 @@ void TestSemanticVersionComparison() {
   const auto prefixed = vinput::version::Parse("v2.4.3");
 
   ExpectTrue(current.has_value() && newer.has_value() && older.has_value() && prefixed.has_value());
+  if (!current || !newer || !older || !prefixed) {
+    return; // ExpectTrue aborts first; the guard keeps the derefs below provably safe.
+  }
   ExpectTrue(*newer > *current);
   ExpectTrue(*prefixed > *current);
   ExpectTrue(!(*older > *current));

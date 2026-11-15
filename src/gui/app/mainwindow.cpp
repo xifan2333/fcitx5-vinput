@@ -317,38 +317,8 @@ bool ShouldNotifyUpdate(const UpdatePayload& payload, int last_read_id) {
   return true;
 }
 
-void DispatchNotificationResult(MainWindow* window, bool manual,
-                                const std::optional<UpdatePayload>& payload, bool fetch_ok) {
-  if (window == nullptr) {
-    return;
-  }
-  if (!fetch_ok) {
-    if (manual) {
-      window->onManualCheckCompleted(UpdateCheckResult::NetworkError);
-    }
-    return;
-  }
-  if (!payload.has_value()) {
-    if (manual) {
-      window->onManualCheckCompleted(UpdateCheckResult::ParseError);
-    }
-    return;
-  }
-
-  const bool has_newer_version = !payload->version.isEmpty() && IsNewerVersion(payload->version);
-
-  if (manual) {
-    if (has_newer_version) {
-      window->onManualCheckCompleted(UpdateCheckResult::UpdateAvailable, payload);
-    } else {
-      window->onManualCheckCompleted(UpdateCheckResult::UpToDate, payload);
-    }
-    return;
-  }
-
-  if (ShouldNotifyUpdate(*payload, ReadLastNotificationId())) {
-    window->onNotificationReady(payload->id, payload->title, payload->text, payload->url);
-  }
+bool HasNewerVersion(const UpdatePayload& payload) {
+  return !payload.version.isEmpty() && IsNewerVersion(payload.version);
 }
 } // namespace
 
@@ -364,6 +334,34 @@ void MainWindow::resetCheckUpdateButton() {
   if (btnCheckUpdate_ != nullptr) {
     btnCheckUpdate_->setEnabled(true);
     btnCheckUpdate_->setText(tr("Check for Updates"));
+  }
+}
+
+void MainWindow::dispatchNotificationResult(bool manual,
+                                            const std::optional<UpdatePayload>& payload,
+                                            bool fetch_ok) {
+  if (!fetch_ok) {
+    if (manual) {
+      onManualCheckCompleted(UpdateCheckResult::NetworkError);
+    }
+    return;
+  }
+  if (!payload.has_value()) {
+    if (manual) {
+      onManualCheckCompleted(UpdateCheckResult::ParseError);
+    }
+    return;
+  }
+
+  if (manual) {
+    onManualCheckCompleted(HasNewerVersion(*payload) ? UpdateCheckResult::UpdateAvailable
+                                                     : UpdateCheckResult::UpToDate,
+                           payload);
+    return;
+  }
+
+  if (ShouldNotifyUpdate(*payload, ReadLastNotificationId())) {
+    onNotificationReady(payload->id, payload->title, payload->text, payload->url);
   }
 }
 
@@ -415,7 +413,7 @@ void MainWindow::checkNotification(bool manual) {
         QMetaObject::invokeMethod(
             self.data(),
             [self, manual, payload, fetch_ok]() {
-              DispatchNotificationResult(self.data(), manual, payload, fetch_ok);
+              self->dispatchNotificationResult(manual, payload, fetch_ok);
             },
             Qt::QueuedConnection);
 
