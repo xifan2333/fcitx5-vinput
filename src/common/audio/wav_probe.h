@@ -28,7 +28,11 @@ inline size_t DetectWavDataOffset(std::span<const uint8_t> buffer) {
     }
     uint32_t chunk_size = 0;
     std::memcpy(&chunk_size, buffer.data() + pos + kFourCcSize, sizeof(chunk_size));
-    pos += kChunkHeaderSize + chunk_size;
+    const size_t padded_size = (static_cast<size_t>(chunk_size) + 1U) & ~1U;
+    if (pos + kChunkHeaderSize + padded_size < pos) {
+      break;
+    }
+    pos += kChunkHeaderSize + padded_size;
   }
   return kStandardWavHeaderSize;
 }

@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include "common/client/client_command.h"
@@ -97,6 +98,7 @@ private:
   void MaybeApplyPendingAsrBackendReload();
   void DrainIncomingAudio();
   void HandleIncomingAudio(std::span<const int16_t> pcm);
+  void PumpAudioStream(int read_fd);
   void PollActiveSessionEvents();
   bool FailActiveSession(const std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session,
                          const std::string& error_message);
@@ -163,12 +165,7 @@ private:
   std::thread worker_;
 
   struct HeadlessClientLane {
-    std::unique_ptr<AudioCapture> capture;
-    std::shared_ptr<DaemonRuntimeController> controller;
-    std::string client_id;
-    std::thread stream_reader;
-    std::atomic<int> stream_fd{-1};
-
+    HeadlessClientLane() = default;
     ~HeadlessClientLane() {
       const int fd = stream_fd.exchange(-1);
       if (fd >= 0) {
@@ -178,6 +175,16 @@ private:
         stream_reader.join();
       }
     }
+    HeadlessClientLane(const HeadlessClientLane&) = delete;
+    HeadlessClientLane& operator=(const HeadlessClientLane&) = delete;
+    HeadlessClientLane(HeadlessClientLane&&) = delete;
+    HeadlessClientLane& operator=(HeadlessClientLane&&) = delete;
+
+    std::unique_ptr<AudioCapture> capture;
+    std::shared_ptr<DaemonRuntimeController> controller;
+    std::string client_id;
+    std::thread stream_reader;
+    std::atomic<int> stream_fd{-1};
   };
 
   void EmitClientEvent(std::string_view line);

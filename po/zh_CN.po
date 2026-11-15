@@ -1639,3 +1639,8 @@ msgstr "启动音频转录流失败: %s"
 #: src/cli/control/register_daemon.cpp
 msgid "Log level filter (trace, debug, info, warn, error)"
 msgstr "日志等级过滤 (trace, debug, info, warn, error)"
+
+#: src/cli/control/daemon_actions.cpp
+#, c-format
+msgid "D-Bus event loop error: %s"
+msgstr "D-Bus 事件循环错误：%s"

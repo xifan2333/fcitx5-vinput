@@ -122,8 +122,8 @@ void PublishRecognitionText(const std::string& text, const RecognitionDispatchCo
   }
   const auto line = vinput::client::SerializePartialEvent(text, ctx.ime);
   EmitClientLine(ctx.owner_client_id, line);
-  if (ctx.dbus != nullptr) {
-    ctx.dbus->EmitStreamEvent(line);
+  if (ctx.dbus != nullptr && !ctx.owner_client_id.empty()) {
+    ctx.dbus->EmitStreamEvent(std::string(ctx.owner_client_id), line);
   }
 }
 
@@ -193,45 +193,6 @@ void ApplyRecognitionEvents(const std::vector<vinput::daemon::asr::RecognitionEv
 
 constexpr size_t kInitialProbeBytes = 1024;
 constexpr size_t kStreamChunkBytes = 1600; // 50ms of 16kHz 16-bit mono PCM (16000 * 2 * 0.05)
-
-void PumpAudioStream(int read_fd, const std::atomic<bool>& shutting_down,
-                     DaemonRuntimeController& controller) {
-  std::vector<uint8_t> probe_buf(kInitialProbeBytes);
-  const ssize_t probed = read(read_fd, probe_buf.data(), probe_buf.size());
-  if (probed <= 0) {
-    return;
-  }
-
-  const size_t offset =
-      vinput::audio::DetectWavDataOffset(std::span<const uint8_t>(probe_buf.data(), probed));
-  if (offset < static_cast<size_t>(probed)) {
-    const size_t pcm_bytes = static_cast<size_t>(probed) - offset;
-    const size_t num_samples = pcm_bytes / sizeof(int16_t);
-    if (num_samples > 0) {
-      const auto* samples = reinterpret_cast<const int16_t*>(probe_buf.data() + offset);
-      controller.HandleIncomingAudio(std::span<const int16_t>(samples, num_samples));
-    }
-  }
-
-  std::vector<uint8_t> chunk(kStreamChunkBytes);
-  while (!shutting_down.load(std::memory_order_relaxed)) {
-    const ssize_t n = read(read_fd, chunk.data(), chunk.size());
-    if (n < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      break;
-    }
-    if (n == 0) {
-      break;
-    }
-    const size_t num_samples = static_cast<size_t>(n) / sizeof(int16_t);
-    if (num_samples > 0) {
-      const auto* samples = reinterpret_cast<const int16_t*>(chunk.data());
-      controller.HandleIncomingAudio(std::span<const int16_t>(samples, num_samples));
-    }
-  }
-}
 
 } // namespace
 
@@ -428,8 +389,8 @@ void DaemonRuntimeController::MaybeApplyPendingAsrBackendReload() {
 
 void DaemonRuntimeController::EmitClientEvent(std::string_view line) {
   EmitClientLine(owner_client_id_, line);
-  if (dbus_ != nullptr) {
-    dbus_->EmitStreamEvent(std::string(line));
+  if (dbus_ != nullptr && !owner_client_id_.empty()) {
+    dbus_->EmitStreamEvent(owner_client_id_, std::string(line));
   }
 }
 
@@ -1490,6 +1451,45 @@ DaemonRuntimeController::GetOrCreateHeadlessLane(std::string_view client_id) {
   return lane->controller;
 }
 
+void DaemonRuntimeController::PumpAudioStream(int read_fd) {
+  std::vector<uint8_t> probe_buf(kInitialProbeBytes);
+  const ssize_t probed = read(read_fd, probe_buf.data(), probe_buf.size());
+  if (probed <= 0) {
+    return;
+  }
+
+  const size_t probed_bytes = static_cast<size_t>(probed);
+  const size_t offset =
+      vinput::audio::DetectWavDataOffset(std::span<const uint8_t>(probe_buf.data(), probed_bytes));
+  if (offset < probed_bytes) {
+    const size_t pcm_bytes = probed_bytes - offset;
+    const size_t num_samples = pcm_bytes / sizeof(int16_t);
+    if (num_samples > 0) {
+      std::vector<int16_t> initial_samples(num_samples);
+      std::memcpy(initial_samples.data(), probe_buf.data() + offset, num_samples * sizeof(int16_t));
+      HandleIncomingAudio(initial_samples);
+    }
+  }
+
+  std::vector<int16_t> chunk(kStreamChunkBytes / sizeof(int16_t));
+  while (!shutting_down_.load(std::memory_order_relaxed)) {
+    const ssize_t n = read(read_fd, chunk.data(), chunk.size() * sizeof(int16_t));
+    if (n < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    if (n == 0) {
+      break;
+    }
+    const size_t samples_read = static_cast<size_t>(n) / sizeof(int16_t);
+    if (samples_read > 0) {
+      HandleIncomingAudio(std::span<const int16_t>(chunk.data(), samples_read));
+    }
+  }
+}
+
 DbusService::MethodResult
 DaemonRuntimeController::TranscribeStream(int fd, const std::string& scene_id, bool ime) {
   if (shutting_down_.load(std::memory_order_acquire)) {
@@ -1515,20 +1515,20 @@ DaemonRuntimeController::TranscribeStream(int fd, const std::string& scene_id, b
 
   auto start_result = lane->controller->StartRecording(ime, /*is_command=*/false,
                                                        /*selected_text=*/"", /*capture_device=*/"");
-  if (!start_result.success) {
+  if (!start_result.ok) {
     close(fd);
     lane->stream_fd.store(-1, std::memory_order_relaxed);
     ReclaimHeadlessLane(client_id);
     return start_result;
   }
 
-  lane->stream_reader = std::thread([this, lane, scene_id, ime]() {
+  lane->stream_reader = std::thread([lane, scene_id, ime]() {
     const int read_fd = lane->stream_fd.load(std::memory_order_relaxed);
     if (read_fd < 0) {
       lane->controller->StopRecording(ime, scene_id);
       return;
     }
-    PumpAudioStream(read_fd, shutting_down_, *lane->controller);
+    lane->controller->PumpAudioStream(read_fd);
     const int fd_to_close = lane->stream_fd.exchange(-1);
     if (fd_to_close >= 0) {
       close(fd_to_close);
@@ -1536,8 +1536,7 @@ DaemonRuntimeController::TranscribeStream(int fd, const std::string& scene_id, b
     lane->controller->StopRecording(ime, scene_id);
   });
 
-  return DbusService::MethodResult::Success();
-}
+  return DbusService::MethodResult::Success(client_id);
 }
 
 } // namespace vinput::daemon::runtime

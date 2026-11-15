@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "utils/cli_context.h"
 #include "utils/formatter.h"
 
 namespace {
@@ -205,13 +206,13 @@ void TestRenderTableWithUnclosedEscapes() {
 }
 
 void TestTextFormatterNonTtyRouting() {
-  CliContext ctx;
-  ctx.is_tty = false;
-  ctx.json_output = false;
-  auto fmt = CreateFormatter(ctx);
+  const CliContext ctx{.json_output = false, .is_tty = false};
+  const auto fmt = CreateFormatter(ctx);
 
   std::stringstream out_ss;
   std::stringstream err_ss;
+  out_ss.str("");
+  err_ss.str("");
   auto* old_cout = std::cout.rdbuf(out_ss.rdbuf());
   auto* old_cerr = std::cerr.rdbuf(err_ss.rdbuf());
 
@@ -230,13 +231,13 @@ void TestTextFormatterNonTtyRouting() {
 }
 
 void TestJsonFormatterNonTtyRouting() {
-  CliContext ctx;
-  ctx.is_tty = false;
-  ctx.json_output = true;
-  auto fmt = CreateFormatter(ctx);
+  const CliContext ctx{.json_output = true, .is_tty = false};
+  const auto fmt = CreateFormatter(ctx);
 
   std::stringstream out_ss;
   std::stringstream err_ss;
+  out_ss.str("");
+  err_ss.str("");
   auto* old_cout = std::cout.rdbuf(out_ss.rdbuf());
   auto* old_cerr = std::cerr.rdbuf(err_ss.rdbuf());
 

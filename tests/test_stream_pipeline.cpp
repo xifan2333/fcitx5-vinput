@@ -1,4 +1,3 @@
-#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -76,6 +75,25 @@ void TestDetectWavDataOffsetWithPrecedingChunk() {
   TEST_ASSERT(DetectWavDataOffset(wav) == 56);
 }
 
+void TestDetectWavDataOffsetOddChunkAlignment() {
+  using vinput::audio::DetectWavDataOffset;
+
+  std::vector<uint8_t> wav(56 + 100, 0);
+  std::memcpy(wav.data(), "RIFF", 4);
+  std::memcpy(wav.data() + 8, "WAVE", 4);
+  std::memcpy(wav.data() + 12, "fmt ", 4);
+  const uint32_t fmt_size = 16;
+  std::memcpy(wav.data() + 16, &fmt_size, 4);
+  std::memcpy(wav.data() + 36, "JUNK", 4);
+  const uint32_t junk_size = 3;
+  std::memcpy(wav.data() + 40, &junk_size, 4);
+  std::memcpy(wav.data() + 48, "data", 4);
+  const uint32_t data_size = 100;
+  std::memcpy(wav.data() + 52, &data_size, 4);
+
+  TEST_ASSERT(DetectWavDataOffset(wav) == 56);
+}
+
 void TestDetectWavDataOffsetFallback() {
   using vinput::audio::DetectWavDataOffset;
 
@@ -116,6 +134,7 @@ int main() {
   TestDetectWavDataOffsetRawPcm();
   TestDetectWavDataOffsetStandardWav();
   TestDetectWavDataOffsetWithPrecedingChunk();
+  TestDetectWavDataOffsetOddChunkAlignment();
   TestDetectWavDataOffsetFallback();
   TestStreamWireProtocol();
   std::cout << "All stream pipeline tests passed successfully.\n";

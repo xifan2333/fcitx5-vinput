@@ -158,9 +158,9 @@ complete -c vinput -n "__fish_seen_subcommand_from daemon d; and not __fish_seen
 complete -c vinput -n "__fish_seen_subcommand_from daemon d; and not __fish_seen_subcommand_from status st start stop restart log pipe" -a log -d "Show daemon logs"
 complete -c vinput -n "__fish_seen_subcommand_from daemon d; and not __fish_seen_subcommand_from status st start stop restart log pipe" -a pipe -d "Stream audio from STDIN to daemon for transcription"
 complete -c vinput -n "__fish_seen_subcommand_from daemon d; and __fish_seen_subcommand_from log" -s f -l follow -d "Follow log output"
-complete -c vinput -n "__fish_seen_subcommand_from daemon d; and __fish_seen_subcommand_from log" -s n -l lines -d "Number of log lines"
-complete -c vinput -n "__fish_seen_subcommand_from daemon d; and __fish_seen_subcommand_from log" -s l -l level -a "trace debug info warn error" -d "Log level filter"
-complete -c vinput -n "__fish_seen_subcommand_from daemon d; and __fish_seen_subcommand_from pipe" -s s -l scene -a "(__fish_vinput_installed_scenes)" -d "Scene ID"
+complete -c vinput -n "__fish_seen_subcommand_from daemon d; and __fish_seen_subcommand_from log" -s n -l lines -r -d "Number of log lines"
+complete -c vinput -n "__fish_seen_subcommand_from daemon d; and __fish_seen_subcommand_from log" -s l -l level -r -a "trace debug info warn error" -d "Log level filter"
+complete -c vinput -n "__fish_seen_subcommand_from daemon d; and __fish_seen_subcommand_from pipe" -s s -l scene -r -a "(__fish_vinput_installed_scenes)" -d "Scene ID"
 complete -c vinput -n "__fish_seen_subcommand_from daemon d; and __fish_seen_subcommand_from pipe" -l ime -d "Commit recognized text to desktop IME input context"
 
 # trigger

@@ -48,7 +48,7 @@ public:
   void EmitRecognitionPartial(const std::string& text);
   void EmitStatusChanged(const std::string& status);
   void EmitDesktopNotification(const vinput::notify::Notification& notification);
-  void EmitStreamEvent(const std::string& json_line);
+  void EmitStreamEvent(const std::string& client_id, const std::string& json_line);
 
   using TranscribeStreamHandler =
       std::function<MethodResult(int fd, const std::string& scene_id, bool ime)>;
@@ -86,6 +86,7 @@ private:
   struct PendingEmit {
     enum class Type : std::uint8_t { Result, Partial, Status, DesktopNotification, StreamEvent };
     Type type = Type::Result;
+    std::string client_id;
     std::string payload;
     vinput::notify::Notification desktop_notification;
   };

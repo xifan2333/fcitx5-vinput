@@ -36,16 +36,16 @@ CliParseResult ParseArgs(std::vector<std::string> args) {
   vinput::cli::config::RegisterConfigCli(app, &action);
   vinput::cli::control::RegisterControlCli(app, &action);
 
-  std::vector<std::string> full_args;
-  full_args.reserve(args.size() + 1);
-  full_args.emplace_back("vinput");
-  for (auto& a : args) {
-    full_args.push_back(std::move(a));
+  std::vector<const char*> c_args;
+  c_args.reserve(args.size() + 1);
+  c_args.push_back("vinput");
+  for (const auto& a : args) {
+    c_args.push_back(a.c_str());
   }
 
   CliParseResult res;
   try {
-    app.parse(full_args);
+    app.parse(static_cast<int>(c_args.size()), c_args.data());
     res.success = true;
     res.has_action = static_cast<bool>(action);
   } catch (const CLI::ParseError& e) {

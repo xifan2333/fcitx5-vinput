@@ -74,12 +74,12 @@ static const sd_bus_vtable vtable[] = {
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodGetClientStatuses, "", "a(sbx)", &DbusService::handleGetClientStatuses,
                   SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_METHOD(kMethodTranscribeStream, "hsb", "", &DbusService::handleTranscribeStream,
+    SD_BUS_METHOD(kMethodTranscribeStream, "hsb", "s", &DbusService::handleTranscribeStream,
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_SIGNAL(kSignalRecognitionResult, "s", 0),
     SD_BUS_SIGNAL(kSignalRecognitionPartial, "s", 0),
     SD_BUS_SIGNAL(kSignalStatusChanged, "s", 0),
-    SD_BUS_SIGNAL(kSignalStreamEvent, "s", 0),
+    SD_BUS_SIGNAL(kSignalStreamEvent, "ss", 0),
     SD_BUS_VTABLE_END,
 };
 
@@ -171,8 +171,8 @@ void DbusService::FlushEmitQueue() {
       }
       break;
     case PendingEmit::Type::StreamEvent:
-      sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalStreamEvent, "s",
-                         item.payload.c_str());
+      sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalStreamEvent, "ss",
+                         item.client_id.c_str(), item.payload.c_str());
       break;
     }
   }
@@ -219,9 +219,10 @@ void DbusService::EmitDesktopNotification(const vinput::notify::Notification& no
   EnqueueEmit(std::move(item));
 }
 
-void DbusService::EmitStreamEvent(const std::string& json_line) {
+void DbusService::EmitStreamEvent(const std::string& client_id, const std::string& json_line) {
   PendingEmit item;
   item.type = PendingEmit::Type::StreamEvent;
+  item.client_id = client_id;
   item.payload = json_line;
   EnqueueEmit(std::move(item));
 }
@@ -294,7 +295,7 @@ int DbusService::handleTranscribeStream(sd_bus_message* m, void* userdata, sd_bu
   }
   const auto result =
       self->transcribe_stream_handler_(dup_fd, (scene_id != nullptr) ? scene_id : "", ime != 0);
-  return ReplyWithMethodResult(m, error, result, "");
+  return ReplyWithMethodResult(m, error, result, "s");
 }
 
 int DbusService::handleStartRecording(sd_bus_message* m, void* userdata, sd_bus_error* error) {

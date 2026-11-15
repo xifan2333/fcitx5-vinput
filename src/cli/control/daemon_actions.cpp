@@ -1,13 +1,16 @@
 #include "cli/control/daemon_actions.h"
 
 #include <atomic>
+#include <cerrno>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <iostream>
 #include <string>
+#include <systemd/sd-bus.h>
 #include <unistd.h>
 
 #include "common/dbus/dbus_interface.h"
@@ -22,23 +25,31 @@
 
 namespace {
 
-std::atomic<bool> g_pipe_interrupted{false};
+std::atomic<bool>& PipeInterruptedFlag() {
+  static std::atomic<bool> flag{false};
+  return flag;
+}
 
 void OnPipeSignal(int sig) {
   if (sig == SIGINT || sig == SIGTERM) {
-    g_pipe_interrupted.store(true, std::memory_order_relaxed);
+    PipeInterruptedFlag().store(true, std::memory_order_relaxed);
   }
 }
 
 struct PipeStreamContext {
+  std::string target_client_id;
   std::atomic<bool> finished{false};
   std::atomic<bool> broken{false};
 };
 
 int OnStreamEvent(sd_bus_message* msg, void* userdata, sd_bus_error* /*ret_error*/) {
   auto* pctx = static_cast<PipeStreamContext*>(userdata);
+  const char* client_id = nullptr;
   const char* json_line = nullptr;
-  if (sd_bus_message_read(msg, "s", &json_line) < 0 || json_line == nullptr) {
+  if (sd_bus_message_read(msg, "ss", &client_id, &json_line) < 0 || json_line == nullptr) {
+    return 0;
+  }
+  if (client_id == nullptr || pctx->target_client_id != client_id) {
     return 0;
   }
   std::cout << json_line << '\n';
@@ -67,7 +78,7 @@ constexpr uint64_t kBusWaitTimeoutUs = 250'000; // 250ms
 int ProcessPipeLoop(sd_bus* bus, PipeStreamContext& pctx) {
   while (!pctx.finished.load(std::memory_order_relaxed) &&
          !pctx.broken.load(std::memory_order_relaxed) &&
-         !g_pipe_interrupted.load(std::memory_order_relaxed)) {
+         !PipeInterruptedFlag().load(std::memory_order_relaxed)) {
     const int r = sd_bus_process(bus, nullptr);
     if (r > 0) {
       continue;
@@ -212,24 +223,39 @@ int RunDaemonControlPipe(const std::string& scene_id, bool ime, Formatter& /*fmt
   }
 
   std::string start_error;
-  if (!dbus.TranscribeStream(STDIN_FILENO, scene_id, ime, &start_error)) {
+  if (!dbus.TranscribeStream(STDIN_FILENO, scene_id, ime, &pctx.target_client_id, &start_error)) {
     std::cerr << ::fmt::sprintf(_("Failed to start audio transcription stream: %s"), start_error)
               << '\n';
     sd_bus_slot_unref(slot);
     return 1;
   }
 
-  g_pipe_interrupted.store(false, std::memory_order_relaxed);
+  PipeInterruptedFlag().store(false, std::memory_order_relaxed);
   const auto prev_int = std::signal(SIGINT, OnPipeSignal);
   const auto prev_term = std::signal(SIGTERM, OnPipeSignal);
   const auto prev_pipe = std::signal(SIGPIPE, [](int /*sig*/) {});
 
-  ProcessPipeLoop(dbus.GetBus(), pctx);
+  const int loop_rc = ProcessPipeLoop(dbus.GetBus(), pctx);
 
   std::signal(SIGINT, prev_int);
   std::signal(SIGTERM, prev_term);
   std::signal(SIGPIPE, prev_pipe);
   sd_bus_slot_unref(slot);
+
+  if (!pctx.finished.load(std::memory_order_relaxed) && !pctx.target_client_id.empty()) {
+    dbus.StopClient(pctx.target_client_id);
+  }
+
+  if (loop_rc < 0) {
+    std::cerr << ::fmt::sprintf(_("D-Bus event loop error: %s"), strerror(-loop_rc)) << '\n';
+    return 1;
+  }
+  if (PipeInterruptedFlag().load(std::memory_order_relaxed)) {
+    return 130;
+  }
+  if (pctx.broken.load(std::memory_order_relaxed)) {
+    return 1;
+  }
 
   return 0;
 }

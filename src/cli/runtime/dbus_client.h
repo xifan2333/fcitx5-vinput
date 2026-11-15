@@ -34,7 +34,7 @@ public:
   bool StopRecording(const std::string& scene_id, std::string* error = nullptr);
   bool ReloadAsrBackend(std::string* error = nullptr);
   bool TranscribeStream(int fd, const std::string& scene_id, bool ime,
-                        std::string* error = nullptr);
+                        std::string* out_client_id = nullptr, std::string* error = nullptr);
   bool StartClient(const std::string& client_id, std::string* error = nullptr);
   bool StopClient(const std::string& client_id, std::string* error = nullptr);
   bool GetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses,

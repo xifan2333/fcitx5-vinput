@@ -1,9 +1,12 @@
 #include "cli/runtime/systemd_client.h"
 
+#include <array>
 #include <exception>
 #include <fmt/printf.h>
 #include <string>
+#include <string_view>
 #include <subprocess.hpp>
+#include <utility>
 #include <vector>
 
 #include "common/utils/path_utils.h"
@@ -18,14 +21,15 @@ std::vector<std::string> BuildCommand(const std::vector<std::string>& args) {
 }
 
 constexpr std::string_view MapJournalctlPriority(std::string_view level) {
-  if (level == "error") {
-    return "err";
-  }
-  if (level == "warn") {
-    return "warning";
-  }
-  if (level == "trace") {
-    return "debug";
+  constexpr std::array<std::pair<std::string_view, std::string_view>, 3> kPriorityMap{{
+      {"error", "err"},
+      {"warn", "warning"},
+      {"trace", "debug"},
+  }};
+  for (const auto& [from, to] : kPriorityMap) {
+    if (level == from) {
+      return to;
+    }
   }
   return level;
 }
