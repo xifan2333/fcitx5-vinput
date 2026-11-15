@@ -97,10 +97,14 @@ MainWindow::MainWindow(QWidget* parent)
   auto* btnOpenConfig = new QPushButton(tr("Open Config"), this);
   connect(btnOpenConfig, &QPushButton::clicked, this, &MainWindow::onOpenConfigClicked);
 
+  btnCheckUpdate_ = new QPushButton(tr("Check for Updates"), this);
+  connect(btnCheckUpdate_, &QPushButton::clicked, this, &MainWindow::onCheckUpdateClicked);
+
   auto* btnSave = new QPushButton(tr("Save Settings"), this);
   connect(btnSave, &QPushButton::clicked, this, &MainWindow::onSaveClicked);
 
   bottomLayout->addWidget(btnOpenConfig);
+  bottomLayout->addWidget(btnCheckUpdate_);
   bottomLayout->addStretch();
   bottomLayout->addWidget(btnSave);
   mainLayout->addLayout(bottomLayout);
@@ -296,54 +300,108 @@ std::optional<NotificationPayload> ParseNotificationPayload(std::string_view con
   };
 }
 
+bool IsNewerVersion(const QString& remote_ver_str) {
+  if (remote_ver_str.isEmpty()) {
+    return false;
+  }
+  const auto remote_ver = vinput::version::Parse(remote_ver_str.toStdString());
+  const auto current_ver = vinput::version::Parse(vinput::version::CurrentHostVersion());
+  if (!remote_ver.has_value() || !current_ver.has_value()) {
+    return false;
+  }
+  return *remote_ver > *current_ver;
+}
+
 bool ShouldNotifyUpdate(const NotificationPayload& payload, int last_read_id) {
   if (payload.id <= last_read_id) {
     return false;
   }
-  if (!payload.version.isEmpty()) {
-    const auto remote_ver = vinput::version::Parse(payload.version.toStdString());
-    const auto current_ver = vinput::version::Parse(vinput::version::CurrentHostVersion());
-    if (remote_ver.has_value() && current_ver.has_value()) {
-      if (*remote_ver <= *current_ver) {
-        return false;
-      }
-    }
+  if (!payload.version.isEmpty() && !IsNewerVersion(payload.version)) {
+    return false;
   }
   return true;
 }
+
+void DispatchNotificationResult(MainWindow* window, bool manual,
+                                const std::optional<NotificationPayload>& payload, bool fetch_ok) {
+  if (window == nullptr) {
+    return;
+  }
+  if (manual) {
+    if (!fetch_ok || !payload.has_value()) {
+      window->onManualCheckCompleted(false, false, {}, {}, {}, {});
+      return;
+    }
+    const bool has_update = payload->version.isEmpty() || IsNewerVersion(payload->version);
+    window->onManualCheckCompleted(true, has_update, QString::number(payload->id), payload->title,
+                                   payload->text, payload->url);
+    return;
+  }
+
+  if (fetch_ok && payload.has_value() && ShouldNotifyUpdate(*payload, ReadLastNotificationId())) {
+    window->onNotificationReady(QString::number(payload->id), payload->title, payload->text,
+                                payload->url);
+  }
+}
 } // namespace
 
-void MainWindow::checkNotification() {
+void MainWindow::onCheckUpdateClicked() {
+  if (btnCheckUpdate_ != nullptr) {
+    btnCheckUpdate_->setEnabled(false);
+    btnCheckUpdate_->setText(tr("Checking..."));
+  }
+  checkNotification(/*manual=*/true);
+}
+
+void MainWindow::resetCheckUpdateButton() {
+  if (btnCheckUpdate_ != nullptr) {
+    btnCheckUpdate_->setEnabled(true);
+    btnCheckUpdate_->setText(tr("Check for Updates"));
+  }
+}
+
+void MainWindow::onManualCheckCompleted(bool success, bool has_update, const QString& id,
+                                        const QString& title, const QString& text,
+                                        const QString& url) {
+  resetCheckUpdateButton();
+  if (!success) {
+    QMessageBox::warning(this, tr("Check for Updates"),
+                         tr("Failed to check for updates. Please check your network connection."));
+    return;
+  }
+  if (has_update) {
+    onNotificationReady(id, title, text, url);
+  } else {
+    const auto current_version =
+        QString::fromUtf8(vinput::version::CurrentHostVersion().data(),
+                          static_cast<int>(vinput::version::CurrentHostVersion().size()));
+    QMessageBox::information(this, tr("Check for Updates"),
+                             tr("You are using the latest version (%1).").arg(current_version));
+  }
+}
+
+void MainWindow::checkNotification(bool manual) {
   const QPointer<MainWindow> self(this);
   auto* worker = new vinput::gui::DownloadWorker(this);
-  worker->SetTask([self](std::string* /*error*/, const std::atomic<bool>* cancel_token) -> bool {
-    const auto content = FetchNotificationJson(cancel_token);
-    if (!content.has_value() || vinput::gui::IsWorkerCancelled(cancel_token)) {
-      return true;
-    }
+  worker->SetTask(
+      [self, manual](std::string* /*error*/, const std::atomic<bool>* cancel_token) -> bool {
+        const auto content = FetchNotificationJson(cancel_token);
+        const bool fetch_ok = content.has_value() && !vinput::gui::IsWorkerCancelled(cancel_token);
+        const auto payload = fetch_ok ? ParseNotificationPayload(*content) : std::nullopt;
 
-    const auto payload = ParseNotificationPayload(*content);
-    if (!payload.has_value() || !ShouldNotifyUpdate(*payload, ReadLastNotificationId()) ||
-        vinput::gui::IsWorkerCancelled(cancel_token)) {
-      return true;
-    }
+        if (vinput::gui::IsWorkerCancelled(cancel_token) || self.isNull()) {
+          return true;
+        }
 
-    if (self.isNull()) {
-      return true;
-    }
+        QMetaObject::invokeMethod(
+            self.data(),
+            [self, manual, payload, fetch_ok]() {
+              DispatchNotificationResult(self.data(), manual, payload, fetch_ok);
+            },
+            Qt::QueuedConnection);
 
-    QMetaObject::invokeMethod(
-        self.data(),
-        [self, notification = *payload]() {
-          if (!self.isNull()) {
-            self->onNotificationReady(QString::number(notification.id), notification.title,
-                                      notification.text, notification.url);
-          }
-        },
-        Qt::QueuedConnection);
-
-    return true;
-  });
+        return true;
+      });
   connect(worker, &QThread::finished, worker, &QObject::deleteLater);
   worker->start();
 }

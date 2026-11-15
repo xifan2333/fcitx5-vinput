@@ -9,6 +9,8 @@
 
 #include "config.h"
 
+class QPushButton;
+
 namespace vinput::gui {
 class ControlPage;
 class ResourcePage;
@@ -33,13 +35,18 @@ public:
 private:
   void onSaveClicked();
   static void onOpenConfigClicked();
+  void onCheckUpdateClicked();
+  void resetCheckUpdateButton();
+  void onManualCheckCompleted(bool success, bool has_update, const QString& id,
+                              const QString& title, const QString& text, const QString& url);
   void reloadAll();
   void onNotificationReady(const QString& id, const QString& title, const QString& text,
                            const QString& url);
 
-  void checkNotification();
+  void checkNotification(bool manual = false);
 
   QTabWidget* tabWidget_;
+  QPushButton* btnCheckUpdate_{nullptr};
 
   vinput::gui::ControlPage* controlPage_;
   vinput::gui::ResourcePage* resourcePage_;
