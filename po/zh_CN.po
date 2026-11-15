@@ -1635,3 +1635,7 @@ msgstr "订阅守护进程音频流事件失败。"
 #, c-format
 msgid "Failed to start audio transcription stream: %s"
 msgstr "启动音频转录流失败: %s"
+
+#: src/cli/control/register_daemon.cpp
+msgid "Log level filter (trace, debug, info, warn, error)"
+msgstr "日志等级过滤 (trace, debug, info, warn, error)"

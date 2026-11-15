@@ -12,7 +12,7 @@ struct DaemonControlResult {
 };
 
 int SystemctlStop();
-int JournalctlLogs(bool follow, int lines);
+int JournalctlLogs(bool follow, int lines, const std::string& level = {});
 std::string JournalctlLogsText(int lines);
 DaemonControlResult SystemctlStartWithDiagnostics();
 DaemonControlResult SystemctlRestartWithDiagnostics();

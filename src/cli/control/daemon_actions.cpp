@@ -178,10 +178,11 @@ int RunDaemonControlRestart(Formatter& fmt, const CliContext& ctx) {
   return 1;
 }
 
-int RunDaemonControlLogs(bool follow, int lines, Formatter& fmt, const CliContext& ctx) {
+int RunDaemonControlLogs(bool follow, int lines, const std::string& level, Formatter& fmt,
+                         const CliContext& ctx) {
   (void)fmt;
   (void)ctx;
-  return vinput::cli::JournalctlLogs(follow, lines);
+  return vinput::cli::JournalctlLogs(follow, lines, level);
 }
 
 int RunDaemonControlPipe(const std::string& scene_id, bool ime, Formatter& /*fmt*/,
