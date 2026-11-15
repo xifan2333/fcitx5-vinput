@@ -283,6 +283,8 @@ void TestHierarchicalResourcePaths() {
   ExpectTrue(IdFromRelativePath("adapter", ".").empty());
   ExpectTrue(IdFromRelativePath("adapter", "..").empty());
   ExpectTrue(IdFromRelativePath("adapter", std::filesystem::path("..") / "escape").empty());
+  ExpectTrue(IdFromRelativePath("adapter", "cjk-trim.py").empty());
+  ExpectTrue(IdFromRelativePath("adapter", std::filesystem::path("vendor") / "tool.py").empty());
   ExpectTrue(
       DefaultLocalScriptPath(Kind::kTrigger, "receiver.vendor.foo").empty()); // Mismatched kind
 }
