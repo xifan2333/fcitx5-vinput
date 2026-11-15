@@ -6,6 +6,8 @@
 #include <QtWidgets/qmainwindow.h>
 #include <QtWidgets/qtabwidget.h>
 #include <QtWidgets/qwidget.h>
+#include <cstdint>
+#include <optional>
 
 #include "config.h"
 
@@ -24,6 +26,21 @@ class MainWindow : public QMainWindow {
   Q_OBJECT
 
 public:
+  enum class UpdateCheckResult : std::uint8_t {
+    NetworkError,
+    ParseError,
+    UpToDate,
+    UpdateAvailable,
+  };
+
+  struct UpdatePayload {
+    QString id;
+    QString version;
+    QString title;
+    QString text;
+    QString url;
+  };
+
   explicit MainWindow(QWidget* parent = nullptr);
   ~MainWindow() override;
 
@@ -37,8 +54,8 @@ private:
   static void onOpenConfigClicked();
   void onCheckUpdateClicked();
   void resetCheckUpdateButton();
-  void onManualCheckCompleted(bool success, bool has_update, const QString& id,
-                              const QString& title, const QString& text, const QString& url);
+  void onManualCheckCompleted(UpdateCheckResult result,
+                              const std::optional<UpdatePayload>& payload = std::nullopt);
   void reloadAll();
   void onNotificationReady(const QString& id, const QString& title, const QString& text,
                            const QString& url);
@@ -47,6 +64,7 @@ private:
 
   QTabWidget* tabWidget_;
   QPushButton* btnCheckUpdate_{nullptr};
+  bool checking_update_{false};
 
   vinput::gui::ControlPage* controlPage_;
   vinput::gui::ResourcePage* resourcePage_;

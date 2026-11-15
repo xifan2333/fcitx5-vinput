@@ -320,6 +320,11 @@
         <translation>检测更新失败，请检查网络连接。</translation>
     </message>
     <message>
+        <location filename="../src/gui/app/mainwindow.cpp" line="345"/>
+        <source>Failed to parse update information.</source>
+        <translation>解析更新信息失败。</translation>
+    </message>
+    <message>
         <location filename="../src/gui/app/mainwindow.cpp" line="354"/>
         <source>You are using the latest version (%1).</source>
         <translation>当前已是最新版本 (%1)。</translation>
