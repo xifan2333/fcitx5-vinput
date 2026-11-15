@@ -82,6 +82,7 @@ private:
   QTableWidget* tableClients_{nullptr};
   QPushButton* btnClientStart_{nullptr};
   QPushButton* btnClientStop_{nullptr};
+  QPushButton* btnClientEdit_{nullptr};
   QCheckBox* chkClientAutoStart_{nullptr};
   bool updatingClientSelection_{false};
   std::unordered_set<std::string> pendingClientIds_;
@@ -108,6 +109,7 @@ private slots:
 
   void onClientStart();
   void onClientStop();
+  void onClientEdit();
   void onClientAutoStartToggled(bool checked);
 
   void checkSandboxPermissions();

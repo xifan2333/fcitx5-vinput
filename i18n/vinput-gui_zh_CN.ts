@@ -608,12 +608,28 @@
         <translation>&lt;b&gt;客户端进程&lt;/b&gt;</translation>
     </message>
     <message>
-        <source>ID</source>
-        <translation>ID</translation>
+        <source>Type</source>
+        <translation>类型</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>名称</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation>状态</translation>
     </message>
     <message>
         <source>Autostart</source>
         <translation>自动启动</translation>
+    </message>
+    <message>
+        <source>Edit Trigger</source>
+        <translation>编辑触发器</translation>
+    </message>
+    <message>
+        <source>Edit Receiver</source>
+        <translation>编辑接收器</translation>
     </message>
     <message>
         <source>Automatically start this client when the daemon starts.</source>
@@ -630,6 +646,10 @@
     <message>
         <source>Failed to load configuration: %1</source>
         <translation>加载配置失败：%1</translation>
+    </message>
+    <message>
+        <source>Client not found.</source>
+        <translation>未找到该客户端。</translation>
     </message>
     <message>
         <source>Provider not found.</source>
@@ -1521,22 +1541,6 @@ Found %2 model(s).</source>
     <message>
         <source>Updating receiver %1...</source>
         <translation>正在更新接收器 %1...</translation>
-    </message>
-    <message>
-        <source>Configure Trigger</source>
-        <translation>配置触发器</translation>
-    </message>
-    <message>
-        <source>Trigger '%1' updated.</source>
-        <translation>触发器“%1”已更新。</translation>
-    </message>
-    <message>
-        <source>Configure Receiver</source>
-        <translation>配置接收器</translation>
-    </message>
-    <message>
-        <source>Receiver '%1' updated.</source>
-        <translation>接收器“%1”已更新。</translation>
     </message>
     <message>
         <source>Are you sure you want to remove trigger '%1'?</source>

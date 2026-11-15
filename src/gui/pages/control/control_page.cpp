@@ -68,6 +68,7 @@
 
 #include "config.h"
 #include "dialogs/asr_provider_dialog.h"
+#include "dialogs/client_dialog.h"
 #include "utils/gui_helpers.h"
 
 namespace vinput::gui {
@@ -231,8 +232,15 @@ QString FormatClientStatus(bool running, int pid) {
   return ControlPage::tr("Running");
 }
 
+// Clients register under a namespaced id such as `trigger.vinput.web_remote`; the
+// registry i18n map carries the human-readable title for the packaged ones.
+QString ClientDisplayName(const vinput::registry::I18nMap& i18n_map, const std::string& id) {
+  return QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id + ".title", id));
+}
+
 void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trigger,
-                     const QString& selected_id, const vinput::cli::ClientStatusMap& status_map) {
+                     const QString& selected_id, const vinput::cli::ClientStatusMap& status_map,
+                     const vinput::registry::I18nMap& i18n_map) {
   const int row = table->rowCount();
   table->insertRow(row);
 
@@ -247,7 +255,7 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   itemType->setData(Qt::UserRole + 3, running);
   itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
 
-  auto* itemId = new QTableWidgetItem(id);
+  auto* itemId = new QTableWidgetItem(ClientDisplayName(i18n_map, client.id));
   auto* itemStatus = new QTableWidgetItem(FormatClientStatus(running, static_cast<int>(pid)));
   auto* itemAutostart = new QTableWidgetItem(client.autoStart ? ControlPage::tr("Enabled")
                                                               : ControlPage::tr("Disabled"));
@@ -262,16 +270,24 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   }
 }
 
-bool UpdateClientAutostart(CoreConfig& config, std::string_view client_id, std::string_view kind,
-                           bool checked) {
+ClientSpec* FindClientSpec(CoreConfig& config, std::string_view kind, std::string_view id) {
   auto& list = (kind == "trigger") ? config.triggers : config.receivers;
   for (auto& client : list) {
-    if (client.id == client_id) {
-      client.autoStart = checked;
-      return true;
+    if (client.id == id) {
+      return &client;
     }
   }
-  return false;
+  return nullptr;
+}
+
+bool UpdateClientAutostart(CoreConfig& config, std::string_view client_id, std::string_view kind,
+                           bool checked) {
+  ClientSpec* client = FindClientSpec(config, kind, client_id);
+  if (client == nullptr) {
+    return false;
+  }
+  client->autoStart = checked;
+  return true;
 }
 
 std::optional<AsrProviderData> FindAsrProviderData(const CoreConfig& config,
@@ -435,6 +451,8 @@ ControlPage::ControlPage(QWidget* parent)
   btnAsrSetActive_->setEnabled(false);
 
   connect(&I18nCache::Get(), &I18nCache::mapUpdated, this, &ControlPage::refreshAsrList);
+  // Client rows render registry titles, so a refreshed map must repaint them too.
+  connect(&I18nCache::Get(), &I18nCache::mapUpdated, this, &ControlPage::populateClientList);
 
   layout->addSpacing(20);
 
@@ -449,7 +467,7 @@ ControlPage::ControlPage(QWidget* parent)
   auto* clientContentLayout = new QHBoxLayout();
 
   tableClients_->setColumnCount(4);
-  tableClients_->setHorizontalHeaderLabels({tr("Type"), tr("ID"), tr("Status"), tr("Autostart")});
+  tableClients_->setHorizontalHeaderLabels({tr("Type"), tr("Name"), tr("Status"), tr("Autostart")});
   tableClients_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
   tableClients_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
   tableClients_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
@@ -470,15 +488,18 @@ ControlPage::ControlPage(QWidget* parent)
   auto* clientBtnLayout = new QVBoxLayout();
   btnClientStart_ = new QPushButton(tr("Start"));
   btnClientStop_ = new QPushButton(tr("Stop"));
+  btnClientEdit_ = new QPushButton(tr("Edit"));
   chkClientAutoStart_ = new QCheckBox(tr("Start with daemon"));
   chkClientAutoStart_->setToolTip(tr("Automatically start this client when the daemon starts."));
 
   btnClientStart_->setEnabled(false);
   btnClientStop_->setEnabled(false);
+  btnClientEdit_->setEnabled(false);
   chkClientAutoStart_->setEnabled(false);
 
   clientBtnLayout->addWidget(btnClientStart_);
   clientBtnLayout->addWidget(btnClientStop_);
+  clientBtnLayout->addWidget(btnClientEdit_);
   clientBtnLayout->addWidget(chkClientAutoStart_);
   clientBtnLayout->addStretch();
   clientContentLayout->addLayout(clientBtnLayout);
@@ -487,6 +508,7 @@ ControlPage::ControlPage(QWidget* parent)
 
   connect(btnClientStart_, &QPushButton::clicked, this, &ControlPage::onClientStart);
   connect(btnClientStop_, &QPushButton::clicked, this, &ControlPage::onClientStop);
+  connect(btnClientEdit_, &QPushButton::clicked, this, &ControlPage::onClientEdit);
   connect(chkClientAutoStart_, &QCheckBox::toggled, this, &ControlPage::onClientAutoStartToggled);
   connect(tableClients_, &QTableWidget::itemSelectionChanged, this,
           &ControlPage::updateClientButtons);
@@ -663,6 +685,7 @@ void ControlPage::updateAsrButtons() {
 }
 
 void ControlPage::populateClientList() {
+  const auto i18n_map = I18nCache::Get().GetMap();
   const QString selected_id =
       (tableClients_->currentRow() >= 0 &&
        tableClients_->item(tableClients_->currentRow(), 0) != nullptr)
@@ -675,10 +698,10 @@ void ControlPage::populateClientList() {
   const auto status_map = dbus.GetClientStatusesMap();
 
   for (const auto& trigger : config.triggers) {
-    AppendClientRow(tableClients_, trigger, true, selected_id, status_map);
+    AppendClientRow(tableClients_, trigger, true, selected_id, status_map, i18n_map);
   }
   for (const auto& receiver : config.receivers) {
-    AppendClientRow(tableClients_, receiver, false, selected_id, status_map);
+    AppendClientRow(tableClients_, receiver, false, selected_id, status_map, i18n_map);
   }
 
   updateClientButtons();
@@ -731,6 +754,7 @@ void ControlPage::updateClientButtons() {
   if (!client.has_value()) {
     btnClientStart_->setEnabled(false);
     btnClientStop_->setEnabled(false);
+    btnClientEdit_->setEnabled(false);
     chkClientAutoStart_->setEnabled(false);
     updatingClientSelection_ = true;
     chkClientAutoStart_->setChecked(false);
@@ -740,6 +764,7 @@ void ControlPage::updateClientButtons() {
   const bool is_pending = pendingClientIds_.contains(client->id);
   btnClientStart_->setEnabled(!is_pending && !client->is_running);
   btnClientStop_->setEnabled(!is_pending && client->is_running);
+  btnClientEdit_->setEnabled(!is_pending);
   chkClientAutoStart_->setEnabled(true);
   updatingClientSelection_ = true;
   chkClientAutoStart_->setChecked(client->auto_start);
@@ -774,6 +799,60 @@ void ControlPage::onClientStart() {
 
 void ControlPage::onClientStop() {
   executeClientAction(false);
+}
+
+void ControlPage::onClientEdit() {
+  const auto client = selectedClient();
+  if (!client.has_value()) {
+    return;
+  }
+
+  CoreConfig config;
+  std::string load_error;
+  if (!ConfigManager::Get().TryLoad(&config, &load_error)) {
+    QMessageBox::critical(
+        this, tr("Error"),
+        tr("Failed to load configuration: %1").arg(QString::fromStdString(load_error)));
+    return;
+  }
+
+  const ClientSpec* spec = FindClientSpec(config, client->kind, client->id);
+  if (spec == nullptr) {
+    QMessageBox::warning(this, tr("Warning"), tr("Client not found."));
+    populateClientList();
+    return;
+  }
+
+  const bool is_trigger = client->kind == "trigger";
+  ClientSpec updated;
+  if (!ShowClientDialog(this, is_trigger ? tr("Edit Trigger") : tr("Edit Receiver"), *spec,
+                        &updated)) {
+    return;
+  }
+
+  // The dialog stays open across config writes from other processes, so re-read
+  // before applying: saving the pre-dialog snapshot would roll them back.
+  CoreConfig fresh_config;
+  if (!ConfigManager::Get().TryLoad(&fresh_config, &load_error)) {
+    QMessageBox::critical(
+        this, tr("Error"),
+        tr("Configuration is corrupted or unreadable: %1").arg(QString::fromStdString(load_error)));
+    return;
+  }
+  ClientSpec* target = FindClientSpec(fresh_config, client->kind, client->id);
+  if (target == nullptr) {
+    QMessageBox::warning(this, tr("Warning"), tr("Client not found."));
+    populateClientList();
+    return;
+  }
+
+  *target = std::move(updated);
+  if (!ConfigManager::Get().Save(fresh_config)) {
+    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
+    return;
+  }
+  populateClientList();
+  emit configChanged();
 }
 
 void ControlPage::onClientAutoStartToggled(bool checked) {

@@ -1491,8 +1491,8 @@ msgid "Failed to connect to user D-Bus."
 msgstr "连接用户 D-Bus 失败。"
 
 #: src/cli/control/register_client.cpp:17
-msgid "Manage voice trigger clients"
-msgstr "管理语音触发器客户端"
+msgid "Manage voice triggers"
+msgstr "管理语音触发器"
 
 #: src/cli/control/register_client.cpp:20
 msgid "List configured triggers"
@@ -1512,8 +1512,8 @@ msgid "Stop a trigger"
 msgstr "停止触发器"
 
 #: src/cli/control/register_client.cpp:46
-msgid "Manage voice receiver clients"
-msgstr "管理语音接收器客户端"
+msgid "Manage voice receivers"
+msgstr "管理语音接收器"
 
 #: src/cli/control/register_client.cpp:49
 msgid "List configured receivers"

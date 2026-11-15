@@ -73,7 +73,6 @@
 #include "gui/utils/i18n_cache.h"
 
 #include "config.h"
-#include "dialogs/client_dialog.h"
 #include "utils/gui_helpers.h"
 
 namespace vinput::gui {
@@ -294,7 +293,6 @@ struct ScriptActionButtons {
   QPushButton* add = nullptr;
   QPushButton* update = nullptr;
   QPushButton* remove = nullptr;
-  QPushButton* edit = nullptr;
 };
 
 template <typename IsInstalledFn>
@@ -306,9 +304,6 @@ void UpdateScriptActionButtons(QTableWidget* table, int status_column,
     buttons.add->setEnabled(false);
     buttons.update->setEnabled(false);
     buttons.remove->setEnabled(false);
-    if (buttons.edit != nullptr) {
-      buttons.edit->setEnabled(false);
-    }
     return;
   }
   const bool installed = is_installed(selected->id.toStdString());
@@ -320,35 +315,10 @@ void UpdateScriptActionButtons(QTableWidget* table, int status_column,
   buttons.add->setEnabled(!installed && !incompatible && !is_local_only);
   buttons.update->setEnabled(installed && !incompatible && !is_local_only);
   buttons.remove->setEnabled(installed);
-  if (buttons.edit != nullptr) {
-    buttons.edit->setEnabled(installed);
-  }
 }
 
-QString FormatClientCommand(const CoreConfig& config, vinput::script::Kind kind,
-                            const vinput::script::RegistryEntry& entry) {
-  const CoreConfigView view(config);
-  const ClientSpec* client =
-      (kind == vinput::script::Kind::kTrigger) ? view.Trigger(entry.id) : view.Receiver(entry.id);
-  if (client == nullptr) {
-    return QString::fromStdString(entry.command);
-  }
-  QString result = QString::fromStdString(client->command);
-  for (const auto& arg : client->args) {
-    if (!result.isEmpty()) {
-      result += ' ';
-    }
-    result += QString::fromStdString(arg);
-  }
-  return result;
-}
-
-QTableWidgetItem* CreateScriptDetailCell(vinput::script::Kind kind, const CoreConfig& config,
-                                         const vinput::script::RegistryEntry& entry) {
-  if (kind == vinput::script::Kind::kAsrProvider) {
-    return MakeCell(entry.stream ? ResourcePage::tr("stream") : ResourcePage::tr("non-stream"));
-  }
-  return MakeCell(FormatClientCommand(config, kind, entry));
+QTableWidgetItem* CreateScriptDetailCell(const vinput::script::RegistryEntry& entry) {
+  return MakeCell(entry.stream ? ResourcePage::tr("stream") : ResourcePage::tr("non-stream"));
 }
 
 QTableWidgetItem* CreateScriptStatusCell(const vinput::script::ResourceVersionInfo& ver_info,
@@ -386,7 +356,7 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
   const CoreConfig config = ConfigManager::Get().Load();
   auto i18n_map = I18nCache::Get().GetMap();
   const auto manifest = vinput::registry::InstalledManifest::Load();
-  const bool has_detail_col = (kind != vinput::script::Kind::kLlmAdapter);
+  const bool has_detail_col = (kind == vinput::script::Kind::kAsrProvider);
   const bool is_client =
       (kind == vinput::script::Kind::kTrigger || kind == vinput::script::Kind::kReceiver);
 
@@ -403,7 +373,7 @@ void PopulateRemoteScripts(QTableWidget* table, QLineEdit* filter,
 
     int col = 2;
     if (has_detail_col) {
-      table->setItem(row, col++, CreateScriptDetailCell(kind, config, entry));
+      table->setItem(row, col++, CreateScriptDetailCell(entry));
     }
 
     const bool installed = is_installed(config, entry.id);
@@ -639,19 +609,16 @@ ResourcePage::ResourcePage(QWidget* parent)
   triggersLayout->addWidget(filterAvailableTriggers_);
 
   auto* triggerLayout = new QHBoxLayout();
-  SetupTable(tableAvailableTriggers_,
-             {tr("Title"), tr("Description"), tr("Command"), tr("Status"), tr("README")});
-  tableAvailableTriggers_->setItemDelegateForColumn(4, new LinkDelegate(tableAvailableTriggers_));
+  SetupTable(tableAvailableTriggers_, {tr("Title"), tr("Description"), tr("Status"), tr("README")});
+  tableAvailableTriggers_->setItemDelegateForColumn(3, new LinkDelegate(tableAvailableTriggers_));
   triggerLayout->addWidget(tableAvailableTriggers_, 1);
 
   btnAddTrigger_ = new QPushButton(tr("Install"));
   btnUpdateTrigger_ = new QPushButton(tr("Update"));
-  btnEditTrigger_ = new QPushButton(tr("Edit"));
   btnRemoveTrigger_ = new QPushButton(tr("Remove"));
   auto* triggerBtnLayout = new QVBoxLayout();
   triggerBtnLayout->addWidget(btnAddTrigger_);
   triggerBtnLayout->addWidget(btnUpdateTrigger_);
-  triggerBtnLayout->addWidget(btnEditTrigger_);
   triggerBtnLayout->addWidget(btnRemoveTrigger_);
   triggerBtnLayout->addStretch();
   triggerLayout->addLayout(triggerBtnLayout);
@@ -667,18 +634,16 @@ ResourcePage::ResourcePage(QWidget* parent)
 
   auto* receiverLayout = new QHBoxLayout();
   SetupTable(tableAvailableReceivers_,
-             {tr("Title"), tr("Description"), tr("Command"), tr("Status"), tr("README")});
-  tableAvailableReceivers_->setItemDelegateForColumn(4, new LinkDelegate(tableAvailableReceivers_));
+             {tr("Title"), tr("Description"), tr("Status"), tr("README")});
+  tableAvailableReceivers_->setItemDelegateForColumn(3, new LinkDelegate(tableAvailableReceivers_));
   receiverLayout->addWidget(tableAvailableReceivers_, 1);
 
   btnAddReceiver_ = new QPushButton(tr("Install"));
   btnUpdateReceiver_ = new QPushButton(tr("Update"));
-  btnEditReceiver_ = new QPushButton(tr("Edit"));
   btnRemoveReceiver_ = new QPushButton(tr("Remove"));
   auto* receiverBtnLayout = new QVBoxLayout();
   receiverBtnLayout->addWidget(btnAddReceiver_);
   receiverBtnLayout->addWidget(btnUpdateReceiver_);
-  receiverBtnLayout->addWidget(btnEditReceiver_);
   receiverBtnLayout->addWidget(btnRemoveReceiver_);
   receiverBtnLayout->addStretch();
   receiverLayout->addLayout(receiverBtnLayout);
@@ -716,11 +681,9 @@ ResourcePage::ResourcePage(QWidget* parent)
   connect(btnRemoveAdapter_, &QPushButton::clicked, this, &ResourcePage::onRemoveAdapterClicked);
   connect(btnAddTrigger_, &QPushButton::clicked, this, &ResourcePage::onAddTriggerClicked);
   connect(btnUpdateTrigger_, &QPushButton::clicked, this, &ResourcePage::onUpdateTriggerClicked);
-  connect(btnEditTrigger_, &QPushButton::clicked, this, &ResourcePage::onEditTriggerClicked);
   connect(btnRemoveTrigger_, &QPushButton::clicked, this, &ResourcePage::onRemoveTriggerClicked);
   connect(btnAddReceiver_, &QPushButton::clicked, this, &ResourcePage::onAddReceiverClicked);
   connect(btnUpdateReceiver_, &QPushButton::clicked, this, &ResourcePage::onUpdateReceiverClicked);
-  connect(btnEditReceiver_, &QPushButton::clicked, this, &ResourcePage::onEditReceiverClicked);
   connect(btnRemoveReceiver_, &QPushButton::clicked, this, &ResourcePage::onRemoveReceiverClicked);
 
   connect(tableAvailableProviders_, &QTableWidget::itemSelectionChanged, this,
@@ -734,8 +697,8 @@ ResourcePage::ResourcePage(QWidget* parent)
 
   AttachTableLinkDoubleClickHandler(tableAvailableProviders_, 4);
   AttachTableLinkDoubleClickHandler(tableAvailableAdapters_, 3);
-  AttachTableLinkDoubleClickHandler(tableAvailableTriggers_, 4);
-  AttachTableLinkDoubleClickHandler(tableAvailableReceivers_, 4);
+  AttachTableLinkDoubleClickHandler(tableAvailableTriggers_, 3);
+  AttachTableLinkDoubleClickHandler(tableAvailableReceivers_, 3);
 
   connect(filterAvailableProviders_, &QLineEdit::textChanged, this,
           [this](const QString& text) { ApplyTableFilter(tableAvailableProviders_, text); });
@@ -754,11 +717,9 @@ ResourcePage::ResourcePage(QWidget* parent)
   btnRemoveAdapter_->setEnabled(false);
   btnAddTrigger_->setEnabled(false);
   btnUpdateTrigger_->setEnabled(false);
-  btnEditTrigger_->setEnabled(false);
   btnRemoveTrigger_->setEnabled(false);
   btnAddReceiver_->setEnabled(false);
   btnUpdateReceiver_->setEnabled(false);
-  btnEditReceiver_->setEnabled(false);
   btnRemoveReceiver_->setEnabled(false);
 
   connect(&I18nCache::Get(), &I18nCache::mapUpdated, this,
@@ -1328,8 +1289,7 @@ void ResourcePage::updateProviderButtons() {
   UpdateScriptActionButtons(tableAvailableProviders_, 3,
                             ScriptActionButtons{.add = btnAddProvider_,
                                                 .update = btnUpdateProvider_,
-                                                .remove = btnRemoveProvider_,
-                                                .edit = nullptr},
+                                                .remove = btnRemoveProvider_},
                             [](const std::string& id) {
                               const CoreConfig config = ConfigManager::Get().Load();
                               return CoreConfigView(config).AsrProvider(id) != nullptr;
@@ -1340,8 +1300,7 @@ void ResourcePage::updateAdapterButtons() {
   UpdateScriptActionButtons(tableAvailableAdapters_, 2,
                             ScriptActionButtons{.add = btnAddAdapter_,
                                                 .update = btnUpdateAdapter_,
-                                                .remove = btnRemoveAdapter_,
-                                                .edit = nullptr},
+                                                .remove = btnRemoveAdapter_},
                             [](const std::string& id) {
                               const CoreConfig config = ConfigManager::Get().Load();
                               return CoreConfigView(config).LlmAdapter(id) != nullptr;
@@ -1349,11 +1308,10 @@ void ResourcePage::updateAdapterButtons() {
 }
 
 void ResourcePage::updateTriggerButtons() {
-  UpdateScriptActionButtons(tableAvailableTriggers_, 3,
+  UpdateScriptActionButtons(tableAvailableTriggers_, 2,
                             ScriptActionButtons{.add = btnAddTrigger_,
                                                 .update = btnUpdateTrigger_,
-                                                .remove = btnRemoveTrigger_,
-                                                .edit = btnEditTrigger_},
+                                                .remove = btnRemoveTrigger_},
                             [](const std::string& id) {
                               const CoreConfig config = ConfigManager::Get().Load();
                               return CoreConfigView(config).Trigger(id) != nullptr;
@@ -1361,11 +1319,10 @@ void ResourcePage::updateTriggerButtons() {
 }
 
 void ResourcePage::updateReceiverButtons() {
-  UpdateScriptActionButtons(tableAvailableReceivers_, 3,
+  UpdateScriptActionButtons(tableAvailableReceivers_, 2,
                             ScriptActionButtons{.add = btnAddReceiver_,
                                                 .update = btnUpdateReceiver_,
-                                                .remove = btnRemoveReceiver_,
-                                                .edit = btnEditReceiver_},
+                                                .remove = btnRemoveReceiver_},
                             [](const std::string& id) {
                               const CoreConfig config = ConfigManager::Get().Load();
                               return CoreConfigView(config).Receiver(id) != nullptr;
@@ -1407,32 +1364,6 @@ void ResourcePage::removeScriptItem(QTableWidget* table, vinput::script::Kind ki
   refreshAll();
   emit configChanged();
   post_remove_fn();
-}
-
-template <typename FindClientFn>
-void ResourcePage::editClientItem(QTableWidget* table, const QString& dialog_title,
-                                  const QString& updated_log, const FindClientFn& find_client_fn) {
-  const auto selected = GetSelectedResourceItem(table);
-  if (!selected) {
-    return;
-  }
-  CoreConfig config = ConfigManager::Get().Load();
-  ClientSpec* client = find_client_fn(&config, selected->id.toStdString());
-  if (client == nullptr) {
-    return;
-  }
-  ClientSpec updated;
-  if (!ShowClientDialog(this, dialog_title, *client, &updated)) {
-    return;
-  }
-  *client = std::move(updated);
-  if (!ConfigManager::Get().Save(config)) {
-    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
-    return;
-  }
-  textLog_->append(updated_log.arg(selected->title));
-  refreshAll();
-  emit configChanged();
 }
 
 void ResourcePage::onRemoveProviderClicked() {
@@ -1486,15 +1417,6 @@ void ResourcePage::onRemoveAdapterClicked() {
       []() {});
 }
 
-void ResourcePage::onEditTriggerClicked() {
-  editClientItem(tableAvailableTriggers_, tr("Configure Trigger"), tr("Trigger '%1' updated."),
-                 [](CoreConfig* cfg, const std::string& id) -> ClientSpec* {
-                   auto it = std::ranges::find_if(cfg->triggers,
-                                                  [&](const ClientSpec& c) { return c.id == id; });
-                   return (it != cfg->triggers.end()) ? &(*it) : nullptr;
-                 });
-}
-
 void ResourcePage::onRemoveTriggerClicked() {
   removeScriptItem(
       tableAvailableTriggers_, vinput::script::Kind::kTrigger,
@@ -1509,15 +1431,6 @@ void ResourcePage::onRemoveTriggerClicked() {
         return true;
       },
       []() {});
-}
-
-void ResourcePage::onEditReceiverClicked() {
-  editClientItem(tableAvailableReceivers_, tr("Configure Receiver"), tr("Receiver '%1' updated."),
-                 [](CoreConfig* cfg, const std::string& id) -> ClientSpec* {
-                   auto it = std::ranges::find_if(cfg->receivers,
-                                                  [&](const ClientSpec& c) { return c.id == id; });
-                   return (it != cfg->receivers.end()) ? &(*it) : nullptr;
-                 });
 }
 
 void ResourcePage::onRemoveReceiverClicked() {

@@ -14,7 +14,7 @@ namespace vinput::cli::control {
 
 void RegisterClientCommands(CLI::App& app, CliAction* action) {
   // 1. vinput trigger (list, start, stop)
-  auto* trigger = app.add_subcommand("trigger", _("Manage voice trigger clients"));
+  auto* trigger = app.add_subcommand("trigger", _("Manage voice triggers"));
   trigger->require_subcommand(1);
 
   auto* trigger_list = trigger->add_subcommand("list", _("List configured triggers"));
@@ -43,7 +43,7 @@ void RegisterClientCommands(CLI::App& app, CliAction* action) {
   });
 
   // 2. vinput receiver (list, start, stop)
-  auto* receiver = app.add_subcommand("receiver", _("Manage voice receiver clients"));
+  auto* receiver = app.add_subcommand("receiver", _("Manage voice receivers"));
   receiver->require_subcommand(1);
 
   auto* receiver_list = receiver->add_subcommand("list", _("List configured receivers"));
