@@ -231,8 +231,15 @@ QString FormatClientStatus(bool running, int pid) {
   return ControlPage::tr("Running");
 }
 
+// Clients register under a namespaced id such as `trigger.vinput.web_remote`; the
+// registry i18n map carries the human-readable title for the packaged ones.
+QString ClientDisplayName(const vinput::registry::I18nMap& i18n_map, const std::string& id) {
+  return QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id + ".title", id));
+}
+
 void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trigger,
-                     const QString& selected_id, const vinput::cli::ClientStatusMap& status_map) {
+                     const QString& selected_id, const vinput::cli::ClientStatusMap& status_map,
+                     const vinput::registry::I18nMap& i18n_map) {
   const int row = table->rowCount();
   table->insertRow(row);
 
@@ -247,7 +254,7 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   itemType->setData(Qt::UserRole + 3, running);
   itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
 
-  auto* itemId = new QTableWidgetItem(id);
+  auto* itemId = new QTableWidgetItem(ClientDisplayName(i18n_map, client.id));
   auto* itemStatus = new QTableWidgetItem(FormatClientStatus(running, static_cast<int>(pid)));
   auto* itemAutostart = new QTableWidgetItem(client.autoStart ? ControlPage::tr("Enabled")
                                                               : ControlPage::tr("Disabled"));
@@ -435,6 +442,8 @@ ControlPage::ControlPage(QWidget* parent)
   btnAsrSetActive_->setEnabled(false);
 
   connect(&I18nCache::Get(), &I18nCache::mapUpdated, this, &ControlPage::refreshAsrList);
+  // Client rows render registry titles, so a refreshed map must repaint them too.
+  connect(&I18nCache::Get(), &I18nCache::mapUpdated, this, &ControlPage::populateClientList);
 
   layout->addSpacing(20);
 
@@ -449,7 +458,7 @@ ControlPage::ControlPage(QWidget* parent)
   auto* clientContentLayout = new QHBoxLayout();
 
   tableClients_->setColumnCount(4);
-  tableClients_->setHorizontalHeaderLabels({tr("Type"), tr("ID"), tr("Status"), tr("Autostart")});
+  tableClients_->setHorizontalHeaderLabels({tr("Type"), tr("Name"), tr("Status"), tr("Autostart")});
   tableClients_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
   tableClients_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
   tableClients_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
@@ -663,6 +672,7 @@ void ControlPage::updateAsrButtons() {
 }
 
 void ControlPage::populateClientList() {
+  const auto i18n_map = I18nCache::Get().GetMap();
   const QString selected_id =
       (tableClients_->currentRow() >= 0 &&
        tableClients_->item(tableClients_->currentRow(), 0) != nullptr)
@@ -675,10 +685,10 @@ void ControlPage::populateClientList() {
   const auto status_map = dbus.GetClientStatusesMap();
 
   for (const auto& trigger : config.triggers) {
-    AppendClientRow(tableClients_, trigger, true, selected_id, status_map);
+    AppendClientRow(tableClients_, trigger, true, selected_id, status_map, i18n_map);
   }
   for (const auto& receiver : config.receivers) {
-    AppendClientRow(tableClients_, receiver, false, selected_id, status_map);
+    AppendClientRow(tableClients_, receiver, false, selected_id, status_map, i18n_map);
   }
 
   updateClientButtons();

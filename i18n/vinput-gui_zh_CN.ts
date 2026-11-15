@@ -608,8 +608,16 @@
         <translation>&lt;b&gt;客户端进程&lt;/b&gt;</translation>
     </message>
     <message>
-        <source>ID</source>
-        <translation>ID</translation>
+        <source>Type</source>
+        <translation>类型</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>名称</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation>状态</translation>
     </message>
     <message>
         <source>Autostart</source>
