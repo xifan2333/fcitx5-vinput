@@ -624,6 +624,14 @@
         <translation>自动启动</translation>
     </message>
     <message>
+        <source>Edit Trigger</source>
+        <translation>编辑触发器</translation>
+    </message>
+    <message>
+        <source>Edit Receiver</source>
+        <translation>编辑接收器</translation>
+    </message>
+    <message>
         <source>Automatically start this client when the daemon starts.</source>
         <translation>守护进程启动时自动启动此客户端。</translation>
     </message>
@@ -1529,22 +1537,6 @@ Found %2 model(s).</source>
     <message>
         <source>Updating receiver %1...</source>
         <translation>正在更新接收器 %1...</translation>
-    </message>
-    <message>
-        <source>Configure Trigger</source>
-        <translation>配置触发器</translation>
-    </message>
-    <message>
-        <source>Trigger '%1' updated.</source>
-        <translation>触发器“%1”已更新。</translation>
-    </message>
-    <message>
-        <source>Configure Receiver</source>
-        <translation>配置接收器</translation>
-    </message>
-    <message>
-        <source>Receiver '%1' updated.</source>
-        <translation>接收器“%1”已更新。</translation>
     </message>
     <message>
         <source>Are you sure you want to remove trigger '%1'?</source>

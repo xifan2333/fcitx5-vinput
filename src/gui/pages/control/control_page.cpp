@@ -68,6 +68,7 @@
 
 #include "config.h"
 #include "dialogs/asr_provider_dialog.h"
+#include "dialogs/client_dialog.h"
 #include "utils/gui_helpers.h"
 
 namespace vinput::gui {
@@ -269,16 +270,24 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   }
 }
 
-bool UpdateClientAutostart(CoreConfig& config, std::string_view client_id, std::string_view kind,
-                           bool checked) {
+ClientSpec* FindClientSpec(CoreConfig& config, std::string_view kind, std::string_view id) {
   auto& list = (kind == "trigger") ? config.triggers : config.receivers;
   for (auto& client : list) {
-    if (client.id == client_id) {
-      client.autoStart = checked;
-      return true;
+    if (client.id == id) {
+      return &client;
     }
   }
-  return false;
+  return nullptr;
+}
+
+bool UpdateClientAutostart(CoreConfig& config, std::string_view client_id, std::string_view kind,
+                           bool checked) {
+  ClientSpec* client = FindClientSpec(config, kind, client_id);
+  if (client == nullptr) {
+    return false;
+  }
+  client->autoStart = checked;
+  return true;
 }
 
 std::optional<AsrProviderData> FindAsrProviderData(const CoreConfig& config,
@@ -479,15 +488,18 @@ ControlPage::ControlPage(QWidget* parent)
   auto* clientBtnLayout = new QVBoxLayout();
   btnClientStart_ = new QPushButton(tr("Start"));
   btnClientStop_ = new QPushButton(tr("Stop"));
+  btnClientEdit_ = new QPushButton(tr("Edit"));
   chkClientAutoStart_ = new QCheckBox(tr("Start with daemon"));
   chkClientAutoStart_->setToolTip(tr("Automatically start this client when the daemon starts."));
 
   btnClientStart_->setEnabled(false);
   btnClientStop_->setEnabled(false);
+  btnClientEdit_->setEnabled(false);
   chkClientAutoStart_->setEnabled(false);
 
   clientBtnLayout->addWidget(btnClientStart_);
   clientBtnLayout->addWidget(btnClientStop_);
+  clientBtnLayout->addWidget(btnClientEdit_);
   clientBtnLayout->addWidget(chkClientAutoStart_);
   clientBtnLayout->addStretch();
   clientContentLayout->addLayout(clientBtnLayout);
@@ -496,6 +508,7 @@ ControlPage::ControlPage(QWidget* parent)
 
   connect(btnClientStart_, &QPushButton::clicked, this, &ControlPage::onClientStart);
   connect(btnClientStop_, &QPushButton::clicked, this, &ControlPage::onClientStop);
+  connect(btnClientEdit_, &QPushButton::clicked, this, &ControlPage::onClientEdit);
   connect(chkClientAutoStart_, &QCheckBox::toggled, this, &ControlPage::onClientAutoStartToggled);
   connect(tableClients_, &QTableWidget::itemSelectionChanged, this,
           &ControlPage::updateClientButtons);
@@ -741,6 +754,7 @@ void ControlPage::updateClientButtons() {
   if (!client.has_value()) {
     btnClientStart_->setEnabled(false);
     btnClientStop_->setEnabled(false);
+    btnClientEdit_->setEnabled(false);
     chkClientAutoStart_->setEnabled(false);
     updatingClientSelection_ = true;
     chkClientAutoStart_->setChecked(false);
@@ -750,6 +764,7 @@ void ControlPage::updateClientButtons() {
   const bool is_pending = pendingClientIds_.contains(client->id);
   btnClientStart_->setEnabled(!is_pending && !client->is_running);
   btnClientStop_->setEnabled(!is_pending && client->is_running);
+  btnClientEdit_->setEnabled(!is_pending);
   chkClientAutoStart_->setEnabled(true);
   updatingClientSelection_ = true;
   chkClientAutoStart_->setChecked(client->auto_start);
@@ -784,6 +799,31 @@ void ControlPage::onClientStart() {
 
 void ControlPage::onClientStop() {
   executeClientAction(false);
+}
+
+void ControlPage::onClientEdit() {
+  const auto client = selectedClient();
+  if (!client.has_value()) {
+    return;
+  }
+  CoreConfig config = ConfigManager::Get().Load();
+  ClientSpec* spec = FindClientSpec(config, client->kind, client->id);
+  if (spec == nullptr) {
+    return;
+  }
+  const bool is_trigger = client->kind == "trigger";
+  ClientSpec updated;
+  if (!ShowClientDialog(this, is_trigger ? tr("Edit Trigger") : tr("Edit Receiver"), *spec,
+                        &updated)) {
+    return;
+  }
+  *spec = std::move(updated);
+  if (!ConfigManager::Get().Save(config)) {
+    QMessageBox::critical(this, tr("Error"), tr("Failed to save config."));
+    return;
+  }
+  populateClientList();
+  emit configChanged();
 }
 
 void ControlPage::onClientAutoStartToggled(bool checked) {

@@ -57,9 +57,6 @@ private:
   void removeScriptItem(QTableWidget* table, vinput::script::Kind kind,
                         const QString& confirm_question, const QString& removed_log,
                         const MutateFn& mutate_fn, const PostRemoveFn& post_remove_fn);
-  template <typename FindClientFn>
-  void editClientItem(QTableWidget* table, const QString& dialog_title, const QString& updated_log,
-                      const FindClientFn& find_client_fn);
 
   QLineEdit* filterInstalledModels_;
   QLineEdit* filterAvailableModels_;
@@ -88,11 +85,9 @@ private:
   QPushButton* btnRemoveAdapter_;
   QPushButton* btnAddTrigger_;
   QPushButton* btnUpdateTrigger_;
-  QPushButton* btnEditTrigger_;
   QPushButton* btnRemoveTrigger_;
   QPushButton* btnAddReceiver_;
   QPushButton* btnUpdateReceiver_;
-  QPushButton* btnEditReceiver_;
   QPushButton* btnRemoveReceiver_;
   QPushButton* btnRefreshResources_;
   QPointer<DownloadWorker> downloadWorker_;
@@ -121,11 +116,9 @@ private slots:
   void onRemoveAdapterClicked();
   void onAddTriggerClicked();
   void onUpdateTriggerClicked();
-  void onEditTriggerClicked();
   void onRemoveTriggerClicked();
   void onAddReceiverClicked();
   void onUpdateReceiverClicked();
-  void onEditReceiverClicked();
   void onRemoveReceiverClicked();
   void updateProviderButtons();
   void updateAdapterButtons();
