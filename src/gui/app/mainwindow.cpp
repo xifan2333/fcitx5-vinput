@@ -103,9 +103,9 @@ MainWindow::MainWindow(QWidget* parent)
   auto* btnSave = new QPushButton(tr("Save Settings"), this);
   connect(btnSave, &QPushButton::clicked, this, &MainWindow::onSaveClicked);
 
-  bottomLayout->addWidget(btnOpenConfig);
-  bottomLayout->addWidget(btnCheckUpdate_);
   bottomLayout->addStretch();
+  bottomLayout->addWidget(btnCheckUpdate_);
+  bottomLayout->addWidget(btnOpenConfig);
   bottomLayout->addWidget(btnSave);
   mainLayout->addLayout(bottomLayout);
 
