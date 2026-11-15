@@ -234,15 +234,15 @@ int RunDaemonControlPipe(const std::string& scene_id, bool ime, Formatter& /*fmt
   }
 
   PipeInterruptedFlag().store(false, std::memory_order_relaxed);
-  const auto prev_int = std::signal(SIGINT, OnPipeSignal);
-  const auto prev_term = std::signal(SIGTERM, OnPipeSignal);
-  const auto prev_pipe = std::signal(SIGPIPE, SIG_IGN);
+  const auto prev_int = signal(SIGINT, OnPipeSignal);
+  const auto prev_term = signal(SIGTERM, OnPipeSignal);
+  const auto prev_pipe = signal(SIGPIPE, SIG_IGN);
 
   const int loop_rc = ProcessPipeLoop(dbus.GetBus(), pctx);
 
-  std::signal(SIGINT, prev_int);
-  std::signal(SIGTERM, prev_term);
-  std::signal(SIGPIPE, prev_pipe);
+  signal(SIGINT, prev_int);
+  signal(SIGTERM, prev_term);
+  signal(SIGPIPE, prev_pipe);
   sd_bus_slot_unref(slot);
 
   if (!pctx.finished.load(std::memory_order_relaxed) && !pctx.target_client_id.empty()) {
