@@ -6,8 +6,12 @@
 #include <QtWidgets/qmainwindow.h>
 #include <QtWidgets/qtabwidget.h>
 #include <QtWidgets/qwidget.h>
+#include <cstdint>
+#include <optional>
 
 #include "config.h"
+
+class QPushButton;
 
 namespace vinput::gui {
 class ControlPage;
@@ -22,6 +26,21 @@ class MainWindow : public QMainWindow {
   Q_OBJECT
 
 public:
+  enum class UpdateCheckResult : std::uint8_t {
+    NetworkError,
+    ParseError,
+    UpToDate,
+    UpdateAvailable,
+  };
+
+  struct UpdatePayload {
+    QString id;
+    QString version;
+    QString title;
+    QString text;
+    QString url;
+  };
+
   explicit MainWindow(QWidget* parent = nullptr);
   ~MainWindow() override;
 
@@ -33,13 +52,21 @@ public:
 private:
   void onSaveClicked();
   static void onOpenConfigClicked();
+  void onCheckUpdateClicked();
+  void resetCheckUpdateButton();
+  void dispatchNotificationResult(bool manual, const std::optional<UpdatePayload>& payload,
+                                  bool fetch_ok);
+  void onManualCheckCompleted(UpdateCheckResult result,
+                              const std::optional<UpdatePayload>& payload = std::nullopt);
   void reloadAll();
   void onNotificationReady(const QString& id, const QString& title, const QString& text,
                            const QString& url);
 
-  void checkNotification();
+  void checkNotification(bool manual = false);
 
   QTabWidget* tabWidget_;
+  QPushButton* btnCheckUpdate_{nullptr};
+  bool checking_update_{false};
 
   vinput::gui::ControlPage* controlPage_;
   vinput::gui::ResourcePage* resourcePage_;

@@ -230,6 +230,21 @@ void TestSemanticVersionComparison() {
   ExpectTrue(!Satisfies("2.4.1", ">= 2.5.0"));
   ExpectTrue(!Satisfies("2.4.1", "< 2.4.0"));
   ExpectTrue(!Satisfies("2.4.1", ">= 2.0.0, < 2.4.0"));
+
+  // Direct semantic version comparisons used for update notifications
+  const auto current = vinput::version::Parse("2.4.2");
+  const auto newer = vinput::version::Parse("2.4.3");
+  const auto older = vinput::version::Parse("2.4.1");
+  const auto prefixed = vinput::version::Parse("v2.4.3");
+
+  ExpectTrue(current.has_value() && newer.has_value() && older.has_value() && prefixed.has_value());
+  if (!current || !newer || !older || !prefixed) {
+    return; // ExpectTrue aborts first; the guard keeps the derefs below provably safe.
+  }
+  ExpectTrue(*newer > *current);
+  ExpectTrue(*prefixed > *current);
+  ExpectTrue(!(*older > *current));
+  ExpectTrue(!(*current > *current));
 }
 
 } // namespace

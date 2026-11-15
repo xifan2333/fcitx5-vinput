@@ -304,6 +304,31 @@
         <source>Details</source>
         <translation>查看详情</translation>
     </message>
+    <message>
+        <location filename="../src/gui/app/mainwindow.cpp" line="100"/>
+        <source>Check for Updates</source>
+        <translation>检查更新</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/app/mainwindow.cpp" line="324"/>
+        <source>Checking...</source>
+        <translation>正在检查...</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/app/mainwindow.cpp" line="342"/>
+        <source>Failed to check for updates. Please check your network connection.</source>
+        <translation>检测更新失败，请检查网络连接。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/app/mainwindow.cpp" line="345"/>
+        <source>Failed to parse update information.</source>
+        <translation>解析更新信息失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/app/mainwindow.cpp" line="354"/>
+        <source>You are using the latest version (%1).</source>
+        <translation>当前已是最新版本 (%1)。</translation>
+    </message>
 </context>
 <context>
     <name>vinput::gui::ControlPage</name>
