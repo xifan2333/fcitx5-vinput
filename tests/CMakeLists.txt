@@ -81,6 +81,11 @@ vinput_add_test(
 )
 target_include_directories(test_formatter PRIVATE ${CMAKE_SOURCE_DIR}/src/cli)
 
+vinput_add_test(test_stream_pipeline SOURCES test_stream_pipeline.cpp LIBS common config)
+
+vinput_add_test(test_cli_commands SOURCES test_cli_commands.cpp LIBS cli_lib)
+target_include_directories(test_cli_commands PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # 1. Config migration test (needs CMAKE_SOURCE_DIR definition)
 vinput_add_test(test_config_migration)
 target_compile_definitions(test_config_migration PRIVATE CMAKE_SOURCE_DIR_STR="${CMAKE_SOURCE_DIR}")

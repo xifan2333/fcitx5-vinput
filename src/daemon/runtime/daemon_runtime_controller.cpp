@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "common/asr/recognition_result.h"
+#include "common/audio/wav_probe.h"
 #include "common/client/client_command.h"
 #include "common/client/client_event.h"
 #include "common/client/client_manager.h"
@@ -190,34 +191,19 @@ void ApplyRecognitionEvents(const std::vector<vinput::daemon::asr::RecognitionEv
   }
 }
 
-size_t DetectWavDataOffset(std::span<const uint8_t> buffer) {
-  if (buffer.size() < 44) {
-    return 0;
-  }
-  if (std::memcmp(buffer.data(), "RIFF", 4) != 0 ||
-      std::memcmp(buffer.data() + 8, "WAVE", 4) != 0) {
-    return 0;
-  }
-  size_t pos = 12;
-  while (pos + 8 <= buffer.size()) {
-    if (std::memcmp(buffer.data() + pos, "data", 4) == 0) {
-      return pos + 8;
-    }
-    const auto chunk_size = *reinterpret_cast<const uint32_t*>(buffer.data() + pos + 4);
-    pos += 8 + chunk_size;
-  }
-  return 44;
-}
+constexpr size_t kInitialProbeBytes = 1024;
+constexpr size_t kStreamChunkBytes = 1600; // 50ms of 16kHz 16-bit mono PCM (16000 * 2 * 0.05)
 
 void PumpAudioStream(int read_fd, const std::atomic<bool>& shutting_down,
                      DaemonRuntimeController& controller) {
-  std::vector<uint8_t> probe_buf(1024);
+  std::vector<uint8_t> probe_buf(kInitialProbeBytes);
   const ssize_t probed = read(read_fd, probe_buf.data(), probe_buf.size());
   if (probed <= 0) {
     return;
   }
 
-  const size_t offset = DetectWavDataOffset(std::span<const uint8_t>(probe_buf.data(), probed));
+  const size_t offset =
+      vinput::audio::DetectWavDataOffset(std::span<const uint8_t>(probe_buf.data(), probed));
   if (offset < static_cast<size_t>(probed)) {
     const size_t pcm_bytes = static_cast<size_t>(probed) - offset;
     const size_t num_samples = pcm_bytes / sizeof(int16_t);
@@ -227,8 +213,7 @@ void PumpAudioStream(int read_fd, const std::atomic<bool>& shutting_down,
     }
   }
 
-  constexpr size_t kChunkBytes = 1600;
-  std::vector<uint8_t> chunk(kChunkBytes);
+  std::vector<uint8_t> chunk(kStreamChunkBytes);
   while (!shutting_down.load(std::memory_order_relaxed)) {
     const ssize_t n = read(read_fd, chunk.data(), chunk.size());
     if (n < 0) {

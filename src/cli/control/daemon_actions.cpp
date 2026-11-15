@@ -62,6 +62,8 @@ void PrintPipeUsageHelp() {
                "'select(.type==\"committed\") | .text'\n";
 }
 
+constexpr uint64_t kBusWaitTimeoutUs = 250'000; // 250ms
+
 int ProcessPipeLoop(sd_bus* bus, PipeStreamContext& pctx) {
   while (!pctx.finished.load(std::memory_order_relaxed) &&
          !pctx.broken.load(std::memory_order_relaxed) &&
@@ -73,7 +75,7 @@ int ProcessPipeLoop(sd_bus* bus, PipeStreamContext& pctx) {
     if (r < 0) {
       return r;
     }
-    const int w = sd_bus_wait(bus, 250000);
+    const int w = sd_bus_wait(bus, kBusWaitTimeoutUs);
     if (w < 0 && w != -EINTR) {
       return w;
     }
