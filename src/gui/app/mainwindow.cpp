@@ -55,6 +55,7 @@
 
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
+#include "common/utils/version_utils.h"
 
 #include "pages/llm/llm_page.h"
 #include "pages/resources/resource_page.h"
@@ -250,6 +251,7 @@ int ReadLastNotificationId() {
 
 struct NotificationPayload {
   int id{0};
+  QString version;
   QString title;
   QString text;
   QString url;
@@ -280,12 +282,34 @@ std::optional<NotificationPayload> ParseNotificationPayload(std::string_view con
     return std::nullopt;
   }
 
+  std::string version = vinput::json::String(j, "version");
+  if (version.empty()) {
+    version = vinput::json::String(j, "latest_version");
+  }
+
   return NotificationPayload{
       .id = remote_id,
+      .version = QString::fromStdString(version),
       .title = localizedString(vinput::json::Find(j, "title")),
       .text = localizedString(vinput::json::Find(j, "text")),
       .url = QString::fromStdString(vinput::json::String(j, "url")),
   };
+}
+
+bool ShouldNotifyUpdate(const NotificationPayload& payload, int last_read_id) {
+  if (payload.id <= last_read_id) {
+    return false;
+  }
+  if (!payload.version.isEmpty()) {
+    const auto remote_ver = vinput::version::Parse(payload.version.toStdString());
+    const auto current_ver = vinput::version::Parse(vinput::version::CurrentHostVersion());
+    if (remote_ver.has_value() && current_ver.has_value()) {
+      if (*remote_ver <= *current_ver) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 } // namespace
 
@@ -299,7 +323,7 @@ void MainWindow::checkNotification() {
     }
 
     const auto payload = ParseNotificationPayload(*content);
-    if (!payload.has_value() || payload->id <= ReadLastNotificationId() ||
+    if (!payload.has_value() || !ShouldNotifyUpdate(*payload, ReadLastNotificationId()) ||
         vinput::gui::IsWorkerCancelled(cancel_token)) {
       return true;
     }

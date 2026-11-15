@@ -1,6 +1,7 @@
 {
   "id": 29,
   "timestamp": 1791980097,
+  "version": "2.4.2",
   "title": {
     "en_US": "Vinput ≥ 2.4.0 Configuration Migration (vinput config migrate)",
     "zh_CN": "Vinput ≥ 2.4.0 配置迁移（vinput config migrate）"
