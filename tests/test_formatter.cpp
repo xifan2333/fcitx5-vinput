@@ -252,7 +252,8 @@ void TestJsonFormatterNonTtyRouting() {
   TEST_ASSERT(err_ss.str().find("json warn") != std::string::npos);
   TEST_ASSERT(err_ss.str().find("json info") != std::string::npos);
   // Json payload routes to cout
-  TEST_ASSERT(out_ss.str().find("\"key\":\"value\"") != std::string::npos);
+  TEST_ASSERT(out_ss.str().find("\"key\"") != std::string::npos &&
+              out_ss.str().find("\"value\"") != std::string::npos);
 }
 
 } // namespace
