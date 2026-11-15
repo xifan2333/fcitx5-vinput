@@ -247,6 +247,46 @@ void TestSemanticVersionComparison() {
   ExpectTrue(!(*current > *current));
 }
 
+void TestHierarchicalResourcePaths() {
+  using vinput::script::DefaultLocalScriptPath;
+  using vinput::script::IdFromRelativePath;
+  using vinput::script::Kind;
+  using vinput::script::RelativePathForId;
+
+  // 1-level flat resource: adapter.cjk-trim -> adapters/cjk-trim
+  ExpectEq(RelativePathForId("adapter.cjk-trim").string(), "cjk-trim");
+  ExpectEq(IdFromRelativePath("adapter", "cjk-trim"), "adapter.cjk-trim");
+  ExpectTrue(!DefaultLocalScriptPath(Kind::kLlmAdapter, "adapter.cjk-trim").empty());
+  ExpectEq(DefaultLocalScriptPath(Kind::kLlmAdapter, "adapter.cjk-trim").filename().string(),
+           "cjk-trim");
+
+  // 2-level vendor resource: provider.bailian.streaming -> providers/bailian/streaming
+  ExpectEq(RelativePathForId("provider.bailian.streaming").string(), "bailian/streaming");
+  ExpectEq(IdFromRelativePath("provider", std::filesystem::path("bailian") / "streaming"),
+           "provider.bailian.streaming");
+  ExpectTrue(!DefaultLocalScriptPath(Kind::kAsrProvider, "provider.bailian.streaming").empty());
+
+  // N-level device tree resource: trigger.vendor.model.subdevice -> triggers/vendor/model/subdevice
+  ExpectEq(RelativePathForId("trigger.vendor.model.subdevice").string(), "vendor/model/subdevice");
+  ExpectEq(IdFromRelativePath("trigger", std::filesystem::path("vendor") / "model" / "subdevice"),
+           "trigger.vendor.model.subdevice");
+  ExpectTrue(!DefaultLocalScriptPath(Kind::kTrigger, "trigger.vendor.model.subdevice").empty());
+
+  // Negative / edge cases
+  ExpectTrue(RelativePathForId("").empty());
+  ExpectTrue(RelativePathForId("adapter").empty()); // Single token without subpath
+  ExpectTrue(RelativePathForId("adapter.").empty());
+  ExpectTrue(RelativePathForId("adapter..foo").empty());
+  ExpectTrue(RelativePathForId("adapter/foo.bar").empty());
+  ExpectTrue(RelativePathForId("adapter.foo/bar").empty());
+  ExpectTrue(IdFromRelativePath("adapter", "").empty());
+  ExpectTrue(IdFromRelativePath("adapter", ".").empty());
+  ExpectTrue(IdFromRelativePath("adapter", "..").empty());
+  ExpectTrue(IdFromRelativePath("adapter", std::filesystem::path("..") / "escape").empty());
+  ExpectTrue(
+      DefaultLocalScriptPath(Kind::kTrigger, "receiver.vendor.foo").empty()); // Mismatched kind
+}
+
 } // namespace
 
 int main() {
@@ -255,6 +295,7 @@ int main() {
   TestCheckResourceVersion();
   TestMaterializeTriggerAndReceiver();
   TestSemanticVersionComparison();
+  TestHierarchicalResourcePaths();
   std::cout << "All installed_manifest tests passed!\n";
   return 0;
 }
