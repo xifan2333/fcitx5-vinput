@@ -81,7 +81,7 @@ std::vector<std::string> SplitResourceId(std::string_view id) {
   }
 
   const auto tokens = vinput::str::Split(id, '.');
-  if (tokens.size() < 3) {
+  if (tokens.size() < 2) {
     return {};
   }
 
@@ -94,20 +94,7 @@ std::vector<std::string> SplitResourceId(std::string_view id) {
     raw_segments.emplace_back(token);
   }
 
-  const std::string& type = raw_segments[0];
-  const std::string& parent = raw_segments[1];
-  std::string leaf;
-  for (std::size_t i = 2; i < raw_segments.size(); ++i) {
-    if (!leaf.empty()) {
-      leaf += '.';
-    }
-    leaf += raw_segments[i];
-  }
-  if (type.empty() || parent.empty() || leaf.empty()) {
-    return {};
-  }
-
-  return {type, parent, leaf};
+  return raw_segments;
 }
 
 std::filesystem::path ManagedBaseDirForType(std::string_view type) {
@@ -477,7 +464,7 @@ std::vector<RegistryEntry> FetchRegistry(const CoreConfig& config, Kind kind,
 
 std::filesystem::path RelativePathForId(std::string_view id) {
   const auto segments = SplitResourceId(id);
-  if (segments.size() != 3) {
+  if (segments.size() < 2) {
     return {};
   }
 
@@ -500,7 +487,7 @@ std::string IdFromRelativePath(std::string_view type, const std::filesystem::pat
     }
     segments.push_back(component.string());
   }
-  if (segments.size() != 3) {
+  if (segments.size() < 2) {
     return {};
   }
 
@@ -516,7 +503,7 @@ std::string IdFromRelativePath(std::string_view type, const std::filesystem::pat
 
 std::filesystem::path DefaultLocalScriptPath(Kind kind, std::string_view id) {
   const auto segments = SplitResourceId(id);
-  if (segments.size() != 3) {
+  if (segments.size() < 2) {
     return {};
   }
 
