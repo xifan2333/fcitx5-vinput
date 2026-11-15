@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <cstddef>
 #include <cstdio>
 #include <fmt/format.h>
@@ -17,8 +18,12 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
+
+#define LLM_RETRY_IMPLEMENTATION
+#include <llm_retry.hpp>
 
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config_types.h"
@@ -45,6 +50,12 @@ namespace {
 
 constexpr std::size_t kMaxResponseBytes = 1ULL * 1024ULL * 1024ULL; // 1 MB limit
 constexpr long kDefaultConnectTimeoutMs = 5000;
+
+// 429 and 503 mean the provider turned the request away without running it, so
+// resending is safe even though network-level auto resend stays off. Retries are
+// kept short because the user is waiting on the rewrite of their dictation.
+constexpr int kMaxLlmAttempts = 3;
+constexpr double kMaxRetryAfterSeconds = 2.0;
 
 glz::json_t BuildCandidatesResponseFormat() {
   return {
@@ -330,6 +341,64 @@ BuildOpenAiHttpRequest(const std::string& url, std::string request_body,
   return req;
 }
 
+// Seconds from a delta-seconds Retry-After header, or -1 when absent or unparsable.
+double ParseRetryAfterSeconds(const vinput::net::HttpResponse& res) {
+  const auto value = vinput::net::FindHeader(res.headers, "Retry-After");
+  if (!value) {
+    return -1.0;
+  }
+  int seconds = 0;
+  const char* last = value->data() + value->size();
+  const auto [ptr, ec] = std::from_chars(value->data(), last, seconds);
+  if (ec != std::errc{} || ptr != last || seconds < 0) {
+    return -1.0;
+  }
+  return static_cast<double>(seconds);
+}
+
+// Sends the request, retrying 429/503 with exponential backoff (or the server's
+// Retry-After when it is short). Network errors, cancellation and every other
+// status return on the first attempt, exactly as before.
+vinput::net::HttpResponse SendWithRateLimitRetry(const vinput::net::HttpRequest& req,
+                                                 const LlmProvider& provider,
+                                                 const std::function<bool()>& is_cancelled) {
+  llm::RetryConfig retry;
+  retry.max_attempts = kMaxLlmAttempts;
+  retry.base_delay_ms = 500.0;
+  retry.max_delay_ms = 2000.0;
+  retry.retry_on_http_codes = {429, 503};
+
+  vinput::net::HttpResponse last;
+  int attempt = 0;
+  try {
+    return llm::with_retry<vinput::net::HttpResponse>(
+               [&]() {
+                 if (attempt++ > 0 && is_cancelled()) {
+                   return last;
+                 }
+                 last = vinput::net::HttpClient::Instance().Request(req);
+                 const bool rejected =
+                     std::ranges::find(retry.retry_on_http_codes, last.status_code) !=
+                     retry.retry_on_http_codes.end();
+                 if (!rejected || last.cancelled || !last.error_message.empty()) {
+                   return last;
+                 }
+                 const double retry_after = ParseRetryAfterSeconds(last);
+                 VLOG_WARN("LLM request provider={} url={} got HTTP {} (attempt {}/{})",
+                           provider.id.empty() ? "(unnamed)" : provider.id, req.url,
+                           last.status_code, attempt, retry.max_attempts);
+                 throw llm::LLMError{static_cast<int>(last.status_code), "provider rejected",
+                                     retry_after <= kMaxRetryAfterSeconds, retry_after};
+               },
+               retry)
+        .value;
+  } catch (const llm::LLMError&) {
+    // Out of attempts, or Retry-After too long: hand back the last response so
+    // the usual HTTP error path reports it.
+    return last;
+  }
+}
+
 bool ValidateHttpExecution(const vinput::net::HttpResponse& res, bool is_cancelled,
                            const LlmProvider& provider, const std::string& url,
                            std::string* error_out) {
@@ -398,7 +467,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
                                       }
                                     });
 
-  const auto res = vinput::net::HttpClient::Instance().Request(req);
+  const auto res = SendWithRateLimitRetry(req, provider, is_cancelled);
   if (!ValidateHttpExecution(res, is_cancelled(), provider, url, error_out)) {
     return std::nullopt;
   }

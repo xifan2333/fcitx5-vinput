@@ -197,6 +197,12 @@ This file lists third-party software that this project depends on or bundles, an
     - Upstream: https://github.com/yhirose/cpp-httplib
     - Version: v0.62.0 (commit 74ef3c42188acd6391f027c4337fb0e1a68c0024, imported 2026-11-04, vendored in `3rdparty/httplib/`)
 
+14. **Mattbusel/llm-retry** (`3rdparty/llm-retry/`)
+    - Description: Single-header C++ retry with exponential backoff and Retry-After support for LLM API calls.
+    - License: MIT
+    - Upstream: https://github.com/Mattbusel/llm-retry
+    - Version: commit d1a307b (imported 2026-11-15, vendored in `3rdparty/llm-retry/`)
+
 ## Models / data downloaded by users (not bundled)
 
 1. **sherpa-onnx ASR models**

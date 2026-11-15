@@ -138,7 +138,17 @@ private:
         ++request_count_;
 
         std::string response;
-        if (request_header.find("POST /error500/") != std::string::npos) {
+        const bool rate_limited =
+            (request_header.find("POST /ratelimit_once/") != std::string::npos &&
+             request_count_.load() == 1) ||
+            request_header.find("POST /ratelimit/") != std::string::npos ||
+            request_header.find("POST /ratelimit_long/") != std::string::npos;
+        if (rate_limited) {
+          const std::string retry_after =
+              request_header.find("POST /ratelimit_long/") != std::string::npos ? "60" : "0";
+          response = "HTTP/1.1 429 Too Many Requests\r\nContent-Type: text/plain\r\nRetry-After: " +
+                     retry_after + "\r\nContent-Length: 4\r\nConnection: close\r\n\r\nslow";
+        } else if (request_header.find("POST /error500/") != std::string::npos) {
           response =
               "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: "
               "19\r\nConnection: close\r\n\r\nInternal Server Err";
@@ -375,6 +385,48 @@ void TestHttp500ErrorFallback() {
   AssertTrue(!error_out.empty(), "error_out populated on HTTP 500");
   AssertTrue(error_out.find("500") != std::string::npos, "error_out mentions HTTP 500");
   AssertTrue(payload.commitText == "500 test", "fallback to raw text on error");
+}
+
+void TestRateLimitRetriedThenSucceeds() {
+  const MockHttpServer server;
+  const CoreConfig config = CreateTestConfig(server.Port(), "/ratelimit_once");
+  const auto scene = CreateTestScene();
+  const PostProcessor processor;
+
+  std::string error_out;
+  const auto payload = processor.Process("429 once", scene, config, &error_out, nullptr);
+
+  AssertTrue(server.RequestCount() == 2, "429 is retried once");
+  AssertTrue(error_out.empty(), "error_out empty after successful retry");
+  AssertTrue(payload.commitText == "Candidate 1", "retry result is used");
+}
+
+void TestRateLimitExhaustedFallback() {
+  const MockHttpServer server;
+  const CoreConfig config = CreateTestConfig(server.Port(), "/ratelimit");
+  const auto scene = CreateTestScene();
+  const PostProcessor processor;
+
+  std::string error_out;
+  const auto payload = processor.Process("429 always", scene, config, &error_out, nullptr);
+
+  AssertTrue(server.RequestCount() == 3, "429 is retried up to three attempts");
+  AssertTrue(error_out.find("429") != std::string::npos, "error_out mentions HTTP 429");
+  AssertTrue(payload.commitText == "429 always", "fallback to raw text after retries");
+}
+
+void TestRateLimitLongRetryAfterNotRetried() {
+  const MockHttpServer server;
+  const CoreConfig config = CreateTestConfig(server.Port(), "/ratelimit_long");
+  const auto scene = CreateTestScene();
+  const PostProcessor processor;
+
+  std::string error_out;
+  const auto payload = processor.Process("429 long", scene, config, &error_out, nullptr);
+
+  AssertTrue(server.RequestCount() == 1, "long Retry-After is not waited on");
+  AssertTrue(error_out.find("429") != std::string::npos, "error_out mentions HTTP 429");
+  AssertTrue(payload.commitText == "429 long", "fallback to raw text");
 }
 
 void TestRedirectErrorFallback() {
@@ -680,6 +732,9 @@ int main() {
   TestProcessInFlightCancellation();
   TestPostProcessorShutdown();
   TestHttp500ErrorFallback();
+  TestRateLimitRetriedThenSucceeds();
+  TestRateLimitExhaustedFallback();
+  TestRateLimitLongRetryAfterNotRetried();
   TestRedirectErrorFallback();
   TestMalformedJsonFallback();
   TestEmptyCandidatesFallback();

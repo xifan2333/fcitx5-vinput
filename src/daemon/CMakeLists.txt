@@ -68,6 +68,7 @@ target_link_libraries(
   PUBLIC common
          pipewire_device
          base64::base64
+         llm_retry::llm_retry
          readerwriterqueue::readerwriterqueue
          PkgConfig::SDBUS
          ${VINPUT_LOCAL_ASR_LIBS}
