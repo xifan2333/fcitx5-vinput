@@ -51,6 +51,18 @@ void RegisterDaemonCommands(CLI::App& app, CliAction* action) {
       return RunDaemonControlLogs(*follow, *lines, fmt, ctx);
     };
   });
+
+  auto pipeScene = std::make_shared<std::string>();
+  auto pipeIme = std::make_shared<bool>(false);
+  auto* pipe =
+      daemon->add_subcommand("pipe", _("Stream audio from STDIN to daemon for transcription"));
+  pipe->add_option("-s,--scene", *pipeScene, _("Scene id for postprocessing"));
+  pipe->add_flag("--ime", *pipeIme, _("Commit recognized text to desktop IME input context"));
+  pipe->callback([action, pipeScene, pipeIme]() {
+    *action = [pipeScene, pipeIme](Formatter& fmt, const CliContext& ctx) {
+      return RunDaemonControlPipe(*pipeScene, *pipeIme, fmt, ctx);
+    };
+  });
 }
 
 } // namespace vinput::cli::control
