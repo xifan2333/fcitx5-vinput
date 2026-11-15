@@ -33,11 +33,15 @@ public:
   bool StartCommandRecording(const std::string& selected_text, std::string* error = nullptr);
   bool StopRecording(const std::string& scene_id, std::string* error = nullptr);
   bool ReloadAsrBackend(std::string* error = nullptr);
+  bool TranscribeStream(int fd, const std::string& scene_id, bool ime,
+                        std::string* error = nullptr);
   bool StartClient(const std::string& client_id, std::string* error = nullptr);
   bool StopClient(const std::string& client_id, std::string* error = nullptr);
   bool GetClientStatuses(std::vector<vinput::dbus::ClientStatus>* statuses,
                          std::string* error = nullptr);
   ClientStatusMap GetClientStatusesMap(std::string* error = nullptr);
+
+  [[nodiscard]] sd_bus* GetBus() const { return bus_; }
 
 private:
   sd_bus* bus_ = nullptr;

@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
+#include <fcntl.h>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -73,9 +74,12 @@ static const sd_bus_vtable vtable[] = {
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD(kMethodGetClientStatuses, "", "a(sbx)", &DbusService::handleGetClientStatuses,
                   SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD(kMethodTranscribeStream, "hsb", "", &DbusService::handleTranscribeStream,
+                  SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_SIGNAL(kSignalRecognitionResult, "s", 0),
     SD_BUS_SIGNAL(kSignalRecognitionPartial, "s", 0),
     SD_BUS_SIGNAL(kSignalStatusChanged, "s", 0),
+    SD_BUS_SIGNAL(kSignalStreamEvent, "s", 0),
     SD_BUS_VTABLE_END,
 };
 
@@ -166,6 +170,10 @@ void DbusService::FlushEmitQueue() {
                   item.desktop_notification.title);
       }
       break;
+    case PendingEmit::Type::StreamEvent:
+      sd_bus_emit_signal(bus_, kObjectPath, kInterface, kSignalStreamEvent, "s",
+                         item.payload.c_str());
+      break;
     }
   }
 
@@ -211,6 +219,13 @@ void DbusService::EmitDesktopNotification(const vinput::notify::Notification& no
   EnqueueEmit(std::move(item));
 }
 
+void DbusService::EmitStreamEvent(const std::string& json_line) {
+  PendingEmit item;
+  item.type = PendingEmit::Type::StreamEvent;
+  item.payload = json_line;
+  EnqueueEmit(std::move(item));
+}
+
 void DbusService::SetStartHandler(std::function<MethodResult()> handler) {
   start_handler_ = std::move(handler);
 }
@@ -252,6 +267,35 @@ void DbusService::SetStopClientHandler(std::function<MethodResult(const std::str
 void DbusService::SetGetClientStatusesHandler(
     std::function<std::vector<vinput::dbus::ClientStatus>()> handler) {
   get_client_statuses_handler_ = std::move(handler);
+}
+
+void DbusService::SetTranscribeStreamHandler(TranscribeStreamHandler handler) {
+  transcribe_stream_handler_ = std::move(handler);
+}
+
+int DbusService::handleTranscribeStream(sd_bus_message* m, void* userdata, sd_bus_error* error) {
+  auto* self = static_cast<DbusService*>(userdata);
+  int raw_fd = -1;
+  const char* scene_id = nullptr;
+  int ime = 0;
+  const int r = sd_bus_message_read(m, "hsb", &raw_fd, &scene_id, &ime);
+  if (r < 0 || raw_fd < 0) {
+    return sd_bus_error_set(error, kErrorOperationFailed, "invalid stream arguments");
+  }
+  const int dup_fd = fcntl(raw_fd, F_DUPFD_CLOEXEC, 0);
+  if (dup_fd < 0) {
+    return sd_bus_error_set(error, kErrorOperationFailed,
+                            "failed to duplicate stream file descriptor");
+  }
+  MethodResult result;
+  if (self->transcribe_stream_handler_) {
+    result =
+        self->transcribe_stream_handler_(dup_fd, (scene_id != nullptr) ? scene_id : "", ime != 0);
+  } else {
+    close(dup_fd);
+    result = MethodResult::Failure("transcribe stream handler not configured");
+  }
+  return ReplyWithMethodResult(m, error, result, "");
 }
 
 int DbusService::handleStartRecording(sd_bus_message* m, void* userdata, sd_bus_error* error) {

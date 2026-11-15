@@ -259,6 +259,12 @@ bool DbusClient::ReloadAsrBackend(std::string* error) {
   return CallDaemonVoid(bus_, vinput::dbus::kMethodReloadAsrBackend, error);
 }
 
+bool DbusClient::TranscribeStream(int fd, const std::string& scene_id, bool ime,
+                                  std::string* error) {
+  return CallDaemonMethod(bus_, vinput::dbus::kMethodTranscribeStream, nullptr, error, "hsb", fd,
+                          scene_id.c_str(), ime ? 1 : 0);
+}
+
 bool DbusClient::StartClient(const std::string& client_id, std::string* error) {
   return CallDaemonStringArg(bus_, vinput::dbus::kMethodStartClient, client_id, error);
 }

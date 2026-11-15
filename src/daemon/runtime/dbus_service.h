@@ -48,6 +48,10 @@ public:
   void EmitRecognitionPartial(const std::string& text);
   void EmitStatusChanged(const std::string& status);
   void EmitDesktopNotification(const vinput::notify::Notification& notification);
+  void EmitStreamEvent(const std::string& json_line);
+
+  using TranscribeStreamHandler =
+      std::function<MethodResult(int fd, const std::string& scene_id, bool ime)>;
 
   void SetStartHandler(std::function<MethodResult()> handler);
   void SetStartCommandHandler(std::function<MethodResult(const std::string&)> handler);
@@ -60,6 +64,7 @@ public:
   void SetStopClientHandler(std::function<MethodResult(const std::string& client_id)> handler);
   void
   SetGetClientStatusesHandler(std::function<std::vector<vinput::dbus::ClientStatus>()> handler);
+  void SetTranscribeStreamHandler(TranscribeStreamHandler handler);
 
   static int handleStartRecording(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStartCommandRecording(sd_bus_message* m, void* userdata, sd_bus_error* error);
@@ -71,6 +76,7 @@ public:
   static int handleStartClient(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleStopClient(sd_bus_message* m, void* userdata, sd_bus_error* error);
   static int handleGetClientStatuses(sd_bus_message* m, void* userdata, sd_bus_error* error);
+  static int handleTranscribeStream(sd_bus_message* m, void* userdata, sd_bus_error* error);
 
 private:
   sd_bus* bus_ = nullptr;
@@ -78,7 +84,7 @@ private:
   int notify_fd_ = -1;
 
   struct PendingEmit {
-    enum class Type : std::uint8_t { Result, Partial, Status, DesktopNotification };
+    enum class Type : std::uint8_t { Result, Partial, Status, DesktopNotification, StreamEvent };
     Type type = Type::Result;
     std::string payload;
     vinput::notify::Notification desktop_notification;
@@ -99,4 +105,5 @@ private:
   std::function<MethodResult(const std::string& client_id)> start_client_handler_;
   std::function<MethodResult(const std::string& client_id)> stop_client_handler_;
   std::function<std::vector<vinput::dbus::ClientStatus>()> get_client_statuses_handler_;
+  TranscribeStreamHandler transcribe_stream_handler_;
 };

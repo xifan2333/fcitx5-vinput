@@ -69,6 +69,7 @@ public:
   DbusService::MethodResult CancelOperation(bool ime, bool commit_raw_text);
   DbusService::MethodResult InjectText(bool ime, vinput::client::InjectStage stage,
                                        const std::string& text, const std::string& scene_id = {});
+  DbusService::MethodResult TranscribeStream(int fd, const std::string& scene_id, bool ime);
 
   void DispatchClientCommand(const vinput::client::ClientCommand& command);
   void DispatchClientCommand(std::string_view client_id,
@@ -162,14 +163,27 @@ private:
   std::thread worker_;
 
   struct HeadlessClientLane {
-    AudioCapture capture;
+    std::unique_ptr<AudioCapture> capture;
     std::shared_ptr<DaemonRuntimeController> controller;
     std::string client_id;
+    std::thread stream_reader;
+    std::atomic<int> stream_fd{-1};
+
+    ~HeadlessClientLane() {
+      const int fd = stream_fd.exchange(-1);
+      if (fd >= 0) {
+        close(fd);
+      }
+      if (stream_reader.joinable()) {
+        stream_reader.join();
+      }
+    }
   };
 
   void EmitClientEvent(std::string_view line);
   void FlushSingleLaneDeferredActions();
   void DispatchSingleCommand(const vinput::client::ClientCommand& command);
+  void ShutdownHeadlessLanes();
   std::shared_ptr<DaemonRuntimeController> GetOrCreateHeadlessLane(std::string_view client_id);
   [[nodiscard]] std::vector<std::shared_ptr<HeadlessClientLane>> SnapshotHeadlessLanes() const;
 
