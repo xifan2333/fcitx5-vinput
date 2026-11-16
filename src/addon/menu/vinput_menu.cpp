@@ -561,10 +561,8 @@ PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bo
   std::string comment = FormatClientComment(running, pid, client.autoStart);
 
   std::string search_text = client.id;
-  if (title != client.id) {
-    search_text += ' ';
-    search_text += title;
-  }
+  search_text += ' ';
+  search_text += title;
   search_text += ' ';
   search_text += client.command;
   search_text += is_trigger ? " trigger " : " receiver ";
