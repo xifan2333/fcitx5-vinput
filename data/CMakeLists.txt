@@ -45,7 +45,6 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/completions/fish/vinput.fish
 
 # Udev rules for hardware triggers
 if (NOT DEFINED UDEV_RULES_DIR)
-  find_package(PkgConfig QUIET)
   if (PKG_CONFIG_FOUND)
     pkg_get_variable(_UDEV_DIR udev udevdir)
   endif ()
