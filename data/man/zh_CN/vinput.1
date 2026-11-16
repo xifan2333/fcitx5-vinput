@@ -211,6 +211,12 @@ ASR 识别出的原始文本进行重写与润色。
 \f[B]daemon restart\f[R]
 重启守护进程。
 .TP
+\f[B]daemon enable\f[R] [\f[B]\-f\f[R], \f[B]\-\-force\f[R]]
+配置守护进程随系统自动启动。
+.TP
+\f[B]daemon disable\f[R]
+取消守护进程随系统自动启动。
+.TP
 \f[B]daemon log\f[R] [\f[B]\-f\f[R], \f[B]\-\-follow\f[R]] [\f[B]\-n\f[R], \f[B]\-\-lines\f[R] \f[I]N\f[R]] [\f[B]\-l\f[R], \f[B]\-\-level\f[R] \f[I]LEVEL\f[R]]
 查看守护进程日志。\f[I]LEVEL\f[R]
 可过滤日志级别：\f[B]trace\f[R]、\f[B]debug\f[R]、\f[B]info\f[R]、\f[B]warn\f[R]、\f[B]error\f[R]。

@@ -262,10 +262,13 @@ _vinput() {
                 if [[ "$cur" == -* ]]; then
                     COMPREPLY=($(compgen -W "-h --help" -- "$cur"))
                 else
-                    COMPREPLY=($(compgen -W "status st start stop restart log pipe" -- "$cur"))
+                    COMPREPLY=($(compgen -W "status st start stop restart enable disable log pipe" -- "$cur"))
                 fi
             else
                 case "${words[2]}" in
+                    enable)
+                        COMPREPLY=($(compgen -W "-f --force -h --help" -- "$cur"))
+                        ;;
                     log)
                         COMPREPLY=($(compgen -W "-f --follow -n --lines -l --level -h --help" -- "$cur"))
                         ;;

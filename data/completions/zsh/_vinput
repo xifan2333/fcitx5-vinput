@@ -216,6 +216,8 @@ _vinput_daemon_cmds() {
         'start:Start daemon service'
         'stop:Stop daemon service'
         'restart:Restart daemon service'
+        'enable:Enable daemon to start with system'
+        'disable:Disable daemon from starting with system'
         'log:Show daemon logs'
         'pipe:Stream audio from STDIN to daemon for transcription'
     )
@@ -462,6 +464,10 @@ _vinput() {
                     case $state in
                         daemon_args)
                             case $words[1] in
+                                enable)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-f --force)'{-f,--force}'[Force enable symlink creation]' ;;
                                 log)
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \

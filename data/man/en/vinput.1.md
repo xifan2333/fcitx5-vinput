@@ -197,6 +197,12 @@ Manage audio receiver plugins.
 **daemon restart**
 :   Restart the daemon.
 
+**daemon enable** [**-f**, **--force**]
+:   Enable the daemon to start automatically with the system.
+
+**daemon disable**
+:   Disable the daemon from starting automatically with the system.
+
 **daemon log** [**-f**, **--follow**] [**-n**, **--lines** *N*] [**-l**, **--level** *LEVEL*]
 :   Show daemon logs via journalctl. *LEVEL* filters by log severity: **trace**, **debug**, **info**, **warn**, **error**.
 

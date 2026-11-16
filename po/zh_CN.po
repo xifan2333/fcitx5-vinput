@@ -1020,6 +1020,14 @@ msgstr "systemctl stop 失败（退出码：%d）"
 msgid "Daemon restarted."
 msgstr "守护进程已重启。"
 
+#: src/cli/control/daemon_actions.cpp:84
+msgid "Daemon enabled to start with system."
+msgstr "守护进程已设置为随系统自启动。"
+
+#: src/cli/control/daemon_actions.cpp:94
+msgid "Daemon disabled from starting with system."
+msgstr "守护进程已取消随系统自启动。"
+
 #: src/cli/control/recording_actions.cpp:49
 #: src/cli/control/recording_actions.cpp:159
 msgid "Recording started."
@@ -1064,6 +1072,18 @@ msgstr "停止守护进程"
 #: src/cli/control/register_daemon.cpp:32
 msgid "Restart daemon"
 msgstr "重启守护进程"
+
+#: src/cli/control/register_daemon.cpp:42
+msgid "Enable daemon to start with system"
+msgstr "配置守护进程随系统自动启动"
+
+#: src/cli/control/register_daemon.cpp:43
+msgid "Force enable symlink creation"
+msgstr "强制创建启用符号链接"
+
+#: src/cli/control/register_daemon.cpp:51
+msgid "Disable daemon from starting with system"
+msgstr "取消守护进程随系统自动启动"
 
 #: src/cli/control/register_daemon.cpp:41
 msgid "Show daemon logs"
