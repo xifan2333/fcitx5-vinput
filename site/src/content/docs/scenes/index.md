@@ -13,11 +13,11 @@ ASR raw text → [Scene prompt + LLM] → Rewritten text
 
 Core relationships:
 
-- A **scene** is a configuration: prompt (instruction) + bound LLM provider + model
+- A **scene** is a configuration: prompt (instruction) + bound LLM provider or adapter + model
 - An **LLM provider** is an OpenAI-compatible API endpoint (e.g. Ollama, Groq, OpenAI)
-- An **LLM adapter** is an optional local bridge process that wraps a non-standard local model into an OpenAI-compatible API for a provider to point to
+- An **LLM adapter** is a one-shot command pipeline filter that rewrites text via stdin/stdout without requiring an HTTP API
 
-In short: **the scene decides "how to rewrite", the LLM provider decides "who rewrites", the adapter solves "incompatible API"**.
+In short: **the scene decides "how to rewrite", the LLM provider rewrites via API, and the adapter rewrites via local command pipeline**.
 
 When LLM rewriting is not needed, use the built-in `__raw__` scene — recognition results go directly to input.
 
@@ -142,7 +142,7 @@ vinput llm remove <id>                  # Remove
 
 ### Concept
 
-If your local model does not provide an OpenAI-compatible API directly, install an **LLM adapter**. An adapter is a local process that wraps the model into an OpenAI-compatible API, then you point your LLM provider's `base_url` to it.
+If you want to rewrite text using local scripts, regex rules, or offline tools without an OpenAI-compatible API, use an **LLM adapter**. An adapter is a one-shot command pipeline filter: the daemon executes the adapter process, pipes input text to `stdin`, captures rewritten candidates from `stdout`, and routes alerts to desktop notifications via `stderr`. No background daemon, loopback port, or HTTP server is required.
 
 Corresponding config:
 
@@ -156,22 +156,17 @@ Corresponding config:
 
 ### GUI
 
-In Vinput GUI, go to **Resources → LLM Adapters** to browse and install.
-Manage adapter start/stop and autostart with daemon on the **Control** page.
+In Vinput GUI, go to **Resources → LLM Adapters** to browse, install, and update adapters. In **Scene Settings**, you can select an installed adapter directly as the rewriting backend.
 
 ### CLI
 
 ```bash
-vinput adapter ls               # List installed adapters with autostart policy
+vinput adapter list             # List installed adapters
 vinput adapter list -a          # List available remote adapters
-vinput adapter ps               # View adapter processes and runtime PID status
-vinput adapter status <id>      # Show detailed status for a specific adapter
 vinput adapter add <id>         # Install an adapter
-vinput adapter start <id>       # Start adapter process
-vinput adapter stop <id>        # Stop adapter process
-vinput adapter restart <id>     # Restart adapter process
-vinput adapter enable <id>      # Enable autostart with daemon
-vinput adapter disable <id>     # Disable autostart with daemon
+vinput adapter update [<id>]    # Update adapter to the latest version
+vinput adapter edit <id>        # Open adapter script in $EDITOR
+vinput adapter remove <id>      # Remove an installed adapter
 ```
 
 ## Command mode

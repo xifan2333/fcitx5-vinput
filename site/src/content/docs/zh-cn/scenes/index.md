@@ -13,11 +13,11 @@ ASR 原始文本 → [场景 prompt + LLM] → 改写后的文本
 
 核心关系：
 
-- **场景**是一组配置：prompt（指令）+ 绑定的 LLM provider + model
+- **场景**是一组配置：prompt（指令）+ 绑定的 LLM provider 或 adapter + model
 - **LLM 提供商**是一个 OpenAI 兼容 API 端点（如 Ollama、Groq、OpenAI）
-- **LLM 适配器**是可选的本地桥接进程，把非标准的本地模型包装成 OpenAI 兼容接口，供 LLM 提供商指向
+- **LLM 适配器**是一个 one-shot 命令行管道过滤器，通过 stdin/stdout 流式改写文本，无需 HTTP 服务
 
-一句话：**场景决定"怎么改"，LLM 提供商决定"谁来改"，适配器解决"接口不兼容"**。
+一句话：**场景决定“怎么改”，LLM 提供商走 API 改写，适配器走本地命令行管道改写**。
 
 不需要 LLM 改写时，使用内置的 `__raw__` 场景，识别结果直接上屏。
 
@@ -142,7 +142,7 @@ vinput llm remove <id>                  # 删除
 
 ### 概念
 
-如果你想用的本地模型不直接提供 OpenAI 兼容接口，可以安装一个 **LLM 适配器**。适配器是一个本地进程，把模型包装成 OpenAI 兼容 API，然后你在 LLM 提供商中把 `base_url` 指向它。
+如果你想使用本地脚本、正则清洗或本地离线工具改写文本，可以安装或编写 **LLM 适配器**。适配器是一个标准的 one-shot 命令行管道过滤器：守护进程执行适配器进程，通过 `stdin` 传入原始文本，从 `stdout` 捕获改写后的候选文本，通过 `stderr` 路由桌面通知。无需维护常驻后台进程，也不需要启动本地 HTTP 服务。
 
 对应配置：
 
@@ -156,22 +156,17 @@ vinput llm remove <id>                  # 删除
 
 ### GUI 操作
 
-在 Vinput GUI 中进入 **资源 → LLM 适配器**，浏览并安装。
-在 **控制** 页面中管理适配器的启动、停止与是否伴随守护进程自启动。
+在 Vinput GUI 中进入 **资源 → LLM 适配器** 浏览、安装与更新适配器。在 **场景配置** 中可以直接将场景的改写后端绑定为已安装的适配器。
 
 ### CLI 操作
 
 ```bash
-vinput adapter ls               # 列出已安装适配器及自启策略
-vinput adapter list -a          # 浏览可用远程适配器
-vinput adapter ps               # 查看适配器进程运行状态与 PID
-vinput adapter status <id>      # 查看指定适配器的详细状态
-vinput adapter add <id>         # 安装适配器
-vinput adapter start <id>       # 启动适配器进程
-vinput adapter stop <id>        # 停止适配器进程
-vinput adapter restart <id>     # 重启适配器进程
-vinput adapter enable <id>      # 设为随 daemon 自启动
-vinput adapter disable <id>     # 取消随 daemon 自启动
+vinput adapter list             # 列出已安装的适配器
+vinput adapter list -a          # 浏览 registry 中可用的远程适配器
+vinput adapter add <id>         # 安装指定适配器
+vinput adapter update [<id>]    # 更新适配器至最新版本
+vinput adapter edit <id>        # 在 $EDITOR 中编辑适配器脚本
+vinput adapter remove <id>      # 移除已安装的适配器
 ```
 
 ## 命令模式
