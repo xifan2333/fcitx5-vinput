@@ -560,17 +560,8 @@ PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bo
   std::string text = fmt::sprintf("%s %s", type_label.c_str(), title.c_str());
   std::string comment = FormatClientComment(running, pid, client.autoStart);
 
-  std::string search_text = client.id;
-  search_text += ' ';
-  search_text += title;
-  search_text += ' ';
-  search_text += client.command;
-  search_text += is_trigger ? " trigger " : " receiver ";
-  if (client.autoStart) {
-    search_text += "autostart ";
-  }
-  search_text += running ? "running " : "stopped ";
-  search_text += "proc process";
+  std::string search_text =
+      client.id + " " + title + (is_trigger ? " trigger proc" : " receiver proc");
 
   return PaletteItem{
       .category = PaletteCategory::Process,
