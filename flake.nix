@@ -78,6 +78,9 @@
               cmakeFlags = [
                 "-DVINPUT_ENABLE_LOCAL_ASR=${if enableLocalAsr then "ON" else "OFF"}"
                 "-DCMAKE_BUILD_TYPE=Release"
+                # pkg-config udevdir resolves to a read-only systemd store path here;
+                # the UDEV_RULES_DIR override (issue #684) redirects into this output.
+                "-DUDEV_RULES_DIR=${builtins.placeholder "out"}/lib/udev/rules.d"
                 "-DCMAKE_C_COMPILER=clang"
                 "-DCMAKE_CXX_COMPILER=clang++"
                 "-DCMAKE_LINKER=mold"
