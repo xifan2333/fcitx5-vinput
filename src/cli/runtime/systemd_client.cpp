@@ -135,4 +135,45 @@ DaemonControlResult SystemctlRestartWithDiagnostics() {
       "systemctl restart failed (exit code: %d)");
 }
 
+DaemonControlResult SystemctlEnable(bool force) {
+  std::vector<std::string> args = {"systemctl", "--user", "enable"};
+  if (force) {
+    args.emplace_back("--force");
+  }
+  args.emplace_back(std::string(vinput::path::DaemonServiceUnitName()));
+
+  std::string output;
+  DaemonControlResult result;
+  result.exit_code = RunCommandCapture(args, &output);
+  if (result.exit_code != 0) {
+    result.failure_message =
+        output.empty() ? ::fmt::sprintf("systemctl enable failed (exit code: %d)", result.exit_code)
+                       : output;
+  }
+  return result;
+}
+
+DaemonControlResult SystemctlDisable() {
+  std::string output;
+  DaemonControlResult result;
+  result.exit_code = RunCommandCapture(
+      {"systemctl", "--user", "disable", std::string(vinput::path::DaemonServiceUnitName())},
+      &output);
+  if (result.exit_code != 0) {
+    result.failure_message =
+        output.empty()
+            ? ::fmt::sprintf("systemctl disable failed (exit code: %d)", result.exit_code)
+            : output;
+  }
+  return result;
+}
+
+bool SystemctlIsEnabled() {
+  std::string output;
+  const int ret = RunCommandCapture(
+      {"systemctl", "--user", "is-enabled", std::string(vinput::path::DaemonServiceUnitName())},
+      &output);
+  return ret == 0;
+}
+
 } // namespace vinput::cli
