@@ -141,51 +141,55 @@ Provider-specific variables are allowed when upstream features don't map to shar
 
 ## LLM adapter scripts
 
-An adapter is a local process that exposes a non-standard LLM as an OpenAI-compatible API.
+An adapter is a one-shot command pipeline filter that rewrites recognized text or filters candidates using local scripts or models.
 
 **Runtime contract:**
 
 | Item | Spec |
 |------|------|
-| Command | Interpreter (e.g. `python3`) |
-| Provides | Local HTTP server |
-| Required endpoints | `GET /v1/models`, `POST /v1/chat/completions` |
+| Command | Interpreter or executable (e.g. `python3`) |
+| Execution | One-shot subprocess per rewrite request |
+| `stdin` | Input text (raw string, or JSON in command mode) |
+| `stdout` | Rewritten candidates (plain text or JSON) |
+| `stderr` | User alerts forwarded to desktop notifications |
 | Dependencies | Standard library only (no third-party packages) |
 
-### Response format
+### Candidate output format (`stdout`)
 
-For `POST /v1/chat/completions`, Vinput expects:
+Both standard scene rewriting and command mode share the same candidate extraction logic. An adapter can output candidates in any of the following formats:
 
-- Non-streaming only: `"stream": false`
-- Standard OpenAI chat completion JSON envelope
-- `choices[0].message.content` must be a string
-- That string itself must be JSON in this shape:
+1. **JSON format (recommended)**:
+   A JSON object with a `candidates` array of strings (markdown code fences like ````json` are automatically stripped):
 
-```json
-{
-  "candidates": [
-    "candidate 1",
-    "candidate 2"
-  ]
-}
-```
+   ```json
+   {
+     "candidates": [
+       "candidate 1",
+       "candidate 2"
+     ]
+   }
+   ```
 
-The outer response is OpenAI-compatible, while the inner `content` string is the structured payload consumed by Vinput.
+2. **Multi-line plain text**:
+   Each non-empty line is treated as a separate candidate.
 
-`GET /v1/models` only needs to return the standard OpenAI list format:
+3. **Single plain text**:
+   The entire trimmed output is used directly as the single candidate.
 
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "my-model",
-      "object": "model",
-      "owned_by": "my-adapter"
-    }
-  ]
-}
-```
+### Input format (`stdin`)
+
+- **Standard scene rewriting**:
+  The raw recognized text string to be rewritten.
+
+- **Command mode rewriting**:
+  A JSON object containing both the voice instruction and the selected text:
+
+  ```json
+  {
+    "text": "instruction from voice",
+    "selected": "text selected in editor"
+  }
+  ```
 
 **File structure:**
 

@@ -129,15 +129,14 @@ with its own prompt and adapter.
 
 ### LLM scene adapter
 
-A local OpenAI-compatible proxy that makes a foreign protocol — Doubao IME, MTranServer, or plain
-regex cleaning — look like `POST /v1/chat/completions`. It listens on loopback and is reached through
-the same HTTP client as a cloud LLM, so post-processing has one code path. Its `stderr` follows the
-same notification contract as an ASR provider's.
+A one-shot command pipeline filter that rewrites recognized text or filters candidates. It receives
+the raw input on `stdin`, writes rewritten candidates to `stdout`, and emits user alerts on `stderr`.
 
 ### Post-processor
 
-`src/daemon/postprocess/post_processor.cpp`. Applies the active scene to the transcript over a
-uniform OpenAI-compatible HTTP call, whether the endpoint is remote or a loopback adapter.
+`src/daemon/postprocess/post_processor.cpp`. Applies the active scene to the transcript. If an adapter
+is configured, it delegates to the one-shot adapter subprocess; otherwise, it calls the configured
+remote LLM provider via OpenAI-compatible HTTP requests.
 
 ---
 
