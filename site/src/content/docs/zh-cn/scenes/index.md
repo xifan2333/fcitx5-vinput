@@ -13,7 +13,7 @@ ASR 原始文本 → [场景 prompt + LLM] → 改写后的文本
 
 核心关系：
 
-- **场景**是一组配置：prompt（指令）+ 绑定的 LLM provider 或 adapter + model
+- **场景**定义文本改写的一组配置：可绑定 LLM 提供商（配合 prompt 与 model），或绑定适配器（走命令行管道）
 - **LLM 提供商**是一个 OpenAI 兼容 API 端点（如 Ollama、Groq、OpenAI）
 - **LLM 适配器**是一个 one-shot 命令行管道过滤器，通过 stdin/stdout 流式改写文本，无需 HTTP 服务
 
@@ -156,7 +156,9 @@ vinput llm remove <id>                  # 删除
 
 ### GUI 操作
 
-在 Vinput GUI 中进入 **资源 → LLM 适配器** 浏览、安装与更新适配器。在 **场景配置** 中可以直接将场景的改写后端绑定为已安装的适配器。
+在 Vinput GUI 中：
+- 进入 **资源 → LLM 适配器** 浏览、安装与更新适配器。
+- 在 **LLM** 页面下方的 **场景** 区域点击 **添加** 或 **编辑**，在 **提供商** 下拉列表中选择已安装的适配器作为改写后端。
 
 ### CLI 操作
 
@@ -164,7 +166,8 @@ vinput llm remove <id>                  # 删除
 vinput adapter list             # 列出已安装的适配器
 vinput adapter list -a          # 浏览 registry 中可用的远程适配器
 vinput adapter add <id>         # 安装指定适配器
-vinput adapter update [<id>]    # 更新适配器至最新版本
+vinput adapter update <id>      # 更新指定适配器
+vinput adapter update --all     # 更新所有已安装的适配器
 vinput adapter edit <id>        # 在 $EDITOR 中编辑适配器脚本
 vinput adapter remove <id>      # 移除已安装的适配器
 ```

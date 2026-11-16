@@ -13,7 +13,7 @@ ASR raw text → [Scene prompt + LLM] → Rewritten text
 
 Core relationships:
 
-- A **scene** is a configuration: prompt (instruction) + bound LLM provider or adapter + model
+- A **scene** is a configuration that defines text rewriting: bound to either an LLM provider (with prompt and model) or a local adapter (command pipeline)
 - An **LLM provider** is an OpenAI-compatible API endpoint (e.g. Ollama, Groq, OpenAI)
 - An **LLM adapter** is a one-shot command pipeline filter that rewrites text via stdin/stdout without requiring an HTTP API
 
@@ -156,7 +156,9 @@ Corresponding config:
 
 ### GUI
 
-In Vinput GUI, go to **Resources → LLM Adapters** to browse, install, and update adapters. In **Scene Settings**, you can select an installed adapter directly as the rewriting backend.
+In Vinput GUI:
+- Browse, install, and update adapters under **Resources → LLM Adapters**.
+- In the **LLM** tab under **Scenes**, click **Add** or **Edit**, then select an installed adapter from the **Provider** dropdown to use it as the rewriting backend.
 
 ### CLI
 
@@ -164,7 +166,8 @@ In Vinput GUI, go to **Resources → LLM Adapters** to browse, install, and upda
 vinput adapter list             # List installed adapters
 vinput adapter list -a          # List available remote adapters
 vinput adapter add <id>         # Install an adapter
-vinput adapter update [<id>]    # Update adapter to the latest version
+vinput adapter update <id>      # Update a specific adapter
+vinput adapter update --all     # Update all installed adapters
 vinput adapter edit <id>        # Open adapter script in $EDITOR
 vinput adapter remove <id>      # Remove an installed adapter
 ```
