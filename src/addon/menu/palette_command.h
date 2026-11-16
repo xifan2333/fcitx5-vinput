@@ -5,7 +5,11 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
 #include <vector>
+
+#include "common/config/core_config_types.h"
+#include "common/registry/registry_i18n.h"
 
 class VinputEngine;
 
@@ -57,3 +61,6 @@ public:
 private:
   std::vector<PaletteCommand> commands_;
 };
+
+PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bool running,
+                                   pid_t pid, const vinput::registry::I18nMap& i18n_map = {});

@@ -553,13 +553,18 @@ std::string FormatClientComment(bool running, pid_t pid, bool auto_start) {
   return status;
 }
 
+} // namespace
+
 PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bool running,
-                                   pid_t pid) {
+                                   pid_t pid, const vinput::registry::I18nMap& i18n_map) {
+  const std::string title = vinput::registry::LookupI18n(i18n_map, client.id + ".title", client.id);
   const std::string type_label = is_trigger ? _("[Trigger]") : _("[Receiver]");
-  std::string text = fmt::sprintf("%s %s", type_label.c_str(), client.id.c_str());
+  std::string text = fmt::sprintf("%s %s", type_label.c_str(), title.c_str());
   std::string comment = FormatClientComment(running, pid, client.autoStart);
 
   std::string search_text = client.id;
+  search_text += ' ';
+  search_text += title;
   search_text += ' ';
   search_text += client.command;
   search_text += is_trigger ? " trigger " : " receiver ";
@@ -584,8 +589,6 @@ PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bo
       .command_token = {},
   };
 }
-
-} // namespace
 
 void VinputEngine::registerModelCommand() {
   palette_registry_.registerCommand(PaletteCommand{
@@ -776,6 +779,9 @@ void VinputEngine::registerProcessCommand() {
             const auto config = LoadCoreConfig();
             items.reserve(config.triggers.size() + config.receivers.size());
 
+            const auto i18n_map = vinput::registry::LoadMergedCachedI18nMap(
+                vinput::registry::DetectPreferredLocale(), nullptr);
+
             std::unordered_map<std::string, vinput::dbus::ClientStatus> status_map;
             std::vector<vinput::dbus::ClientStatus> statuses;
             if (callGetClientStatuses(&statuses)) {
@@ -794,7 +800,7 @@ void VinputEngine::registerProcessCommand() {
                 pid = vinput::client::GetPid(client.id);
                 running = (pid > 0);
               }
-              return BuildClientPaletteItem(client, is_trigger, running, pid);
+              return BuildClientPaletteItem(client, is_trigger, running, pid, i18n_map);
             };
 
             for (const auto& client : config.triggers) {
