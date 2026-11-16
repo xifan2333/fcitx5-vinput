@@ -141,25 +141,24 @@ Provider-specific variables are allowed when upstream features don't map to shar
 
 ## LLM adapter scripts
 
-An adapter is a local process that exposes a non-standard LLM as an OpenAI-compatible API.
+An adapter is a one-shot command pipeline filter that rewrites recognized text or filters candidates using local scripts or models.
 
 **Runtime contract:**
 
 | Item | Spec |
 |------|------|
-| Command | Interpreter (e.g. `python3`) |
-| Provides | Local HTTP server |
-| Required endpoints | `GET /v1/models`, `POST /v1/chat/completions` |
+| Command | Interpreter or executable (e.g. `python3`) |
+| Execution | One-shot subprocess per rewrite request |
+| `stdin` | Input text (raw string, or JSON in command mode) |
+| `stdout` | Rewritten candidates (plain text or JSON) |
+| `stderr` | User alerts forwarded to desktop notifications |
 | Dependencies | Standard library only (no third-party packages) |
 
-### Response format
+### Input and output formats
 
-For `POST /v1/chat/completions`, Vinput expects:
-
-- Non-streaming only: `"stream": false`
-- Standard OpenAI chat completion JSON envelope
-- `choices[0].message.content` must be a string
-- That string itself must be JSON in this shape:
+**Standard scene rewriting:**
+- `stdin`: Raw text from ASR.
+- `stdout`: Rewritten text. Supports either plain text (one candidate or multiple lines) or JSON:
 
 ```json
 {
@@ -170,22 +169,17 @@ For `POST /v1/chat/completions`, Vinput expects:
 }
 ```
 
-The outer response is OpenAI-compatible, while the inner `content` string is the structured payload consumed by Vinput.
-
-`GET /v1/models` only needs to return the standard OpenAI list format:
+**Command mode rewriting:**
+- `stdin`: JSON object with `text` and `selected` fields:
 
 ```json
 {
-  "object": "list",
-  "data": [
-    {
-      "id": "my-model",
-      "object": "model",
-      "owned_by": "my-adapter"
-    }
-  ]
+  "text": "instruction from voice",
+  "selected": "text selected in editor"
 }
 ```
+
+- `stdout`: Same candidate format as standard rewriting.
 
 **File structure:**
 

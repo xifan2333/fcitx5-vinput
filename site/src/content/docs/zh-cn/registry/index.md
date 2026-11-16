@@ -141,25 +141,24 @@ resources/providers/<目录>/streaming/
 
 ## LLM 适配器脚本
 
-适配器是一个本地进程，把非标准的 LLM 包装成 OpenAI 兼容 API。
+适配器是一个标准的 one-shot 命令行管道过滤器，用于通过本地脚本或模型改写语音识别文本或生成候选。
 
 **运行时约定：**
 
 | 项目 | 规格 |
 |------|------|
-| 命令 | 解释器（如 `python3`） |
-| 提供 | 本地 HTTP 服务 |
-| 必须实现 | `GET /v1/models`、`POST /v1/chat/completions` |
+| 命令 | 解释器或可执行文件（如 `python3`） |
+| 运行方式 | 每次改写请求启动一次 one-shot 子进程 |
+| `stdin` | 待改写文本（普通场景为原始字符串，命令模式为 JSON） |
+| `stdout` | 改写后的候选结果（纯文本或 JSON） |
+| `stderr` | 用户提示信息，直接转为桌面系统通知 |
 | 依赖 | 仅标准库（禁止第三方包） |
 
-### 响应格式
+### 输入与输出格式
 
-对于 `POST /v1/chat/completions`，Vinput 要求：
-
-- 仅非流式：`"stream": false`
-- 标准 OpenAI chat completion JSON 响应结构
-- `choices[0].message.content` 必须是字符串
-- 该字符串本身必须是如下格式的 JSON：
+**普通场景改写：**
+- `stdin`：ASR 识别出的原始文本。
+- `stdout`：改写后的文本。支持纯文本（单行或多行各为一个候选），或标准 JSON 结构：
 
 ```json
 {
@@ -170,22 +169,17 @@ resources/providers/<目录>/streaming/
 }
 ```
 
-外层是 OpenAI 兼容响应，内层 `content` 字符串是 Vinput 消费的结构化数据。
-
-`GET /v1/models` 只需返回标准 OpenAI 列表格式：
+**命令模式改写：**
+- `stdin`：包含 `text`（语音指令）与 `selected`（选中文本）的 JSON 对象：
 
 ```json
 {
-  "object": "list",
-  "data": [
-    {
-      "id": "my-model",
-      "object": "model",
-      "owned_by": "my-adapter"
-    }
-  ]
+  "text": "将这句翻译为英文",
+  "selected": "你好世界"
 }
 ```
+
+- `stdout`：格式与普通改写一致。
 
 **文件结构：**
 
