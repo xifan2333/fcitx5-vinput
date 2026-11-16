@@ -88,10 +88,12 @@ private:
   std::unordered_set<std::string> pendingClientIds_;
 
   QLabel* lblDaemonStatus_;
+  QCheckBox* chkDaemonAutoStart_{nullptr};
   QPushButton* btnDaemonStart_;
   QPushButton* btnDaemonStop_;
   QPushButton* btnDaemonRestart_;
   QTimer* daemonRefreshTimer_ = nullptr;
+  bool updatingDaemonAutoStart_{false};
 
 signals:
   void configChanged();
@@ -103,9 +105,11 @@ private slots:
   void onAsrSetActive();
 
   void refreshDaemonStatus();
+  void refreshDaemonAutoStart();
   void onDaemonStart();
   void onDaemonStop();
   void onDaemonRestart();
+  void onDaemonAutoStartToggled(bool checked);
 
   void onClientStart();
   void onClientStop();
