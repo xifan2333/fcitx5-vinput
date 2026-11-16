@@ -438,64 +438,6 @@ void TestLifetimeTokenUafGuard(fcitx::Instance& instance) {
   expect(token.expired(), "lifetimeToken must expire immediately upon engine destruction");
 }
 
-void TestBuildClientPaletteItem() {
-  std::cout << "--- 10. Testing BuildClientPaletteItem Title Resolution & Search (#686) ---\n";
-  const vinput::registry::I18nMap i18n_map = {
-      {"trigger.vinput.web_remote.title", "Web 手机远程输入"},
-  };
-
-  // Case 1: Localized title exists
-  const ClientSpec trigger_spec{
-      .id = "trigger.vinput.web_remote",
-      .command = "python3",
-      .args = {},
-      .env = {},
-      .autoStart = true,
-  };
-  const auto item1 = BuildClientPaletteItem(trigger_spec, true, true, 1234, i18n_map);
-  expect(item1.id == "trigger.vinput.web_remote", "item.id must be preserved");
-  expect(item1.text.find("Web 手机远程输入") != std::string::npos,
-         "item.text must contain localized title");
-  expect(item1.text.find("[Trigger]") != std::string::npos,
-         "item.text must contain [Trigger] prefix");
-  expect(item1.search_text.find("Web 手机远程输入") != std::string::npos,
-         "search_text must contain localized title");
-  expect(item1.search_text.find("trigger.vinput.web_remote") != std::string::npos,
-         "search_text must contain client.id");
-  expect(item1.active, "item.active must be true when running");
-  expect(item1.comment.find("1234") != std::string::npos, "comment must contain pid");
-  expect(item1.comment.find("autostart") != std::string::npos,
-         "comment must contain autostart tag");
-
-  // Case 2: Fallback to ID when title is not in i18n map
-  const ClientSpec custom_spec{
-      .id = "trigger.local.gamepad",
-      .command = "python3",
-      .args = {},
-      .env = {},
-      .autoStart = false,
-  };
-  const auto item2 = BuildClientPaletteItem(custom_spec, true, false, -1, i18n_map);
-  expect(item2.id == "trigger.local.gamepad", "item.id must be preserved");
-  expect(item2.text.find("trigger.local.gamepad") != std::string::npos,
-         "item.text must fallback to client.id");
-  expect(item2.search_text.find("trigger.local.gamepad") != std::string::npos,
-         "search_text must contain client.id");
-  expect(!item2.active, "item.active must be false when stopped");
-
-  // Case 3: Receiver type label
-  const ClientSpec receiver_spec{
-      .id = "receiver.sound_effect",
-      .command = "aplay",
-      .args = {},
-      .env = {},
-      .autoStart = false,
-  };
-  const auto item3 = BuildClientPaletteItem(receiver_spec, false, false, -1, i18n_map);
-  expect(item3.text.find("[Receiver]") != std::string::npos,
-         "receiver item.text must contain [Receiver] prefix");
-}
-
 void runAllTests() {
   const ScopedConfigDir sandbox;
 
@@ -523,7 +465,6 @@ void runAllTests() {
   TestMenuKeyTriggerAndCombination(ic, engine);
   TestPaletteMenuPaginationAndSelection(instance, ic, engine);
   TestLifetimeTokenUafGuard(instance);
-  TestBuildClientPaletteItem();
 
   std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }

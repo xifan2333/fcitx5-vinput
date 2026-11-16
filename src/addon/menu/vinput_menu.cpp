@@ -553,8 +553,6 @@ std::string FormatClientComment(bool running, pid_t pid, bool auto_start) {
   return status;
 }
 
-} // namespace
-
 PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bool running,
                                    pid_t pid, const vinput::registry::I18nMap& i18n_map) {
   const std::string title = vinput::registry::LookupI18n(i18n_map, client.id + ".title", client.id);
@@ -563,8 +561,10 @@ PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bo
   std::string comment = FormatClientComment(running, pid, client.autoStart);
 
   std::string search_text = client.id;
-  search_text += ' ';
-  search_text += title;
+  if (title != client.id) {
+    search_text += ' ';
+    search_text += title;
+  }
   search_text += ' ';
   search_text += client.command;
   search_text += is_trigger ? " trigger " : " receiver ";
@@ -589,6 +589,8 @@ PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bo
       .command_token = {},
   };
 }
+
+} // namespace
 
 void VinputEngine::registerModelCommand() {
   palette_registry_.registerCommand(PaletteCommand{
