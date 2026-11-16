@@ -44,21 +44,16 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/completions/fish/vinput.fish
 )
 
 # Udev rules for hardware triggers
-if (NOT DEFINED UDEV_RULES_DIR)
-  if (PKG_CONFIG_FOUND)
-    pkg_get_variable(_UDEV_DIR udev udevdir)
+option(VINPUT_INSTALL_UDEV_RULES "Install udev rules for hardware triggers" ON)
+if (VINPUT_INSTALL_UDEV_RULES)
+  if (NOT DEFINED UDEV_RULES_DIR)
+    set(UDEV_RULES_DIR
+        "lib/udev/rules.d"
+        CACHE PATH "Install directory for udev rules (relative or absolute)"
+    )
   endif ()
-  if (_UDEV_DIR)
-    set(_DEFAULT_UDEV_RULES_DIR "${_UDEV_DIR}/rules.d")
-  else ()
-    set(_DEFAULT_UDEV_RULES_DIR "/usr/lib/udev/rules.d")
-  endif ()
-  set(UDEV_RULES_DIR
-      "${_DEFAULT_UDEV_RULES_DIR}"
-      CACHE PATH "Install directory for udev rules"
+
+  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/udev/70-fcitx5-vinput.rules
+          DESTINATION "${UDEV_RULES_DIR}"
   )
 endif ()
-
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/udev/70-fcitx5-vinput.rules
-        DESTINATION "${UDEV_RULES_DIR}"
-)

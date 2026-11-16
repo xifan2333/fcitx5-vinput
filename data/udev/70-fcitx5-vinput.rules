@@ -10,14 +10,17 @@ ACTION=="remove", GOTO="fcitx5_vinput_end"
 SUBSYSTEM=="input", ENV{ID_INPUT_JOYSTICK}=="?*", GROUP="input", MODE="0660"
 
 # Tier 2: Auxiliary input accessories (Bluetooth/USB remotes, presentation clickers, foot pedals)
-# Excludes primary typing keyboards and pointer devices for security.
+# Requires explicit peripheral name patterns and excludes typing keyboards and pointer devices for security.
 SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0003|0005", \
+    ATTRS{name}=="*[Rr]emote*|*[Cc]licker*|*[Pp]resenter*|*[Pp]edal*|*[Ff]oot*|*[Vv]oice*", \
     ENV{ID_INPUT_KEY}=="1", ENV{ID_INPUT_KEYBOARD}!="1", \
     ENV{ID_INPUT_MOUSE}!="1", ENV{ID_INPUT_TOUCHPAD}!="1", ENV{ID_INPUT_TABLET}!="1", \
     ENV{FCITX5_VINPUT_TRIGGER}="1"
 
 # Auxiliary input accessories recognized as remote controls
 SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_REMOTE_CONTROL}=="1", \
+    ENV{ID_INPUT_KEYBOARD}!="1", ENV{ID_INPUT_MOUSE}!="1", \
+    ENV{ID_INPUT_TOUCHPAD}!="1", ENV{ID_INPUT_TABLET}!="1", \
     ENV{FCITX5_VINPUT_TRIGGER}="1"
 
 # Tier 3 & Consolidated Action:
