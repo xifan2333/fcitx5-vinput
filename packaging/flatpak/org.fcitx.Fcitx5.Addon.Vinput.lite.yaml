@@ -28,6 +28,7 @@ modules:
       - -DCMAKE_BUILD_TYPE=Release
       - -DVINPUT_ENABLE_LOCAL_ASR=OFF
       - -DVINPUT_BUNDLE_SHERPA_RUNTIME=OFF
+      - -DVINPUT_INSTALL_UDEV_RULES=OFF
     sources:
       - type: git
         url: https://github.com/xifan2333/fcitx5-vinput

@@ -42,3 +42,18 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/completions/zsh/_vinput
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/completions/fish/vinput.fish
         DESTINATION ${CMAKE_INSTALL_DATADIR}/fish/vendor_completions.d
 )
+
+# Udev rules for hardware triggers
+option(VINPUT_INSTALL_UDEV_RULES "Install udev rules for hardware triggers" ON)
+if (VINPUT_INSTALL_UDEV_RULES)
+  if (NOT DEFINED UDEV_RULES_DIR)
+    set(UDEV_RULES_DIR
+        "lib/udev/rules.d"
+        CACHE PATH "Install directory for udev rules (relative or absolute)"
+    )
+  endif ()
+
+  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/udev/70-fcitx5-vinput.rules
+          DESTINATION "${UDEV_RULES_DIR}"
+  )
+endif ()
