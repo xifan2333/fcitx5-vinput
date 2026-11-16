@@ -140,4 +140,6 @@ vinput config set <JSON Pointer> <val>  # Write any config value
 vinput config edit core                 # Edit core config (config.json)
 vinput config edit fcitx                # Edit Fcitx addon config (vinput.conf)
 vinput daemon restart                   # Restart daemon to apply changes
+vinput daemon enable                    # Enable daemon to start with system
+vinput daemon disable                   # Disable daemon from starting with system
 ```

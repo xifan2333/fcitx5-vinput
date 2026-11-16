@@ -131,4 +131,6 @@ vinput config set <JSON Pointer> <值>   # 写入任意配置项
 vinput config edit core                 # 编辑核心配置 config.json
 vinput config edit fcitx                # 编辑 Fcitx 插件配置 vinput.conf
 vinput daemon restart                   # 重启守护进程使配置生效
+vinput daemon enable                    # 配置守护进程随系统自动启动
+vinput daemon disable                   # 取消守护进程随系统自动启动
 ```
