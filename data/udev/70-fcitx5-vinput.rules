@@ -1,0 +1,31 @@
+# Udev rules for fcitx5-vinput hardware triggers
+# Enables unprivileged access for local seat users via systemd-logind / elogind uaccess
+# and provides group fallback for non-systemd environments (e.g. Alpine, seatd).
+
+ACTION=="remove", GOTO="fcitx5_vinput_end"
+
+# Tier 1: Gamepads, Joysticks & Racing Controllers
+# Systemd natively tags ENV{ID_INPUT_JOYSTICK}=="?*" with TAG+="uaccess" in 70-uaccess.rules.
+# We ensure group fallback for non-systemd systems without altering uaccess tag.
+SUBSYSTEM=="input", ENV{ID_INPUT_JOYSTICK}=="?*", GROUP="input", MODE="0660"
+
+# Tier 2: Auxiliary input accessories (Bluetooth/USB remotes, presentation clickers, foot pedals)
+# Excludes primary typing keyboards and pointer devices for security.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0003|0005", \
+    ENV{ID_INPUT_KEY}=="1", ENV{ID_INPUT_KEYBOARD}!="1", \
+    ENV{ID_INPUT_MOUSE}!="1", ENV{ID_INPUT_TOUCHPAD}!="1", ENV{ID_INPUT_TABLET}!="1", \
+    TAG+="uaccess", GROUP="input", MODE="0660"
+
+# Auxiliary input accessories recognized as remote controls
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_REMOTE_CONTROL}=="1", \
+    TAG+="uaccess", GROUP="input", MODE="0660"
+
+# Tier 3: Third-party or custom hardware extension tag
+# Any device or hwdb entry with ENV{FCITX5_VINPUT_TRIGGER}=="1" receives unprivileged seat access.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{FCITX5_VINPUT_TRIGGER}=="1", \
+    TAG+="uaccess", GROUP="input", MODE="0660"
+
+# /dev/uinput access for unprivileged virtual key/event injection
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", GROUP="input", MODE="0660"
+
+LABEL="fcitx5_vinput_end"
