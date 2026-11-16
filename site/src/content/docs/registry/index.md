@@ -154,32 +154,42 @@ An adapter is a one-shot command pipeline filter that rewrites recognized text o
 | `stderr` | User alerts forwarded to desktop notifications |
 | Dependencies | Standard library only (no third-party packages) |
 
-### Input and output formats
+### Candidate output format (`stdout`)
 
-**Standard scene rewriting:**
-- `stdin`: Raw text from ASR.
-- `stdout`: Rewritten text. Supports either plain text (one candidate or multiple lines) or JSON:
+Both standard scene rewriting and command mode share the same candidate extraction logic. An adapter can output candidates in any of the following formats:
 
-```json
-{
-  "candidates": [
-    "candidate 1",
-    "candidate 2"
-  ]
-}
-```
+1. **JSON format (recommended)**:
+   A JSON object with a `candidates` array of strings (markdown code fences like ````json` are automatically stripped):
 
-**Command mode rewriting:**
-- `stdin`: JSON object with `text` and `selected` fields:
+   ```json
+   {
+     "candidates": [
+       "candidate 1",
+       "candidate 2"
+     ]
+   }
+   ```
 
-```json
-{
-  "text": "instruction from voice",
-  "selected": "text selected in editor"
-}
-```
+2. **Multi-line plain text**:
+   Each non-empty line is treated as a separate candidate.
 
-- `stdout`: Same candidate format as standard rewriting.
+3. **Single plain text**:
+   The entire trimmed output is used directly as the single candidate.
+
+### Input format (`stdin`)
+
+- **Standard scene rewriting**:
+  The raw recognized text string to be rewritten.
+
+- **Command mode rewriting**:
+  A JSON object containing both the voice instruction and the selected text:
+
+  ```json
+  {
+    "text": "instruction from voice",
+    "selected": "text selected in editor"
+  }
+  ```
 
 **File structure:**
 
