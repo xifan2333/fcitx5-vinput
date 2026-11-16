@@ -10,3 +10,4 @@ extend-exclude = [
 [default.extend-words]
 nam = "nam"
 datas = "datas"
+licker = "licker"
