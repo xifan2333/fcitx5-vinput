@@ -1,7 +1,6 @@
 #include "gui/utils/config_manager.h"
 
-#include <QtCore/qmutex.h>
-#include <QtCore/qtmetamacros.h>
+#include <QMutexLocker>
 #include <filesystem>
 #include <fstream>
 #include <iterator>

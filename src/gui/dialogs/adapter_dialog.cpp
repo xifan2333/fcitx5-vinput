@@ -1,11 +1,11 @@
 #include "dialogs/adapter_dialog.h"
 
-#include <QtCore/qcoreapplication.h>
-#include <QtCore/qstring.h>
-#include <QtWidgets/qformlayout.h>
-#include <QtWidgets/qlabel.h>
-#include <QtWidgets/qmessagebox.h>
-#include <QtWidgets/qwidget.h>
+#include <QCoreApplication>
+#include <QFormLayout>
+#include <QLabel>
+#include <QMessageBox>
+#include <QString>
+#include <QWidget>
 #include <map>
 #include <string>
 #include <utility>

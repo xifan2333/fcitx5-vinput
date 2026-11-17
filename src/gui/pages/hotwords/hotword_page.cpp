@@ -1,17 +1,18 @@
 #include "pages/hotwords/hotword_page.h"
 
-#include <QtCore/qfile.h>
-#include <QtCore/qiodevice.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qtextstream.h>
-#include <QtCore/qtimer.h>
-#include <QtWidgets/qboxlayout.h>
-#include <QtWidgets/qfiledialog.h>
-#include <QtWidgets/qlabel.h>
-#include <QtWidgets/qlineedit.h>
-#include <QtWidgets/qpushbutton.h>
-#include <QtWidgets/qtextedit.h>
-#include <QtWidgets/qwidget.h>
+#include <QFile>
+#include <QFileDialog>
+#include <QHBoxLayout>
+#include <QIODevice>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QString>
+#include <QTextEdit>
+#include <QTextStream>
+#include <QTimer>
+#include <QVBoxLayout>
+#include <QWidget>
 #include <variant>
 
 #include "common/config/core_config_types.h"

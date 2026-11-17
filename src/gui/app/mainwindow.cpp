@@ -5,15 +5,16 @@
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLocale>
+#include <QMainWindow>
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
+#include <QString>
+#include <QTabWidget>
+#include <QThread>
 #include <QUrl>
 #include <QVBoxLayout>
-#include <QtCore/qpointer.h>
-#include <QtGui/qclipboard.h>
-#include <QtGui/qguiapplication.h>
-#include <QtWidgets/qmessagebox.h>
+#include <QWidget>
 #include <atomic>
 #include <fstream>
 #include <glaze/json/json_t.hpp>
@@ -38,18 +39,6 @@
 #if VINPUT_ENABLE_LOCAL_ASR
 #include "pages/hotwords/hotword_page.h"
 #endif
-#include <QtCore/qnamespace.h>
-#include <QtCore/qobject.h>
-#include <QtCore/qobjectdefs.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qthread.h>
-#include <QtCore/qurl.h>
-#include <QtGui/qdesktopservices.h>
-#include <QtWidgets/qboxlayout.h>
-#include <QtWidgets/qmainwindow.h>
-#include <QtWidgets/qpushbutton.h>
-#include <QtWidgets/qtabwidget.h>
-#include <QtWidgets/qwidget.h>
 #include <variant>
 #include <vector>
 

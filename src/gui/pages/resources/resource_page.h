@@ -1,17 +1,15 @@
 #pragma once
 
-#include <QtCore/qobjectdefs.h>
-#include <QtCore/qpointer.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qtmetamacros.h>
-#include <QtWidgets/qlabel.h>
-#include <QtWidgets/qlineedit.h>
-#include <QtWidgets/qprogressbar.h>
-#include <QtWidgets/qpushbutton.h>
-#include <QtWidgets/qtablewidget.h>
-#include <QtWidgets/qtabwidget.h>
-#include <QtWidgets/qtextedit.h>
-#include <QtWidgets/qwidget.h>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPointer>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QString>
+#include <QTabWidget>
+#include <QTableWidget>
+#include <QTextEdit>
+#include <QWidget>
 #include <cstdint>
 #include <vector>
 

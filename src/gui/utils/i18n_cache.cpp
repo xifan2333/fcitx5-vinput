@@ -1,12 +1,7 @@
 #include "gui/utils/i18n_cache.h"
 
-#include <QtCore/qglobal.h>
-#include <QtCore/qmutex.h>
-#include <QtCore/qnamespace.h>
-#include <QtCore/qobject.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qthreadpool.h>
-#include <QtCore/qtmetamacros.h>
+#include <QMutexLocker>
+#include <QThreadPool>
 #include <string>
 #include <utility>
 

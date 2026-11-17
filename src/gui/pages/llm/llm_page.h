@@ -1,10 +1,9 @@
 #pragma once
 
-#include <QtCore/qobject.h>
-#include <QtCore/qtmetamacros.h>
-#include <QtWidgets/qlistwidget.h>
-#include <QtWidgets/qpushbutton.h>
-#include <QtWidgets/qwidget.h>
+#include <QListWidget>
+#include <QPushButton>
+#include <QString>
+#include <QWidget>
 #include <functional>
 #include <optional>
 #include <string>

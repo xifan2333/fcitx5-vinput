@@ -1,9 +1,7 @@
 #pragma once
 
-#include <QtCore/qmutex.h>
-#include <QtCore/qobject.h>
-#include <QtCore/qobjectdefs.h>
-#include <QtCore/qtmetamacros.h>
+#include <QMutex>
+#include <QObject>
 #include <string>
 
 #include "common/config/core_config_types.h"

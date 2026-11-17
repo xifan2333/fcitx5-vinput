@@ -1,16 +1,15 @@
 #pragma once
 
-#include <QtCore/qcontainerfwd.h>
-#include <QtCore/qobject.h>
-#include <QtCore/qpointer.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qstringlist.h>
-#include <QtCore/qthreadpool.h>
-#include <QtWidgets/qcombobox.h>
-#include <QtWidgets/qmessagebox.h>
-#include <QtWidgets/qpushbutton.h>
-#include <QtWidgets/qtablewidget.h>
-#include <QtWidgets/qwidget.h>
+#include <QComboBox>
+#include <QMessageBox>
+#include <QObject>
+#include <QPointer>
+#include <QPushButton>
+#include <QString>
+#include <QStringList>
+#include <QTableWidget>
+#include <QThreadPool>
+#include <QWidget>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
