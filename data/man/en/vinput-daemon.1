@@ -37,8 +37,7 @@ Managing background LLM adapter processes.
 .IP \(bu 2
 Dynamic system audio ducking via \f[B]WirePlumber\f[R] during recording.
 .SH RUNTIME LIFECYCLE & SERVICE
-\f[B]vinput\-daemon\f[R] is designed to run as a systemd user service or
-start on demand via D\-Bus activation.
+\f[B]vinput\-daemon\f[R] runs as a user\-managed systemd user service.
 .TP
 Start daemon immediately:
 \f[CR]systemctl \-\-user start vinput\-daemon.service\f[R]
@@ -83,9 +82,6 @@ Primary daemon configuration file.
 .TP
 \f[I]/usr/share/systemd/user/vinput\-daemon.service\f[R]
 Systemd user unit definition.
-.TP
-\f[I]/usr/share/dbus\-1/services/org.fcitx.Vinput.service\f[R]
-D\-Bus activation service file.
 .SH SEE ALSO
 \f[B]vinput\f[R](1), \f[B]vinput\-config\f[R](5), \f[B]fcitx5\f[R](1),
 \f[B]systemctl\f[R](1), \f[B]pipewire\f[R](1)

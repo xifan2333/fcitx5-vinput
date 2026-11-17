@@ -62,7 +62,6 @@ export CXX=clang++
 %{_bindir}/vinput-gui
 %{_libdir}/fcitx5/fcitx5-vinput.so
 %{_datadir}/fcitx5/addon/vinput.conf
-%{_datadir}/dbus-1/services/org.fcitx.Vinput.service
 %{_datadir}/systemd/user/vinput-daemon.service
 %{_datadir}/locale/*/LC_MESSAGES/fcitx5-vinput.mo
 %{_datadir}/fcitx5-vinput/

@@ -31,7 +31,7 @@ vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 
 # 服务管理与生命周期
 
-**vinput-daemon** 作为 systemd 用户服务运行，亦支持 D-Bus 按需激活。
+**vinput-daemon** 作为由用户自主控制的 systemd 用户服务运行。
 
 启动服务:
 :   `systemctl --user start vinput-daemon.service`
@@ -66,9 +66,6 @@ vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 
 */usr/share/systemd/user/vinput-daemon.service*
 :   Systemd 用户服务单元文件。
-
-*/usr/share/dbus-1/services/org.fcitx.Vinput.service*
-:   D-Bus 激活配置文件。
 
 # 另请参阅
 **vinput**(1), **vinput-config**(5), **fcitx5**(1), **systemctl**(1), **pipewire**(1)

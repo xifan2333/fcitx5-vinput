@@ -100,7 +100,6 @@ DESTDIR=%{buildroot} cmake --install build --prefix %{_prefix} --verbose
 %{_libdir}/fcitx5-vinput/
 %endif
 %{_datadir}/fcitx5/addon/vinput.conf
-%{_datadir}/dbus-1/services/org.fcitx.Vinput.service
 %{_datadir}/systemd/user/vinput-daemon.service
 %{_datadir}/locale/*/LC_MESSAGES/fcitx5-vinput.mo
 %{_datadir}/fcitx5-vinput/

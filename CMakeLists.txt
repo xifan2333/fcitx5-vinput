@@ -47,10 +47,6 @@ set(VINPUT_SYSTEMD_USER_DIR
     "${CMAKE_INSTALL_DATAROOTDIR}/systemd/user"
     CACHE PATH "Install directory for the vinput systemd --user unit"
 )
-set(VINPUT_DBUS_SERVICE_DIR
-    "${CMAKE_INSTALL_DATAROOTDIR}/dbus-1/services"
-    CACHE PATH "Install directory for the vinput D-Bus activation file"
-)
 set(VINPUT_RUNTIME_LIBDIR
     "${CMAKE_INSTALL_LIBDIR}/fcitx5-vinput"
     CACHE PATH "Install directory for bundled sherpa-onnx runtime libraries"

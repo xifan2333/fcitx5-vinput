@@ -3,8 +3,7 @@ Description=Vinput Voice Input Daemon
 After=pipewire.service
 
 [Service]
-Type=dbus
-BusName=org.fcitx.Vinput
+Type=simple
 ExecStart=/usr/bin/vinput-daemon
 
 [Install]

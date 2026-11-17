@@ -31,7 +31,7 @@ The daemon is responsible for:
 
 # RUNTIME LIFECYCLE & SERVICE
 
-**vinput-daemon** is designed to run as a systemd user service or start on demand via D-Bus activation.
+**vinput-daemon** runs as a user-managed systemd user service.
 
 Start daemon immediately:
 :   `systemctl --user start vinput-daemon.service`
@@ -66,9 +66,6 @@ When the capture warm path is active, **audio is never read or buffered into mem
 
 */usr/share/systemd/user/vinput-daemon.service*
 :   Systemd user unit definition.
-
-*/usr/share/dbus-1/services/org.fcitx.Vinput.service*
-:   D-Bus activation service file.
 
 # SEE ALSO
 **vinput**(1), **vinput-config**(5), **fcitx5**(1), **systemctl**(1), **pipewire**(1)

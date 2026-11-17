@@ -32,8 +32,7 @@ vinput\-daemon \- fcitx5\-vinput 后台语音识别与处理守护进程
 录音期间通过 \f[B]WirePlumber\f[R] 动态降低系统背景音量（Audio
 Ducking）。
 .SH 服务管理与生命周期
-\f[B]vinput\-daemon\f[R] 作为 systemd 用户服务运行，亦支持 D\-Bus
-按需激活。
+\f[B]vinput\-daemon\f[R] 作为由用户自主控制的 systemd 用户服务运行。
 .TP
 启动服务:
 \f[CR]systemctl \-\-user start vinput\-daemon.service\f[R]
@@ -71,9 +70,6 @@ Path）处于非活跃状态时，\f[B]绝不会读取或向内存缓冲任何�
 .TP
 \f[I]/usr/share/systemd/user/vinput\-daemon.service\f[R]
 Systemd 用户服务单元文件。
-.TP
-\f[I]/usr/share/dbus\-1/services/org.fcitx.Vinput.service\f[R]
-D\-Bus 激活配置文件。
 .SH 另请参阅
 \f[B]vinput\f[R](1), \f[B]vinput\-config\f[R](5), \f[B]fcitx5\f[R](1),
 \f[B]systemctl\f[R](1), \f[B]pipewire\f[R](1)
