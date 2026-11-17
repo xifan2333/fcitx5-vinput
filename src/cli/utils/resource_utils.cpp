@@ -134,10 +134,38 @@ ResourceDisplayMap FetchModelDisplayMap(const CoreConfig& config) {
   return BuildModelDisplayMap(models, FetchRegistryI18nMap(config));
 }
 
+std::vector<std::string> RegistryUrlsForKind(const CoreConfigView& view,
+                                             vinput::script::Kind kind) {
+  switch (kind) {
+  case vinput::script::Kind::kAsrProvider:
+    return view.AsrProviderRegistryUrls();
+  case vinput::script::Kind::kLlmAdapter:
+    return view.LlmAdapterRegistryUrls();
+  case vinput::script::Kind::kTrigger:
+    return view.TriggerRegistryUrls();
+  case vinput::script::Kind::kReceiver:
+    return view.ReceiverRegistryUrls();
+  }
+  return {};
+}
+
+constexpr std::string_view KindLabel(vinput::script::Kind kind) {
+  switch (kind) {
+  case vinput::script::Kind::kAsrProvider:
+    return "ASR provider";
+  case vinput::script::Kind::kLlmAdapter:
+    return "LLM adapter";
+  case vinput::script::Kind::kTrigger:
+    return "trigger";
+  case vinput::script::Kind::kReceiver:
+    return "receiver";
+  }
+  return "script";
+}
+
 ResourceDisplayMap FetchScriptDisplayMap(const CoreConfig& config, vinput::script::Kind kind) {
   const CoreConfigView view(config);
-  const auto urls = kind == vinput::script::Kind::kAsrProvider ? view.AsrProviderRegistryUrls()
-                                                               : view.LlmAdapterRegistryUrls();
+  const auto urls = RegistryUrlsForKind(view, kind);
   if (urls.empty()) {
     return {};
   }
@@ -229,6 +257,46 @@ std::string ResolveInstalledLlmAdapterSelector(const CoreConfig& config,
         return it->second.short_id;
       },
       error);
+}
+
+namespace {
+
+template <typename ClientList>
+std::string ResolveInstalledClientSelectorImpl(const ClientList& clients, vinput::script::Kind kind,
+                                               const CoreConfig& config,
+                                               const std::string& kind_label,
+                                               const std::string& selector, std::string* error) {
+  std::vector<const ClientSpec*> list;
+  list.reserve(clients.size());
+  for (const auto& item : clients) {
+    list.push_back(&item);
+  }
+  const auto display_map = FetchScriptDisplayMap(config, kind);
+  return ResolveSelector(
+      selector, list, kind_label,
+      [](const ClientSpec* item) -> const std::string& { return item->id; },
+      [&display_map](const ClientSpec* item) {
+        const auto it = display_map.find(item->id);
+        if (it == display_map.end() || it->second.short_id.empty()) {
+          return item->id;
+        }
+        return it->second.short_id;
+      },
+      error);
+}
+
+} // namespace
+
+std::string ResolveInstalledTriggerSelector(const CoreConfig& config, const std::string& selector,
+                                            std::string* error) {
+  return ResolveInstalledClientSelectorImpl(config.triggers, vinput::script::Kind::kTrigger, config,
+                                            "trigger", selector, error);
+}
+
+std::string ResolveInstalledReceiverSelector(const CoreConfig& config, const std::string& selector,
+                                             std::string* error) {
+  return ResolveInstalledClientSelectorImpl(config.receivers, vinput::script::Kind::kReceiver,
+                                            config, "receiver", selector, error);
 }
 
 bool ParseEnvOverrides(const std::vector<std::string>& env_overrides,
@@ -363,17 +431,10 @@ void RenderRegistryScriptList(const std::vector<vinput::script::RegistryEntry>& 
 std::optional<std::vector<vinput::script::RegistryEntry>>
 FetchScriptRegistryEntries(const CoreConfig& config, vinput::script::Kind kind, Formatter& fmt) {
   const CoreConfigView view(config);
-  const auto registry_urls = kind == vinput::script::Kind::kAsrProvider
-                                 ? view.AsrProviderRegistryUrls()
-                                 : view.LlmAdapterRegistryUrls();
+  const auto registry_urls = RegistryUrlsForKind(view, kind);
   if (registry_urls.empty()) {
-    if (kind == vinput::script::Kind::kAsrProvider) {
-      fmt.PrintError(_("No ASR provider registry base URLs configured. Edit config.json and set "
-                       "registry.base_urls."));
-    } else {
-      fmt.PrintError(_("No LLM adapter registry base URLs configured. Edit config.json and set "
-                       "registry.base_urls."));
-    }
+    fmt.PrintError(_("No registry base URLs configured. Edit config.json and set "
+                     "registry.base_urls."));
     return std::nullopt;
   }
 
@@ -389,10 +450,9 @@ FetchScriptRegistryEntries(const CoreConfig& config, vinput::script::Kind kind, 
 const vinput::script::RegistryEntry*
 FindRegistryScriptEntry(const std::vector<vinput::script::RegistryEntry>& entries,
                         vinput::script::Kind kind, const std::string& selector, Formatter& fmt) {
-  const std::string kind_label =
-      kind == vinput::script::Kind::kAsrProvider ? "ASR provider" : "LLM adapter";
   std::string error;
-  const std::string id = ResolveScriptSelectorByShortId(selector, entries, kind_label, &error);
+  const std::string id =
+      ResolveScriptSelectorByShortId(selector, entries, std::string(KindLabel(kind)), &error);
   if (id.empty()) {
     fmt.PrintError(error);
     return nullptr;
@@ -401,11 +461,7 @@ FindRegistryScriptEntry(const std::vector<vinput::script::RegistryEntry>& entrie
   const auto it = std::ranges::find_if(
       entries, [&id](const vinput::script::RegistryEntry& entry) { return entry.id == id; });
   if (it == entries.end()) {
-    if (kind == vinput::script::Kind::kAsrProvider) {
-      fmt.PrintError(::fmt::sprintf(_("ASR provider '%s' not found in registry."), id));
-    } else {
-      fmt.PrintError(::fmt::sprintf(_("Adapter '%s' not found in registry."), id));
-    }
+    fmt.PrintError(::fmt::sprintf(_("'%s' not found in registry."), id));
     return nullptr;
   }
   return &(*it);
@@ -417,7 +473,7 @@ DownloadRegistryScript(const vinput::script::RegistryEntry& entry, vinput::scrip
   std::filesystem::path script_path;
   std::string error;
   if (!vinput::script::DownloadScript(entry, kind, &script_path, &error)) {
-    fmt.PrintError(error);
+    fmt.PrintError(::fmt::sprintf(_("Failed to update '%s': %s"), entry.short_id, error));
     return std::nullopt;
   }
   return script_path;
@@ -447,11 +503,8 @@ bool UpdateRegistryScript(
     const std::function<bool(const std::filesystem::path&, std::string*)>& materialize,
     Formatter& fmt) {
   const auto version_info = vinput::script::CheckResourceVersion(manifest, kind, entry, true);
-  const bool is_asr = kind == vinput::script::Kind::kAsrProvider;
   if (!force && version_info.status == vinput::script::UpdateStatus::kUpToDate) {
-    fmt.PrintInfo(is_asr
-                      ? ::fmt::sprintf(_("Provider '%s' is already up to date."), entry.short_id)
-                      : ::fmt::sprintf(_("Adapter '%s' is already up to date."), entry.short_id));
+    fmt.PrintInfo(::fmt::sprintf(_("'%s' is already up to date."), entry.short_id));
     return true;
   }
 
@@ -467,16 +520,12 @@ bool UpdateRegistryScript(
   }
 
   if (version_info.installed_version.empty() || version_info.remote_version.empty()) {
-    fmt.PrintSuccess(is_asr ? ::fmt::sprintf(_("ASR provider '%s' updated."), entry.short_id)
-                            : ::fmt::sprintf(_("Adapter '%s' updated."), entry.short_id));
+    fmt.PrintSuccess(::fmt::sprintf(_("'%s' updated."), entry.short_id));
     return true;
   }
 
-  fmt.PrintSuccess(
-      is_asr ? ::fmt::sprintf(_("ASR provider '%s' updated: %s -> %s"), entry.short_id,
-                              version_info.installed_version, version_info.remote_version)
-             : ::fmt::sprintf(_("Adapter '%s' updated: %s -> %s"), entry.short_id,
-                              version_info.installed_version, version_info.remote_version));
+  fmt.PrintSuccess(::fmt::sprintf(_("'%s' updated: %s -> %s"), entry.short_id,
+                                  version_info.installed_version, version_info.remote_version));
   return true;
 }
 

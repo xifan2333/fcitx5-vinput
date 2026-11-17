@@ -432,15 +432,6 @@ msgstr "ASR 提供商 '%s' 为本地提供商，当前轻量版不支持。"
 msgid "Configured ASR provider set to '%s'."
 msgstr "配置中的 ASR 提供商已设为 '%s'。"
 
-#: src/cli/config/asr_actions.cpp:343 src/cli/config/asr_actions.cpp:444
-#: src/cli/config/asr_actions.cpp:505
-msgid ""
-"No ASR provider registry base URLs configured. Edit config.json and set "
-"registry.base_urls."
-msgstr ""
-"未配置 ASR 提供商 registry 源地址。请编辑 config.json 设置 "
-"registry.base_urls。"
-
 #: src/cli/config/asr_actions.cpp:402
 msgid "MODE"
 msgstr "模式"
@@ -482,11 +473,6 @@ msgstr "流式"
 msgid "batch"
 msgstr "非流"
 
-#: src/cli/config/asr_actions.cpp:468 src/cli/config/asr_actions.cpp:574
-#, c-format
-msgid "ASR provider '%s' not found in registry."
-msgstr "在 registry 中未找到 ASR 提供商 '%s'。"
-
 #: src/cli/config/asr_actions.cpp:487
 #, c-format
 msgid "ASR provider '%s' added."
@@ -498,21 +484,11 @@ msgid ""
 "providers."
 msgstr "请指定要更新的提供商短 ID，或使用 --all 更新所有已安装的提供商。"
 
-#: src/cli/config/asr_actions.cpp:524
-#, c-format
-msgid "Provider '%s' is already up to date."
-msgstr "提供商 '%s' 已是最新版本。"
-
 #: src/cli/config/asr_actions.cpp:531 src/cli/config/asr_actions.cpp:535
 #: src/cli/config/llm_actions.cpp:470 src/cli/config/llm_actions.cpp:474
 #, c-format
 msgid "Failed to update '%s': %s"
 msgstr "更新 '%s' 失败：%s"
-
-#: src/cli/config/asr_actions.cpp:540
-#, c-format
-msgid "ASR provider '%s' updated: %s -> %s"
-msgstr "ASR 提供商 '%s' 已更新：%s -> %s"
 
 #: src/cli/config/asr_actions.cpp:544 src/cli/config/asr_actions.cpp:633
 #, c-format
@@ -660,15 +636,6 @@ msgstr "已启用"
 msgid "disabled"
 msgstr "已禁用"
 
-#: src/cli/config/llm_actions.cpp:170 src/cli/config/llm_actions.cpp:309
-#: src/cli/config/llm_actions.cpp:434
-msgid ""
-"No LLM adapter registry base URLs configured. Edit config.json and set "
-"registry.base_urls."
-msgstr ""
-"未配置 LLM 适配器 registry 源地址。请编辑 config.json 设置 "
-"registry.base_urls。"
-
 #: src/cli/config/llm_actions.cpp:266
 #, c-format
 msgid "LLM provider '%s' already exists."
@@ -682,11 +649,6 @@ msgstr "LLM 提供商 '%s' 已添加。"
 #: src/cli/config/llm_actions.cpp:298
 msgid "Invalid --env: expected KEY=VALUE."
 msgstr "--env 无效：应为 KEY=VALUE 格式。"
-
-#: src/cli/config/llm_actions.cpp:333 src/cli/config/llm_actions.cpp:519
-#, c-format
-msgid "Adapter '%s' not found in registry."
-msgstr "在 registry 中未找到适配器 '%s'。"
 
 #: src/cli/config/llm_actions.cpp:366
 #, c-format
@@ -712,16 +674,6 @@ msgid ""
 "Specify an adapter short ID to update, or use --all to update all installed "
 "adapters."
 msgstr "请指定要更新的适配器短 ID，或使用 --all 更新所有已安装的适配器。"
-
-#: src/cli/config/llm_actions.cpp:454
-#, c-format
-msgid "Adapter '%s' is already up to date."
-msgstr "适配器 '%s' 已是最新版本。"
-
-#: src/cli/config/llm_actions.cpp:489
-#, c-format
-msgid "Adapter '%s' updated: %s -> %s"
-msgstr "适配器 '%s' 已更新：%s -> %s"
 
 #: src/cli/config/llm_actions.cpp:493
 #, c-format
@@ -1664,3 +1616,31 @@ msgstr "日志等级过滤 (trace, debug, info, warn, error)"
 #, c-format
 msgid "D-Bus event loop error: %s"
 msgstr "D-Bus 事件循环错误：%s"
+
+#: src/cli/utils/resource_utils.cpp
+msgid ""
+"No registry base URLs configured. Edit config.json and set "
+"registry.base_urls."
+msgstr ""
+"未配置 registry 源地址。请编辑 config.json 设置 "
+"registry.base_urls。"
+
+#: src/cli/utils/resource_utils.cpp
+#, c-format
+msgid "'%s' not found in registry."
+msgstr "在 registry 中未找到 '%s'。"
+
+#: src/cli/utils/resource_utils.cpp
+#, c-format
+msgid "'%s' is already up to date."
+msgstr "'%s' 已是最新版本。"
+
+#: src/cli/utils/resource_utils.cpp
+#, c-format
+msgid "'%s' updated."
+msgstr "'%s' 已更新。"
+
+#: src/cli/utils/resource_utils.cpp
+#, c-format
+msgid "'%s' updated: %s -> %s"
+msgstr "'%s' 已更新: %s -> %s"
