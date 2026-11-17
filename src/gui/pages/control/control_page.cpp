@@ -16,7 +16,6 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
-#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -1075,8 +1074,9 @@ void ControlPage::refreshDaemonAutoStart() {
         return;
       }
       if (is_enabled.has_value()) {
-        const QSignalBlocker blocker(self->chkDaemonAutoStart_);
+        const bool was_blocked = self->chkDaemonAutoStart_->blockSignals(true);
         self->chkDaemonAutoStart_->setChecked(*is_enabled);
+        self->chkDaemonAutoStart_->blockSignals(was_blocked);
       }
     });
   });
@@ -1100,8 +1100,9 @@ void ControlPage::onDaemonAutoStartToggled(bool checked) {
       self->chkDaemonAutoStart_->setEnabled(true);
       self->updatingDaemonAutoStart_ = false;
       if (!result.ok()) {
-        const QSignalBlocker blocker(self->chkDaemonAutoStart_);
+        const bool was_blocked = self->chkDaemonAutoStart_->blockSignals(true);
         self->chkDaemonAutoStart_->setChecked(!checked);
+        self->chkDaemonAutoStart_->blockSignals(was_blocked);
         QMessageBox::critical(self, ControlPage::tr("Error"),
                               QString::fromStdString(result.failure_message));
         return;
