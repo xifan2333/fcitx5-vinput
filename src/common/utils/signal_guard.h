@@ -1,6 +1,6 @@
 #pragma once
 
-#include <signal.h> // IWYU pragma: export
+#include <csignal> // IWYU pragma: export
 
 namespace vinput {
 

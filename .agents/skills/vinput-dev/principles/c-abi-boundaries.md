@@ -49,7 +49,7 @@ The following six subsystems are strictly bounded by third-party C libraries or 
 - **ABI Constraints**:
   - **Signal Handlers**: Handlers must be `extern "C" void handler(int) noexcept` function pointers and strictly async-signal-safe (e.g. writing to an `atomic<bool>` or `eventfd`). Passing lambdas to `std::signal` / `signal` is strictly forbidden (mechanically enforced by `signal-handler-no-lambda`). For ignoring signals (such as `SIGPIPE`), use the standard POSIX macro `SIG_IGN`.
   - **Signal RAII Guard**: Signal handlers must be installed using `vinput::SignalGuard` (backed by `sigaction`, flags=0), which automatically restores prior actions on destruction. Direct raw installation of signal handlers via `signal()` or `sigaction()` is forbidden (mechanically enforced by `no-raw-signal-install`).
-  - **Header Lock**: `<signal.h>` is encapsulated solely within `src/common/utils/signal_guard.h` (`IWYU pragma: export`). Direct inclusion of `<signal.h>` or `<csignal>` in other source files is forbidden (mechanically enforced by `signal-header-lock`).
+  - **Header Lock**: `<csignal>` (or `<signal.h>`) is encapsulated solely within `src/common/utils/signal_guard.h` (`IWYU pragma: export`). Direct inclusion of `<signal.h>` or `<csignal>` in other source files is forbidden (mechanically enforced by `signal-header-lock`).
   - **Event Loop `poll()`**: `struct pollfd fds[3]` and `poll(fds, ...)` interact directly with the Linux kernel multiplexing syscall.
   - **Action Rule**: Use `vinput::SignalGuard` for signal lifecycle management; keep `poll()` arrays unchanged. Main argument parsing (`argv`) must use `std::span` and `std::string_view` (modernized in PR #496).
 
