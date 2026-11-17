@@ -8,6 +8,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -134,8 +135,8 @@ ResourceDisplayMap FetchModelDisplayMap(const CoreConfig& config) {
   return BuildModelDisplayMap(models, FetchRegistryI18nMap(config));
 }
 
-std::vector<std::string> RegistryUrlsForKind(const CoreConfigView& view,
-                                             vinput::script::Kind kind) {
+static std::vector<std::string> RegistryUrlsForKind(const CoreConfigView& view,
+                                                    vinput::script::Kind kind) {
   switch (kind) {
   case vinput::script::Kind::kAsrProvider:
     return view.AsrProviderRegistryUrls();
@@ -149,7 +150,7 @@ std::vector<std::string> RegistryUrlsForKind(const CoreConfigView& view,
   return {};
 }
 
-constexpr std::string_view KindLabel(vinput::script::Kind kind) {
+static constexpr std::string_view KindLabel(vinput::script::Kind kind) {
   switch (kind) {
   case vinput::script::Kind::kAsrProvider:
     return "ASR provider";

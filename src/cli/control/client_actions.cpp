@@ -10,6 +10,7 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -28,7 +29,6 @@ extern "C" {
 #include "common/i18n.h"
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_scripts.h"
-#include "common/utils/json_utils.h"
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -240,12 +240,29 @@ int ProcessListenLoop(sd_bus* bus) {
   return 0;
 }
 
+std::string ResolveClientSelector(const CoreConfig& config, ClientKind kind,
+                                  const std::string& selector, std::string* error) {
+  return kind == ClientKind::Trigger
+             ? vinput::cli::ResolveInstalledTriggerSelector(config, selector, error)
+             : vinput::cli::ResolveInstalledReceiverSelector(config, selector, error);
+}
+
 template <typename ActionFn>
 int RunClientLifecycleAction(ClientKind kind, const std::string& id, std::string_view action_name,
                              const std::string& success_msg, const ActionFn& action, Formatter& fmt,
                              const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
-  if (!HasClientWithId(config, kind, id)) {
+  std::string resolve_error;
+  const std::string resolved_id = ResolveClientSelector(config, kind, id, &resolve_error);
+  if (resolved_id.empty()) {
+    if (ctx.json_output) {
+      fmt.PrintJson({{"ok", false}, {"error", resolve_error}});
+    } else {
+      fmt.PrintError(resolve_error);
+    }
+    return 1;
+  }
+  if (!HasClientWithId(config, kind, resolved_id)) {
     const std::string err =
         ::fmt::sprintf(_("'%s' is not configured as a %s."), id, KindLabel(kind));
     if (ctx.json_output) {
@@ -258,7 +275,7 @@ int RunClientLifecycleAction(ClientKind kind, const std::string& id, std::string
 
   vinput::cli::DbusClient dbus;
   std::string error;
-  if (!action(dbus, id, &error)) {
+  if (!action(dbus, resolved_id, &error)) {
     if (ctx.json_output) {
       fmt.PrintJson({{"ok", false}, {"error", error}});
     } else {
@@ -268,18 +285,11 @@ int RunClientLifecycleAction(ClientKind kind, const std::string& id, std::string
   }
 
   if (ctx.json_output) {
-    fmt.PrintJson({{"ok", true}, {"id", id}, {"action", std::string(action_name)}});
+    fmt.PrintJson({{"ok", true}, {"id", resolved_id}, {"action", std::string(action_name)}});
   } else {
     fmt.PrintSuccess(success_msg);
   }
   return 0;
-}
-
-std::string ResolveClientSelector(const CoreConfig& config, ClientKind kind,
-                                  const std::string& selector, std::string* error) {
-  return kind == ClientKind::Trigger
-             ? vinput::cli::ResolveInstalledTriggerSelector(config, selector, error)
-             : vinput::cli::ResolveInstalledReceiverSelector(config, selector, error);
 }
 
 const ClientSpec* GetInstalledClientView(const CoreConfig& config, ClientKind kind,
@@ -321,17 +331,14 @@ void ValidateRequiredClientEnvs(const ClientSpec* installed,
 std::filesystem::path ResolveClientScriptPath(const ClientSpec* client,
                                               vinput::script::Kind script_kind,
                                               const std::string& resolved_id) {
-  auto script_path = vinput::script::DefaultLocalScriptPath(script_kind, resolved_id);
   std::error_code ec;
-  if (!std::filesystem::exists(script_path, ec) || ec) {
-    if (client != nullptr && !client->args.empty()) {
-      const std::filesystem::path candidate(client->args.front());
-      if (std::filesystem::exists(candidate, ec) && !ec) {
-        script_path = candidate;
-      }
+  if (client != nullptr && !client->args.empty()) {
+    const std::filesystem::path candidate(client->args.front());
+    if (std::filesystem::exists(candidate, ec) && !ec) {
+      return candidate;
     }
   }
-  return script_path;
+  return vinput::script::DefaultLocalScriptPath(script_kind, resolved_id);
 }
 
 bool UpdateSingleClient(CoreConfig* config, ClientKind kind,
@@ -346,11 +353,16 @@ bool UpdateSingleClient(CoreConfig* config, ClientKind kind,
       fmt);
 }
 
-bool UpdateAllClients(CoreConfig* config, ClientKind kind,
-                      const vinput::registry::InstalledManifest& manifest,
-                      const std::vector<vinput::script::RegistryEntry>& entries, bool force,
-                      Formatter& fmt) {
+struct UpdateAllResult {
   bool any_updated = false;
+  bool any_failed = false;
+};
+
+UpdateAllResult UpdateAllClients(CoreConfig* config, ClientKind kind,
+                                 const vinput::registry::InstalledManifest& manifest,
+                                 const std::vector<vinput::script::RegistryEntry>& entries,
+                                 bool force, Formatter& fmt) {
+  UpdateAllResult result;
   const auto& clients = GetClientList(*config, kind);
   for (const auto& client : clients) {
     auto it = std::ranges::find_if(entries, [&](const auto& e) { return e.id == client.id; });
@@ -358,10 +370,12 @@ bool UpdateAllClients(CoreConfig* config, ClientKind kind,
       continue;
     }
     if (UpdateSingleClient(config, kind, manifest, *it, force, fmt)) {
-      any_updated = true;
+      result.any_updated = true;
+    } else {
+      result.any_failed = true;
     }
   }
-  return any_updated;
+  return result;
 }
 
 } // namespace
@@ -464,6 +478,10 @@ int RunClientRemove(ClientKind kind, const std::string& selector, Formatter& fmt
   }
   clients.erase(removed.begin(), removed.end());
 
+  if (!SaveConfigOrFail(config, fmt)) {
+    return 1;
+  }
+
   const auto script_kind = ToScriptKind(kind);
   const auto managed_path = vinput::script::DefaultLocalScriptPath(script_kind, resolved_id);
   if (!managed_path.empty()) {
@@ -472,31 +490,30 @@ int RunClientRemove(ClientKind kind, const std::string& selector, Formatter& fmt
   }
   vinput::script::UnregisterInstalledScript(resolved_id);
 
-  if (!SaveConfigOrFail(config, fmt)) {
-    return 1;
-  }
   fmt.PrintSuccess(::fmt::sprintf(kind == ClientKind::Trigger ? _("Trigger '%s' removed.")
                                                               : _("Receiver '%s' removed."),
                                   selector));
   return 0;
 }
 
-int RunClientUpdateAll(CoreConfig* config, ClientKind kind,
-                       const vinput::registry::InstalledManifest& manifest,
-                       const std::vector<vinput::script::RegistryScriptEntry>& entries, bool force,
-                       Formatter& fmt) {
-  const bool any_updated = UpdateAllClients(config, kind, manifest, entries, force, fmt);
-  if (!any_updated) {
-    return 0;
+static int RunClientUpdateAll(CoreConfig* config, ClientKind kind,
+                              const vinput::registry::InstalledManifest& manifest,
+                              const std::vector<vinput::script::RegistryEntry>& entries, bool force,
+                              Formatter& fmt) {
+  const auto result = UpdateAllClients(config, kind, manifest, entries, force, fmt);
+  if (result.any_updated) {
+    NormalizeCoreConfig(config);
+    if (!SaveConfigOrFail(*config, fmt)) {
+      return 1;
+    }
   }
-  NormalizeCoreConfig(config);
-  return SaveConfigOrFail(*config, fmt) ? 0 : 1;
+  return result.any_failed ? 1 : 0;
 }
 
-int RunClientUpdateSingle(CoreConfig* config, ClientKind kind,
-                          const vinput::registry::InstalledManifest& manifest,
-                          const std::vector<vinput::script::RegistryScriptEntry>& entries,
-                          const std::string& selector, bool force, Formatter& fmt) {
+static int RunClientUpdateSingle(CoreConfig* config, ClientKind kind,
+                                 const vinput::registry::InstalledManifest& manifest,
+                                 const std::vector<vinput::script::RegistryEntry>& entries,
+                                 const std::string& selector, bool force, Formatter& fmt) {
   const auto script_kind = ToScriptKind(kind);
   const auto* entry = vinput::cli::FindRegistryScriptEntry(entries, script_kind, selector, fmt);
   if (entry == nullptr) {
