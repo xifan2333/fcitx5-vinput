@@ -147,8 +147,20 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 ## 触发器管理
 管理音频触发器插件。
 
-**trigger list**
-:   列出已配置的音频触发器。
+**trigger list** [**-a**, **--available**]
+:   列出本地已配置的触发器；使用 **-a** 浏览在线注册表中的可用触发器。
+
+**trigger add** *ID* [**-e** *KEY=VALUE*]...
+:   安装指定 *ID* 的触发器脚本，可选择性指定环境变量覆盖项。
+
+**trigger update** [*ID*] [**-a**, **--all**] [**-f**, **--force**]
+:   更新触发器脚本至最新版本。
+
+**trigger edit** *ID*
+:   在环境变量 `$EDITOR` 指定的编辑器中打开触发器脚本。
+
+**trigger remove** *ID*
+:   从配置中移除触发器并清理其受控脚本文件。
 
 **trigger start** *ID*
 :   启动指定的音频触发器。
@@ -159,8 +171,20 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 ## 接收器管理
 管理音频接收器插件。
 
-**receiver list**
-:   列出已配置的音频接收器。
+**receiver list** [**-a**, **--available**]
+:   列出本地已配置的接收器；使用 **-a** 浏览在线注册表中的可用接收器。
+
+**receiver add** *ID* [**-e** *KEY=VALUE*]...
+:   安装指定 *ID* 的接收器脚本，可选择性指定环境变量覆盖项。
+
+**receiver update** [*ID*] [**-a**, **--all**] [**-f**, **--force**]
+:   更新接收器脚本至最新版本。
+
+**receiver edit** *ID*
+:   在环境变量 `$EDITOR` 指定的编辑器中打开接收器脚本。
+
+**receiver remove** *ID*
+:   从配置中移除接收器并清理其受控脚本文件。
 
 **receiver start** *ID*
 :   启动指定的音频接收器。
@@ -234,6 +258,12 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 
 *~/.local/share/vinput/adapters/*
 :   已安装的 LLM 适配器脚本目录。
+
+*~/.local/share/vinput/triggers/*
+:   已安装的触发器脚本目录。
+
+*~/.local/share/vinput/receivers/*
+:   已安装的接收器脚本目录。
 
 # 另请参阅
 **vinput-daemon**(1), **vinput-config**(5), **fcitx5**(1), **systemctl**(1)

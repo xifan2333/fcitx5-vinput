@@ -147,8 +147,20 @@ Scenes define prompt templates and bound LLM configurations used to rewrite raw 
 ## TRIGGER MANAGEMENT
 Manage audio trigger plugins.
 
-**trigger list**
-:   List configured audio triggers.
+**trigger list** [**-a**, **--available**]
+:   List installed triggers, or available remote triggers with **-a**.
+
+**trigger add** *ID* [**-e** *KEY=VALUE*]...
+:   Install a trigger script by *ID*, optionally specifying environment variable overrides.
+
+**trigger update** [*ID*] [**-a**, **--all**] [**-f**, **--force**]
+:   Update a trigger script to the latest version.
+
+**trigger edit** *ID*
+:   Open the trigger script in the editor specified by `$EDITOR`.
+
+**trigger remove** *ID*
+:   Remove a trigger from configuration and delete its managed script file.
 
 **trigger start** *ID*
 :   Start the specified audio trigger.
@@ -159,8 +171,20 @@ Manage audio trigger plugins.
 ## RECEIVER MANAGEMENT
 Manage audio receiver plugins.
 
-**receiver list**
-:   List configured audio receivers.
+**receiver list** [**-a**, **--available**]
+:   List installed receivers, or available remote receivers with **-a**.
+
+**receiver add** *ID* [**-e** *KEY=VALUE*]...
+:   Install a receiver script by *ID*, optionally specifying environment variable overrides.
+
+**receiver update** [*ID*] [**-a**, **--all**] [**-f**, **--force**]
+:   Update a receiver script to the latest version.
+
+**receiver edit** *ID*
+:   Open the receiver script in the editor specified by `$EDITOR`.
+
+**receiver remove** *ID*
+:   Remove a receiver from configuration and delete its managed script file.
 
 **receiver start** *ID*
 :   Start the specified audio receiver.
@@ -234,6 +258,12 @@ Manage audio receiver plugins.
 
 *~/.local/share/vinput/adapters/*
 :   Installed LLM adapter scripts.
+
+*~/.local/share/vinput/triggers/*
+:   Installed audio trigger scripts.
+
+*~/.local/share/vinput/receivers/*
+:   Installed audio receiver scripts.
 
 # SEE ALSO
 **vinput-daemon**(1), **vinput-config**(5), **fcitx5**(1), **systemctl**(1)
