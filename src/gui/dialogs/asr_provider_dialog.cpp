@@ -1,15 +1,13 @@
 #include "dialogs/asr_provider_dialog.h"
 
-#include <QtCore/qcontainerfwd.h>
-#include <QtCore/qcoreapplication.h>
-#include <QtCore/qobject.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qstringlist.h>
-#include <QtWidgets/qcombobox.h>
-#include <QtWidgets/qformlayout.h>
-#include <QtWidgets/qlineedit.h>
-#include <QtWidgets/qspinbox.h>
-#include <QtWidgets/qwidget.h>
+#include <QComboBox>
+#include <QCoreApplication>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QSpinBox>
+#include <QString>
+#include <QStringList>
+#include <QWidget>
 #include <map>
 #include <string>
 #include <utility>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QtWidgets/qwidget.h>
+#include <QWidget>
 
 #include "common/config/core_config_types.h"
 

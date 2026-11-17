@@ -1,7 +1,7 @@
 #pragma once
 
-#include <QtCore/qstring.h>
-#include <QtWidgets/qwidget.h>
+#include <QString>
+#include <QWidget>
 
 #include "common/config/core_config_types.h"
 
