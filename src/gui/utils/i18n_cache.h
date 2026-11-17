@@ -1,10 +1,9 @@
 #pragma once
 
-#include <QtCore/qglobal.h>
-#include <QtCore/qmutex.h>
-#include <QtCore/qobject.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qtmetamacros.h>
+#include <QMutex>
+#include <QObject>
+#include <QString>
+#include <QtGlobal>
 #include <atomic>
 #include <cstdint>
 #include <string>
