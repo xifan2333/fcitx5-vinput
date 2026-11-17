@@ -1,11 +1,9 @@
 #pragma once
 
-#include <QtCore/qobject.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qtmetamacros.h>
-#include <QtWidgets/qmainwindow.h>
-#include <QtWidgets/qtabwidget.h>
-#include <QtWidgets/qwidget.h>
+#include <QMainWindow>
+#include <QString>
+#include <QTabWidget>
+#include <QWidget>
 #include <cstdint>
 #include <optional>
 
