@@ -59,6 +59,10 @@ std::string ResolveInstalledAsrProviderSelector(const CoreConfig& config,
                                                 const std::string& selector, std::string* error);
 std::string ResolveInstalledLlmAdapterSelector(const CoreConfig& config,
                                                const std::string& selector, std::string* error);
+std::string ResolveInstalledTriggerSelector(const CoreConfig& config, const std::string& selector,
+                                            std::string* error);
+std::string ResolveInstalledReceiverSelector(const CoreConfig& config, const std::string& selector,
+                                             std::string* error);
 
 bool ParseEnvOverrides(const std::vector<std::string>& env_overrides,
                        std::map<std::string, std::string>* out_env, Formatter& fmt);

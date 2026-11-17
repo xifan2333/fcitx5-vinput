@@ -227,8 +227,15 @@ _vinput_daemon_cmds() {
 _vinput_trigger_cmds() {
     local -a trigger_cmds
     trigger_cmds=(
-        'list:List configured triggers'
-        'ls:List configured triggers (alias)'
+        'list:List local or remote triggers'
+        'ls:List local or remote triggers'
+        'add:Install a trigger script'
+        'edit:Edit a trigger script'
+        'e:Edit a trigger script'
+        'update:Update a trigger script'
+        'up:Update a trigger script'
+        'remove:Remove a trigger'
+        'rm:Remove a trigger'
         'start:Start a trigger'
         'stop:Stop a trigger'
     )
@@ -238,8 +245,15 @@ _vinput_trigger_cmds() {
 _vinput_receiver_cmds() {
     local -a receiver_cmds
     receiver_cmds=(
-        'list:List configured receivers'
-        'ls:List configured receivers (alias)'
+        'list:List local or remote receivers'
+        'ls:List local or remote receivers'
+        'add:Install a receiver script'
+        'edit:Edit a receiver script'
+        'e:Edit a receiver script'
+        'update:Update a receiver script'
+        'up:Update a receiver script'
+        'remove:Remove a receiver'
+        'rm:Remove a receiver'
         'start:Start a receiver'
         'stop:Stop a receiver'
     )
@@ -491,7 +505,22 @@ _vinput() {
                     case $state in
                         trigger_args)
                             case $words[1] in
-                                start|stop)
+                                list|ls)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-a --available)'{-a,--available}'[List remote triggers]' ;;
+                                add)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '*'{-e,--env}'[Trigger env var as KEY=VALUE]:env:' \
+                                        '1:trigger:_vinput_installed_triggers' ;;
+                                update|up)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-a --all)'{-a,--all}'[Update all installed triggers]' \
+                                        '(-f --force)'{-f,--force}'[Force update even if up to date]' \
+                                        '1:trigger:_vinput_installed_triggers' ;;
+                                remove|rm|edit|e|start|stop)
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '1:trigger:_vinput_installed_triggers' ;;
@@ -507,7 +536,22 @@ _vinput() {
                     case $state in
                         receiver_args)
                             case $words[1] in
-                                start|stop)
+                                list|ls)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-a --available)'{-a,--available}'[List remote receivers]' ;;
+                                add)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '*'{-e,--env}'[Receiver env var as KEY=VALUE]:env:' \
+                                        '1:receiver:_vinput_installed_receivers' ;;
+                                update|up)
+                                    _arguments \
+                                        '(-h --help)'{-h,--help}'[Print help message and exit]' \
+                                        '(-a --all)'{-a,--all}'[Update all installed receivers]' \
+                                        '(-f --force)'{-f,--force}'[Force update even if up to date]' \
+                                        '1:receiver:_vinput_installed_receivers' ;;
+                                remove|rm|edit|e|start|stop)
                                     _arguments \
                                         '(-h --help)'{-h,--help}'[Print help message and exit]' \
                                         '1:receiver:_vinput_installed_receivers' ;;

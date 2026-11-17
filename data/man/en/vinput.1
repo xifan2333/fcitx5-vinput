@@ -166,8 +166,22 @@ cannot be deleted).
 .SS TRIGGER MANAGEMENT
 Manage audio trigger plugins.
 .TP
-\f[B]trigger list\f[R]
-List configured audio triggers.
+\f[B]trigger list\f[R] [\f[B]\-a\f[R], \f[B]\-\-available\f[R]]
+List installed triggers, or available remote triggers with
+\f[B]\-a\f[R].
+.TP
+\f[B]trigger add\f[R] \f[I]ID\f[R] [\f[B]\-e\f[R] \f[I]KEY=VALUE\f[R]]...
+Install a trigger script by \f[I]ID\f[R], optionally specifying
+environment variable overrides.
+.TP
+\f[B]trigger update\f[R] [\f[I]ID\f[R]] [\f[B]\-a\f[R], \f[B]\-\-all\f[R]] [\f[B]\-f\f[R], \f[B]\-\-force\f[R]]
+Update a trigger script to the latest version.
+.TP
+\f[B]trigger edit\f[R] \f[I]ID\f[R]
+Open the trigger script in the editor specified by \f[CR]$EDITOR\f[R].
+.TP
+\f[B]trigger remove\f[R] \f[I]ID\f[R]
+Remove a trigger from configuration and delete its managed script file.
 .TP
 \f[B]trigger start\f[R] \f[I]ID\f[R]
 Start the specified audio trigger.
@@ -177,8 +191,22 @@ Stop the specified audio trigger.
 .SS RECEIVER MANAGEMENT
 Manage audio receiver plugins.
 .TP
-\f[B]receiver list\f[R]
-List configured audio receivers.
+\f[B]receiver list\f[R] [\f[B]\-a\f[R], \f[B]\-\-available\f[R]]
+List installed receivers, or available remote receivers with
+\f[B]\-a\f[R].
+.TP
+\f[B]receiver add\f[R] \f[I]ID\f[R] [\f[B]\-e\f[R] \f[I]KEY=VALUE\f[R]]...
+Install a receiver script by \f[I]ID\f[R], optionally specifying
+environment variable overrides.
+.TP
+\f[B]receiver update\f[R] [\f[I]ID\f[R]] [\f[B]\-a\f[R], \f[B]\-\-all\f[R]] [\f[B]\-f\f[R], \f[B]\-\-force\f[R]]
+Update a receiver script to the latest version.
+.TP
+\f[B]receiver edit\f[R] \f[I]ID\f[R]
+Open the receiver script in the editor specified by \f[CR]$EDITOR\f[R].
+.TP
+\f[B]receiver remove\f[R] \f[I]ID\f[R]
+Remove a receiver from configuration and delete its managed script file.
 .TP
 \f[B]receiver start\f[R] \f[I]ID\f[R]
 Start the specified audio receiver.
@@ -272,6 +300,12 @@ Installed external ASR provider scripts.
 .TP
 \f[I]\(ti/.local/share/vinput/adapters/\f[R]
 Installed LLM adapter scripts.
+.TP
+\f[I]\(ti/.local/share/vinput/triggers/\f[R]
+Installed audio trigger scripts.
+.TP
+\f[I]\(ti/.local/share/vinput/receivers/\f[R]
+Installed audio receiver scripts.
 .SH SEE ALSO
 \f[B]vinput\-daemon\f[R](1), \f[B]vinput\-config\f[R](5),
 \f[B]fcitx5\f[R](1), \f[B]systemctl\f[R](1)
