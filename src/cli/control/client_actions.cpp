@@ -27,6 +27,7 @@ extern "C" {
 #include "common/config/core_config_view.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
+#include "common/json/json_access.h"
 #include "common/registry/installed_manifest.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/string_utils.h"
@@ -496,10 +497,12 @@ int RunClientRemove(ClientKind kind, const std::string& selector, Formatter& fmt
   return 0;
 }
 
-static int RunClientUpdateAll(CoreConfig* config, ClientKind kind,
-                              const vinput::registry::InstalledManifest& manifest,
-                              const std::vector<vinput::script::RegistryEntry>& entries, bool force,
-                              Formatter& fmt) {
+namespace {
+
+int RunClientUpdateAll(CoreConfig* config, ClientKind kind,
+                       const vinput::registry::InstalledManifest& manifest,
+                       const std::vector<vinput::script::RegistryEntry>& entries, bool force,
+                       Formatter& fmt) {
   const auto result = UpdateAllClients(config, kind, manifest, entries, force, fmt);
   if (result.any_updated) {
     NormalizeCoreConfig(config);
@@ -510,10 +513,10 @@ static int RunClientUpdateAll(CoreConfig* config, ClientKind kind,
   return result.any_failed ? 1 : 0;
 }
 
-static int RunClientUpdateSingle(CoreConfig* config, ClientKind kind,
-                                 const vinput::registry::InstalledManifest& manifest,
-                                 const std::vector<vinput::script::RegistryEntry>& entries,
-                                 const std::string& selector, bool force, Formatter& fmt) {
+int RunClientUpdateSingle(CoreConfig* config, ClientKind kind,
+                          const vinput::registry::InstalledManifest& manifest,
+                          const std::vector<vinput::script::RegistryEntry>& entries,
+                          const std::string& selector, bool force, Formatter& fmt) {
   const auto script_kind = ToScriptKind(kind);
   const auto* entry = vinput::cli::FindRegistryScriptEntry(entries, script_kind, selector, fmt);
   if (entry == nullptr) {
@@ -535,6 +538,8 @@ static int RunClientUpdateSingle(CoreConfig* config, ClientKind kind,
   NormalizeCoreConfig(config);
   return SaveConfigOrFail(*config, fmt) ? 0 : 1;
 }
+
+} // namespace
 
 int RunClientUpdate(ClientKind kind, const std::string& selector, bool all, bool force,
                     Formatter& fmt, const CliContext& ctx) {

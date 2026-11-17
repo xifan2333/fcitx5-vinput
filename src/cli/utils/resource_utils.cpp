@@ -135,8 +135,10 @@ ResourceDisplayMap FetchModelDisplayMap(const CoreConfig& config) {
   return BuildModelDisplayMap(models, FetchRegistryI18nMap(config));
 }
 
-static std::vector<std::string> RegistryUrlsForKind(const CoreConfigView& view,
-                                                    vinput::script::Kind kind) {
+namespace {
+
+std::vector<std::string> RegistryUrlsForKind(const CoreConfigView& view,
+                                             vinput::script::Kind kind) {
   switch (kind) {
   case vinput::script::Kind::kAsrProvider:
     return view.AsrProviderRegistryUrls();
@@ -150,7 +152,7 @@ static std::vector<std::string> RegistryUrlsForKind(const CoreConfigView& view,
   return {};
 }
 
-static constexpr std::string_view KindLabel(vinput::script::Kind kind) {
+constexpr std::string_view KindLabel(vinput::script::Kind kind) {
   switch (kind) {
   case vinput::script::Kind::kAsrProvider:
     return "ASR provider";
@@ -163,6 +165,8 @@ static constexpr std::string_view KindLabel(vinput::script::Kind kind) {
   }
   return "script";
 }
+
+} // namespace
 
 ResourceDisplayMap FetchScriptDisplayMap(const CoreConfig& config, vinput::script::Kind kind) {
   const CoreConfigView view(config);
