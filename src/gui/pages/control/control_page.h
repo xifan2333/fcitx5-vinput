@@ -94,6 +94,7 @@ private:
   QPushButton* btnDaemonRestart_;
   QTimer* daemonRefreshTimer_ = nullptr;
   bool updatingDaemonAutoStart_{false};
+  uint64_t daemonAutoStartQuerySeq_{0};
 
 signals:
   void configChanged();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 namespace vinput::cli {
@@ -18,6 +19,6 @@ DaemonControlResult SystemctlStartWithDiagnostics();
 DaemonControlResult SystemctlRestartWithDiagnostics();
 DaemonControlResult SystemctlEnable(bool force = false);
 DaemonControlResult SystemctlDisable();
-bool SystemctlIsEnabled();
+std::optional<bool> SystemctlIsEnabled();
 
 } // namespace vinput::cli

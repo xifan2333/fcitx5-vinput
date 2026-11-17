@@ -3,6 +3,7 @@
 #include <array>
 #include <exception>
 #include <fmt/printf.h>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <subprocess.hpp>
@@ -157,7 +158,7 @@ DaemonControlResult SystemctlEnable(bool force) {
   if (force) {
     args.emplace_back("--force");
   }
-  args.emplace_back(std::string(vinput::path::DaemonServiceUnitName()));
+  args.emplace_back(vinput::path::DaemonServiceUnitName());
   return RunSystemctlUnitCommand(args, "enable");
 }
 
@@ -167,10 +168,14 @@ DaemonControlResult SystemctlDisable() {
       "disable");
 }
 
-bool SystemctlIsEnabled() {
-  return RunCommandCapture({"systemctl", "--user", "is-enabled",
-                            std::string(vinput::path::DaemonServiceUnitName())},
-                           nullptr) == 0;
+std::optional<bool> SystemctlIsEnabled() {
+  const int ret = RunCommandCapture(
+      {"systemctl", "--user", "is-enabled", std::string(vinput::path::DaemonServiceUnitName())},
+      nullptr);
+  if (ret < 0) {
+    return std::nullopt;
+  }
+  return ret == 0;
 }
 
 } // namespace vinput::cli

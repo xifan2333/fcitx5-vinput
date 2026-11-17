@@ -16,7 +16,6 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
-#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -24,6 +23,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QtCore/qglobal.h>
+#include <QtCore/qsignalblocker.h>
 #include <QtWidgets/qcheckbox.h>
 #include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qlistwidget.h>
@@ -1065,15 +1065,18 @@ void ControlPage::onDaemonRestart() {
 }
 
 void ControlPage::refreshDaemonAutoStart() {
+  const uint64_t seq = ++daemonAutoStartQuerySeq_;
   const QPointer<ControlPage> self(this);
-  QThreadPool::globalInstance()->start([self]() {
-    const bool is_enabled = vinput::cli::SystemctlIsEnabled();
-    QMetaObject::invokeMethod(self, [self, is_enabled]() {
-      if (!self || self->updatingDaemonAutoStart_) {
+  QThreadPool::globalInstance()->start([self, seq]() {
+    const auto is_enabled = vinput::cli::SystemctlIsEnabled();
+    QMetaObject::invokeMethod(self, [self, seq, is_enabled]() {
+      if (!self || self->updatingDaemonAutoStart_ || seq != self->daemonAutoStartQuerySeq_) {
         return;
       }
-      QSignalBlocker blocker(self->chkDaemonAutoStart_);
-      self->chkDaemonAutoStart_->setChecked(is_enabled);
+      if (is_enabled.has_value()) {
+        const QSignalBlocker blocker(self->chkDaemonAutoStart_);
+        self->chkDaemonAutoStart_->setChecked(*is_enabled);
+      }
     });
   });
 }
@@ -1083,6 +1086,7 @@ void ControlPage::onDaemonAutoStartToggled(bool checked) {
     return;
   }
   updatingDaemonAutoStart_ = true;
+  ++daemonAutoStartQuerySeq_;
   chkDaemonAutoStart_->setEnabled(false);
 
   const QPointer<ControlPage> self(this);
@@ -1095,7 +1099,7 @@ void ControlPage::onDaemonAutoStartToggled(bool checked) {
       self->chkDaemonAutoStart_->setEnabled(true);
       self->updatingDaemonAutoStart_ = false;
       if (!result.ok()) {
-        QSignalBlocker blocker(self->chkDaemonAutoStart_);
+        const QSignalBlocker blocker(self->chkDaemonAutoStart_);
         self->chkDaemonAutoStart_->setChecked(!checked);
         QMessageBox::critical(self, ControlPage::tr("Error"),
                               QString::fromStdString(result.failure_message));
