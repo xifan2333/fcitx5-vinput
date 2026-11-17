@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -23,7 +24,6 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QtCore/qglobal.h>
-#include <QtCore/qsignalblocker.h>
 #include <QtWidgets/qcheckbox.h>
 #include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qlistwidget.h>
@@ -32,6 +32,7 @@
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <optional>
 #include <qboxlayout.h>
 #include <qcombobox.h>

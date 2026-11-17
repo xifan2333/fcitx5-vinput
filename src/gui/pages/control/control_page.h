@@ -12,6 +12,7 @@
 #include <QtWidgets/qspinbox.h>
 #include <QtWidgets/qtablewidget.h>
 #include <QtWidgets/qwidget.h>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_set>
