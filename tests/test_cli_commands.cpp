@@ -106,16 +106,72 @@ void TestProviderSubcommandsAndAliases() {
   TEST_ASSERT(ParseArgs({"prov", "use", "test-prov"}).success);
 }
 
+void TestAdapterSubcommandsAndAliases() {
+  TEST_ASSERT(ParseArgs({"adapter", "list"}).success);
+  TEST_ASSERT(ParseArgs({"adapter", "ls", "-a"}).success);
+  TEST_ASSERT(ParseArgs({"adapter", "add", "test-adapter", "-e", "K=V"}).success);
+  TEST_ASSERT(ParseArgs({"adapter", "update", "test-adapter", "-f"}).success);
+  TEST_ASSERT(ParseArgs({"adapter", "up", "-a"}).success);
+  TEST_ASSERT(ParseArgs({"adapter", "edit", "test-adapter"}).success);
+  TEST_ASSERT(ParseArgs({"adapter", "e", "test-adapter"}).success);
+  TEST_ASSERT(ParseArgs({"adapter", "remove", "test-adapter"}).success);
+  TEST_ASSERT(ParseArgs({"adapter", "rm", "test-adapter"}).success);
+}
+
 void TestTriggerSubcommandsAndAliases() {
   TEST_ASSERT(ParseArgs({"trigger", "list"}).success);
+  TEST_ASSERT(ParseArgs({"trigger", "list", "-a"}).success);
   TEST_ASSERT(ParseArgs({"trig", "ls"}).success);
+  TEST_ASSERT(ParseArgs({"trig", "ls", "--available"}).success);
+
+  TEST_ASSERT(ParseArgs({"trigger", "add", "hotkey"}).success);
+  TEST_ASSERT(ParseArgs({"trig", "add", "hotkey", "-e", "KEY=val"}).success);
+  TEST_ASSERT(ParseArgs({"trig", "add", "hotkey", "--env", "K1=V1", "-e", "K2=V2"}).success);
+  TEST_ASSERT(!ParseArgs({"trigger", "add"}).success);
+
+  TEST_ASSERT(ParseArgs({"trigger", "update", "hotkey"}).success);
+  TEST_ASSERT(ParseArgs({"trigger", "update", "-a"}).success);
+  TEST_ASSERT(ParseArgs({"trigger", "update", "--all"}).success);
+  TEST_ASSERT(ParseArgs({"trig", "up", "hotkey", "-f"}).success);
+  TEST_ASSERT(ParseArgs({"trig", "up", "-a", "--force"}).success);
+
+  TEST_ASSERT(ParseArgs({"trigger", "edit", "hotkey"}).success);
+  TEST_ASSERT(ParseArgs({"trig", "e", "hotkey"}).success);
+  TEST_ASSERT(!ParseArgs({"trigger", "edit"}).success);
+
+  TEST_ASSERT(ParseArgs({"trigger", "remove", "hotkey"}).success);
+  TEST_ASSERT(ParseArgs({"trig", "rm", "hotkey"}).success);
+  TEST_ASSERT(!ParseArgs({"trigger", "remove"}).success);
+
   TEST_ASSERT(ParseArgs({"trig", "start", "hotkey"}).success);
   TEST_ASSERT(ParseArgs({"trig", "stop", "hotkey"}).success);
 }
 
 void TestReceiverSubcommandsAndAliases() {
   TEST_ASSERT(ParseArgs({"receiver", "list"}).success);
+  TEST_ASSERT(ParseArgs({"receiver", "list", "-a"}).success);
   TEST_ASSERT(ParseArgs({"recv", "ls"}).success);
+  TEST_ASSERT(ParseArgs({"recv", "ls", "--available"}).success);
+
+  TEST_ASSERT(ParseArgs({"receiver", "add", "fcitx"}).success);
+  TEST_ASSERT(ParseArgs({"recv", "add", "fcitx", "-e", "KEY=val"}).success);
+  TEST_ASSERT(ParseArgs({"recv", "add", "fcitx", "--env", "K1=V1", "-e", "K2=V2"}).success);
+  TEST_ASSERT(!ParseArgs({"receiver", "add"}).success);
+
+  TEST_ASSERT(ParseArgs({"receiver", "update", "fcitx"}).success);
+  TEST_ASSERT(ParseArgs({"receiver", "update", "-a"}).success);
+  TEST_ASSERT(ParseArgs({"receiver", "update", "--all"}).success);
+  TEST_ASSERT(ParseArgs({"recv", "up", "fcitx", "-f"}).success);
+  TEST_ASSERT(ParseArgs({"recv", "up", "-a", "--force"}).success);
+
+  TEST_ASSERT(ParseArgs({"receiver", "edit", "fcitx"}).success);
+  TEST_ASSERT(ParseArgs({"recv", "e", "fcitx"}).success);
+  TEST_ASSERT(!ParseArgs({"receiver", "edit"}).success);
+
+  TEST_ASSERT(ParseArgs({"receiver", "remove", "fcitx"}).success);
+  TEST_ASSERT(ParseArgs({"recv", "rm", "fcitx"}).success);
+  TEST_ASSERT(!ParseArgs({"receiver", "remove"}).success);
+
   TEST_ASSERT(ParseArgs({"recv", "start", "fcitx"}).success);
   TEST_ASSERT(ParseArgs({"recv", "stop", "fcitx"}).success);
 }
@@ -133,6 +189,7 @@ int main() {
   TestConfigSubcommandsAndAliases();
   TestDeviceSubcommandsAndAliases();
   TestProviderSubcommandsAndAliases();
+  TestAdapterSubcommandsAndAliases();
   TestTriggerSubcommandsAndAliases();
   TestReceiverSubcommandsAndAliases();
   TestListenRemoved();
