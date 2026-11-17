@@ -1099,9 +1099,7 @@ void ControlPage::onDaemonAutoStartToggled(bool checked) {
         self->chkDaemonAutoStart_->setChecked(!checked);
         QMessageBox::critical(self, ControlPage::tr("Error"),
                               QString::fromStdString(result.failure_message));
-      } else {
-        QSignalBlocker blocker(self->chkDaemonAutoStart_);
-        self->chkDaemonAutoStart_->setChecked(checked);
+        return;
       }
     });
   });
