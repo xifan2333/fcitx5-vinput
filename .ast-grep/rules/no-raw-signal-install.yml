@@ -1,0 +1,15 @@
+id: no-raw-signal-install
+message: "禁止使用裸 signal() 安装信号处理函数，必须使用 SignalGuard RAII 封装通过 sigaction 安装。对 SIG_IGN / SIG_DFL 等常态忽略可放行。"
+severity: error
+language: Cpp
+files:
+  - "src/**"
+rule:
+  any:
+    - pattern: signal($SIG, $HANDLER)
+    - pattern: std::signal($SIG, $HANDLER)
+    - pattern: "::signal($SIG, $HANDLER)"
+constraints:
+  HANDLER:
+    not:
+      regex: "^(SIG_IGN|SIG_DFL|SIG_ERR)$"

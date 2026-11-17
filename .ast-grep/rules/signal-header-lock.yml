@@ -1,0 +1,12 @@
+id: signal-header-lock
+message: "禁止直接包含 <signal.h> 或 <csignal>。请统一包含 \"common/utils/signal_guard.h\"。"
+severity: error
+language: Cpp
+files:
+  - "src/**"
+ignores:
+  - "src/common/utils/signal_guard.h"
+rule:
+  any:
+    - pattern: "#include <signal.h>"
+    - pattern: "#include <csignal>"
