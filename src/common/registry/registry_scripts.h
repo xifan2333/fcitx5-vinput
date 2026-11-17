@@ -74,9 +74,11 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
                            const std::filesystem::path& script_path, std::string* error,
                            const std::map<std::string, std::string>& env_overrides = {});
 bool MaterializeTrigger(CoreConfig* config, const RegistryEntry& entry,
-                        const std::filesystem::path& script_path, std::string* error);
+                        const std::filesystem::path& script_path, std::string* error,
+                        const std::map<std::string, std::string>& env_overrides = {});
 bool MaterializeReceiver(CoreConfig* config, const RegistryEntry& entry,
-                         const std::filesystem::path& script_path, std::string* error);
+                         const std::filesystem::path& script_path, std::string* error,
+                         const std::map<std::string, std::string>& env_overrides = {});
 
 ResourceVersionInfo CheckResourceVersion(const vinput::registry::InstalledManifest& manifest,
                                          Kind kind, const RegistryEntry& entry,

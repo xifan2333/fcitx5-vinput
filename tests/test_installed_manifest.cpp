@@ -190,20 +190,24 @@ void TestMaterializeTriggerAndReceiver() {
   ExpectTrue(!vinput::script::MaterializeTrigger(&config, trigger_entry, script_path, &err));
   ExpectTrue(err.find("refusing to overwrite user-defined trigger") != std::string::npos);
 
-  // 4. Materialize new receiver
+  // 4. Materialize new receiver with env overrides
   vinput::script::RegistryEntry receiver_entry;
   receiver_entry.id = "receiver.vendor.mock_receiver";
   receiver_entry.command = "bash";
+  receiver_entry.envs = {{"ENDPOINT", true}};
   const auto receiver_path =
       vinput::script::DefaultLocalScriptPath(vinput::script::Kind::kReceiver, receiver_entry.id);
   ExpectTrue(!receiver_path.empty());
 
-  ExpectTrue(vinput::script::MaterializeReceiver(&config, receiver_entry, receiver_path, &err));
+  const std::map<std::string, std::string> receiver_envs = {{"ENDPOINT", "http://localhost:8080"}};
+  ExpectTrue(vinput::script::MaterializeReceiver(&config, receiver_entry, receiver_path, &err,
+                                                 receiver_envs));
   ExpectEq(std::to_string(config.receivers.size()), "1");
   ExpectEq(config.receivers[0].id, "receiver.vendor.mock_receiver");
   ExpectEq(config.receivers[0].command, "bash");
   ExpectEq(config.receivers[0].args[0], receiver_path.string());
   ExpectTrue(!config.receivers[0].autoStart);
+  ExpectEq(config.receivers[0].env["ENDPOINT"], "http://localhost:8080");
 
   // 5. Refuse to overwrite user-defined receiver
   config.receivers[0].args = {"/custom/receiver.sh"};

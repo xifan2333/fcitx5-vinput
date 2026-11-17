@@ -650,9 +650,36 @@ bool MaterializeLlmAdapter(CoreConfig* config, const RegistryEntry& entry,
 
 namespace {
 
+ClientSpec* UpsertClient(std::vector<ClientSpec>* clients, const fs::path& managed_path,
+                         const RegistryEntry& entry, const fs::path& script_path,
+                         std::string_view type_label, std::string* error) {
+  auto it = std::ranges::find_if(
+      *clients, [&entry](const ClientSpec& client) { return client.id == entry.id; });
+  if (it == clients->end()) {
+    ClientSpec client;
+    client.id = entry.id;
+    client.command = entry.command;
+    client.args = {script_path.string()};
+    client.autoStart = false;
+    FillDefaultEnvMap(entry.envs, &client.env);
+    clients->push_back(std::move(client));
+    return &clients->back();
+  }
+  if (!IsManagedScriptPath(managed_path, it->args)) {
+    if (error != nullptr) {
+      *error = "refusing to overwrite user-defined " + std::string(type_label) + ": " + entry.id;
+    }
+    return nullptr;
+  }
+  it->command = entry.command;
+  it->args = {script_path.string()};
+  FillDefaultEnvMap(entry.envs, &it->env);
+  return &(*it);
+}
+
 bool MaterializeClient(std::vector<ClientSpec>* clients, Kind kind, const RegistryEntry& entry,
-                       const fs::path& script_path, std::string_view type_label,
-                       std::string* error) {
+                       const fs::path& script_path, std::string_view type_label, std::string* error,
+                       const std::map<std::string, std::string>& env_overrides) {
   if (clients == nullptr) {
     if (error != nullptr) {
       *error = "client list is null";
@@ -668,27 +695,15 @@ bool MaterializeClient(std::vector<ClientSpec>* clients, Kind kind, const Regist
     return false;
   }
 
-  auto it = std::ranges::find_if(
-      *clients, [&entry](const ClientSpec& client) { return client.id == entry.id; });
+  auto* target = UpsertClient(clients, managed_path, entry, script_path, type_label, error);
+  if (target == nullptr) {
+    return false;
+  }
 
-  if (it == clients->end()) {
-    ClientSpec client;
-    client.id = entry.id;
-    client.command = entry.command;
-    client.args = {script_path.string()};
-    client.autoStart = false;
-    FillDefaultEnvMap(entry.envs, &client.env);
-    clients->push_back(std::move(client));
-  } else {
-    if (!IsManagedScriptPath(managed_path, it->args)) {
-      if (error != nullptr) {
-        *error = "refusing to overwrite user-defined " + std::string(type_label) + ": " + entry.id;
-      }
-      return false;
+  for (const auto& [key, val] : env_overrides) {
+    if (!key.empty()) {
+      target->env[key] = val;
     }
-    it->command = entry.command;
-    it->args = {script_path.string()};
-    FillDefaultEnvMap(entry.envs, &it->env);
   }
 
   if (error != nullptr) {
@@ -700,18 +715,21 @@ bool MaterializeClient(std::vector<ClientSpec>* clients, Kind kind, const Regist
 } // namespace
 
 bool MaterializeTrigger(CoreConfig* config, const RegistryEntry& entry, const fs::path& script_path,
-                        std::string* error) {
+                        std::string* error,
+                        const std::map<std::string, std::string>& env_overrides) {
   if (config == nullptr) {
     if (error != nullptr) {
       *error = "config is null";
     }
     return false;
   }
-  return MaterializeClient(&config->triggers, Kind::kTrigger, entry, script_path, "trigger", error);
+  return MaterializeClient(&config->triggers, Kind::kTrigger, entry, script_path, "trigger", error,
+                           env_overrides);
 }
 
 bool MaterializeReceiver(CoreConfig* config, const RegistryEntry& entry,
-                         const fs::path& script_path, std::string* error) {
+                         const fs::path& script_path, std::string* error,
+                         const std::map<std::string, std::string>& env_overrides) {
   if (config == nullptr) {
     if (error != nullptr) {
       *error = "config is null";
@@ -719,7 +737,7 @@ bool MaterializeReceiver(CoreConfig* config, const RegistryEntry& entry,
     return false;
   }
   return MaterializeClient(&config->receivers, Kind::kReceiver, entry, script_path, "receiver",
-                           error);
+                           error, env_overrides);
 }
 
 ResourceVersionInfo CheckResourceVersion(const vinput::registry::InstalledManifest& manifest,
