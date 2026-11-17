@@ -2,6 +2,7 @@
 
 #include <QLineEdit>
 #include <QPushButton>
+#include <QString>
 #include <QTextEdit>
 #include <QWidget>
 

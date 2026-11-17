@@ -1,17 +1,15 @@
 #pragma once
 
-#include <QtCore/qobject.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qtimer.h>
-#include <QtCore/qtmetamacros.h>
-#include <QtWidgets/qcheckbox.h>
-#include <QtWidgets/qcombobox.h>
-#include <QtWidgets/qlabel.h>
-#include <QtWidgets/qlistwidget.h>
-#include <QtWidgets/qpushbutton.h>
-#include <QtWidgets/qspinbox.h>
-#include <QtWidgets/qtablewidget.h>
-#include <QtWidgets/qwidget.h>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QLabel>
+#include <QListWidget>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QString>
+#include <QTableWidget>
+#include <QTimer>
+#include <QWidget>
 #include <cstdint>
 #include <optional>
 #include <string>
