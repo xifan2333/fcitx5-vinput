@@ -1644,3 +1644,135 @@ msgstr "'%s' 已更新。"
 #, c-format
 msgid "'%s' updated: %s -> %s"
 msgstr "'%s' 已更新: %s -> %s"
+
+#: src/cli/control/register_client.cpp
+msgid "List remote triggers"
+msgstr "列出远端触发器"
+
+#: src/cli/control/register_client.cpp
+msgid "List remote receivers"
+msgstr "列出远端接收器"
+
+#: src/cli/control/register_client.cpp
+msgid "Add a trigger"
+msgstr "添加触发器"
+
+#: src/cli/control/register_client.cpp
+msgid "Add a receiver"
+msgstr "添加接收器"
+
+#: src/cli/control/register_client.cpp
+msgid "Environment variable as KEY=VALUE (repeatable)"
+msgstr "环境变量（KEY=VALUE，可重复指定）"
+
+#: src/cli/control/register_client.cpp
+msgid "Update a trigger script"
+msgstr "更新触发器脚本"
+
+#: src/cli/control/register_client.cpp
+msgid "Update a receiver script"
+msgstr "更新接收器脚本"
+
+#: src/cli/control/register_client.cpp
+msgid "Trigger short ID"
+msgstr "触发器短 ID"
+
+#: src/cli/control/register_client.cpp
+msgid "Receiver short ID"
+msgstr "接收器短 ID"
+
+#: src/cli/control/register_client.cpp
+msgid "Update all installed triggers"
+msgstr "更新所有已安装的触发器"
+
+#: src/cli/control/register_client.cpp
+msgid "Update all installed receivers"
+msgstr "更新所有已安装的接收器"
+
+#: src/cli/control/register_client.cpp
+msgid "Edit a trigger script"
+msgstr "编辑触发器脚本"
+
+#: src/cli/control/register_client.cpp
+msgid "Edit a receiver script"
+msgstr "编辑接收器脚本"
+
+#: src/cli/control/register_client.cpp
+msgid "Remove a trigger"
+msgstr "移除触发器"
+
+#: src/cli/control/register_client.cpp
+msgid "Remove a receiver"
+msgstr "移除接收器"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Trigger '%s' added."
+msgstr "触发器 '%s' 已添加。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Receiver '%s' added."
+msgstr "接收器 '%s' 已添加。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Trigger '%s' removed."
+msgstr "触发器 '%s' 已移除。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Receiver '%s' removed."
+msgstr "接收器 '%s' 已移除。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Trigger '%s' not found."
+msgstr "未找到触发器 '%s'。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Receiver '%s' not found."
+msgstr "未找到接收器 '%s'。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Trigger '%s' is not installed. Use 'add' instead."
+msgstr "触发器 '%s' 尚未安装。请改用 'add'。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Receiver '%s' is not installed. Use 'add' instead."
+msgstr "接收器 '%s' 尚未安装。请改用 'add'。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Trigger '%s' does not reference an editable script file."
+msgstr "触发器 '%s' 未引用可编辑的脚本文件。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Receiver '%s' does not reference an editable script file."
+msgstr "接收器 '%s' 未引用可编辑的脚本文件。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Trigger '%s' updated."
+msgstr "触发器 '%s' 已更新。"
+
+#: src/cli/control/client_actions.cpp
+#, c-format
+msgid "Receiver '%s' updated."
+msgstr "接收器 '%s' 已更新。"
+
+#: src/cli/control/client_actions.cpp
+msgid ""
+"Specify a trigger short ID to update, or use --all to update all installed "
+"triggers."
+msgstr "请指定要更新的触发器短 ID，或使用 --all 更新所有已安装的触发器。"
+
+#: src/cli/control/client_actions.cpp
+msgid ""
+"Specify a receiver short ID to update, or use --all to update all installed "
+"receivers."
+msgstr "请指定要更新的接收器短 ID，或使用 --all 更新所有已安装的接收器。"
