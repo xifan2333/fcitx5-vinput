@@ -19,10 +19,6 @@
 #include <utility>
 #include <vector>
 
-extern "C" {
-#include <signal.h>
-}
-
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
@@ -33,6 +29,7 @@ extern "C" {
 #include "common/utils/path_utils.h"
 #include "common/utils/process_session.h"
 #include "common/utils/process_utils.h"
+#include "common/utils/signal_guard.h"
 
 namespace vinput::client {
 

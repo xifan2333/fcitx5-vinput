@@ -29,13 +29,13 @@
 #include <vector>
 
 extern "C" {
-#include <signal.h> // SIGKILL
-#include <time.h>   // pid_t
+#include <time.h> // pid_t
 }
 
 #include "common/utils/debug_log.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/process_internal.h"
+#include "common/utils/signal_guard.h"
 
 namespace vinput::process {
 

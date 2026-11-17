@@ -12,13 +12,13 @@
 #include <unistd.h>
 
 extern "C" {
-#include <signal.h>
 #include <systemd/sd-bus.h>
 }
 
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
 #include "common/utils/sandbox.h"
+#include "common/utils/signal_guard.h"
 #include "common/utils/string_utils.h"
 
 #include "cli/runtime/dbus_client.h"
@@ -33,7 +33,7 @@ std::atomic<bool>& PipeInterruptedFlag() {
   return flag;
 }
 
-void OnPipeSignal(int sig) {
+extern "C" void OnPipeSignal(int sig) noexcept {
   if (sig == SIGINT || sig == SIGTERM) {
     PipeInterruptedFlag().store(true, std::memory_order_relaxed);
   }
@@ -256,15 +256,12 @@ int RunDaemonControlPipe(const std::string& scene_id, bool ime, Formatter& /*fmt
   }
 
   PipeInterruptedFlag().store(false, std::memory_order_relaxed);
-  const auto prev_int = signal(SIGINT, OnPipeSignal);
-  const auto prev_term = signal(SIGTERM, OnPipeSignal);
-  const auto prev_pipe = signal(SIGPIPE, SIG_IGN);
+  const vinput::SignalGuard guard_int(SIGINT, OnPipeSignal);
+  const vinput::SignalGuard guard_term(SIGTERM, OnPipeSignal);
+  const vinput::SignalGuard guard_pipe(SIGPIPE, SIG_IGN);
 
   const int loop_rc = ProcessPipeLoop(dbus.GetBus(), pctx);
 
-  signal(SIGINT, prev_int);
-  signal(SIGTERM, prev_term);
-  signal(SIGPIPE, prev_pipe);
   sd_bus_slot_unref(slot);
 
   if (!pctx.finished.load(std::memory_order_relaxed) && !pctx.target_client_id.empty()) {

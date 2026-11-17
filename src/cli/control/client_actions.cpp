@@ -12,7 +12,6 @@
 #include <vector>
 
 extern "C" {
-#include <signal.h>
 #include <systemd/sd-bus.h>
 }
 
@@ -23,6 +22,7 @@ extern "C" {
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
+#include "common/utils/signal_guard.h"
 
 #include "cli/runtime/dbus_client.h"
 #include "cli/utils/cli_context.h"
@@ -37,7 +37,7 @@ std::atomic<bool>& ListenInterrupted() {
   return interrupted;
 }
 
-void OnListenSignal(int /*sig*/) {
+extern "C" void OnListenSignal(int /*sig*/) noexcept {
   ListenInterrupted().store(true, std::memory_order_relaxed);
 }
 
@@ -309,13 +309,11 @@ int RunListen(std::string_view type_filter, Formatter& /*fmt*/, const CliContext
   }
 
   ListenInterrupted().store(false, std::memory_order_relaxed);
-  const auto prev_int = signal(SIGINT, OnListenSignal);
-  const auto prev_term = signal(SIGTERM, OnListenSignal);
+  const vinput::SignalGuard guard_int(SIGINT, OnListenSignal);
+  const vinput::SignalGuard guard_term(SIGTERM, OnListenSignal);
 
   const int loop_error = ProcessListenLoop(bus);
 
-  signal(SIGINT, prev_int);
-  signal(SIGTERM, prev_term);
   sd_bus_flush_close_unref(bus);
 
   if (loop_error < 0 && !ListenInterrupted().load(std::memory_order_relaxed)) {

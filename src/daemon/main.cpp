@@ -8,16 +8,13 @@
 #include <sys/poll.h>
 #include <vector>
 
-extern "C" {
-#include <signal.h>
-}
-
 #include "common/client/client_manager.h"
 #include "common/config/core_config.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/signal_guard.h"
 
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
@@ -33,7 +30,7 @@ std::atomic<bool>& RunningFlag() {
   return running;
 }
 
-void signal_handler(int sig) {
+extern "C" void signal_handler(int sig) noexcept {
   (void)sig;
   RunningFlag() = false;
 }
@@ -157,8 +154,8 @@ void RunEventLoop(DbusService& dbus,
 
 int main(int argc, char* argv[]) {
   vinput::i18n::Init();
-  signal(SIGTERM, signal_handler);
-  signal(SIGINT, signal_handler);
+  const vinput::SignalGuard guard_term(SIGTERM, signal_handler);
+  const vinput::SignalGuard guard_int(SIGINT, signal_handler);
 
   ParseCommandLineLogLevel(argc, argv);
 

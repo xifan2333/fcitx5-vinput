@@ -25,14 +25,11 @@
 #include <utility>
 #include <vector>
 
-extern "C" {
-#include <signal.h> // SIGKILL, SIGTERM
-}
-
 #include "common/utils/debug_log.h"
 #include "common/utils/expected.h"
 #include "common/utils/process_internal.h"
 #include "common/utils/process_utils.h"
+#include "common/utils/signal_guard.h"
 
 namespace vinput::process {
 
