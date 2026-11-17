@@ -194,6 +194,28 @@ int RunDaemonControlRestart(Formatter& fmt, const CliContext& ctx) {
   return 1;
 }
 
+int RunDaemonControlEnable(bool force, Formatter& fmt, const CliContext& ctx) {
+  (void)ctx;
+  const auto result = vinput::cli::SystemctlEnable(force);
+  if (result.ok()) {
+    fmt.PrintSuccess(_("Daemon enabled to start with system."));
+    return 0;
+  }
+  fmt.PrintError(result.failure_message);
+  return 1;
+}
+
+int RunDaemonControlDisable(Formatter& fmt, const CliContext& ctx) {
+  (void)ctx;
+  const auto result = vinput::cli::SystemctlDisable();
+  if (result.ok()) {
+    fmt.PrintSuccess(_("Daemon disabled from starting with system."));
+    return 0;
+  }
+  fmt.PrintError(result.failure_message);
+  return 1;
+}
+
 int RunDaemonControlLogs(bool follow, int lines, const std::string& level, Formatter& fmt,
                          const CliContext& ctx) {
   (void)fmt;

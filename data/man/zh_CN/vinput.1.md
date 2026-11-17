@@ -197,6 +197,12 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 **daemon restart**
 :   重启守护进程。
 
+**daemon enable** [**-f**, **--force**]
+:   配置守护进程随系统自动启动。
+
+**daemon disable**
+:   取消守护进程随系统自动启动。
+
 **daemon log** [**-f**, **--follow**] [**-n**, **--lines** *N*] [**-l**, **--level** *LEVEL*]
 :   查看守护进程日志。*LEVEL* 可过滤日志级别：**trace**、**debug**、**info**、**warn**、**error**。
 

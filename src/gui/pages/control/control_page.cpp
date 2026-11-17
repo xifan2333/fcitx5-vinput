@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -31,6 +32,7 @@
 #include <QtWidgets/qwidget.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <optional>
 #include <qboxlayout.h>
 #include <qcombobox.h>
@@ -531,16 +533,20 @@ ControlPage::ControlPage(QWidget* parent)
   daemonLayout->addLayout(statusLayout);
 
   auto* btnLayout = new QHBoxLayout();
+  chkDaemonAutoStart_ = new QCheckBox(tr("Start with system"));
+  chkDaemonAutoStart_->setToolTip(tr("Automatically start the daemon when logging in."));
   btnDaemonStart_ = new QPushButton(tr("Start"));
   btnDaemonStop_ = new QPushButton(tr("Stop"));
   btnDaemonRestart_ = new QPushButton(tr("Restart"));
+  btnLayout->addWidget(chkDaemonAutoStart_);
+  btnLayout->addStretch();
   btnLayout->addWidget(btnDaemonStart_);
   btnLayout->addWidget(btnDaemonStop_);
   btnLayout->addWidget(btnDaemonRestart_);
-  btnLayout->addStretch();
   daemonLayout->addLayout(btnLayout);
   layout->addWidget(daemonFrame);
 
+  connect(chkDaemonAutoStart_, &QCheckBox::toggled, this, &ControlPage::onDaemonAutoStartToggled);
   connect(btnDaemonStart_, &QPushButton::clicked, this, &ControlPage::onDaemonStart);
   connect(btnDaemonStop_, &QPushButton::clicked, this, &ControlPage::onDaemonStop);
   connect(btnDaemonRestart_, &QPushButton::clicked, this, &ControlPage::onDaemonRestart);
@@ -551,10 +557,12 @@ ControlPage::ControlPage(QWidget* parent)
   daemonRefreshTimer_->start(2000);
 
   QTimer::singleShot(0, this, &ControlPage::refreshDaemonStatus);
+  QTimer::singleShot(0, this, &ControlPage::refreshDaemonAutoStart);
   QTimer::singleShot(0, this, &ControlPage::checkSandboxPermissions);
 }
 
 void ControlPage::reload() {
+  refreshDaemonAutoStart();
   comboDevice_->clear();
   comboDevice_->addItem("default", "default");
 
@@ -1055,6 +1063,51 @@ void ControlPage::onDaemonStop() {
 
 void ControlPage::onDaemonRestart() {
   executeDaemonAction(true);
+}
+
+void ControlPage::refreshDaemonAutoStart() {
+  const uint64_t seq = ++daemonAutoStartQuerySeq_;
+  const QPointer<ControlPage> self(this);
+  QThreadPool::globalInstance()->start([self, seq]() {
+    const auto is_enabled = vinput::cli::SystemctlIsEnabled();
+    QMetaObject::invokeMethod(self, [self, seq, is_enabled]() {
+      if (!self || self->updatingDaemonAutoStart_ || seq != self->daemonAutoStartQuerySeq_) {
+        return;
+      }
+      if (is_enabled.has_value()) {
+        const QSignalBlocker blocker(self->chkDaemonAutoStart_);
+        self->chkDaemonAutoStart_->setChecked(*is_enabled);
+      }
+    });
+  });
+}
+
+void ControlPage::onDaemonAutoStartToggled(bool checked) {
+  if (updatingDaemonAutoStart_) {
+    return;
+  }
+  updatingDaemonAutoStart_ = true;
+  ++daemonAutoStartQuerySeq_;
+  chkDaemonAutoStart_->setEnabled(false);
+
+  const QPointer<ControlPage> self(this);
+  QThreadPool::globalInstance()->start([self, checked]() {
+    const auto result = checked ? vinput::cli::SystemctlEnable() : vinput::cli::SystemctlDisable();
+    QMetaObject::invokeMethod(self, [self, checked, result]() {
+      if (!self) {
+        return;
+      }
+      self->chkDaemonAutoStart_->setEnabled(true);
+      self->updatingDaemonAutoStart_ = false;
+      if (!result.ok()) {
+        const QSignalBlocker blocker(self->chkDaemonAutoStart_);
+        self->chkDaemonAutoStart_->setChecked(!checked);
+        QMessageBox::critical(self, ControlPage::tr("Error"),
+                              QString::fromStdString(result.failure_message));
+        return;
+      }
+    });
+  });
 }
 
 void ControlPage::checkSandboxPermissions() {

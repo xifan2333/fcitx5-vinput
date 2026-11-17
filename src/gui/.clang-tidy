@@ -1,0 +1,7 @@
+# Inherit parent checks, but ignore Qt system headers for include-cleaner.
+# Qt uses forwarding alias headers (e.g. <QSignalBlocker>, <QString>) with IWYU export pragmas
+# which LLVM's misc-include-cleaner does not handle correctly (LLVM issue #73347).
+InheritParentConfig: true
+
+CheckOptions:
+  misc-include-cleaner.IgnoreHeaders: '.*[Qq]t.*'

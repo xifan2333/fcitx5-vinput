@@ -350,6 +350,14 @@
         <translation>随守护进程启动</translation>
     </message>
     <message>
+        <source>Start with system</source>
+        <translation>随系统自启</translation>
+    </message>
+    <message>
+        <source>Automatically start the daemon when logging in.</source>
+        <translation>登录时自动启动守护进程。</translation>
+    </message>
+    <message>
         <location filename="../src/gui/pages/control/control_page.cpp" line="131"/>
         <source>&lt;b&gt;Audio&lt;/b&gt;</source>
         <translation>&lt;b&gt;音频&lt;/b&gt;</translation>

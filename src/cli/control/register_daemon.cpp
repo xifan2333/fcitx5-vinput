@@ -41,6 +41,22 @@ void RegisterDaemonCommands(CLI::App& app, CliAction* action) {
     };
   });
 
+  auto force = std::make_shared<bool>(false);
+  auto* enable = daemon->add_subcommand("enable", _("Enable daemon to start with system"));
+  enable->add_flag("-f,--force", *force, _("Force enable symlink creation"));
+  enable->callback([action, force]() {
+    *action = [force](Formatter& fmt, const CliContext& ctx) {
+      return RunDaemonControlEnable(*force, fmt, ctx);
+    };
+  });
+
+  auto* disable = daemon->add_subcommand("disable", _("Disable daemon from starting with system"));
+  disable->callback([action]() {
+    *action = [](Formatter& fmt, const CliContext& ctx) {
+      return RunDaemonControlDisable(fmt, ctx);
+    };
+  });
+
   auto follow = std::make_shared<bool>(false);
   auto lines = std::make_shared<int>(100);
   auto level = std::make_shared<std::string>();

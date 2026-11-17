@@ -3,6 +3,7 @@
 #include <array>
 #include <exception>
 #include <fmt/printf.h>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <subprocess.hpp>
@@ -133,6 +134,48 @@ DaemonControlResult SystemctlRestartWithDiagnostics() {
   return RunWithDiagnostics(
       {"systemctl", "--user", "restart", std::string(vinput::path::DaemonServiceUnitName())},
       "systemctl restart failed (exit code: %d)");
+}
+
+namespace {
+
+DaemonControlResult RunSystemctlUnitCommand(const std::vector<std::string>& args,
+                                            const char* failure_action) {
+  std::string output;
+  DaemonControlResult result;
+  result.exit_code = RunCommandCapture(args, &output);
+  if (result.exit_code != 0) {
+    result.failure_message = output.empty() ? ::fmt::sprintf("systemctl %s failed (exit code: %d)",
+                                                             failure_action, result.exit_code)
+                                            : output;
+  }
+  return result;
+}
+
+} // namespace
+
+DaemonControlResult SystemctlEnable(bool force) {
+  std::vector<std::string> args = {"systemctl", "--user", "enable"};
+  if (force) {
+    args.emplace_back("--force");
+  }
+  args.emplace_back(vinput::path::DaemonServiceUnitName());
+  return RunSystemctlUnitCommand(args, "enable");
+}
+
+DaemonControlResult SystemctlDisable() {
+  return RunSystemctlUnitCommand(
+      {"systemctl", "--user", "disable", std::string(vinput::path::DaemonServiceUnitName())},
+      "disable");
+}
+
+std::optional<bool> SystemctlIsEnabled() {
+  const int ret = RunCommandCapture(
+      {"systemctl", "--user", "is-enabled", std::string(vinput::path::DaemonServiceUnitName())},
+      nullptr);
+  if (ret < 0) {
+    return std::nullopt;
+  }
+  return ret == 0;
 }
 
 } // namespace vinput::cli

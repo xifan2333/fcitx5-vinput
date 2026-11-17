@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 namespace vinput::cli {
@@ -16,5 +17,8 @@ int JournalctlLogs(bool follow, int lines, const std::string& level = {});
 std::string JournalctlLogsText(int lines);
 DaemonControlResult SystemctlStartWithDiagnostics();
 DaemonControlResult SystemctlRestartWithDiagnostics();
+DaemonControlResult SystemctlEnable(bool force = false);
+DaemonControlResult SystemctlDisable();
+std::optional<bool> SystemctlIsEnabled();
 
 } // namespace vinput::cli
