@@ -17,13 +17,12 @@ public:
   void reload();
 
   // Accessors for MainWindow save.
-  QString hotwordsFilePath() const;
-  QString hotwordsContent() const;
-
-private slots:
-  void onBrowseClicked();
+  [[nodiscard]] QString hotwordsFilePath() const;
+  [[nodiscard]] QString hotwordsContent() const;
 
 private:
+  void onBrowseClicked();
+
   QLineEdit* editFile_;
   QTextEdit* textContent_;
   QPushButton* btnBrowse_;

@@ -26,6 +26,10 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
