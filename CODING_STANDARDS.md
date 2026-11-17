@@ -127,7 +127,7 @@ The following mechanical checks are audited by local tooling (`mise run check:as
 
 | Rule Category | Mechanical Enforcement | Command |
 | :--- | :--- | :--- |
-| **AST Anti-Patterns** | `ast-grep` (banned malloc in RT callback, banned daemon stdout, no diagnostic suppressions, deep if branching >= 4, qualified dispatch, POSIX signal linkage & no lambda handler) | `mise run check:ast` |
+| **AST Anti-Patterns** | `ast-grep` (banned malloc in RT callback, banned daemon stdout, no diagnostic suppressions, deep if branching >= 4, qualified dispatch, POSIX signal rules & no lambda handler) | `mise run check:ast` |
 | **Complexity Ceiling** | `lizard` ($\text{CCN} \le 15, \text{CogC} \le 15$) | `mise run check:complexity` |
 | **Code Duplication** | `jscpd` across `src/` | `mise run check:dup` |
 | **Code Formatting** | `hk` (`clang-format`, `cmake-format`, `ruff`, `shfmt`) | `mise run fix` / `check:cmake` |

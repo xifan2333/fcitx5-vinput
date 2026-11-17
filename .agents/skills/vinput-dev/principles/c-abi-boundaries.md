@@ -45,12 +45,13 @@ The following six subsystems are strictly bounded by third-party C libraries or 
   - **Action Rule**: Already encapsulated using `std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>`. Do not alter underlying C EVP calls.
 
 ### Boundary 5: POSIX Signals & Main Event Loop
-- **Files**: `src/daemon/main.cpp`, `src/cli/control/daemon_actions.cpp`, `src/cli/control/client_actions.cpp`
+- **Files**: `src/daemon/main.cpp`, `src/cli/control/daemon_actions.cpp`, `src/cli/control/client_actions.cpp`, `src/common/utils/signal_guard.h`
 - **ABI Constraints**:
-  - **Signal Handlers**: `signal(SIGTERM, ...)` and `signal(SIGINT, ...)` handlers must be C function pointers and strictly async-signal-safe (e.g. writing to an `atomic<bool>` or `eventfd`). Passing lambdas to `std::signal` / `signal` is strictly forbidden (mechanically enforced by `signal-handler-no-lambda`). For ignoring signals (such as `SIGPIPE`), use the standard POSIX macro `SIG_IGN`.
+  - **Signal Handlers**: Handlers must be `extern "C" void handler(int) noexcept` function pointers and strictly async-signal-safe (e.g. writing to an `atomic<bool>` or `eventfd`). Passing lambdas to `std::signal` / `signal` is strictly forbidden (mechanically enforced by `signal-handler-no-lambda`). For ignoring signals (such as `SIGPIPE`), use the standard POSIX macro `SIG_IGN`.
+  - **Signal RAII Guard**: Signal handlers must be installed using `vinput::SignalGuard` (backed by `sigaction`, flags=0), which automatically restores prior actions on destruction. Direct raw installation of signal handlers via `signal()` or `sigaction()` is forbidden (mechanically enforced by `no-raw-signal-install`).
+  - **Header Lock**: `<signal.h>` is encapsulated solely within `src/common/utils/signal_guard.h` (`IWYU pragma: export`). Direct inclusion of `<signal.h>` or `<csignal>` in other source files is forbidden (mechanically enforced by `signal-header-lock`).
   - **Event Loop `poll()`**: `struct pollfd fds[3]` and `poll(fds, ...)` interact directly with the Linux kernel multiplexing syscall.
-  - **Header Enclosure**: POSIX headers must use `extern "C" { #include <signal.h> }` or `extern "C" { #include <sys/poll.h> }` to enforce explicit C linkage (mechanically enforced by `posix-signal-header-enclosure`). Bare `#include <csignal>` is forbidden.
-  - **Action Rule**: Retain `signal()` and `poll()` arrays unchanged. Main argument parsing (`argv`) must use `std::span` and `std::string_view` (modernized in PR #496).
+  - **Action Rule**: Use `vinput::SignalGuard` for signal lifecycle management; keep `poll()` arrays unchanged. Main argument parsing (`argv`) must use `std::span` and `std::string_view` (modernized in PR #496).
 
 ### Boundary 6: Fcitx5 dlopen Addon Factory
 - **Files**: `src/addon/core/vinput.cpp`
