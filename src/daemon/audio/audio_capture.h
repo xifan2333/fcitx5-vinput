@@ -9,8 +9,8 @@
 #include <pipewire/stream.h>
 #include <pipewire/thread-loop.h>
 #include <readerwriterqueue.h>
+#include <spa/utils/hook.h>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
@@ -28,10 +28,6 @@ public:
   struct StartTiming {
     long idle_gap_ms = -1;
     long create_stream_ms = -1;
-    long set_active_ms = -1;
-    bool stream_reused = false;
-    bool created_new_stream = false;
-    bool reuse_policy_enabled = false;
   };
 
   AudioCapture();
@@ -69,45 +65,24 @@ public:
   // Latency from BeginRecording arm to first non-empty process buffer, if any.
   std::optional<long> FirstBufferLatencyMs() const;
 
-  // Whether stream-reuse policy is enabled (env VINPUT_CAPTURE_REUSE).
-  static bool StreamReuseEnabled();
-
-  // After stop, keep an inactive connected stream for this long (ms), then
-  // destroy. Env VINPUT_CAPTURE_IDLE_DESTROY_MS (default 15000). 0 = destroy
-  // immediately after stop even when reuse is on.
-  static long IdleDestroyMs();
-
-  // Destroy a reusable inactive stream once its idle grace has expired.
-  // Safe to call from the daemon main loop. Returns true if a stream was
-  // destroyed.
-  bool MaybeDestroyExpiredStream();
-
 private:
   static void onProcess(void* userdata);
   static void onParamChanged(void* userdata, uint32_t id, const struct spa_pod* param);
   static void onStateChanged(void* userdata, enum pw_stream_state old, enum pw_stream_state state,
                              const char* error);
-  bool CreateStream(bool start_inactive, std::string* error = nullptr);
-  bool CreateAndActivateNewStream(StartTiming& local_timing, bool start_inactive,
-                                  std::string* error);
-  bool ActivateReusedStream(StartTiming& local_timing, std::string* error);
+  bool CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarget& resolved_target,
+                              std::string* error);
   void ArmRecording() noexcept;
-  bool SetStreamActive(bool active, std::string* error = nullptr);
-  void DeactivateOrDestroyStream(std::string_view caller);
   void DestroyStream();
   void processCallback();
   void MarkStreamDestroyed();
-  void MarkStreamDeactivated();
-  bool CanReuseStreamLocked() const;
-  vinput::pw::ResolvedCaptureTarget ResolveTarget(const std::string& target_object);
-  std::vector<vinput::pw::DeviceInfo> GetAudioSources();
-  void InvalidateDeviceCache();
   std::string CurrentTargetObject() const;
 
   // SPSC Lock-free ringbuffer and real-time safe drop telemetry
   moodycamel::ReaderWriterQueue<vinput::audio::AudioPcmChunk> queue_{kDefaultQueueCapacity};
   struct pw_thread_loop* loop_ = nullptr;
-  struct pw_stream* stream_ = nullptr;
+  std::atomic<struct pw_stream*> stream_{nullptr};
+  vinput::pw::ControlPlane control_plane_;
   std::atomic<std::size_t> dropped_chunks_{0};
   std::atomic<std::size_t> dropped_samples_{0};
 
@@ -115,25 +90,16 @@ private:
   std::atomic<int64_t> recording_armed_ns_{0};
   std::atomic<int64_t> first_buffer_ns_{0};
 
-  // Stream reuse & idle destroy timing (main-thread only, guarded by timing_mutex_)
+  // Idle gap timing (main/worker thread, guarded by timing_mutex_)
   std::optional<std::chrono::steady_clock::time_point> last_stream_destroyed_at_;
-  std::optional<std::chrono::steady_clock::time_point> last_stream_deactivated_at_;
-  std::optional<std::chrono::steady_clock::time_point> idle_destroy_deadline_;
 
   std::string target_object_;
-  std::string connected_target_object_;
   mutable std::mutex target_mutex_;
   mutable std::mutex timing_mutex_;
-  mutable std::mutex device_cache_mutex_;
   std::mutex consumer_mutex_;
-  std::vector<vinput::pw::DeviceInfo> cached_devices_;
-  std::chrono::steady_clock::time_point last_device_scan_;
 
   struct pw_stream_events stream_events_{};
+  struct spa_hook stream_listener_{};
   std::atomic<int> notify_fd_{-1};
   std::atomic<bool> recording_{false};
-  bool stream_active_ = false;
-
-  void ScheduleIdleDestroy();
-  void CancelIdleDestroy();
 };

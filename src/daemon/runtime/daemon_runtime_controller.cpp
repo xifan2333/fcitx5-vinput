@@ -484,11 +484,9 @@ DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
 
   const long start_total_ms = static_cast<long>(vinput::time::MillisecondsSince(start_enter_at));
   VLOG_DEBUG("start timing command={} session_ms={} idle_gap_ms={} "
-             "create_stream_ms={} set_active_ms={} stream_reused={} "
-             "reuse_policy={} start_total_ms={} backend={}",
+             "create_stream_ms={} start_total_ms={} backend={}",
              is_command, session_ms, capture_timing.idle_gap_ms, capture_timing.create_stream_ms,
-             capture_timing.set_active_ms, capture_timing.stream_reused,
-             capture_timing.reuse_policy_enabled, start_total_ms, active_backend.backend_id);
+             start_total_ms, active_backend.backend_id);
 
   NotifyStatusChanged(vinput::dbus::Status::Recording);
   if (is_command) {
@@ -1070,11 +1068,7 @@ void DaemonRuntimeController::FlushSingleLaneDeferredActions() {
     return;
   }
 
-  if (AudioCapture::StreamReuseEnabled()) {
-    // EndRecording/StopAndGetBuffer already deactivated the stream; keep it
-    // for warm set_active until idle grace expires.
-    VLOG_DEBUG("deferred capture stop: keeping inactive reusable stream");
-  } else if (capture_ != nullptr) {
+  if (capture_ != nullptr) {
     capture_->Stop();
   }
   RestoreOutputIfDucked();
@@ -1110,20 +1104,13 @@ void DaemonRuntimeController::FlushDeferredActions() {
   }
 }
 
-void DaemonRuntimeController::MaybeDestroyExpiredStreams() {
-  if (capture_ != nullptr) {
-    capture_->MaybeDestroyExpiredStream();
-  }
+void DaemonRuntimeController::ReclaimIdleHeadlessLanes() {
   if (!owner_client_id_.empty()) {
     return;
   }
   std::vector<std::string> to_reclaim;
   for (const auto& lane : SnapshotHeadlessLanes()) {
-    if (lane == nullptr) {
-      continue;
-    }
-    if (lane->capture != nullptr) {
-      lane->capture->MaybeDestroyExpiredStream();
+    if (lane == nullptr || lane->capture != nullptr) {
       continue;
     }
     if (lane->stream_fd.load(std::memory_order_relaxed) < 0 && lane->controller != nullptr &&
