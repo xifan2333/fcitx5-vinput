@@ -131,6 +131,9 @@ bool TestDefaultMetadataParsing() {
   CHECK(ParseDefaultAudioSourceMetadata(R"({"name":"rnnoise_source"})") == "rnnoise_source");
   CHECK(ParseDefaultAudioSourceMetadata(R"({"name":"alsa_input.usb","extra":1})") ==
         "alsa_input.usb");
+  CHECK(ParseDefaultAudioSourceMetadata(R"({"name":123})").empty());
+  CHECK(ParseDefaultAudioSourceMetadata(R"([])").empty());
+  CHECK(ParseDefaultAudioSourceMetadata(R"({"other":"alsa_input.usb"})").empty());
   CHECK(ParseDefaultAudioSourceMetadata("").empty());
   CHECK(ParseDefaultAudioSourceMetadata("invalid-json").empty());
 
