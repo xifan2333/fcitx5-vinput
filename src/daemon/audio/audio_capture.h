@@ -67,21 +67,22 @@ public:
 
 private:
   static void onProcess(void* userdata);
-  static void onParamChanged(void* userdata, uint32_t id, const struct spa_pod* param);
-  static void onStateChanged(void* userdata, enum pw_stream_state old, enum pw_stream_state state,
+  static void onParamChanged(void* userdata, uint32_t id, const spa_pod* param);
+  static void onStateChanged(void* userdata, pw_stream_state old, pw_stream_state state,
                              const char* error);
   bool CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarget& resolved_target,
                               std::string* error);
   void ArmRecording() noexcept;
   void DestroyStream();
+  void DrainQueue();
   void processCallback();
   void MarkStreamDestroyed();
   std::string CurrentTargetObject() const;
 
   // SPSC Lock-free ringbuffer and real-time safe drop telemetry
   moodycamel::ReaderWriterQueue<vinput::audio::AudioPcmChunk> queue_{kDefaultQueueCapacity};
-  struct pw_thread_loop* loop_ = nullptr;
-  std::atomic<struct pw_stream*> stream_{nullptr};
+  pw_thread_loop* loop_ = nullptr;
+  std::atomic<pw_stream*> stream_{nullptr};
   vinput::pw::ControlPlane control_plane_;
   std::atomic<std::size_t> dropped_chunks_{0};
   std::atomic<std::size_t> dropped_samples_{0};
@@ -98,8 +99,8 @@ private:
   mutable std::mutex timing_mutex_;
   std::mutex consumer_mutex_;
 
-  struct pw_stream_events stream_events_{};
-  struct spa_hook stream_listener_{};
+  pw_stream_events stream_events_{};
+  spa_hook stream_listener_{};
   std::atomic<int> notify_fd_{-1};
   std::atomic<bool> recording_{false};
 };

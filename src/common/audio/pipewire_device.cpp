@@ -270,6 +270,25 @@ const DeviceInfo* FindKnownDevice(std::string_view name,
   return it != known_devices.end() ? &(*it) : nullptr;
 }
 
+ResolvedCaptureTarget BuildMatchedCaptureTarget(const DeviceInfo& matched,
+                                                std::string_view target) {
+  static constexpr std::string_view kMonitorSuffix = ".monitor";
+  ResolvedCaptureTarget resolved;
+  resolved.object_serial = matched.object_serial;
+  if (!matched.is_sink_monitor) {
+    // Real Audio/Source node, even if named with a ".monitor" suffix (e.g. clean.monitor).
+    resolved.node_name = matched.name;
+    resolved.is_sink_capture = false;
+    return resolved;
+  }
+
+  // Real Audio/Sink monitor: strip the ".monitor" suffix to target the underlying sink node.
+  const auto stripped = vinput::str::StripSuffix(target, kMonitorSuffix);
+  resolved.node_name = stripped.empty() ? matched.name : std::string(stripped);
+  resolved.is_sink_capture = true;
+  return resolved;
+}
+
 } // namespace
 
 struct ControlPlane::Impl {
@@ -544,7 +563,9 @@ void WaitInitialSyncLocked(ControlPlane::Impl& impl, pw_thread_loop* thread_loop
 
 ControlPlane::ControlPlane() : impl_(std::make_unique<Impl>()) {}
 
-ControlPlane::~ControlPlane() = default;
+ControlPlane::~ControlPlane() {
+  Disconnect();
+}
 
 bool ControlPlane::Connect(pw_thread_loop* thread_loop, int sync_timeout_ms) {
   if (thread_loop == nullptr) {
@@ -574,14 +595,15 @@ bool ControlPlane::EnsureConnected(pw_thread_loop* thread_loop, int sync_timeout
   return Connect(thread_loop, sync_timeout_ms);
 }
 
-void ControlPlane::Disconnect(pw_thread_loop* thread_loop) {
-  if (thread_loop == nullptr) {
+void ControlPlane::Disconnect() noexcept {
+  pw_thread_loop* loop = impl_->thread_loop;
+  if (loop == nullptr) {
     return;
   }
-  pw_thread_loop_lock(thread_loop);
+  pw_thread_loop_lock(loop);
   impl_->DisconnectLocked();
   impl_->thread_loop = nullptr;
-  pw_thread_loop_unlock(thread_loop);
+  pw_thread_loop_unlock(loop);
 }
 
 pw_core* ControlPlane::Core() const noexcept {
@@ -664,19 +686,7 @@ ResolvedCaptureTarget ResolveCaptureTarget(std::string_view target,
 
   // 1. If known devices are provided, prioritize matching against real device metadata.
   if (const DeviceInfo* matched = FindKnownDevice(target, known_devices); matched != nullptr) {
-    resolved.object_serial = matched->object_serial;
-    if (!matched->is_sink_monitor) {
-      // Real Audio/Source node, even if named with a ".monitor" suffix (e.g. clean.monitor).
-      resolved.node_name = matched->name;
-      resolved.is_sink_capture = false;
-      return resolved;
-    }
-
-    // Real Audio/Sink monitor: strip the ".monitor" suffix to target the underlying sink node.
-    const auto stripped = vinput::str::StripSuffix(target, kMonitorSuffix);
-    resolved.node_name = stripped.empty() ? matched->name : std::string(stripped);
-    resolved.is_sink_capture = true;
-    return resolved;
+    return BuildMatchedCaptureTarget(*matched, target);
   }
 
   // 2. Fallback heuristic when device is offline or unknown.
@@ -700,10 +710,11 @@ ResolvedCaptureTarget ResolveLiveCaptureTarget(std::string_view target,
   if (default_source_name.empty()) {
     return {};
   }
-  if (FindKnownDevice(default_source_name, known_devices) == nullptr) {
+  const DeviceInfo* matched = FindKnownDevice(default_source_name, known_devices);
+  if (matched == nullptr) {
     return {};
   }
-  return ResolveCaptureTarget(default_source_name, known_devices);
+  return BuildMatchedCaptureTarget(*matched, default_source_name);
 }
 
 } // namespace vinput::pw

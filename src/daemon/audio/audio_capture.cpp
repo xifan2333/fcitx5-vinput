@@ -60,15 +60,15 @@ pw_properties* BuildCaptureProperties(const vinput::pw::ResolvedCaptureTarget& r
   return properties;
 }
 
-int ConnectStream(struct pw_stream* stream) {
+int ConnectStream(pw_stream* stream) {
   uint8_t pod_buffer[1024];
-  struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(pod_buffer, sizeof(pod_buffer));
-  struct spa_audio_info_raw raw_info{};
+  spa_pod_builder builder = SPA_POD_BUILDER_INIT(pod_buffer, sizeof(pod_buffer));
+  spa_audio_info_raw raw_info{};
   raw_info.format = SPA_AUDIO_FORMAT_S16_LE;
   raw_info.rate = 16000;
   raw_info.channels = 1;
   raw_info.position[0] = SPA_AUDIO_CHANNEL_MONO;
-  const struct spa_pod* params[1];
+  const spa_pod* params[1];
   params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &raw_info);
 
   const int flags =
@@ -85,7 +85,7 @@ AudioCapture::AudioCapture() {
 
 AudioCapture::~AudioCapture() {
   DestroyStream();
-  control_plane_.Disconnect(loop_);
+  control_plane_.Disconnect();
   if (loop_ != nullptr) {
     pw_thread_loop_stop(loop_);
     pw_thread_loop_destroy(loop_);
@@ -100,19 +100,19 @@ void AudioCapture::onProcess(void* userdata) {
 }
 
 void AudioCapture::processCallback() {
-  struct pw_stream* s = stream_.load(std::memory_order_acquire);
+  pw_stream* s = stream_.load(std::memory_order_acquire);
   if (s == nullptr) {
     return;
   }
 
-  struct pw_buffer* b = pw_stream_dequeue_buffer(s);
+  pw_buffer* b = pw_stream_dequeue_buffer(s);
   if (b == nullptr) {
     return;
   }
 
   const auto cleanup_buffer = vinput::MakeScopeExit([s, b] { pw_stream_queue_buffer(s, b); });
 
-  const struct spa_buffer* buf = b->buffer;
+  const spa_buffer* buf = b->buffer;
   if (buf == nullptr || buf->n_datas == 0 || buf->datas[0].data == nullptr ||
       buf->datas[0].chunk == nullptr) {
     return;
@@ -168,7 +168,7 @@ void AudioCapture::processCallback() {
   }
 }
 
-void AudioCapture::onParamChanged(void* userdata, uint32_t id, const struct spa_pod* param) {
+void AudioCapture::onParamChanged(void* userdata, uint32_t id, const spa_pod* param) {
   (void)userdata;
   if (param == nullptr || id != SPA_PARAM_Format) {
     return;
@@ -183,8 +183,8 @@ void AudioCapture::onParamChanged(void* userdata, uint32_t id, const struct spa_
             static_cast<int>(info.format));
 }
 
-void AudioCapture::onStateChanged(void* userdata, enum pw_stream_state old,
-                                  enum pw_stream_state state, const char* error) {
+void AudioCapture::onStateChanged(void* userdata, pw_stream_state old, pw_stream_state state,
+                                  const char* error) {
   (void)userdata;
   const char* err_str = (error != nullptr && error[0] != '\0') ? error : nullptr;
   VLOG_DEBUG("capture stream state: {} -> {}{}{}", pw_stream_state_as_string(old),
@@ -249,7 +249,7 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
   pw_thread_loop_lock(loop_);
   const auto loop_unlock = vinput::MakeScopeExit([this] { pw_thread_loop_unlock(loop_); });
 
-  struct pw_core* core = control_plane_.Core();
+  pw_core* core = control_plane_.Core();
   if (core == nullptr) {
     if (error != nullptr) {
       *error = "PipeWire core connection is not ready";
@@ -265,7 +265,7 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
     return false;
   }
 
-  struct pw_stream* new_stream = pw_stream_new(core, "vinput-capture", properties);
+  pw_stream* new_stream = pw_stream_new(core, "vinput-capture", properties);
   if (new_stream == nullptr) {
     if (error != nullptr) {
       *error = "failed to create PipeWire stream";
@@ -305,13 +305,20 @@ void AudioCapture::DestroyStream() {
   }
 
   pw_thread_loop_lock(loop_);
-  if (struct pw_stream* s = stream_.load(std::memory_order_acquire); s != nullptr) {
+  if (pw_stream* s = stream_.load(std::memory_order_acquire); s != nullptr) {
     spa_hook_remove(&stream_listener_);
     pw_stream_destroy(s);
     stream_.store(nullptr, std::memory_order_release);
   }
   pw_thread_loop_unlock(loop_);
   MarkStreamDestroyed();
+}
+
+void AudioCapture::DrainQueue() {
+  const std::scoped_lock lock(consumer_mutex_);
+  vinput::audio::AudioPcmChunk discard;
+  while (queue_.try_dequeue(discard)) {
+  }
 }
 
 void AudioCapture::ArmRecording() noexcept {
@@ -340,13 +347,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     }
   }
 
-  // Drain any remaining chunks in the queue under consumer_mutex_
-  {
-    const std::scoped_lock lock(consumer_mutex_);
-    vinput::audio::AudioPcmChunk discard;
-    while (queue_.try_dequeue(discard)) {
-    }
-  }
+  DrainQueue();
   ResetDropCounters();
 
   DestroyStream();
@@ -381,17 +382,11 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
 }
 
 void AudioCapture::EndRecording() {
-  recording_.store(false, std::memory_order_relaxed);
   DestroyStream();
-
-  const std::scoped_lock lock(consumer_mutex_);
-  vinput::audio::AudioPcmChunk discard;
-  while (queue_.try_dequeue(discard)) {
-  }
+  DrainQueue();
 }
 
 std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
-  recording_.store(false, std::memory_order_relaxed);
   DestroyStream();
 
   const std::scoped_lock lock(consumer_mutex_);
@@ -404,12 +399,7 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
 }
 
 void AudioCapture::Stop() {
-  recording_.store(false, std::memory_order_relaxed);
-  DestroyStream();
-  const std::scoped_lock lock(consumer_mutex_);
-  vinput::audio::AudioPcmChunk chunk;
-  while (queue_.try_dequeue(chunk)) {
-  }
+  EndRecording();
 }
 
 bool AudioCapture::IsRecording() const {

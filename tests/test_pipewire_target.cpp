@@ -195,7 +195,7 @@ bool TestDefaultMetadataAndLiveResolution() {
   const auto cp_default = cp.ResolveTarget("default");
   CHECK(cp_default.node_name.empty());
   CHECK(cp_default.object_serial.empty());
-  cp.Disconnect(nullptr);
+  cp.Disconnect();
 
   return true;
 }

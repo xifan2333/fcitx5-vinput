@@ -61,8 +61,9 @@ public:
   // deferred startup connection. Caller must NOT hold the thread_loop lock.
   bool EnsureConnected(pw_thread_loop* thread_loop, int sync_timeout_ms = 250);
 
-  // Tears down all control-plane proxies under thread_loop lock before stopping the loop.
-  void Disconnect(pw_thread_loop* thread_loop);
+  // Tears down all control-plane proxies under the attached thread_loop lock before stopping
+  // the loop. Automatically invoked by ~ControlPlane() if still attached.
+  void Disconnect() noexcept;
 
   // Returns the persistent core handle for pw_stream_new (valid while EnsureConnected holds
   // under thread_loop lock), or nullptr if disconnected.
