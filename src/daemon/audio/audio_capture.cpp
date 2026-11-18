@@ -10,6 +10,7 @@
 #include <pipewire/core.h>
 #include <pipewire/keys.h>
 #include <pipewire/pipewire.h>
+#include <pipewire/port.h>
 #include <pipewire/properties.h>
 #include <pipewire/stream.h>
 #include <pipewire/thread-loop.h>

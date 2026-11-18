@@ -6,6 +6,9 @@
 #include <cstdint>
 #include <ctime>
 #include <glaze/core/opts.hpp>
+#include <glaze/core/read.hpp>
+// glz::read's definition lives in core/read.hpp, but instantiating it for JSON additionally
+// requires read_json_supported and the detail::read<json> specialization from this header.
 #include <glaze/json/read.hpp>
 #include <map>
 #include <memory>
@@ -38,10 +41,6 @@ namespace vinput::pw {
 namespace {
 
 constexpr auto kMetadataReadOpts = glz::opts{.error_on_unknown_keys = uint8_t{0}};
-
-struct DefaultMetadataWire {
-  std::string name;
-};
 
 struct PwData {
   pw_main_loop* loop = nullptr;
@@ -290,6 +289,13 @@ ResolvedCaptureTarget BuildMatchedCaptureTarget(const DeviceInfo& matched,
 }
 
 } // namespace
+
+// Glaze reflection instantiates glz::detail::external<DefaultMetadataWire> as a variable with
+// external linkage, which requires the type itself to have linkage, so it cannot live in the
+// anonymous namespace above.
+struct DefaultMetadataWire {
+  std::string name;
+};
 
 struct ControlPlane::Impl {
   pw_thread_loop* thread_loop = nullptr;

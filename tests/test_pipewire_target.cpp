@@ -125,10 +125,8 @@ bool TestSourceMonitorDisambiguation() {
   return true;
 }
 
-bool TestDefaultMetadataAndLiveResolution() {
-  using vinput::pw::ControlPlane;
+bool TestDefaultMetadataParsing() {
   using vinput::pw::ParseDefaultAudioSourceMetadata;
-  using vinput::pw::ResolveLiveCaptureTarget;
 
   CHECK(ParseDefaultAudioSourceMetadata(R"({"name":"rnnoise_source"})") == "rnnoise_source");
   CHECK(ParseDefaultAudioSourceMetadata(R"({"name":"alsa_input.usb","extra":1})") ==
@@ -136,7 +134,13 @@ bool TestDefaultMetadataAndLiveResolution() {
   CHECK(ParseDefaultAudioSourceMetadata("").empty());
   CHECK(ParseDefaultAudioSourceMetadata("invalid-json").empty());
 
-  std::vector<vinput::pw::DeviceInfo> known_devices = {
+  return true;
+}
+
+bool TestLiveTargetResolution() {
+  using vinput::pw::ResolveLiveCaptureTarget;
+
+  const std::vector<vinput::pw::DeviceInfo> known_devices = {
       {
           .id = 38,
           .name = "rnnoise_source",
@@ -185,6 +189,14 @@ bool TestDefaultMetadataAndLiveResolution() {
   CHECK(unknown_default.object_serial.empty());
   CHECK(!unknown_default.is_sink_capture);
 
+  return true;
+}
+
+// Headless ControlPlane lifecycle: calls with a null thread loop must fail cleanly without
+// leaving the instance attached or reporting a broken core.
+bool TestControlPlaneHeadlessLifecycle() {
+  using vinput::pw::ControlPlane;
+
   ControlPlane cp;
   CHECK(!cp.Connect(nullptr));
   CHECK(!cp.EnsureConnected(nullptr));
@@ -228,9 +240,9 @@ bool TestDefaultTargetInstantResolution() {
 } // namespace
 
 int main() {
-  if (!TestBasicTargets() || !TestSourceMonitorDisambiguation() ||
-      !TestDefaultMetadataAndLiveResolution() || !TestEnumerateAudioSources() ||
-      !TestDefaultTargetInstantResolution()) {
+  if (!TestBasicTargets() || !TestSourceMonitorDisambiguation() || !TestDefaultMetadataParsing() ||
+      !TestLiveTargetResolution() || !TestControlPlaneHeadlessLifecycle() ||
+      !TestEnumerateAudioSources() || !TestDefaultTargetInstantResolution()) {
     return 1;
   }
 

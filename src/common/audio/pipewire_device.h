@@ -79,8 +79,12 @@ public:
   [[nodiscard]] std::vector<DeviceInfo> SnapshotDevices() const;
   [[nodiscard]] std::string DefaultSourceName() const;
 
-private:
+  // Pimpl state, defined in pipewire_device.cpp. The forward declaration is public because the
+  // control-plane event callbacks (free functions in that TU) must name it when casting the
+  // listener's data pointer; the type itself stays opaque outside this TU.
   struct Impl;
+
+private:
   std::unique_ptr<Impl> impl_;
 };
 
