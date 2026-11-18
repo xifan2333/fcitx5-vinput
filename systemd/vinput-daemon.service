@@ -1,6 +1,6 @@
 [Unit]
 Description=Vinput Voice Input Daemon
-After=pipewire.service
+After=pipewire.service wireplumber.service
 
 [Service]
 Type=dbus

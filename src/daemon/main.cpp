@@ -144,8 +144,8 @@ void RunEventLoop(DbusService& dbus,
       break;
     }
 
-    // Bounded warm grace: destroy inactive reusable streams after idle timeout.
-    runtime_controller.MaybeDestroyExpiredStreams();
+    // Reclaim completed pipe/stream-fd headless client lanes.
+    runtime_controller.ReclaimIdleHeadlessLanes();
 
     if (ret > 0) {
       DispatchPollEvents(fds, dbus, runtime_controller);

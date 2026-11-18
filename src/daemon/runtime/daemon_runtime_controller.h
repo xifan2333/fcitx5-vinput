@@ -83,7 +83,7 @@ public:
   vinput::dbus::AsrBackendState GetAsrBackendState() const;
   int GetNotifyFd() const;
   void FlushDeferredActions();
-  void MaybeDestroyExpiredStreams();
+  void ReclaimIdleHeadlessLanes();
   void ReclaimHeadlessLane(std::string_view client_id);
 
   void StartWorker();
