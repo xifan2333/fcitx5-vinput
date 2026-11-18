@@ -5,10 +5,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <ctime>
-#include <glaze/core/opts.hpp>
-#include <glaze/core/read.hpp>
-// glz::read's definition lives in core/read.hpp, but instantiating it for JSON additionally
-// requires read_json_supported and the detail::read<json> specialization from this header.
+#include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <map>
 #include <memory>
@@ -33,14 +30,13 @@
 #include <utility>
 #include <vector>
 
+#include "common/json/json_access.h"
 #include "common/utils/scope_guard.h"
 #include "common/utils/string_utils.h"
 
 namespace vinput::pw {
 
 namespace {
-
-constexpr auto kMetadataReadOpts = glz::opts{.error_on_unknown_keys = uint8_t{0}};
 
 struct PwData {
   pw_main_loop* loop = nullptr;
@@ -289,13 +285,6 @@ ResolvedCaptureTarget BuildMatchedCaptureTarget(const DeviceInfo& matched,
 }
 
 } // namespace
-
-// Glaze reflection instantiates glz::detail::external<DefaultMetadataWire> as a variable with
-// external linkage, which requires the type itself to have linkage, so it cannot live in the
-// anonymous namespace above.
-struct DefaultMetadataWire {
-  std::string name;
-};
 
 struct ControlPlane::Impl {
   pw_thread_loop* thread_loop = nullptr;
@@ -648,11 +637,11 @@ std::string ParseDefaultAudioSourceMetadata(std::string_view json) {
   if (json.empty()) {
     return {};
   }
-  DefaultMetadataWire wire;
-  if (const auto ec = glz::read<kMetadataReadOpts>(wire, json); bool(ec)) {
+  glz::json_t doc;
+  if (const auto ec = glz::read_json(doc, json); bool(ec)) {
     return {};
   }
-  return wire.name;
+  return vinput::json::String(doc, "name");
 }
 
 std::vector<DeviceInfo> EnumerateAudioSources() {
