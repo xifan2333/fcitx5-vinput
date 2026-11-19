@@ -722,7 +722,7 @@ void TestEarlyClosedReportsFailure() {
   CommandAsrProvider provider;
   provider.id = "test-early-closed-provider";
   provider.command = "/bin/sh";
-  provider.args = {"-c", R"(echo '{"type": "closed"}' && exit 0)"};
+  provider.args = {"-c", R"(cat > /dev/null && echo '{"type": "closed"}' && exit 0)"};
   provider.timeoutMs = 5000;
 
   std::string error;
@@ -742,8 +742,8 @@ void TestEarlyClosedReportsFailure() {
   // Subsequent Finish calls must preserve the failure result and provide error text
   std::string second_error;
   ExpectTrue(!session->Finish(&second_error), "Subsequent Finish must continue to fail");
-  ExpectTrue(!second_error.empty(),
-             "Subsequent Finish preserves error message even after Finish(nullptr)");
+  ExpectTrue(second_error == "Streaming ASR provider returned no text.",
+             "Subsequent Finish preserves exact error message even after Finish(nullptr)");
 }
 
 } // namespace

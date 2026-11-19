@@ -2,17 +2,14 @@
 
 #include <chrono>
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
-#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
@@ -28,39 +25,6 @@
 namespace vinput::daemon::asr {
 
 namespace {
-
-// Keeps the owning AsrBackend alive for Buffered/direct sessions (Issue #709)
-// so a background reload replacing effective_backend_ does not leave active
-// sessions accessing freed backend recognizers or VAD state.
-class BackendKeepingSession : public RecognitionSession {
-public:
-  BackendKeepingSession(std::shared_ptr<AsrBackend> backend,
-                        std::unique_ptr<RecognitionSession> session)
-      : backend_(std::move(backend)), session_(std::move(session)) {}
-
-  using RecognitionSession::PushAudio;
-
-  bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
-    return session_->PushAudio(pcm, error);
-  }
-
-  bool PushAudio(std::span<const float> samples, std::string* error) override {
-    return session_->PushAudio(samples, error);
-  }
-
-  bool Finish(std::string* error) override { return session_->Finish(error); }
-
-  void Cancel() override { session_->Cancel(); }
-
-  void Interrupt() noexcept override { session_->Interrupt(); }
-
-  std::vector<RecognitionEvent> PollEvents() override { return session_->PollEvents(); }
-
-private:
-  // Declared before session_ so session_ is destroyed first on tear-down.
-  std::shared_ptr<AsrBackend> backend_;
-  std::unique_ptr<RecognitionSession> session_;
-};
 
 std::unique_ptr<RecognitionSession> WrapChunkedSession(std::unique_ptr<RecognitionSession> session,
                                                        std::shared_ptr<AsrBackend> backend,
@@ -432,8 +396,7 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
     return true;
   }
 
-  *session =
-      std::make_unique<BackendKeepingSession>(std::move(backend), std::move(backend_session));
+  *session = std::move(backend_session);
   return true;
 }
 

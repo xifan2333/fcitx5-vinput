@@ -283,6 +283,9 @@ private:
       }
     }
     if (grace_pump_failed) {
+      if (error != nullptr && error->empty()) {
+        *error = "Failed to pump streaming ASR output during grace window.";
+      }
       return false;
     }
     if (error != nullptr) {
@@ -309,21 +312,28 @@ private:
       finish_error_ = "Recognition session was interrupted or cancelled.";
       return SetFinishError(error, finish_error_);
     }
+    return ResolveFinalOutcome(grace_pump_failed, error);
+  }
+
+  bool ResolveFinalOutcome(bool grace_pump_failed, std::string* error) {
     std::string local_error;
+    if (error != nullptr && !error->empty()) {
+      local_error = *error;
+    }
     finish_success_ = ResolveFinishFailure(grace_pump_failed, &local_error);
     if (!finish_success_) {
-      finish_error_ =
-          local_error.empty() ? "Streaming ASR provider returned no text." : local_error;
-      if (error != nullptr) {
-        *error = finish_error_;
+      if (local_error.empty()) {
+        local_error = saw_final_text_ ? "Failed to pump streaming ASR output during grace window."
+                                      : "Streaming ASR provider returned no text.";
       }
-    } else {
-      finish_error_.clear();
-      if (error != nullptr) {
-        error->clear();
-      }
+      finish_error_ = std::move(local_error);
+      return SetFinishError(error, finish_error_);
     }
-    return finish_success_;
+    finish_error_.clear();
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
   }
 
   bool HandleStdoutChunk(const std::vector<std::byte>& data, std::string* error) {

@@ -44,6 +44,7 @@ struct FakeState {
   int finish_calls = 0;
   int cancel_calls = 0;
   bool fail_push = false;
+  bool fail_finish = false;
 };
 
 class FakeSession final : public RecognitionSession {
@@ -75,6 +76,13 @@ public:
   bool Finish(std::string* error) override {
     const std::scoped_lock lock(state_->mutex);
     ++state_->finish_calls;
+    if (state_->fail_finish) {
+      if (error != nullptr) {
+        *error = "fake backend finish failed.";
+      }
+      pending_.push_back({.kind = RecognitionEventKind::Completed, .text = {}, .error = {}});
+      return false;
+    }
     pending_.push_back({.kind = RecognitionEventKind::Completed, .text = {}, .error = {}});
     if (error != nullptr) {
       error->clear();
@@ -452,6 +460,21 @@ void TestDestructionOrderDestroysSessionBeforeOwner() {
   Expect(tracker->owner_destroyed, "owner was destroyed");
 }
 
+void TestFinishFailureWithoutErrorEventSynthesizesError() {
+  auto state = MakeState(true);
+  state->fail_finish = true;
+  AsyncRecognitionSession session(std::make_unique<FakeSession>(state), 1024);
+  std::string error;
+  Expect(session.PushAudio(std::vector<int16_t>{1}, &error), "push 1");
+  Expect(!session.Finish(&error), "finish fails");
+  Expect(error == "fake backend finish failed.", "error populated");
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "finish failure synthesized as an Error event in event stream");
+  Expect(CountCompleted(events) == 1, "Completed event emitted once");
+}
+
 } // namespace
 
 int main() {
@@ -467,5 +490,6 @@ int main() {
   TestPushAudioFloatFallback();
   TestPushAudioFloatEmpty();
   TestDestructionOrderDestroysSessionBeforeOwner();
+  TestFinishFailureWithoutErrorEventSynthesizesError();
   std::cout << "Async recognition session tests passed\n";
 }

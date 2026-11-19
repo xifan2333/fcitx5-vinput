@@ -290,11 +290,7 @@ void AsyncRecognitionSession::Run() {
 
     std::string error;
     if (finish) {
-      // Queue is drained: finish the backend exactly once and forward its
-      // final events (including its single Completed) untouched.
-      const bool ok = backend_->Finish(&error);
-      AppendEvents(backend_->PollEvents());
-      Complete(ok, std::move(error));
+      FinalizeFinishing();
       return;
     }
 
@@ -306,6 +302,23 @@ void AsyncRecognitionSession::Run() {
   }
 
   FinalizeCancellation();
+}
+
+void AsyncRecognitionSession::FinalizeFinishing() {
+  std::string error;
+  // Queue is drained: finish the backend exactly once and forward its
+  // final events (including its single Completed) untouched.
+  const bool ok = backend_->Finish(&error);
+  auto finish_events = backend_->PollEvents();
+  if (!ok) {
+    if (!error.empty()) {
+      const std::scoped_lock lock(mutex_);
+      error_ = error;
+    }
+    EnsureErrorEvent(finish_events);
+  }
+  AppendEvents(std::move(finish_events));
+  Complete(ok, std::move(error));
 }
 
 } // namespace vinput::daemon::asr

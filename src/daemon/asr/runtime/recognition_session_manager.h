@@ -53,8 +53,7 @@ public:
   // Creates a session from the active backend. Backends in Chunked delivery
   // mode come back pre-wrapped in AsyncRecognitionSession, whose worker thread
   // keeps the owning backend alive and signals wake_callback on every event
-  // batch (Issue #709). Buffered backends return a session keeping its owning
-  // backend alive for the session's lifetime.
+  // batch (Issue #709). Buffered backends return direct self-contained sessions.
   std::unique_ptr<RecognitionSession>
   CreateSession(const CoreConfig& settings, BackendDescriptor* descriptor, std::string* error,
                 const std::function<void()>& wake_callback = {});
