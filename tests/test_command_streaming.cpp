@@ -718,6 +718,33 @@ void TestPrematureExitErrorReporting() {
              "error message should report precise premature exit code 42: " + error);
 }
 
+void TestEarlyClosedReportsFailure() {
+  CommandAsrProvider provider;
+  provider.id = "test-early-closed-provider";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo '{\"type\": \"closed\"}' && exit 0"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  // PushAudio drains the early "closed" event
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed");
+
+  // Finish must detect missing final text and fail, not report false success
+  ExpectTrue(!session->Finish(&error), "Finish must report failure when closed early without text");
+  ExpectTrue(!error.empty(), "Finish must populate error on missing final text");
+
+  // Subsequent Finish calls must preserve the failure result
+  std::string second_error;
+  ExpectTrue(!session->Finish(&second_error), "Subsequent Finish must continue to fail");
+  ExpectTrue(second_error == error, "Subsequent Finish preserves error message");
+}
+
 } // namespace
 
 int main() {
@@ -737,6 +764,7 @@ int main() {
   TestStderrPipedToNotificationBridge();
   TestKilledByUsVsAbnormalExit();
   TestPrematureExitErrorReporting();
+  TestEarlyClosedReportsFailure();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

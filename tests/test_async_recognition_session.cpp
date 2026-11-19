@@ -183,12 +183,14 @@ void TestWakeOnBackendFailureWithoutErrorEvent() {
   // Backend push failures are synthesized into an Error event (Issue #709):
   // the consumer reads the event stream, no side channel.
   const auto events = session.PollEvents();
-  Expect(CountCompleted(events) == 1, "Completed exactly once after failure");
   const bool saw_error = std::ranges::any_of(
       events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
   Expect(saw_error, "backend failure surfaces as an Error event via PollEvents");
   Expect(!session.Finish(&error), "finish reports worker failure");
   Expect(error == "fake backend rejected audio.", "failure error preserved for Finish waiter");
+  const auto final_events = session.PollEvents();
+  const auto total_completed = CountCompleted(events) + CountCompleted(final_events);
+  Expect(total_completed == 1, "Completed exactly once after failure");
   // Terminal events drain once; nothing is replayed.
   Expect(session.PollEvents().empty(), "failure events are not replayed");
 }
@@ -389,6 +391,57 @@ void TestPushAudioFloatEmpty() {
   Expect(error.empty(), "push empty float audio has no error");
 }
 
+void TestDestructionOrderDestroysSessionBeforeOwner() {
+  struct LifetimeTracker {
+    bool session_destroyed = false;
+    bool owner_destroyed = false;
+  };
+  auto tracker = std::make_shared<LifetimeTracker>();
+
+  class TrackingSession : public RecognitionSession {
+  public:
+    explicit TrackingSession(std::shared_ptr<LifetimeTracker> tracker)
+        : tracker_(std::move(tracker)) {}
+    ~TrackingSession() override {
+      tracker_->session_destroyed = true;
+      Expect(!tracker_->owner_destroyed,
+             "backend owner must still be alive when session is destroyed");
+    }
+    bool PushAudio(std::span<const int16_t>, std::string*) override { return true; }
+    bool Finish(std::string*) override { return true; }
+    void Cancel() override {}
+    std::vector<RecognitionEvent> PollEvents() override { return {}; }
+
+  private:
+    std::shared_ptr<LifetimeTracker> tracker_;
+  };
+
+  class TrackingBackend : public AsrBackend {
+  public:
+    explicit TrackingBackend(std::shared_ptr<LifetimeTracker> tracker)
+        : tracker_(std::move(tracker)) {}
+    ~TrackingBackend() override {
+      tracker_->owner_destroyed = true;
+      Expect(tracker_->session_destroyed,
+             "session must be destroyed before backend owner is destroyed");
+    }
+    [[nodiscard]] BackendDescriptor Describe() const override { return {}; }
+    std::unique_ptr<RecognitionSession> CreateSession(std::string*) override { return nullptr; }
+    bool Warmup(std::string*) override { return true; }
+
+  private:
+    std::shared_ptr<LifetimeTracker> tracker_;
+  };
+
+  {
+    auto backend = std::make_shared<TrackingBackend>(tracker);
+    auto session = std::make_unique<TrackingSession>(tracker);
+    AsyncRecognitionSession async_session(std::move(session), 1024, std::move(backend));
+  }
+  Expect(tracker->session_destroyed, "session was destroyed");
+  Expect(tracker->owner_destroyed, "owner was destroyed");
+}
+
 } // namespace
 
 int main() {
@@ -403,5 +456,6 @@ int main() {
   TestDeferredReleaseDoesNotJoinOnReleasingThread();
   TestPushAudioFloatFallback();
   TestPushAudioFloatEmpty();
+  TestDestructionOrderDestroysSessionBeforeOwner();
   std::cout << "Async recognition session tests passed\n";
 }

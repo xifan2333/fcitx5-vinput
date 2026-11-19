@@ -72,18 +72,19 @@ private:
   void InvokeWakeCallback();
   // Ensures the event batch carries an Error event; synthesizes one from
   // error_ when the backend emitted none (Issue #709).
-  void EnsureErrorEvent(std::vector<RecognitionEvent>& events) const;
+  void EnsureErrorEvent(std::vector<RecognitionEvent>& events);
   [[nodiscard]] bool IsAcceptingAudioLocked(std::string* error) const;
   [[nodiscard]] bool HasCapacityLocked(std::size_t incoming_samples) const;
   void RecordDroppedSamplesLocked(std::size_t incoming_samples);
   void HandleQueueOverflowLocked(std::size_t incoming_samples,
                                  std::deque<std::vector<int16_t>>& discarded, std::string* error);
 
-  std::unique_ptr<RecognitionSession> backend_;
   // Keeps the owning AsrBackend alive for the worker thread's lifetime (Issue
   // #709) so a backend reload that destroys the previous backend cannot leave
-  // the worker calling into a dangling recognizer.
+  // the worker calling into a dangling recognizer. Declared before backend_ so
+  // backend_ is destroyed first.
   std::shared_ptr<AsrBackend> backend_owner_;
+  std::unique_ptr<RecognitionSession> backend_;
   const std::size_t max_queued_samples_;
 
   mutable std::mutex mutex_;
@@ -98,6 +99,7 @@ private:
   bool success_ = false;
   std::string error_;
   WakeCallback wake_callback_;
+  bool error_emitted_ = false;
 
   std::thread worker_; // Joined in the destructor before members are torn down.
 };

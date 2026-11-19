@@ -117,9 +117,13 @@ public:
     }
     if (phase_ == Phase::Completed) {
       if (error != nullptr) {
-        error->clear();
+        if (!finish_success_ && !finish_error_.empty()) {
+          *error = finish_error_;
+        } else {
+          error->clear();
+        }
       }
-      return true;
+      return finish_success_;
     }
 
     if (!StartFinish(error)) {
@@ -144,6 +148,8 @@ public:
         SendControlEvent("cancel", nullptr);
       }
     }
+    finish_success_ = false;
+    finish_error_ = "Recognition session was cancelled.";
     stdout_buffer_.clear();
     last_partial_text_.clear();
     QueueCompleted();
@@ -182,8 +188,12 @@ private:
     }
 
     if (!SendControlEvent("finish", error)) {
-      QueueError(error != nullptr && !error->empty() ? *error : "failed to send finish event.");
+      const std::string err_text =
+          error != nullptr && !error->empty() ? *error : "failed to send finish event.";
+      QueueError(err_text);
       phase_ = Phase::Completed;
+      finish_success_ = false;
+      finish_error_ = err_text;
       QueueCompleted();
       Terminate();
       return false;
@@ -202,10 +212,14 @@ private:
   // Polls events until the provider emitted final text, the session completed,
   // or the child exited. Injects the poll/timeout failure into the event queue.
   bool AwaitFinalText(std::string* error) {
-    while (!saw_final_text_ && phase_ != Phase::Completed && !child_exited_) {
+    while (!saw_final_text_ && !provider_closed_ && phase_ != Phase::Completed && !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
-        QueueError(error != nullptr && !error->empty() ? *error : "failed to poll provider.");
+        const std::string err_text =
+            error != nullptr && !error->empty() ? *error : "failed to poll provider.";
+        QueueError(err_text);
         phase_ = Phase::Completed;
+        finish_success_ = false;
+        finish_error_ = err_text;
         QueueCompleted();
         Terminate();
         return false;
@@ -213,10 +227,12 @@ private:
       if (HasTimedOut(deadline_)) {
         QueueError("Streaming ASR provider timed out.");
         phase_ = Phase::Completed;
+        finish_success_ = false;
+        finish_error_ = "Streaming ASR provider timed out.";
         QueueCompleted();
         Terminate();
         if (error != nullptr) {
-          *error = events_.back().error;
+          *error = "Streaming ASR provider timed out.";
         }
         return false;
       }
@@ -233,7 +249,8 @@ private:
     const Clock::time_point grace_deadline =
         Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
     bool pump_failed = false;
-    while (!HasTimedOut(grace_deadline) && phase_ != Phase::Completed && !child_exited_) {
+    while (!HasTimedOut(grace_deadline) && !provider_closed_ && phase_ != Phase::Completed &&
+           !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(RemainingMs(grace_deadline, kPollSliceMs)),
                        error)) {
         pump_failed = true;
@@ -288,9 +305,17 @@ private:
     Terminate();
 
     if (cancelled || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
-      return SetFinishError(error, "Recognition session was interrupted or cancelled.");
+      finish_success_ = false;
+      finish_error_ = "Recognition session was interrupted or cancelled.";
+      return SetFinishError(error, finish_error_);
     }
-    return ResolveFinishFailure(grace_pump_failed, error);
+    finish_success_ = ResolveFinishFailure(grace_pump_failed, error);
+    if (!finish_success_ && error != nullptr) {
+      finish_error_ = *error;
+    } else {
+      finish_error_.clear();
+    }
+    return finish_success_;
   }
 
   bool HandleStdoutChunk(const std::vector<std::byte>& data, std::string* error) {
@@ -523,7 +548,7 @@ private:
       return true;
     }
     if (type == "closed") {
-      phase_ = Phase::Completed;
+      provider_closed_ = true;
       return true;
     }
     return true;
@@ -589,6 +614,9 @@ private:
   std::optional<vinput::process::ProcessSession> session_;
   std::atomic<bool> interrupted_{false};
   Phase phase_ = Phase::Idle;
+  bool provider_closed_ = false;
+  bool finish_success_ = false;
+  std::string finish_error_;
   bool terminated_ = false;
   bool completed_emitted_ = false;
   bool saw_error_ = false;

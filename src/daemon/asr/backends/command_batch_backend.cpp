@@ -64,15 +64,22 @@ RecognitionEvent BuildResultEvent(const vinput::process::CommandResult& command_
 
 class CommandBatchSession : public RecognitionSession {
 public:
+  enum class Phase : std::uint8_t {
+    Active,
+    Finished,
+    Cancelled,
+  };
+
   CommandBatchSession(const CommandAsrProvider& provider,
                       vinput::notify::NotificationBridge* notification_bridge)
       : command_(BuildCommandSpec(provider)), provider_id_(provider.id),
         notification_bridge_(notification_bridge) {}
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
-    if (finished_) {
+    if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
+                                            : "Recognition session already finished.";
       }
       return false;
     }
@@ -84,20 +91,20 @@ public:
   }
 
   bool Finish(std::string* error) override {
-    if (cancelled_) {
+    if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
         *error = "Recognition session was cancelled.";
       }
       return false;
     }
-    if (finished_) {
+    if (phase_ == Phase::Finished) {
       if (error != nullptr) {
         error->clear();
       }
       return true;
     }
 
-    finished_ = true;
+    phase_ = Phase::Finished;
     const auto audio = std::as_bytes(std::span<const int16_t>(pcm_));
     auto command_result = vinput::process::Run(command_, audio);
 
@@ -119,8 +126,7 @@ public:
   }
 
   void Cancel() override {
-    cancelled_ = true;
-    finished_ = true;
+    phase_ = Phase::Cancelled;
     pcm_.clear();
     events_ = {{RecognitionEventKind::Completed, {}, {}}};
   }
@@ -153,8 +159,7 @@ private:
   vinput::process::CommandSpec command_;
   std::string provider_id_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
-  bool cancelled_ = false;
-  bool finished_ = false;
+  Phase phase_ = Phase::Active;
   std::vector<int16_t> pcm_;
   std::vector<RecognitionEvent> events_;
 };

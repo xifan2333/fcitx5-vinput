@@ -563,6 +563,12 @@ std::optional<std::string> ExecuteAudioInference(const sherpa::OfflineRecognizer
 // ---------------------------------------------------------------------------
 class SherpaOfflineSession : public RecognitionSession {
 public:
+  enum class Phase : std::uint8_t {
+    Active,
+    Finished,
+    Cancelled,
+  };
+
   SherpaOfflineSession(const sherpa::OfflineRecognizer* recognizer, bool vad_available,
                        VadTrimmer* vad)
       : recognizer_(recognizer), vad_available_(vad_available), vad_(vad) {}
@@ -570,9 +576,10 @@ public:
   using RecognitionSession::PushAudio;
 
   bool PushAudio(std::span<const float> samples, std::string* error) override {
-    if (finished_) {
+    if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
+                                            : "Recognition session already finished.";
       }
       return false;
     }
@@ -584,9 +591,10 @@ public:
   }
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
-    if (finished_) {
+    if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
+                                            : "Recognition session already finished.";
       }
       return false;
     }
@@ -601,19 +609,19 @@ public:
   }
 
   bool Finish(std::string* error) override {
-    if (cancelled_) {
+    if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
         *error = "Recognition session was cancelled.";
       }
       return false;
     }
-    if (finished_) {
+    if (phase_ == Phase::Finished) {
       if (error != nullptr) {
         error->clear();
       }
       return true;
     }
-    finished_ = true;
+    phase_ = Phase::Finished;
 
     if (samples_.size() < kMinSamplesForRecognition) {
       VLOG_DEBUG("skipping ASR for short audio: {} samples ({:.1f} ms)", samples_.size(),
@@ -648,8 +656,7 @@ public:
   }
 
   void Cancel() override {
-    cancelled_ = true;
-    finished_ = true;
+    phase_ = Phase::Cancelled;
     samples_.clear();
     events_.clear();
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
@@ -665,8 +672,7 @@ private:
   const sherpa::OfflineRecognizer* recognizer_;
   bool vad_available_;
   VadTrimmer* vad_;
-  bool cancelled_ = false;
-  bool finished_ = false;
+  Phase phase_ = Phase::Active;
   std::vector<float> samples_;
   std::vector<RecognitionEvent> events_;
 };

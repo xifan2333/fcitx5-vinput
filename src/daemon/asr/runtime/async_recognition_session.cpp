@@ -21,7 +21,7 @@ namespace vinput::daemon::asr {
 AsyncRecognitionSession::AsyncRecognitionSession(std::unique_ptr<RecognitionSession> backend,
                                                  std::size_t max_queued_samples,
                                                  std::shared_ptr<AsrBackend> backend_owner)
-    : backend_(std::move(backend)), backend_owner_(std::move(backend_owner)),
+    : backend_owner_(std::move(backend_owner)), backend_(std::move(backend)),
       max_queued_samples_(max_queued_samples) {
   worker_ = std::thread([this] { Run(); });
 }
@@ -34,6 +34,7 @@ AsyncRecognitionSession::~AsyncRecognitionSession() {
   if (worker_.joinable()) {
     worker_.join();
   }
+  backend_.reset();
 }
 
 bool AsyncRecognitionSession::IsAcceptingAudioLocked(std::string* error) const {
@@ -174,16 +175,21 @@ void AsyncRecognitionSession::SetWakeCallback(WakeCallback callback) {
   wake_callback_ = std::move(callback);
 }
 
-void AsyncRecognitionSession::EnsureErrorEvent(std::vector<RecognitionEvent>& events) const {
-  bool has_error = std::ranges::any_of(
+void AsyncRecognitionSession::EnsureErrorEvent(std::vector<RecognitionEvent>& events) {
+  const bool has_error = std::ranges::any_of(
       events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
-  if (!has_error) {
-    const std::scoped_lock lock(mutex_);
-    has_error = std::ranges::any_of(
+  const std::scoped_lock lock(mutex_);
+  if (has_error) {
+    error_emitted_ = true;
+    return;
+  }
+  if (!error_emitted_) {
+    const bool in_queue = std::ranges::any_of(
         events_, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
-    if (!has_error) {
+    if (!in_queue) {
       events.push_back({RecognitionEventKind::Error, {}, error_});
     }
+    error_emitted_ = true;
   }
 }
 

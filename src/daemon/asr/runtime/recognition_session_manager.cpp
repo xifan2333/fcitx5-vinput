@@ -26,6 +26,39 @@ namespace vinput::daemon::asr {
 
 namespace {
 
+// Keeps the owning AsrBackend alive for Buffered/direct sessions (Issue #709)
+// so a background reload replacing effective_backend_ does not leave active
+// sessions accessing freed backend recognizers or VAD state.
+class BackendKeepingSession : public RecognitionSession {
+public:
+  BackendKeepingSession(std::shared_ptr<AsrBackend> backend,
+                        std::unique_ptr<RecognitionSession> session)
+      : backend_(std::move(backend)), session_(std::move(session)) {}
+
+  using RecognitionSession::PushAudio;
+
+  bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
+    return session_->PushAudio(pcm, error);
+  }
+
+  bool PushAudio(std::span<const float> samples, std::string* error) override {
+    return session_->PushAudio(samples, error);
+  }
+
+  bool Finish(std::string* error) override { return session_->Finish(error); }
+
+  void Cancel() override { session_->Cancel(); }
+
+  void Interrupt() noexcept override { session_->Interrupt(); }
+
+  std::vector<RecognitionEvent> PollEvents() override { return session_->PollEvents(); }
+
+private:
+  // Declared before session_ so session_ is destroyed first on tear-down.
+  std::shared_ptr<AsrBackend> backend_;
+  std::unique_ptr<RecognitionSession> session_;
+};
+
 std::unique_ptr<RecognitionSession> WrapChunkedSession(std::unique_ptr<RecognitionSession> session,
                                                        std::shared_ptr<AsrBackend> backend,
                                                        const std::function<void()>& wake_callback) {
@@ -368,8 +401,7 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
   }
 
   std::shared_ptr<AsrBackend> backend;
-  BackendDescriptor local_descriptor;
-  bool have_descriptor = false;
+  bool chunked = false;
   {
     const std::scoped_lock lock(state_mutex_);
     if (!effective_backend_.has_value() || !effective_backend_->backend) {
@@ -380,20 +412,11 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
     }
 
     if (descriptor != nullptr) {
-      local_descriptor = effective_backend_->descriptor;
-      have_descriptor = true;
+      *descriptor = effective_backend_->descriptor;
     }
+    chunked = effective_backend_->descriptor.capabilities.audio_delivery_mode ==
+              AudioDeliveryMode::Chunked;
     backend = effective_backend_->backend;
-  }
-
-  // Chunked delivery (streaming) runs worker-thread asynchrony: hand the raw
-  // session to AsyncRecognitionSession, which keeps the owning backend alive
-  // and forwards new events through the wake callback (Issue #709). Buffered
-  // delivery returns the backend session as-is.
-  const bool chunked = have_descriptor && local_descriptor.capabilities.audio_delivery_mode ==
-                                              AudioDeliveryMode::Chunked;
-  if (descriptor != nullptr && have_descriptor) {
-    *descriptor = std::move(local_descriptor);
   }
 
   auto backend_session = backend->CreateSession(error);
@@ -406,7 +429,8 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
     return true;
   }
 
-  *session = std::move(backend_session);
+  *session =
+      std::make_unique<BackendKeepingSession>(std::move(backend), std::move(backend_session));
   return true;
 }
 
