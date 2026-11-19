@@ -7,7 +7,6 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <span>
 #include <string>
 #include <thread>
@@ -24,6 +23,16 @@ namespace vinput::daemon::asr {
 // blocking the realtime callback or silently losing audio.
 class AsyncRecognitionSession final : public RecognitionSession {
 public:
+  // Worker/consumer lifecycle. Backend failure is expressed as an Error event
+  // through PollEvents() rather than a distinct state (Issue #709), so the
+  // consumer only ever reads events and Finish()'s return value.
+  enum class Phase : std::uint8_t {
+    Accepting,  // Worker waits for queued audio; PushAudio is accepted.
+    Finishing,  // Finish() requested; only the final drain runs.
+    Cancelling, // Cancel() requested or backend push failed; teardown runs.
+    Complete,   // Worker finished; final state is frozen.
+  };
+
   // Non-blocking wake-up invoked on the worker thread after new events are
   // appended or the backend fails. The callback must only signal another
   // thread (for example write an eventfd); it must never call UI/D-Bus code.
@@ -50,10 +59,6 @@ public:
   std::vector<RecognitionEvent> PollEvents() override;
 
   void SetWakeCallback(WakeCallback callback);
-  // Backend PushAudio failure recorded by the worker, if any. Empty until a
-  // failure happens; reading it on the woken thread is how a merged wake-up
-  // still surfaces an error that produced no Error event.
-  [[nodiscard]] std::optional<std::string> FailureError() const;
 
   [[nodiscard]] std::size_t DroppedChunks() const;
   [[nodiscard]] std::size_t DroppedSamples() const;
@@ -63,6 +68,9 @@ private:
   void AppendEvents(std::vector<RecognitionEvent> events);
   void Complete(bool success, std::string error);
   void InvokeWakeCallback();
+  // Ensures the event batch carries an Error event; synthesizes one from
+  // error_ when the backend emitted none (Issue #709).
+  void EnsureErrorEvent(std::vector<RecognitionEvent>& events) const;
   [[nodiscard]] bool IsAcceptingAudioLocked(std::string* error) const;
   [[nodiscard]] bool HasCapacityLocked(std::size_t incoming_samples) const;
   void RecordDroppedSamplesLocked(std::size_t incoming_samples);
@@ -84,11 +92,8 @@ private:
   std::size_t queued_samples_ = 0;
   std::size_t dropped_chunks_ = 0;
   std::size_t dropped_samples_ = 0;
-  bool finish_requested_ = false;
-  bool cancel_requested_ = false;
-  bool complete_ = false;
+  Phase phase_ = Phase::Accepting;
   bool success_ = false;
-  bool backend_failed_ = false;
   std::string error_;
   WakeCallback wake_callback_;
 

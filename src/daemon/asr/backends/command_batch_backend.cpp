@@ -84,6 +84,12 @@ public:
   }
 
   bool Finish(std::string* error) override {
+    if (cancelled_) {
+      if (error != nullptr) {
+        *error = "Recognition session was cancelled.";
+      }
+      return false;
+    }
     if (finished_) {
       if (error != nullptr) {
         error->clear();
@@ -113,6 +119,7 @@ public:
   }
 
   void Cancel() override {
+    cancelled_ = true;
     finished_ = true;
     pcm_.clear();
     events_ = {{RecognitionEventKind::Completed, {}, {}}};
@@ -146,6 +153,7 @@ private:
   vinput::process::CommandSpec command_;
   std::string provider_id_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
+  bool cancelled_ = false;
   bool finished_ = false;
   std::vector<int16_t> pcm_;
   std::vector<RecognitionEvent> events_;

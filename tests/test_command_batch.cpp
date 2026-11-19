@@ -212,8 +212,10 @@ void TestCancel() {
   ExpectTrue(events[0].kind == vinput::daemon::asr::RecognitionEventKind::Completed,
              "Event must be Completed");
 
-  // Subsequent Finish should be a no-op
-  ExpectTrue(session->Finish(&error), "Finish after cancel should succeed as no-op");
+  // Unified Cancel -> Finish contract (Issue #709): a cancelled session must
+  // report failure, not silently succeed as a no-op.
+  ExpectTrue(!session->Finish(&error), "Finish after cancel must fail");
+  ExpectTrue(!error.empty(), "Finish after cancel reports a non-empty error");
 }
 
 } // namespace

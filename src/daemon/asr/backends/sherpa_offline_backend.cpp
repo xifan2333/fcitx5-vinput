@@ -35,8 +35,6 @@ namespace vinput::daemon::asr {
 
 namespace {
 
-constexpr std::size_t kMinSamplesForInference = 8000; // 0.5 s @ 16 kHz
-
 bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std::string* error) {
   std::error_code temp_error;
   const auto temp_dir = std::filesystem::temp_directory_path(temp_error);
@@ -604,6 +602,12 @@ public:
   }
 
   bool Finish(std::string* error) override {
+    if (cancelled_) {
+      if (error != nullptr) {
+        *error = "Recognition session was cancelled.";
+      }
+      return false;
+    }
     if (finished_) {
       if (error != nullptr) {
         error->clear();
@@ -612,7 +616,7 @@ public:
     }
     finished_ = true;
 
-    if (samples_.size() < kMinSamplesForInference) {
+    if (samples_.size() < kMinSamplesForRecognition) {
       VLOG_DEBUG("skipping ASR for short audio: {} samples ({:.1f} ms)", samples_.size(),
                  static_cast<double>(samples_.size()) * 1000.0 / 16000.0);
       events_.push_back({RecognitionEventKind::Completed, {}, {}});
@@ -645,6 +649,7 @@ public:
   }
 
   void Cancel() override {
+    cancelled_ = true;
     finished_ = true;
     samples_.clear();
     events_.clear();
@@ -661,6 +666,7 @@ private:
   const sherpa::OfflineRecognizer* recognizer_;
   bool vad_available_;
   VadTrimmer* vad_;
+  bool cancelled_ = false;
   bool finished_ = false;
   std::vector<float> samples_;
   std::vector<RecognitionEvent> events_;

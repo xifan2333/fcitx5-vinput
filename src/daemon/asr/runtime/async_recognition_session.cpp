@@ -1,12 +1,12 @@
 #include "daemon/asr/runtime/async_recognition_session.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <limits>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -35,7 +35,7 @@ AsyncRecognitionSession::~AsyncRecognitionSession() {
 }
 
 bool AsyncRecognitionSession::IsAcceptingAudioLocked(std::string* error) const {
-  if (cancel_requested_ || finish_requested_ || complete_) {
+  if (phase_ != Phase::Accepting) {
     if (error != nullptr) {
       *error = error_.empty() ? "Streaming session is no longer recording." : error_;
     }
@@ -73,7 +73,7 @@ void AsyncRecognitionSession::HandleQueueOverflowLocked(std::size_t incoming_sam
   // cancel/failure path instead of waiting for queue space.
   RecordDroppedSamplesLocked(incoming_samples);
   error_ = "Streaming recognition queue overflowed; audio chunk was dropped.";
-  cancel_requested_ = true;
+  phase_ = Phase::Cancelling;
   discarded = std::move(queue_);
   queue_.clear();
   queued_samples_ = 0;
@@ -114,11 +114,11 @@ bool AsyncRecognitionSession::PushAudio(std::span<const int16_t> pcm, std::strin
 
 bool AsyncRecognitionSession::Finish(std::string* error) {
   std::unique_lock<std::mutex> lock(mutex_);
-  if (!complete_ && !cancel_requested_) {
-    finish_requested_ = true;
+  if (phase_ != Phase::Complete && phase_ != Phase::Cancelling) {
+    phase_ = Phase::Finishing;
     wake_.notify_one();
   }
-  complete_cv_.wait(lock, [this] { return complete_; });
+  complete_cv_.wait(lock, [this] { return phase_ == Phase::Complete; });
   if (error != nullptr) {
     *error = error_;
   }
@@ -128,10 +128,10 @@ bool AsyncRecognitionSession::Finish(std::string* error) {
 void AsyncRecognitionSession::Cancel() {
   {
     const std::scoped_lock lock(mutex_);
-    if (complete_ || cancel_requested_) {
+    if (phase_ == Phase::Complete || phase_ == Phase::Cancelling) {
       return;
     }
-    cancel_requested_ = true;
+    phase_ = Phase::Cancelling;
     queue_.clear();
     queued_samples_ = 0;
   }
@@ -170,12 +170,12 @@ void AsyncRecognitionSession::SetWakeCallback(WakeCallback callback) {
   wake_callback_ = std::move(callback);
 }
 
-std::optional<std::string> AsyncRecognitionSession::FailureError() const {
-  const std::scoped_lock lock(mutex_);
-  if (!backend_failed_) {
-    return std::nullopt;
+void AsyncRecognitionSession::EnsureErrorEvent(std::vector<RecognitionEvent>& events) const {
+  const bool has_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  if (!has_error) {
+    events.push_back({RecognitionEventKind::Error, {}, error_});
   }
-  return error_;
 }
 
 void AsyncRecognitionSession::InvokeWakeCallback() {
@@ -207,7 +207,7 @@ void AsyncRecognitionSession::AppendEvents(std::vector<RecognitionEvent> events)
 void AsyncRecognitionSession::Complete(bool success, std::string error) {
   {
     const std::scoped_lock lock(mutex_);
-    complete_ = true;
+    phase_ = Phase::Complete;
     success_ = success;
     error_ = std::move(error);
   }
@@ -220,16 +220,15 @@ void AsyncRecognitionSession::Run() {
     bool finish = false;
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      wake_.wait(lock,
-                 [this] { return cancel_requested_ || finish_requested_ || !queue_.empty(); });
-      if (cancel_requested_) {
+      wake_.wait(lock, [this] { return phase_ != Phase::Accepting || !queue_.empty(); });
+      if (phase_ == Phase::Cancelling) {
         break;
       }
       if (!queue_.empty()) {
         chunk = std::move(queue_.front());
         queue_.pop_front();
         queued_samples_ -= chunk.size();
-      } else if (finish_requested_) {
+      } else if (phase_ == Phase::Finishing) {
         finish = true;
       }
     }
@@ -249,19 +248,16 @@ void AsyncRecognitionSession::Run() {
       {
         const std::scoped_lock lock(mutex_);
         error_ = error.empty() ? "Streaming backend rejected audio." : error;
-        backend_failed_ = true;
-        cancel_requested_ = true;
+        phase_ = Phase::Cancelling;
         queue_.clear();
         queued_samples_ = 0;
       }
-      // Publish the failure before appending events: AppendEvents wakes the
-      // controller, which must already see FailureError() so it filters the
-      // Error event below and notifies only once via FailActiveSession.
+      // Backend push failures surface as a single Error event through
+      // PollEvents() (Issue #709): if the backend did not already queue one,
+      // synthesize it so the consumer sees the failure via the event stream
+      // instead of a parallel failure channel.
+      EnsureErrorEvent(backend_events);
       AppendEvents(std::move(backend_events));
-      // Wake again for the failure itself: the woken thread re-reads
-      // FailureError(), so this still surfaces when the backend emitted no
-      // Error event (and merges harmlessly if it did).
-      InvokeWakeCallback();
       break;
     }
     AppendEvents(backend_->PollEvents());

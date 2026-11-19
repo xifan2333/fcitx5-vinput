@@ -75,7 +75,7 @@ public:
   ~CommandStreamingSession() override { Terminate(); }
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
-    if (finished_) {
+    if (phase_ == Phase::Finishing || phase_ == Phase::Completed || phase_ == Phase::Cancelled) {
       if (error != nullptr) {
         *error = "Recognition session already finished.";
       }
@@ -109,7 +109,13 @@ public:
   }
 
   bool Finish(std::string* error) override {
-    if (finished_) {
+    if (phase_ == Phase::Cancelled) {
+      if (error != nullptr) {
+        *error = "Recognition session was cancelled.";
+      }
+      return false;
+    }
+    if (phase_ == Phase::Completed) {
       if (error != nullptr) {
         error->clear();
       }
@@ -131,9 +137,9 @@ public:
   }
 
   void Cancel() override {
-    if (!cancelled_) {
-      cancelled_ = true;
-      if (started_) {
+    if (phase_ != Phase::Cancelled && phase_ != Phase::Completed) {
+      phase_ = Phase::Cancelled;
+      if (phase_ == Phase::Started || phase_ == Phase::Finishing) {
         SendControlEvent("cancel", nullptr);
       }
     }
@@ -174,14 +180,17 @@ private:
       return false;
     }
 
-    finished_ = true;
     if (!SendControlEvent("finish", error)) {
       QueueError(error != nullptr && !error->empty() ? *error : "failed to send finish event.");
+      phase_ = Phase::Completed;
       QueueCompleted();
       Terminate();
       return false;
     }
 
+    // Only mark Finishing after the control event was sent: a failed send must
+    // not look like a finished session (Issue #709).
+    phase_ = Phase::Finishing;
     if (session_.has_value()) {
       session_->CloseStdin();
     }
@@ -192,15 +201,17 @@ private:
   // Polls events until the provider emitted final text, the session completed,
   // or the child exited. Injects the poll/timeout failure into the event queue.
   bool AwaitFinalText(std::string* error) {
-    while (!saw_final_text_ && !completed_ && !child_exited_) {
+    while (!saw_final_text_ && phase_ != Phase::Completed && !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
         QueueError(error != nullptr && !error->empty() ? *error : "failed to poll provider.");
+        phase_ = Phase::Completed;
         QueueCompleted();
         Terminate();
         return false;
       }
       if (HasTimedOut(deadline_)) {
         QueueError("Streaming ASR provider timed out.");
+        phase_ = Phase::Completed;
         QueueCompleted();
         Terminate();
         if (error != nullptr) {
@@ -221,7 +232,7 @@ private:
     const Clock::time_point grace_deadline =
         Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
     bool pump_failed = false;
-    while (!HasTimedOut(grace_deadline) && !completed_ && !child_exited_) {
+    while (!HasTimedOut(grace_deadline) && phase_ != Phase::Completed && !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(RemainingMs(grace_deadline, kPollSliceMs)),
                        error)) {
         pump_failed = true;
@@ -267,13 +278,15 @@ private:
   bool FinalizeFinish(bool grace_pump_failed, std::string* error) {
     DrainEvents(std::chrono::milliseconds(0), nullptr);
 
-    if (!saw_final_text_ && !saw_error_ && !cancelled_ && !killed_by_us_) {
+    const bool cancelled = phase_ == Phase::Cancelled;
+    if (!saw_final_text_ && !saw_error_ && !cancelled && !killed_by_us_) {
       QueueError("Streaming ASR provider returned no text.");
     }
+    phase_ = Phase::Completed;
     QueueCompleted();
     Terminate();
 
-    if (cancelled_ || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
+    if (cancelled || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
       return SetFinishError(error, "Recognition session was interrupted or cancelled.");
     }
     return ResolveFinishFailure(grace_pump_failed, error);
@@ -310,13 +323,13 @@ private:
   }
 
   bool EnsureStarted(std::string* error) {
-    if (cancelled_ || interrupted_.load(std::memory_order_acquire)) {
+    if (phase_ == Phase::Cancelled || interrupted_.load(std::memory_order_acquire)) {
       if (error != nullptr) {
         *error = "Recognition session already cancelled.";
       }
       return false;
     }
-    if (started_) {
+    if (phase_ != Phase::Idle) {
       return true;
     }
     if (provider_.command.empty()) {
@@ -350,7 +363,7 @@ private:
       }
       session_.emplace(std::move(*session_res));
     }
-    started_ = true;
+    phase_ = Phase::Started;
     return true;
   }
 
@@ -509,7 +522,7 @@ private:
       return true;
     }
     if (type == "closed") {
-      completed_ = true;
+      phase_ = Phase::Completed;
       return true;
     }
     return true;
@@ -527,7 +540,6 @@ private:
       return;
     }
     completed_emitted_ = true;
-    completed_ = true;
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
   }
 
@@ -554,6 +566,19 @@ private:
     to_destroy.reset();
   }
 
+  // Lifecycle phase. The protocol booleans (started_/finished_/cancelled_/
+  // completed_) collapsed into one mutually-exclusive state; one-shot and
+  // cross-thread guards (terminated_, completed_emitted_, interrupted_) and
+  // pure observations (saw_*, child_exited_, killed_by_us_) stay flags
+  // (Issue #709).
+  enum class Phase : std::uint8_t {
+    Idle,      // Child not yet spawned.
+    Started,   // Child running; audio is being streamed.
+    Finishing, // "finish" control event sent; awaiting final text.
+    Cancelled, // Cancel() called; being torn down.
+    Completed, // Terminal state reached (provider closed or event queued).
+  };
+
   CommandAsrProvider provider_;
   std::string provider_id_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
@@ -562,11 +587,8 @@ private:
   mutable std::mutex session_mutex_;
   std::optional<vinput::process::ProcessSession> session_;
   std::atomic<bool> interrupted_{false};
-  bool started_ = false;
-  bool finished_ = false;
-  bool cancelled_ = false;
+  Phase phase_ = Phase::Idle;
   bool terminated_ = false;
-  bool completed_ = false;
   bool completed_emitted_ = false;
   bool saw_error_ = false;
   bool saw_final_text_ = false;

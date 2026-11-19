@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -167,7 +168,6 @@ void TestWakeOnPartialWithoutMoreAudio() {
   Expect(events.size() == 1 && events.front().kind == RecognitionEventKind::PartialText &&
              events.front().text == "p",
          "partial produced without new audio is pollable after wake");
-  Expect(!session.FailureError().has_value(), "no failure on partial path");
   Expect(session.Finish(&error), "finish after wake test");
 }
 
@@ -180,13 +180,16 @@ void TestWakeOnBackendFailureWithoutErrorEvent() {
   std::string error;
   Expect(session.PushAudio(std::vector<int16_t>{1}, &error), "enqueue before worker failure");
   recorder->WaitAtLeast(1);
-  const auto failure = session.FailureError();
-  Expect(failure.has_value() && *failure == "fake backend rejected audio.",
-         "failure without Error event is visible to the woken thread");
+  // Backend push failures are synthesized into an Error event (Issue #709):
+  // the consumer reads the event stream, no side channel.
+  const auto events = session.PollEvents();
+  Expect(CountCompleted(events) == 1, "Completed exactly once after failure");
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "backend failure surfaces as an Error event via PollEvents");
   Expect(!session.Finish(&error), "finish reports worker failure");
   Expect(error == "fake backend rejected audio.", "failure error preserved for Finish waiter");
-  // Session-layer equivalent of notify-once: terminal events drain once.
-  Expect(CountCompleted(session.PollEvents()) == 1, "Completed exactly once after failure");
+  // Terminal events drain once; nothing is replayed.
   Expect(session.PollEvents().empty(), "failure events are not replayed");
 }
 

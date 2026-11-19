@@ -114,6 +114,12 @@ public:
   }
 
   bool Finish(std::string* error) override {
+    if (cancelled_) {
+      if (error != nullptr) {
+        *error = "Recognition session was cancelled.";
+      }
+      return false;
+    }
     if (finished_) {
       if (error != nullptr) {
         error->clear();
@@ -137,21 +143,7 @@ public:
     stream_.InputFinished();
     DecodeAvailable();
 
-    std::string text = GetCurrentText();
-    VLOG_DEBUG("streaming finish current result bytes={}", text.size());
-    if (!text.empty()) {
-      if (text != last_partial_text_) {
-        events_.push_back({RecognitionEventKind::PartialText, text, {}});
-        last_partial_text_ = text;
-      }
-      events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
-      VLOG_DEBUG("streaming queued final result");
-    } else {
-      const double rms =
-          total_samples_ > 0 ? std::sqrt(sum_squares_ / static_cast<double>(total_samples_)) : 0.0;
-      VLOG_DEBUG("streaming finish produced empty text samples={} peak={:.4f} rms={:.4f}",
-                 total_samples_, peak_abs_, rms);
-    }
+    AppendFinalResult();
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
 
     if (error != nullptr) {
@@ -161,6 +153,7 @@ public:
   }
 
   void Cancel() override {
+    cancelled_ = true;
     finished_ = true;
     events_.clear();
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
@@ -174,6 +167,27 @@ public:
   }
 
 private:
+  // Queues the FinalText event (deduplicating the trailing partial) or, for an
+  // empty result, logs the finish-time audio stats. Split out of Finish() to
+  // keep the endpoint readable and under the complexity gate.
+  void AppendFinalResult() {
+    std::string text = GetCurrentText();
+    VLOG_DEBUG("streaming finish current result bytes={}", text.size());
+    if (!text.empty()) {
+      if (text != last_partial_text_) {
+        events_.push_back({RecognitionEventKind::PartialText, text, {}});
+        last_partial_text_ = text;
+      }
+      events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
+      VLOG_DEBUG("streaming queued final result");
+      return;
+    }
+    const double rms =
+        total_samples_ > 0 ? std::sqrt(sum_squares_ / static_cast<double>(total_samples_)) : 0.0;
+    VLOG_DEBUG("streaming finish produced empty text samples={} peak={:.4f} rms={:.4f}",
+               total_samples_, peak_abs_, rms);
+  }
+
   void UpdateAudioStats(std::span<const float> samples) {
     total_samples_ += samples.size();
     for (const float sample : samples) {
@@ -222,6 +236,7 @@ private:
 
   const sherpa::OnlineRecognizer* recognizer_ = nullptr;
   sherpa::OnlineStream stream_;
+  bool cancelled_ = false;
   bool finished_ = false;
   std::size_t total_samples_ = 0;
   double peak_abs_ = 0.0;
