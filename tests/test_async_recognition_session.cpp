@@ -39,6 +39,8 @@ struct FakeState {
   std::condition_variable gate_cv;
   bool gate_open = true;
   bool entered_push = false;
+  bool entered_finish = false;
+  bool block_finish = false;
   std::vector<int16_t> received;
   int push_calls = 0;
   int finish_calls = 0;
@@ -74,8 +76,13 @@ public:
   }
 
   bool Finish(std::string* error) override {
-    const std::scoped_lock lock(state_->mutex);
+    std::unique_lock lock(state_->mutex);
     ++state_->finish_calls;
+    if (state_->block_finish) {
+      state_->entered_finish = true;
+      state_->gate_cv.notify_all();
+      state_->gate_cv.wait(lock, [this] { return state_->gate_open; });
+    }
     if (state_->fail_finish) {
       if (error != nullptr) {
         *error = "fake backend finish failed.";
@@ -119,6 +126,13 @@ void WaitEntered(const std::shared_ptr<FakeState>& state) {
   const bool ok = state->gate_cv.wait_for(lock, std::chrono::seconds(5),
                                           [&state] { return state->entered_push; });
   Expect(ok, "worker entered backend PushAudio");
+}
+
+void WaitEnteredFinish(const std::shared_ptr<FakeState>& state) {
+  std::unique_lock<std::mutex> lock(state->mutex);
+  const bool ok = state->gate_cv.wait_for(lock, std::chrono::seconds(5),
+                                          [&state] { return state->entered_finish; });
+  Expect(ok, "worker entered backend Finish");
 }
 
 void OpenGate(const std::shared_ptr<FakeState>& state) {
@@ -475,6 +489,25 @@ void TestFinishFailureWithoutErrorEventSynthesizesError() {
   Expect(CountCompleted(events) == 1, "Completed event emitted once");
 }
 
+void TestCancelDuringFinishDoesNotSynthesizeError() {
+  auto state = MakeState(false);
+  state->block_finish = true;
+  state->fail_finish = true;
+  auto session =
+      std::make_shared<AsyncRecognitionSession>(std::make_unique<FakeSession>(state), 1024);
+  std::string finish_error;
+  std::thread finisher([&] { session->Finish(&finish_error); });
+  WaitEnteredFinish(state);
+  session->Cancel();
+  OpenGate(state);
+  finisher.join();
+  const auto events = session->PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(!saw_error, "Cancel during Finish does not synthesize an Error event");
+  Expect(CountCompleted(events) == 1, "Completed event emitted once");
+}
+
 } // namespace
 
 int main() {
@@ -491,5 +524,6 @@ int main() {
   TestPushAudioFloatEmpty();
   TestDestructionOrderDestroysSessionBeforeOwner();
   TestFinishFailureWithoutErrorEventSynthesizesError();
+  TestCancelDuringFinishDoesNotSynthesizeError();
   std::cout << "Async recognition session tests passed\n";
 }

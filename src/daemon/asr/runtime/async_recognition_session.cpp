@@ -311,11 +311,17 @@ void AsyncRecognitionSession::FinalizeFinishing() {
   const bool ok = backend_->Finish(&error);
   auto finish_events = backend_->PollEvents();
   if (!ok) {
-    if (!error.empty()) {
+    bool is_cancelling = false;
+    {
       const std::scoped_lock lock(mutex_);
-      error_ = error;
+      is_cancelling = (phase_ == Phase::Cancelling);
+      if (!error.empty()) {
+        error_ = error;
+      }
     }
-    EnsureErrorEvent(finish_events);
+    if (!is_cancelling) {
+      EnsureErrorEvent(finish_events);
+    }
   }
   AppendEvents(std::move(finish_events));
   Complete(ok, std::move(error));
