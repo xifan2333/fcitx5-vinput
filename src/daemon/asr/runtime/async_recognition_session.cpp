@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "common/utils/debug_log.h"
+
 #include "daemon/asr/runtime/recognition_contract.h"
 
 namespace vinput::daemon::asr {
@@ -72,6 +74,8 @@ void AsyncRecognitionSession::HandleQueueOverflowLocked(std::size_t incoming_sam
   // must stay realtime-safe, so wake the worker to run the existing
   // cancel/failure path instead of waiting for queue space.
   RecordDroppedSamplesLocked(incoming_samples);
+  VLOG_WARN("recognition queue overflow: dropped {} chunks ({} samples)", dropped_chunks_,
+            dropped_samples_);
   error_ = "Streaming recognition queue overflowed; audio chunk was dropped.";
   phase_ = Phase::Cancelling;
   discarded = std::move(queue_);

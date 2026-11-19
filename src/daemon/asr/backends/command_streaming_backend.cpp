@@ -138,8 +138,9 @@ public:
 
   void Cancel() override {
     if (phase_ != Phase::Cancelled && phase_ != Phase::Completed) {
+      const auto prev_phase = phase_;
       phase_ = Phase::Cancelled;
-      if (phase_ == Phase::Started || phase_ == Phase::Finishing) {
+      if (prev_phase == Phase::Started || prev_phase == Phase::Finishing) {
         SendControlEvent("cancel", nullptr);
       }
     }
