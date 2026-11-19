@@ -1,7 +1,6 @@
 #include "daemon/asr/backends/sherpa_offline_backend.h"
 
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <filesystem>

@@ -20,7 +20,6 @@
 #include <string>
 #include <string_view>
 #include <sys/eventfd.h>
-#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
