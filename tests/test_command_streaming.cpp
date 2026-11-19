@@ -226,6 +226,8 @@ void TestCancelReapsChild() {
   ExpectTrue(child_pid > 0, "Failed to read child pid file for cancel session");
 
   session->Cancel();
+  ExpectTrue(!session->Finish(&error), "Finish after Cancel must fail");
+  ExpectTrue(!error.empty(), "Finish after Cancel reports non-empty error");
 
   AssertChildAlreadyReaped(child_pid);
 }
@@ -358,6 +360,28 @@ void TestEagerStartThenCancelReapsChild() {
              "PushAudio after Cancel must fail");
   ExpectTrue(!session->Finish(&error), "Finish after Cancel must fail");
   AssertChildAlreadyReaped(child_pid);
+}
+
+/** Warmup contract (Issue #709): Warmup on command-streaming must be a zero-side-effect
+ *  no-op that returns true and does not spawn a child process. */
+void TestWarmupIsNoOpAndDoesNotSpawnChild() {
+  const std::string pid_file = GetUniquePidFilePath(100);
+  unlink(pid_file.c_str());
+  CommandAsrProvider provider;
+  provider.id = "test-warmup-no-child";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo $$ > " + pid_file + "; exec sleep 30"};
+  provider.timeoutMs = 250;
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed");
+
+  ExpectTrue(backend->Warmup(&error), "Warmup must succeed as a no-op");
+  ExpectTrue(error.empty(), "Warmup must not report an error");
+
+  const bool spawned = access(pid_file.c_str(), F_OK) == 0;
+  unlink(pid_file.c_str());
+  ExpectTrue(!spawned, "Warmup must not spawn a child process");
 }
 
 /** Test Interrupt() immediately breaks a blocked Finish() wait. */
@@ -708,6 +732,7 @@ int main() {
   TestOutputEofWait(true, 6);
   TestStalledProviderWriteIsBounded();
   TestEagerStartThenCancelReapsChild();
+  TestWarmupIsNoOpAndDoesNotSpawnChild();
   TestInterruptWakesBlockedFinish();
   TestStderrPipedToNotificationBridge();
   TestKilledByUsVsAbnormalExit();

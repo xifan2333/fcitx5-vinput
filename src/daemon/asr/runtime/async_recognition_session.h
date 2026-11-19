@@ -65,6 +65,8 @@ public:
 
 private:
   void Run();
+  void FinalizeCancellation();
+  void HandleBackendFailure(const std::string& push_error);
   void AppendEvents(std::vector<RecognitionEvent> events);
   void Complete(bool success, std::string error);
   void InvokeWakeCallback();

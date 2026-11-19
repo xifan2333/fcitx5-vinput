@@ -229,6 +229,10 @@ void TestQueueOverflowFailsSession() {
   error.clear();
   Expect(!session.Finish(&error), "Finish after overflow reports failure");
   Expect(!error.empty(), "Finish after overflow reports a non-empty error");
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "overflow surfaces as an Error event via PollEvents");
   const std::scoped_lock lock(state->mutex);
   Expect(state->received == std::vector<int16_t>({1, 2}),
          "queued and dropped chunks are never delivered after overflow");
@@ -247,6 +251,10 @@ void TestQueueOverflowOversizedChunk() {
   Expect(session.DroppedSamples() == 5, "oversized chunk samples counted");
   Expect(!session.Finish(&error), "Finish after oversized chunk reports failure");
   Expect(!error.empty(), "Finish after oversized chunk reports a non-empty error");
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "oversized chunk surfaces as an Error event via PollEvents");
 }
 
 void TestQueueZeroCapacityFails() {
@@ -258,6 +266,11 @@ void TestQueueZeroCapacityFails() {
   Expect(session.DroppedChunks() == 1, "zero-capacity chunk is counted as dropped");
   Expect(session.DroppedSamples() == 1, "zero-capacity samples counted");
   Expect(!session.Finish(&error), "Finish with zero capacity reports failure");
+  Expect(!error.empty(), "zero-capacity Finish reports a non-empty error");
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "zero capacity push surfaces as an Error event via PollEvents");
 }
 
 void TestCancelClearsQueueAndCompletesOnce() {
@@ -270,6 +283,8 @@ void TestCancelClearsQueueAndCompletesOnce() {
   session.Cancel();
   OpenGate(state);
   Expect(!session.Finish(&error), "Finish after Cancel reports failure");
+  Expect(error == "Recognition session was cancelled.",
+         "Finish after Cancel reports cancellation error");
   {
     const std::scoped_lock lock(state->mutex);
     Expect(state->received == std::vector<int16_t>({1}), "queued chunk is discarded by Cancel");

@@ -171,10 +171,15 @@ void AsyncRecognitionSession::SetWakeCallback(WakeCallback callback) {
 }
 
 void AsyncRecognitionSession::EnsureErrorEvent(std::vector<RecognitionEvent>& events) const {
-  const bool has_error = std::ranges::any_of(
+  bool has_error = std::ranges::any_of(
       events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
   if (!has_error) {
-    events.push_back({RecognitionEventKind::Error, {}, error_});
+    const std::scoped_lock lock(mutex_);
+    has_error = std::ranges::any_of(
+        events_, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+    if (!has_error) {
+      events.push_back({RecognitionEventKind::Error, {}, error_});
+    }
   }
 }
 
@@ -214,6 +219,46 @@ void AsyncRecognitionSession::Complete(bool success, std::string error) {
   complete_cv_.notify_all();
 }
 
+void AsyncRecognitionSession::HandleBackendFailure(const std::string& push_error) {
+  auto backend_events = backend_->PollEvents();
+  {
+    const std::scoped_lock lock(mutex_);
+    error_ = push_error.empty() ? "Streaming backend rejected audio." : push_error;
+    phase_ = Phase::Cancelling;
+    queue_.clear();
+    queued_samples_ = 0;
+  }
+  // Backend push failures surface as a single Error event through
+  // PollEvents() (Issue #709): if the backend did not already queue one,
+  // synthesize it so the consumer sees the failure via the event stream
+  // instead of a parallel failure channel.
+  EnsureErrorEvent(backend_events);
+  AppendEvents(std::move(backend_events));
+}
+
+void AsyncRecognitionSession::FinalizeCancellation() {
+  // Cancel (or backend failure / queue overflow): cancel the backend exactly once
+  // on this worker thread, so backend calls are always serialized on one thread.
+  backend_->Cancel();
+  auto cancel_events = backend_->PollEvents();
+  std::string error;
+  bool is_failure = false;
+  {
+    const std::scoped_lock lock(mutex_);
+    if (!error_.empty()) {
+      is_failure = true;
+    } else {
+      error_ = "Recognition session was cancelled.";
+    }
+    error = error_;
+  }
+  if (is_failure) {
+    EnsureErrorEvent(cancel_events);
+  }
+  AppendEvents(std::move(cancel_events));
+  Complete(false, std::move(error));
+}
+
 void AsyncRecognitionSession::Run() {
   while (true) {
     std::vector<int16_t> chunk;
@@ -244,35 +289,13 @@ void AsyncRecognitionSession::Run() {
     }
 
     if (!backend_->PushAudio(chunk, &error)) {
-      auto backend_events = backend_->PollEvents();
-      {
-        const std::scoped_lock lock(mutex_);
-        error_ = error.empty() ? "Streaming backend rejected audio." : error;
-        phase_ = Phase::Cancelling;
-        queue_.clear();
-        queued_samples_ = 0;
-      }
-      // Backend push failures surface as a single Error event through
-      // PollEvents() (Issue #709): if the backend did not already queue one,
-      // synthesize it so the consumer sees the failure via the event stream
-      // instead of a parallel failure channel.
-      EnsureErrorEvent(backend_events);
-      AppendEvents(std::move(backend_events));
+      HandleBackendFailure(error);
       break;
     }
     AppendEvents(backend_->PollEvents());
   }
 
-  // Cancel (or backend failure): cancel the backend exactly once on this
-  // worker thread, so backend calls are always serialized on one thread.
-  backend_->Cancel();
-  AppendEvents(backend_->PollEvents());
-  std::string error;
-  {
-    const std::scoped_lock lock(mutex_);
-    error = error_;
-  }
-  Complete(false, std::move(error));
+  FinalizeCancellation();
 }
 
 } // namespace vinput::daemon::asr
