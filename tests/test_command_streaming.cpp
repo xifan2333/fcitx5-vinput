@@ -735,14 +735,15 @@ void TestEarlyClosedReportsFailure() {
   // PushAudio drains the early "closed" event
   ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed");
 
-  // Finish must detect missing final text and fail, not report false success
-  ExpectTrue(!session->Finish(&error), "Finish must report failure when closed early without text");
-  ExpectTrue(!error.empty(), "Finish must populate error on missing final text");
+  // First Finish with nullptr must detect failure without dropping error text
+  ExpectTrue(!session->Finish(nullptr),
+             "Finish(nullptr) must report failure when closed early without text");
 
-  // Subsequent Finish calls must preserve the failure result
+  // Subsequent Finish calls must preserve the failure result and provide error text
   std::string second_error;
   ExpectTrue(!session->Finish(&second_error), "Subsequent Finish must continue to fail");
-  ExpectTrue(second_error == error, "Subsequent Finish preserves error message");
+  ExpectTrue(!second_error.empty(),
+             "Subsequent Finish preserves error message even after Finish(nullptr)");
 }
 
 } // namespace

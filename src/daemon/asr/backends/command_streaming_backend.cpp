@@ -309,11 +309,19 @@ private:
       finish_error_ = "Recognition session was interrupted or cancelled.";
       return SetFinishError(error, finish_error_);
     }
-    finish_success_ = ResolveFinishFailure(grace_pump_failed, error);
-    if (!finish_success_ && error != nullptr) {
-      finish_error_ = *error;
+    std::string local_error;
+    finish_success_ = ResolveFinishFailure(grace_pump_failed, &local_error);
+    if (!finish_success_) {
+      finish_error_ =
+          local_error.empty() ? "Streaming ASR provider returned no text." : local_error;
+      if (error != nullptr) {
+        *error = finish_error_;
+      }
     } else {
       finish_error_.clear();
+      if (error != nullptr) {
+        error->clear();
+      }
     }
     return finish_success_;
   }
