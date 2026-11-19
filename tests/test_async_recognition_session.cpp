@@ -18,7 +18,9 @@
 
 namespace {
 
+using vinput::daemon::asr::AsrBackend;
 using vinput::daemon::asr::AsyncRecognitionSession;
+using vinput::daemon::asr::BackendDescriptor;
 using vinput::daemon::asr::RecognitionEvent;
 using vinput::daemon::asr::RecognitionEventKind;
 using vinput::daemon::asr::RecognitionSession;
@@ -402,6 +404,10 @@ void TestDestructionOrderDestroysSessionBeforeOwner() {
   public:
     explicit TrackingSession(std::shared_ptr<LifetimeTracker> tracker)
         : tracker_(std::move(tracker)) {}
+    TrackingSession(const TrackingSession&) = delete;
+    TrackingSession& operator=(const TrackingSession&) = delete;
+    TrackingSession(TrackingSession&&) = delete;
+    TrackingSession& operator=(TrackingSession&&) = delete;
     ~TrackingSession() override {
       tracker_->session_destroyed = true;
       Expect(!tracker_->owner_destroyed,
@@ -420,6 +426,10 @@ void TestDestructionOrderDestroysSessionBeforeOwner() {
   public:
     explicit TrackingBackend(std::shared_ptr<LifetimeTracker> tracker)
         : tracker_(std::move(tracker)) {}
+    TrackingBackend(const TrackingBackend&) = delete;
+    TrackingBackend& operator=(const TrackingBackend&) = delete;
+    TrackingBackend(TrackingBackend&&) = delete;
+    TrackingBackend& operator=(TrackingBackend&&) = delete;
     ~TrackingBackend() override {
       tracker_->owner_destroyed = true;
       Expect(tracker_->session_destroyed,
@@ -436,7 +446,7 @@ void TestDestructionOrderDestroysSessionBeforeOwner() {
   {
     auto backend = std::make_shared<TrackingBackend>(tracker);
     auto session = std::make_unique<TrackingSession>(tracker);
-    AsyncRecognitionSession async_session(std::move(session), 1024, std::move(backend));
+    const AsyncRecognitionSession async_session(std::move(session), 1024, std::move(backend));
   }
   Expect(tracker->session_destroyed, "session was destroyed");
   Expect(tracker->owner_destroyed, "owner was destroyed");

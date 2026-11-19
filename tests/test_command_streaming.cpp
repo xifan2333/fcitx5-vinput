@@ -722,7 +722,7 @@ void TestEarlyClosedReportsFailure() {
   CommandAsrProvider provider;
   provider.id = "test-early-closed-provider";
   provider.command = "/bin/sh";
-  provider.args = {"-c", "echo '{\"type\": \"closed\"}' && exit 0"};
+  provider.args = {"-c", R"(echo '{"type": "closed"}' && exit 0)"};
   provider.timeoutMs = 5000;
 
   std::string error;
