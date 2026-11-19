@@ -60,6 +60,12 @@ void ClearError(std::string* error) {
 
 class SherpaStreamingSession : public RecognitionSession {
 public:
+  enum class Phase : std::uint8_t {
+    Active,
+    Finished,
+    Cancelled,
+  };
+
   SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer, sherpa::OnlineStream stream)
       : recognizer_(recognizer), stream_(std::move(stream)) {}
 
@@ -73,9 +79,10 @@ public:
   using RecognitionSession::PushAudio;
 
   bool PushAudio(std::span<const float> samples, std::string* error) override {
-    if (finished_) {
+    if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
+                                            : "Recognition session already finished.";
       }
       return false;
     }
@@ -114,7 +121,13 @@ public:
   }
 
   bool Finish(std::string* error) override {
-    if (finished_) {
+    if (phase_ == Phase::Cancelled) {
+      if (error != nullptr) {
+        *error = "Recognition session was cancelled.";
+      }
+      return false;
+    }
+    if (phase_ == Phase::Finished) {
       if (error != nullptr) {
         error->clear();
       }
@@ -128,7 +141,7 @@ public:
       return false;
     }
 
-    finished_ = true;
+    phase_ = Phase::Finished;
     if (total_samples_ > 0) {
       const std::vector<float> tail_padding(kTailPaddingSamples, 0.0F);
       stream_.AcceptWaveform(kStreamingSampleRate, tail_padding.data(),
@@ -137,21 +150,7 @@ public:
     stream_.InputFinished();
     DecodeAvailable();
 
-    std::string text = GetCurrentText();
-    VLOG_DEBUG("streaming finish current result bytes={}", text.size());
-    if (!text.empty()) {
-      if (text != last_partial_text_) {
-        events_.push_back({RecognitionEventKind::PartialText, text, {}});
-        last_partial_text_ = text;
-      }
-      events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
-      VLOG_DEBUG("streaming queued final result");
-    } else {
-      const double rms =
-          total_samples_ > 0 ? std::sqrt(sum_squares_ / static_cast<double>(total_samples_)) : 0.0;
-      VLOG_DEBUG("streaming finish produced empty text samples={} peak={:.4f} rms={:.4f}",
-                 total_samples_, peak_abs_, rms);
-    }
+    AppendFinalResult();
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
 
     if (error != nullptr) {
@@ -161,7 +160,7 @@ public:
   }
 
   void Cancel() override {
-    finished_ = true;
+    phase_ = Phase::Cancelled;
     events_.clear();
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
     Reset();
@@ -174,6 +173,27 @@ public:
   }
 
 private:
+  // Queues the FinalText event (deduplicating the trailing partial) or, for an
+  // empty result, logs the finish-time audio stats. Split out of Finish() to
+  // keep the endpoint readable and under the complexity gate.
+  void AppendFinalResult() {
+    std::string text = GetCurrentText();
+    VLOG_DEBUG("streaming finish current result bytes={}", text.size());
+    if (!text.empty()) {
+      if (text != last_partial_text_) {
+        events_.push_back({RecognitionEventKind::PartialText, text, {}});
+        last_partial_text_ = text;
+      }
+      events_.push_back({RecognitionEventKind::FinalText, std::move(text), {}});
+      VLOG_DEBUG("streaming queued final result");
+      return;
+    }
+    const double rms =
+        total_samples_ > 0 ? std::sqrt(sum_squares_ / static_cast<double>(total_samples_)) : 0.0;
+    VLOG_DEBUG("streaming finish produced empty text samples={} peak={:.4f} rms={:.4f}",
+               total_samples_, peak_abs_, rms);
+  }
+
   void UpdateAudioStats(std::span<const float> samples) {
     total_samples_ += samples.size();
     for (const float sample : samples) {
@@ -222,7 +242,7 @@ private:
 
   const sherpa::OnlineRecognizer* recognizer_ = nullptr;
   sherpa::OnlineStream stream_;
-  bool finished_ = false;
+  Phase phase_ = Phase::Active;
   std::size_t total_samples_ = 0;
   double peak_abs_ = 0.0;
   double sum_squares_ = 0.0;
@@ -468,6 +488,17 @@ public:
       error->clear();
     }
     return std::make_unique<SherpaStreamingSession>(&*recognizer_, std::move(stream));
+  }
+
+  bool Warmup(std::string* error) override {
+    const std::scoped_lock lock(recognizer_mutex_);
+    if (!InitializeRecognizerLocked(error) || !recognizer_.has_value() || !recognizer_->Valid()) {
+      return false;
+    }
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
   }
 
 private:

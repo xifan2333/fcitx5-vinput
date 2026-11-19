@@ -58,6 +58,10 @@ std::string MakeSessionSourceId(std::string_view provider_id) {
 
 class CommandStreamingSession : public RecognitionSession {
 public:
+  // CreateSession() must be able to start the child process eagerly so the
+  // external provider handshake overlaps the microphone wake window (Issue #709).
+  friend class CommandStreamingBackend;
+
   CommandStreamingSession(CommandAsrProvider provider, std::string provider_id,
                           vinput::notify::NotificationBridge* notification_bridge = nullptr)
       : provider_(std::move(provider)), provider_id_(std::move(provider_id)),
@@ -71,7 +75,7 @@ public:
   ~CommandStreamingSession() override { Terminate(); }
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
-    if (finished_) {
+    if (phase_ == Phase::Finishing || phase_ == Phase::Completed || phase_ == Phase::Cancelled) {
       if (error != nullptr) {
         *error = "Recognition session already finished.";
       }
@@ -105,11 +109,21 @@ public:
   }
 
   bool Finish(std::string* error) override {
-    if (finished_) {
+    if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        error->clear();
+        *error = "Recognition session was cancelled.";
       }
-      return true;
+      return false;
+    }
+    if (phase_ == Phase::Completed) {
+      if (error != nullptr) {
+        if (!finish_success_ && !finish_error_.empty()) {
+          *error = finish_error_;
+        } else {
+          error->clear();
+        }
+      }
+      return finish_success_;
     }
 
     if (!StartFinish(error)) {
@@ -127,12 +141,15 @@ public:
   }
 
   void Cancel() override {
-    if (!cancelled_) {
-      cancelled_ = true;
-      if (started_) {
+    if (phase_ != Phase::Cancelled && phase_ != Phase::Completed) {
+      const auto prev_phase = phase_;
+      phase_ = Phase::Cancelled;
+      if (prev_phase == Phase::Started || prev_phase == Phase::Finishing) {
         SendControlEvent("cancel", nullptr);
       }
     }
+    finish_success_ = false;
+    finish_error_ = "Recognition session was cancelled.";
     stdout_buffer_.clear();
     last_partial_text_.clear();
     QueueCompleted();
@@ -170,14 +187,21 @@ private:
       return false;
     }
 
-    finished_ = true;
     if (!SendControlEvent("finish", error)) {
-      QueueError(error != nullptr && !error->empty() ? *error : "failed to send finish event.");
+      const std::string err_text =
+          error != nullptr && !error->empty() ? *error : "failed to send finish event.";
+      QueueError(err_text);
+      phase_ = Phase::Completed;
+      finish_success_ = false;
+      finish_error_ = err_text;
       QueueCompleted();
       Terminate();
       return false;
     }
 
+    // Only mark Finishing after the control event was sent: a failed send must
+    // not look like a finished session (Issue #709).
+    phase_ = Phase::Finishing;
     if (session_.has_value()) {
       session_->CloseStdin();
     }
@@ -188,19 +212,27 @@ private:
   // Polls events until the provider emitted final text, the session completed,
   // or the child exited. Injects the poll/timeout failure into the event queue.
   bool AwaitFinalText(std::string* error) {
-    while (!saw_final_text_ && !completed_ && !child_exited_) {
+    while (!saw_final_text_ && !provider_closed_ && phase_ != Phase::Completed && !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
-        QueueError(error != nullptr && !error->empty() ? *error : "failed to poll provider.");
+        const std::string err_text =
+            error != nullptr && !error->empty() ? *error : "failed to poll provider.";
+        QueueError(err_text);
+        phase_ = Phase::Completed;
+        finish_success_ = false;
+        finish_error_ = err_text;
         QueueCompleted();
         Terminate();
         return false;
       }
       if (HasTimedOut(deadline_)) {
         QueueError("Streaming ASR provider timed out.");
+        phase_ = Phase::Completed;
+        finish_success_ = false;
+        finish_error_ = "Streaming ASR provider timed out.";
         QueueCompleted();
         Terminate();
         if (error != nullptr) {
-          *error = events_.back().error;
+          *error = "Streaming ASR provider timed out.";
         }
         return false;
       }
@@ -217,7 +249,8 @@ private:
     const Clock::time_point grace_deadline =
         Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
     bool pump_failed = false;
-    while (!HasTimedOut(grace_deadline) && !completed_ && !child_exited_) {
+    while (!HasTimedOut(grace_deadline) && !provider_closed_ && phase_ != Phase::Completed &&
+           !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(RemainingMs(grace_deadline, kPollSliceMs)),
                        error)) {
         pump_failed = true;
@@ -250,6 +283,9 @@ private:
       }
     }
     if (grace_pump_failed) {
+      if (error != nullptr && error->empty()) {
+        *error = "Failed to pump streaming ASR output during grace window.";
+      }
       return false;
     }
     if (error != nullptr) {
@@ -263,16 +299,41 @@ private:
   bool FinalizeFinish(bool grace_pump_failed, std::string* error) {
     DrainEvents(std::chrono::milliseconds(0), nullptr);
 
-    if (!saw_final_text_ && !saw_error_ && !cancelled_ && !killed_by_us_) {
+    const bool cancelled = phase_ == Phase::Cancelled;
+    if (!saw_final_text_ && !saw_error_ && !cancelled && !killed_by_us_) {
       QueueError("Streaming ASR provider returned no text.");
     }
+    phase_ = Phase::Completed;
     QueueCompleted();
     Terminate();
 
-    if (cancelled_ || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
-      return SetFinishError(error, "Recognition session was interrupted or cancelled.");
+    if (cancelled || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
+      finish_success_ = false;
+      finish_error_ = "Recognition session was interrupted or cancelled.";
+      return SetFinishError(error, finish_error_);
     }
-    return ResolveFinishFailure(grace_pump_failed, error);
+    return ResolveFinalOutcome(grace_pump_failed, error);
+  }
+
+  bool ResolveFinalOutcome(bool grace_pump_failed, std::string* error) {
+    std::string local_error;
+    if (error != nullptr && !error->empty()) {
+      local_error = *error;
+    }
+    finish_success_ = ResolveFinishFailure(grace_pump_failed, &local_error);
+    if (!finish_success_) {
+      if (local_error.empty()) {
+        local_error = saw_final_text_ ? "Failed to pump streaming ASR output during grace window."
+                                      : "Streaming ASR provider returned no text.";
+      }
+      finish_error_ = std::move(local_error);
+      return SetFinishError(error, finish_error_);
+    }
+    finish_error_.clear();
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
   }
 
   bool HandleStdoutChunk(const std::vector<std::byte>& data, std::string* error) {
@@ -306,13 +367,13 @@ private:
   }
 
   bool EnsureStarted(std::string* error) {
-    if (cancelled_ || interrupted_.load(std::memory_order_acquire)) {
+    if (phase_ == Phase::Cancelled || interrupted_.load(std::memory_order_acquire)) {
       if (error != nullptr) {
         *error = "Recognition session already cancelled.";
       }
       return false;
     }
-    if (started_) {
+    if (phase_ != Phase::Idle) {
       return true;
     }
     if (provider_.command.empty()) {
@@ -346,7 +407,7 @@ private:
       }
       session_.emplace(std::move(*session_res));
     }
-    started_ = true;
+    phase_ = Phase::Started;
     return true;
   }
 
@@ -505,7 +566,7 @@ private:
       return true;
     }
     if (type == "closed") {
-      completed_ = true;
+      provider_closed_ = true;
       return true;
     }
     return true;
@@ -523,7 +584,6 @@ private:
       return;
     }
     completed_emitted_ = true;
-    completed_ = true;
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
   }
 
@@ -550,6 +610,19 @@ private:
     to_destroy.reset();
   }
 
+  // Lifecycle phase. The protocol booleans (started_/finished_/cancelled_/
+  // completed_) collapsed into one mutually-exclusive state; one-shot and
+  // cross-thread guards (terminated_, completed_emitted_, interrupted_) and
+  // pure observations (saw_*, child_exited_, killed_by_us_) stay flags
+  // (Issue #709).
+  enum class Phase : std::uint8_t {
+    Idle,      // Child not yet spawned.
+    Started,   // Child running; audio is being streamed.
+    Finishing, // "finish" control event sent; awaiting final text.
+    Cancelled, // Cancel() called; being torn down.
+    Completed, // Terminal state reached (provider closed or event queued).
+  };
+
   CommandAsrProvider provider_;
   std::string provider_id_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
@@ -558,11 +631,11 @@ private:
   mutable std::mutex session_mutex_;
   std::optional<vinput::process::ProcessSession> session_;
   std::atomic<bool> interrupted_{false};
-  bool started_ = false;
-  bool finished_ = false;
-  bool cancelled_ = false;
+  Phase phase_ = Phase::Idle;
+  bool provider_closed_ = false;
+  bool finish_success_ = false;
+  std::string finish_error_;
   bool terminated_ = false;
-  bool completed_ = false;
   bool completed_emitted_ = false;
   bool saw_error_ = false;
   bool saw_final_text_ = false;
@@ -601,10 +674,19 @@ public:
       }
       return nullptr;
     }
+
+    // Start the external streaming subprocess immediately so the provider boot
+    // and TLS/WebSocket handshake overlap the microphone wake window instead of
+    // being paid serially on the first audio chunk (Issue #709).
+    auto session =
+        std::make_unique<CommandStreamingSession>(provider_, provider_.id, notification_bridge_);
+    if (!session->EnsureStarted(error)) {
+      return nullptr;
+    }
     if (error != nullptr) {
       error->clear();
     }
-    return std::make_unique<CommandStreamingSession>(provider_, provider_.id, notification_bridge_);
+    return session;
   }
 
 private:

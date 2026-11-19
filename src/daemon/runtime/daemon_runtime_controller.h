@@ -113,9 +113,6 @@ private:
                               const vinput::daemon::asr::BackendDescriptor& active_backend,
                               const CoreConfig& runtime_settings, bool is_command,
                               const std::string& selected_text);
-  std::unique_ptr<vinput::daemon::asr::RecognitionSession>
-  WrapAsyncSessionIfNeeded(std::unique_ptr<vinput::daemon::asr::RecognitionSession> session,
-                           const vinput::daemon::asr::BackendDescriptor& active_backend) const;
   bool PrepareAndBeginCapture(const std::string& capture_device, const CoreConfig& runtime_settings,
                               bool is_command, AudioCapture::StartTiming* capture_timing,
                               std::string* error_message);

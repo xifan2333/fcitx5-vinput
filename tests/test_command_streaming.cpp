@@ -226,6 +226,8 @@ void TestCancelReapsChild() {
   ExpectTrue(child_pid > 0, "Failed to read child pid file for cancel session");
 
   session->Cancel();
+  ExpectTrue(!session->Finish(&error), "Finish after Cancel must fail");
+  ExpectTrue(!error.empty(), "Finish after Cancel reports non-empty error");
 
   AssertChildAlreadyReaped(child_pid);
 }
@@ -333,27 +335,53 @@ void TestStalledProviderWriteIsBounded() {
   AssertChildAlreadyReaped(child_pid);
 }
 
-/** Cancel of a never-started session must not spawn a new child. */
-void TestCancelDoesNotStartProvider() {
-  const std::string marker = GetUniquePidFilePath(8);
-  unlink(marker.c_str());
+/** Eager start contract (Issue #709): CreateSession must start the provider immediately,
+ *  and Cancel must terminate + reap it without spawning a second child. */
+void TestEagerStartThenCancelReapsChild() {
+  const std::string pid_file = GetUniquePidFilePath(8);
+  unlink(pid_file.c_str());
   CommandAsrProvider provider;
-  provider.id = "test-never-started-cancel";
+  provider.id = "test-eager-start-cancel";
   provider.command = "/bin/sh";
-  provider.args = {"-c", "echo started > " + marker + "; exec sleep 30"};
+  provider.args = {"-c", "echo $$ > " + pid_file + "; exec sleep 30"};
   provider.timeoutMs = 250;
   std::string error;
   auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
   ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed");
   auto session = backend->CreateSession(&error);
   ExpectTrue(session != nullptr, "CreateSession failed");
+
+  // CreateSession must already have spawned the provider, before any audio arrives.
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "CreateSession must eagerly start the provider");
+
   session->Cancel();
   ExpectTrue(!session->PushAudio(std::span<const int16_t>{}, &error),
              "PushAudio after Cancel must fail");
   ExpectTrue(!session->Finish(&error), "Finish after Cancel must fail");
-  const bool started = access(marker.c_str(), F_OK) == 0;
-  unlink(marker.c_str());
-  ExpectTrue(!started, "Cancel must not spawn a provider solely to stop it");
+  AssertChildAlreadyReaped(child_pid);
+}
+
+/** Warmup contract (Issue #709): Warmup on command-streaming must be a zero-side-effect
+ *  no-op that returns true and does not spawn a child process. */
+void TestWarmupIsNoOpAndDoesNotSpawnChild() {
+  const std::string pid_file = GetUniquePidFilePath(100);
+  unlink(pid_file.c_str());
+  CommandAsrProvider provider;
+  provider.id = "test-warmup-no-child";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo $$ > " + pid_file + "; exec sleep 30"};
+  provider.timeoutMs = 250;
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed");
+
+  ExpectTrue(backend->Warmup(&error), "Warmup must succeed as a no-op");
+  ExpectTrue(error.empty(), "Warmup must not report an error");
+
+  const bool spawned = access(pid_file.c_str(), F_OK) == 0;
+  unlink(pid_file.c_str());
+  ExpectTrue(!spawned, "Warmup must not spawn a child process");
 }
 
 /** Test Interrupt() immediately breaks a blocked Finish() wait. */
@@ -690,6 +718,34 @@ void TestPrematureExitErrorReporting() {
              "error message should report precise premature exit code 42: " + error);
 }
 
+void TestEarlyClosedReportsFailure() {
+  CommandAsrProvider provider;
+  provider.id = "test-early-closed-provider";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", R"(cat > /dev/null && echo '{"type": "closed"}' && exit 0)"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  // PushAudio drains the early "closed" event
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed");
+
+  // First Finish with nullptr must detect failure without dropping error text
+  ExpectTrue(!session->Finish(nullptr),
+             "Finish(nullptr) must report failure when closed early without text");
+
+  // Subsequent Finish calls must preserve the failure result and provide error text
+  std::string second_error;
+  ExpectTrue(!session->Finish(&second_error), "Subsequent Finish must continue to fail");
+  ExpectTrue(second_error == "Streaming ASR provider returned no text.",
+             "Subsequent Finish preserves exact error message even after Finish(nullptr)");
+}
+
 } // namespace
 
 int main() {
@@ -703,11 +759,13 @@ int main() {
   TestOutputEofWait(false, 5);
   TestOutputEofWait(true, 6);
   TestStalledProviderWriteIsBounded();
-  TestCancelDoesNotStartProvider();
+  TestEagerStartThenCancelReapsChild();
+  TestWarmupIsNoOpAndDoesNotSpawnChild();
   TestInterruptWakesBlockedFinish();
   TestStderrPipedToNotificationBridge();
   TestKilledByUsVsAbnormalExit();
   TestPrematureExitErrorReporting();
+  TestEarlyClosedReportsFailure();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

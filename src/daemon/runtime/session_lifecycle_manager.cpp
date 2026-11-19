@@ -12,7 +12,6 @@
 
 #include "common/i18n.h"
 
-#include "daemon/asr/runtime/async_recognition_session.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
 
@@ -118,18 +117,15 @@ SessionPollResult SessionLifecycleManager::PollSessionEvents(
   {
     const std::scoped_lock session_lock(session_io_mutex_);
     events = session->PollEvents();
-    if (auto* async_session =
-            dynamic_cast<vinput::daemon::asr::AsyncRecognitionSession*>(session.get())) {
-      failure = async_session->FailureError();
-    }
   }
 
-  if (!failure.has_value()) {
-    for (const auto& event : events) {
-      if (event.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
-        failure = event.error.empty() ? _("ASR provider failed.") : event.error;
-        break;
-      }
+  // Failure surfaces exclusively through Error events (Issue #709): the async
+  // wrapper guarantees backend push failures and queue overflow emit one, so
+  // no dynamic_cast or side-channel lookup is needed here.
+  for (const auto& event : events) {
+    if (event.kind == vinput::daemon::asr::RecognitionEventKind::Error) {
+      failure = event.error.empty() ? _("ASR provider failed.") : event.error;
+      break;
     }
   }
 

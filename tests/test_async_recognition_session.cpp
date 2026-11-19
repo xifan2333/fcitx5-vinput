@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -17,7 +18,9 @@
 
 namespace {
 
+using vinput::daemon::asr::AsrBackend;
 using vinput::daemon::asr::AsyncRecognitionSession;
+using vinput::daemon::asr::BackendDescriptor;
 using vinput::daemon::asr::RecognitionEvent;
 using vinput::daemon::asr::RecognitionEventKind;
 using vinput::daemon::asr::RecognitionSession;
@@ -36,11 +39,14 @@ struct FakeState {
   std::condition_variable gate_cv;
   bool gate_open = true;
   bool entered_push = false;
+  bool entered_finish = false;
+  bool block_finish = false;
   std::vector<int16_t> received;
   int push_calls = 0;
   int finish_calls = 0;
   int cancel_calls = 0;
   bool fail_push = false;
+  bool fail_finish = false;
 };
 
 class FakeSession final : public RecognitionSession {
@@ -70,8 +76,20 @@ public:
   }
 
   bool Finish(std::string* error) override {
-    const std::scoped_lock lock(state_->mutex);
+    std::unique_lock lock(state_->mutex);
     ++state_->finish_calls;
+    if (state_->block_finish) {
+      state_->entered_finish = true;
+      state_->gate_cv.notify_all();
+      state_->gate_cv.wait(lock, [this] { return state_->gate_open; });
+    }
+    if (state_->fail_finish) {
+      if (error != nullptr) {
+        *error = "fake backend finish failed.";
+      }
+      pending_.push_back({.kind = RecognitionEventKind::Completed, .text = {}, .error = {}});
+      return false;
+    }
     pending_.push_back({.kind = RecognitionEventKind::Completed, .text = {}, .error = {}});
     if (error != nullptr) {
       error->clear();
@@ -108,6 +126,13 @@ void WaitEntered(const std::shared_ptr<FakeState>& state) {
   const bool ok = state->gate_cv.wait_for(lock, std::chrono::seconds(5),
                                           [&state] { return state->entered_push; });
   Expect(ok, "worker entered backend PushAudio");
+}
+
+void WaitEnteredFinish(const std::shared_ptr<FakeState>& state) {
+  std::unique_lock<std::mutex> lock(state->mutex);
+  const bool ok = state->gate_cv.wait_for(lock, std::chrono::seconds(5),
+                                          [&state] { return state->entered_finish; });
+  Expect(ok, "worker entered backend Finish");
 }
 
 void OpenGate(const std::shared_ptr<FakeState>& state) {
@@ -167,7 +192,6 @@ void TestWakeOnPartialWithoutMoreAudio() {
   Expect(events.size() == 1 && events.front().kind == RecognitionEventKind::PartialText &&
              events.front().text == "p",
          "partial produced without new audio is pollable after wake");
-  Expect(!session.FailureError().has_value(), "no failure on partial path");
   Expect(session.Finish(&error), "finish after wake test");
 }
 
@@ -180,13 +204,18 @@ void TestWakeOnBackendFailureWithoutErrorEvent() {
   std::string error;
   Expect(session.PushAudio(std::vector<int16_t>{1}, &error), "enqueue before worker failure");
   recorder->WaitAtLeast(1);
-  const auto failure = session.FailureError();
-  Expect(failure.has_value() && *failure == "fake backend rejected audio.",
-         "failure without Error event is visible to the woken thread");
+  // Backend push failures are synthesized into an Error event (Issue #709):
+  // the consumer reads the event stream, no side channel.
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "backend failure surfaces as an Error event via PollEvents");
   Expect(!session.Finish(&error), "finish reports worker failure");
   Expect(error == "fake backend rejected audio.", "failure error preserved for Finish waiter");
-  // Session-layer equivalent of notify-once: terminal events drain once.
-  Expect(CountCompleted(session.PollEvents()) == 1, "Completed exactly once after failure");
+  const auto final_events = session.PollEvents();
+  const auto total_completed = CountCompleted(events) + CountCompleted(final_events);
+  Expect(total_completed == 1, "Completed exactly once after failure");
+  // Terminal events drain once; nothing is replayed.
   Expect(session.PollEvents().empty(), "failure events are not replayed");
 }
 
@@ -226,6 +255,10 @@ void TestQueueOverflowFailsSession() {
   error.clear();
   Expect(!session.Finish(&error), "Finish after overflow reports failure");
   Expect(!error.empty(), "Finish after overflow reports a non-empty error");
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "overflow surfaces as an Error event via PollEvents");
   const std::scoped_lock lock(state->mutex);
   Expect(state->received == std::vector<int16_t>({1, 2}),
          "queued and dropped chunks are never delivered after overflow");
@@ -244,6 +277,10 @@ void TestQueueOverflowOversizedChunk() {
   Expect(session.DroppedSamples() == 5, "oversized chunk samples counted");
   Expect(!session.Finish(&error), "Finish after oversized chunk reports failure");
   Expect(!error.empty(), "Finish after oversized chunk reports a non-empty error");
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "oversized chunk surfaces as an Error event via PollEvents");
 }
 
 void TestQueueZeroCapacityFails() {
@@ -255,6 +292,11 @@ void TestQueueZeroCapacityFails() {
   Expect(session.DroppedChunks() == 1, "zero-capacity chunk is counted as dropped");
   Expect(session.DroppedSamples() == 1, "zero-capacity samples counted");
   Expect(!session.Finish(&error), "Finish with zero capacity reports failure");
+  Expect(!error.empty(), "zero-capacity Finish reports a non-empty error");
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "zero capacity push surfaces as an Error event via PollEvents");
 }
 
 void TestCancelClearsQueueAndCompletesOnce() {
@@ -267,6 +309,8 @@ void TestCancelClearsQueueAndCompletesOnce() {
   session.Cancel();
   OpenGate(state);
   Expect(!session.Finish(&error), "Finish after Cancel reports failure");
+  Expect(error == "Recognition session was cancelled.",
+         "Finish after Cancel reports cancellation error");
   {
     const std::scoped_lock lock(state->mutex);
     Expect(state->received == std::vector<int16_t>({1}), "queued chunk is discarded by Cancel");
@@ -371,6 +415,99 @@ void TestPushAudioFloatEmpty() {
   Expect(error.empty(), "push empty float audio has no error");
 }
 
+void TestDestructionOrderDestroysSessionBeforeOwner() {
+  struct LifetimeTracker {
+    bool session_destroyed = false;
+    bool owner_destroyed = false;
+  };
+  auto tracker = std::make_shared<LifetimeTracker>();
+
+  class TrackingSession : public RecognitionSession {
+  public:
+    explicit TrackingSession(std::shared_ptr<LifetimeTracker> tracker)
+        : tracker_(std::move(tracker)) {}
+    TrackingSession(const TrackingSession&) = delete;
+    TrackingSession& operator=(const TrackingSession&) = delete;
+    TrackingSession(TrackingSession&&) = delete;
+    TrackingSession& operator=(TrackingSession&&) = delete;
+    ~TrackingSession() override {
+      tracker_->session_destroyed = true;
+      Expect(!tracker_->owner_destroyed,
+             "backend owner must still be alive when session is destroyed");
+    }
+    bool PushAudio(std::span<const int16_t>, std::string*) override { return true; }
+    bool Finish(std::string*) override { return true; }
+    void Cancel() override {}
+    std::vector<RecognitionEvent> PollEvents() override { return {}; }
+
+  private:
+    std::shared_ptr<LifetimeTracker> tracker_;
+  };
+
+  class TrackingBackend : public AsrBackend {
+  public:
+    explicit TrackingBackend(std::shared_ptr<LifetimeTracker> tracker)
+        : tracker_(std::move(tracker)) {}
+    TrackingBackend(const TrackingBackend&) = delete;
+    TrackingBackend& operator=(const TrackingBackend&) = delete;
+    TrackingBackend(TrackingBackend&&) = delete;
+    TrackingBackend& operator=(TrackingBackend&&) = delete;
+    ~TrackingBackend() override {
+      tracker_->owner_destroyed = true;
+      Expect(tracker_->session_destroyed,
+             "session must be destroyed before backend owner is destroyed");
+    }
+    [[nodiscard]] BackendDescriptor Describe() const override { return {}; }
+    std::unique_ptr<RecognitionSession> CreateSession(std::string*) override { return nullptr; }
+    bool Warmup(std::string*) override { return true; }
+
+  private:
+    std::shared_ptr<LifetimeTracker> tracker_;
+  };
+
+  {
+    auto backend = std::make_shared<TrackingBackend>(tracker);
+    auto session = std::make_unique<TrackingSession>(tracker);
+    const AsyncRecognitionSession async_session(std::move(session), 1024, std::move(backend));
+  }
+  Expect(tracker->session_destroyed, "session was destroyed");
+  Expect(tracker->owner_destroyed, "owner was destroyed");
+}
+
+void TestFinishFailureWithoutErrorEventSynthesizesError() {
+  auto state = MakeState(true);
+  state->fail_finish = true;
+  AsyncRecognitionSession session(std::make_unique<FakeSession>(state), 1024);
+  std::string error;
+  Expect(session.PushAudio(std::vector<int16_t>{1}, &error), "push 1");
+  Expect(!session.Finish(&error), "finish fails");
+  Expect(error == "fake backend finish failed.", "error populated");
+  const auto events = session.PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(saw_error, "finish failure synthesized as an Error event in event stream");
+  Expect(CountCompleted(events) == 1, "Completed event emitted once");
+}
+
+void TestCancelDuringFinishDoesNotSynthesizeError() {
+  auto state = MakeState(false);
+  state->block_finish = true;
+  state->fail_finish = true;
+  auto session =
+      std::make_shared<AsyncRecognitionSession>(std::make_unique<FakeSession>(state), 1024);
+  std::string finish_error;
+  std::thread finisher([&] { session->Finish(&finish_error); });
+  WaitEnteredFinish(state);
+  session->Cancel();
+  OpenGate(state);
+  finisher.join();
+  const auto events = session->PollEvents();
+  const bool saw_error = std::ranges::any_of(
+      events, [](const RecognitionEvent& ev) { return ev.kind == RecognitionEventKind::Error; });
+  Expect(!saw_error, "Cancel during Finish does not synthesize an Error event");
+  Expect(CountCompleted(events) == 1, "Completed event emitted once");
+}
+
 } // namespace
 
 int main() {
@@ -385,5 +522,8 @@ int main() {
   TestDeferredReleaseDoesNotJoinOnReleasingThread();
   TestPushAudioFloatFallback();
   TestPushAudioFloatEmpty();
+  TestDestructionOrderDestroysSessionBeforeOwner();
+  TestFinishFailureWithoutErrorEventSynthesizesError();
+  TestCancelDuringFinishDoesNotSynthesizeError();
   std::cout << "Async recognition session tests passed\n";
 }

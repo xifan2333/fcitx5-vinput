@@ -50,10 +50,13 @@ public:
 
   bool Initialize(const CoreConfig& settings, std::string* disabled_reason);
   bool SynchronizeBackend(const CoreConfig& settings, std::string* error);
+  // Creates a session from the active backend. Backends in Chunked delivery
+  // mode come back pre-wrapped in AsyncRecognitionSession, whose worker thread
+  // keeps the owning backend alive and signals wake_callback on every event
+  // batch (Issue #709). Buffered backends return direct self-contained sessions.
   std::unique_ptr<RecognitionSession>
-  CreateSession(const CoreConfig& settings, BackendDescriptor* descriptor, std::string* error);
-  static RecognitionRunResult ConsumeEvents(std::unique_ptr<RecognitionSession>* session,
-                                            bool cancel, std::string* error);
+  CreateSession(const CoreConfig& settings, BackendDescriptor* descriptor, std::string* error,
+                const std::function<void()>& wake_callback = {});
   ReloadSnapshot GetReloadSnapshot() const;
   void SetNotificationBridge(vinput::notify::NotificationBridge* notification_bridge);
   void
@@ -79,7 +82,8 @@ private:
                                  vinput::notify::NotificationBridge* notification_bridge = nullptr);
   bool CreateSessionFromEffectiveBackend(BackendDescriptor* descriptor,
                                          std::unique_ptr<RecognitionSession>* session,
-                                         std::string* error);
+                                         std::string* error,
+                                         const std::function<void()>& wake_callback);
   void EnsureReloadWorkerStarted();
   void ReloadWorkerMain();
   void ApplyPreparedBackendLocked(PreparedBackend prepared, bool sync_targets);

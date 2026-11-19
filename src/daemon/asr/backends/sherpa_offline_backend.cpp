@@ -1,7 +1,6 @@
 #include "daemon/asr/backends/sherpa_offline_backend.h"
 
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -34,8 +33,6 @@
 namespace vinput::daemon::asr {
 
 namespace {
-
-constexpr std::size_t kMinSamplesForInference = 8000; // 0.5 s @ 16 kHz
 
 bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std::string* error) {
   std::error_code temp_error;
@@ -561,21 +558,35 @@ std::optional<std::string> ExecuteAudioInference(const sherpa::OfflineRecognizer
   }
 }
 
+// Shared immutable/synchronized model resources. Owned by SherpaOfflineBackend
+// and kept alive by active SherpaOfflineSessions so background model reloads
+// do not trigger use-after-free while offline inference is in flight (Issue #709).
+struct SharedOfflineContext {
+  sherpa::OfflineRecognizer recognizer;
+  VadTrimmer vad;
+};
+
 // ---------------------------------------------------------------------------
 // Session: buffers audio, runs inference on Finish().
 // ---------------------------------------------------------------------------
 class SherpaOfflineSession : public RecognitionSession {
 public:
-  SherpaOfflineSession(const sherpa::OfflineRecognizer* recognizer, bool vad_available,
-                       VadTrimmer* vad)
-      : recognizer_(recognizer), vad_available_(vad_available), vad_(vad) {}
+  enum class Phase : std::uint8_t {
+    Active,
+    Finished,
+    Cancelled,
+  };
+
+  explicit SherpaOfflineSession(std::shared_ptr<SharedOfflineContext> context)
+      : context_(std::move(context)) {}
 
   using RecognitionSession::PushAudio;
 
   bool PushAudio(std::span<const float> samples, std::string* error) override {
-    if (finished_) {
+    if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
+                                            : "Recognition session already finished.";
       }
       return false;
     }
@@ -587,9 +598,10 @@ public:
   }
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
-    if (finished_) {
+    if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
+                                            : "Recognition session already finished.";
       }
       return false;
     }
@@ -604,15 +616,21 @@ public:
   }
 
   bool Finish(std::string* error) override {
-    if (finished_) {
+    if (phase_ == Phase::Cancelled) {
+      if (error != nullptr) {
+        *error = "Recognition session was cancelled.";
+      }
+      return false;
+    }
+    if (phase_ == Phase::Finished) {
       if (error != nullptr) {
         error->clear();
       }
       return true;
     }
-    finished_ = true;
+    phase_ = Phase::Finished;
 
-    if (samples_.size() < kMinSamplesForInference) {
+    if (samples_.size() < kMinSamplesForRecognition) {
       VLOG_DEBUG("skipping ASR for short audio: {} samples ({:.1f} ms)", samples_.size(),
                  static_cast<double>(samples_.size()) * 1000.0 / 16000.0);
       events_.push_back({RecognitionEventKind::Completed, {}, {}});
@@ -623,8 +641,8 @@ public:
     }
 
     std::string inference_error;
-    auto text =
-        ExecuteAudioInference(recognizer_, vad_available_, vad_, samples_, &inference_error);
+    auto text = ExecuteAudioInference(&context_->recognizer, context_->vad.Available(),
+                                      &context_->vad, samples_, &inference_error);
     if (!text.has_value()) {
       if (error != nullptr) {
         *error = inference_error;
@@ -645,7 +663,7 @@ public:
   }
 
   void Cancel() override {
-    finished_ = true;
+    phase_ = Phase::Cancelled;
     samples_.clear();
     events_.clear();
     events_.push_back({RecognitionEventKind::Completed, {}, {}});
@@ -658,10 +676,8 @@ public:
   }
 
 private:
-  const sherpa::OfflineRecognizer* recognizer_;
-  bool vad_available_;
-  VadTrimmer* vad_;
-  bool finished_ = false;
+  std::shared_ptr<SharedOfflineContext> context_;
+  Phase phase_ = Phase::Active;
   std::vector<float> samples_;
   std::vector<RecognitionEvent> events_;
 };
@@ -694,18 +710,29 @@ public:
 
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
     const std::scoped_lock lock(mutex_);
-    if (!InitializeLocked(error) || !recognizer_.has_value()) {
+    if (!InitializeLocked(error) || !context_) {
       return nullptr;
     }
     if (error != nullptr) {
       error->clear();
     }
-    return std::make_unique<SherpaOfflineSession>(&*recognizer_, vad_.Available(), &vad_);
+    return std::make_unique<SherpaOfflineSession>(context_);
+  }
+
+  bool Warmup(std::string* error) override {
+    const std::scoped_lock lock(mutex_);
+    if (!InitializeLocked(error) || !context_) {
+      return false;
+    }
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
   }
 
 private:
   bool InitializeLocked(std::string* error) {
-    if (recognizer_.has_value() && recognizer_->Valid()) {
+    if (context_ != nullptr && context_->recognizer.Valid()) {
       if (error != nullptr) {
         error->clear();
       }
@@ -716,7 +743,9 @@ private:
     if (!recognizer.has_value() || !recognizer->Valid()) {
       return false;
     }
-    recognizer_ = std::move(recognizer);
+
+    auto context = std::make_shared<SharedOfflineContext>();
+    context->recognizer = std::move(*recognizer);
 
     if (asr_config_.vad_enabled && !asr_config_.vad_model_path.empty()) {
       const std::string vad_provider = JsonString(model_info_.model_config, "provider", "cpu");
@@ -726,12 +755,14 @@ private:
       vad_params.min_silence_duration = asr_config_.vad_min_silence_duration;
       vad_params.speech_pad_ms = asr_config_.vad_speech_pad_ms;
       std::string vad_error;
-      if (!vad_.Init(asr_config_.vad_model_path, 16000, vad_provider, vad_params, &vad_error)) {
+      if (!context->vad.Init(asr_config_.vad_model_path, 16000, vad_provider, vad_params,
+                             &vad_error)) {
         VLOG_WARN("{}, continuing without VAD",
                   vad_error.empty() ? "VAD model not available" : vad_error);
       }
     }
 
+    context_ = std::move(context);
     if (error != nullptr) {
       error->clear();
     }
@@ -742,8 +773,7 @@ private:
   AsrConfig asr_config_;
   std::string provider_id_;
   std::mutex mutex_;
-  std::optional<sherpa::OfflineRecognizer> recognizer_;
-  VadTrimmer vad_;
+  std::shared_ptr<SharedOfflineContext> context_;
 };
 
 } // namespace
