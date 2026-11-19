@@ -703,6 +703,17 @@ public:
     return std::make_unique<SherpaOfflineSession>(&*recognizer_, vad_.Available(), &vad_);
   }
 
+  bool Warmup(std::string* error) override {
+    const std::scoped_lock lock(mutex_);
+    if (!InitializeLocked(error) || !recognizer_.has_value()) {
+      return false;
+    }
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
 private:
   bool InitializeLocked(std::string* error) {
     if (recognizer_.has_value() && recognizer_->Valid()) {

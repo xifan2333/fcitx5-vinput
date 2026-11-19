@@ -386,20 +386,18 @@ bool RecognitionSessionManager::CreatePreparedBackend(
 
   const BackendDescriptor descriptor = backend->Describe();
 
-  // Force backend initialization during preparation so recording does not
-  // become the hidden fallback path for expensive model load. Current offline
-  // backends (for example sherpa-offline) still perform their
-  // heavy recognizer/model init inside CreateSession(), so warmup must keep
-  // going through that path instead of only constructing the backend object.
+  // Force backend preparation during startup so recording does not become the
+  // hidden fallback path for expensive model load. Warmup() performs
+  // session-independent preparation (local model/VAD load); the external
+  // streaming backend intentionally keeps it a no-op and starts its subprocess
+  // inside CreateSession(), overlapping the microphone wake window (Issue #709).
   std::string warmup_error;
-  auto warmup_session = backend->CreateSession(&warmup_error);
-  if (!warmup_session) {
+  if (!backend->Warmup(&warmup_error)) {
     if (error != nullptr) {
       *error = std::move(warmup_error);
     }
     return false;
   }
-  warmup_session->Cancel();
   const auto prepare_elapsed_ms = vinput::time::MillisecondsSince(prepare_started_at);
   VLOG_DEBUG("ASR backend prepared and warmed up in {} ms", prepare_elapsed_ms);
 

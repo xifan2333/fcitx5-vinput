@@ -333,27 +333,31 @@ void TestStalledProviderWriteIsBounded() {
   AssertChildAlreadyReaped(child_pid);
 }
 
-/** Cancel of a never-started session must not spawn a new child. */
-void TestCancelDoesNotStartProvider() {
-  const std::string marker = GetUniquePidFilePath(8);
-  unlink(marker.c_str());
+/** Eager start contract (Issue #709): CreateSession must start the provider immediately,
+ *  and Cancel must terminate + reap it without spawning a second child. */
+void TestEagerStartThenCancelReapsChild() {
+  const std::string pid_file = GetUniquePidFilePath(8);
+  unlink(pid_file.c_str());
   CommandAsrProvider provider;
-  provider.id = "test-never-started-cancel";
+  provider.id = "test-eager-start-cancel";
   provider.command = "/bin/sh";
-  provider.args = {"-c", "echo started > " + marker + "; exec sleep 30"};
+  provider.args = {"-c", "echo $$ > " + pid_file + "; exec sleep 30"};
   provider.timeoutMs = 250;
   std::string error;
   auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
   ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed");
   auto session = backend->CreateSession(&error);
   ExpectTrue(session != nullptr, "CreateSession failed");
+
+  // CreateSession must already have spawned the provider, before any audio arrives.
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "CreateSession must eagerly start the provider");
+
   session->Cancel();
   ExpectTrue(!session->PushAudio(std::span<const int16_t>{}, &error),
              "PushAudio after Cancel must fail");
   ExpectTrue(!session->Finish(&error), "Finish after Cancel must fail");
-  const bool started = access(marker.c_str(), F_OK) == 0;
-  unlink(marker.c_str());
-  ExpectTrue(!started, "Cancel must not spawn a provider solely to stop it");
+  AssertChildAlreadyReaped(child_pid);
 }
 
 /** Test Interrupt() immediately breaks a blocked Finish() wait. */
@@ -703,7 +707,7 @@ int main() {
   TestOutputEofWait(false, 5);
   TestOutputEofWait(true, 6);
   TestStalledProviderWriteIsBounded();
-  TestCancelDoesNotStartProvider();
+  TestEagerStartThenCancelReapsChild();
   TestInterruptWakesBlockedFinish();
   TestStderrPipedToNotificationBridge();
   TestKilledByUsVsAbnormalExit();

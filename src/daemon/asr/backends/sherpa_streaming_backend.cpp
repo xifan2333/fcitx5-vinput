@@ -470,6 +470,17 @@ public:
     return std::make_unique<SherpaStreamingSession>(&*recognizer_, std::move(stream));
   }
 
+  bool Warmup(std::string* error) override {
+    const std::scoped_lock lock(recognizer_mutex_);
+    if (!InitializeRecognizerLocked(error) || !recognizer_.has_value() || !recognizer_->Valid()) {
+      return false;
+    }
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
 private:
   bool InitializeRecognizerLocked(std::string* error) {
     if (recognizer_.has_value() && recognizer_->Valid()) {

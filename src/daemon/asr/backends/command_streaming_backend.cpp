@@ -58,6 +58,10 @@ std::string MakeSessionSourceId(std::string_view provider_id) {
 
 class CommandStreamingSession : public RecognitionSession {
 public:
+  // CreateSession() must be able to start the child process eagerly so the
+  // external provider handshake overlaps the microphone wake window (Issue #709).
+  friend class CommandStreamingBackend;
+
   CommandStreamingSession(CommandAsrProvider provider, std::string provider_id,
                           vinput::notify::NotificationBridge* notification_bridge = nullptr)
       : provider_(std::move(provider)), provider_id_(std::move(provider_id)),
@@ -601,10 +605,19 @@ public:
       }
       return nullptr;
     }
+
+    // Start the external streaming subprocess immediately so the provider boot
+    // and TLS/WebSocket handshake overlap the microphone wake window instead of
+    // being paid serially on the first audio chunk (Issue #709).
+    auto session =
+        std::make_unique<CommandStreamingSession>(provider_, provider_.id, notification_bridge_);
+    if (!session->EnsureStarted(error)) {
+      return nullptr;
+    }
     if (error != nullptr) {
       error->clear();
     }
-    return std::make_unique<CommandStreamingSession>(provider_, provider_.id, notification_bridge_);
+    return session;
   }
 
 private:

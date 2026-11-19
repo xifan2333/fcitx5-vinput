@@ -92,6 +92,21 @@ public:
 
   [[nodiscard]] virtual BackendDescriptor Describe() const = 0;
   virtual std::unique_ptr<RecognitionSession> CreateSession(std::string* error) = 0;
+
+  // Performs backend-level preparation that is expensive and independent of any
+  // session lifetime (e.g. loading local models/VAD into memory). Called during
+  // daemon startup / backend reload so the first recording does not pay the cost.
+  // Backends whose heavy start is bound to session creation (e.g. external
+  // streaming subprocess spawn) intentionally keep this a no-op and start the
+  // work inside CreateSession() instead. Returns false and sets error on failure.
+  virtual bool Warmup(std::string* error);
 };
+
+inline bool AsrBackend::Warmup(std::string* error) {
+  if (error != nullptr) {
+    error->clear();
+  }
+  return true;
+}
 
 } // namespace vinput::daemon::asr
