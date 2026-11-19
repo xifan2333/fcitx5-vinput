@@ -17,8 +17,10 @@
 namespace vinput::daemon::asr {
 
 AsyncRecognitionSession::AsyncRecognitionSession(std::unique_ptr<RecognitionSession> backend,
-                                                 std::size_t max_queued_samples)
-    : backend_(std::move(backend)), max_queued_samples_(max_queued_samples) {
+                                                 std::size_t max_queued_samples,
+                                                 std::shared_ptr<AsrBackend> backend_owner)
+    : backend_(std::move(backend)), backend_owner_(std::move(backend_owner)),
+      max_queued_samples_(max_queued_samples) {
   worker_ = std::thread([this] { Run(); });
 }
 

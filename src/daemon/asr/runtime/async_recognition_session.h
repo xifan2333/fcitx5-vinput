@@ -32,7 +32,8 @@ public:
   using WakeCallback = std::function<void()>;
 
   explicit AsyncRecognitionSession(std::unique_ptr<RecognitionSession> backend,
-                                   std::size_t max_queued_samples = std::size_t{16000} * 10);
+                                   std::size_t max_queued_samples = std::size_t{16000} * 10,
+                                   std::shared_ptr<AsrBackend> backend_owner = nullptr);
   ~AsyncRecognitionSession() override;
 
   AsyncRecognitionSession(const AsyncRecognitionSession&) = delete;
@@ -69,6 +70,10 @@ private:
                                  std::deque<std::vector<int16_t>>& discarded, std::string* error);
 
   std::unique_ptr<RecognitionSession> backend_;
+  // Keeps the owning AsrBackend alive for the worker thread's lifetime (Issue
+  // #709) so a backend reload that destroys the previous backend cannot leave
+  // the worker calling into a dangling recognizer.
+  std::shared_ptr<AsrBackend> backend_owner_;
   const std::size_t max_queued_samples_;
 
   mutable std::mutex mutex_;

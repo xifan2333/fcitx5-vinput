@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <sys/eventfd.h>
+#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -39,7 +40,6 @@
 #include "common/utils/string_utils.h"
 #include "common/utils/time_utils.h"
 
-#include "daemon/asr/runtime/async_recognition_session.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
@@ -445,8 +445,8 @@ DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
   vinput::daemon::asr::BackendDescriptor active_backend;
   std::string session_error;
   const auto session_start_at = std::chrono::steady_clock::now();
-  auto session =
-      recognition_manager_->CreateSession(runtime_settings, &active_backend, &session_error);
+  auto session = recognition_manager_->CreateSession(runtime_settings, &active_backend,
+                                                     &session_error, [this] { WakeMainThread(); });
   const long session_ms = static_cast<long>(vinput::time::MillisecondsSince(session_start_at));
   if (!session) {
     std::string message = _("Failed to start recognition session.");
@@ -457,8 +457,6 @@ DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
     VLOG_WARN("{}", message);
     return DbusService::MethodResult::Failure(message);
   }
-
-  session = WrapAsyncSessionIfNeeded(std::move(session), active_backend);
 
   bool abort_started_capture = false;
   {
@@ -618,25 +616,6 @@ void DaemonRuntimeController::ArmLiveRecordingLocked(
   first_partial_logged_ = false;
   accepting_chunks_.store(true, std::memory_order_relaxed);
   start_recording_in_progress_ = false;
-}
-
-std::unique_ptr<vinput::daemon::asr::RecognitionSession>
-DaemonRuntimeController::WrapAsyncSessionIfNeeded(
-    std::unique_ptr<vinput::daemon::asr::RecognitionSession> session,
-    const vinput::daemon::asr::BackendDescriptor& active_backend) const {
-  if (active_backend.capabilities.audio_delivery_mode !=
-      vinput::daemon::asr::AudioDeliveryMode::Chunked) {
-    return session;
-  }
-  auto async_session =
-      std::make_unique<vinput::daemon::asr::AsyncRecognitionSession>(std::move(session));
-  async_session->SetWakeCallback([notify_fd = notify_fd_] {
-    if (notify_fd >= 0) {
-      const uint64_t value = 1;
-      (void)write(notify_fd, &value, sizeof(value));
-    }
-  });
-  return async_session;
 }
 
 void DaemonRuntimeController::PushStreamingChunks(

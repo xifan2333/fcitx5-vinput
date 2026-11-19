@@ -1,17 +1,15 @@
 #include "daemon/asr/runtime/recognition_session_manager.h"
 
 #include <chrono>
-#include <cstdint>
+#include <cstddef>
 #include <functional>
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
-#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
@@ -20,6 +18,7 @@
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
 
+#include "daemon/asr/runtime/async_recognition_session.h"
 #include "daemon/asr/runtime/backend_factory.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 
@@ -27,67 +26,16 @@ namespace vinput::daemon::asr {
 
 namespace {
 
-class BackendKeepingSession : public RecognitionSession {
-public:
-  BackendKeepingSession(std::shared_ptr<AsrBackend> backend,
-                        std::unique_ptr<RecognitionSession> session)
-      : backend_(std::move(backend)), session_(std::move(session)) {}
-
-  using RecognitionSession::PushAudio;
-
-  bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
-    if (!session_) {
-      if (error != nullptr) {
-        *error = "Recognition session is not initialized.";
-      }
-      return false;
-    }
-    return session_->PushAudio(pcm, error);
+std::unique_ptr<RecognitionSession> WrapChunkedSession(std::unique_ptr<RecognitionSession> session,
+                                                       std::shared_ptr<AsrBackend> backend,
+                                                       const std::function<void()>& wake_callback) {
+  auto async_session = std::make_unique<AsyncRecognitionSession>(
+      std::move(session), std::size_t{16000} * 10, std::move(backend));
+  if (wake_callback) {
+    async_session->SetWakeCallback(wake_callback);
   }
-
-  bool PushAudio(std::span<const float> samples, std::string* error) override {
-    if (!session_) {
-      if (error != nullptr) {
-        *error = "Recognition session is not initialized.";
-      }
-      return false;
-    }
-    return session_->PushAudio(samples, error);
-  }
-
-  bool Finish(std::string* error) override {
-    if (!session_) {
-      if (error != nullptr) {
-        *error = "Recognition session is not initialized.";
-      }
-      return false;
-    }
-    return session_->Finish(error);
-  }
-
-  void Cancel() override {
-    if (session_) {
-      session_->Cancel();
-    }
-  }
-
-  void Interrupt() noexcept override {
-    if (session_) {
-      session_->Interrupt();
-    }
-  }
-
-  std::vector<RecognitionEvent> PollEvents() override {
-    if (!session_) {
-      return {};
-    }
-    return session_->PollEvents();
-  }
-
-private:
-  std::shared_ptr<AsrBackend> backend_;
-  std::unique_ptr<RecognitionSession> session_;
-};
+  return async_session;
+}
 
 bool ShouldDisableAsr(const CoreConfig& config, std::string* reason) {
   const AsrProvider* provider = CoreConfigView(config).ActiveAsrProvider();
@@ -253,11 +201,12 @@ bool RecognitionSessionManager::SynchronizeBackend(const CoreConfig& settings, s
 
 std::unique_ptr<RecognitionSession>
 RecognitionSessionManager::CreateSession(const CoreConfig& settings, BackendDescriptor* descriptor,
-                                         std::string* error) {
+                                         std::string* error,
+                                         const std::function<void()>& wake_callback) {
   (void)settings;
 
   std::unique_ptr<RecognitionSession> session;
-  if (!CreateSessionFromEffectiveBackend(descriptor, &session, error)) {
+  if (!CreateSessionFromEffectiveBackend(descriptor, &session, error, wake_callback)) {
     return nullptr;
   }
 
@@ -265,51 +214,6 @@ RecognitionSessionManager::CreateSession(const CoreConfig& settings, BackendDesc
     error->clear();
   }
   return session;
-}
-
-RecognitionRunResult
-RecognitionSessionManager::ConsumeEvents(std::unique_ptr<RecognitionSession>* session, bool cancel,
-                                         std::string* error) {
-  RecognitionRunResult result;
-  if (session == nullptr || *session == nullptr) {
-    if (error != nullptr) {
-      *error = "Recognition session is not initialized.";
-    }
-    result.ok = false;
-    result.error = error != nullptr ? *error : "Recognition session is not initialized.";
-    return result;
-  }
-
-  result.available = true;
-  std::string session_error;
-  if (cancel) {
-    (*session)->Cancel();
-  } else if (!(*session)->Finish(&session_error) && !session_error.empty()) {
-    result.ok = false;
-    result.error = session_error;
-  }
-
-  for (auto& event : (*session)->PollEvents()) {
-    switch (event.kind) {
-    case RecognitionEventKind::PartialText:
-      break;
-    case RecognitionEventKind::FinalText:
-      result.text = std::move(event.text);
-      break;
-    case RecognitionEventKind::Error:
-      result.ok = false;
-      result.error = std::move(event.error);
-      break;
-    case RecognitionEventKind::Completed:
-      break;
-    }
-  }
-
-  session->reset();
-  if (error != nullptr) {
-    *error = result.error;
-  }
-  return result;
 }
 
 RecognitionSessionManager::ReloadSnapshot RecognitionSessionManager::GetReloadSnapshot() const {
@@ -454,8 +358,8 @@ bool RecognitionSessionManager::CreatePreparedBackendForReload(
 }
 
 bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
-    BackendDescriptor* descriptor, std::unique_ptr<RecognitionSession>* session,
-    std::string* error) {
+    BackendDescriptor* descriptor, std::unique_ptr<RecognitionSession>* session, std::string* error,
+    const std::function<void()>& wake_callback) {
   if (session == nullptr) {
     if (error != nullptr) {
       *error = "Recognition session output is not available.";
@@ -482,6 +386,12 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
     backend = effective_backend_->backend;
   }
 
+  // Chunked delivery (streaming) runs worker-thread asynchrony: hand the raw
+  // session to AsyncRecognitionSession, which keeps the owning backend alive
+  // and forwards new events through the wake callback (Issue #709). Buffered
+  // delivery returns the backend session as-is.
+  const bool chunked = have_descriptor && local_descriptor.capabilities.audio_delivery_mode ==
+                                              AudioDeliveryMode::Chunked;
   if (descriptor != nullptr && have_descriptor) {
     *descriptor = std::move(local_descriptor);
   }
@@ -490,8 +400,13 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
   if (!backend_session) {
     return false;
   }
-  *session =
-      std::make_unique<BackendKeepingSession>(std::move(backend), std::move(backend_session));
+
+  if (chunked) {
+    *session = WrapChunkedSession(std::move(backend_session), std::move(backend), wake_callback);
+    return true;
+  }
+
+  *session = std::move(backend_session);
   return true;
 }
 
