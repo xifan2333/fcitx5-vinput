@@ -14,6 +14,16 @@ namespace vinput::daemon::notify {
 // Maps a notification severity level to its display expiration timeout in milliseconds.
 [[nodiscard]] std::int32_t NotificationTimeoutMs(vinput::notify::NotificationLevel level) noexcept;
 
+// Builds a daemon-owned notification with the given severity level.
+[[nodiscard]] vinput::notify::Notification
+MakeDaemonNotification(vinput::notify::NotificationLevel level, std::string body);
+
+// Builds an information-severity notification whose wording is owned by the daemon itself.
+[[nodiscard]] vinput::notify::Notification MakeDaemonInfoNotification(std::string body);
+
+// Builds a warning-severity notification whose wording is owned by the daemon itself.
+[[nodiscard]] vinput::notify::Notification MakeDaemonWarningNotification(std::string body);
+
 // Builds an error-severity notification whose wording is owned by the daemon itself.
 [[nodiscard]] vinput::notify::Notification MakeDaemonErrorNotification(std::string body);
 

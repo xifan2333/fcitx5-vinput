@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -78,6 +79,8 @@ public:
     dropped_samples_.store(0, std::memory_order_relaxed);
   }
 
+  void SetNotifyFd(int fd) noexcept override { notify_fd_.store(fd, std::memory_order_release); }
+
   void SetSimulatedLatencyMs(std::optional<long> latency_ms) {
     const std::scoped_lock lock(mutex_);
     simulated_latency_ms_ = latency_ms;
@@ -121,6 +124,7 @@ public:
     if (first_cb) {
       first_cb(now_ns);
     }
+    SignalNotifyFd();
     return samples.size();
   }
 
@@ -135,6 +139,7 @@ public:
     if (err_cb) {
       err_cb(error_message);
     }
+    SignalNotifyFd();
   }
 
   [[nodiscard]] std::string LastTarget() const {
@@ -143,6 +148,14 @@ public:
   }
 
 private:
+  void SignalNotifyFd() const noexcept {
+    const int fd = notify_fd_.load(std::memory_order_acquire);
+    if (fd >= 0) {
+      const uint64_t val = 1;
+      (void)write(fd, &val, sizeof(val));
+    }
+  }
+
   mutable std::mutex mutex_;
   AudioSampleRingBuffer ring_buffer_;
   bool recording_{false};
@@ -151,6 +164,7 @@ private:
   std::string target_;
   FirstBufferCallback on_first_buffer_;
   ErrorCallback on_error_;
+  std::atomic<int> notify_fd_{-1};
   std::atomic<std::size_t> dropped_samples_{0};
   int64_t recording_armed_ns_{0};
   int64_t first_buffer_ns_{0};

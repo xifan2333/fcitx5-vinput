@@ -1,10 +1,8 @@
 #include "daemon/runtime/daemon_runtime_controller.h"
 
-#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <cmath>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -59,9 +57,6 @@ template <class... Ts> struct Overloaded : Ts... {
 };
 template <class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
 
-constexpr float kNonSilentPeakThreshold = 0.02F;
-constexpr float kNonSilentRmsThreshold = 0.005F;
-
 void LogRecognitionRequest(const vinput::daemon::asr::BackendDescriptor& descriptor,
                            std::size_t sample_count) {
   VLOG_DEBUG("ASR request provider={} type={} backend={} samples={}", descriptor.provider_id,
@@ -71,24 +66,6 @@ void LogRecognitionRequest(const vinput::daemon::asr::BackendDescriptor& descrip
 bool UsesBufferedDelivery(const vinput::daemon::asr::BackendDescriptor& descriptor) {
   return descriptor.capabilities.audio_delivery_mode ==
          vinput::daemon::asr::AudioDeliveryMode::Buffered;
-}
-
-bool HasNonSilentAudio(std::span<const int16_t> pcm) {
-  if (pcm.empty()) {
-    return false;
-  }
-
-  double sum_squares = 0.0;
-  float peak = 0.0F;
-  for (const int16_t sample : pcm) {
-    const float value = static_cast<float>(sample) / 32768.0F;
-    const float abs_value = std::fabs(value);
-    peak = std::max(peak, abs_value);
-    sum_squares += static_cast<double>(value) * static_cast<double>(value);
-  }
-
-  const auto rms = static_cast<float>(std::sqrt(sum_squares / static_cast<double>(pcm.size())));
-  return peak >= kNonSilentPeakThreshold || rms >= kNonSilentRmsThreshold;
 }
 
 void EmitClientLine(std::string_view owner_client_id, std::string_view line) {
@@ -263,7 +240,6 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool commit_r
 }
 
 DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, bool commit_raw_text) {
-  bool apply_pending_reload = false;
   bool stop_capture = false;
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
 
@@ -295,7 +271,6 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, boo
       current_order_.reset();
       NotifyStatusChanged(transition.new_phase);
       VLOG_DEBUG("recording cancelled and discarded");
-      apply_pending_reload = pending_asr_backend_reload_;
       break;
     case TransitionAction::RequestCommitRaw:
     case TransitionAction::RequestDiscard:
@@ -319,10 +294,6 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, boo
     session_lifecycle_.CancelAndRetireSession(std::move(session_to_cancel));
   }
 
-  if (apply_pending_reload) {
-    MaybeApplyPendingAsrBackendReload();
-  }
-
   return DbusService::MethodResult::Success();
 }
 
@@ -339,17 +310,6 @@ bool DaemonRuntimeController::SynchronizeAsrBackend(std::string* error) {
 }
 
 DbusService::MethodResult DaemonRuntimeController::ReloadAsrBackend() {
-  {
-    const std::scoped_lock lock(state_mutex_);
-    if (!state_machine_.IsIdle() || start_recording_in_progress_) {
-      pending_asr_backend_reload_ = true;
-      VLOG_DEBUG("ASR backend reload deferred until idle (phase: {} start_in_progress={})",
-                 vinput::dbus::StatusToString(state_machine_.CurrentPhase()),
-                 start_recording_in_progress_);
-      return DbusService::MethodResult::Success();
-    }
-  }
-
   std::string error;
   if (!SynchronizeAsrBackend(&error)) {
     std::string message = _("ASR backend reload failed. The previous backend may still be active.");
@@ -361,29 +321,6 @@ DbusService::MethodResult DaemonRuntimeController::ReloadAsrBackend() {
   }
 
   return DbusService::MethodResult::Success();
-}
-
-void DaemonRuntimeController::MaybeApplyPendingAsrBackendReload() {
-  {
-    const std::scoped_lock lock(state_mutex_);
-    if (!pending_asr_backend_reload_ || !state_machine_.IsIdle()) {
-      return;
-    }
-    pending_asr_backend_reload_ = false;
-  }
-
-  std::string error;
-  if (!SynchronizeAsrBackend(&error)) {
-    std::string message = _("ASR backend reload failed. The previous backend may still be active.");
-    if (!error.empty()) {
-      message += "\n" + error;
-    }
-    VLOG_WARN("{}", message);
-    dbus_->EmitDesktopNotification(vinput::daemon::notify::MakeDaemonErrorNotification(message));
-    return;
-  }
-
-  VLOG_DEBUG("deferred ASR backend reload applied while idle");
 }
 
 void DaemonRuntimeController::EmitClientEvent(std::string_view line) {
@@ -523,18 +460,12 @@ void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) 
     }
     session = session_lifecycle_.ActiveSession();
 
-    if (!first_non_silent_at_.has_value()) {
-      std::vector<int16_t> gained_pcm;
-      const auto pcm_view =
-          vinput::audio::PrepareGainAdjustedInput(pcm, audio_buffer_.Gain(), &gained_pcm);
-      if (HasNonSilentAudio(pcm_view)) {
-        first_non_silent_at_ = std::chrono::steady_clock::now();
-        VLOG_DEBUG("first non-silent audio after {} ms",
-                   vinput::time::MillisecondsSince(recording_started_at_, *first_non_silent_at_));
-      }
+    const bool has_speech = audio_buffer_.AppendAndDetectSpeech(pcm);
+    if (!first_non_silent_at_.has_value() && has_speech) {
+      first_non_silent_at_ = std::chrono::steady_clock::now();
+      VLOG_DEBUG("first non-silent audio after {} ms",
+                 vinput::time::MillisecondsSince(recording_started_at_, *first_non_silent_at_));
     }
-
-    audio_buffer_.Append(pcm);
     if (!UsesBufferedDelivery(active_backend_)) {
       streaming_mode = true;
       chunk_to_push = audio_buffer_.PopStreamingChunk();
@@ -907,8 +838,7 @@ void DaemonRuntimeController::ScheduleCaptureStopOnMainThread() {
 
 void DaemonRuntimeController::FinalizeActiveRecordingLocked(
     const std::string& scene_id, std::span<const int16_t> captured_pcm,
-    std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session_to_cancel,
-    bool& apply_pending_reload) {
+    std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session_to_cancel) {
   if (!captured_pcm.empty()) {
     audio_buffer_.Append(captured_pcm);
   }
@@ -929,7 +859,6 @@ void DaemonRuntimeController::FinalizeActiveRecordingLocked(
   current_order_.reset();
   NotifyStatusChanged(transition.new_phase);
   VLOG_DEBUG("phase -> idle");
-  apply_pending_reload = true;
 }
 
 DbusService::MethodResult DaemonRuntimeController::StopRecording(bool ime,
@@ -952,7 +881,6 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(bool ime,
     captured_pcm = StopCaptureAndDrainMetrics();
   }
 
-  bool apply_pending_reload = false;
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session_to_cancel;
   {
     const std::scoped_lock lock(state_mutex_);
@@ -962,10 +890,8 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(bool ime,
       current_order_.reset();
       NotifyStatusChanged(vinput::dbus::Status::Idle);
       VLOG_DEBUG("phase -> idle");
-      apply_pending_reload = true;
     } else {
-      FinalizeActiveRecordingLocked(scene_id, captured_pcm, session_to_cancel,
-                                    apply_pending_reload);
+      FinalizeActiveRecordingLocked(scene_id, captured_pcm, session_to_cancel);
     }
   }
 
@@ -973,9 +899,6 @@ DbusService::MethodResult DaemonRuntimeController::StopRecording(bool ime,
     session_lifecycle_.CancelAndRetireSession(std::move(session_to_cancel));
   }
 
-  if (apply_pending_reload) {
-    MaybeApplyPendingAsrBackendReload();
-  }
   return DbusService::MethodResult::Success();
 }
 
@@ -1028,7 +951,9 @@ void DaemonRuntimeController::FlushSingleLaneDeferredActions() {
     start_in_progress = start_recording_in_progress_;
     skip_teardown = start_recording_in_progress_ ||
                     (capture_ != nullptr && capture_->IsRecording()) ||
+                    phase_snapshot == vinput::dbus::Status::Starting ||
                     phase_snapshot == vinput::dbus::Status::Recording ||
+                    phase_snapshot == vinput::dbus::Status::Stopping ||
                     phase_snapshot == vinput::dbus::Status::Inferring ||
                     phase_snapshot == vinput::dbus::Status::Postprocessing;
   }
@@ -1216,7 +1141,6 @@ void DaemonRuntimeController::ResetToIdle() {
   EmitClientEvent(vinput::client::SerializeStatusEvent(
       vinput::dbus::StatusToString(vinput::dbus::Status::Idle), was_ime));
   VLOG_DEBUG("phase -> idle");
-  MaybeApplyPendingAsrBackendReload();
 }
 
 void DaemonRuntimeController::ProcessSingleOrder(RecognitionOrder order) {

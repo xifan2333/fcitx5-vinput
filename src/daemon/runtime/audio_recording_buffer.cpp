@@ -18,6 +18,7 @@ void AudioRecordingBuffer::Reset(float gain) {
   startup_pcm_.clear();
   buffered_pcm_.clear();
   streaming_pcm_.clear();
+  streaming_offset_ = 0;
   total_samples_ = 0;
 }
 
@@ -44,6 +45,7 @@ void AudioRecordingBuffer::AppendStartup(std::span<const int16_t> pcm) {
 void AudioRecordingBuffer::Activate(bool is_buffered) {
   is_activated_ = true;
   is_buffered_ = is_buffered;
+  streaming_offset_ = 0;
 
   if (!startup_pcm_.empty()) {
     vinput::audio::ApplyGainI16(startup_pcm_, gain_);
@@ -57,40 +59,64 @@ void AudioRecordingBuffer::Activate(bool is_buffered) {
 }
 
 void AudioRecordingBuffer::Append(std::span<const int16_t> pcm) {
+  (void)AppendAndDetectSpeech(pcm);
+}
+
+bool AudioRecordingBuffer::AppendAndDetectSpeech(std::span<const int16_t> pcm) {
   if (pcm.empty()) {
-    return;
+    return false;
   }
   if (!is_activated_) {
     AppendStartup(pcm);
-    return;
+    return vinput::audio::HasNonSilentAudio(pcm, gain_);
   }
 
   total_samples_ += pcm.size();
 
-  std::vector<int16_t> scratch;
-  const auto pcm_view = vinput::audio::PrepareGainAdjustedInput(pcm, gain_, &scratch);
-
-  if (is_buffered_) {
-    buffered_pcm_.insert(buffered_pcm_.end(), pcm_view.begin(), pcm_view.end());
-  } else {
-    streaming_pcm_.insert(streaming_pcm_.end(), pcm_view.begin(), pcm_view.end());
-  }
+  auto& target = is_buffered_ ? buffered_pcm_ : streaming_pcm_;
+  const std::size_t old_size = target.size();
+  target.insert(target.end(), pcm.begin(), pcm.end());
+  const auto appended = std::span<int16_t>(target).subspan(old_size);
+  vinput::audio::ApplyGainI16(appended, gain_);
+  return vinput::audio::HasNonSilentAudio(appended);
 }
 
 std::optional<std::vector<int16_t>>
 AudioRecordingBuffer::PopStreamingChunk(std::size_t chunk_size) {
-  if (chunk_size == 0 || streaming_pcm_.size() < chunk_size) {
+  const std::size_t available = streaming_pcm_.size() - streaming_offset_;
+  if (chunk_size == 0 || available < chunk_size) {
     return std::nullopt;
   }
-  const auto chunk_end = streaming_pcm_.begin() + static_cast<std::ptrdiff_t>(chunk_size);
-  std::vector<int16_t> chunk(streaming_pcm_.begin(), chunk_end);
-  streaming_pcm_.erase(streaming_pcm_.begin(), chunk_end);
+  const auto chunk_begin = streaming_pcm_.begin() + static_cast<std::ptrdiff_t>(streaming_offset_);
+  const auto chunk_end = chunk_begin + static_cast<std::ptrdiff_t>(chunk_size);
+  std::vector<int16_t> chunk(chunk_begin, chunk_end);
+  streaming_offset_ += chunk_size;
+  if (streaming_offset_ >= streaming_pcm_.size()) {
+    streaming_pcm_.clear();
+    streaming_offset_ = 0;
+  } else if (streaming_offset_ >= 8192 && streaming_offset_ * 2 >= streaming_pcm_.size()) {
+    streaming_pcm_.erase(streaming_pcm_.begin(),
+                         streaming_pcm_.begin() + static_cast<std::ptrdiff_t>(streaming_offset_));
+    streaming_offset_ = 0;
+  }
   return chunk;
 }
 
 std::vector<int16_t> AudioRecordingBuffer::DrainStreamingTail() {
-  std::vector<int16_t> tail = std::move(streaming_pcm_);
+  if (streaming_offset_ >= streaming_pcm_.size()) {
+    streaming_pcm_.clear();
+    streaming_offset_ = 0;
+    return {};
+  }
+  if (streaming_offset_ == 0) {
+    std::vector<int16_t> tail = std::move(streaming_pcm_);
+    streaming_pcm_.clear();
+    return tail;
+  }
+  std::vector<int16_t> tail(streaming_pcm_.begin() + static_cast<std::ptrdiff_t>(streaming_offset_),
+                            streaming_pcm_.end());
   streaming_pcm_.clear();
+  streaming_offset_ = 0;
   return tail;
 }
 
@@ -111,6 +137,7 @@ void AudioRecordingBuffer::Clear() noexcept {
   startup_pcm_.clear();
   buffered_pcm_.clear();
   streaming_pcm_.clear();
+  streaming_offset_ = 0;
   total_samples_ = 0;
 }
 

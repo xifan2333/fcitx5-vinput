@@ -95,7 +95,6 @@ private:
                                                    const std::string& capture_device);
   void NotifyStatusChanged(vinput::dbus::Status status);
   bool SynchronizeAsrBackend(std::string* error = nullptr);
-  void MaybeApplyPendingAsrBackendReload();
   void DrainIncomingAudio();
   void HandleIncomingAudio(std::span<const int16_t> pcm);
   void PumpAudioStream(int read_fd);
@@ -129,8 +128,7 @@ private:
   void ProcessSingleOrder(RecognitionOrder order);
   void FinalizeActiveRecordingLocked(
       const std::string& scene_id, std::span<const int16_t> captured_pcm,
-      std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session_to_cancel,
-      bool& apply_pending_reload);
+      std::shared_ptr<vinput::daemon::asr::RecognitionSession>& session_to_cancel);
   void WorkerMain();
 
   vinput::daemon::audio::AudioInputSource* capture_ = nullptr;
@@ -152,7 +150,6 @@ private:
   std::optional<std::chrono::steady_clock::time_point> first_non_silent_at_;
   bool first_partial_logged_ = false;
   bool start_recording_in_progress_ = false;
-  bool pending_asr_backend_reload_ = false;
   bool session_ime_ = true;
   int notify_fd_ = -1;
   std::atomic<bool> pending_capture_stop_{false};

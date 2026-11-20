@@ -75,6 +75,15 @@ int DoStopRecording(vinput::cli::DbusClient& dbus, const std::string& scene_id, 
   return 0;
 }
 
+int ReportToggleError(Formatter& fmt, const CliContext& ctx, const std::string& msg) {
+  if (ctx.json_output) {
+    fmt.PrintJson({{"ok", false}, {"error", msg}});
+  } else {
+    fmt.PrintError(msg);
+  }
+  return 1;
+}
+
 } // namespace
 
 int RunRecordingControlStart(Formatter& fmt, const CliContext& ctx) {
@@ -104,37 +113,22 @@ int RunRecordingControlToggle(const std::string& scene_id, Formatter& fmt, const
   std::string status;
   std::string status_err;
   if (!dbus.GetDaemonStatus(&status, &status_err)) {
-    if (ctx.json_output) {
-      fmt.PrintJson({{"ok", false}, {"error", status_err}});
-    } else {
-      fmt.PrintError(status_err);
-    }
-    return 1;
+    return ReportToggleError(fmt, ctx, status_err);
   }
 
-  if (status == vinput::dbus::kStatusRecording) {
+  switch (vinput::dbus::StringToStatus(status)) {
+  case vinput::dbus::Status::Starting:
+  case vinput::dbus::Status::Recording:
     return DoStopRecording(dbus, scene_id, fmt, ctx);
+  case vinput::dbus::Status::Stopping:
+  case vinput::dbus::Status::Inferring:
+  case vinput::dbus::Status::Postprocessing:
+    return ReportToggleError(fmt, ctx,
+                             ::fmt::sprintf(_("Daemon is busy (status: %s)."), status.c_str()));
+  case vinput::dbus::Status::Error:
+    return ReportToggleError(fmt, ctx, _("Daemon is in error state."));
+  case vinput::dbus::Status::Idle:
+    return DoStartRecording(dbus, fmt, ctx);
   }
-
-  if (status == vinput::dbus::kStatusInferring || status == vinput::dbus::kStatusPostprocessing) {
-    std::string msg = ::fmt::sprintf(_("Daemon is busy (status: %s)."), status.c_str());
-    if (ctx.json_output) {
-      fmt.PrintJson({{"ok", false}, {"error", msg}});
-    } else {
-      fmt.PrintError(msg);
-    }
-    return 1;
-  }
-
-  if (status == vinput::dbus::kStatusError) {
-    std::string msg = _("Daemon is in error state.");
-    if (ctx.json_output) {
-      fmt.PrintJson({{"ok", false}, {"error", msg}});
-    } else {
-      fmt.PrintError(msg);
-    }
-    return 1;
-  }
-
-  return DoStartRecording(dbus, fmt, ctx);
+  return 1;
 }

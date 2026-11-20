@@ -178,6 +178,31 @@ void TestCancellationBeforeActivation() {
   ExpectSamples(buffer.TakeBufferedPcm(), {100, 200});
 }
 
+void TestSinglePassAppendAndDetectSpeech() {
+  vinput::daemon::runtime::AudioRecordingBuffer buffer;
+  buffer.Reset(2.0F);
+  buffer.Activate(/*is_buffered=*/false);
+
+  const std::array<int16_t, 4> silence{0, 1, -1, 0};
+  Expect(!buffer.AppendAndDetectSpeech(silence), "Near-zero samples must be silent");
+
+  // 400 * 2.0 = 800 -> 800 / 32768 = 0.0244 >= 0.02 peak threshold
+  const std::array<int16_t, 4> speech{400, -400, 400, -400};
+  Expect(buffer.AppendAndDetectSpeech(speech), "Gained speech samples must trigger detection");
+
+  // Verify cursor-based PopStreamingChunk across multiple chunks
+  std::vector<int16_t> bulk(1600, 10);
+  Expect(!buffer.AppendAndDetectSpeech(bulk), "Low-amplitude bulk must remain silent");
+  auto c1 = buffer.PopStreamingChunk();
+  auto c2 = buffer.PopStreamingChunk();
+  Expect(c1.has_value() && c1->size() == 800, "First chunk must have 800 samples");
+  Expect(c2.has_value() && c2->size() == 800, "Second chunk must have 800 samples");
+  Expect((*c1)[0] == 0 && (*c1)[4] == 800 && (*c1)[5] == -800,
+         "Gained samples must be preserved in order");
+  auto tail = buffer.DrainStreamingTail();
+  Expect(tail.size() == 8, "Tail must contain remaining 8 samples");
+}
+
 } // namespace
 
 int main() {
@@ -187,6 +212,7 @@ int main() {
   TestAppendBeforeActivate();
   TestSetGainAndClear();
   TestCancellationBeforeActivation();
+  TestSinglePassAppendAndDetectSpeech();
   std::cout << "All AudioRecordingBuffer tests passed!\n";
   return 0;
 }
