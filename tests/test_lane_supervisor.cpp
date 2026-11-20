@@ -231,6 +231,8 @@ void TestTranscribeStreamAndAutoReclaim() {
             res.payload.commitText = req.text;
             return res;
           },
+      .create_headless_capture = nullptr,
+      .client_broadcast = nullptr,
       .client_send_to =
           [&](std::string_view, std::string_view line) {
             const std::scoped_lock lock(events_mutex);
@@ -285,6 +287,12 @@ void TestReloadAsrBackendDelegation() {
   RecognitionSessionManager manager;
   LaneSupervisorOptions opts{
       .load_config = [] { return MakeConfig(/*duck=*/false); },
+      .create_asr_session = nullptr,
+      .run_postprocess = nullptr,
+      .create_headless_capture = nullptr,
+      .client_broadcast = nullptr,
+      .client_send_to = nullptr,
+      .volume_adapter = nullptr,
   };
   LaneSupervisor supervisor(&primary_source, nullptr, &manager, nullptr, std::move(opts));
   const auto res = supervisor.ReloadAsrBackend();
@@ -327,11 +335,14 @@ void TestPrimaryImeStatusAndClientBroadcastSequence() {
             res.payload.commitText = req.text;
             return res;
           },
+      .create_headless_capture = nullptr,
       .client_broadcast =
           [&](std::string_view line) {
             const std::scoped_lock lock(events_mutex);
             broadcasts.emplace_back(line);
           },
+      .client_send_to = nullptr,
+      .volume_adapter = nullptr,
   };
 
   LaneSupervisor supervisor(&primary_source, nullptr, nullptr, nullptr, std::move(opts));

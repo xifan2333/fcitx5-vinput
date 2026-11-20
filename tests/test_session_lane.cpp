@@ -361,6 +361,7 @@ void TestReadinessTimeoutFallback() {
             desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
             return std::make_unique<ScriptedSession>(session_state);
           },
+      .run_postprocess = nullptr,
       .warn_on_clipped_head = true,
       .first_buffer_ready_timeout = std::chrono::milliseconds(25),
   };
@@ -406,6 +407,7 @@ void TestClippedHeadWarningAndShortDiscardFeedback() {
             desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
             return std::make_unique<ScriptedSession>(session_state);
           },
+      .run_postprocess = nullptr,
       .warn_on_clipped_head = true,
   };
 
@@ -469,6 +471,7 @@ void TestCancelImmediateStartAndDuckerIsolation() {
             }
             return std::make_unique<ScriptedSession>(gen2_state);
           },
+      .run_postprocess = nullptr,
       .warn_on_clipped_head = false,
   };
 
@@ -515,6 +518,7 @@ void TestInjectTextConcurrencyAndPostprocessCancel() {
       .audio_source = &source,
       .event_sink = &sink,
       .load_config = [] { return MakeTestConfig(); },
+      .create_asr_session = nullptr,
       .run_postprocess =
           [](const PostprocessRequest& req, const CoreConfig&,
              const std::function<void()>& on_enter, const std::atomic<bool>* cancel_flag) {
@@ -561,6 +565,7 @@ void TestStreamErrorAndShutdownInterrupt() {
             desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
             return std::make_unique<ScriptedSession>(session_state);
           },
+      .run_postprocess = nullptr,
       .warn_on_clipped_head = false,
   };
 
@@ -651,6 +656,7 @@ void TestStreamingPushFailureDoesNotDeadlockConsumerLock() {
             desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Chunked;
             return std::make_unique<ScriptedSession>(session_state);
           },
+      .run_postprocess = nullptr,
       .warn_on_clipped_head = false,
   };
 
