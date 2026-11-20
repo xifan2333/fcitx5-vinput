@@ -11,7 +11,7 @@
 
 namespace {
 
-static void AssertTrue(bool condition, const char* message, const char* file, int line) {
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -134,7 +134,7 @@ void TestDuckerDestructorSafety() {
 void TestDuckerNullAdapter() {
   // Constructing and destroying with default adapter should be safe.
   // We do not call Duck/Restore here to avoid invoking host wpctl in tests.
-  OutputDucker ducker(nullptr);
+  const OutputDucker ducker(nullptr);
 }
 
 void TestDuckerAdapterFailure() {

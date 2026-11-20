@@ -66,12 +66,11 @@ public:
 
     const auto read_idx = static_cast<std::size_t>(current_read % capacity_);
     const std::size_t first_chunk = std::min(available, capacity_ - read_idx);
-    std::forward<Callback>(callback)(
-        std::span<const int16_t>(storage_.data() + read_idx, first_chunk));
+    callback(std::span<const int16_t>(storage_.data() + read_idx, first_chunk));
 
     const std::size_t second_chunk = available - first_chunk;
     if (second_chunk > 0) {
-      std::forward<Callback>(callback)(std::span<const int16_t>(storage_.data(), second_chunk));
+      callback(std::span<const int16_t>(storage_.data(), second_chunk));
     }
 
     read_pos_.store(current_read + available, std::memory_order_release);

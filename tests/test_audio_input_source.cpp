@@ -1,21 +1,20 @@
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/mock_audio_input_source.h"
 #include "daemon/audio/pipewire_control_plane.h"
 
 namespace {
 
-static void AssertTrue(bool condition, const char* message, const char* file, int line) {
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -24,7 +23,6 @@ static void AssertTrue(bool condition, const char* message, const char* file, in
 
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
-using vinput::daemon::audio::AudioInputSource;
 using vinput::daemon::audio::MockAudioInputSource;
 using vinput::daemon::audio::PipeWireControlPlane;
 
@@ -72,8 +70,9 @@ void TestMockFirstBufferCallback() {
   source.PushSamples(chunk1);
   TEST_ASSERT(first_buffer_calls == 1);
   TEST_ASSERT(recorded_ns > 0);
-  TEST_ASSERT(source.FirstBufferLatencyMs().has_value());
-  TEST_ASSERT(*source.FirstBufferLatencyMs() >= 0);
+  const auto latency = source.FirstBufferLatencyMs();
+  TEST_ASSERT(latency.has_value());
+  TEST_ASSERT(latency.value() >= 0);
 
   const std::array<int16_t, 160> chunk2{};
   source.PushSamples(chunk2);
@@ -85,8 +84,9 @@ void TestMockFirstBufferCallback() {
 void TestMockSimulatedLatency() {
   MockAudioInputSource source(5, 16000);
   source.SetSimulatedLatencyMs(42);
-  TEST_ASSERT(source.FirstBufferLatencyMs().has_value());
-  TEST_ASSERT(*source.FirstBufferLatencyMs() == 42);
+  const auto sim_latency = source.FirstBufferLatencyMs();
+  TEST_ASSERT(sim_latency.has_value());
+  TEST_ASSERT(sim_latency.value() == 42);
 
   source.SetSimulatedLatencyMs(std::nullopt);
   TEST_ASSERT(!source.FirstBufferLatencyMs().has_value());

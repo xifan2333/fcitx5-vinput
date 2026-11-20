@@ -115,8 +115,7 @@ private:
                               const CoreConfig& runtime_settings, bool is_command,
                               const std::string& selected_text);
   bool PrepareAndBeginCapture(const std::string& capture_device, const CoreConfig& runtime_settings,
-                              bool is_command, AudioCapture::StartTiming* capture_timing,
-                              std::string* error_message);
+                              bool is_command, std::string* error_message);
   void FeedOrderAudio(RecognitionOrder& order, bool normalize_audio);
   void PushStreamingChunks(std::shared_ptr<vinput::daemon::asr::RecognitionSession> session,
                            std::optional<std::vector<int16_t>> chunk_to_push);

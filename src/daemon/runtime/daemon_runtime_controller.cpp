@@ -430,9 +430,7 @@ DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
   // first capture buffers after a cold press. Chunks are only accepted after
   // both capture and session are armed below.
   std::string capture_error;
-  AudioCapture::StartTiming capture_timing;
-  if (!PrepareAndBeginCapture(capture_device, runtime_settings, is_command, &capture_timing,
-                              &capture_error)) {
+  if (!PrepareAndBeginCapture(capture_device, runtime_settings, is_command, &capture_error)) {
     {
       const std::scoped_lock lock(state_mutex_);
       AbortRecordingStartupLocked();
@@ -480,10 +478,8 @@ DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
   }
 
   const long start_total_ms = static_cast<long>(vinput::time::MillisecondsSince(start_enter_at));
-  VLOG_DEBUG(
-      "start timing command={} session_ms={} create_stream_ms={} start_total_ms={} backend={}",
-      is_command, session_ms, capture_timing.create_stream_ms, start_total_ms,
-      active_backend.backend_id);
+  VLOG_DEBUG("start timing command={} session_ms={} start_total_ms={} backend={}", is_command,
+             session_ms, start_total_ms, active_backend.backend_id);
 
   NotifyStatusChanged(vinput::dbus::Status::Recording);
   if (is_command) {
@@ -640,9 +636,7 @@ void DaemonRuntimeController::PushStreamingChunks(
 
 bool DaemonRuntimeController::PrepareAndBeginCapture(const std::string& capture_device,
                                                      const CoreConfig& runtime_settings,
-                                                     bool is_command,
-                                                     AudioCapture::StartTiming* capture_timing,
-                                                     std::string* error_message) {
+                                                     bool is_command, std::string* error_message) {
   if (capture_ == nullptr) {
     return true;
   }
@@ -652,7 +646,11 @@ bool DaemonRuntimeController::PrepareAndBeginCapture(const std::string& capture_
   capture_->SetNotifyFd(notify_fd_);
   auto on_err = [this](std::string_view err_msg) {
     VLOG_ERROR("audio input stream error: {}", err_msg);
-    HandleRecordingSessionFailure(std::string(err_msg));
+    if (dbus_ != nullptr) {
+      dbus_->EmitDesktopNotification(
+          vinput::daemon::notify::MakeDaemonErrorNotification(std::string(err_msg)));
+    }
+    ScheduleCaptureStopOnMainThread();
   };
   const bool begin_ok = capture_->Begin(target_device, nullptr, std::move(on_err), &error);
   if (!begin_ok) {

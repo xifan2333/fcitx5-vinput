@@ -1,0 +1,9 @@
+# PipeWire is one of the six documented C ABI hard boundaries (see
+# .agents/skills/vinput-dev/principles/c-abi-boundaries.md). A pw_registry* and a pw_proxy* are the
+# same object at the same address -- PipeWire itself returns it as `(struct pw_registry *) res` --
+# but the public headers declare `struct pw_registry` as an incomplete type with no conversion path.
+# reinterpret_cast is therefore the only C++ expression for that identity, and the guideline check
+# would only force a per-line NOLINT here. Every other check stays enabled in this directory.
+InheritParentConfig: true
+Checks: >
+  -cppcoreguidelines-pro-type-reinterpret-cast

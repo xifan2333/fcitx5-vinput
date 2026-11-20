@@ -11,6 +11,7 @@
 #include <pipewire/core.h>
 #include <pipewire/extensions/metadata.h>
 #include <pipewire/node.h>
+#include <pipewire/pipewire.h>
 #include <pipewire/proxy.h>
 #include <pipewire/thread-loop.h>
 #include <spa/utils/defs.h>
@@ -61,7 +62,7 @@ struct PipeWireControlPlane::Impl {
       return;
     }
     spa_hook_remove(&metadata_listener);
-    pw_proxy_destroy(static_cast<pw_proxy*>(static_cast<void*>(metadata)));
+    pw_proxy_destroy(reinterpret_cast<pw_proxy*>(metadata));
     metadata = nullptr;
     metadata_id = PW_ID_ANY;
   }
@@ -70,7 +71,7 @@ struct PipeWireControlPlane::Impl {
     DestroyMetadataProxyLocked();
     if (registry != nullptr) {
       spa_hook_remove(&registry_listener);
-      pw_proxy_destroy(static_cast<pw_proxy*>(static_cast<void*>(registry)));
+      pw_proxy_destroy(reinterpret_cast<pw_proxy*>(registry));
       registry = nullptr;
     }
     if (core != nullptr) {
@@ -192,7 +193,7 @@ void BindDefaultMetadataLocked(PipeWireControlPlane::Impl* impl, uint32_t id,
   if (meta_name == nullptr || std::string_view(meta_name) != "default") {
     return;
   }
-  impl->metadata = static_cast<pw_metadata*>(
+  impl->metadata = reinterpret_cast<pw_metadata*>(
       pw_registry_bind(impl->registry, id, PW_TYPE_INTERFACE_Metadata, PW_VERSION_METADATA, 0));
   if (impl->metadata == nullptr) {
     return;
@@ -262,8 +263,8 @@ bool AttachControlListenersLocked(PipeWireControlPlane::Impl& impl, pw_thread_lo
   spa_zero(impl.core_listener);
   spa_zero(impl.core_proxy_listener);
   pw_core_add_listener(impl.core, &impl.core_listener, &kCpCoreEvents, &impl);
-  pw_proxy_add_listener(static_cast<pw_proxy*>(static_cast<void*>(impl.core)),
-                        &impl.core_proxy_listener, &kCpProxyEvents, &impl);
+  pw_proxy_add_listener(reinterpret_cast<pw_proxy*>(impl.core), &impl.core_proxy_listener,
+                        &kCpProxyEvents, &impl);
   impl.registry = pw_core_get_registry(impl.core, PW_VERSION_REGISTRY, 0);
   if (impl.registry == nullptr) {
     impl.DisconnectLocked();

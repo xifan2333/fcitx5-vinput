@@ -137,7 +137,7 @@ void AudioCapture::processCallback() {
     return;
   }
 
-  const auto* samples = static_cast<const int16_t*>(static_cast<const void*>(raw + offset));
+  const auto* samples = reinterpret_cast<const int16_t*>(raw + offset);
   const std::size_t written = ring_buffer_.Write(std::span<const int16_t>(samples, n_samples));
   if (written < n_samples) {
     dropped_samples_.fetch_add(n_samples - written, std::memory_order_relaxed);
