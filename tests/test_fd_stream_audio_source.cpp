@@ -131,6 +131,47 @@ void TestWavHeaderAndOddByteBoundary() {
   close(efd);
 }
 
+void TestRawPcmCarryAcrossReads() {
+  std::array<int, 2> pipe_fds{-1, -1};
+  TEST_ASSERT(pipe(pipe_fds.data()) == 0);
+  const int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+  TEST_ASSERT(efd >= 0);
+
+  FdStreamAudioSource source(pipe_fds[0]);
+  source.SetNotifyFd(efd);
+  TEST_ASSERT(source.Begin());
+
+  std::vector<int16_t> collected;
+  const auto collect = [&source, &collected] {
+    source.DrainAvailable([&collected](std::span<const int16_t> chunk) {
+      collected.insert(collected.end(), chunk.begin(), chunk.end());
+    });
+  };
+
+  // 5 bytes = two full samples + one dangling byte; the dangling byte must survive
+  // until the next read completes the third sample.
+  const std::array<int16_t, 3> expected{100, -200, 300};
+  const auto bytes = std::as_bytes(std::span(expected));
+  TEST_ASSERT(write(pipe_fds[1], bytes.data(), 5) == 5);
+  for (int i = 0; i < 50 && collected.size() < 2; ++i) {
+    (void)WaitForEventFd(efd, 100);
+    collect();
+  }
+  TEST_ASSERT(collected.size() == 2);
+
+  TEST_ASSERT(write(pipe_fds[1], bytes.data() + 5, 1) == 1);
+  close(pipe_fds[1]);
+  for (int i = 0; i < 50 && collected.size() < expected.size(); ++i) {
+    (void)WaitForEventFd(efd, 100);
+    collect();
+  }
+  TEST_ASSERT(collected.size() == expected.size());
+  TEST_ASSERT(collected[0] == 100 && collected[1] == -200 && collected[2] == 300);
+
+  source.StopAndDrain();
+  close(efd);
+}
+
 void TestEmptyStreamEof() {
   std::array<int, 2> pipe_fds{-1, -1};
   TEST_ASSERT(pipe(pipe_fds.data()) == 0);
@@ -227,10 +268,12 @@ void TestStreamErrorStopsImmediately() {
   const int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
   TEST_ASSERT(efd >= 0);
 
-  // Pass the write end as read_fd so read() immediately fails with EBADF.
+  // Pass the write end as read_fd and close the read end: poll() reports POLLERR and
+  // the subsequent read() on the write-only fd fails with EBADF.
   std::atomic<bool> error_called{false};
   std::string error_msg;
   FdStreamAudioSource source(pipe_fds[1]);
+  close(pipe_fds[0]);
   source.SetNotifyFd(efd);
   TEST_ASSERT(source.Begin({}, nullptr, [&](std::string_view msg) {
     error_called.store(true);
@@ -245,7 +288,6 @@ void TestStreamErrorStopsImmediately() {
   TEST_ASSERT(error_called.load());
   TEST_ASSERT(!error_msg.empty());
   source.StopAndDrain();
-  close(pipe_fds[0]);
   close(efd);
 }
 
@@ -255,6 +297,7 @@ int main() {
   std::printf("Running test_fd_stream_audio_source...\n");
   TestInvalidFdRejected();
   TestWavHeaderAndOddByteBoundary();
+  TestRawPcmCarryAcrossReads();
   TestEmptyStreamEof();
   TestAbortInterruptsBlockedPipe();
   TestBackpressurePreservesAllSamples();

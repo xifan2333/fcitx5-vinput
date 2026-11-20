@@ -118,6 +118,7 @@ public:
     bool interrupted = false;
     bool finished = false;
     bool block_finish_until_interrupt = false;
+    bool finish_entered = false;
     std::string finish_text = "ok";
   };
 
@@ -138,6 +139,8 @@ public:
   bool Finish(std::string* error) override {
     std::unique_lock<std::mutex> lock(state_->mutex);
     if (state_->block_finish_until_interrupt) {
+      state_->finish_entered = true;
+      state_->cv.notify_all();
       state_->cv.wait(lock, [this] { return state_->interrupted || state_->cancelled; });
       if (error != nullptr) {
         *error = "interrupted";
@@ -368,8 +371,12 @@ void TestReadinessTimeoutFallback() {
 
   SessionLane lane(std::move(deps));
   TEST_ASSERT(lane.Start(true, false).ok);
-  std::this_thread::sleep_for(std::chrono::milliseconds(40));
-  lane.ProcessPendingEvents();
+  // Boundedly wait for both the readiness timeout and the ASR-ready event instead of
+  // assuming worker scheduling completes within a fixed sleep.
+  for (int i = 0; i < 50 && lane.CurrentPhase() != LanePhase::Recording; ++i) {
+    lane.ProcessPendingEvents();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
 
   TEST_ASSERT(lane.CurrentPhase() == LanePhase::Recording);
   TEST_ASSERT(sink.HasStatus(vinput::dbus::Status::Recording));
@@ -484,19 +491,21 @@ void TestCancelImmediateStartAndDuckerIsolation() {
   TEST_ASSERT(lane.Start(true, false).ok);
   const std::vector<int16_t> silence(160, 0);
   source.PushSamples(silence);
+
+  // Release the generation-1 factory first: the single worker must finish the blocked
+  // call before it can process generation 2's task and let it reach Recording.
+  {
+    const std::scoped_lock lock(gate_mutex);
+    release_gen1 = true;
+  }
+  gate_cv.notify_all();
   for (int i = 0; i < 50 && lane.CurrentPhase() != LanePhase::Recording; ++i) {
     lane.ProcessPendingEvents();
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
   TEST_ASSERT(lane.CurrentPhase() == LanePhase::Recording);
 
-  // Release stale generation 1 CreateSession; it must be cancelled and must NOT restore gen 2's
-  // ducked volume or disturb gen 2.
-  {
-    const std::scoped_lock lock(gate_mutex);
-    release_gen1 = true;
-  }
-  gate_cv.notify_all();
+  // Generation 1's late session is retired without restoring generation 2's ducked volume.
   std::this_thread::sleep_for(std::chrono::milliseconds(30));
   lane.ProcessPendingEvents();
 
@@ -552,9 +561,11 @@ void TestInjectTextConcurrencyAndPostprocessCancel() {
 void TestStreamErrorAndShutdownInterrupt() {
   MockAudioInputSource source(15, 16000);
   RecordingSink sink;
-  auto session_state = std::make_shared<ScriptedSession::SharedState>();
-  session_state->block_finish_until_interrupt = true;
+  auto gen1_state = std::make_shared<ScriptedSession::SharedState>();
+  auto gen2_state = std::make_shared<ScriptedSession::SharedState>();
+  gen2_state->block_finish_until_interrupt = true;
 
+  std::atomic<int> create_calls{0};
   SessionLaneDependencies deps{
       .audio_source = &source,
       .event_sink = &sink,
@@ -563,7 +574,8 @@ void TestStreamErrorAndShutdownInterrupt() {
           [&](const CoreConfig&, BackendDescriptor* desc, std::string*,
               const std::function<void()>&) {
             desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
-            return std::make_unique<ScriptedSession>(session_state);
+            const int call = create_calls.fetch_add(1);
+            return std::make_unique<ScriptedSession>(call == 0 ? gen1_state : gen2_state);
           },
       .run_postprocess = nullptr,
       .warn_on_clipped_head = false,
@@ -578,8 +590,6 @@ void TestStreamErrorAndShutdownInterrupt() {
   TEST_ASSERT(sink.HasStatus(vinput::dbus::Status::Error));
 
   // Now start a recording that enters Inferring and blocks in Finish(), then call Shutdown().
-  session_state->cancelled = false;
-  session_state->interrupted = false;
   TEST_ASSERT(lane.Start(true, false).ok);
   const std::vector<int16_t> pcm(8500, 0);
   source.PushSamples(pcm);
@@ -590,10 +600,64 @@ void TestStreamErrorAndShutdownInterrupt() {
   TEST_ASSERT(lane.Stop(true, "").ok);
   TEST_ASSERT(lane.CurrentPhase() == LanePhase::Inferring);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  // Wait until the worker is actually parked inside Finish() before interrupting it.
+  {
+    std::unique_lock<std::mutex> lock(gen2_state->mutex);
+    gen2_state->cv.wait_for(lock, std::chrono::seconds(5),
+                            [&] { return gen2_state->finish_entered; });
+  }
+  TEST_ASSERT(gen2_state->finish_entered);
   lane.Shutdown();
-  TEST_ASSERT(session_state->interrupted);
+  TEST_ASSERT(gen2_state->interrupted);
   TEST_ASSERT(lane.IsIdle());
+}
+
+void TestInjectTextDuringRecording() {
+  MockAudioInputSource source(15, 16000);
+  RecordingSink sink;
+  auto session_state = std::make_shared<ScriptedSession::SharedState>();
+
+  SessionLaneDependencies deps{
+      .audio_source = &source,
+      .event_sink = &sink,
+      .load_config = [] { return MakeTestConfig(); },
+      .create_asr_session =
+          [&](const CoreConfig&, BackendDescriptor* desc, std::string*,
+              const std::function<void()>&) {
+            desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
+            return std::make_unique<ScriptedSession>(session_state);
+          },
+      .run_postprocess = nullptr,
+  };
+
+  SessionLane lane(std::move(deps));
+  TEST_ASSERT(lane.Start(true, false).ok);
+  const std::vector<int16_t> silence(160, 0);
+  source.PushSamples(silence);
+  for (int i = 0; i < 50 && lane.CurrentPhase() != LanePhase::Recording; ++i) {
+    lane.ProcessPendingEvents();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  TEST_ASSERT(lane.CurrentPhase() == LanePhase::Recording);
+
+  // Phone-style injection without a scene is synchronous and must not disturb the
+  // active recording session.
+  TEST_ASSERT(
+      lane.InjectText(true, vinput::client::InjectStage::Final, "phone text", /*scene_id=*/"").ok);
+  TEST_ASSERT(lane.CurrentPhase() == LanePhase::Recording);
+  {
+    const auto results = sink.Results();
+    TEST_ASSERT(results.size() == 1);
+    TEST_ASSERT(results[0].first.commitText == "phone text");
+  }
+
+  // The recording still finishes normally and delivers its own result afterwards.
+  const std::vector<int16_t> pcm(8500, 0);
+  source.PushSamples(pcm);
+  TEST_ASSERT(lane.Stop(true, "").ok);
+  PumpUntilIdle(lane);
+  TEST_ASSERT(lane.IsIdle());
+  TEST_ASSERT(sink.Results().size() == 2);
 }
 
 void TestStreamingPushFailureDoesNotDeadlockConsumerLock() {
@@ -693,6 +757,7 @@ int main() {
   TestCancelImmediateStartAndDuckerIsolation();
   TestInjectTextConcurrencyAndPostprocessCancel();
   TestStreamErrorAndShutdownInterrupt();
+  TestInjectTextDuringRecording();
   TestStreamingPushFailureDoesNotDeadlockConsumerLock();
   std::printf("All test_session_lane passed!\n");
   return 0;

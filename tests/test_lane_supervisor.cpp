@@ -247,25 +247,31 @@ void TestTranscribeStreamAndAutoReclaim() {
   std::array<int, 2> pipe_fds{-1, -1};
   TEST_ASSERT(pipe(pipe_fds.data()) == 0);
   const std::vector<int16_t> pcm(8500, 100);
-  const auto raw = std::as_bytes(std::span(pcm));
-  const std::size_t total_bytes = raw.size();
-  std::size_t written = 0;
-  while (written < total_bytes) {
-    const ssize_t n = write(pipe_fds[1], raw.data() + written, total_bytes - written);
-    TEST_ASSERT(n > 0);
-    written += static_cast<std::size_t>(n);
-  }
-  close(pipe_fds[1]);
 
   const auto res = supervisor.TranscribeStream(pipe_fds[0], "", /*ime=*/false);
   TEST_ASSERT(res.ok);
   TEST_ASSERT(res.payload == "__stream-1__");
   TEST_ASSERT(supervisor.StreamLaneCount() == 1);
 
+  // Pipe capacity is not guaranteed; write from a helper thread after the reader started.
+  std::thread writer([&] {
+    const auto raw = std::as_bytes(std::span(pcm));
+    std::size_t written = 0;
+    while (written < raw.size()) {
+      const ssize_t n = write(pipe_fds[1], raw.data() + written, raw.size() - written);
+      if (n <= 0) {
+        break;
+      }
+      written += static_cast<std::size_t>(n);
+    }
+    close(pipe_fds[1]);
+  });
+
   for (int i = 0; i < 100 && supervisor.StreamLaneCount() > 0; ++i) {
     supervisor.FlushDeferredActions();
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
+  writer.join();
   TEST_ASSERT(supervisor.StreamLaneCount() == 0);
   TEST_ASSERT(volume_adapter->WriteCount() == 0);
 
