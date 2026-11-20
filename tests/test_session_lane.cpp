@@ -282,14 +282,22 @@ void TestReadinessGatingAndSampleOrdering() {
   source.PushSamples(live2);
   lane.ProcessPendingEvents();
 
+  // Push a tail chunk without draining first so DrainTailOnStop() delivers it at Stop().
+  std::vector<int16_t> tail(250);
+  for (std::size_t i = 0; i < tail.size(); ++i) {
+    tail[i] = static_cast<int16_t>(8401 + i);
+  }
+  source.PushSamples(tail);
+
   TEST_ASSERT(lane.Stop(true, "").ok);
+  TEST_ASSERT(!source.IsRecording());
   PumpUntilIdle(lane);
   TEST_ASSERT(lane.IsIdle());
 
   const std::scoped_lock lock(session_state->mutex);
   TEST_ASSERT(session_state->finished);
-  TEST_ASSERT(session_state->received_pcm.size() == 8400);
-  for (std::size_t i = 0; i < 8400; ++i) {
+  TEST_ASSERT(session_state->received_pcm.size() == 8650);
+  for (std::size_t i = 0; i < 8650; ++i) {
     TEST_ASSERT(session_state->received_pcm[i] == static_cast<int16_t>(i + 1));
   }
   TEST_ASSERT(sink.Results().size() == 1);
@@ -353,7 +361,7 @@ void TestReadinessTimeoutFallback() {
             desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
             return std::make_unique<ScriptedSession>(session_state);
           },
-      .warn_on_clipped_head = false,
+      .warn_on_clipped_head = true,
       .first_buffer_ready_timeout = std::chrono::milliseconds(25),
   };
 
@@ -364,7 +372,22 @@ void TestReadinessTimeoutFallback() {
 
   TEST_ASSERT(lane.CurrentPhase() == LanePhase::Recording);
   TEST_ASSERT(sink.HasStatus(vinput::dbus::Status::Recording));
+
+  // Even when the first chunk arrives after timeout transitioned to Recording,
+  // speech-level energy on that first chunk must still trigger the clipped-head warning.
+  const std::vector<int16_t> first_speech(160, 2000);
+  source.PushSamples(first_speech);
+  lane.ProcessPendingEvents();
+  bool saw_warning = false;
+  for (const auto& n : sink.Notifications()) {
+    if (n.level == vinput::notify::NotificationLevel::Warning) {
+      saw_warning = true;
+    }
+  }
+  TEST_ASSERT(saw_warning);
+
   TEST_ASSERT(lane.Cancel(true, false).ok);
+  TEST_ASSERT(!source.IsRecording());
   TEST_ASSERT(lane.IsIdle());
 }
 
@@ -545,6 +568,7 @@ void TestStreamErrorAndShutdownInterrupt() {
   TEST_ASSERT(lane.Start(true, false).ok);
   source.SimulateError("pipewire node vanished");
   PumpUntilIdle(lane);
+  TEST_ASSERT(!source.IsRecording());
   TEST_ASSERT(lane.IsIdle());
   TEST_ASSERT(sink.HasStatus(vinput::dbus::Status::Error));
 

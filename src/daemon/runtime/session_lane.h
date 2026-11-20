@@ -18,6 +18,7 @@
 #include "common/client/client_command.h"
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
+#include "common/utils/unique_fd.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/audio/audio_input_source.h"
@@ -212,6 +213,7 @@ private:
   void DrainIncomingAudio();
   void HandleIncomingPcm(std::span<const int16_t> pcm);
   void InspectFirstChunkSpeech(std::span<const int16_t> pcm);
+  void WarnClippedHeadIfNeeded();
   void FlushStreamingChunks();
   void PollActiveSessionEvents();
   bool ApplySingleRecognitionEvent(const vinput::daemon::asr::RecognitionEvent& event);
@@ -238,8 +240,8 @@ private:
   bool RunRecognitionOnWorker(ProcessOrderTask& task, std::string* error_out);
 
   SessionLaneDependencies deps_;
+  vinput::file::UniqueFd owned_notify_fd_;
   int notify_fd_ = -1;
-  bool owns_notify_fd_ = false;
 
   LanePhase phase_ = LanePhase::Idle;
   std::uint64_t next_token_ = 0;

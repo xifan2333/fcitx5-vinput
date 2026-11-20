@@ -14,6 +14,7 @@
 #include "common/client/client_command.h"
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
+#include "common/utils/unique_fd.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
@@ -102,8 +103,6 @@ private:
                                                LaneEventSink* sink,
                                                vinput::daemon::audio::OutputDucker* ducker,
                                                bool warn_on_clipped_head) const;
-  void WakeMainThread() const noexcept;
-  void DrainNotifyFd() const noexcept;
   void DrainClientCommands();
   void DispatchClientCommand(std::string_view client_id,
                              const vinput::client::ClientCommand& command);
@@ -113,10 +112,9 @@ private:
 
   DbusService* dbus_ = nullptr;
   vinput::daemon::asr::RecognitionSessionManager* recognition_manager_ = nullptr;
-  RecognitionPipeline* pipeline_ = nullptr;
   LaneSupervisorOptions options_;
 
-  int notify_fd_ = -1;
+  vinput::file::UniqueFd notify_fd_;
   std::atomic<bool> shutting_down_{false};
   std::atomic<std::uint64_t> stream_seq_{0};
 

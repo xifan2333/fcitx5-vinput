@@ -14,7 +14,6 @@
 #include <string>
 #include <string_view>
 #include <sys/eventfd.h>
-#include <unistd.h>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -29,6 +28,7 @@
 #include "common/i18n.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/unique_fd.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
@@ -51,55 +51,76 @@ template <class... Ts> struct Overloaded : Ts... {
 };
 template <class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
 
-class PrimaryImeSink final : public LaneEventSink {
+class DbusLaneSinkBase : public LaneEventSink {
+public:
+  explicit DbusLaneSinkBase(DbusService* dbus) : dbus_(dbus) {}
+
+  void OnNotification(const vinput::notify::Notification& notification) final {
+    if (dbus_ != nullptr) {
+      dbus_->EmitDesktopNotification(notification);
+    }
+  }
+
+protected:
+  void EmitImeStatus(vinput::dbus::Status status, bool ime) const {
+    if (ime && dbus_ != nullptr) {
+      dbus_->EmitStatusChanged(vinput::dbus::StatusToString(status));
+    }
+  }
+
+  void EmitImePartial(std::string_view text, bool ime) const {
+    if (ime && dbus_ != nullptr) {
+      dbus_->EmitRecognitionPartial(std::string(text));
+    }
+  }
+
+  void EmitImeResult(const vinput::result::Payload& payload, bool ime) const {
+    if (ime && dbus_ != nullptr) {
+      dbus_->EmitRecognitionResult(vinput::result::Serialize(payload));
+    }
+  }
+
+  [[nodiscard]] DbusService* Dbus() const noexcept { return dbus_; }
+
+private:
+  DbusService* dbus_ = nullptr;
+};
+
+class PrimaryImeSink final : public DbusLaneSinkBase {
 public:
   PrimaryImeSink(DbusService* dbus, LaneSupervisorOptions::ClientBroadcastFn broadcast)
-      : dbus_(dbus), broadcast_(std::move(broadcast)) {}
+      : DbusLaneSinkBase(dbus), broadcast_(std::move(broadcast)) {}
 
   void OnStatusChanged(vinput::dbus::Status status, bool ime) override {
-    const char* status_str = vinput::dbus::StatusToString(status);
-    if (ime && dbus_ != nullptr) {
-      dbus_->EmitStatusChanged(status_str);
-    }
+    EmitImeStatus(status, ime);
     if (broadcast_) {
-      broadcast_(vinput::client::SerializeStatusEvent(status_str, ime));
+      broadcast_(vinput::client::SerializeStatusEvent(vinput::dbus::StatusToString(status), ime));
     }
   }
 
   void OnPartialText(std::string_view text, bool ime) override {
-    if (ime && dbus_ != nullptr) {
-      dbus_->EmitRecognitionPartial(std::string(text));
-    }
+    EmitImePartial(text, ime);
     if (broadcast_) {
       broadcast_(vinput::client::SerializePartialEvent(text, ime));
     }
   }
 
   void OnRecognitionResult(const vinput::result::Payload& payload, bool ime) override {
-    if (ime && dbus_ != nullptr) {
-      dbus_->EmitRecognitionResult(vinput::result::Serialize(payload));
-    }
+    EmitImeResult(payload, ime);
     if (!payload.commitText.empty() && broadcast_) {
       broadcast_(vinput::client::SerializeCommittedEvent(payload, ime));
     }
   }
 
-  void OnNotification(const vinput::notify::Notification& notification) override {
-    if (dbus_ != nullptr) {
-      dbus_->EmitDesktopNotification(notification);
-    }
-  }
-
 private:
-  DbusService* dbus_ = nullptr;
   LaneSupervisorOptions::ClientBroadcastFn broadcast_;
 };
 
-class HeadlessClientSink final : public LaneEventSink {
+class HeadlessClientSink final : public DbusLaneSinkBase {
 public:
   HeadlessClientSink(std::string client_id, DbusService* dbus,
                      LaneSupervisorOptions::ClientSendToFn send_to)
-      : client_id_(std::move(client_id)), dbus_(dbus), send_to_(std::move(send_to)) {}
+      : DbusLaneSinkBase(dbus), client_id_(std::move(client_id)), send_to_(std::move(send_to)) {}
 
   void OnStatusChanged(vinput::dbus::Status status, bool ime) override {
     if (send_to_) {
@@ -120,58 +141,38 @@ public:
     }
   }
 
-  void OnNotification(const vinput::notify::Notification& notification) override {
-    if (dbus_ != nullptr) {
-      dbus_->EmitDesktopNotification(notification);
-    }
-  }
-
 private:
   std::string client_id_;
-  DbusService* dbus_ = nullptr;
   LaneSupervisorOptions::ClientSendToFn send_to_;
 };
 
-class StreamLaneSink final : public LaneEventSink {
+class StreamLaneSink final : public DbusLaneSinkBase {
 public:
   StreamLaneSink(std::string client_id, DbusService* dbus,
                  LaneSupervisorOptions::ClientSendToFn send_to)
-      : client_id_(std::move(client_id)), dbus_(dbus), send_to_(std::move(send_to)) {}
+      : DbusLaneSinkBase(dbus), client_id_(std::move(client_id)), send_to_(std::move(send_to)) {}
 
   void OnStatusChanged(vinput::dbus::Status status, bool ime) override {
-    const char* status_str = vinput::dbus::StatusToString(status);
-    if (ime && dbus_ != nullptr) {
-      dbus_->EmitStatusChanged(status_str);
-    }
-    EmitStreamLine(vinput::client::SerializeStatusEvent(status_str, ime));
+    EmitImeStatus(status, ime);
+    EmitStreamLine(vinput::client::SerializeStatusEvent(vinput::dbus::StatusToString(status), ime));
   }
 
   void OnPartialText(std::string_view text, bool ime) override {
-    if (ime && dbus_ != nullptr) {
-      dbus_->EmitRecognitionPartial(std::string(text));
-    }
+    EmitImePartial(text, ime);
     EmitStreamLine(vinput::client::SerializePartialEvent(text, ime));
   }
 
   void OnRecognitionResult(const vinput::result::Payload& payload, bool ime) override {
-    if (ime && dbus_ != nullptr) {
-      dbus_->EmitRecognitionResult(vinput::result::Serialize(payload));
-    }
+    EmitImeResult(payload, ime);
     if (!payload.commitText.empty()) {
       EmitStreamLine(vinput::client::SerializeCommittedEvent(payload, ime));
     }
   }
 
-  void OnNotification(const vinput::notify::Notification& notification) override {
-    if (dbus_ != nullptr) {
-      dbus_->EmitDesktopNotification(notification);
-    }
-  }
-
 private:
   void EmitStreamLine(const std::string& line) const {
-    if (dbus_ != nullptr) {
-      dbus_->EmitStreamEvent(client_id_, line);
+    if (Dbus() != nullptr) {
+      Dbus()->EmitStreamEvent(client_id_, line);
     }
     if (send_to_) {
       send_to_(client_id_, line);
@@ -179,7 +180,6 @@ private:
   }
 
   std::string client_id_;
-  DbusService* dbus_ = nullptr;
   LaneSupervisorOptions::ClientSendToFn send_to_;
 };
 
@@ -249,12 +249,12 @@ LaneSupervisor::LaneSupervisor(vinput::daemon::audio::AudioInputSource* primary_
                                DbusService* dbus,
                                vinput::daemon::asr::RecognitionSessionManager* recognition_manager,
                                RecognitionPipeline* pipeline, LaneSupervisorOptions options)
-    : dbus_(dbus), recognition_manager_(recognition_manager), pipeline_(pipeline),
-      options_(std::move(options)), primary_ducker_(options_.volume_adapter) {
-  PopulateDefaultOptions(options_, recognition_manager_, pipeline_);
+    : dbus_(dbus), recognition_manager_(recognition_manager), options_(std::move(options)),
+      primary_ducker_(options_.volume_adapter) {
+  PopulateDefaultOptions(options_, recognition_manager_, pipeline);
 
-  notify_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (notify_fd_ < 0) {
+  notify_fd_.Reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+  if (!notify_fd_.IsValid()) {
     VLOG_ERROR("failed to create lane supervisor notify fd: {}", std::strerror(errno));
   }
 
@@ -276,10 +276,6 @@ LaneSupervisor::LaneSupervisor(vinput::daemon::audio::AudioInputSource* primary_
 
 LaneSupervisor::~LaneSupervisor() {
   Shutdown();
-  if (notify_fd_ >= 0) {
-    close(notify_fd_);
-    notify_fd_ = -1;
-  }
 }
 
 SessionLaneDependencies LaneSupervisor::MakeLaneDependencies(
@@ -292,26 +288,10 @@ SessionLaneDependencies LaneSupervisor::MakeLaneDependencies(
       .load_config = options_.load_config,
       .create_asr_session = options_.create_asr_session,
       .run_postprocess = options_.run_postprocess,
-      .shared_notify_fd = notify_fd_,
+      .shared_notify_fd = notify_fd_.Get(),
       .warn_on_clipped_head = warn_on_clipped_head,
       .first_buffer_ready_timeout = options_.first_buffer_ready_timeout,
   };
-}
-
-void LaneSupervisor::WakeMainThread() const noexcept {
-  if (notify_fd_ >= 0) {
-    const uint64_t val = 1;
-    (void)write(notify_fd_, &val, sizeof(val));
-  }
-}
-
-void LaneSupervisor::DrainNotifyFd() const noexcept {
-  if (notify_fd_ < 0) {
-    return;
-  }
-  uint64_t val = 0;
-  while (read(notify_fd_, &val, sizeof(val)) == sizeof(val)) {
-  }
 }
 
 DbusService::MethodResult LaneSupervisor::StartRecording() {
@@ -332,17 +312,16 @@ DbusService::MethodResult LaneSupervisor::CancelOperation(bool commit_raw_text) 
 
 DbusService::MethodResult LaneSupervisor::TranscribeStream(int fd, const std::string& scene_id,
                                                            bool ime) {
+  vinput::file::UniqueFd owned_fd(fd);
   if (shutting_down_.load(std::memory_order_acquire)) {
-    if (fd >= 0) {
-      close(fd);
-    }
     return DbusService::MethodResult::Failure("daemon is shutting down");
   }
 
   const std::string client_id = "stream-" + std::to_string(++stream_seq_);
   auto managed = std::make_unique<ManagedLane>();
   managed->client_id = client_id;
-  auto stream_source = std::make_unique<vinput::daemon::audio::FdStreamAudioSource>(fd);
+  auto stream_source =
+      std::make_unique<vinput::daemon::audio::FdStreamAudioSource>(owned_fd.Release());
   auto* stream_source_ptr = stream_source.get();
   managed->owned_capture = std::move(stream_source);
   managed->sink = std::make_unique<StreamLaneSink>(client_id, dbus_, options_.client_send_to);
@@ -425,11 +404,11 @@ void LaneSupervisor::EnqueueClientCommand(std::string_view client_id,
     command_queue_.push_back(
         QueuedClientCommand{.client_id = std::string(client_id), .command = command});
   }
-  WakeMainThread();
+  vinput::file::SignalEventFd(notify_fd_.Get());
 }
 
 int LaneSupervisor::GetNotifyFd() const noexcept {
-  return notify_fd_;
+  return notify_fd_.Get();
 }
 
 int LaneSupervisor::NextTimeoutMs() const {
@@ -541,7 +520,7 @@ void LaneSupervisor::ReclaimIdleStreamLanes() {
 }
 
 void LaneSupervisor::FlushDeferredActions() {
-  DrainNotifyFd();
+  vinput::file::DrainEventFd(notify_fd_.Get());
   DrainClientCommands();
 
   primary_lane_->ProcessPendingEvents();

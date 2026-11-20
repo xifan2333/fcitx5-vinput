@@ -289,6 +289,81 @@ void TestReloadAsrBackendDelegation() {
   TEST_ASSERT(!state.has_effective_backend);
 }
 
+bool ContainsBroadcast(const std::vector<std::string>& broadcasts, std::string_view needle) {
+  for (const auto& line : broadcasts) {
+    if (line.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void TestPrimaryImeStatusAndClientBroadcastSequence() {
+  using vinput::dbus::Status;
+  TEST_ASSERT(vinput::dbus::StringToStatus(vinput::dbus::kStatusStarting) == Status::Starting);
+  TEST_ASSERT(vinput::dbus::StringToStatus(vinput::dbus::kStatusStopping) == Status::Stopping);
+  TEST_ASSERT(std::string_view(vinput::dbus::StatusToString(Status::Starting)) ==
+              vinput::dbus::kStatusStarting);
+  TEST_ASSERT(std::string_view(vinput::dbus::StatusToString(Status::Stopping)) ==
+              vinput::dbus::kStatusStopping);
+
+  MockAudioInputSource primary_source(15, 16000);
+  std::mutex events_mutex;
+  std::vector<std::string> broadcasts;
+
+  LaneSupervisorOptions opts{
+      .load_config = [] { return MakeConfig(/*duck=*/false); },
+      .create_asr_session =
+          [](const CoreConfig&, BackendDescriptor* desc, std::string*,
+             const std::function<void()>&) {
+            desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
+            return std::make_unique<FakeSession>("primary-ok");
+          },
+      .run_postprocess =
+          [](const PostprocessRequest& req, const CoreConfig&, const std::function<void()>&,
+             const std::atomic<bool>*) {
+            RecognitionPipelineResult res;
+            res.payload.commitText = req.text;
+            return res;
+          },
+      .client_broadcast =
+          [&](std::string_view line) {
+            const std::scoped_lock lock(events_mutex);
+            broadcasts.emplace_back(line);
+          },
+  };
+
+  LaneSupervisor supervisor(&primary_source, nullptr, nullptr, nullptr, std::move(opts));
+  TEST_ASSERT(supervisor.GetStatus() == vinput::dbus::kStatusIdle);
+  TEST_ASSERT(supervisor.StartRecording().ok);
+  TEST_ASSERT(supervisor.GetStatus() == vinput::dbus::kStatusStarting);
+
+  const std::vector<int16_t> pcm(8500, 0);
+  primary_source.PushSamples(pcm);
+  for (int i = 0; i < 50 && supervisor.GetStatus() != vinput::dbus::kStatusRecording; ++i) {
+    supervisor.FlushDeferredActions();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  TEST_ASSERT(supervisor.GetStatus() == vinput::dbus::kStatusRecording);
+
+  TEST_ASSERT(supervisor.StopRecording("").ok);
+  for (int i = 0; i < 100 && supervisor.GetStatus() != vinput::dbus::kStatusIdle; ++i) {
+    supervisor.FlushDeferredActions();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  TEST_ASSERT(supervisor.GetStatus() == vinput::dbus::kStatusIdle);
+
+  {
+    const std::scoped_lock lock(events_mutex);
+    TEST_ASSERT(ContainsBroadcast(broadcasts, R"("status":"starting")"));
+    TEST_ASSERT(ContainsBroadcast(broadcasts, R"("status":"recording")"));
+    TEST_ASSERT(ContainsBroadcast(broadcasts, R"("status":"inferring")"));
+    TEST_ASSERT(ContainsBroadcast(broadcasts, R"("type":"committed")"));
+    TEST_ASSERT(ContainsBroadcast(broadcasts, "primary-ok"));
+    TEST_ASSERT(ContainsBroadcast(broadcasts, R"("status":"idle")"));
+  }
+}
+
 } // namespace
 
 int main() {
@@ -296,6 +371,7 @@ int main() {
   TestMultiLaneIsolationAndConcurrentEnqueue();
   TestTranscribeStreamAndAutoReclaim();
   TestReloadAsrBackendDelegation();
+  TestPrimaryImeStatusAndClientBroadcastSequence();
   std::printf("All test_lane_supervisor passed!\n");
   return 0;
 }

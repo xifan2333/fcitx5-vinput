@@ -19,7 +19,6 @@
 #include <string_view>
 #include <sys/eventfd.h>
 #include <thread>
-#include <unistd.h>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -31,6 +30,7 @@
 #include "common/i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
+#include "common/utils/unique_fd.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/audio/audio_input_source.h"
@@ -132,11 +132,10 @@ bool PushOrderPcm(vinput::daemon::asr::RecognitionSession& session, std::vector<
 SessionLane::SessionLane(SessionLaneDependencies deps) : deps_(std::move(deps)) {
   if (deps_.shared_notify_fd >= 0) {
     notify_fd_ = deps_.shared_notify_fd;
-    owns_notify_fd_ = false;
   } else {
-    notify_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-    owns_notify_fd_ = true;
-    if (notify_fd_ < 0) {
+    owned_notify_fd_.Reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+    notify_fd_ = owned_notify_fd_.Get();
+    if (!owned_notify_fd_.IsValid()) {
       VLOG_ERROR("failed to create session lane notify fd: {}", std::strerror(errno));
     }
   }
@@ -147,17 +146,10 @@ SessionLane::SessionLane(SessionLaneDependencies deps) : deps_(std::move(deps)) 
 
 SessionLane::~SessionLane() {
   Shutdown();
-  if (owns_notify_fd_ && notify_fd_ >= 0) {
-    close(notify_fd_);
-    notify_fd_ = -1;
-  }
 }
 
 void SessionLane::WakeMainThread() const noexcept {
-  if (notify_fd_ >= 0) {
-    const uint64_t val = 1;
-    (void)write(notify_fd_, &val, sizeof(val));
-  }
+  vinput::file::SignalEventFd(notify_fd_);
 }
 
 void SessionLane::PostInboxEvent(InboxEvent event) {
@@ -642,15 +634,10 @@ void SessionLane::DrainIncomingAudio() {
       [this](std::span<const int16_t> pcm) { HandleIncomingPcm(pcm); });
 }
 
-void SessionLane::InspectFirstChunkSpeech(std::span<const int16_t> pcm) {
-  if (attempt_.first_chunk_inspected || pcm.empty()) {
-    return;
+void SessionLane::WarnClippedHeadIfNeeded() {
+  if (!attempt_.first_non_silent_at.has_value()) {
+    attempt_.first_non_silent_at = Clock::now();
   }
-  attempt_.first_chunk_inspected = true;
-  if (!vinput::audio::HasNonSilentAudio(pcm, audio_buffer_.Gain())) {
-    return;
-  }
-  attempt_.first_non_silent_at = Clock::now();
   if (deps_.warn_on_clipped_head && !attempt_.clipped_head_warned) {
     attempt_.clipped_head_warned = true;
     VLOG_WARN("first audio buffer already contains speech-level energy; head may be clipped");
@@ -659,6 +646,16 @@ void SessionLane::InspectFirstChunkSpeech(std::span<const int16_t> pcm) {
           _("Speech detected before microphone was ready; the beginning of your sentence may be "
             "clipped.")));
     }
+  }
+}
+
+void SessionLane::InspectFirstChunkSpeech(std::span<const int16_t> pcm) {
+  if (attempt_.first_chunk_inspected || pcm.empty()) {
+    return;
+  }
+  attempt_.first_chunk_inspected = true;
+  if (vinput::audio::HasNonSilentAudio(pcm, audio_buffer_.Gain())) {
+    WarnClippedHeadIfNeeded();
   }
 }
 
@@ -675,9 +672,15 @@ void SessionLane::HandleIncomingPcm(std::span<const int16_t> pcm) {
     return;
   }
 
+  const bool is_first_chunk = !attempt_.first_chunk_inspected;
+  attempt_.first_chunk_inspected = true;
   const bool has_speech = audio_buffer_.AppendAndDetectSpeech(pcm);
-  if (!attempt_.first_non_silent_at.has_value() && has_speech) {
-    attempt_.first_non_silent_at = Clock::now();
+  if (has_speech) {
+    if (is_first_chunk) {
+      WarnClippedHeadIfNeeded();
+    } else if (!attempt_.first_non_silent_at.has_value()) {
+      attempt_.first_non_silent_at = Clock::now();
+    }
   }
   if (!UsesBufferedDelivery(attempt_.backend)) {
     FlushStreamingChunks();

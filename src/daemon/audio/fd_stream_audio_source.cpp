@@ -21,6 +21,7 @@
 #include "common/audio/wav_probe.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
+#include "common/utils/unique_fd.h"
 
 #include "daemon/audio/audio_input_source.h"
 
@@ -30,13 +31,6 @@ namespace {
 
 constexpr std::size_t kInitialProbeBytes = 1024;
 constexpr std::size_t kReadChunkBytes = 1600; // 50ms of 16kHz 16-bit mono PCM
-
-void CloseFdIfOpen(int& fd) noexcept {
-  if (fd >= 0) {
-    close(fd);
-    fd = -1;
-  }
-}
 
 bool StartsWithRiffPrefix(std::span<const uint8_t> buf) noexcept {
   if (buf.size() < vinput::audio::kFourCcSize) {
@@ -62,7 +56,7 @@ void FdStreamAudioSource::SetEofCallback(EofCallback on_eof) {
 
 bool FdStreamAudioSource::Begin(std::string_view /*target*/, FirstBufferCallback on_first_buffer,
                                 ErrorCallback on_error, std::string* error) {
-  if (fd_ < 0) {
+  if (!fd_.IsValid()) {
     if (error != nullptr) {
       *error = "invalid stream file descriptor";
     }
@@ -75,8 +69,8 @@ bool FdStreamAudioSource::Begin(std::string_view /*target*/, FirstBufferCallback
     return false;
   }
 
-  abort_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (abort_fd_ < 0) {
+  abort_fd_.Reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+  if (!abort_fd_.IsValid()) {
     if (error != nullptr) {
       *error = std::string("failed to create stream abort eventfd: ") + std::strerror(errno);
     }
@@ -108,14 +102,6 @@ bool FdStreamAudioSource::Begin(std::string_view /*target*/, FirstBufferCallback
   return true;
 }
 
-void FdStreamAudioSource::SignalNotifyFd() const noexcept {
-  const int fd = notify_fd_.load(std::memory_order_acquire);
-  if (fd >= 0) {
-    const uint64_t val = 1;
-    (void)write(fd, &val, sizeof(val));
-  }
-}
-
 void FdStreamAudioSource::RecordStreamError(std::string message) {
   VLOG_WARN("fd stream audio source error: {}", message);
   {
@@ -123,7 +109,7 @@ void FdStreamAudioSource::RecordStreamError(std::string message) {
     pending_error_ = std::move(message);
   }
   has_pending_error_.store(true, std::memory_order_release);
-  SignalNotifyFd();
+  vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
 }
 
 FdStreamAudioSource::PollOutcome
@@ -234,7 +220,7 @@ bool FdStreamAudioSource::PushSamplesBlocking(std::span<const int16_t> samples) 
       int64_t expected_zero = 0;
       first_buffer_ns_.compare_exchange_strong(expected_zero, vinput::time::SteadyNowNs(),
                                                std::memory_order_release);
-      SignalNotifyFd();
+      vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
       samples = samples.subspan(written);
     }
   }
@@ -303,8 +289,8 @@ bool FdStreamAudioSource::StreamRemainingChunks(int read_fd, int abort_fd, bool&
 }
 
 void FdStreamAudioSource::ReaderLoop() {
-  const int read_fd = fd_;
-  const int abort_fd = abort_fd_;
+  const int read_fd = fd_.Get();
+  const int abort_fd = abort_fd_.Get();
 
   std::vector<uint8_t> probe_buf;
   bool reached_eof = false;
@@ -334,23 +320,23 @@ void FdStreamAudioSource::ReaderLoop() {
   if (reached_eof ||
       StreamRemainingChunks(read_fd, abort_fd, has_carry, carry_byte, sample_scratch)) {
     eof_.store(true, std::memory_order_release);
-    SignalNotifyFd();
+    vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
   }
 }
 
 void FdStreamAudioSource::StopReaderAndCloseFds() {
   recording_.store(false, std::memory_order_release);
-  stop_requested_.store(true, std::memory_order_release);
-  if (abort_fd_ >= 0) {
-    const uint64_t val = 1;
-    (void)write(abort_fd_, &val, sizeof(val));
+  {
+    const std::scoped_lock lock(mutex_);
+    stop_requested_.store(true, std::memory_order_release);
   }
+  vinput::file::SignalEventFd(abort_fd_.Get());
   space_cv_.notify_all();
   if (reader_thread_.joinable()) {
     reader_thread_.join();
   }
-  CloseFdIfOpen(fd_);
-  CloseFdIfOpen(abort_fd_);
+  fd_.Reset();
+  abort_fd_.Reset();
 }
 
 void FdStreamAudioSource::DispatchPendingError() {

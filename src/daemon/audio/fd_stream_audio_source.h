@@ -12,6 +12,8 @@
 #include <thread>
 #include <vector>
 
+#include "common/utils/unique_fd.h"
+
 #include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/audio_ring_buffer.h"
 
@@ -61,14 +63,13 @@ private:
                           std::vector<int16_t>& scratch);
   bool PushSamplesBlocking(std::span<const int16_t> samples);
   void RecordStreamError(std::string message);
-  void SignalNotifyFd() const noexcept;
   void StopReaderAndCloseFds();
   void DispatchPendingError();
   void DispatchFirstBufferIfReady();
   void DispatchEofIfReady();
 
-  int fd_ = -1;
-  int abort_fd_ = -1;
+  vinput::file::UniqueFd fd_;
+  vinput::file::UniqueFd abort_fd_;
   AudioSampleRingBuffer ring_buffer_;
 
   mutable std::mutex mutex_;

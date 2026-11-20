@@ -8,11 +8,11 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <unistd.h>
 #include <utility>
 #include <vector>
 
 #include "common/utils/time_utils.h"
+#include "common/utils/unique_fd.h"
 
 #include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/audio_ring_buffer.h"
@@ -117,7 +117,7 @@ public:
     if (first_cb) {
       first_cb(now_ns);
     }
-    SignalNotifyFd();
+    vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
     return samples.size();
   }
 
@@ -132,7 +132,7 @@ public:
     if (err_cb) {
       err_cb(error_message);
     }
-    SignalNotifyFd();
+    vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
   }
 
   [[nodiscard]] std::string LastTarget() const {
@@ -141,14 +141,6 @@ public:
   }
 
 private:
-  void SignalNotifyFd() const noexcept {
-    const int fd = notify_fd_.load(std::memory_order_acquire);
-    if (fd >= 0) {
-      const uint64_t val = 1;
-      (void)write(fd, &val, sizeof(val));
-    }
-  }
-
   mutable std::mutex mutex_;
   AudioSampleRingBuffer ring_buffer_;
   bool recording_{false};
