@@ -13,6 +13,7 @@
 #include <pipewire/node.h>
 #include <pipewire/proxy.h>
 #include <pipewire/thread-loop.h>
+#include <pipewire/type.h>
 #include <spa/utils/defs.h>
 #include <spa/utils/dict.h>
 #include <spa/utils/hook.h>
