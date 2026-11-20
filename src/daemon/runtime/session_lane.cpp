@@ -632,6 +632,9 @@ void SessionLane::DrainIncomingAudio() {
   }
   deps_.audio_source->DrainAvailable(
       [this](std::span<const int16_t> pcm) { HandleIncomingPcm(pcm); });
+  if (phase_ == LanePhase::Recording && !UsesBufferedDelivery(attempt_.backend)) {
+    FlushStreamingChunks();
+  }
 }
 
 void SessionLane::WarnClippedHeadIfNeeded() {
@@ -681,9 +684,6 @@ void SessionLane::HandleIncomingPcm(std::span<const int16_t> pcm) {
     } else if (!attempt_.first_non_silent_at.has_value()) {
       attempt_.first_non_silent_at = Clock::now();
     }
-  }
-  if (!UsesBufferedDelivery(attempt_.backend)) {
-    FlushStreamingChunks();
   }
 }
 

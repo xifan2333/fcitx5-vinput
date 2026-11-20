@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -21,6 +22,7 @@
 #include "common/notify/notification_bridge.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
+#include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/mock_audio_input_source.h"
 #include "daemon/audio/output_ducker.h"
 #include "daemon/runtime/lane_event_sink.h"
@@ -591,6 +593,91 @@ void TestStreamErrorAndShutdownInterrupt() {
   TEST_ASSERT(lane.IsIdle());
 }
 
+void TestStreamingPushFailureDoesNotDeadlockConsumerLock() {
+  class LockedDrainSource final : public vinput::daemon::audio::AudioInputSource {
+  public:
+    bool Begin(std::string_view, FirstBufferCallback on_first, ErrorCallback,
+               std::string*) override {
+      recording_ = true;
+      on_first_ = std::move(on_first);
+      return true;
+    }
+    std::vector<int16_t> StopAndDrain() override {
+      const std::scoped_lock lock(consumer_mutex_);
+      recording_ = false;
+      return {};
+    }
+    void Abort() override {
+      const std::scoped_lock lock(consumer_mutex_);
+      recording_ = false;
+    }
+    std::size_t DrainAvailable(SampleConsumer consumer) override {
+      const std::scoped_lock lock(consumer_mutex_);
+      if (!pending_.empty()) {
+        if (on_first_) {
+          auto cb = std::move(on_first_);
+          cb(1);
+        }
+        consumer(pending_);
+        const std::size_t n = pending_.size();
+        pending_.clear();
+        return n;
+      }
+      return 0;
+    }
+    [[nodiscard]] bool IsRecording() const override { return recording_; }
+    [[nodiscard]] std::size_t DroppedSamples() const noexcept override { return 0; }
+    void ResetDropCounters() noexcept override {}
+    [[nodiscard]] std::optional<long> FirstBufferLatencyMs() const override { return 1; }
+
+    void QueueSamples(std::vector<int16_t> pcm) { pending_ = std::move(pcm); }
+
+  private:
+    std::mutex consumer_mutex_;
+    bool recording_ = false;
+    FirstBufferCallback on_first_;
+    std::vector<int16_t> pending_;
+  };
+
+  LockedDrainSource source;
+  RecordingSink sink;
+  auto session_state = std::make_shared<ScriptedSession::SharedState>();
+
+  SessionLaneDependencies deps{
+      .audio_source = &source,
+      .event_sink = &sink,
+      .load_config = [] { return MakeTestConfig(); },
+      .create_asr_session =
+          [&](const CoreConfig&, BackendDescriptor* desc, std::string*,
+              const std::function<void()>&) {
+            desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Chunked;
+            return std::make_unique<ScriptedSession>(session_state);
+          },
+      .warn_on_clipped_head = false,
+  };
+
+  SessionLane lane(std::move(deps));
+  TEST_ASSERT(lane.Start(true, false).ok);
+  source.QueueSamples(std::vector<int16_t>(160, 0));
+  for (int i = 0; i < 50 && lane.CurrentPhase() != LanePhase::Recording; ++i) {
+    lane.ProcessPendingEvents();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  TEST_ASSERT(lane.CurrentPhase() == LanePhase::Recording);
+
+  // Force PushAudio failure on the next chunk while DrainAvailable holds consumer_mutex_.
+  {
+    const std::scoped_lock lock(session_state->mutex);
+    session_state->cancelled = true;
+  }
+  source.QueueSamples(std::vector<int16_t>(800, 0));
+  lane.ProcessPendingEvents();
+
+  TEST_ASSERT(!source.IsRecording());
+  TEST_ASSERT(lane.IsIdle());
+  TEST_ASSERT(sink.HasStatus(vinput::dbus::Status::Error));
+}
+
 } // namespace
 
 int main() {
@@ -602,6 +689,7 @@ int main() {
   TestCancelImmediateStartAndDuckerIsolation();
   TestInjectTextConcurrencyAndPostprocessCancel();
   TestStreamErrorAndShutdownInterrupt();
+  TestStreamingPushFailureDoesNotDeadlockConsumerLock();
   std::printf("All test_session_lane passed!\n");
   return 0;
 }
