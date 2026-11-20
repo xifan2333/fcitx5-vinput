@@ -23,7 +23,7 @@
 
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
-#include "daemon/audio/audio_capture.h"
+#include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/output_ducker.h"
 #include "daemon/runtime/audio_recording_buffer.h"
 #include "daemon/runtime/dbus_service.h"
@@ -46,7 +46,7 @@ struct RecognitionOrder {
 
 class DaemonRuntimeController {
 public:
-  DaemonRuntimeController(AudioCapture* capture, DbusService* dbus,
+  DaemonRuntimeController(vinput::daemon::audio::AudioInputSource* capture, DbusService* dbus,
                           vinput::daemon::asr::RecognitionSessionManager* recognition_manager,
                           RecognitionPipeline* pipeline, std::string owner_client_id = {},
                           int shared_notify_fd = -1);
@@ -114,8 +114,7 @@ private:
                               const CoreConfig& runtime_settings, bool is_command,
                               const std::string& selected_text);
   bool PrepareAndBeginCapture(const std::string& capture_device, const CoreConfig& runtime_settings,
-                              bool is_command, AudioCapture::StartTiming* capture_timing,
-                              std::string* error_message);
+                              bool is_command, std::string* error_message);
   void FeedOrderAudio(RecognitionOrder& order, bool normalize_audio);
   void PushStreamingChunks(std::shared_ptr<vinput::daemon::asr::RecognitionSession> session,
                            std::optional<std::vector<int16_t>> chunk_to_push);
@@ -134,7 +133,7 @@ private:
       bool& apply_pending_reload);
   void WorkerMain();
 
-  AudioCapture* capture_ = nullptr;
+  vinput::daemon::audio::AudioInputSource* capture_ = nullptr;
   DbusService* dbus_ = nullptr;
   vinput::daemon::audio::OutputDucker output_ducker_;
   vinput::daemon::asr::RecognitionSessionManager* recognition_manager_ = nullptr;
@@ -177,7 +176,7 @@ private:
     HeadlessClientLane(HeadlessClientLane&&) = delete;
     HeadlessClientLane& operator=(HeadlessClientLane&&) = delete;
 
-    std::unique_ptr<AudioCapture> capture;
+    std::unique_ptr<vinput::daemon::audio::AudioInputSource> capture;
     std::shared_ptr<DaemonRuntimeController> controller;
     std::string client_id;
     std::thread stream_reader;

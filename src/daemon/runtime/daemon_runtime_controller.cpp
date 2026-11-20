@@ -42,7 +42,7 @@
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
-#include "daemon/audio/audio_types.h"
+#include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/audio_utils.h"
 #include "daemon/notify/desktop_notification_sender.h"
 #include "daemon/runtime/dbus_service.h"
@@ -196,7 +196,7 @@ constexpr size_t kStreamChunkBytes = 1600; // 50ms of 16kHz 16-bit mono PCM (160
 } // namespace
 
 DaemonRuntimeController::DaemonRuntimeController(
-    AudioCapture* capture, DbusService* dbus,
+    vinput::daemon::audio::AudioInputSource* capture, DbusService* dbus,
     vinput::daemon::asr::RecognitionSessionManager* recognition_manager,
     RecognitionPipeline* pipeline, std::string owner_client_id, int shared_notify_fd)
     : capture_(capture), dbus_(dbus), recognition_manager_(recognition_manager),
@@ -310,7 +310,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, boo
 
   if (stop_capture) {
     if (capture_ != nullptr) {
-      capture_->StopAndGetBuffer();
+      capture_->StopAndDrain();
     }
     RestoreOutputIfDucked();
   }
@@ -430,9 +430,7 @@ DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
   // first capture buffers after a cold press. Chunks are only accepted after
   // both capture and session are armed below.
   std::string capture_error;
-  AudioCapture::StartTiming capture_timing;
-  if (!PrepareAndBeginCapture(capture_device, runtime_settings, is_command, &capture_timing,
-                              &capture_error)) {
+  if (!PrepareAndBeginCapture(capture_device, runtime_settings, is_command, &capture_error)) {
     {
       const std::scoped_lock lock(state_mutex_);
       AbortRecordingStartupLocked();
@@ -480,10 +478,8 @@ DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
   }
 
   const long start_total_ms = static_cast<long>(vinput::time::MillisecondsSince(start_enter_at));
-  VLOG_DEBUG("start timing command={} session_ms={} idle_gap_ms={} "
-             "create_stream_ms={} start_total_ms={} backend={}",
-             is_command, session_ms, capture_timing.idle_gap_ms, capture_timing.create_stream_ms,
-             start_total_ms, active_backend.backend_id);
+  VLOG_DEBUG("start timing command={} session_ms={} start_total_ms={} backend={}", is_command,
+             session_ms, start_total_ms, active_backend.backend_id);
 
   NotifyStatusChanged(vinput::dbus::Status::Recording);
   if (is_command) {
@@ -498,13 +494,7 @@ void DaemonRuntimeController::DrainIncomingAudio() {
   if (capture_ == nullptr || !accepting_chunks_.load(std::memory_order_relaxed)) {
     return;
   }
-  vinput::audio::AudioPcmChunk chunk;
-  while (capture_->TryDequeue(chunk)) {
-    if (chunk.size <= 0) {
-      continue;
-    }
-    HandleIncomingAudio(chunk.AsSpan());
-  }
+  capture_->DrainAvailable([this](std::span<const int16_t> pcm) { HandleIncomingAudio(pcm); });
 }
 
 void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) {
@@ -574,7 +564,7 @@ bool DaemonRuntimeController::TryBeginRecordingStartupLocked(bool ime) {
 
 void DaemonRuntimeController::AbortAndScheduleCaptureStop() {
   if (capture_ != nullptr) {
-    capture_->EndRecording();
+    capture_->Abort();
   }
   {
     const std::scoped_lock lock(state_mutex_);
@@ -646,18 +636,24 @@ void DaemonRuntimeController::PushStreamingChunks(
 
 bool DaemonRuntimeController::PrepareAndBeginCapture(const std::string& capture_device,
                                                      const CoreConfig& runtime_settings,
-                                                     bool is_command,
-                                                     AudioCapture::StartTiming* capture_timing,
-                                                     std::string* error_message) {
+                                                     bool is_command, std::string* error_message) {
   if (capture_ == nullptr) {
     return true;
   }
   std::string error;
   const std::string target_device =
       capture_device.empty() ? runtime_settings.global.captureDevice : capture_device;
-  capture_->SetTargetObject(target_device);
   capture_->SetNotifyFd(notify_fd_);
-  if (!capture_->BeginRecording(&error, capture_timing)) {
+  auto on_err = [this](std::string_view err_msg) {
+    VLOG_ERROR("audio input stream error: {}", err_msg);
+    if (dbus_ != nullptr) {
+      dbus_->EmitDesktopNotification(
+          vinput::daemon::notify::MakeDaemonErrorNotification(std::string(err_msg)));
+    }
+    ScheduleCaptureStopOnMainThread();
+  };
+  const bool begin_ok = capture_->Begin(target_device, nullptr, std::move(on_err), &error);
+  if (!begin_ok) {
     std::string message =
         is_command ? _("Failed to start command recording.") : _("Failed to start recording.");
     if (!error.empty()) {
@@ -710,13 +706,11 @@ std::vector<int16_t> DaemonRuntimeController::StopCaptureAndDrainMetrics() {
   } else {
     VLOG_DEBUG("capture first_buffer_ms=-1 (no buffer before stop)");
   }
-  const auto dropped_chunks = capture_->DroppedChunks();
   const auto dropped_samples = capture_->DroppedSamples();
-  if (dropped_chunks > 0 || dropped_samples > 0) {
-    VLOG_WARN("capture audio queue dropped {} chunks ({} samples) due to overflow", dropped_chunks,
-              dropped_samples);
+  if (dropped_samples > 0) {
+    VLOG_WARN("capture audio queue dropped {} samples due to overflow", dropped_samples);
   }
-  auto captured = capture_->StopAndGetBuffer();
+  auto captured = capture_->StopAndDrain();
   RestoreOutputIfDucked();
   return captured;
 }
@@ -865,7 +859,7 @@ bool DaemonRuntimeController::FailActiveSession(
         vinput::daemon::notify::MakeDaemonErrorNotification(error_message));
   }
   if (capture_ != nullptr) {
-    capture_->EndRecording();
+    capture_->Abort();
   }
   RestoreOutputIfDucked();
   ScheduleCaptureStopOnMainThread();
@@ -1047,7 +1041,7 @@ void DaemonRuntimeController::FlushSingleLaneDeferredActions() {
   }
 
   if (capture_ != nullptr) {
-    capture_->Stop();
+    capture_->Abort();
   }
   RestoreOutputIfDucked();
   ResetToIdle();
@@ -1169,7 +1163,7 @@ void DaemonRuntimeController::Shutdown() {
   pending_capture_stop_.store(false, std::memory_order_relaxed);
   if (capture_ != nullptr) {
     capture_->SetNotifyFd(-1);
-    capture_->Stop();
+    capture_->Abort();
   }
   RestoreOutputIfDucked();
   {
@@ -1401,12 +1395,13 @@ DaemonRuntimeController::GetOrCreateHeadlessLane(std::string_view client_id) {
 
   auto lane = std::make_shared<HeadlessClientLane>();
   lane->client_id = key;
-  lane->capture = std::make_unique<AudioCapture>();
+  auto cap = std::make_unique<AudioCapture>();
   std::string cap_err;
-  if (!lane->capture->Start(&cap_err)) {
+  if (!cap->Start(&cap_err)) {
     VLOG_ERROR("failed to start audio capture for headless lane '{}': {}", key, cap_err);
     return nullptr;
   }
+  lane->capture = std::move(cap);
 
   lane->controller = std::make_shared<DaemonRuntimeController>(
       lane->capture.get(), /*dbus=*/nullptr, recognition_manager_, pipeline_, key, notify_fd_);

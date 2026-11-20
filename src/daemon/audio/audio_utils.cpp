@@ -28,16 +28,6 @@ void PeakNormalize(std::vector<float>& samples, float target_peak, float low_thr
   }
 }
 
-void ApplyGain(std::vector<float>& samples, float gain) {
-  if (samples.empty() || gain == 1.0F) {
-    return;
-  }
-
-  for (float& s : samples) {
-    s = std::clamp(s * gain, -1.0F, 1.0F);
-  }
-}
-
 void ApplyGainI16(std::span<int16_t> samples, float gain) {
   if (samples.empty() || gain == 1.0F) {
     return;

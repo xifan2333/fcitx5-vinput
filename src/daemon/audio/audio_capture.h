@@ -1,37 +1,37 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <optional>
 #include <pipewire/stream.h>
 #include <pipewire/thread-loop.h>
-#include <readerwriterqueue.h>
 #include <spa/utils/hook.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
 
-#include "daemon/audio/audio_types.h"
+#include "daemon/audio/audio_input_source.h"
+#include "daemon/audio/audio_ring_buffer.h"
+#include "daemon/audio/pipewire_control_plane.h"
 
 struct spa_pod;
 
-class AudioCapture {
+class AudioCapture : public vinput::daemon::audio::AudioInputSource {
 public:
-  // Default preallocated capacity: 2048 chunks (approx 4.3 minutes at 16 kHz).
-  static constexpr std::size_t kDefaultQueueCapacity = 2048;
+  // Default preallocated ring buffer capacity: 15 seconds at 16 kHz (< 500 KB footprint).
+  static constexpr std::size_t kDefaultCapacitySeconds = 15;
 
   // Timing for one BeginRecording call (milliseconds; -1 = unknown).
   struct StartTiming {
-    long idle_gap_ms = -1;
     long create_stream_ms = -1;
   };
 
   AudioCapture();
-  ~AudioCapture();
+  ~AudioCapture() override;
 
   AudioCapture(const AudioCapture&) = delete;
   AudioCapture& operator=(const AudioCapture&) = delete;
@@ -39,31 +39,28 @@ public:
   AudioCapture& operator=(AudioCapture&&) = delete;
 
   bool Start(std::string* error = nullptr);
+
+  // AudioInputSource interface
+  bool Begin(std::string_view target = {}, FirstBufferCallback on_first_buffer = nullptr,
+             ErrorCallback on_error = nullptr, std::string* error = nullptr) override;
+  std::vector<int16_t> StopAndDrain() override;
+  void Abort() override;
+  std::size_t DrainAvailable(SampleConsumer consumer) override;
+  [[nodiscard]] bool IsRecording() const override;
+  [[nodiscard]] std::size_t DroppedSamples() const noexcept override;
+  void ResetDropCounters() noexcept override;
+  [[nodiscard]] std::optional<long> FirstBufferLatencyMs() const override;
+
+  // Compatibility and timing inspection APIs
+  bool BeginRecording(std::string* error = nullptr, StartTiming* timing = nullptr);
   std::vector<int16_t> StopAndGetBuffer();
   void Stop();
-  bool BeginRecording(std::string* error = nullptr, StartTiming* timing = nullptr);
   void EndRecording();
-  bool IsRecording() const;
   void SetTargetObject(std::string target_object);
 
-  // SPSC lock-free dequeue for downstream audio consumers.
-  // Returns true if a chunk was dequeued, false if queue is empty.
-  bool TryDequeue(vinput::audio::AudioPcmChunk& chunk);
-
-  // Set an optional eventfd (non-blocking) signaled when audio chunks are enqueued.
+  // Set an optional eventfd (non-blocking) signaled when audio samples are enqueued.
   // Pass -1 to disable.
-  void SetNotifyFd(int fd) noexcept;
-
-  // Approximate number of chunks currently waiting in the lock-free queue.
-  [[nodiscard]] std::size_t ApproxQueueSize() const;
-
-  // Real-time drop statistics when the queue is full.
-  [[nodiscard]] std::size_t DroppedChunks() const noexcept;
-  [[nodiscard]] std::size_t DroppedSamples() const noexcept;
-  void ResetDropCounters() noexcept;
-
-  // Latency from BeginRecording arm to first non-empty process buffer, if any.
-  std::optional<long> FirstBufferLatencyMs() const;
+  void SetNotifyFd(int fd) noexcept override;
 
 private:
   static void onProcess(void* userdata);
@@ -79,25 +76,26 @@ private:
   void MarkStreamDestroyed();
   std::string CurrentTargetObject() const;
 
-  // SPSC Lock-free ringbuffer and real-time safe drop telemetry
-  moodycamel::ReaderWriterQueue<vinput::audio::AudioPcmChunk> queue_{kDefaultQueueCapacity};
+  // SPSC compact sample-level ring buffer (< 500 KB)
+  vinput::daemon::audio::AudioSampleRingBuffer ring_buffer_{kDefaultCapacitySeconds, 16000};
   pw_thread_loop* loop_ = nullptr;
   std::atomic<pw_stream*> stream_{nullptr};
-  vinput::pw::ControlPlane control_plane_;
-  std::atomic<std::size_t> dropped_chunks_{0};
+  vinput::daemon::audio::PipeWireControlPlane control_plane_;
   std::atomic<std::size_t> dropped_samples_{0};
 
   // Lock-free first-buffer timing (nanoseconds since epoch; 0 = unrecorded)
   std::atomic<int64_t> recording_armed_ns_{0};
   std::atomic<int64_t> first_buffer_ns_{0};
-
-  // Idle gap timing (main/worker thread, guarded by timing_mutex_)
-  std::optional<std::chrono::steady_clock::time_point> last_stream_destroyed_at_;
+  std::atomic<bool> first_buffer_notified_{false};
+  std::atomic<bool> has_pending_error_{false};
 
   std::string target_object_;
   mutable std::mutex target_mutex_;
-  mutable std::mutex timing_mutex_;
   std::mutex consumer_mutex_;
+  mutable std::mutex callback_mutex_;
+  FirstBufferCallback on_first_buffer_;
+  ErrorCallback on_error_;
+  std::string pending_error_;
 
   pw_stream_events stream_events_{};
   spa_hook stream_listener_{};

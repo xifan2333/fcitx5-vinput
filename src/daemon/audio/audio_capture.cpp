@@ -1,6 +1,5 @@
 #include "audio_capture.h"
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -26,7 +25,9 @@
 #include <spa/pod/pod.h>
 #include <spa/utils/defs.h>
 #include <spa/utils/hook.h>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -36,7 +37,8 @@
 #include "common/utils/scope_guard.h"
 #include "common/utils/time_utils.h"
 
-#include "daemon/audio/audio_types.h"
+#include "daemon/audio/audio_ring_buffer.h"
+#include "daemon/audio/pipewire_control_plane.h"
 
 namespace {
 
@@ -45,7 +47,7 @@ pw_properties* BuildCaptureProperties(const vinput::pw::ResolvedCaptureTarget& r
   auto* properties =
       pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture",
                         PW_KEY_MEDIA_ROLE, "Communication", PW_KEY_STREAM_CAPTURE_SINK,
-                        capture_sink_str, PW_KEY_NODE_LATENCY, "128/16000", nullptr);
+                        capture_sink_str, PW_KEY_NODE_LATENCY, "480/16000", nullptr);
   if (properties == nullptr) {
     return nullptr;
   }
@@ -135,32 +137,19 @@ void AudioCapture::processCallback() {
     return;
   }
 
-  int64_t expected_zero = 0;
-  const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                             std::chrono::steady_clock::now().time_since_epoch())
-                             .count();
-  first_buffer_ns_.compare_exchange_strong(expected_zero, now_ns, std::memory_order_relaxed);
-
-  bool enqueued_any = false;
-  uint32_t offset_samples = 0;
-  while (offset_samples < n_samples) {
-    const uint32_t to_copy =
-        std::min<uint32_t>(n_samples - offset_samples, vinput::audio::kMaxChunkSamples);
-    vinput::audio::AudioPcmChunk chunk;
-    std::memcpy(chunk.samples.data(), raw + offset + (offset_samples * sizeof(int16_t)),
-                to_copy * sizeof(int16_t));
-    chunk.size = to_copy;
-
-    if (!queue_.try_enqueue(chunk)) {
-      dropped_chunks_.fetch_add(1, std::memory_order_relaxed);
-      dropped_samples_.fetch_add(chunk.size, std::memory_order_relaxed);
-    } else {
-      enqueued_any = true;
-    }
-    offset_samples += to_copy;
+  const auto* samples = reinterpret_cast<const int16_t*>(raw + offset);
+  const std::size_t written = ring_buffer_.Write(std::span<const int16_t>(samples, n_samples));
+  if (written < n_samples) {
+    dropped_samples_.fetch_add(n_samples - written, std::memory_order_relaxed);
   }
 
-  if (enqueued_any) {
+  if (written > 0) {
+    int64_t expected_zero = 0;
+    const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
+    first_buffer_ns_.compare_exchange_strong(expected_zero, now_ns, std::memory_order_relaxed);
+
     const int notify_fd = notify_fd_.load(std::memory_order_relaxed);
     if (notify_fd >= 0) {
       const uint64_t val = 1;
@@ -186,13 +175,27 @@ void AudioCapture::onParamChanged(void* userdata, uint32_t id, const spa_pod* pa
 
 void AudioCapture::onStateChanged(void* userdata, pw_stream_state old, pw_stream_state state,
                                   const char* error) {
-  (void)userdata;
+  auto* self = static_cast<AudioCapture*>(userdata);
   const char* err_str = (error != nullptr && error[0] != '\0') ? error : nullptr;
   VLOG_DEBUG("capture stream state: {} -> {}{}{}", pw_stream_state_as_string(old),
              pw_stream_state_as_string(state), err_str != nullptr ? " error=" : "",
              err_str != nullptr ? err_str : "");
   if (state == PW_STREAM_STATE_ERROR) {
-    VLOG_ERROR("PipeWire stream error: {}", err_str != nullptr ? err_str : "unknown error");
+    const std::string err_msg = err_str != nullptr ? err_str : "PipeWire stream error";
+    VLOG_ERROR("PipeWire stream error: {}", err_msg);
+    if (self != nullptr) {
+      self->recording_.store(false, std::memory_order_relaxed);
+      {
+        const std::scoped_lock lock(self->callback_mutex_);
+        self->pending_error_ = err_msg;
+      }
+      self->has_pending_error_.store(true, std::memory_order_release);
+      const int notify_fd = self->notify_fd_.load(std::memory_order_relaxed);
+      if (notify_fd >= 0) {
+        const uint64_t val = 1;
+        (void)write(notify_fd, &val, sizeof(val));
+      }
+    }
   }
 }
 
@@ -293,10 +296,14 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
 }
 
 void AudioCapture::MarkStreamDestroyed() {
-  const std::scoped_lock lock(timing_mutex_);
-  last_stream_destroyed_at_ = std::chrono::steady_clock::now();
   recording_armed_ns_.store(0, std::memory_order_release);
   first_buffer_ns_.store(0, std::memory_order_release);
+  first_buffer_notified_.store(false, std::memory_order_release);
+  has_pending_error_.store(false, std::memory_order_release);
+  const std::scoped_lock lock(callback_mutex_);
+  on_first_buffer_ = nullptr;
+  on_error_ = nullptr;
+  pending_error_.clear();
 }
 
 void AudioCapture::DestroyStream() {
@@ -317,9 +324,7 @@ void AudioCapture::DestroyStream() {
 
 void AudioCapture::DrainQueue() {
   const std::scoped_lock lock(consumer_mutex_);
-  vinput::audio::AudioPcmChunk discard;
-  while (queue_.try_dequeue(discard)) {
-  }
+  ring_buffer_.Clear();
 }
 
 void AudioCapture::ArmRecording() noexcept {
@@ -327,6 +332,7 @@ void AudioCapture::ArmRecording() noexcept {
                                std::chrono::steady_clock::now().time_since_epoch())
                                .count();
   first_buffer_ns_.store(0, std::memory_order_release);
+  first_buffer_notified_.store(false, std::memory_order_release);
   recording_armed_ns_.store(begin_ns, std::memory_order_release);
 }
 
@@ -339,14 +345,6 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
   }
 
   StartTiming local_timing;
-  const auto begin_at = std::chrono::steady_clock::now();
-  {
-    const std::scoped_lock lock(timing_mutex_);
-    if (last_stream_destroyed_at_.has_value()) {
-      local_timing.idle_gap_ms =
-          vinput::time::MillisecondsBetween(*last_stream_destroyed_at_, begin_at);
-    }
-  }
 
   DrainQueue();
   ResetDropCounters();
@@ -373,13 +371,80 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
   local_timing.create_stream_ms =
       vinput::time::MillisecondsBetween(create_start, std::chrono::steady_clock::now());
 
-  VLOG_DEBUG("capture begin idle_gap_ms={} create_stream_ms={}", local_timing.idle_gap_ms,
-             local_timing.create_stream_ms);
+  VLOG_DEBUG("capture begin create_stream_ms={}", local_timing.create_stream_ms);
 
   if (timing != nullptr) {
     *timing = local_timing;
   }
   return true;
+}
+
+bool AudioCapture::Begin(std::string_view target, FirstBufferCallback on_first_buffer,
+                         ErrorCallback on_error, std::string* error) {
+  SetTargetObject(std::string(target));
+  if (!BeginRecording(error, nullptr)) {
+    return false;
+  }
+  {
+    const std::scoped_lock lock(callback_mutex_);
+    on_first_buffer_ = std::move(on_first_buffer);
+    on_error_ = std::move(on_error);
+  }
+  return true;
+}
+
+std::vector<int16_t> AudioCapture::StopAndDrain() {
+  if (has_pending_error_.load(std::memory_order_acquire)) {
+    has_pending_error_.store(false, std::memory_order_relaxed);
+    ErrorCallback err_cb;
+    std::string err_msg;
+    {
+      const std::scoped_lock lock(callback_mutex_);
+      err_cb = on_error_;
+      err_msg = std::move(pending_error_);
+    }
+    if (err_cb) {
+      err_cb(err_msg);
+    }
+  }
+  return StopAndGetBuffer();
+}
+
+void AudioCapture::Abort() {
+  EndRecording();
+}
+
+std::size_t AudioCapture::DrainAvailable(SampleConsumer consumer) {
+  if (has_pending_error_.load(std::memory_order_acquire)) {
+    has_pending_error_.store(false, std::memory_order_relaxed);
+    ErrorCallback err_cb;
+    std::string err_msg;
+    {
+      const std::scoped_lock lock(callback_mutex_);
+      err_cb = on_error_;
+      err_msg = std::move(pending_error_);
+    }
+    if (err_cb) {
+      err_cb(err_msg);
+    }
+  }
+
+  if (!first_buffer_notified_.load(std::memory_order_relaxed)) {
+    const int64_t fb_ns = first_buffer_ns_.load(std::memory_order_acquire);
+    if (fb_ns > 0) {
+      first_buffer_notified_.store(true, std::memory_order_relaxed);
+      FirstBufferCallback cb;
+      {
+        const std::scoped_lock lock(callback_mutex_);
+        cb = on_first_buffer_;
+      }
+      if (cb) {
+        cb(fb_ns);
+      }
+    }
+  }
+  const std::scoped_lock lock(consumer_mutex_);
+  return ring_buffer_.DrainAvailable(std::move(consumer));
 }
 
 void AudioCapture::EndRecording() {
@@ -391,12 +456,7 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
   DestroyStream();
 
   const std::scoped_lock lock(consumer_mutex_);
-  std::vector<int16_t> result;
-  vinput::audio::AudioPcmChunk chunk;
-  while (queue_.try_dequeue(chunk)) {
-    result.insert(result.end(), chunk.samples.begin(), chunk.samples.begin() + chunk.size);
-  }
-  return result;
+  return ring_buffer_.DrainAll();
 }
 
 void AudioCapture::Stop() {
@@ -407,21 +467,8 @@ bool AudioCapture::IsRecording() const {
   return recording_.load(std::memory_order_relaxed);
 }
 
-bool AudioCapture::TryDequeue(vinput::audio::AudioPcmChunk& chunk) {
-  const std::scoped_lock lock(consumer_mutex_);
-  return queue_.try_dequeue(chunk);
-}
-
 void AudioCapture::SetNotifyFd(int fd) noexcept {
   notify_fd_.store(fd, std::memory_order_release);
-}
-
-std::size_t AudioCapture::ApproxQueueSize() const {
-  return queue_.size_approx();
-}
-
-std::size_t AudioCapture::DroppedChunks() const noexcept {
-  return dropped_chunks_.load(std::memory_order_relaxed);
 }
 
 std::size_t AudioCapture::DroppedSamples() const noexcept {
@@ -429,7 +476,6 @@ std::size_t AudioCapture::DroppedSamples() const noexcept {
 }
 
 void AudioCapture::ResetDropCounters() noexcept {
-  dropped_chunks_.store(0, std::memory_order_relaxed);
   dropped_samples_.store(0, std::memory_order_relaxed);
 }
 
