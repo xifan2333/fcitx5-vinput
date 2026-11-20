@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <deque>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -1038,16 +1040,27 @@ void SessionLane::ExecuteProcessOrder(ProcessOrderTask task) {
   }
 
   std::string recognition_error;
-  const bool recognition_ok = RunRecognitionOnWorker(task, &recognition_error);
-  task.session.reset();
-
+  bool recognition_ok = false;
   RecognitionPipelineResult pipeline_result;
-  if (recognition_ok && !task.postprocess_request.text.empty() && deps_.run_postprocess) {
-    pipeline_result = deps_.run_postprocess(
-        task.postprocess_request, task.settings,
-        [this, token = task.token] { PostInboxEvent(EnterPostprocessingEvent{.token = token}); },
-        task.cancel_flag.get());
+  try {
+    recognition_ok = RunRecognitionOnWorker(task, &recognition_error);
+    task.session.reset();
+    if (recognition_ok && !task.postprocess_request.text.empty() && deps_.run_postprocess) {
+      pipeline_result = deps_.run_postprocess(
+          task.postprocess_request, task.settings,
+          [this, token = task.token] { PostInboxEvent(EnterPostprocessingEvent{.token = token}); },
+          task.cancel_flag.get());
+    }
+  } catch (const std::exception& e) {
+    VLOG_ERROR("worker exception: {}", e.what());
+    recognition_ok = false;
+    recognition_error = e.what();
+  } catch (...) {
+    VLOG_ERROR("worker unknown exception");
+    recognition_ok = false;
+    recognition_error = _("Unknown error during processing.");
   }
+  task.session.reset();
 
   {
     const std::scoped_lock lock(worker_mutex_);

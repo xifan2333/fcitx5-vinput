@@ -45,12 +45,10 @@ add_library(
   audio/pipewire_control_plane.cpp
   notify/desktop_notification_sender.cpp
   runtime/dbus_service.cpp
-  runtime/daemon_runtime_controller.cpp
+  runtime/lane_supervisor.cpp
   runtime/recognition_pipeline.cpp
   runtime/audio_recording_buffer.cpp
   runtime/session_lane.cpp
-  runtime/session_lifecycle_manager.cpp
-  runtime/runtime_state_machine.cpp
   postprocess/post_processor.cpp
   postprocess/prompt_template.cpp
   postprocess/candidate_parser.cpp
