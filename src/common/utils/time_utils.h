@@ -67,4 +67,20 @@ inline int64_t CurrentUnixTimestampMs() noexcept {
                                   .count());
 }
 
+// Current steady-clock timestamp in nanoseconds.
+inline int64_t SteadyNowNs() noexcept {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+// Elapsed milliseconds between two positive steady-clock nanosecond timestamps.
+// Returns nullopt if either timestamp is unset (<= 0) or end precedes start.
+inline std::optional<long> ElapsedMsFromNs(int64_t start_ns, int64_t end_ns) noexcept {
+  if (start_ns <= 0 || end_ns <= 0 || end_ns < start_ns) {
+    return std::nullopt;
+  }
+  return static_cast<long>((end_ns - start_ns) / 1'000'000L);
+}
+
 } // namespace vinput::time

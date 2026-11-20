@@ -145,10 +145,8 @@ void AudioCapture::processCallback() {
 
   if (written > 0) {
     int64_t expected_zero = 0;
-    const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                               std::chrono::steady_clock::now().time_since_epoch())
-                               .count();
-    first_buffer_ns_.compare_exchange_strong(expected_zero, now_ns, std::memory_order_relaxed);
+    first_buffer_ns_.compare_exchange_strong(expected_zero, vinput::time::SteadyNowNs(),
+                                             std::memory_order_relaxed);
 
     const int notify_fd = notify_fd_.load(std::memory_order_relaxed);
     if (notify_fd >= 0) {
@@ -328,12 +326,9 @@ void AudioCapture::DrainQueue() {
 }
 
 void AudioCapture::ArmRecording() noexcept {
-  const int64_t begin_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                               std::chrono::steady_clock::now().time_since_epoch())
-                               .count();
   first_buffer_ns_.store(0, std::memory_order_release);
   first_buffer_notified_.store(false, std::memory_order_release);
-  recording_armed_ns_.store(begin_ns, std::memory_order_release);
+  recording_armed_ns_.store(vinput::time::SteadyNowNs(), std::memory_order_release);
 }
 
 bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
@@ -480,12 +475,8 @@ void AudioCapture::ResetDropCounters() noexcept {
 }
 
 std::optional<long> AudioCapture::FirstBufferLatencyMs() const {
-  const int64_t armed = recording_armed_ns_.load(std::memory_order_acquire);
-  const int64_t first = first_buffer_ns_.load(std::memory_order_acquire);
-  if (armed <= 0 || first <= 0 || first < armed) {
-    return std::nullopt;
-  }
-  return static_cast<long>((first - armed) / 1'000'000L);
+  return vinput::time::ElapsedMsFromNs(recording_armed_ns_.load(std::memory_order_acquire),
+                                       first_buffer_ns_.load(std::memory_order_acquire));
 }
 
 void AudioCapture::SetTargetObject(std::string target_object) {

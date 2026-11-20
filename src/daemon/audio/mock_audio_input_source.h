@@ -1,7 +1,6 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -12,6 +11,8 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+
+#include "common/utils/time_utils.h"
 
 #include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/audio_ring_buffer.h"
@@ -42,9 +43,7 @@ public:
     on_first_buffer_ = std::move(on_first_buffer);
     on_error_ = std::move(on_error);
     recording_ = true;
-    recording_armed_ns_ = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                              std::chrono::steady_clock::now().time_since_epoch())
-                              .count();
+    recording_armed_ns_ = vinput::time::SteadyNowNs();
     first_buffer_ns_ = 0;
     ring_buffer_.Clear();
     return true;
@@ -91,11 +90,7 @@ public:
     if (simulated_latency_ms_.has_value()) {
       return simulated_latency_ms_;
     }
-    if (recording_armed_ns_ <= 0 || first_buffer_ns_ <= 0 ||
-        first_buffer_ns_ < recording_armed_ns_) {
-      return std::nullopt;
-    }
-    return static_cast<long>((first_buffer_ns_ - recording_armed_ns_) / 1'000'000L);
+    return vinput::time::ElapsedMsFromNs(recording_armed_ns_, first_buffer_ns_);
   }
 
   // --- Test Injection APIs ---
@@ -114,9 +109,7 @@ public:
         dropped_samples_.fetch_add(samples.size() - written, std::memory_order_relaxed);
       }
       if (written > 0 && first_buffer_ns_ == 0) {
-        now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                     std::chrono::steady_clock::now().time_since_epoch())
-                     .count();
+        now_ns = vinput::time::SteadyNowNs();
         first_buffer_ns_ = now_ns;
         first_cb = on_first_buffer_;
       }

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -21,6 +20,7 @@
 
 #include "common/audio/wav_probe.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/time_utils.h"
 
 #include "daemon/audio/audio_input_source.h"
 
@@ -30,12 +30,6 @@ namespace {
 
 constexpr std::size_t kInitialProbeBytes = 1024;
 constexpr std::size_t kReadChunkBytes = 1600; // 50ms of 16kHz 16-bit mono PCM
-
-int64_t SteadyNowNs() noexcept {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
 
 void CloseFdIfOpen(int& fd) noexcept {
   if (fd >= 0) {
@@ -104,7 +98,7 @@ bool FdStreamAudioSource::Begin(std::string_view /*target*/, FirstBufferCallback
   has_pending_error_.store(false, std::memory_order_release);
   first_buffer_ns_.store(0, std::memory_order_release);
   dropped_samples_.store(0, std::memory_order_relaxed);
-  recording_armed_ns_.store(SteadyNowNs(), std::memory_order_release);
+  recording_armed_ns_.store(vinput::time::SteadyNowNs(), std::memory_order_release);
   recording_.store(true, std::memory_order_release);
 
   reader_thread_ = std::thread([this] { ReaderLoop(); });
@@ -238,7 +232,7 @@ bool FdStreamAudioSource::PushSamplesBlocking(std::span<const int16_t> samples) 
 
     if (written > 0) {
       int64_t expected_zero = 0;
-      first_buffer_ns_.compare_exchange_strong(expected_zero, SteadyNowNs(),
+      first_buffer_ns_.compare_exchange_strong(expected_zero, vinput::time::SteadyNowNs(),
                                                std::memory_order_release);
       SignalNotifyFd();
       samples = samples.subspan(written);
@@ -466,12 +460,8 @@ void FdStreamAudioSource::ResetDropCounters() noexcept {
 }
 
 std::optional<long> FdStreamAudioSource::FirstBufferLatencyMs() const {
-  const int64_t armed = recording_armed_ns_.load(std::memory_order_acquire);
-  const int64_t first = first_buffer_ns_.load(std::memory_order_acquire);
-  if (armed <= 0 || first <= 0 || first < armed) {
-    return std::nullopt;
-  }
-  return static_cast<long>((first - armed) / 1'000'000L);
+  return vinput::time::ElapsedMsFromNs(recording_armed_ns_.load(std::memory_order_acquire),
+                                       first_buffer_ns_.load(std::memory_order_acquire));
 }
 
 } // namespace vinput::daemon::audio
