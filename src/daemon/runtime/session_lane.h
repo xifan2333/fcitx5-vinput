@@ -251,7 +251,7 @@ private:
   AudioRecordingBuffer audio_buffer_;
   std::vector<std::shared_ptr<vinput::daemon::asr::RecognitionSession>> retired_sessions_;
 
-  std::mutex inbox_mutex_;
+  mutable std::mutex inbox_mutex_;
   std::deque<InboxEvent> inbox_;
 
   std::mutex worker_mutex_;
