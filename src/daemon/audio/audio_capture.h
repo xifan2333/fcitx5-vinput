@@ -16,6 +16,7 @@
 #include "common/audio/pipewire_device.h"
 
 #include "daemon/audio/audio_types.h"
+#include "daemon/audio/pipewire_control_plane.h"
 
 struct spa_pod;
 
@@ -83,7 +84,7 @@ private:
   moodycamel::ReaderWriterQueue<vinput::audio::AudioPcmChunk> queue_{kDefaultQueueCapacity};
   pw_thread_loop* loop_ = nullptr;
   std::atomic<pw_stream*> stream_{nullptr};
-  vinput::pw::ControlPlane control_plane_;
+  vinput::daemon::audio::PipeWireControlPlane control_plane_;
   std::atomic<std::size_t> dropped_chunks_{0};
   std::atomic<std::size_t> dropped_samples_{0};
 

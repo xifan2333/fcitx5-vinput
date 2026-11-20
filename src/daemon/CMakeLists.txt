@@ -41,6 +41,7 @@ add_library(
   audio/audio_capture.cpp
   audio/audio_utils.cpp
   audio/output_ducker.cpp
+  audio/pipewire_control_plane.cpp
   notify/desktop_notification_sender.cpp
   runtime/dbus_service.cpp
   runtime/daemon_runtime_controller.cpp

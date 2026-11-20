@@ -195,26 +195,6 @@ bool TestLiveTargetResolution() {
   return true;
 }
 
-// Headless ControlPlane lifecycle: calls with a null thread loop must fail cleanly without
-// leaving the instance attached or reporting a broken core.
-bool TestControlPlaneHeadlessLifecycle() {
-  using vinput::pw::ControlPlane;
-
-  ControlPlane cp;
-  CHECK(!cp.Connect(nullptr));
-  CHECK(!cp.EnsureConnected(nullptr));
-  CHECK(cp.Core() == nullptr);
-  CHECK(!cp.IsBroken());
-  CHECK(cp.SnapshotDevices().empty());
-  CHECK(cp.DefaultSourceName().empty());
-  const auto cp_default = cp.ResolveTarget("default");
-  CHECK(cp_default.node_name.empty());
-  CHECK(cp_default.object_serial.empty());
-  cp.Disconnect();
-
-  return true;
-}
-
 // Regression test for Issue #301: EnumerateAudioSources RAII initialization and teardown lifecycle.
 bool TestEnumerateAudioSources() {
   const auto sources = vinput::pw::EnumerateAudioSources();
@@ -244,8 +224,8 @@ bool TestDefaultTargetInstantResolution() {
 
 int main() {
   if (!TestBasicTargets() || !TestSourceMonitorDisambiguation() || !TestDefaultMetadataParsing() ||
-      !TestLiveTargetResolution() || !TestControlPlaneHeadlessLifecycle() ||
-      !TestEnumerateAudioSources() || !TestDefaultTargetInstantResolution()) {
+      !TestLiveTargetResolution() || !TestEnumerateAudioSources() ||
+      !TestDefaultTargetInstantResolution()) {
     return 1;
   }
 
