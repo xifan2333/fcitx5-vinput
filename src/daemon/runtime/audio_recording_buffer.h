@@ -9,7 +9,7 @@
 namespace vinput::daemon::runtime {
 
 // Buffering and chunking engine for raw audio samples.
-// Access should be serialized by the owner (e.g. DaemonRuntimeController::state_mutex_).
+// Owned and accessed exclusively on the SessionLane actor thread.
 // Absorbs pre-roll startup samples, applies input gain at the device boundary,
 // and supports dual delivery modes (batch full-utterance vs. streaming chunking).
 class AudioRecordingBuffer {
