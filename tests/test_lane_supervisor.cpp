@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -241,7 +243,7 @@ void TestTranscribeStreamAndAutoReclaim() {
   std::array<int, 2> pipe_fds{-1, -1};
   TEST_ASSERT(pipe(pipe_fds.data()) == 0);
   const std::vector<int16_t> pcm(8500, 100);
-  const auto* raw = reinterpret_cast<const uint8_t*>(pcm.data());
+  const auto* raw = static_cast<const uint8_t*>(static_cast<const void*>(pcm.data()));
   const std::size_t total_bytes = pcm.size() * sizeof(int16_t);
   std::size_t written = 0;
   while (written < total_bytes) {
@@ -290,12 +292,9 @@ void TestReloadAsrBackendDelegation() {
 }
 
 bool ContainsBroadcast(const std::vector<std::string>& broadcasts, std::string_view needle) {
-  for (const auto& line : broadcasts) {
-    if (line.find(needle) != std::string::npos) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(broadcasts, [needle](const std::string& line) {
+    return line.find(needle) != std::string::npos;
+  });
 }
 
 void TestPrimaryImeStatusAndClientBroadcastSequence() {

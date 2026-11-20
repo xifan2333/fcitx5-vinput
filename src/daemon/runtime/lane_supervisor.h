@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -12,11 +13,9 @@
 #include <string_view>
 
 #include "common/client/client_command.h"
-#include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/utils/unique_fd.h"
 
-#include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/output_ducker.h"
@@ -106,7 +105,8 @@ private:
   void DrainClientCommands();
   void DispatchClientCommand(std::string_view client_id,
                              const vinput::client::ClientCommand& command);
-  void DispatchCommandToLane(SessionLane& lane, const vinput::client::ClientCommand& command);
+  static void DispatchCommandToLane(SessionLane& lane,
+                                    const vinput::client::ClientCommand& command);
   SessionLane* GetOrCreateHeadlessLane(std::string_view client_id);
   void ReclaimIdleStreamLanes();
 

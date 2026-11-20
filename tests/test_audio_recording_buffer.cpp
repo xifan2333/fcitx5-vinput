@@ -197,7 +197,7 @@ void TestSinglePassAppendAndDetectSpeech() {
   auto c2 = buffer.PopStreamingChunk();
   Expect(c1.has_value() && c1->size() == 800, "First chunk must have 800 samples");
   Expect(c2.has_value() && c2->size() == 800, "Second chunk must have 800 samples");
-  Expect((*c1)[0] == 0 && (*c1)[4] == 800 && (*c1)[5] == -800,
+  Expect(c1.has_value() && (*c1)[0] == 0 && (*c1)[4] == 800 && (*c1)[5] == -800,
          "Gained samples must be preserved in order");
   auto tail = buffer.DrainStreamingTail();
   Expect(tail.size() == 8, "Tail must contain remaining 8 samples");

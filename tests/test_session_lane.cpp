@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -5,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -94,12 +96,8 @@ public:
 
   [[nodiscard]] bool HasStatus(vinput::dbus::Status target) const {
     const std::scoped_lock lock(mutex_);
-    for (const auto& [s, _] : statuses_) {
-      if (s == target) {
-        return true;
-      }
-    }
-    return false;
+    return std::ranges::any_of(statuses_,
+                               [target](const auto& entry) { return entry.first == target; });
   }
 
 private:

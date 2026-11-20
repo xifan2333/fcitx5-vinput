@@ -497,7 +497,7 @@ void TestUniqueFdAndEventFd() {
   using vinput::file::SignalEventFd;
   using vinput::file::UniqueFd;
 
-  UniqueFd empty;
+  const UniqueFd empty;
   TEST_ASSERT(!empty.IsValid());
   TEST_ASSERT(empty.Get() == -1);
 
@@ -505,8 +505,9 @@ void TestUniqueFdAndEventFd() {
   TEST_ASSERT(efd.IsValid());
   const int raw = efd.Get();
 
-  UniqueFd moved(std::move(efd));
-  TEST_ASSERT(!efd.IsValid());
+  const UniqueFd moved(std::move(efd));
+  // Intentional moved-from inspection: UniqueFd guarantees IsValid() == false after move.
+  TEST_ASSERT(!efd.IsValid()); // NOLINT(bugprone-use-after-move, clang-analyzer-cplusplus.Move)
   TEST_ASSERT(moved.Get() == raw);
 
   SignalEventFd(moved.Get());
@@ -514,7 +515,7 @@ void TestUniqueFdAndEventFd() {
 
   std::array<int, 2> pipe_fds{-1, -1};
   TEST_ASSERT(pipe(pipe_fds.data()) == 0);
-  UniqueFd read_end(pipe_fds[0]);
+  const UniqueFd read_end(pipe_fds[0]);
   UniqueFd write_end(pipe_fds[1]);
   const int released = write_end.Release();
   TEST_ASSERT(!write_end.IsValid());

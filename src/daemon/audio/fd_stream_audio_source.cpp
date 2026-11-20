@@ -1,7 +1,7 @@
 #include "daemon/audio/fd_stream_audio_source.h"
 
-#include <algorithm>
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -305,7 +305,7 @@ void FdStreamAudioSource::ReaderLoop() {
   bool has_carry = false;
   uint8_t carry_byte = 0;
   std::vector<int16_t> sample_scratch;
-  sample_scratch.reserve(kReadChunkBytes / sizeof(int16_t) + 1);
+  sample_scratch.reserve((kReadChunkBytes / sizeof(int16_t)) + 1);
 
   if (!probe_buf.empty()) {
     const std::size_t offset = vinput::audio::DetectWavDataOffset(probe_buf);

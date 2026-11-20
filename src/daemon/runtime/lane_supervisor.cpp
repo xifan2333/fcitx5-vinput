@@ -4,7 +4,6 @@
 #include <atomic>
 #include <cerrno>
 #include <cstddef>
-#include <cstdint>
 #include <cstring>
 #include <deque>
 #include <functional>
@@ -333,9 +332,8 @@ DbusService::MethodResult LaneSupervisor::TranscribeStream(int fd, const std::st
   stream_source_ptr->SetEofCallback(
       [lane_ptr] { lane_ptr->NotifySourceEof(lane_ptr->CurrentToken()); });
 
-  const auto start_result =
-      managed->lane->Start(ime, /*is_command=*/false, /*selected_text=*/"",
-                           /*capture_device=*/"", /*default_scene_id=*/scene_id);
+  auto start_result = managed->lane->Start(ime, /*is_command=*/false, /*selected_text=*/"",
+                                           /*capture_device=*/"", /*default_scene_id=*/scene_id);
   if (!start_result.ok) {
     managed->lane->Shutdown();
     return start_result;
@@ -502,9 +500,7 @@ SessionLane* LaneSupervisor::GetOrCreateHeadlessLane(std::string_view client_id)
   managed->lane = std::make_unique<SessionLane>(
       MakeLaneDependencies(managed->owned_capture.get(), managed->sink.get(),
                            /*ducker=*/nullptr, /*warn_on_clipped_head=*/true));
-  SessionLane* lane_ptr = managed->lane.get();
-  headless_lanes_.emplace(key, std::move(managed));
-  return lane_ptr;
+  return headless_lanes_.emplace(key, std::move(managed)).first->second->lane.get();
 }
 
 void LaneSupervisor::ReclaimIdleStreamLanes() {

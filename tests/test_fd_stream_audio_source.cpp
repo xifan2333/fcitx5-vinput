@@ -94,8 +94,8 @@ void TestWavHeaderAndOddByteBoundary() {
 
   const std::array<int16_t, 4> expected{111, -222, 333, -444};
   auto wav = BuildWavHeader(static_cast<uint32_t>(expected.size() * sizeof(int16_t)));
-  const auto* pcm_bytes = reinterpret_cast<const uint8_t*>(expected.data());
-  wav.insert(wav.end(), pcm_bytes, pcm_bytes + expected.size() * sizeof(int16_t));
+  const auto* pcm_bytes = static_cast<const uint8_t*>(static_cast<const void*>(expected.data()));
+  wav.insert(wav.end(), pcm_bytes, pcm_bytes + (expected.size() * sizeof(int16_t)));
 
   // Write split across an odd byte boundary (47 bytes, then remainder)
   TEST_ASSERT(write(pipe_fds[1], wav.data(), 47) == 47);
@@ -117,7 +117,7 @@ void TestWavHeaderAndOddByteBoundary() {
   TEST_ASSERT(first_buf_count.load() == 1);
   TEST_ASSERT(collected.size() == expected.size());
   for (std::size_t i = 0; i < expected.size(); ++i) {
-    TEST_ASSERT(collected[i] == expected[i]);
+    TEST_ASSERT(collected[i] == expected.at(i));
   }
   TEST_ASSERT(source.FirstBufferLatencyMs().has_value());
 
@@ -188,7 +188,7 @@ void TestBackpressurePreservesAllSamples() {
   }
 
   std::thread writer([&] {
-    const auto* raw = reinterpret_cast<const uint8_t*>(input.data());
+    const auto* raw = static_cast<const uint8_t*>(static_cast<const void*>(input.data()));
     const std::size_t total_bytes = input.size() * sizeof(int16_t);
     std::size_t sent = 0;
     while (sent < total_bytes) {

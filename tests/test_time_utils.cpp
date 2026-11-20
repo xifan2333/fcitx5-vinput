@@ -5,7 +5,9 @@
 
 #include "common/utils/time_utils.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -86,6 +88,8 @@ void TestSteadyNsAndElapsedMsFromNs() {
   const auto elapsed = ElapsedMsFromNs(1'000'000, 43'500'000);
   TEST_ASSERT(elapsed.has_value() && *elapsed == 42);
 }
+
+} // namespace
 
 int main() {
   TestRemainingTimeoutMs();
