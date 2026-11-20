@@ -202,7 +202,7 @@ private:
   void PostInboxEvent(InboxEvent event);
   void WakeMainThread() const noexcept;
   bool DrainInbox();
-  std::optional<std::string> PendingTerminalAudioError() const;
+  [[nodiscard]] std::optional<std::string> PendingTerminalAudioError() const;
   void HandleInboxEvent(InboxEvent& event);
   void HandleFirstBuffer(const FirstBufferEvent& ev);
   void HandleAudioError(const AudioErrorEvent& ev);

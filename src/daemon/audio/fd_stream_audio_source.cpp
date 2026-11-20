@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -13,7 +14,6 @@
 #include <string_view>
 #include <sys/eventfd.h>
 #include <sys/poll.h>
-#include <system_error>
 #include <thread>
 #include <unistd.h>
 #include <utility>
