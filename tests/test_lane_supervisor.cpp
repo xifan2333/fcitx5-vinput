@@ -143,12 +143,12 @@ void TestMultiLaneIsolationAndConcurrentEnqueue() {
 
   // Enqueue commands concurrently from 4 threads (two headless lanes + one IME inject + invalid).
   std::thread t1(
-      [&] { supervisor.EnqueueClientLine("client-a", R"({"cmd":"start","ime":false})"); });
+      [&] { supervisor.EnqueueClientLine("client-a", R"({"type":"start","ime":false})"); });
   std::thread t2(
-      [&] { supervisor.EnqueueClientLine("client-b", R"({"cmd":"start","ime":false})"); });
+      [&] { supervisor.EnqueueClientLine("client-b", R"({"type":"start","ime":false})"); });
   std::thread t3([&] {
     supervisor.EnqueueClientLine("client-c",
-                                 R"({"cmd":"inject","ime":true,"stage":"partial","text":"live"})");
+                                 R"({"type":"inject","ime":true,"stage":"partial","text":"live"})");
   });
   std::thread t4([&] { supervisor.EnqueueClientLine("client-d", "not-json"); });
   t1.join();
@@ -184,8 +184,8 @@ void TestMultiLaneIsolationAndConcurrentEnqueue() {
   TEST_ASSERT(supervisor.GetHeadlessLaneStatus("client-a") == vinput::dbus::kStatusRecording);
   TEST_ASSERT(supervisor.GetHeadlessLaneStatus("client-b") == vinput::dbus::kStatusRecording);
 
-  supervisor.EnqueueClientLine("client-a", R"({"cmd":"stop","ime":false})");
-  supervisor.EnqueueClientLine("client-b", R"({"cmd":"stop","ime":false})");
+  supervisor.EnqueueClientLine("client-a", R"({"type":"stop","ime":false})");
+  supervisor.EnqueueClientLine("client-b", R"({"type":"stop","ime":false})");
   for (int i = 0;
        i < 100 && (supervisor.GetHeadlessLaneStatus("client-a") != vinput::dbus::kStatusIdle ||
                    supervisor.GetHeadlessLaneStatus("client-b") != vinput::dbus::kStatusIdle);
