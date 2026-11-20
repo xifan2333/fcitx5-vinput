@@ -1004,7 +1004,7 @@ void SessionLane::WorkerMain() {
       }
       task = std::move(pending_task_);
       pending_task_.reset();
-      if (auto* order_task = std::get_if<ProcessOrderTask>(&*task)) {
+      if (auto* order_task = std::get_if<ProcessOrderTask>(&task.value())) {
         // Register shutdown handles inside the same locked interval that claims the task;
         // otherwise Shutdown could miss both the pending task and the in-flight session.
         in_flight_session_ = order_task->session;
