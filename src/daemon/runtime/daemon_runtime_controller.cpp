@@ -195,7 +195,7 @@ constexpr size_t kStreamChunkBytes = 1600; // 50ms of 16kHz 16-bit mono PCM (160
 } // namespace
 
 DaemonRuntimeController::DaemonRuntimeController(
-    AudioCapture* capture, DbusService* dbus,
+    vinput::daemon::audio::AudioInputSource* capture, DbusService* dbus,
     vinput::daemon::asr::RecognitionSessionManager* recognition_manager,
     RecognitionPipeline* pipeline, std::string owner_client_id, int shared_notify_fd)
     : capture_(capture), dbus_(dbus), recognition_manager_(recognition_manager),
@@ -309,7 +309,7 @@ DbusService::MethodResult DaemonRuntimeController::CancelOperation(bool ime, boo
 
   if (stop_capture) {
     if (capture_ != nullptr) {
-      capture_->StopAndGetBuffer();
+      capture_->StopAndDrain();
     }
     RestoreOutputIfDucked();
   }
@@ -567,7 +567,7 @@ bool DaemonRuntimeController::TryBeginRecordingStartupLocked(bool ime) {
 
 void DaemonRuntimeController::AbortAndScheduleCaptureStop() {
   if (capture_ != nullptr) {
-    capture_->EndRecording();
+    capture_->Abort();
   }
   {
     const std::scoped_lock lock(state_mutex_);
@@ -648,9 +648,15 @@ bool DaemonRuntimeController::PrepareAndBeginCapture(const std::string& capture_
   std::string error;
   const std::string target_device =
       capture_device.empty() ? runtime_settings.global.captureDevice : capture_device;
-  capture_->SetTargetObject(target_device);
   capture_->SetNotifyFd(notify_fd_);
-  if (!capture_->BeginRecording(&error, capture_timing)) {
+  bool begin_ok = false;
+  if (auto* ac = dynamic_cast<AudioCapture*>(capture_)) {
+    ac->SetTargetObject(target_device);
+    begin_ok = ac->BeginRecording(&error, capture_timing);
+  } else {
+    begin_ok = capture_->Begin(target_device, nullptr, nullptr, &error);
+  }
+  if (!begin_ok) {
     std::string message =
         is_command ? _("Failed to start command recording.") : _("Failed to start recording.");
     if (!error.empty()) {
@@ -707,7 +713,7 @@ std::vector<int16_t> DaemonRuntimeController::StopCaptureAndDrainMetrics() {
   if (dropped_samples > 0) {
     VLOG_WARN("capture audio queue dropped {} samples due to overflow", dropped_samples);
   }
-  auto captured = capture_->StopAndGetBuffer();
+  auto captured = capture_->StopAndDrain();
   RestoreOutputIfDucked();
   return captured;
 }

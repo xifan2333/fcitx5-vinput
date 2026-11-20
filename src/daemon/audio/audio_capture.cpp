@@ -175,13 +175,25 @@ void AudioCapture::onParamChanged(void* userdata, uint32_t id, const spa_pod* pa
 
 void AudioCapture::onStateChanged(void* userdata, pw_stream_state old, pw_stream_state state,
                                   const char* error) {
-  (void)userdata;
+  auto* self = static_cast<AudioCapture*>(userdata);
   const char* err_str = (error != nullptr && error[0] != '\0') ? error : nullptr;
   VLOG_DEBUG("capture stream state: {} -> {}{}{}", pw_stream_state_as_string(old),
              pw_stream_state_as_string(state), err_str != nullptr ? " error=" : "",
              err_str != nullptr ? err_str : "");
   if (state == PW_STREAM_STATE_ERROR) {
-    VLOG_ERROR("PipeWire stream error: {}", err_str != nullptr ? err_str : "unknown error");
+    const std::string err_msg = err_str != nullptr ? err_str : "PipeWire stream error";
+    VLOG_ERROR("PipeWire stream error: {}", err_msg);
+    if (self != nullptr) {
+      self->recording_.store(false, std::memory_order_relaxed);
+      ErrorCallback cb;
+      {
+        const std::scoped_lock lock(self->callback_mutex_);
+        cb = self->on_error_;
+      }
+      if (cb) {
+        cb(err_msg);
+      }
+    }
   }
 }
 
@@ -284,6 +296,10 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
 void AudioCapture::MarkStreamDestroyed() {
   recording_armed_ns_.store(0, std::memory_order_release);
   first_buffer_ns_.store(0, std::memory_order_release);
+  first_buffer_notified_.store(false, std::memory_order_release);
+  const std::scoped_lock lock(callback_mutex_);
+  on_first_buffer_ = nullptr;
+  on_error_ = nullptr;
 }
 
 void AudioCapture::DestroyStream() {
@@ -312,6 +328,7 @@ void AudioCapture::ArmRecording() noexcept {
                                std::chrono::steady_clock::now().time_since_epoch())
                                .count();
   first_buffer_ns_.store(0, std::memory_order_release);
+  first_buffer_notified_.store(false, std::memory_order_release);
   recording_armed_ns_.store(begin_ns, std::memory_order_release);
 }
 
@@ -356,6 +373,46 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
     *timing = local_timing;
   }
   return true;
+}
+
+bool AudioCapture::Begin(std::string_view target, FirstBufferCallback on_first_buffer,
+                         ErrorCallback on_error, std::string* error) {
+  if (!target.empty()) {
+    SetTargetObject(std::string(target));
+  }
+  {
+    const std::scoped_lock lock(callback_mutex_);
+    on_first_buffer_ = std::move(on_first_buffer);
+    on_error_ = std::move(on_error);
+  }
+  return BeginRecording(error, nullptr);
+}
+
+std::vector<int16_t> AudioCapture::StopAndDrain() {
+  return StopAndGetBuffer();
+}
+
+void AudioCapture::Abort() {
+  EndRecording();
+}
+
+std::size_t AudioCapture::DrainAvailable(SampleConsumer consumer) {
+  if (!first_buffer_notified_.load(std::memory_order_relaxed)) {
+    const int64_t fb_ns = first_buffer_ns_.load(std::memory_order_acquire);
+    if (fb_ns > 0) {
+      first_buffer_notified_.store(true, std::memory_order_relaxed);
+      FirstBufferCallback cb;
+      {
+        const std::scoped_lock lock(callback_mutex_);
+        cb = on_first_buffer_;
+      }
+      if (cb) {
+        cb(fb_ns);
+      }
+    }
+  }
+  const std::scoped_lock lock(consumer_mutex_);
+  return ring_buffer_.DrainAvailable(std::move(consumer));
 }
 
 void AudioCapture::EndRecording() {
