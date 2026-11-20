@@ -257,7 +257,7 @@ void TestTranscribeStreamAndAutoReclaim() {
 
   const auto res = supervisor.TranscribeStream(pipe_fds[0], "", /*ime=*/false);
   TEST_ASSERT(res.ok);
-  TEST_ASSERT(res.payload == "stream-1");
+  TEST_ASSERT(res.payload == "__stream-1__");
   TEST_ASSERT(supervisor.StreamLaneCount() == 1);
 
   for (int i = 0; i < 100 && supervisor.StreamLaneCount() > 0; ++i) {

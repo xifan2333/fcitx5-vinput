@@ -316,7 +316,7 @@ DbusService::MethodResult LaneSupervisor::TranscribeStream(int fd, const std::st
     return DbusService::MethodResult::Failure("daemon is shutting down");
   }
 
-  const std::string client_id = "stream-" + std::to_string(++stream_seq_);
+  const std::string client_id = "__stream-" + std::to_string(++stream_seq_) + "__";
   auto managed = std::make_unique<ManagedLane>();
   managed->client_id = client_id;
   auto stream_source =

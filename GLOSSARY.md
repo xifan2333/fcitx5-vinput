@@ -127,6 +127,10 @@ and audio callbacks behind a thread-safe inbox.
 Serializes `ClientManager` pump-thread commands onto the daemon event loop and injects role-specific
 `LaneEventSink` adapters (`PrimaryImeSink`, `HeadlessClientSink`, `StreamLaneSink`).
 
+`TranscribeStream` lane ids use the reserved dunder form `__stream-<n>__`, which is structurally
+disjoint from the client id convention `<kind>.<path>` (e.g. `trigger.*` / `receiver.*`); stream
+events are delivered exclusively over the D-Bus `StreamEvent` signal, never to any client stdin.
+
 ### Partial / final
 
 `partial` is cumulative visible text used for live candidate display. `final` is the single committed
