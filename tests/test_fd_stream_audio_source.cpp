@@ -1,6 +1,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -94,8 +95,11 @@ void TestWavHeaderAndOddByteBoundary() {
 
   const std::array<int16_t, 4> expected{111, -222, 333, -444};
   auto wav = BuildWavHeader(static_cast<uint32_t>(expected.size() * sizeof(int16_t)));
-  const auto* pcm_bytes = static_cast<const uint8_t*>(static_cast<const void*>(expected.data()));
-  wav.insert(wav.end(), pcm_bytes, pcm_bytes + (expected.size() * sizeof(int16_t)));
+  const auto pcm_bytes = std::as_bytes(std::span(expected));
+  wav.reserve(wav.size() + pcm_bytes.size());
+  for (const std::byte b : pcm_bytes) {
+    wav.push_back(std::to_integer<uint8_t>(b));
+  }
 
   // Write split across an odd byte boundary (47 bytes, then remainder)
   TEST_ASSERT(write(pipe_fds[1], wav.data(), 47) == 47);
@@ -188,11 +192,11 @@ void TestBackpressurePreservesAllSamples() {
   }
 
   std::thread writer([&] {
-    const auto* raw = static_cast<const uint8_t*>(static_cast<const void*>(input.data()));
-    const std::size_t total_bytes = input.size() * sizeof(int16_t);
+    const auto raw = std::as_bytes(std::span(input));
+    const std::size_t total_bytes = raw.size();
     std::size_t sent = 0;
     while (sent < total_bytes) {
-      const ssize_t n = write(pipe_fds[1], raw + sent, total_bytes - sent);
+      const ssize_t n = write(pipe_fds[1], raw.data() + sent, total_bytes - sent);
       if (n <= 0) {
         break;
       }

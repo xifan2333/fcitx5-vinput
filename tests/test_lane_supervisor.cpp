@@ -2,6 +2,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -12,6 +13,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -243,11 +245,11 @@ void TestTranscribeStreamAndAutoReclaim() {
   std::array<int, 2> pipe_fds{-1, -1};
   TEST_ASSERT(pipe(pipe_fds.data()) == 0);
   const std::vector<int16_t> pcm(8500, 100);
-  const auto* raw = static_cast<const uint8_t*>(static_cast<const void*>(pcm.data()));
-  const std::size_t total_bytes = pcm.size() * sizeof(int16_t);
+  const auto raw = std::as_bytes(std::span(pcm));
+  const std::size_t total_bytes = raw.size();
   std::size_t written = 0;
   while (written < total_bytes) {
-    const ssize_t n = write(pipe_fds[1], raw + written, total_bytes - written);
+    const ssize_t n = write(pipe_fds[1], raw.data() + written, total_bytes - written);
     TEST_ASSERT(n > 0);
     written += static_cast<std::size_t>(n);
   }
