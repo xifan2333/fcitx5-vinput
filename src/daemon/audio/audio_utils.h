@@ -8,8 +8,8 @@ namespace vinput::audio {
 
 // Peak-normalize samples in-place. Only amplifies (never attenuates).
 // If the peak amplitude is below `low_threshold`, scales so peak == `target_peak`.
-void PeakNormalize(std::vector<float>& samples, float target_peak = 1.0f,
-                   float low_threshold = 0.1f);
+void PeakNormalize(std::vector<float>& samples, float target_peak = 1.0F,
+                   float low_threshold = 0.1F);
 
 // Apply a fixed input gain to int16 samples in-place. Samples are clamped to [-32768, 32767].
 void ApplyGainI16(std::span<int16_t> samples, float gain);

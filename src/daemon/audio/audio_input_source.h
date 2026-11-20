@@ -18,7 +18,12 @@ public:
   using ErrorCallback = std::function<void(std::string_view error)>;
   using SampleConsumer = std::function<void(std::span<const int16_t> pcm)>;
 
+  AudioInputSource() = default;
   virtual ~AudioInputSource() = default;
+  AudioInputSource(const AudioInputSource&) = default;
+  AudioInputSource& operator=(const AudioInputSource&) = default;
+  AudioInputSource(AudioInputSource&&) = default;
+  AudioInputSource& operator=(AudioInputSource&&) = default;
 
   // Starts capturing audio from the resolved target device/node.
   // When the first audio buffer is received, on_first_buffer (if provided) is invoked.

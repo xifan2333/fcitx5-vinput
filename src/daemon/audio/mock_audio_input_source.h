@@ -78,8 +78,16 @@ public:
     dropped_samples_.store(0, std::memory_order_relaxed);
   }
 
+  void SetSimulatedLatencyMs(std::optional<long> latency_ms) {
+    const std::scoped_lock lock(mutex_);
+    simulated_latency_ms_ = latency_ms;
+  }
+
   [[nodiscard]] std::optional<long> FirstBufferLatencyMs() const override {
     const std::scoped_lock lock(mutex_);
+    if (simulated_latency_ms_.has_value()) {
+      return simulated_latency_ms_;
+    }
     if (recording_armed_ns_ <= 0 || first_buffer_ns_ <= 0 ||
         first_buffer_ns_ < recording_armed_ns_) {
       return std::nullopt;
@@ -146,6 +154,7 @@ private:
   std::atomic<std::size_t> dropped_samples_{0};
   int64_t recording_armed_ns_{0};
   int64_t first_buffer_ns_{0};
+  std::optional<long> simulated_latency_ms_;
 };
 
 } // namespace vinput::daemon::audio

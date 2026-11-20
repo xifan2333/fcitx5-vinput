@@ -1,16 +1,21 @@
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/mock_audio_input_source.h"
 #include "daemon/audio/pipewire_control_plane.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+static void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -18,8 +23,6 @@ inline void AssertTrue(bool condition, const char* message, const char* file, in
 }
 
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
-
-namespace {
 
 using vinput::daemon::audio::AudioInputSource;
 using vinput::daemon::audio::MockAudioInputSource;
@@ -77,6 +80,16 @@ void TestMockFirstBufferCallback() {
   TEST_ASSERT(first_buffer_calls == 1);
 
   source.StopAndDrain();
+}
+
+void TestMockSimulatedLatency() {
+  MockAudioInputSource source(5, 16000);
+  source.SetSimulatedLatencyMs(42);
+  TEST_ASSERT(source.FirstBufferLatencyMs().has_value());
+  TEST_ASSERT(*source.FirstBufferLatencyMs() == 42);
+
+  source.SetSimulatedLatencyMs(std::nullopt);
+  TEST_ASSERT(!source.FirstBufferLatencyMs().has_value());
 }
 
 void TestMockErrorCallback() {
@@ -144,10 +157,14 @@ void TestPipeWireControlPlaneHeadless() {
   TEST_ASSERT(cp.Core() == nullptr);
 
   const auto target_empty = cp.ResolveTarget("");
-  TEST_ASSERT(target_empty.kind == vinput::pw::TargetKind::DirectDefault);
+  TEST_ASSERT(target_empty.node_name.empty());
+  TEST_ASSERT(target_empty.object_serial.empty());
+  TEST_ASSERT(!target_empty.is_sink_capture);
 
   const auto target_default = cp.ResolveTarget("default");
-  TEST_ASSERT(target_default.kind == vinput::pw::TargetKind::DirectDefault);
+  TEST_ASSERT(target_default.node_name.empty());
+  TEST_ASSERT(target_default.object_serial.empty());
+  TEST_ASSERT(!target_default.is_sink_capture);
 
   cp.Disconnect();
 }
@@ -158,6 +175,7 @@ int main() {
   std::printf("Running test_audio_input_source...\n");
   TestMockLifecycle();
   TestMockFirstBufferCallback();
+  TestMockSimulatedLatency();
   TestMockErrorCallback();
   TestMockBeginFailure();
   TestMockAbort();

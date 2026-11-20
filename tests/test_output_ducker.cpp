@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -8,7 +9,9 @@
 
 #include "daemon/audio/output_ducker.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+static void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -16,8 +19,6 @@ inline void AssertTrue(bool condition, const char* message, const char* file, in
 }
 
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
-
-namespace {
 
 using vinput::daemon::audio::FakeVolumeAdapter;
 using vinput::daemon::audio::OutputDucker;
@@ -32,6 +33,17 @@ bool WaitForVolume(const std::shared_ptr<FakeVolumeAdapter>& adapter, double tar
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
   return std::abs(adapter->CurrentVolume() - target) < 1e-3;
+}
+
+bool WaitForWriteCount(const std::shared_ptr<FakeVolumeAdapter>& adapter, int target_count,
+                       int max_iterations = 200) {
+  for (int i = 0; i < max_iterations; ++i) {
+    if (adapter->WriteCount() >= target_count) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return adapter->WriteCount() >= target_count;
 }
 
 void TestWpctlVolumeAdapterParsing() {
@@ -96,6 +108,7 @@ void TestDuckerRapidToggling() {
     ducker.Duck(0.5);
     ducker.Restore();
   }
+  TEST_ASSERT(WaitForWriteCount(adapter, 40));
   TEST_ASSERT(WaitForVolume(adapter, 1.0));
 }
 
@@ -119,10 +132,18 @@ void TestDuckerDestructorSafety() {
 }
 
 void TestDuckerNullAdapter() {
+  // Constructing and destroying with default adapter should be safe.
+  // We do not call Duck/Restore here to avoid invoking host wpctl in tests.
   OutputDucker ducker(nullptr);
-  // Invoking Duck and Restore on default adapter should not crash even without wpctl
+}
+
+void TestDuckerAdapterFailure() {
+  auto adapter = std::make_shared<FakeVolumeAdapter>(0.80);
+  adapter->SetFailGet(true);
+  OutputDucker ducker(adapter);
   ducker.Duck(0.5);
-  ducker.Restore();
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  TEST_ASSERT(std::abs(adapter->CurrentVolume() - 0.80) < 1e-3);
 }
 
 } // namespace
@@ -135,6 +156,7 @@ int main() {
   TestDuckerRapidToggling();
   TestDuckerDestructorSafety();
   TestDuckerNullAdapter();
+  TestDuckerAdapterFailure();
   std::printf("All test_output_ducker passed!\n");
   return 0;
 }

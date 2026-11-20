@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdio>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>

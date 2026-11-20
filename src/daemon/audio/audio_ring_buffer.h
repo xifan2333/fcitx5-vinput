@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace vinput::daemon::audio {
@@ -31,7 +32,7 @@ public:
   std::size_t Write(std::span<const int16_t> samples) noexcept {
     const uint64_t current_write = write_pos_.load(std::memory_order_relaxed);
     const uint64_t current_read = read_pos_.load(std::memory_order_acquire);
-    const std::size_t occupied = static_cast<std::size_t>(current_write - current_read);
+    const auto occupied = static_cast<std::size_t>(current_write - current_read);
     if (occupied >= capacity_) {
       return 0;
     }
@@ -40,13 +41,13 @@ public:
       return 0;
     }
 
-    const std::size_t write_idx = static_cast<std::size_t>(current_write % capacity_);
+    const auto write_idx = static_cast<std::size_t>(current_write % capacity_);
     const std::size_t first_chunk = std::min(to_write, capacity_ - write_idx);
-    std::memcpy(&storage_[write_idx], samples.data(), first_chunk * sizeof(int16_t));
+    std::memcpy(storage_.data() + write_idx, samples.data(), first_chunk * sizeof(int16_t));
 
     const std::size_t second_chunk = to_write - first_chunk;
     if (second_chunk > 0) {
-      std::memcpy(&storage_[0], samples.data() + first_chunk, second_chunk * sizeof(int16_t));
+      std::memcpy(storage_.data(), samples.data() + first_chunk, second_chunk * sizeof(int16_t));
     }
 
     write_pos_.store(current_write + to_write, std::memory_order_release);
@@ -58,18 +59,19 @@ public:
   template <typename Callback> std::size_t DrainAvailable(Callback&& callback) {
     const uint64_t current_read = read_pos_.load(std::memory_order_relaxed);
     const uint64_t current_write = write_pos_.load(std::memory_order_acquire);
-    const std::size_t available = static_cast<std::size_t>(current_write - current_read);
+    const auto available = static_cast<std::size_t>(current_write - current_read);
     if (available == 0) {
       return 0;
     }
 
-    const std::size_t read_idx = static_cast<std::size_t>(current_read % capacity_);
+    const auto read_idx = static_cast<std::size_t>(current_read % capacity_);
     const std::size_t first_chunk = std::min(available, capacity_ - read_idx);
-    callback(std::span<const int16_t>(&storage_[read_idx], first_chunk));
+    std::forward<Callback>(callback)(
+        std::span<const int16_t>(storage_.data() + read_idx, first_chunk));
 
     const std::size_t second_chunk = available - first_chunk;
     if (second_chunk > 0) {
-      callback(std::span<const int16_t>(&storage_[0], second_chunk));
+      std::forward<Callback>(callback)(std::span<const int16_t>(storage_.data(), second_chunk));
     }
 
     read_pos_.store(current_read + available, std::memory_order_release);
@@ -81,7 +83,7 @@ public:
     std::vector<int16_t> result;
     const uint64_t current_read = read_pos_.load(std::memory_order_relaxed);
     const uint64_t current_write = write_pos_.load(std::memory_order_acquire);
-    const std::size_t available = static_cast<std::size_t>(current_write - current_read);
+    const auto available = static_cast<std::size_t>(current_write - current_read);
     result.reserve(available);
     DrainAvailable([&](std::span<const int16_t> chunk) {
       result.insert(result.end(), chunk.begin(), chunk.end());
@@ -101,10 +103,10 @@ public:
   }
 
 private:
-  const std::size_t capacity_;
-  std::vector<int16_t> storage_;
   alignas(64) std::atomic<uint64_t> write_pos_{0};
   alignas(64) std::atomic<uint64_t> read_pos_{0};
+  std::size_t capacity_{0};
+  std::vector<int16_t> storage_;
 };
 
 } // namespace vinput::daemon::audio

@@ -42,6 +42,7 @@
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
+#include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/audio_utils.h"
 #include "daemon/notify/desktop_notification_sender.h"
 #include "daemon/runtime/dbus_service.h"
@@ -649,13 +650,11 @@ bool DaemonRuntimeController::PrepareAndBeginCapture(const std::string& capture_
   const std::string target_device =
       capture_device.empty() ? runtime_settings.global.captureDevice : capture_device;
   capture_->SetNotifyFd(notify_fd_);
-  bool begin_ok = false;
-  if (auto* ac = dynamic_cast<AudioCapture*>(capture_)) {
-    ac->SetTargetObject(target_device);
-    begin_ok = ac->BeginRecording(&error, capture_timing);
-  } else {
-    begin_ok = capture_->Begin(target_device, nullptr, nullptr, &error);
-  }
+  auto on_err = [this](std::string_view err_msg) {
+    VLOG_ERROR("audio input stream error: {}", err_msg);
+    HandleRecordingSessionFailure(std::string(err_msg));
+  };
+  const bool begin_ok = capture_->Begin(target_device, nullptr, std::move(on_err), &error);
   if (!begin_ok) {
     std::string message =
         is_command ? _("Failed to start command recording.") : _("Failed to start recording.");
@@ -862,7 +861,7 @@ bool DaemonRuntimeController::FailActiveSession(
         vinput::daemon::notify::MakeDaemonErrorNotification(error_message));
   }
   if (capture_ != nullptr) {
-    capture_->EndRecording();
+    capture_->Abort();
   }
   RestoreOutputIfDucked();
   ScheduleCaptureStopOnMainThread();
@@ -1044,7 +1043,7 @@ void DaemonRuntimeController::FlushSingleLaneDeferredActions() {
   }
 
   if (capture_ != nullptr) {
-    capture_->Stop();
+    capture_->Abort();
   }
   RestoreOutputIfDucked();
   ResetToIdle();
@@ -1166,7 +1165,7 @@ void DaemonRuntimeController::Shutdown() {
   pending_capture_stop_.store(false, std::memory_order_relaxed);
   if (capture_ != nullptr) {
     capture_->SetNotifyFd(-1);
-    capture_->Stop();
+    capture_->Abort();
   }
   RestoreOutputIfDucked();
   {
@@ -1398,12 +1397,13 @@ DaemonRuntimeController::GetOrCreateHeadlessLane(std::string_view client_id) {
 
   auto lane = std::make_shared<HeadlessClientLane>();
   lane->client_id = key;
-  lane->capture = std::make_unique<AudioCapture>();
+  auto cap = std::make_unique<AudioCapture>();
   std::string cap_err;
-  if (!lane->capture->Start(&cap_err)) {
+  if (!cap->Start(&cap_err)) {
     VLOG_ERROR("failed to start audio capture for headless lane '{}': {}", key, cap_err);
     return nullptr;
   }
+  lane->capture = std::move(cap);
 
   lane->controller = std::make_shared<DaemonRuntimeController>(
       lane->capture.get(), /*dbus=*/nullptr, recognition_manager_, pipeline_, key, notify_fd_);

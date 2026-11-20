@@ -1,19 +1,15 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <mutex>
 #include <optional>
 #include <pipewire/stream.h>
 #include <pipewire/thread-loop.h>
 #include <spa/utils/hook.h>
-#include <span>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
@@ -91,6 +87,7 @@ private:
   std::atomic<int64_t> recording_armed_ns_{0};
   std::atomic<int64_t> first_buffer_ns_{0};
   std::atomic<bool> first_buffer_notified_{false};
+  std::atomic<bool> has_pending_error_{false};
 
   std::string target_object_;
   mutable std::mutex target_mutex_;
@@ -98,6 +95,7 @@ private:
   mutable std::mutex callback_mutex_;
   FirstBufferCallback on_first_buffer_;
   ErrorCallback on_error_;
+  std::string pending_error_;
 
   pw_stream_events stream_events_{};
   spa_hook stream_listener_{};

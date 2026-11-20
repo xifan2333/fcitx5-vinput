@@ -20,7 +20,13 @@ struct DuckerTask {
 // Abstract volume control adapter allowing production wpctl invocation or in-memory testing fake.
 class VolumeControlAdapter {
 public:
+  VolumeControlAdapter() = default;
   virtual ~VolumeControlAdapter() = default;
+  VolumeControlAdapter(const VolumeControlAdapter&) = default;
+  VolumeControlAdapter& operator=(const VolumeControlAdapter&) = default;
+  VolumeControlAdapter(VolumeControlAdapter&&) = default;
+  VolumeControlAdapter& operator=(VolumeControlAdapter&&) = default;
+
   virtual std::optional<double> GetVolume() = 0;
   virtual bool SetVolume(double volume) = 0;
 };
@@ -42,12 +48,19 @@ public:
 
   std::optional<double> GetVolume() override {
     const std::scoped_lock lock(mutex_);
+    if (fail_get_) {
+      return std::nullopt;
+    }
     return volume_;
   }
 
   bool SetVolume(double volume) override {
     const std::scoped_lock lock(mutex_);
+    if (fail_set_) {
+      return false;
+    }
     volume_ = volume;
+    ++write_count_;
     return true;
   }
 
@@ -56,9 +69,27 @@ public:
     return volume_;
   }
 
+  [[nodiscard]] int WriteCount() const {
+    const std::scoped_lock lock(mutex_);
+    return write_count_;
+  }
+
+  void SetFailGet(bool fail) {
+    const std::scoped_lock lock(mutex_);
+    fail_get_ = fail;
+  }
+
+  void SetFailSet(bool fail) {
+    const std::scoped_lock lock(mutex_);
+    fail_set_ = fail;
+  }
+
 private:
   mutable std::mutex mutex_;
   double volume_{1.0};
+  int write_count_{0};
+  bool fail_get_{false};
+  bool fail_set_{false};
 };
 
 // Temporarily lowers the audio sink volume while recording is active, then restores it.
