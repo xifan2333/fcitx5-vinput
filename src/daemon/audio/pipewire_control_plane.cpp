@@ -11,6 +11,7 @@
 #include <pipewire/core.h>
 #include <pipewire/extensions/metadata.h>
 #include <pipewire/node.h>
+#include <pipewire/pipewire.h>
 #include <pipewire/proxy.h>
 #include <pipewire/thread-loop.h>
 #include <pipewire/type.h>
@@ -305,6 +306,7 @@ bool PipeWireControlPlane::Connect(pw_thread_loop* thread_loop, int sync_timeout
   if (thread_loop == nullptr) {
     return false;
   }
+  pw_init(nullptr, nullptr);
   pw_thread_loop_lock(thread_loop);
   const auto unlock = vinput::MakeScopeExit([thread_loop] { pw_thread_loop_unlock(thread_loop); });
 
