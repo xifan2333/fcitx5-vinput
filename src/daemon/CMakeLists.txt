@@ -40,6 +40,7 @@ add_library(
   asr/backends/command_streaming_backend.cpp
   audio/audio_capture.cpp
   audio/audio_utils.cpp
+  audio/fd_stream_audio_source.cpp
   audio/output_ducker.cpp
   audio/pipewire_control_plane.cpp
   notify/desktop_notification_sender.cpp
