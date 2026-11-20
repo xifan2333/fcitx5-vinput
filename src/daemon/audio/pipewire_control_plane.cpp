@@ -11,7 +11,6 @@
 #include <pipewire/core.h>
 #include <pipewire/extensions/metadata.h>
 #include <pipewire/node.h>
-#include <pipewire/pipewire.h>
 #include <pipewire/proxy.h>
 #include <pipewire/thread-loop.h>
 #include <spa/utils/defs.h>

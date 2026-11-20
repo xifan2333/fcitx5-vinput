@@ -23,7 +23,6 @@
 
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
-#include "daemon/audio/audio_capture.h"
 #include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/output_ducker.h"
 #include "daemon/runtime/audio_recording_buffer.h"

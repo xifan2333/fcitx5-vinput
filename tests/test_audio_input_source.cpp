@@ -72,7 +72,7 @@ void TestMockFirstBufferCallback() {
   TEST_ASSERT(recorded_ns > 0);
   const auto latency = source.FirstBufferLatencyMs();
   TEST_ASSERT(latency.has_value());
-  TEST_ASSERT(latency.value() >= 0);
+  TEST_ASSERT(latency.value_or(-1) >= 0);
 
   const std::array<int16_t, 160> chunk2{};
   source.PushSamples(chunk2);
@@ -86,7 +86,7 @@ void TestMockSimulatedLatency() {
   source.SetSimulatedLatencyMs(42);
   const auto sim_latency = source.FirstBufferLatencyMs();
   TEST_ASSERT(sim_latency.has_value());
-  TEST_ASSERT(sim_latency.value() == 42);
+  TEST_ASSERT(sim_latency.value_or(0) == 42);
 
   source.SetSimulatedLatencyMs(std::nullopt);
   TEST_ASSERT(!source.FirstBufferLatencyMs().has_value());
