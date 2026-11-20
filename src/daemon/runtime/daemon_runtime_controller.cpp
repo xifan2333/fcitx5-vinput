@@ -42,7 +42,6 @@
 #include "daemon/asr/runtime/recognition_contract.h"
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
-#include "daemon/audio/audio_types.h"
 #include "daemon/audio/audio_utils.h"
 #include "daemon/notify/desktop_notification_sender.h"
 #include "daemon/runtime/dbus_service.h"
@@ -480,10 +479,10 @@ DaemonRuntimeController::StartRecordingInternal(bool ime, bool is_command,
   }
 
   const long start_total_ms = static_cast<long>(vinput::time::MillisecondsSince(start_enter_at));
-  VLOG_DEBUG("start timing command={} session_ms={} idle_gap_ms={} "
-             "create_stream_ms={} start_total_ms={} backend={}",
-             is_command, session_ms, capture_timing.idle_gap_ms, capture_timing.create_stream_ms,
-             start_total_ms, active_backend.backend_id);
+  VLOG_DEBUG(
+      "start timing command={} session_ms={} create_stream_ms={} start_total_ms={} backend={}",
+      is_command, session_ms, capture_timing.create_stream_ms, start_total_ms,
+      active_backend.backend_id);
 
   NotifyStatusChanged(vinput::dbus::Status::Recording);
   if (is_command) {
@@ -498,13 +497,7 @@ void DaemonRuntimeController::DrainIncomingAudio() {
   if (capture_ == nullptr || !accepting_chunks_.load(std::memory_order_relaxed)) {
     return;
   }
-  vinput::audio::AudioPcmChunk chunk;
-  while (capture_->TryDequeue(chunk)) {
-    if (chunk.size <= 0) {
-      continue;
-    }
-    HandleIncomingAudio(chunk.AsSpan());
-  }
+  capture_->DrainAvailable([this](std::span<const int16_t> pcm) { HandleIncomingAudio(pcm); });
 }
 
 void DaemonRuntimeController::HandleIncomingAudio(std::span<const int16_t> pcm) {
@@ -710,11 +703,9 @@ std::vector<int16_t> DaemonRuntimeController::StopCaptureAndDrainMetrics() {
   } else {
     VLOG_DEBUG("capture first_buffer_ms=-1 (no buffer before stop)");
   }
-  const auto dropped_chunks = capture_->DroppedChunks();
   const auto dropped_samples = capture_->DroppedSamples();
-  if (dropped_chunks > 0 || dropped_samples > 0) {
-    VLOG_WARN("capture audio queue dropped {} chunks ({} samples) due to overflow", dropped_chunks,
-              dropped_samples);
+  if (dropped_samples > 0) {
+    VLOG_WARN("capture audio queue dropped {} samples due to overflow", dropped_samples);
   }
   auto captured = capture_->StopAndGetBuffer();
   RestoreOutputIfDucked();

@@ -26,6 +26,7 @@
 #include <spa/pod/pod.h>
 #include <spa/utils/defs.h>
 #include <spa/utils/hook.h>
+#include <span>
 #include <string>
 #include <unistd.h>
 #include <utility>
@@ -36,7 +37,8 @@
 #include "common/utils/scope_guard.h"
 #include "common/utils/time_utils.h"
 
-#include "daemon/audio/audio_types.h"
+#include "daemon/audio/audio_ring_buffer.h"
+#include "daemon/audio/pipewire_control_plane.h"
 
 namespace {
 
@@ -45,7 +47,7 @@ pw_properties* BuildCaptureProperties(const vinput::pw::ResolvedCaptureTarget& r
   auto* properties =
       pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture",
                         PW_KEY_MEDIA_ROLE, "Communication", PW_KEY_STREAM_CAPTURE_SINK,
-                        capture_sink_str, PW_KEY_NODE_LATENCY, "128/16000", nullptr);
+                        capture_sink_str, PW_KEY_NODE_LATENCY, "480/16000", nullptr);
   if (properties == nullptr) {
     return nullptr;
   }
@@ -135,32 +137,19 @@ void AudioCapture::processCallback() {
     return;
   }
 
-  int64_t expected_zero = 0;
-  const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                             std::chrono::steady_clock::now().time_since_epoch())
-                             .count();
-  first_buffer_ns_.compare_exchange_strong(expected_zero, now_ns, std::memory_order_relaxed);
-
-  bool enqueued_any = false;
-  uint32_t offset_samples = 0;
-  while (offset_samples < n_samples) {
-    const uint32_t to_copy =
-        std::min<uint32_t>(n_samples - offset_samples, vinput::audio::kMaxChunkSamples);
-    vinput::audio::AudioPcmChunk chunk;
-    std::memcpy(chunk.samples.data(), raw + offset + (offset_samples * sizeof(int16_t)),
-                to_copy * sizeof(int16_t));
-    chunk.size = to_copy;
-
-    if (!queue_.try_enqueue(chunk)) {
-      dropped_chunks_.fetch_add(1, std::memory_order_relaxed);
-      dropped_samples_.fetch_add(chunk.size, std::memory_order_relaxed);
-    } else {
-      enqueued_any = true;
-    }
-    offset_samples += to_copy;
+  const auto* samples = reinterpret_cast<const int16_t*>(raw + offset);
+  const std::size_t written = ring_buffer_.Write(std::span<const int16_t>(samples, n_samples));
+  if (written < n_samples) {
+    dropped_samples_.fetch_add(n_samples - written, std::memory_order_relaxed);
   }
 
-  if (enqueued_any) {
+  if (written > 0) {
+    int64_t expected_zero = 0;
+    const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
+    first_buffer_ns_.compare_exchange_strong(expected_zero, now_ns, std::memory_order_relaxed);
+
     const int notify_fd = notify_fd_.load(std::memory_order_relaxed);
     if (notify_fd >= 0) {
       const uint64_t val = 1;
@@ -293,8 +282,6 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
 }
 
 void AudioCapture::MarkStreamDestroyed() {
-  const std::scoped_lock lock(timing_mutex_);
-  last_stream_destroyed_at_ = std::chrono::steady_clock::now();
   recording_armed_ns_.store(0, std::memory_order_release);
   first_buffer_ns_.store(0, std::memory_order_release);
 }
@@ -317,9 +304,7 @@ void AudioCapture::DestroyStream() {
 
 void AudioCapture::DrainQueue() {
   const std::scoped_lock lock(consumer_mutex_);
-  vinput::audio::AudioPcmChunk discard;
-  while (queue_.try_dequeue(discard)) {
-  }
+  ring_buffer_.Clear();
 }
 
 void AudioCapture::ArmRecording() noexcept {
@@ -339,14 +324,6 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
   }
 
   StartTiming local_timing;
-  const auto begin_at = std::chrono::steady_clock::now();
-  {
-    const std::scoped_lock lock(timing_mutex_);
-    if (last_stream_destroyed_at_.has_value()) {
-      local_timing.idle_gap_ms =
-          vinput::time::MillisecondsBetween(*last_stream_destroyed_at_, begin_at);
-    }
-  }
 
   DrainQueue();
   ResetDropCounters();
@@ -373,8 +350,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
   local_timing.create_stream_ms =
       vinput::time::MillisecondsBetween(create_start, std::chrono::steady_clock::now());
 
-  VLOG_DEBUG("capture begin idle_gap_ms={} create_stream_ms={}", local_timing.idle_gap_ms,
-             local_timing.create_stream_ms);
+  VLOG_DEBUG("capture begin create_stream_ms={}", local_timing.create_stream_ms);
 
   if (timing != nullptr) {
     *timing = local_timing;
@@ -391,12 +367,7 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
   DestroyStream();
 
   const std::scoped_lock lock(consumer_mutex_);
-  std::vector<int16_t> result;
-  vinput::audio::AudioPcmChunk chunk;
-  while (queue_.try_dequeue(chunk)) {
-    result.insert(result.end(), chunk.samples.begin(), chunk.samples.begin() + chunk.size);
-  }
-  return result;
+  return ring_buffer_.DrainAll();
 }
 
 void AudioCapture::Stop() {
@@ -407,21 +378,8 @@ bool AudioCapture::IsRecording() const {
   return recording_.load(std::memory_order_relaxed);
 }
 
-bool AudioCapture::TryDequeue(vinput::audio::AudioPcmChunk& chunk) {
-  const std::scoped_lock lock(consumer_mutex_);
-  return queue_.try_dequeue(chunk);
-}
-
 void AudioCapture::SetNotifyFd(int fd) noexcept {
   notify_fd_.store(fd, std::memory_order_release);
-}
-
-std::size_t AudioCapture::ApproxQueueSize() const {
-  return queue_.size_approx();
-}
-
-std::size_t AudioCapture::DroppedChunks() const noexcept {
-  return dropped_chunks_.load(std::memory_order_relaxed);
 }
 
 std::size_t AudioCapture::DroppedSamples() const noexcept {
@@ -429,7 +387,6 @@ std::size_t AudioCapture::DroppedSamples() const noexcept {
 }
 
 void AudioCapture::ResetDropCounters() noexcept {
-  dropped_chunks_.store(0, std::memory_order_relaxed);
   dropped_samples_.store(0, std::memory_order_relaxed);
 }
 
