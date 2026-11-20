@@ -96,6 +96,7 @@ private:
     std::unique_ptr<vinput::daemon::audio::AudioInputSource> owned_capture;
     std::unique_ptr<LaneEventSink> sink;
     std::unique_ptr<SessionLane> lane;
+    bool ime = false;
   };
 
   SessionLaneDependencies MakeLaneDependencies(vinput::daemon::audio::AudioInputSource* source,
@@ -109,6 +110,7 @@ private:
                                     const vinput::client::ClientCommand& command);
   SessionLane* GetOrCreateHeadlessLane(std::string_view client_id);
   void ReclaimIdleStreamLanes();
+  [[nodiscard]] bool HasActiveImeStream() const;
 
   DbusService* dbus_ = nullptr;
   vinput::daemon::asr::RecognitionSessionManager* recognition_manager_ = nullptr;

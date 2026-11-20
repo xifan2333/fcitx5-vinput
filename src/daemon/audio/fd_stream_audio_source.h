@@ -21,7 +21,9 @@
 namespace vinput::daemon::audio {
 
 // AudioInputSource adapter reading raw S16_LE PCM or WAV streams from a file descriptor.
-// Takes ownership of `fd` and closes it on Abort(), StopAndDrain(), stream error, or destruction.
+// Takes ownership of `fd` and closes it on Abort(), StopAndDrain(), or destruction. On a stream
+// error the reader reports it through the error callback and stops delivering samples; the caller
+// is expected to Abort() or StopAndDrain() afterwards to release the descriptor.
 class FdStreamAudioSource final : public AudioInputSource {
 public:
   using EofCallback = std::function<void()>;

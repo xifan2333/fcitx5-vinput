@@ -13,6 +13,7 @@
 #include <string_view>
 #include <sys/eventfd.h>
 #include <sys/poll.h>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -95,7 +96,17 @@ bool FdStreamAudioSource::Begin(std::string_view /*target*/, FirstBufferCallback
   recording_armed_ns_.store(vinput::time::SteadyNowNs(), std::memory_order_release);
   recording_.store(true, std::memory_order_release);
 
-  reader_thread_ = std::thread([this] { ReaderLoop(); });
+  try {
+    reader_thread_ = std::thread([this] { ReaderLoop(); });
+  } catch (const std::exception& e) {
+    // std::thread can throw std::system_error; surface it as a normal failure instead
+    // of letting it propagate through the sd-bus C callback.
+    recording_.store(false, std::memory_order_release);
+    if (error != nullptr) {
+      *error = std::string("failed to start stream reader thread: ") + e.what();
+    }
+    return false;
+  }
   if (error != nullptr) {
     error->clear();
   }

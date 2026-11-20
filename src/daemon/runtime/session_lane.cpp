@@ -465,6 +465,17 @@ bool SessionLane::DrainInbox() {
   return true;
 }
 
+std::optional<std::string> SessionLane::PendingTerminalAudioError() const {
+  const std::scoped_lock lock(inbox_mutex_);
+  for (const auto& event : inbox_) {
+    if (const auto* err = std::get_if<AudioErrorEvent>(&event);
+        err != nullptr && err->token == attempt_.token) {
+      return err->error;
+    }
+  }
+  return std::nullopt;
+}
+
 void SessionLane::HandleInboxEvent(InboxEvent& event) {
   if (auto* fb = std::get_if<FirstBufferEvent>(&event)) {
     HandleFirstBuffer(*fb);
@@ -484,12 +495,20 @@ void SessionLane::HandleInboxEvent(InboxEvent& event) {
 }
 
 void SessionLane::HandleFirstBuffer(const FirstBufferEvent& ev) {
-  if (ev.token != attempt_.token ||
+  if (ev.token != attempt_.token) {
+    return;
+  }
+  // Audio sources stamp the first buffer in the same steady-clock domain as Clock.
+  // Late events after a readiness timeout only fill in the metric and must not
+  // re-advance readiness.
+  if (!attempt_.first_buffer_at.has_value() && ev.timestamp_ns > 0) {
+    attempt_.first_buffer_at = TimePoint(std::chrono::nanoseconds(ev.timestamp_ns));
+  }
+  if (attempt_.first_buffer_received ||
       (phase_ != LanePhase::Starting && phase_ != LanePhase::Stopping)) {
     return;
   }
   attempt_.first_buffer_received = true;
-  attempt_.first_buffer_at = Clock::now();
   MaybeCompleteReadiness();
 }
 
@@ -653,12 +672,20 @@ void SessionLane::WarnClippedHeadIfNeeded() {
 }
 
 void SessionLane::InspectFirstChunkSpeech(std::span<const int16_t> pcm) {
-  if (attempt_.first_chunk_inspected || pcm.empty()) {
+  if (pcm.empty()) {
     return;
   }
+  const bool is_first_chunk = !attempt_.first_chunk_inspected;
   attempt_.first_chunk_inspected = true;
-  if (vinput::audio::HasNonSilentAudio(pcm, audio_buffer_.Gain())) {
+  if (!vinput::audio::HasNonSilentAudio(pcm, audio_buffer_.Gain())) {
+    return;
+  }
+  if (is_first_chunk) {
     WarnClippedHeadIfNeeded();
+    return;
+  }
+  if (!attempt_.first_non_silent_at.has_value()) {
+    attempt_.first_non_silent_at = Clock::now();
   }
 }
 
@@ -833,6 +860,14 @@ void SessionLane::FinishCaptureAndSubmitOrDiscard() {
   const std::size_t dropped_samples = DrainTailOnStop();
   RestoreDuckerIfNeeded();
 
+  // A terminal audio error may have been posted while draining the source; fail the
+  // attempt instead of submitting a recognition over silently degraded capture.
+  if (const auto pending_error = PendingTerminalAudioError()) {
+    VLOG_ERROR("audio input failed while stopping, skipping inference: {}", *pending_error);
+    FailActiveAttempt(*pending_error, /*abort_capture=*/true);
+    return;
+  }
+
   const std::size_t total_samples = audio_buffer_.TotalSampleCount();
   LogHeadGapMetrics(total_samples, dropped_samples);
 
@@ -843,6 +878,11 @@ void SessionLane::FinishCaptureAndSubmitOrDiscard() {
       deps_.event_sink->OnNotification(vinput::daemon::notify::MakeDaemonInfoNotification(
           total_samples == 0 ? _("No audio was captured.")
                              : _("Recording was too short and was discarded.")));
+    }
+    // Stream clients only see the status line; report the drop explicitly so they can
+    // distinguish it from an empty recognition result.
+    if (!attempt_.ime && deps_.event_sink != nullptr) {
+      deps_.event_sink->OnStatusChanged(vinput::dbus::Status::Error, /*ime=*/false);
     }
     RetireSession(std::move(attempt_.asr_session));
     TransitionToIdle(true);
@@ -964,6 +1004,12 @@ void SessionLane::WorkerMain() {
       }
       task = std::move(pending_task_);
       pending_task_.reset();
+      if (auto* order_task = std::get_if<ProcessOrderTask>(&*task)) {
+        // Register shutdown handles inside the same locked interval that claims the task;
+        // otherwise Shutdown could miss both the pending task and the in-flight session.
+        in_flight_session_ = order_task->session;
+        in_flight_cancel_flag_ = order_task->cancel_flag;
+      }
     }
 
     if (!task.has_value()) {
@@ -982,8 +1028,16 @@ void SessionLane::ExecuteCreateAsrSession(const CreateAsrSessionTask& task) {
   std::string error;
   std::shared_ptr<vinput::daemon::asr::RecognitionSession> session;
   if (deps_.create_asr_session) {
-    session = deps_.create_asr_session(task.settings, &descriptor, &error,
-                                       [this] { PostInboxEvent(WakeOnlyEvent{}); });
+    try {
+      session = deps_.create_asr_session(task.settings, &descriptor, &error,
+                                         [this] { PostInboxEvent(WakeOnlyEvent{}); });
+    } catch (const std::exception& e) {
+      session.reset();
+      error = e.what();
+    } catch (...) {
+      session.reset();
+      error = _("Unknown error during processing.");
+    }
   } else {
     error = "ASR session factory is not configured.";
   }
@@ -1036,12 +1090,6 @@ bool SessionLane::RunRecognitionOnWorker(ProcessOrderTask& task, std::string* er
 }
 
 void SessionLane::ExecuteProcessOrder(ProcessOrderTask task) {
-  {
-    const std::scoped_lock lock(worker_mutex_);
-    in_flight_session_ = task.session;
-    in_flight_cancel_flag_ = task.cancel_flag;
-  }
-
   std::string recognition_error;
   bool recognition_ok = false;
   RecognitionPipelineResult pipeline_result;

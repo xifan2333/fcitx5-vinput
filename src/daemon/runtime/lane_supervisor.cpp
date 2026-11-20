@@ -316,9 +316,17 @@ DbusService::MethodResult LaneSupervisor::TranscribeStream(int fd, const std::st
     return DbusService::MethodResult::Failure("daemon is shutting down");
   }
 
+  // IME streams own the global IME status channel just like the primary lane; reject
+  // a conflicting ime stream while an IME session is already active.
+  if (ime && (!primary_lane_->IsIdle() || HasActiveImeStream())) {
+    return DbusService::MethodResult::Failure(
+        _("Voice input daemon is busy. Please wait for the current request to finish."));
+  }
+
   const std::string client_id = "__stream-" + std::to_string(++stream_seq_) + "__";
   auto managed = std::make_unique<ManagedLane>();
   managed->client_id = client_id;
+  managed->ime = ime;
   auto stream_source =
       std::make_unique<vinput::daemon::audio::FdStreamAudioSource>(owned_fd.Release());
   auto* stream_source_ptr = stream_source.get();
@@ -540,6 +548,14 @@ void LaneSupervisor::ReclaimLane(std::string_view client_id) {
   if (client_id.empty()) {
     return;
   }
+  // Drop queued-but-undispatched commands for this client; FlushDeferredActions must
+  // never resurrect a reclaimed lane by dispatching a stale start command.
+  {
+    const std::scoped_lock lock(command_mutex_);
+    std::erase_if(command_queue_, [client_id](const QueuedClientCommand& item) {
+      return item.client_id == client_id;
+    });
+  }
   if (const auto it = headless_lanes_.find(client_id); it != headless_lanes_.end()) {
     if (it->second && it->second->lane) {
       it->second->lane->Shutdown();
@@ -583,6 +599,16 @@ void LaneSupervisor::Shutdown() {
 
 std::size_t LaneSupervisor::HeadlessLaneCount() const noexcept {
   return headless_lanes_.size();
+}
+
+bool LaneSupervisor::HasActiveImeStream() const {
+  for (const auto& [id, managed] : stream_lanes_) {
+    (void)id;
+    if (managed && managed->ime) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::size_t LaneSupervisor::StreamLaneCount() const noexcept {
