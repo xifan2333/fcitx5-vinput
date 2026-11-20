@@ -48,6 +48,7 @@ add_library(
   runtime/daemon_runtime_controller.cpp
   runtime/recognition_pipeline.cpp
   runtime/audio_recording_buffer.cpp
+  runtime/session_lane.cpp
   runtime/session_lifecycle_manager.cpp
   runtime/runtime_state_machine.cpp
   postprocess/post_processor.cpp

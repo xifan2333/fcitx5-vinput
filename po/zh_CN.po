@@ -1776,3 +1776,17 @@ msgid ""
 "Specify a receiver short ID to update, or use --all to update all installed "
 "receivers."
 msgstr "请指定要更新的接收器短 ID，或使用 --all 更新所有已安装的接收器。"
+
+#: src/daemon/runtime/session_lane.cpp
+msgid "No audio was captured."
+msgstr "未采集到音频。"
+
+#: src/daemon/runtime/session_lane.cpp
+msgid "Recording was too short and was discarded."
+msgstr "录音过短，已丢弃。"
+
+#: src/daemon/runtime/session_lane.cpp
+msgid ""
+"Speech detected before microphone was ready; the beginning of your sentence "
+"may be clipped."
+msgstr "麦克风就绪前已检测到语音，句首可能被截断。"
