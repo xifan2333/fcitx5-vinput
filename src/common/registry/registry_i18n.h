@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -20,5 +21,7 @@ I18nMap FetchMergedI18nMap(const CoreConfig& config, const std::string& preferre
 I18nMap LoadMergedCachedI18nMap(const std::string& preferred_locale, std::string* error = nullptr);
 std::string LookupI18n(const I18nMap& map, const std::string& key,
                        const std::string& fallback = "");
+std::string LookupTitle(const I18nMap& map, std::string_view id);
+std::string ResolveCachedTitle(std::string_view id);
 
 } // namespace vinput::registry

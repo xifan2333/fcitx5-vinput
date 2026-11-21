@@ -8,6 +8,7 @@
 #include <glaze/json/read.hpp>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "common/utils/locale_utils.h"
@@ -122,6 +123,25 @@ std::string LookupI18n(const I18nMap& map, const std::string& key, const std::st
     return fallback;
   }
   return it->second;
+}
+
+std::string LookupTitle(const I18nMap& map, std::string_view id) {
+  if (id.empty()) {
+    return {};
+  }
+  std::string key;
+  key.reserve(id.size() + 6);
+  key.append(id);
+  key.append(".title");
+  return LookupI18n(map, key, std::string(id));
+}
+
+std::string ResolveCachedTitle(std::string_view id) {
+  if (id.empty()) {
+    return {};
+  }
+  const auto i18n_map = LoadMergedCachedI18nMap(DetectPreferredLocale(), nullptr);
+  return LookupTitle(i18n_map, id);
 }
 
 } // namespace vinput::registry
