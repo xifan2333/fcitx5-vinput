@@ -497,9 +497,8 @@ void TestCancelImmediateStartAndDuckerIsolation() {
   // pending_task_).
   {
     std::unique_lock<std::mutex> lock(gate_mutex);
-    gate_cv.wait_for(lock, std::chrono::seconds(5), [&] { return gen1_entered; });
+    TEST_ASSERT(gate_cv.wait_for(lock, std::chrono::seconds(5), [&] { return gen1_entered; }));
   }
-  TEST_ASSERT(gen1_entered);
 
   TEST_ASSERT(lane.Cancel(true, false).ok);
   TEST_ASSERT(lane.IsIdle());
