@@ -234,24 +234,29 @@ bool FdStreamAudioSource::PushBytesAsSamples(std::span<const uint8_t> bytes, boo
   return PushSamplesBlocking(scratch);
 }
 
-bool FdStreamAudioSource::StreamChunks(int read_fd, int abort_fd, bool& has_carry,
-                                       uint8_t& carry_byte, std::vector<int16_t>& scratch) {
+bool FdStreamAudioSource::StreamChunks(int read_fd, int abort_fd) {
   std::array<uint8_t, kReadChunkBytes> chunk{};
   std::string read_error;
+  bool has_carry = false;
+  uint8_t carry_byte = 0;
+  std::vector<int16_t> scratch;
+  scratch.reserve((kReadChunkBytes / sizeof(int16_t)) + 1);
+
   while (!stop_requested_.load(std::memory_order_acquire)) {
     std::size_t bytes_read = 0;
     const auto status = ReadChunk(read_fd, abort_fd, chunk, bytes_read, &read_error);
-    if (status == ReadStatus::Aborted) {
+    switch (status) {
+    case ReadStatus::Aborted:
       return false;
-    }
-    if (status == ReadStatus::Error) {
+    case ReadStatus::Error:
       if (!read_error.empty() && !stop_requested_.load(std::memory_order_acquire)) {
         RecordStreamError(std::move(read_error));
       }
       return false;
-    }
-    if (status == ReadStatus::Eof) {
+    case ReadStatus::Eof:
       return true;
+    case ReadStatus::Data:
+      break;
     }
 
     const auto bytes = std::span<const uint8_t>(chunk.data(), bytes_read);
@@ -263,15 +268,7 @@ bool FdStreamAudioSource::StreamChunks(int read_fd, int abort_fd, bool& has_carr
 }
 
 void FdStreamAudioSource::ReaderLoop() {
-  const int read_fd = fd_.Get();
-  const int abort_fd = abort_fd_.Get();
-
-  bool has_carry = false;
-  uint8_t carry_byte = 0;
-  std::vector<int16_t> sample_scratch;
-  sample_scratch.reserve((kReadChunkBytes / sizeof(int16_t)) + 1);
-
-  if (StreamChunks(read_fd, abort_fd, has_carry, carry_byte, sample_scratch)) {
+  if (StreamChunks(fd_.Get(), abort_fd_.Get())) {
     eof_.store(true, std::memory_order_release);
     vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
   }

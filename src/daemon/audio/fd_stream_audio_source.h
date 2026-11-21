@@ -58,8 +58,7 @@ private:
   PollOutcome WaitReadableOrAbort(int read_fd, int abort_fd, std::string* error_out) const;
   ReadStatus ReadChunk(int read_fd, int abort_fd, std::span<uint8_t> dst, std::size_t& bytes_read,
                        std::string* error_out) const;
-  bool StreamChunks(int read_fd, int abort_fd, bool& has_carry, uint8_t& carry_byte,
-                    std::vector<int16_t>& scratch);
+  bool StreamChunks(int read_fd, int abort_fd);
   bool PushBytesAsSamples(std::span<const uint8_t> bytes, bool& has_carry, uint8_t& carry_byte,
                           std::vector<int16_t>& scratch);
   bool PushSamplesBlocking(std::span<const int16_t> samples);
