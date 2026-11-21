@@ -1,5 +1,4 @@
 #include <chrono>
-#include <cstdlib>
 #include <exception>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/i18n.h>
@@ -20,17 +19,16 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <system_error>
 #include <thread>
 #include <unistd.h>
-#include <utility>
 
 #include "common/config/vinput_config.h"
 #include "common/utils/path_utils.h"
 
 #include "core/vinput.h"
 #include "menu/palette_command.h"
+#include "scoped_xdg_config.h"
 
 namespace {
 
@@ -453,17 +451,6 @@ void TestPaletteItemNotificationTitleAndProcMenu(TestInputContext& ic, VinputEng
   expect(PaletteItemNotificationTitle(client_item) == "Web Remote",
          "PaletteItemNotificationTitle must prefer title over id and prefixed text");
 
-  const std::string started_msg = FormatClientToggleNotification(client_item, true);
-  const std::string stopped_msg = FormatClientToggleNotification(client_item, false);
-  expect(started_msg.find("Web Remote") != std::string::npos &&
-             started_msg.find("trigger.vinput.web_remote") == std::string::npos &&
-             started_msg.find("[Trigger]") == std::string::npos,
-         "Client start notification must use localized title without raw id or prefix");
-  expect(stopped_msg.find("Web Remote") != std::string::npos &&
-             stopped_msg.find("trigger.vinput.web_remote") == std::string::npos &&
-             stopped_msg.find("[Trigger]") == std::string::npos,
-         "Client stop notification must use localized title without raw id or prefix");
-
   PaletteItem text_fallback;
   text_fallback.id = "scene.custom";
   text_fallback.text = "Custom Scene";
@@ -475,35 +462,13 @@ void TestPaletteItemNotificationTitleAndProcMenu(TestInputContext& ic, VinputEng
   expect(PaletteItemNotificationTitle(id_fallback) == "raw.id",
          "PaletteItemNotificationTitle must fall back to id when title and text are empty");
 
-  const char* xdg_cfg = std::getenv("XDG_CONFIG_HOME");
-  if (xdg_cfg == nullptr || !std::string_view(xdg_cfg).starts_with("/tmp/")) {
-    return;
-  }
-
-  const std::filesystem::path cfg_dir = vinput::path::VinputConfigDir();
-  std::error_code ec;
-  std::filesystem::create_directories(cfg_dir, ec);
-  struct Cleanup {
-    std::filesystem::path dir;
-    explicit Cleanup(std::filesystem::path d) : dir(std::move(d)) {}
-    Cleanup(const Cleanup&) = delete;
-    Cleanup& operator=(const Cleanup&) = delete;
-    Cleanup(Cleanup&&) = delete;
-    Cleanup& operator=(Cleanup&&) = delete;
-    ~Cleanup() {
-      std::error_code remove_ec;
-      std::filesystem::remove_all(dir, remove_ec);
-    }
-  } const cleanup(cfg_dir);
-
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_addon_i18n");
+  vinput::test::ScopedXdgConfigDir::WriteLocalI18n(
+      R"({"trigger.vinput.web_remote.title":"Web Remote"})");
   {
-    std::ofstream cfg_out(cfg_dir / "config.json");
+    std::ofstream cfg_out(vinput::path::VinputConfigDir() / "config.json");
     cfg_out
         << R"({"version":">=2.4.0","triggers":[{"id":"trigger.vinput.web_remote","command":"true","auto_start":false}]})";
-  }
-  {
-    std::ofstream i18n_out(cfg_dir / "i18n.local.json");
-    i18n_out << R"({"trigger.vinput.web_remote.title":"Web Remote"})";
   }
 
   fcitx::KeyEvent open_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);

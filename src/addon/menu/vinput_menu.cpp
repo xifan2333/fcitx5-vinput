@@ -637,8 +637,9 @@ void VinputEngine::handleAsrSelection(const PaletteItem& item) {
 #if !VINPUT_ENABLE_LOCAL_ASR
   const auto* target_provider = CoreConfigView(core_config).AsrProvider(item.provider_id);
   if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
-    const std::string provider_title =
-        item.model_id.empty() ? display_title : vinput::registry::LoadCachedTitle(item.provider_id);
+    const std::string provider_title = (item.model_id.empty() && !item.title.empty())
+                                           ? item.title
+                                           : vinput::registry::LoadCachedTitle(item.provider_id);
     notifyError(fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
                                "supported in this Lite build."),
                              provider_title.c_str()));
@@ -745,13 +746,14 @@ bool VinputEngine::isClientActive(const PaletteItem& item) const {
 
 void VinputEngine::handleClientToggle(const PaletteItem& item) {
   const bool is_running = isClientActive(item);
+  const std::string display_title = PaletteItemNotificationTitle(item);
   std::string error;
   if (is_running) {
     if (!callStopClient(item.id, &error)) {
       notifyError(error.empty() ? _("Failed to stop client.") : error);
       return;
     }
-    notifyInfo(FormatClientToggleNotification(item, false));
+    notifyInfo(fmt::sprintf(_("Client '%s' stopped."), display_title.c_str()));
     return;
   }
 
@@ -759,7 +761,7 @@ void VinputEngine::handleClientToggle(const PaletteItem& item) {
     notifyError(error.empty() ? _("Failed to start client.") : error);
     return;
   }
-  notifyInfo(FormatClientToggleNotification(item, true));
+  notifyInfo(fmt::sprintf(_("Client '%s' started."), display_title.c_str()));
 }
 
 void VinputEngine::registerProcessCommand() {

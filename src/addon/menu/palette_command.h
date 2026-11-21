@@ -48,7 +48,6 @@ struct PaletteCommand {
 };
 
 [[nodiscard]] std::string PaletteItemNotificationTitle(const PaletteItem& item);
-[[nodiscard]] std::string FormatClientToggleNotification(const PaletteItem& item, bool started);
 
 class PaletteCommandRegistry {
 public:

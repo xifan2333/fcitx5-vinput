@@ -1,8 +1,6 @@
 #include "menu/palette_command.h"
 
 #include <algorithm>
-#include <fcitx-utils/i18n.h>
-#include <fmt/printf.h>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -17,12 +15,6 @@ std::string PaletteItemNotificationTitle(const PaletteItem& item) {
     return item.text;
   }
   return item.id;
-}
-
-std::string FormatClientToggleNotification(const PaletteItem& item, bool started) {
-  const std::string display_title = PaletteItemNotificationTitle(item);
-  return fmt::sprintf(started ? _("Client '%s' started.") : _("Client '%s' stopped."),
-                      display_title.c_str());
 }
 
 void PaletteCommandRegistry::registerCommand(PaletteCommand command) {
