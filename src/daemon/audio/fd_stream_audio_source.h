@@ -20,10 +20,10 @@
 
 namespace vinput::daemon::audio {
 
-// AudioInputSource adapter reading raw S16_LE PCM or WAV streams from a file descriptor.
-// Takes ownership of `fd` and closes it on Abort(), StopAndDrain(), or destruction. On a stream
-// error the reader reports it through the error callback and stops delivering samples; the caller
-// is expected to Abort() or StopAndDrain() afterwards to release the descriptor.
+// AudioInputSource adapter reading raw S16_LE PCM (16 kHz, mono) streams from a file
+// descriptor. Takes ownership of `fd` and closes it on Abort(), StopAndDrain(), or destruction.
+// On a stream error the reader reports it through the error callback and stops delivering samples;
+// the caller is expected to Abort() or StopAndDrain() afterwards to release the descriptor.
 class FdStreamAudioSource final : public AudioInputSource {
 public:
   using EofCallback = std::function<void()>;
@@ -58,10 +58,8 @@ private:
   PollOutcome WaitReadableOrAbort(int read_fd, int abort_fd, std::string* error_out) const;
   ReadStatus ReadChunk(int read_fd, int abort_fd, std::span<uint8_t> dst, std::size_t& bytes_read,
                        std::string* error_out) const;
-  bool ReadInitialProbe(int read_fd, int abort_fd, std::vector<uint8_t>& probe_buf,
-                        bool& reached_eof, std::string* error_out);
-  bool StreamRemainingChunks(int read_fd, int abort_fd, bool& has_carry, uint8_t& carry_byte,
-                             std::vector<int16_t>& scratch);
+  bool StreamChunks(int read_fd, int abort_fd, bool& has_carry, uint8_t& carry_byte,
+                    std::vector<int16_t>& scratch);
   bool PushBytesAsSamples(std::span<const uint8_t> bytes, bool& has_carry, uint8_t& carry_byte,
                           std::vector<int16_t>& scratch);
   bool PushSamplesBlocking(std::span<const int16_t> samples);
