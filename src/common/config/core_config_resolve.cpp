@@ -4,11 +4,12 @@
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
+#include "common/i18n.h"
 
 bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::string* error) {
   if (config == nullptr) {
     if (error != nullptr) {
-      *error = "Config is null.";
+      *error = _("Config is null.");
     }
     return false;
   }
@@ -16,7 +17,7 @@ bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::s
   const AsrProvider* provider = CoreConfigView(*config).PreferredLocalAsrProvider();
   if (provider == nullptr) {
     if (error != nullptr) {
-      *error = "No local ASR provider configured.";
+      *error = _("No local ASR provider configured.");
     }
     return false;
   }
@@ -32,7 +33,7 @@ bool SetPreferredLocalModel(CoreConfig* config, const std::string& model, std::s
   }
 
   if (error != nullptr) {
-    *error = "Local ASR provider not found.";
+    *error = _("Local ASR provider not found.");
   }
   return false;
 }

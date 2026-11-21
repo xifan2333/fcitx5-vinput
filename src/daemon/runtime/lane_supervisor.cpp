@@ -313,7 +313,7 @@ DbusService::MethodResult LaneSupervisor::TranscribeStream(int fd, const std::st
                                                            bool ime) {
   vinput::file::UniqueFd owned_fd(fd);
   if (shutting_down_.load(std::memory_order_acquire)) {
-    return DbusService::MethodResult::Failure("daemon is shutting down");
+    return DbusService::MethodResult::Failure(_("daemon is shutting down"));
   }
 
   // IME streams own the global IME status channel just like the primary lane; reject
@@ -353,7 +353,7 @@ DbusService::MethodResult LaneSupervisor::TranscribeStream(int fd, const std::st
 
 DbusService::MethodResult LaneSupervisor::ReloadAsrBackend() {
   if (recognition_manager_ == nullptr) {
-    return DbusService::MethodResult::Failure("ASR session manager is not initialized.");
+    return DbusService::MethodResult::Failure(_("ASR session manager is not initialized."));
   }
   const CoreConfig settings =
       options_.load_config ? options_.load_config() : LoadNormalizedConfig();

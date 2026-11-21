@@ -79,8 +79,8 @@ public:
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
-                                            : "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? _("Recognition session was cancelled.")
+                                            : _("Recognition session already finished.");
       }
       return false;
     }
@@ -94,7 +94,7 @@ public:
   bool Finish(std::string* error) override {
     if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        *error = "Recognition session was cancelled.";
+        *error = _("Recognition session was cancelled.");
       }
       return false;
     }

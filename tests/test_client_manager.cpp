@@ -356,6 +356,24 @@ void TestClientNotFound() {
   ExpectEq(error, "client not found", "Error message mismatch");
 }
 
+void TestStartValidationError() {
+  const TestEnvFixture fixture;
+
+  // The trigger must actually resolve via FindClient so Start reaches the
+  // path-separator validation in ValidateClientPreconditions.
+  TestEnvFixture::WriteConfig(R"({
+    "version": ">=2.4.0",
+    "triggers": [
+      {"id": "trigger/slash", "command": "sh", "args": ["-c", "sleep 30"], "auto_start": false}
+    ]
+  })");
+
+  std::string error;
+  ExpectTrue(!vinput::client::Start("trigger/slash", nullptr, nullptr, &error),
+             "Starting a client whose id contains path separators should fail");
+  ExpectEq(error, "client id must not contain path separators", "Error message mismatch");
+}
+
 void TestAutoStartUsesInMemorySpec() {
   const TestEnvFixture fixture;
 
@@ -435,6 +453,7 @@ int main() {
   TestClientImmediateExitDetected();
   TestPlainStderrUsesLocalizedClientTitle();
   TestClientNotFound();
+  TestStartValidationError();
   TestAutoStartUsesInMemorySpec();
   TestGetClientStatuses();
   std::cout << "All client_manager tests passed!\n";

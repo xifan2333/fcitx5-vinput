@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "common/dbus/dbus_interface.h"
+#include "common/i18n.h"
 #include "common/notify/notification_bridge.h"
 #include "common/utils/debug_log.h"
 
@@ -281,17 +282,17 @@ int DbusService::handleTranscribeStream(sd_bus_message* m, void* userdata, sd_bu
   int ime = 0;
   const int r = sd_bus_message_read(m, "hsb", &raw_fd, &scene_id, &ime);
   if (r < 0 || raw_fd < 0) {
-    return sd_bus_error_set(error, kErrorOperationFailed, "invalid stream arguments");
+    return sd_bus_error_set(error, kErrorOperationFailed, _("invalid stream arguments"));
   }
   const int dup_fd = fcntl(raw_fd, F_DUPFD_CLOEXEC, 0);
   if (dup_fd < 0) {
     return sd_bus_error_set(error, kErrorOperationFailed,
-                            "failed to duplicate stream file descriptor");
+                            _("failed to duplicate stream file descriptor"));
   }
   if (!self->transcribe_stream_handler_) {
     close(dup_fd);
     return ReplyWithMethodResult(
-        m, error, MethodResult::Failure("transcribe stream handler not configured"), "");
+        m, error, MethodResult::Failure(_("transcribe stream handler not configured")), "");
   }
   const auto result =
       self->transcribe_stream_handler_(dup_fd, (scene_id != nullptr) ? scene_id : "", ime != 0);

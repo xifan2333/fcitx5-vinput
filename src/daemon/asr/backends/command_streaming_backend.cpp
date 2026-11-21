@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <fmt/format.h>
+#include <fmt/printf.h>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
@@ -22,6 +23,7 @@
 #include <vector>
 
 #include "common/config/core_config_types.h"
+#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/notify/notification_bridge.h"
 #include "common/registry/registry_i18n.h"
@@ -78,7 +80,7 @@ public:
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (phase_ == Phase::Finishing || phase_ == Phase::Completed || phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        *error = "Recognition session already finished.";
+        *error = _("Recognition session already finished.");
       }
       return false;
     }
@@ -112,7 +114,7 @@ public:
   bool Finish(std::string* error) override {
     if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        *error = "Recognition session was cancelled.";
+        *error = _("Recognition session was cancelled.");
       }
       return false;
     }
@@ -150,7 +152,7 @@ public:
       }
     }
     finish_success_ = false;
-    finish_error_ = "Recognition session was cancelled.";
+    finish_error_ = _("Recognition session was cancelled.");
     stdout_buffer_.clear();
     last_partial_text_.clear();
     QueueCompleted();
@@ -190,7 +192,7 @@ private:
 
     if (!SendControlEvent("finish", error)) {
       const std::string err_text =
-          error != nullptr && !error->empty() ? *error : "failed to send finish event.";
+          error != nullptr && !error->empty() ? *error : _("failed to send finish event.");
       QueueError(err_text);
       phase_ = Phase::Completed;
       finish_success_ = false;
@@ -216,7 +218,7 @@ private:
     while (!saw_final_text_ && !provider_closed_ && phase_ != Phase::Completed && !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
         const std::string err_text =
-            error != nullptr && !error->empty() ? *error : "failed to poll provider.";
+            error != nullptr && !error->empty() ? *error : _("failed to poll provider.");
         QueueError(err_text);
         phase_ = Phase::Completed;
         finish_success_ = false;
@@ -226,14 +228,14 @@ private:
         return false;
       }
       if (HasTimedOut(deadline_)) {
-        QueueError("Streaming ASR provider timed out.");
+        QueueError(_("Streaming ASR provider timed out."));
         phase_ = Phase::Completed;
         finish_success_ = false;
-        finish_error_ = "Streaming ASR provider timed out.";
+        finish_error_ = _("Streaming ASR provider timed out.");
         QueueCompleted();
         Terminate();
         if (error != nullptr) {
-          *error = "Streaming ASR provider timed out.";
+          *error = _("Streaming ASR provider timed out.");
         }
         return false;
       }
@@ -285,7 +287,7 @@ private:
     }
     if (grace_pump_failed) {
       if (error != nullptr && error->empty()) {
-        *error = "Failed to pump streaming ASR output during grace window.";
+        *error = _("Failed to pump streaming ASR output during grace window.");
       }
       return false;
     }
@@ -302,7 +304,7 @@ private:
 
     const bool cancelled = phase_ == Phase::Cancelled;
     if (!saw_final_text_ && !saw_error_ && !cancelled && !killed_by_us_) {
-      QueueError("Streaming ASR provider returned no text.");
+      QueueError(_("Streaming ASR provider returned no text."));
     }
     phase_ = Phase::Completed;
     QueueCompleted();
@@ -310,7 +312,7 @@ private:
 
     if (cancelled || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
       finish_success_ = false;
-      finish_error_ = "Recognition session was interrupted or cancelled.";
+      finish_error_ = _("Recognition session was interrupted or cancelled.");
       return SetFinishError(error, finish_error_);
     }
     return ResolveFinalOutcome(grace_pump_failed, error);
@@ -324,8 +326,9 @@ private:
     finish_success_ = ResolveFinishFailure(grace_pump_failed, &local_error);
     if (!finish_success_) {
       if (local_error.empty()) {
-        local_error = saw_final_text_ ? "Failed to pump streaming ASR output during grace window."
-                                      : "Streaming ASR provider returned no text.";
+        local_error = saw_final_text_
+                          ? _("Failed to pump streaming ASR output during grace window.")
+                          : _("Streaming ASR provider returned no text.");
       }
       finish_error_ = std::move(local_error);
       return SetFinishError(error, finish_error_);
@@ -366,14 +369,14 @@ private:
     } else if (exit_code_ != 0 && !saw_error_ && !saw_final_text_) {
       VLOG_WARN("streaming ASR provider '{}' exited abnormally with code {}", provider_id_,
                 exit_code_);
-      QueueError("Streaming ASR provider exited abnormally.");
+      QueueError(_("Streaming ASR provider exited abnormally."));
     }
   }
 
   bool EnsureStarted(std::string* error) {
     if (phase_ == Phase::Cancelled || interrupted_.load(std::memory_order_acquire)) {
       if (error != nullptr) {
-        *error = "Recognition session already cancelled.";
+        *error = _("Recognition session already cancelled.");
       }
       return false;
     }
@@ -382,7 +385,7 @@ private:
     }
     if (provider_.command.empty()) {
       if (error != nullptr) {
-        *error = "Command ASR provider has empty command.";
+        *error = _("Command ASR provider has empty command.");
       }
       return false;
     }
@@ -398,7 +401,7 @@ private:
       if (error != nullptr) {
         *error = session_res.error();
       }
-      QueueError(error != nullptr ? *error : "failed to start.");
+      QueueError(error != nullptr ? *error : _("failed to start."));
       QueueCompleted();
       return false;
     }
@@ -449,7 +452,7 @@ private:
   bool SendJsonLine(const glz::json_t& payload, std::string* error) {
     if (!session_.has_value()) {
       if (error != nullptr) {
-        *error = "provider session is not started.";
+        *error = _("provider session is not started.");
       }
       return false;
     }
@@ -475,14 +478,15 @@ private:
 
     int exit_code = -1;
     if (session_->HasExited(&exit_code)) {
-      *error = fmt::format("Streaming ASR provider exited prematurely with code {}.", exit_code);
+      *error =
+          fmt::sprintf(_("Streaming ASR provider exited prematurely with code %d."), exit_code);
       return false;
     }
 
     const auto queued = session_->StdinQueueSizeApprox();
-    *error = fmt::format(
-        "Provider closed stdin or input buffer is full (queued_blocks={}, sent_chunks={}).", queued,
-        sent_chunks_count_);
+    *error = fmt::sprintf(
+        _("Provider closed stdin or input buffer is full (queued_blocks=%zu, sent_chunks=%zu)."),
+        queued, sent_chunks_count_);
     return false;
   }
 
@@ -541,7 +545,7 @@ private:
     glz::json_t payload;
     if (const auto ec = glz::read_json(payload, line); bool(ec)) {
       if (error != nullptr) {
-        *error = std::string("invalid streaming provider JSON: ") + glz::format_error(ec, line);
+        *error = _("invalid streaming provider JSON: ") + glz::format_error(ec, line);
       }
       return false;
     }
@@ -675,7 +679,7 @@ public:
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
     if (provider_.command.empty()) {
       if (error != nullptr) {
-        *error = "Command ASR provider has empty command.";
+        *error = _("Command ASR provider has empty command.");
       }
       return nullptr;
     }

@@ -40,7 +40,7 @@ std::string ResolveSelector(const std::string& selector, const std::vector<T>& e
   }
 
   if (error) {
-    *error = kind_label + " not found: " + selector;
+    *error = fmt::sprintf(_("%s not found: %s"), kind_label.c_str(), selector.c_str());
   }
   return {};
 }
@@ -152,18 +152,18 @@ std::vector<std::string> RegistryUrlsForKind(const CoreConfigView& view,
   return {};
 }
 
-constexpr std::string_view KindLabel(vinput::script::Kind kind) {
+const char* KindLabel(vinput::script::Kind kind) {
   switch (kind) {
   case vinput::script::Kind::kAsrProvider:
-    return "ASR provider";
+    return _("ASR provider");
   case vinput::script::Kind::kLlmAdapter:
-    return "LLM adapter";
+    return _("LLM adapter");
   case vinput::script::Kind::kTrigger:
-    return "trigger";
+    return _("trigger");
   case vinput::script::Kind::kReceiver:
-    return "receiver";
+    return _("receiver");
   }
-  return "script";
+  return _("script");
 }
 
 } // namespace
@@ -186,7 +186,7 @@ std::string ResolveModelSelectorByShortId(const std::string& selector,
                                           const std::vector<RemoteModelEntry>& models,
                                           std::string* error) {
   return ResolveSelector(
-      selector, models, "model",
+      selector, models, _("model"),
       [](const RemoteModelEntry& model) -> const std::string& { return model.id; },
       [](const RemoteModelEntry& model) -> const std::string& { return model.short_id; }, error);
 }
@@ -196,7 +196,7 @@ std::string ResolveModelSelectorByShortId(const std::string& selector,
                                           const ResourceDisplayMap& display_map,
                                           std::string* error) {
   return ResolveSelector(
-      selector, models, "installed model",
+      selector, models, _("installed model"),
       [](const ModelSummary& model) -> const std::string& { return model.id; },
       [&display_map](const ModelSummary& model) {
         const auto it = display_map.find(model.id);
@@ -230,7 +230,7 @@ std::string ResolveInstalledAsrProviderSelector(const CoreConfig& config,
   }
   const auto display_map = FetchScriptDisplayMap(config, vinput::script::Kind::kAsrProvider);
   return ResolveSelector(
-      selector, providers, "ASR provider",
+      selector, providers, _("ASR provider"),
       [](const AsrProvider* provider) -> const std::string& { return AsrProviderId(*provider); },
       [&display_map](const AsrProvider* provider) {
         const std::string& id = AsrProviderId(*provider);
@@ -252,7 +252,7 @@ std::string ResolveInstalledLlmAdapterSelector(const CoreConfig& config,
   }
   const auto display_map = FetchScriptDisplayMap(config, vinput::script::Kind::kLlmAdapter);
   return ResolveSelector(
-      selector, adapters, "LLM adapter",
+      selector, adapters, _("LLM adapter"),
       [](const LlmAdapter* adapter) -> const std::string& { return adapter->id; },
       [&display_map](const LlmAdapter* adapter) {
         const auto it = display_map.find(adapter->id);
@@ -295,13 +295,13 @@ std::string ResolveInstalledClientSelectorImpl(const ClientList& clients, vinput
 std::string ResolveInstalledTriggerSelector(const CoreConfig& config, const std::string& selector,
                                             std::string* error) {
   return ResolveInstalledClientSelectorImpl(config.triggers, vinput::script::Kind::kTrigger, config,
-                                            "trigger", selector, error);
+                                            _("trigger"), selector, error);
 }
 
 std::string ResolveInstalledReceiverSelector(const CoreConfig& config, const std::string& selector,
                                              std::string* error) {
   return ResolveInstalledClientSelectorImpl(config.receivers, vinput::script::Kind::kReceiver,
-                                            config, "receiver", selector, error);
+                                            config, _("receiver"), selector, error);
 }
 
 bool ParseEnvOverrides(const std::vector<std::string>& env_overrides,

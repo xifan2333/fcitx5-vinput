@@ -1,5 +1,6 @@
 #include "daemon/asr/runtime/backend_factory.h"
 
+#include <fmt/printf.h>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -7,6 +8,7 @@
 
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
+#include "common/i18n.h"
 
 #include "daemon/asr/backends/command_batch_backend.h"
 #include "daemon/asr/backends/command_streaming_backend.h"
@@ -38,7 +40,7 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
   (void)config;
   (void)provider;
   if (error != nullptr) {
-    *error = "Local ASR support is disabled in this Lite build.";
+    *error = _("Local ASR support is disabled in this Lite build.");
   }
   return nullptr;
 #else
@@ -61,8 +63,9 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
   }
 
   if (error != nullptr) {
-    *error = "Unsupported local ASR backend '" + backend_id + "' for provider '" +
-             vinput::registry::LoadCachedTitle(provider.id) + "'.";
+    *error =
+        fmt::sprintf(_("Unsupported local ASR backend '%s' for provider '%s'."), backend_id.c_str(),
+                     vinput::registry::LoadCachedTitle(provider.id).c_str());
   }
   return nullptr;
 #endif
@@ -76,7 +79,7 @@ std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string*
   const AsrProvider* provider = view.ActiveAsrProvider();
   if (provider == nullptr) {
     if (error != nullptr) {
-      *error = "Active ASR provider not found.";
+      *error = _("Active ASR provider not found.");
     }
     return nullptr;
   }
@@ -92,7 +95,7 @@ std::unique_ptr<AsrBackend> CreateBackend(const CoreConfig& config, std::string*
   }
 
   if (error != nullptr) {
-    *error = "Unsupported ASR provider type: " + std::string(AsrProviderType(*provider));
+    *error = _("Unsupported ASR provider type: ") + std::string(AsrProviderType(*provider));
   }
   return nullptr;
 }

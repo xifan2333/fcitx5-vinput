@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "common/config/core_config.h"
+#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/scene/postprocess_scene.h"
 #include "common/utils/file_utils.h"
@@ -48,7 +49,7 @@ bool WriteCacheFile(const glz::json_t& data, std::string* error) {
   std::string content;
   if (bool(glz::write<kCacheWriteOpts>(data, content))) {
     if (error != nullptr) {
-      *error = "failed to serialize provider model cache";
+      *error = _("failed to serialize provider model cache");
     }
     return false;
   }
@@ -131,7 +132,7 @@ bool SaveProviderModels(const std::string& provider_id, const std::vector<std::s
                         std::string* error) {
   if (provider_id.empty()) {
     if (error != nullptr) {
-      *error = "Provider ID cannot be empty";
+      *error = _("Provider ID cannot be empty");
     }
     return false;
   }
@@ -146,7 +147,7 @@ bool SaveProviderModels(const std::string& provider_id, const std::vector<std::s
   }
   if (providers == nullptr) {
     if (error != nullptr) {
-      *error = "failed to prepare provider model cache";
+      *error = _("failed to prepare provider model cache");
     }
     return false;
   }
@@ -223,7 +224,7 @@ bool SetActiveCommandModel(CoreConfig* config, const std::string& provider_id,
                            const std::string& model, std::string* error) {
   if (config == nullptr) {
     if (error != nullptr) {
-      *error = "Config pointer is null";
+      *error = _("Config pointer is null");
     }
     return false;
   }
@@ -251,7 +252,7 @@ bool SetActiveCommandModel(CoreConfig* config, const std::string& provider_id,
   NormalizeCoreConfig(config);
   const bool ok = SaveCoreConfig(*config);
   if (!ok && error != nullptr) {
-    *error = "Failed to save core config";
+    *error = _("Failed to save core config");
   }
   return ok;
 }
