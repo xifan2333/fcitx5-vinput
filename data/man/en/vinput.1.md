@@ -231,7 +231,7 @@ Manage audio receiver plugins.
 :   Show daemon logs via journalctl. *LEVEL* filters by log severity: **trace**, **debug**, **info**, **warn**, **error**.
 
 **daemon pipe** [**-s**, **--scene** *SCENE_ID*] [**--ime**]
-:   Stream audio from STDIN (16kHz 16-bit mono PCM or WAV) to the daemon for transcription. Outputs newline-delimited JSON events to STDOUT. All status messages, diagnostics, and errors are printed to STDERR. If **--ime** is passed, commits recognized text to the desktop IME input context.
+:   Stream raw 16kHz 16-bit signed little-endian mono PCM (`s16le`) audio from STDIN to the daemon for transcription (convert container formats such as WAV or MP3 via `ffmpeg -i input.wav -f s16le -ar 16000 -ac 1 - | vinput d pipe`). Outputs newline-delimited JSON events to STDOUT. All status messages, diagnostics, and errors are printed to STDERR. If **--ime** is passed, commits recognized text to the desktop IME input context.
 
 ## RECORDING CONTROL
 **recording start**

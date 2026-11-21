@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "common/audio/wav_probe.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
 #include "common/utils/unique_fd.h"
@@ -30,15 +29,7 @@ namespace vinput::daemon::audio {
 
 namespace {
 
-constexpr std::size_t kInitialProbeBytes = 1024;
 constexpr std::size_t kReadChunkBytes = 1600; // 50ms of 16kHz 16-bit mono PCM
-
-bool StartsWithRiffPrefix(std::span<const uint8_t> buf) noexcept {
-  if (buf.size() < vinput::audio::kFourCcSize) {
-    return false;
-  }
-  return std::memcmp(buf.data(), "RIFF", vinput::audio::kFourCcSize) == 0;
-}
 
 } // namespace
 
@@ -183,35 +174,6 @@ FdStreamAudioSource::ReadStatus FdStreamAudioSource::ReadChunk(int read_fd, int 
   return ReadStatus::Aborted;
 }
 
-bool FdStreamAudioSource::ReadInitialProbe(int read_fd, int abort_fd,
-                                           std::vector<uint8_t>& probe_buf, bool& reached_eof,
-                                           std::string* error_out) {
-  probe_buf.clear();
-  probe_buf.reserve(kInitialProbeBytes);
-  reached_eof = false;
-
-  std::array<uint8_t, kInitialProbeBytes> temp{};
-  while (probe_buf.size() < kInitialProbeBytes) {
-    std::size_t bytes_read = 0;
-    const auto status = ReadChunk(
-        read_fd, abort_fd, std::span<uint8_t>(temp.data(), kInitialProbeBytes - probe_buf.size()),
-        bytes_read, error_out);
-    if (status == ReadStatus::Aborted || status == ReadStatus::Error) {
-      return false;
-    }
-    if (status == ReadStatus::Eof) {
-      reached_eof = true;
-      return true;
-    }
-
-    probe_buf.insert(probe_buf.end(), temp.data(), temp.data() + bytes_read);
-    if (probe_buf.size() >= vinput::audio::kFourCcSize && !StartsWithRiffPrefix(probe_buf)) {
-      return true;
-    }
-  }
-  return true;
-}
-
 bool FdStreamAudioSource::PushSamplesBlocking(std::span<const int16_t> samples) {
   while (!samples.empty()) {
     std::size_t written = 0;
@@ -272,23 +234,29 @@ bool FdStreamAudioSource::PushBytesAsSamples(std::span<const uint8_t> bytes, boo
   return PushSamplesBlocking(scratch);
 }
 
-bool FdStreamAudioSource::StreamRemainingChunks(int read_fd, int abort_fd, bool& has_carry,
-                                                uint8_t& carry_byte,
-                                                std::vector<int16_t>& scratch) {
+bool FdStreamAudioSource::StreamChunks(int read_fd, int abort_fd) {
   std::array<uint8_t, kReadChunkBytes> chunk{};
   std::string read_error;
+  bool has_carry = false;
+  uint8_t carry_byte = 0;
+  std::vector<int16_t> scratch;
+  scratch.reserve((kReadChunkBytes / sizeof(int16_t)) + 1);
+
   while (!stop_requested_.load(std::memory_order_acquire)) {
     std::size_t bytes_read = 0;
     const auto status = ReadChunk(read_fd, abort_fd, chunk, bytes_read, &read_error);
-    if (status == ReadStatus::Aborted) {
+    switch (status) {
+    case ReadStatus::Aborted:
       return false;
-    }
-    if (status == ReadStatus::Error) {
-      RecordStreamError(std::move(read_error));
+    case ReadStatus::Error:
+      if (!read_error.empty() && !stop_requested_.load(std::memory_order_acquire)) {
+        RecordStreamError(std::move(read_error));
+      }
       return false;
-    }
-    if (status == ReadStatus::Eof) {
+    case ReadStatus::Eof:
       return true;
+    case ReadStatus::Data:
+      break;
     }
 
     const auto bytes = std::span<const uint8_t>(chunk.data(), bytes_read);
@@ -300,36 +268,7 @@ bool FdStreamAudioSource::StreamRemainingChunks(int read_fd, int abort_fd, bool&
 }
 
 void FdStreamAudioSource::ReaderLoop() {
-  const int read_fd = fd_.Get();
-  const int abort_fd = abort_fd_.Get();
-
-  std::vector<uint8_t> probe_buf;
-  bool reached_eof = false;
-  std::string read_error;
-  if (!ReadInitialProbe(read_fd, abort_fd, probe_buf, reached_eof, &read_error)) {
-    if (!read_error.empty() && !stop_requested_.load(std::memory_order_acquire)) {
-      RecordStreamError(std::move(read_error));
-    }
-    return;
-  }
-
-  bool has_carry = false;
-  uint8_t carry_byte = 0;
-  std::vector<int16_t> sample_scratch;
-  sample_scratch.reserve((kReadChunkBytes / sizeof(int16_t)) + 1);
-
-  if (!probe_buf.empty()) {
-    const std::size_t offset = vinput::audio::DetectWavDataOffset(probe_buf);
-    if (offset < probe_buf.size()) {
-      const auto initial_pcm = std::span<const uint8_t>(probe_buf).subspan(offset);
-      if (!PushBytesAsSamples(initial_pcm, has_carry, carry_byte, sample_scratch)) {
-        return;
-      }
-    }
-  }
-
-  if (reached_eof ||
-      StreamRemainingChunks(read_fd, abort_fd, has_carry, carry_byte, sample_scratch)) {
+  if (StreamChunks(fd_.Get(), abort_fd_.Get())) {
     eof_.store(true, std::memory_order_release);
     vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
   }
