@@ -30,9 +30,11 @@ std::atomic<bool>& RunningFlag() {
   return running;
 }
 
-void signal_handler(int sig) {
+extern "C" {
+static void signal_handler(int sig) noexcept {
   (void)sig;
   RunningFlag() = false;
+}
 }
 
 void ParseCommandLineLogLevel(int argc, char* argv[]) {

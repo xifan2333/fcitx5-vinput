@@ -45,8 +45,10 @@ std::atomic<bool>& ListenInterrupted() {
   return interrupted;
 }
 
-void OnListenSignal(int /*sig*/) {
+extern "C" {
+static void OnListenSignal(int /*sig*/) noexcept {
   ListenInterrupted().store(true, std::memory_order_relaxed);
+}
 }
 
 const char* KindLabel(ClientKind kind) {

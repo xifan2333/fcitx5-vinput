@@ -30,10 +30,12 @@ std::atomic<bool>& PipeInterruptedFlag() {
   return flag;
 }
 
-void OnPipeSignal(int sig) {
+extern "C" {
+static void OnPipeSignal(int sig) noexcept {
   if (sig == SIGINT || sig == SIGTERM) {
     PipeInterruptedFlag().store(true, std::memory_order_relaxed);
   }
+}
 }
 
 struct PipeStreamContext {
