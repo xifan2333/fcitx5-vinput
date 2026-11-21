@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -21,26 +22,44 @@ void AssertTrue(bool condition, const char* message, const char* file, int line)
 
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
-void TestDetectWavDataOffsetSmallBuffer() {
-  using vinput::audio::DetectWavDataOffset;
+// Walks RIFF chunks of `buffer` and returns the `data` bounds, or nullopt when the
+// buffer does not yet contain a complete `data` chunk header (or is malformed).
+std::optional<vinput::audio::WavDataBounds> FindDataBounds(std::span<const uint8_t> buffer) {
+  std::size_t scan_pos = vinput::audio::kRiffHeaderSize;
+  for (;;) {
+    const auto outcome = vinput::audio::ScanWavChunk(buffer, scan_pos);
+    if (outcome.result == vinput::audio::WavScanResult::DataFound) {
+      return outcome.bounds;
+    }
+    if (outcome.result == vinput::audio::WavScanResult::Skipped) {
+      scan_pos = outcome.next_pos;
+      continue;
+    }
+    return std::nullopt; // NeedMoreData or Malformed
+  }
+}
+
+void TestWavScanSmallBuffer() {
+  using vinput::audio::StartsWithWavPrefix;
 
   std::vector<uint8_t> empty;
-  TEST_ASSERT(DetectWavDataOffset(empty) == 0);
+  TEST_ASSERT(!StartsWithWavPrefix(empty));
+  TEST_ASSERT(!FindDataBounds(empty).has_value());
 
   std::vector<uint8_t> small(20, 0);
-  TEST_ASSERT(DetectWavDataOffset(small) == 0);
+  TEST_ASSERT(!StartsWithWavPrefix(small));
+  TEST_ASSERT(!FindDataBounds(small).has_value());
 }
 
-void TestDetectWavDataOffsetRawPcm() {
-  using vinput::audio::DetectWavDataOffset;
+void TestWavScanRawPcm() {
+  using vinput::audio::StartsWithWavPrefix;
 
   std::vector<uint8_t> pcm(100, 0x55);
-  TEST_ASSERT(DetectWavDataOffset(pcm) == 0);
+  TEST_ASSERT(!StartsWithWavPrefix(pcm));
+  TEST_ASSERT(!FindDataBounds(pcm).has_value());
 }
 
-void TestDetectWavDataOffsetStandardWav() {
-  using vinput::audio::DetectWavDataOffset;
-
+void TestWavScanStandardWav() {
   std::vector<uint8_t> wav(44 + 100, 0);
   std::memcpy(wav.data(), "RIFF", 4);
   const uint32_t file_size_minus_8 = 44 + 100 - 8;
@@ -53,12 +72,13 @@ void TestDetectWavDataOffsetStandardWav() {
   const uint32_t data_size = 100;
   std::memcpy(wav.data() + 40, &data_size, 4);
 
-  TEST_ASSERT(DetectWavDataOffset(wav) == 44);
+  const auto bounds = FindDataBounds(wav);
+  TEST_ASSERT(bounds.has_value());
+  TEST_ASSERT(bounds->offset == 44);
+  TEST_ASSERT(bounds->size == 100);
 }
 
-void TestDetectWavDataOffsetWithPrecedingChunk() {
-  using vinput::audio::DetectWavDataOffset;
-
+void TestWavScanWithPrecedingChunk() {
   std::vector<uint8_t> wav(56 + 100, 0);
   std::memcpy(wav.data(), "RIFF", 4);
   std::memcpy(wav.data() + 8, "WAVE", 4);
@@ -72,12 +92,13 @@ void TestDetectWavDataOffsetWithPrecedingChunk() {
   const uint32_t data_size = 100;
   std::memcpy(wav.data() + 52, &data_size, 4);
 
-  TEST_ASSERT(DetectWavDataOffset(wav) == 56);
+  const auto bounds = FindDataBounds(wav);
+  TEST_ASSERT(bounds.has_value());
+  TEST_ASSERT(bounds->offset == 56);
+  TEST_ASSERT(bounds->size == 100);
 }
 
-void TestDetectWavDataOffsetOddChunkAlignment() {
-  using vinput::audio::DetectWavDataOffset;
-
+void TestWavScanOddChunkAlignment() {
   std::vector<uint8_t> wav(56 + 100, 0);
   std::memcpy(wav.data(), "RIFF", 4);
   std::memcpy(wav.data() + 8, "WAVE", 4);
@@ -91,16 +112,35 @@ void TestDetectWavDataOffsetOddChunkAlignment() {
   const uint32_t data_size = 100;
   std::memcpy(wav.data() + 52, &data_size, 4);
 
-  TEST_ASSERT(DetectWavDataOffset(wav) == 56);
+  // Odd-sized JUNK payloads are padded to the next even boundary.
+  const auto bounds = FindDataBounds(wav);
+  TEST_ASSERT(bounds.has_value());
+  TEST_ASSERT(bounds->offset == 56 + 4);
 }
 
-void TestDetectWavDataOffsetFallback() {
-  using vinput::audio::DetectWavDataOffset;
-
-  std::vector<uint8_t> wav(44, 0);
+void TestWavScanMissingDataChunk() {
+  // RIFF/WAVE with only a fmt chunk: the scan must stay pending (need more data)
+  // instead of fabricating an offset-44 fallback.
+  std::vector<uint8_t> wav(144, 0);
   std::memcpy(wav.data(), "RIFF", 4);
   std::memcpy(wav.data() + 8, "WAVE", 4);
-  TEST_ASSERT(DetectWavDataOffset(wav) == 44);
+  std::memcpy(wav.data() + 12, "fmt ", 4);
+  const uint32_t fmt_size = 128;
+  std::memcpy(wav.data() + 16, &fmt_size, 4);
+
+  const auto bounds = FindDataBounds(wav);
+  TEST_ASSERT(!bounds.has_value());
+}
+
+void TestWavScanMalformedChunkSize() {
+  std::vector<uint8_t> wav(56 + 100, 0);
+  std::memcpy(wav.data(), "RIFF", 4);
+  std::memcpy(wav.data() + 8, "WAVE", 4);
+  std::memcpy(wav.data() + 12, "JUNK", 4);
+  const uint32_t huge_size = 0xFFFFFFF0U;
+  std::memcpy(wav.data() + 16, &huge_size, 4);
+
+  TEST_ASSERT(!FindDataBounds(wav).has_value());
 }
 
 void TestStreamWireProtocol() {
@@ -130,12 +170,13 @@ void TestStreamWireProtocol() {
 } // namespace
 
 int main() {
-  TestDetectWavDataOffsetSmallBuffer();
-  TestDetectWavDataOffsetRawPcm();
-  TestDetectWavDataOffsetStandardWav();
-  TestDetectWavDataOffsetWithPrecedingChunk();
-  TestDetectWavDataOffsetOddChunkAlignment();
-  TestDetectWavDataOffsetFallback();
+  TestWavScanSmallBuffer();
+  TestWavScanRawPcm();
+  TestWavScanStandardWav();
+  TestWavScanWithPrecedingChunk();
+  TestWavScanOddChunkAlignment();
+  TestWavScanMissingDataChunk();
+  TestWavScanMalformedChunkSize();
   TestStreamWireProtocol();
   std::cout << "All stream pipeline tests passed successfully.\n";
   return 0;

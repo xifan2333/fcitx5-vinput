@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -272,12 +273,113 @@ bool FdStreamAudioSource::PushBytesAsSamples(std::span<const uint8_t> bytes, boo
   return PushSamplesBlocking(scratch);
 }
 
-bool FdStreamAudioSource::StreamRemainingChunks(int read_fd, int abort_fd, bool& has_carry,
+bool FdStreamAudioSource::AppendMoreProbeBytes(int read_fd, int abort_fd,
+                                               std::vector<uint8_t>& probe_buf, bool& reached_eof,
+                                               std::string* error_out) {
+  std::array<uint8_t, kReadChunkBytes> temp{};
+  std::size_t bytes_read = 0;
+  const auto status = ReadChunk(read_fd, abort_fd, temp, bytes_read, error_out);
+  if (status == ReadStatus::Data) {
+    probe_buf.insert(probe_buf.end(), temp.data(), temp.data() + bytes_read);
+    return true;
+  }
+  if (status == ReadStatus::Eof) {
+    reached_eof = true;
+    return true; // let the scan re-evaluate with the EOF flag set
+  }
+  return false; // Aborted, or Error with *error_out set
+}
+
+bool FdStreamAudioSource::AdvanceWavScan(int read_fd, int abort_fd, std::vector<uint8_t>& probe_buf,
+                                         bool& reached_eof,
+                                         const vinput::audio::WavScanOutcome& outcome,
+                                         std::string* error_out) {
+  if (outcome.result == vinput::audio::WavScanResult::Malformed) {
+    if (error_out != nullptr) {
+      *error_out = "malformed WAV chunk size";
+    }
+    return false;
+  }
+  // NeedMoreData.
+  if (reached_eof) {
+    if (error_out != nullptr) {
+      *error_out = "WAV stream has no data chunk";
+    }
+    return false;
+  }
+  // Header + metadata scan bound: JUNK/LIST/etc. payloads are walked (and skipped over),
+  // but a pathological header that never reaches `data` is rejected instead of being
+  // buffered without limit.
+  constexpr std::size_t kMaxWavHeaderScanBytes = 1U << 20;
+  if (probe_buf.size() >= kMaxWavHeaderScanBytes) {
+    if (error_out != nullptr) {
+      *error_out = "WAV data chunk not found within 1 MiB of header";
+    }
+    return false;
+  }
+  return AppendMoreProbeBytes(read_fd, abort_fd, probe_buf, reached_eof, error_out);
+}
+
+bool FdStreamAudioSource::ScanForWavDataChunk(int read_fd, int abort_fd,
+                                              std::vector<uint8_t>& probe_buf, bool& reached_eof,
+                                              vinput::audio::WavDataBounds& bounds,
+                                              std::string* error_out) {
+  std::size_t scan_pos = vinput::audio::kRiffHeaderSize;
+  for (;;) {
+    const auto outcome = vinput::audio::ScanWavChunk(probe_buf, scan_pos);
+    if (outcome.result == vinput::audio::WavScanResult::DataFound) {
+      bounds = outcome.bounds;
+      return true;
+    }
+    if (outcome.result == vinput::audio::WavScanResult::Skipped) {
+      scan_pos = outcome.next_pos;
+      continue;
+    }
+    if (!AdvanceWavScan(read_fd, abort_fd, probe_buf, reached_eof, outcome, error_out)) {
+      return false;
+    }
+  }
+}
+
+bool FdStreamAudioSource::PushInitialWavPayload(int read_fd, int abort_fd,
+                                                std::vector<uint8_t>& probe_buf, bool& reached_eof,
+                                                std::size_t& wav_remaining, bool& has_carry,
                                                 uint8_t& carry_byte,
-                                                std::vector<int16_t>& scratch) {
+                                                std::vector<int16_t>& sample_scratch,
+                                                std::string* error_out) {
+  vinput::audio::WavDataBounds bounds;
+  if (!ScanForWavDataChunk(read_fd, abort_fd, probe_buf, reached_eof, bounds, error_out)) {
+    if (error_out != nullptr && !error_out->empty() &&
+        !stop_requested_.load(std::memory_order_acquire)) {
+      RecordStreamError(std::move(*error_out));
+    }
+    return false;
+  }
+  if (bounds.size != vinput::audio::kWavStreamingDataSize) {
+    wav_remaining = bounds.size;
+  }
+  const std::size_t payload = probe_buf.size() - bounds.offset;
+  const std::size_t take = std::min(payload, wav_remaining);
+  if (take > 0) {
+    const auto initial_pcm = std::span<const uint8_t>(probe_buf).subspan(bounds.offset, take);
+    if (!PushBytesAsSamples(initial_pcm, has_carry, carry_byte, sample_scratch)) {
+      return false;
+    }
+    wav_remaining -= take;
+  }
+  return true;
+}
+
+bool FdStreamAudioSource::StreamRemainingChunks(int read_fd, int abort_fd, bool& has_carry,
+                                                uint8_t& carry_byte, std::vector<int16_t>& scratch,
+                                                std::size_t& bytes_remaining) {
   std::array<uint8_t, kReadChunkBytes> chunk{};
   std::string read_error;
   while (!stop_requested_.load(std::memory_order_acquire)) {
+    if (bytes_remaining == 0) {
+      // Declared data payload exhausted; any trailing metadata is dropped.
+      return true;
+    }
     std::size_t bytes_read = 0;
     const auto status = ReadChunk(read_fd, abort_fd, chunk, bytes_read, &read_error);
     if (status == ReadStatus::Aborted) {
@@ -291,9 +393,13 @@ bool FdStreamAudioSource::StreamRemainingChunks(int read_fd, int abort_fd, bool&
       return true;
     }
 
-    const auto bytes = std::span<const uint8_t>(chunk.data(), bytes_read);
-    if (!PushBytesAsSamples(bytes, has_carry, carry_byte, scratch)) {
-      return false;
+    const std::size_t take = std::min(bytes_read, bytes_remaining);
+    if (take > 0) {
+      const auto bytes = std::span<const uint8_t>(chunk.data(), take);
+      if (!PushBytesAsSamples(bytes, has_carry, carry_byte, scratch)) {
+        return false;
+      }
+      bytes_remaining -= take;
     }
   }
   return false;
@@ -318,18 +424,22 @@ void FdStreamAudioSource::ReaderLoop() {
   std::vector<int16_t> sample_scratch;
   sample_scratch.reserve((kReadChunkBytes / sizeof(int16_t)) + 1);
 
-  if (!probe_buf.empty()) {
-    const std::size_t offset = vinput::audio::DetectWavDataOffset(probe_buf);
-    if (offset < probe_buf.size()) {
-      const auto initial_pcm = std::span<const uint8_t>(probe_buf).subspan(offset);
-      if (!PushBytesAsSamples(initial_pcm, has_carry, carry_byte, sample_scratch)) {
-        return;
-      }
+  std::size_t wav_remaining = std::numeric_limits<std::size_t>::max();
+  if (vinput::audio::StartsWithWavPrefix(probe_buf)) {
+    if (!PushInitialWavPayload(read_fd, abort_fd, probe_buf, reached_eof, wav_remaining, has_carry,
+                               carry_byte, sample_scratch, &read_error)) {
+      return;
+    }
+  } else if (!probe_buf.empty()) {
+    // Raw PCM: the whole probe is audio and the stream is read to physical EOF.
+    if (!PushBytesAsSamples(probe_buf, has_carry, carry_byte, sample_scratch)) {
+      return;
     }
   }
 
-  if (reached_eof ||
-      StreamRemainingChunks(read_fd, abort_fd, has_carry, carry_byte, sample_scratch)) {
+  if (reached_eof || wav_remaining == 0 ||
+      StreamRemainingChunks(read_fd, abort_fd, has_carry, carry_byte, sample_scratch,
+                            wav_remaining)) {
     eof_.store(true, std::memory_order_release);
     vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
   }

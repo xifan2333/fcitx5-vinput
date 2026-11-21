@@ -60,8 +60,19 @@ private:
                        std::string* error_out) const;
   bool ReadInitialProbe(int read_fd, int abort_fd, std::vector<uint8_t>& probe_buf,
                         bool& reached_eof, std::string* error_out);
+  bool AppendMoreProbeBytes(int read_fd, int abort_fd, std::vector<uint8_t>& probe_buf,
+                            bool& reached_eof, std::string* error_out);
+  bool AdvanceWavScan(int read_fd, int abort_fd, std::vector<uint8_t>& probe_buf, bool& reached_eof,
+                      const vinput::audio::WavScanOutcome& outcome, std::string* error_out);
+  bool ScanForWavDataChunk(int read_fd, int abort_fd, std::vector<uint8_t>& probe_buf,
+                           bool& reached_eof, vinput::audio::WavDataBounds& bounds,
+                           std::string* error_out);
+  bool PushInitialWavPayload(int read_fd, int abort_fd, std::vector<uint8_t>& probe_buf,
+                             bool& reached_eof, std::size_t& wav_remaining, bool& has_carry,
+                             uint8_t& carry_byte, std::vector<int16_t>& sample_scratch,
+                             std::string* error_out);
   bool StreamRemainingChunks(int read_fd, int abort_fd, bool& has_carry, uint8_t& carry_byte,
-                             std::vector<int16_t>& scratch);
+                             std::vector<int16_t>& scratch, std::size_t& bytes_remaining);
   bool PushBytesAsSamples(std::span<const uint8_t> bytes, bool& has_carry, uint8_t& carry_byte,
                           std::vector<int16_t>& scratch);
   bool PushSamplesBlocking(std::span<const int16_t> samples);
