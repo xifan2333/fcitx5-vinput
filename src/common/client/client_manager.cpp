@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fmt/format.h>
+#include <fmt/printf.h>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -265,7 +266,7 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
   if (session.WaitForExit(std::chrono::milliseconds(250), &immediate_exit)) {
     CleanupBridgeSource(bridge, source_id);
     if (error != nullptr) {
-      *error = fmt::format(_("client exited immediately (code {})"), immediate_exit);
+      *error = fmt::sprintf(_("client exited immediately (code %d)"), immediate_exit);
     }
     return false;
   }

@@ -2002,16 +2002,18 @@ msgid "Streaming ASR provider exited abnormally."
 msgstr "流式 ASR 提供商异常退出。"
 
 #: src/daemon/asr/backends/command_streaming_backend.cpp:479
-msgid "Streaming ASR provider exited prematurely with code {}."
-msgstr "流式 ASR 提供商提前退出，代码 {}。"
+#, c-format
+msgid "Streaming ASR provider exited prematurely with code %d."
+msgstr "流式 ASR 提供商提前退出，代码 %d。"
 
 #: src/daemon/asr/backends/command_streaming_backend.cpp:306
 msgid "Streaming ASR provider returned no text."
 msgstr "流式 ASR 提供商未返回文本。"
 
 #: src/common/client/client_manager.cpp:268
-msgid "client exited immediately (code {})"
-msgstr "客户端立即退出（代码 {}）"
+#, c-format
+msgid "client exited immediately (code %d)"
+msgstr "客户端立即退出（代码 %d）"
 
 #: src/daemon/asr/backends/command_streaming_backend.cpp:220
 msgid "failed to poll provider."

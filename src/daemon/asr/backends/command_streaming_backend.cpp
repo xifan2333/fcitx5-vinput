@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <fmt/format.h>
+#include <fmt/printf.h>
 #include <glaze/core/common.hpp>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
@@ -477,7 +478,8 @@ private:
 
     int exit_code = -1;
     if (session_->HasExited(&exit_code)) {
-      *error = fmt::format(_("Streaming ASR provider exited prematurely with code {}."), exit_code);
+      *error =
+          fmt::sprintf(_("Streaming ASR provider exited prematurely with code %d."), exit_code);
       return false;
     }
 
