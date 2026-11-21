@@ -92,6 +92,8 @@ void TestStderrPipedToNotificationBridge() {
              "Expected 2 notifications, got " + std::to_string(received.size()));
   ExpectTrue(received[0].title == "Batch Warning", "JSON notification title mismatch");
   ExpectTrue(received[0].body == "Token low", "JSON notification body mismatch");
+  ExpectTrue(received[1].title == "test-batch-stderr",
+             "Plain text notification should default title to provider title/id");
   ExpectTrue(received[1].body == "Verbatim batch notice", "Plain text notification body mismatch");
 }
 

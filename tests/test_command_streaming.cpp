@@ -471,6 +471,8 @@ void TestStderrPipedToNotificationBridge() {
              "Expected custom title, got " + received[0].title);
   ExpectTrue(received[0].body == "Rate limit reached",
              "Expected json body, got " + received[0].body);
+  ExpectTrue(received[1].title == "test-bridge-provider",
+             "Expected provider title/id, got " + received[1].title);
   ExpectTrue(received[1].body == "Verbatim plain error",
              "Expected plain body, got " + received[1].body);
 }

@@ -629,10 +629,10 @@ void TestProcessCommandAdapterStderrNotification() {
   scene.llm_max_candidates = 1;
   scene.timeout_ms = 5000;
 
-  std::vector<std::string> delivered_notifications;
+  std::vector<vinput::notify::Notification> delivered_notifications;
   vinput::notify::NotificationBridge bridge(
       [&delivered_notifications](const vinput::notify::Notification& n) {
-        delivered_notifications.push_back(n.body);
+        delivered_notifications.push_back(n);
       });
 
   const PostProcessor processor(&bridge);
@@ -641,7 +641,9 @@ void TestProcessCommandAdapterStderrNotification() {
 
   AssertTrue(payload.commitText == "Result OK", "adapter succeeded despite stderr");
   AssertTrue(!delivered_notifications.empty(), "notification bridge received stderr");
-  AssertTrue(delivered_notifications[0].find("Warning log") != std::string::npos,
+  AssertTrue(delivered_notifications[0].title == "stderr_adapter",
+             "notification title defaults to adapter title/id");
+  AssertTrue(delivered_notifications[0].body.find("Warning log") != std::string::npos,
              "message content matches");
 }
 

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "common/notify/notification_bridge.h"
+#include "common/registry/registry_i18n.h"
 
 namespace {
 
@@ -191,6 +192,21 @@ void TestDedupCacheHardCapEviction() {
   ExpectTrue(delivered.size() == 300, "all 300 unique messages delivered");
 }
 
+void TestLookupTitle() {
+  const vinput::registry::I18nMap map{
+      {"trigger.vinput.web_remote.title", "Web Remote"},
+      {"adapter.empty.title", ""},
+  };
+  ExpectTrue(vinput::registry::LookupTitle(map, "trigger.vinput.web_remote") == "Web Remote",
+             "LookupTitle returns localized title");
+  ExpectTrue(vinput::registry::LookupTitle(map, "adapter.empty") == "adapter.empty",
+             "LookupTitle falls back to id when title is empty");
+  ExpectTrue(vinput::registry::LookupTitle(map, "missing.id") == "missing.id",
+             "LookupTitle falls back to id when key is missing");
+  ExpectTrue(vinput::registry::LookupTitle(map, "").empty(),
+             "LookupTitle returns empty string for empty id");
+}
+
 } // namespace
 
 int main() {
@@ -201,5 +217,6 @@ int main() {
   TestSlidingWindowDeduplication();
   TestOversizedBufferProtection();
   TestDedupCacheHardCapEviction();
+  TestLookupTitle();
   return 0;
 }

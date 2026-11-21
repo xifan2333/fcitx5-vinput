@@ -298,6 +298,45 @@ void TestClientImmediateExitDetected() {
              "PID file should not exist for a failing client");
 }
 
+void TestPlainStderrUsesLocalizedClientTitle() {
+  const TestEnvFixture fixture;
+
+  ExpectTrue(
+      vinput::file::AtomicWriteTextFile(vinput::path::VinputConfigDir() / "i18n.local.json",
+                                        R"({"trigger.mock.plain.title": "Mock Plain Trigger"})")
+          .has_value(),
+      "Write i18n.local.json failed");
+
+  TestEnvFixture::WriteConfig(R"({
+    "version": ">=2.4.0",
+    "triggers": [
+      {
+        "id": "trigger.mock.plain",
+        "command": "sh",
+        "args": ["-c", "printf 'plain alert\\n' >&2; sleep 30"],
+        "auto_start": false
+      }
+    ]
+  })");
+
+  CollectedNotifications notifications;
+  vinput::notify::NotificationBridge bridge(
+      [&](const vinput::notify::Notification& n) { notifications.Add(n); });
+
+  std::string error;
+  ExpectTrue(vinput::client::Start("trigger.mock.plain", &bridge, nullptr, &error),
+             "Start should succeed: " + error);
+  ExpectTrue(WaitFor([&] { return notifications.Count() >= 1; }),
+             "Plain stderr notification should arrive");
+  ExpectEq(notifications.Front().title, "Mock Plain Trigger",
+           "Plain stderr notification should use localized client title");
+  ExpectEq(notifications.Front().body, "plain alert", "Plain stderr body mismatch");
+
+  std::string stop_error;
+  ExpectTrue(vinput::client::Stop("trigger.mock.plain", &stop_error, &bridge),
+             "Stop should succeed: " + stop_error);
+}
+
 void TestClientNotFound() {
   const TestEnvFixture fixture;
 
@@ -386,6 +425,7 @@ int main() {
   TestTriggerStartStopWithStdoutFramingAndStderrSink();
   TestReceiverLookupAndBroadcastEcho();
   TestClientImmediateExitDetected();
+  TestPlainStderrUsesLocalizedClientTitle();
   TestClientNotFound();
   TestAutoStartUsesInMemorySpec();
   TestGetClientStatuses();
