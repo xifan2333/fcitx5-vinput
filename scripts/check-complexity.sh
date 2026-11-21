@@ -20,9 +20,15 @@ done
 if [ "$ALL" -eq 1 ]; then
   mapfile -t FILES < <(find src -name '*.cpp' -o -name '*.h' | sort)
 elif [ "${#FILES[@]}" -eq 0 ]; then
-  BASE_REF="$(git merge-base HEAD origin/main 2>/dev/null || echo "origin/main")"
+  BASE_REF="$(git merge-base HEAD origin/main 2>/dev/null)" || BASE_REF="origin/main"
+  # Fail loudly when the baseline cannot be diffed instead of silently
+  # shrinking the audit to the working tree only.
+  if ! git rev-parse --verify --quiet "${BASE_REF}^{commit}" >/dev/null 2>&1; then
+    echo "error: check-complexity baseline '${BASE_REF}' is not available locally; run 'git fetch origin main' and retry" >&2
+    exit 1
+  fi
   mapfile -t FILES < <({
-    git diff --name-only "${BASE_REF}" 2>/dev/null
+    git diff --name-only "${BASE_REF}"
     git diff --name-only
     git diff --cached --name-only
     git ls-files --others --exclude-standard
