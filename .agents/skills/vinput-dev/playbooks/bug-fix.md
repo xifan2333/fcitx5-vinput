@@ -44,7 +44,7 @@ Canonical execution workflow for diagnosing and repairing broken behaviors, cras
 
 ### 4. Single-Item Atomic Loop (S2: TRACK_LOOP)
 - Fix the root cause in the shared component with the minimal working diff.
-- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) on touched files. Untouched historical files are ignored.
+- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) when `src/**/*.{cpp,h}` files are touched (untouched files and test-only changes are skipped by `hk`'s `src/` glob).
 - Verify the reproduction test now passes (`Green`).
 - Run local sub-second gate:
   ```bash

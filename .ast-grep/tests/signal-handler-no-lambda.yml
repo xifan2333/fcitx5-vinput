@@ -1,0 +1,16 @@
+id: signal-handler-no-lambda
+valid:
+  - "signal(SIGINT, OnSig);"
+  - "std::signal(SIGINT, SIG_IGN);"
+  - "::std::signal(SIGINT, SIG_DFL);"
+  - "myns::signal(SIGINT, [](int){});"
+  - "::myns::signal(SIGINT, [](int){});"
+  - "s.signal(SIGINT, [](int){});"
+  - "signal([](int){ return 1; }(), OnSig);"
+invalid:
+  - "signal(SIGINT, [](int){});"
+  - "std::signal(SIGINT, [](int){});"
+  - "::signal(SIGINT, [](int){});"
+  - "::std::signal(SIGINT, [](int){});"
+  - "std :: signal(SIGINT, [](int){});"
+  - ":: std :: signal(SIGINT, [](int){});"

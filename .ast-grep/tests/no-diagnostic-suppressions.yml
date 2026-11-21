@@ -1,0 +1,7 @@
+id: no-diagnostic-suppressions
+valid:
+  - "// normal comment"
+  - "#pragma once"
+invalid:
+  - "// NOLINT(misc-include-cleaner)"
+  - "#pragma clang diagnostic ignored \"-Wunused\""

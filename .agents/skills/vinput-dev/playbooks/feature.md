@@ -48,7 +48,7 @@ Canonical execution workflow for introducing new capabilities or altering extern
 ### 4. Single-Item Atomic Implementation Loop (S2: TRACK_LOOP)
 For each unchecked `- [ ]` task in order:
 - Implement only the topmost item using the shortest working diff conforming to `principles/laziness-protocol.md`.
-- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) on touched files. Untouched historical files are ignored.
+- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) when `src/**/*.{cpp,h}` files are touched (untouched files and test-only changes are skipped by `hk`'s `src/` glob).
 - **Scrap Detector**: If implementation requires $\ge 2$ special-case branches or breaks initial interface assumptions, abort immediately. Run `git reset`, report friction, and redesign.
 - Run sub-second local quality gate:
   ```bash

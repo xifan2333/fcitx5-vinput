@@ -50,8 +50,8 @@ description = "Analyze code duplication across src/ using jscpd"
 run = "jscpd --config .jscpd.json"
 
 [tasks."check:ast"]
-description = "Audit C++ AST anti-patterns across the repo (full inventory)"
-run = "ast-grep scan"
+description = "Audit C++ AST anti-patterns across the repo and run rule tests"
+run = "ast-grep scan && ast-grep test --skip-snapshot-tests"
 
 [tasks."check:ast:changed"]
 description = "Enforce the AST ratchet on modified/staged/untracked C++ files"
