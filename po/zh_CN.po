@@ -1942,3 +1942,47 @@ msgstr "守护进程正在退出"
 #: src/daemon/asr/backends/command_streaming_backend.cpp:453
 msgid "provider session is not started."
 msgstr "提供商会话未启动。"
+
+#: src/cli/utils/resource_utils.cpp:43
+msgid "%s not found: %s"
+msgstr "未找到%s：%s"
+
+#: src/cli/utils/resource_utils.cpp:158
+msgid "ASR provider"
+msgstr "ASR 提供商"
+
+#: src/cli/runtime/dbus_client.cpp:62
+msgid "D-Bus not connected"
+msgstr "D-Bus 未连接"
+
+#: src/cli/utils/resource_utils.cpp:160
+msgid "LLM adapter"
+msgstr "LLM 适配器"
+
+#: src/cli/runtime/dbus_client.cpp:135
+msgid "failed to enter client status array"
+msgstr "进入客户端状态数组失败"
+
+#: src/cli/runtime/dbus_client.cpp:160
+msgid "failed to enter client status element"
+msgstr "进入客户端状态元素失败"
+
+#: src/cli/runtime/dbus_client.cpp:149
+msgid "failed to read client status element"
+msgstr "读取客户端状态元素失败"
+
+#: src/cli/utils/resource_utils.cpp:199
+msgid "installed model"
+msgstr "已安装模型"
+
+#: src/cli/utils/resource_utils.cpp:189
+msgid "model"
+msgstr "模型"
+
+#: src/cli/runtime/dbus_client.cpp:293
+msgid "null statuses pointer"
+msgstr "客户端状态指针为空"
+
+#: src/cli/utils/resource_utils.cpp:166
+msgid "script"
+msgstr "脚本"

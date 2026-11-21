@@ -10,6 +10,7 @@
 
 #include "common/client/client_manager.h"
 #include "common/dbus/dbus_interface.h"
+#include "common/i18n.h"
 #include "common/runtime/runtime_defaults.h"
 
 namespace vinput::cli {
@@ -58,7 +59,7 @@ bool CallBusMethod(sd_bus* bus, const char* destination, const char* path, const
                    Args... args) {
   if (bus == nullptr) {
     if (error != nullptr) {
-      *error = "D-Bus not connected";
+      *error = _("D-Bus not connected");
     }
     return false;
   }
@@ -131,7 +132,7 @@ bool ReadClientStatusArray(sd_bus_message* msg, std::vector<vinput::dbus::Client
                            std::string* error) {
   if (sd_bus_message_enter_container(msg, 'a', "(sbx)") <= 0) {
     if (error != nullptr) {
-      *error = "failed to enter client status array";
+      *error = _("failed to enter client status array");
     }
     return false;
   }
@@ -145,7 +146,7 @@ bool ReadClientStatusArray(sd_bus_message* msg, std::vector<vinput::dbus::Client
       statuses.clear();
       sd_bus_message_exit_container(msg);
       if (error != nullptr) {
-        *error = "failed to read client status element";
+        *error = _("failed to read client status element");
       }
       return false;
     }
@@ -156,7 +157,7 @@ bool ReadClientStatusArray(sd_bus_message* msg, std::vector<vinput::dbus::Client
   if (r < 0) {
     statuses.clear();
     if (error != nullptr) {
-      *error = "failed to enter client status element";
+      *error = _("failed to enter client status element");
     }
     return false;
   }
@@ -289,7 +290,7 @@ bool DbusClient::GetClientStatuses(std::vector<vinput::dbus::ClientStatus>* stat
                                    std::string* error) {
   if (statuses == nullptr) {
     if (error != nullptr) {
-      *error = "null statuses pointer";
+      *error = _("null statuses pointer");
     }
     return false;
   }
