@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <span>
 #include <string>
 #include <string_view>
@@ -13,6 +12,7 @@
 #include <sys/poll.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "daemon/audio/fd_stream_audio_source.h"
@@ -42,31 +42,6 @@ bool WaitForEventFd(int efd, int timeout_ms = 2000) {
   return true;
 }
 
-std::vector<uint8_t> BuildWavHeader(uint32_t data_bytes) {
-  std::vector<uint8_t> hdr(44, 0);
-  std::memcpy(hdr.data(), "RIFF", 4);
-  const uint32_t riff_size = 36 + data_bytes;
-  std::memcpy(hdr.data() + 4, &riff_size, 4);
-  std::memcpy(hdr.data() + 8, "WAVEfmt ", 8);
-  const uint32_t fmt_size = 16;
-  std::memcpy(hdr.data() + 16, &fmt_size, 4);
-  const uint16_t audio_fmt = 1;
-  const uint16_t channels = 1;
-  const uint32_t sample_rate = 16000;
-  const uint32_t byte_rate = 32000;
-  const uint16_t block_align = 2;
-  const uint16_t bits_per_sample = 16;
-  std::memcpy(hdr.data() + 20, &audio_fmt, 2);
-  std::memcpy(hdr.data() + 22, &channels, 2);
-  std::memcpy(hdr.data() + 24, &sample_rate, 4);
-  std::memcpy(hdr.data() + 28, &byte_rate, 4);
-  std::memcpy(hdr.data() + 32, &block_align, 2);
-  std::memcpy(hdr.data() + 34, &bits_per_sample, 2);
-  std::memcpy(hdr.data() + 36, "data", 4);
-  std::memcpy(hdr.data() + 40, &data_bytes, 4);
-  return hdr;
-}
-
 void TestInvalidFdRejected() {
   FdStreamAudioSource source(-1);
   std::string error;
@@ -75,7 +50,7 @@ void TestInvalidFdRejected() {
   TEST_ASSERT(!source.IsRecording());
 }
 
-void TestWavHeaderAndOddByteBoundary() {
+void TestRawPcmOddByteBoundaryAndCallbacks() {
   std::array<int, 2> pipe_fds{-1, -1};
   TEST_ASSERT(pipe(pipe_fds.data()) == 0);
   const int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -94,18 +69,13 @@ void TestWavHeaderAndOddByteBoundary() {
       [&error_called](std::string_view) { error_called.store(true); }, &error));
 
   const std::array<int16_t, 4> expected{111, -222, 333, -444};
-  auto wav = BuildWavHeader(static_cast<uint32_t>(expected.size() * sizeof(int16_t)));
   const auto pcm_bytes = std::as_bytes(std::span(expected));
-  wav.reserve(wav.size() + pcm_bytes.size());
-  for (const std::byte b : pcm_bytes) {
-    wav.push_back(std::to_integer<uint8_t>(b));
-  }
 
-  // Write split across an odd byte boundary (47 bytes, then remainder)
-  TEST_ASSERT(write(pipe_fds[1], wav.data(), 47) == 47);
+  // Write split across an odd byte boundary (3 bytes, then remainder)
+  TEST_ASSERT(write(pipe_fds[1], pcm_bytes.data(), 3) == 3);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  TEST_ASSERT(write(pipe_fds[1], wav.data() + 47, wav.size() - 47) ==
-              static_cast<ssize_t>(wav.size() - 47));
+  TEST_ASSERT(std::cmp_equal(write(pipe_fds[1], pcm_bytes.data() + 3, pcm_bytes.size() - 3),
+                             pcm_bytes.size() - 3));
   close(pipe_fds[1]);
 
   std::vector<int16_t> collected;
@@ -296,7 +266,7 @@ void TestStreamErrorStopsImmediately() {
 int main() {
   std::printf("Running test_fd_stream_audio_source...\n");
   TestInvalidFdRejected();
-  TestWavHeaderAndOddByteBoundary();
+  TestRawPcmOddByteBoundaryAndCallbacks();
   TestRawPcmCarryAcrossReads();
   TestEmptyStreamEof();
   TestAbortInterruptsBlockedPipe();
