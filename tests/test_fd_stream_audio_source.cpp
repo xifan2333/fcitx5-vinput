@@ -75,6 +75,128 @@ void TestInvalidFdRejected() {
   TEST_ASSERT(!source.IsRecording());
 }
 
+std::vector<uint8_t> BuildRiffPrefix() {
+  std::vector<uint8_t> riff(12, 0);
+  std::memcpy(riff.data(), "RIFF", 4);
+  std::memcpy(riff.data() + 8, "WAVE", 4);
+  return riff;
+}
+
+void AppendWavChunk(std::vector<uint8_t>& wav, const char* chunk_id,
+                    std::span<const uint8_t> payload) {
+  const std::size_t old = wav.size();
+  wav.resize(old + 8 + payload.size());
+  std::memcpy(wav.data() + old, chunk_id, 4);
+  const uint32_t size = static_cast<uint32_t>(payload.size());
+  std::memcpy(wav.data() + old + 4, &size, 4);
+  std::memcpy(wav.data() + old + 8, payload.data(), payload.size());
+  if (payload.size() % 2 == 1) {
+    wav.push_back(0); // chunks are padded to an even boundary
+  }
+}
+
+void AppendSamplesLe(std::vector<uint8_t>& wav, std::span<const int16_t> samples) {
+  const std::size_t old = wav.size();
+  wav.resize(old + samples.size() * sizeof(int16_t));
+  std::memcpy(wav.data() + old, samples.data(), samples.size() * sizeof(int16_t));
+}
+
+// Runs a stream source to EOF over the given bytes and collects decoded samples.
+void RunStreamToEof(std::vector<uint8_t>& wav, std::vector<int16_t>& collected,
+                    std::atomic<bool>& error_called, std::string& error_msg) {
+  std::array<int, 2> pipe_fds{-1, -1};
+  TEST_ASSERT(pipe(pipe_fds.data()) == 0);
+  const int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+  TEST_ASSERT(efd >= 0);
+
+  std::atomic<bool> eof_called{false};
+  FdStreamAudioSource source(pipe_fds[0], [&eof_called] { eof_called.store(true); });
+  source.SetNotifyFd(efd);
+  TEST_ASSERT(source.Begin({}, nullptr, [&](std::string_view msg) {
+    error_called.store(true);
+    error_msg = std::string(msg);
+  }));
+
+  const ssize_t written = write(pipe_fds[1], wav.data(), wav.size());
+  TEST_ASSERT(written == static_cast<ssize_t>(wav.size()));
+  close(pipe_fds[1]);
+
+  for (int i = 0; i < 50 && !eof_called.load() && !error_called.load(); ++i) {
+    (void)WaitForEventFd(efd, 100);
+    source.DrainAvailable([&collected](std::span<const int16_t> chunk) {
+      collected.insert(collected.end(), chunk.begin(), chunk.end());
+    });
+  }
+  source.StopAndDrain();
+  close(efd);
+}
+
+void TestWavJunkChunkBeyondProbe() {
+  // A JUNK payload larger than the initial 1024-byte probe must not be decoded as
+  // audio: the scan continues past the probe window and only `data` bytes surface.
+  const std::array<int16_t, 4> expected{111, -222, 333, -444};
+  std::vector<uint8_t> wav = BuildRiffPrefix();
+  const std::array<uint8_t, 16> fmt{};
+  AppendWavChunk(wav, "fmt ", fmt);
+  const std::vector<uint8_t> junk(1200, 0x7B); // pushes `data` beyond the probe window
+  AppendWavChunk(wav, "JUNK", junk);
+  const std::size_t data_pos = wav.size() + 8;
+  AppendWavChunk(wav, "data", {});
+  const uint32_t data_size = static_cast<uint32_t>(expected.size() * sizeof(int16_t));
+  std::memcpy(wav.data() + data_pos - 4, &data_size, 4);
+  AppendSamplesLe(wav, expected);
+
+  std::vector<int16_t> collected;
+  std::atomic<bool> error_called{false};
+  std::string error_msg;
+  RunStreamToEof(wav, collected, error_called, error_msg);
+
+  TEST_ASSERT(!error_called.load());
+  TEST_ASSERT(collected.size() == expected.size());
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    TEST_ASSERT(collected[i] == expected[i]);
+  }
+}
+
+void TestWavTrailingMetadataIgnored() {
+  // LIST/INFO after the declared `data` payload must be dropped, not decoded.
+  const std::array<int16_t, 4> expected{7, -7, 42, -42};
+  auto wav = BuildWavHeader(static_cast<uint32_t>(expected.size() * sizeof(int16_t)));
+  AppendSamplesLe(wav, expected);
+  const std::array<uint8_t, 4> list_payload{0xAA, 0xBB, 0xCC, 0xDD};
+  AppendWavChunk(wav, "LIST", list_payload);
+  const std::array<uint8_t, 2> info_payload{0x11, 0x22};
+  AppendWavChunk(wav, "INFO", info_payload);
+
+  std::vector<int16_t> collected;
+  std::atomic<bool> error_called{false};
+  std::string error_msg;
+  RunStreamToEof(wav, collected, error_called, error_msg);
+
+  TEST_ASSERT(!error_called.load());
+  TEST_ASSERT(collected.size() == expected.size());
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    TEST_ASSERT(collected[i] == expected[i]);
+  }
+}
+
+void TestWavMissingDataChunkReportsError() {
+  // A RIFF/WAVE stream that never carries a `data` chunk reports a stream error
+  // instead of fabricating an offset-44 payload.
+  std::vector<uint8_t> wav = BuildRiffPrefix();
+  const std::array<uint8_t, 16> fmt{};
+  AppendWavChunk(wav, "fmt ", fmt);
+
+  std::vector<int16_t> collected;
+  std::atomic<bool> error_called{false};
+  std::string error_msg;
+  RunStreamToEof(wav, collected, error_called, error_msg);
+
+  TEST_ASSERT(error_called.load());
+  TEST_ASSERT(error_msg.find("data chunk") != std::string::npos);
+  TEST_ASSERT(collected.empty());
+}
+
 void TestWavHeaderAndOddByteBoundary() {
   std::array<int, 2> pipe_fds{-1, -1};
   TEST_ASSERT(pipe(pipe_fds.data()) == 0);
@@ -297,6 +419,9 @@ int main() {
   std::printf("Running test_fd_stream_audio_source...\n");
   TestInvalidFdRejected();
   TestWavHeaderAndOddByteBoundary();
+  TestWavJunkChunkBeyondProbe();
+  TestWavTrailingMetadataIgnored();
+  TestWavMissingDataChunkReportsError();
   TestRawPcmCarryAcrossReads();
   TestEmptyStreamEof();
   TestAbortInterruptsBlockedPipe();
