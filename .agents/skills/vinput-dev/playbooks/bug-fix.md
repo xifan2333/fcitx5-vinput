@@ -44,7 +44,7 @@ Canonical execution workflow for diagnosing and repairing broken behaviors, cras
 
 ### 4. Single-Item Atomic Loop (S2: TRACK_LOOP)
 - Fix the root cause in the shared component with the minimal working diff.
-- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) when `src/**/*.{cpp,h}` files are touched (untouched files and test-only changes are skipped by `hk`'s `src/` glob).
+- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) on C++ changes. **Trigger** (`hk.pkl` `check-ast`/`check-complexity` glob `src/**/*.{cpp,h}`): only `src/` modifications run this step, so test-only changes skip it. **Scope**: `check-ast` scans only the touched files; `check-complexity` runs `scripts/check-complexity.sh` with no arguments and re-collects every `(src|tests)/**/*.{cpp,h}` change relative to `origin/main` — branch-earlier commits and `tests/` files included — so the ceilings bind the full branch C++ delta.
 - Verify the reproduction test now passes (`Green`).
 - Run local sub-second gate:
   ```bash
@@ -52,7 +52,7 @@ Canonical execution workflow for diagnosing and repairing broken behaviors, cras
   ```
 - Push atomic commit and update Draft PR checklist (`- [x]`) in lockstep.
 
-*Completion criterion*: Failing test turns green, `check:changed` passes with zero AST errors on touched files, and checklist task is checked off (`- [x]`).
+*Completion criterion*: Failing test turns green, `check:changed` passes, and checklist task is checked off (`- [x]`).
 
 ### 5. Self-Review & Gate Yield (S3: GATE_YIELD)
 - Run `mise run check:dup`.

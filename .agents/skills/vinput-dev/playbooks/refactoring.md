@@ -50,12 +50,12 @@ Canonical execution workflow for restructuring existing code while strictly pres
 ### 4. Migrate Callers Then Delete Legacy APIs in One Wave (No Shims)
 - Within this repository's codebase, **never introduce temporary backward-compatibility shims or parallel paths**.
 - Migrate every caller in the same wave and immediately delete the legacy API.
-- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) when `src/**/*.{cpp,h}` files are touched (untouched files and test-only changes are skipped by `hk`'s `src/` glob).
+- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) on C++ changes. **Trigger** (`hk.pkl` `check-ast`/`check-complexity` glob `src/**/*.{cpp,h}`): only `src/` modifications run this step, so test-only changes skip it. **Scope**: `check-ast` scans only the touched files; `check-complexity` runs `scripts/check-complexity.sh` with no arguments and re-collects every `(src|tests)/**/*.{cpp,h}` change relative to `origin/main` — branch-earlier commits and `tests/` files included — so the ceilings bind the full branch C++ delta.
 - Run Deletion Test: verify that deleting the old wrapper concentrates complexity rather than scattering it.
 - Run `mise run check:changed` on each atomic task commit.
 - Update Draft PR checklist (`- [x]`) in lockstep.
 
-*Completion criterion*: Legacy APIs deleted, all callers migrated to the new deep module, zero compatibility shims left, zero AST errors on touched files.
+*Completion criterion*: Legacy APIs deleted, all callers migrated to the new deep module, zero compatibility shims left, `check:changed` passes.
 
 ### 5. Verify Reader-Load Delta & Yield (S3: GATE_YIELD)
 - Refactoring is only successful if it visibly reduces reader load (`principle-minimize-reader-load`). If the resulting code is harder to trace, revert.
