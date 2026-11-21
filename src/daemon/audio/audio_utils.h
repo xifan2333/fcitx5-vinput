@@ -20,4 +20,7 @@ void ApplyGainI16(std::vector<int16_t>& samples, float gain);
 std::span<const int16_t> PrepareGainAdjustedInput(std::span<const int16_t> pcm, float gain,
                                                   std::vector<int16_t>* scratch);
 
+// Returns true if `pcm` (optionally scaled by `gain`) reaches speech-level peak or RMS energy.
+[[nodiscard]] bool HasNonSilentAudio(std::span<const int16_t> pcm, float gain = 1.0F);
+
 } // namespace vinput::audio

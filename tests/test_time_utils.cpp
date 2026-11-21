@@ -5,7 +5,9 @@
 
 #include "common/utils/time_utils.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -75,9 +77,24 @@ void TestUnixTimestamps() {
   TEST_ASSERT(ms >= sec * 1000LL);
 }
 
+void TestSteadyNsAndElapsedMsFromNs() {
+  using vinput::time::ElapsedMsFromNs;
+  using vinput::time::SteadyNowNs;
+
+  TEST_ASSERT(SteadyNowNs() > 0);
+  TEST_ASSERT(!ElapsedMsFromNs(0, 100).has_value());
+  TEST_ASSERT(!ElapsedMsFromNs(100, 0).has_value());
+  TEST_ASSERT(!ElapsedMsFromNs(200, 100).has_value());
+  const auto elapsed = ElapsedMsFromNs(1'000'000, 43'500'000);
+  TEST_ASSERT(elapsed.has_value() && *elapsed == 42);
+}
+
+} // namespace
+
 int main() {
   TestRemainingTimeoutMs();
   TestMillisecondsBetweenAndSince();
   TestUnixTimestamps();
+  TestSteadyNsAndElapsedMsFromNs();
   return 0;
 }

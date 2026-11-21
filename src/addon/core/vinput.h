@@ -144,6 +144,8 @@ private:
   void applyDaemonStatusLocally(const std::string& status,
                                 fcitx::InputContext* fallback_ic = nullptr,
                                 bool prefer_command_mode = false);
+  void applyDaemonStatusTransition(fcitx::InputContext* ic, vinput::dbus::Status status,
+                                   bool command_mode);
   bool resolveSessionRawPrev() const;
   bool shouldDelayPolledIdleStatus(const std::string& status);
   void handleDaemonStatusReply(fcitx::dbus::Message& reply);

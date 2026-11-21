@@ -29,12 +29,22 @@ constexpr const char* kSignalStreamEvent = "StreamEvent";
 
 constexpr const char* kErrorOperationFailed = "org.fcitx.Vinput.Error.OperationFailed";
 constexpr const char* kStatusIdle = "idle";
+constexpr const char* kStatusStarting = "starting";
 constexpr const char* kStatusRecording = "recording";
+constexpr const char* kStatusStopping = "stopping";
 constexpr const char* kStatusInferring = "inferring";
 constexpr const char* kStatusPostprocessing = "postprocessing";
 constexpr const char* kStatusError = "error";
 
-enum class Status : std::uint8_t { Idle, Recording, Inferring, Postprocessing, Error };
+enum class Status : std::uint8_t {
+  Idle,
+  Starting,
+  Recording,
+  Stopping,
+  Inferring,
+  Postprocessing,
+  Error
+};
 
 struct AsrBackendState {
   std::string target_provider_id;
@@ -57,8 +67,12 @@ inline const char* StatusToString(Status s) {
   switch (s) {
   case Status::Idle:
     return kStatusIdle;
+  case Status::Starting:
+    return kStatusStarting;
   case Status::Recording:
     return kStatusRecording;
+  case Status::Stopping:
+    return kStatusStopping;
   case Status::Inferring:
     return kStatusInferring;
   case Status::Postprocessing:
@@ -73,8 +87,14 @@ inline Status StringToStatus(const std::string& s) {
   if (s == kStatusIdle) {
     return Status::Idle;
   }
+  if (s == kStatusStarting) {
+    return Status::Starting;
+  }
   if (s == kStatusRecording) {
     return Status::Recording;
+  }
+  if (s == kStatusStopping) {
+    return Status::Stopping;
   }
   if (s == kStatusInferring) {
     return Status::Inferring;

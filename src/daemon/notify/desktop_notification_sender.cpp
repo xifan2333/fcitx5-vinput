@@ -35,10 +35,22 @@ std::int32_t NotificationTimeoutMs(vinput::notify::NotificationLevel level) noex
   return 3000;
 }
 
+vinput::notify::Notification MakeDaemonNotification(vinput::notify::NotificationLevel level,
+                                                    std::string body) {
+  return vinput::notify::Notification{
+      .title = _("Voice Input"), .body = std::move(body), .level = level};
+}
+
+vinput::notify::Notification MakeDaemonInfoNotification(std::string body) {
+  return MakeDaemonNotification(vinput::notify::NotificationLevel::Information, std::move(body));
+}
+
+vinput::notify::Notification MakeDaemonWarningNotification(std::string body) {
+  return MakeDaemonNotification(vinput::notify::NotificationLevel::Warning, std::move(body));
+}
+
 vinput::notify::Notification MakeDaemonErrorNotification(std::string body) {
-  return vinput::notify::Notification{.title = _("Voice Input"),
-                                      .body = std::move(body),
-                                      .level = vinput::notify::NotificationLevel::Error};
+  return MakeDaemonNotification(vinput::notify::NotificationLevel::Error, std::move(body));
 }
 
 // Dispatches a notification to org.freedesktop.Notifications.Notify.

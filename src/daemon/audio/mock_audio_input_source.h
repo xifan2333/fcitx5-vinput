@@ -1,7 +1,6 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -11,6 +10,9 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include "common/utils/time_utils.h"
+#include "common/utils/unique_fd.h"
 
 #include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/audio_ring_buffer.h"
@@ -41,9 +43,7 @@ public:
     on_first_buffer_ = std::move(on_first_buffer);
     on_error_ = std::move(on_error);
     recording_ = true;
-    recording_armed_ns_ = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                              std::chrono::steady_clock::now().time_since_epoch())
-                              .count();
+    recording_armed_ns_ = vinput::time::SteadyNowNs();
     first_buffer_ns_ = 0;
     ring_buffer_.Clear();
     return true;
@@ -78,6 +78,8 @@ public:
     dropped_samples_.store(0, std::memory_order_relaxed);
   }
 
+  void SetNotifyFd(int fd) noexcept override { notify_fd_.store(fd, std::memory_order_release); }
+
   void SetSimulatedLatencyMs(std::optional<long> latency_ms) {
     const std::scoped_lock lock(mutex_);
     simulated_latency_ms_ = latency_ms;
@@ -88,11 +90,7 @@ public:
     if (simulated_latency_ms_.has_value()) {
       return simulated_latency_ms_;
     }
-    if (recording_armed_ns_ <= 0 || first_buffer_ns_ <= 0 ||
-        first_buffer_ns_ < recording_armed_ns_) {
-      return std::nullopt;
-    }
-    return static_cast<long>((first_buffer_ns_ - recording_armed_ns_) / 1'000'000L);
+    return vinput::time::ElapsedMsFromNs(recording_armed_ns_, first_buffer_ns_);
   }
 
   // --- Test Injection APIs ---
@@ -111,9 +109,7 @@ public:
         dropped_samples_.fetch_add(samples.size() - written, std::memory_order_relaxed);
       }
       if (written > 0 && first_buffer_ns_ == 0) {
-        now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                     std::chrono::steady_clock::now().time_since_epoch())
-                     .count();
+        now_ns = vinput::time::SteadyNowNs();
         first_buffer_ns_ = now_ns;
         first_cb = on_first_buffer_;
       }
@@ -121,6 +117,7 @@ public:
     if (first_cb) {
       first_cb(now_ns);
     }
+    vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
     return samples.size();
   }
 
@@ -135,6 +132,7 @@ public:
     if (err_cb) {
       err_cb(error_message);
     }
+    vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
   }
 
   [[nodiscard]] std::string LastTarget() const {
@@ -151,6 +149,7 @@ private:
   std::string target_;
   FirstBufferCallback on_first_buffer_;
   ErrorCallback on_error_;
+  std::atomic<int> notify_fd_{-1};
   std::atomic<std::size_t> dropped_samples_{0};
   int64_t recording_armed_ns_{0};
   int64_t first_buffer_ns_{0};

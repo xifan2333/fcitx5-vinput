@@ -752,6 +752,35 @@ bool VinputEngine::resolveSessionRawPrev() const {
   return vinput::scene::Resolve(scene_config_, active_scene_id_).raw_prev;
 }
 
+void VinputEngine::applyDaemonStatusTransition(fcitx::InputContext* ic, vinput::dbus::Status status,
+                                               bool command_mode) {
+  const auto trigger = session_ ? session_->trigger : fcitx::Key();
+  switch (status) {
+  case Status::Starting:
+    if (!session_ || session_->phase != Session::Phase::PendingStart) {
+      enterPendingStartState(ic, trigger, command_mode);
+    }
+    return;
+  case Status::Recording:
+    enterRecordingState(ic, trigger, command_mode);
+    return;
+  case Status::Stopping:
+  case Status::Inferring:
+    enterBusyState(ic, command_mode, InferringPreeditText(), false, resolveSessionRawPrev());
+    return;
+  case Status::Postprocessing: {
+    const bool raw_prev = resolveSessionRawPrev();
+    enterBusyState(ic, command_mode, PostprocessingPreeditText(command_mode, raw_prev), true,
+                   raw_prev);
+    return;
+  }
+  case Status::Idle:
+  case Status::Error:
+    finishFrontendSession(ic);
+    return;
+  }
+}
+
 void VinputEngine::applyDaemonStatusLocally(const std::string& status,
                                             fcitx::InputContext* fallback_ic,
                                             bool prefer_command_mode) {
@@ -765,26 +794,7 @@ void VinputEngine::applyDaemonStatusLocally(const std::string& status,
   }
 
   const bool command_mode = session_ ? session_->command_mode : prefer_command_mode;
-
-  if (status == kStatusRecording) {
-    const auto trigger = session_ ? session_->trigger : fcitx::Key();
-    enterRecordingState(ic, trigger, command_mode);
-    return;
-  }
-
-  if (status == kStatusInferring) {
-    enterBusyState(ic, command_mode, InferringPreeditText(), false, resolveSessionRawPrev());
-    return;
-  }
-
-  if (status == kStatusPostprocessing) {
-    const bool raw_prev = resolveSessionRawPrev();
-    enterBusyState(ic, command_mode, PostprocessingPreeditText(command_mode, raw_prev), true,
-                   raw_prev);
-    return;
-  }
-
-  finishFrontendSession(ic);
+  applyDaemonStatusTransition(ic, vinput::dbus::StringToStatus(status), command_mode);
 }
 
 void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {

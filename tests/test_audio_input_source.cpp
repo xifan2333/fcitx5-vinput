@@ -7,6 +7,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <sys/eventfd.h>
+#include <unistd.h>
 #include <vector>
 
 #include "daemon/audio/mock_audio_input_source.h"
@@ -169,6 +171,30 @@ void TestPipeWireControlPlaneHeadless() {
   cp.Disconnect();
 }
 
+void TestMockNotifyFd() {
+  const int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+  TEST_ASSERT(efd >= 0);
+
+  MockAudioInputSource source(5, 16000);
+  source.SetNotifyFd(efd);
+  TEST_ASSERT(source.Begin("default", nullptr, nullptr, nullptr));
+
+  const std::array<int16_t, 160> chunk{};
+  source.PushSamples(chunk);
+
+  uint64_t count = 0;
+  TEST_ASSERT(read(efd, &count, sizeof(count)) == sizeof(count));
+  TEST_ASSERT(count >= 1);
+
+  source.SimulateError("err");
+  count = 0;
+  TEST_ASSERT(read(efd, &count, sizeof(count)) == sizeof(count));
+  TEST_ASSERT(count >= 1);
+
+  source.SetNotifyFd(-1);
+  close(efd);
+}
+
 } // namespace
 
 int main() {
@@ -181,6 +207,7 @@ int main() {
   TestMockAbort();
   TestMockDropSamples();
   TestPipeWireControlPlaneHeadless();
+  TestMockNotifyFd();
   std::printf("All test_audio_input_source passed!\n");
   return 0;
 }

@@ -107,10 +107,29 @@ backend call; a backend session is never touched from two threads.
 ### AudioRecordingBuffer
 
 `src/daemon/runtime/audio_recording_buffer.{h,cpp}`. The unified in-memory audio buffering module for
-an active recording session. Encapsulates startup pre-session PCM buffering, live gain adjustment,
-batch full-recording accumulation, and streaming chunk slicing (`kStreamingChunkSamples`). Exposes a
-clean append/drain/take interface, hiding internal vector mutations and sample counters from the
-runtime controller.
+an active recording session. Encapsulates startup pre-session PCM buffering, single-pass in-place
+gain adjustment, batch full-recording accumulation, and streaming chunk slicing
+(`kStreamingChunkSamples`). Exposes a clean append/drain/take interface, hiding internal vector
+mutations and sample counters from `SessionLane`.
+
+### SessionLane
+
+`src/daemon/runtime/session_lane.{h,cpp}`. Single-threaded Actor owning one recording, recognition,
+and post-processing pipeline across six explicit phases (`Idle`, `Starting`, `Recording`, `Stopping`,
+`Inferring`, `Postprocessing`) keyed by a monotonic generation token. Gates `Recording` readiness on
+both first valid PCM delivery and ASR session creation, and isolates background worker completions
+and audio callbacks behind a thread-safe inbox.
+
+### LaneSupervisor
+
+`src/daemon/runtime/lane_supervisor.{h,cpp}`. Main-loop coordinator owning the primary IME
+`SessionLane`, per-client headless `SessionLane`s (`ime: false`), and `TranscribeStream` lanes.
+Serializes `ClientManager` pump-thread commands onto the daemon event loop and injects role-specific
+`LaneEventSink` adapters (`PrimaryImeSink`, `HeadlessClientSink`, `StreamLaneSink`).
+
+`TranscribeStream` lane ids use the reserved dunder form `__stream-<n>__`, which is structurally
+disjoint from the client id convention `<kind>.<path>` (e.g. `trigger.*` / `receiver.*`); stream
+events are delivered exclusively over the D-Bus `StreamEvent` signal, never to any client stdin.
 
 ### Partial / final
 
@@ -155,4 +174,11 @@ compatibility aliases. Schema changes bump MINOR.
 ### Output ducker
 
 Lowers system output volume through `wpctl` while recording and restores it afterwards, always under a
-timeout so a hung WirePlumber cannot stall the worker.
+timeout so a hung WirePlumber cannot stall the worker. Only the primary IME `SessionLane` holds an
+output ducker.
+
+### FdStreamAudioSource
+
+`src/daemon/audio/fd_stream_audio_source.{h,cpp}`. `AudioInputSource` adapter for `TranscribeStream`
+file descriptors. Probes RIFF/WAV headers, reads S16_LE PCM with bounded backpressure and abortable
+`poll()`, stops immediately on stream errors, and signals EOF after draining buffered samples.

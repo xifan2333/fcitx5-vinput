@@ -53,4 +53,28 @@ std::span<const int16_t> PrepareGainAdjustedInput(std::span<const int16_t> pcm, 
   return *scratch;
 }
 
+bool HasNonSilentAudio(std::span<const int16_t> pcm, float gain) {
+  if (pcm.empty()) {
+    return false;
+  }
+
+  constexpr float kNonSilentPeakThreshold = 0.02F;
+  constexpr float kNonSilentRmsThreshold = 0.005F;
+
+  double sum_squares = 0.0;
+  float peak = 0.0F;
+  for (const int16_t sample : pcm) {
+    const float scaled = (gain == 1.0F)
+                             ? static_cast<float>(sample)
+                             : std::clamp(static_cast<float>(sample) * gain, -32768.0F, 32767.0F);
+    const float value = scaled / 32768.0F;
+    const float abs_value = std::fabs(value);
+    peak = std::max(peak, abs_value);
+    sum_squares += static_cast<double>(value) * static_cast<double>(value);
+  }
+
+  const auto rms = static_cast<float>(std::sqrt(sum_squares / static_cast<double>(pcm.size())));
+  return peak >= kNonSilentPeakThreshold || rms >= kNonSilentRmsThreshold;
+}
+
 } // namespace vinput::audio

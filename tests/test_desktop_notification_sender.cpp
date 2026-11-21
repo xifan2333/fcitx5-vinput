@@ -55,11 +55,29 @@ void TestNullBusSafeHandling() {
   ExpectTrue(!sent, "null bus returns false cleanly");
 }
 
+void TestDaemonNotificationFactories() {
+  using vinput::daemon::notify::MakeDaemonErrorNotification;
+  using vinput::daemon::notify::MakeDaemonInfoNotification;
+  using vinput::daemon::notify::MakeDaemonWarningNotification;
+  using vinput::notify::NotificationLevel;
+
+  const auto info = MakeDaemonInfoNotification("info body");
+  ExpectTrue(info.level == NotificationLevel::Information && info.body == "info body",
+             "info notification factory");
+  const auto warn = MakeDaemonWarningNotification("warn body");
+  ExpectTrue(warn.level == NotificationLevel::Warning && warn.body == "warn body",
+             "warning notification factory");
+  const auto err = MakeDaemonErrorNotification("err body");
+  ExpectTrue(err.level == NotificationLevel::Error && err.body == "err body",
+             "error notification factory");
+}
+
 } // namespace
 
 int main() {
   TestNotificationIconMapping();
   TestNotificationTimeoutMapping();
   TestNullBusSafeHandling();
+  TestDaemonNotificationFactories();
   return 0;
 }

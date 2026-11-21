@@ -1,3 +1,4 @@
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -6,11 +7,14 @@
 #include <ios>
 #include <memory>
 #include <string>
+#include <sys/eventfd.h>
 #include <system_error>
+#include <unistd.h>
 #include <utility>
 
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
+#include "common/utils/unique_fd.h"
 
 namespace fs = std::filesystem;
 
@@ -488,6 +492,36 @@ void TestFormatFileSize() {
   TEST_ASSERT(FormatFileSize(1024ULL * 1024 * 1024 * 3) == "3.0 GB");
 }
 
+void TestUniqueFdAndEventFd() {
+  using vinput::file::DrainEventFd;
+  using vinput::file::SignalEventFd;
+  using vinput::file::UniqueFd;
+
+  const UniqueFd empty;
+  TEST_ASSERT(!empty.IsValid());
+  TEST_ASSERT(empty.Get() == -1);
+
+  UniqueFd efd(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+  TEST_ASSERT(efd.IsValid());
+  const int raw = efd.Get();
+
+  const UniqueFd moved(std::move(efd));
+  // Intentional moved-from inspection: UniqueFd guarantees IsValid() == false after move.
+  TEST_ASSERT(!efd.IsValid()); // NOLINT(bugprone-use-after-move, clang-analyzer-cplusplus.Move)
+  TEST_ASSERT(moved.Get() == raw);
+
+  SignalEventFd(moved.Get());
+  DrainEventFd(moved.Get());
+
+  std::array<int, 2> pipe_fds{-1, -1};
+  TEST_ASSERT(pipe(pipe_fds.data()) == 0);
+  const UniqueFd read_end(pipe_fds[0]);
+  UniqueFd write_end(pipe_fds[1]);
+  const int released = write_end.Release();
+  TEST_ASSERT(!write_end.IsValid());
+  TEST_ASSERT(close(released) == 0);
+}
+
 } // namespace
 
 int main() {
@@ -501,6 +535,7 @@ int main() {
   TestAtomicWriteTextFile();
   TestIsDirectoryWritable();
   TestFormatFileSize();
+  TestUniqueFdAndEventFd();
   std::printf("test_file_utils: all tests passed\n");
   return 0;
 }

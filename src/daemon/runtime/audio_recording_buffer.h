@@ -9,7 +9,7 @@
 namespace vinput::daemon::runtime {
 
 // Buffering and chunking engine for raw audio samples.
-// Access should be serialized by the owner (e.g. DaemonRuntimeController::state_mutex_).
+// Owned and accessed exclusively on the SessionLane actor thread.
 // Absorbs pre-roll startup samples, applies input gain at the device boundary,
 // and supports dual delivery modes (batch full-utterance vs. streaming chunking).
 class AudioRecordingBuffer {
@@ -31,9 +31,12 @@ public:
   void Activate(bool is_buffered);
 
   // Ingests live audio samples after activation.
-  // Gain is applied at ingestion. If called prior to Activate(),
+  // Gain is applied in-place at ingestion. If called prior to Activate(),
   // falls back to AppendStartup().
   void Append(std::span<const int16_t> pcm);
+
+  // Single-pass ingestion + speech-energy detection on the gained slice.
+  [[nodiscard]] bool AppendAndDetectSpeech(std::span<const int16_t> pcm);
 
   // In streaming mode, pops fixed-size chunks for progressive inference.
   std::optional<std::vector<int16_t>>
@@ -60,6 +63,7 @@ private:
   std::vector<int16_t> startup_pcm_;
   std::vector<int16_t> buffered_pcm_;
   std::vector<int16_t> streaming_pcm_;
+  std::size_t streaming_offset_ = 0;
   std::size_t total_samples_ = 0;
 };
 

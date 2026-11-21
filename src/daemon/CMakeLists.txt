@@ -40,15 +40,15 @@ add_library(
   asr/backends/command_streaming_backend.cpp
   audio/audio_capture.cpp
   audio/audio_utils.cpp
+  audio/fd_stream_audio_source.cpp
   audio/output_ducker.cpp
   audio/pipewire_control_plane.cpp
   notify/desktop_notification_sender.cpp
   runtime/dbus_service.cpp
-  runtime/daemon_runtime_controller.cpp
+  runtime/lane_supervisor.cpp
   runtime/recognition_pipeline.cpp
   runtime/audio_recording_buffer.cpp
-  runtime/session_lifecycle_manager.cpp
-  runtime/runtime_state_machine.cpp
+  runtime/session_lane.cpp
   postprocess/post_processor.cpp
   postprocess/prompt_template.cpp
   postprocess/candidate_parser.cpp

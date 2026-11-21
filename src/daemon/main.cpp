@@ -22,8 +22,8 @@ extern "C" {
 #include "daemon/asr/runtime/recognition_session_manager.h"
 #include "daemon/audio/audio_capture.h"
 #include "daemon/postprocess/post_processor.h"
-#include "daemon/runtime/daemon_runtime_controller.h"
 #include "daemon/runtime/dbus_service.h"
+#include "daemon/runtime/lane_supervisor.h"
 #include "daemon/runtime/recognition_pipeline.h"
 
 namespace {
@@ -56,29 +56,28 @@ void ParseCommandLineLogLevel(int argc, char* argv[]) {
   }
 }
 
-void WireDbusHandlers(DbusService& dbus,
-                      vinput::daemon::runtime::DaemonRuntimeController& runtime_controller,
+void WireDbusHandlers(DbusService& dbus, vinput::daemon::runtime::LaneSupervisor& supervisor,
                       vinput::notify::NotificationBridge& notification_bridge) {
-  dbus.SetStartHandler([&]() { return runtime_controller.StartRecording(); });
+  dbus.SetStartHandler([&]() { return supervisor.StartRecording(); });
 
   dbus.SetStartCommandHandler([&](const std::string& selected_text) {
-    return runtime_controller.StartCommandRecording(selected_text);
+    return supervisor.StartCommandRecording(selected_text);
   });
 
   dbus.SetStopHandler([&](const std::string& scene_id) -> DbusService::MethodResult {
-    return runtime_controller.StopRecording(scene_id);
+    return supervisor.StopRecording(scene_id);
   });
 
   dbus.SetCancelOperationHandler(
-      [&](bool commit_raw_text) { return runtime_controller.CancelOperation(commit_raw_text); });
+      [&](bool commit_raw_text) { return supervisor.CancelOperation(commit_raw_text); });
 
-  dbus.SetStatusHandler([&]() -> std::string { return runtime_controller.GetStatus(); });
+  dbus.SetStatusHandler([&]() -> std::string { return supervisor.GetStatus(); });
   dbus.SetAsrBackendStateHandler(
-      [&]() -> vinput::dbus::AsrBackendState { return runtime_controller.GetAsrBackendState(); });
-  dbus.SetReloadAsrBackendHandler([&]() { return runtime_controller.ReloadAsrBackend(); });
+      [&]() -> vinput::dbus::AsrBackendState { return supervisor.GetAsrBackendState(); });
+  dbus.SetReloadAsrBackendHandler([&]() { return supervisor.ReloadAsrBackend(); });
 
   dbus.SetTranscribeStreamHandler([&](int fd, const std::string& scene_id, bool ime) {
-    return runtime_controller.TranscribeStream(fd, scene_id, ime);
+    return supervisor.TranscribeStream(fd, scene_id, ime);
   });
 
   dbus.SetStartClientHandler([&](const std::string& client_id) -> DbusService::MethodResult {
@@ -86,7 +85,7 @@ void WireDbusHandlers(DbusService& dbus,
     if (!vinput::client::Start(
             client_id, &notification_bridge,
             [&](std::string_view cid, std::string_view line) {
-              runtime_controller.DispatchClientLine(cid, line);
+              supervisor.EnqueueClientLine(cid, line);
             },
             &error)) {
       return DbusService::MethodResult::Failure(error.empty() ? "failed to start client" : error);
@@ -95,7 +94,7 @@ void WireDbusHandlers(DbusService& dbus,
   });
 
   dbus.SetStopClientHandler([&](const std::string& client_id) -> DbusService::MethodResult {
-    runtime_controller.ReclaimHeadlessLane(client_id);
+    supervisor.ReclaimLane(client_id);
     std::string error;
     if (!vinput::client::Stop(client_id, &error, &notification_bridge)) {
       return DbusService::MethodResult::Failure(error.empty() ? "failed to stop client" : error);
@@ -109,12 +108,12 @@ void WireDbusHandlers(DbusService& dbus,
 }
 
 void DispatchPollEvents(const pollfd* fds, DbusService& dbus,
-                        vinput::daemon::runtime::DaemonRuntimeController& runtime_controller) {
+                        vinput::daemon::runtime::LaneSupervisor& supervisor) {
   if ((fds[1].revents & POLLIN) != 0) {
     dbus.FlushEmitQueue();
   }
   if ((fds[2].revents & POLLIN) != 0) {
-    runtime_controller.FlushDeferredActions();
+    supervisor.FlushDeferredActions();
   }
   if ((fds[0].revents & POLLIN) != 0) {
     while (dbus.ProcessOnce()) {
@@ -123,11 +122,10 @@ void DispatchPollEvents(const pollfd* fds, DbusService& dbus,
   }
 }
 
-void RunEventLoop(DbusService& dbus,
-                  vinput::daemon::runtime::DaemonRuntimeController& runtime_controller) {
+void RunEventLoop(DbusService& dbus, vinput::daemon::runtime::LaneSupervisor& supervisor) {
   const int dbus_fd = dbus.GetFd();
   const int notify_fd = dbus.GetNotifyFd();
-  const int runtime_notify_fd = runtime_controller.GetNotifyFd();
+  const int runtime_notify_fd = supervisor.GetNotifyFd();
   while (RunningFlag()) {
     pollfd fds[3] = {
         {.fd = dbus_fd, .events = POLLIN, .revents = 0},
@@ -135,7 +133,7 @@ void RunEventLoop(DbusService& dbus,
         {.fd = runtime_notify_fd, .events = POLLIN, .revents = 0},
     };
 
-    const int ret = poll(fds, 3, 1000);
+    const int ret = poll(fds, 3, supervisor.NextTimeoutMs());
     if (ret < 0) {
       if (errno == EINTR) {
         continue;
@@ -144,11 +142,10 @@ void RunEventLoop(DbusService& dbus,
       break;
     }
 
-    // Reclaim completed pipe/stream-fd headless client lanes.
-    runtime_controller.ReclaimIdleHeadlessLanes();
-
-    if (ret > 0) {
-      DispatchPollEvents(fds, dbus, runtime_controller);
+    if (ret == 0) {
+      supervisor.FlushDeferredActions();
+    } else {
+      DispatchPollEvents(fds, dbus, supervisor);
     }
   }
 }
@@ -191,12 +188,11 @@ int main(int argc, char* argv[]) {
 
   PostProcessor post_processor(&notification_bridge);
 
-  // --- Single-slot state (all protected by state_mutex) ---
   vinput::daemon::runtime::RecognitionPipeline recognition_pipeline(&post_processor);
-  vinput::daemon::runtime::DaemonRuntimeController runtime_controller(
-      &capture, &dbus, &recognition_manager, &recognition_pipeline);
+  vinput::daemon::runtime::LaneSupervisor supervisor(&capture, &dbus, &recognition_manager,
+                                                     &recognition_pipeline);
 
-  WireDbusHandlers(dbus, runtime_controller, notification_bridge);
+  WireDbusHandlers(dbus, supervisor, notification_bridge);
 
   std::string dbus_error;
   if (!dbus.Start(&dbus_error)) {
@@ -209,18 +205,16 @@ int main(int argc, char* argv[]) {
 
   vinput::client::AutoStart(startup_settings, &notification_bridge,
                             [&](std::string_view cid, std::string_view line) {
-                              runtime_controller.DispatchClientLine(cid, line);
+                              supervisor.EnqueueClientLine(cid, line);
                             });
 
-  runtime_controller.StartWorker();
-
   VLOG_INFO("running");
-  RunEventLoop(dbus, runtime_controller);
+  RunEventLoop(dbus, supervisor);
 
   VLOG_INFO("shutting down");
   vinput::client::Shutdown();
   post_processor.Shutdown();
-  runtime_controller.Shutdown();
+  supervisor.Shutdown();
   recognition_manager.Shutdown();
   return 0;
 }
