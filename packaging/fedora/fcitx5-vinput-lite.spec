@@ -73,6 +73,7 @@ export CXX=clang++
 %{_datadir}/bash-completion/completions/vinput
 %{_datadir}/zsh/site-functions/_vinput
 %{_datadir}/fish/vendor_completions.d/vinput.fish
+%{_prefix}/lib/udev/rules.d/70-fcitx5-vinput.rules
 
 %changelog
 * Tue Mar 18 2026 xifan2333 <noreply@github.com> - 0.1.6-1
