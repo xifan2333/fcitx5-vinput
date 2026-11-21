@@ -6,8 +6,11 @@
 #include "common/config/core_config_types.h"
 #include "common/scene/postprocess_scene.h"
 
+#include "daemon/asr/local_asr_model_loader.h"
 #include "daemon/postprocess/post_processor.h"
 #include "daemon/runtime/recognition_pipeline.h"
+
+#include "scoped_xdg_config.h"
 
 namespace {
 
@@ -187,6 +190,24 @@ void TestMissingBuiltinSceneUsesDisplayLabel() {
          "Missing builtin scene error must not expose raw __raw__ id");
 }
 
+void TestLoadLocalAsrModelContextUsesLocalizedProviderTitle() {
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_local_asr_i18n");
+  vinput::test::ScopedXdgConfigDir::WriteLocalI18n(
+      R"({"local.provider.id.title":"Localized Local ASR"})");
+
+  const CoreConfig config{};
+  LocalAsrProvider provider;
+  provider.id = "local.provider.id";
+  provider.model = "";
+
+  const auto res = vinput::daemon::asr::LoadLocalAsrModelContext(config, provider);
+  Expect(!res.has_value(), "Empty local model must fail");
+  Expect(res.error().find("Localized Local ASR") != std::string::npos,
+         "Local ASR error must use localized provider title");
+  Expect(res.error().find("local.provider.id") == std::string::npos,
+         "Local ASR error must not expose raw provider id");
+}
+
 } // namespace
 
 int main() {
@@ -198,6 +219,7 @@ int main() {
   TestCommandMode();
   TestNonExistentSceneFailsHonestly();
   TestMissingBuiltinSceneUsesDisplayLabel();
+  TestLoadLocalAsrModelContextUsesLocalizedProviderTitle();
 
   std::cout << "All RecognitionPipeline tests passed!\n";
   return 0;

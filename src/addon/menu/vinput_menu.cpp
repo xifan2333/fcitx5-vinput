@@ -743,12 +743,6 @@ bool VinputEngine::isClientActive(const PaletteItem& item) const {
   return vinput::client::IsRunning(item.id);
 }
 
-std::string VinputEngine::FormatClientToggleNotification(const PaletteItem& item, bool started) {
-  const std::string display_title = PaletteItemNotificationTitle(item);
-  return fmt::sprintf(started ? _("Client '%s' started.") : _("Client '%s' stopped."),
-                      display_title.c_str());
-}
-
 void VinputEngine::handleClientToggle(const PaletteItem& item) {
   const bool is_running = isClientActive(item);
   std::string error;

@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/read.hpp>
 #include <iostream>
@@ -13,24 +11,19 @@
 #include <string>
 #include <sys/poll.h>
 #include <sys/socket.h>
-#include <system_error>
 #include <thread>
 #include <unistd.h>
-#include <utility>
 #include <vector>
-
-extern "C" {
-#include <stdlib.h> // setenv, unsetenv
-}
 
 #include "common/asr/recognition_result.h"
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
 #include "common/notify/notification_bridge.h"
 #include "common/scene/postprocess_scene.h"
-#include "common/utils/path_utils.h"
 
 #include "daemon/postprocess/post_processor.h"
+
+#include "scoped_xdg_config.h"
 
 namespace {
 
@@ -670,42 +663,9 @@ void TestProcessCommandAdapterFailureFallback() {
 }
 
 void TestCommandAdapterLocalizedTitleInStderrAndError() {
-  const char* prev_xdg = std::getenv("XDG_CONFIG_HOME");
-  const std::string saved_xdg = prev_xdg != nullptr ? prev_xdg : "";
-  const bool had_xdg = prev_xdg != nullptr;
-  const std::filesystem::path tmp_xdg =
-      std::filesystem::temp_directory_path() /
-      ("vinput_test_pp_i18n_" + std::to_string(static_cast<long>(getpid())));
-  std::error_code ec;
-  std::filesystem::remove_all(tmp_xdg, ec);
-  std::filesystem::create_directories(tmp_xdg / "vinput", ec);
-  setenv("XDG_CONFIG_HOME", tmp_xdg.c_str(), 1);
-
-  struct Guard {
-    std::filesystem::path dir;
-    bool had_prev;
-    std::string prev;
-    Guard(std::filesystem::path d, bool h, std::string p)
-        : dir(std::move(d)), had_prev(h), prev(std::move(p)) {}
-    Guard(const Guard&) = delete;
-    Guard& operator=(const Guard&) = delete;
-    Guard(Guard&&) = delete;
-    Guard& operator=(Guard&&) = delete;
-    ~Guard() {
-      if (had_prev) {
-        setenv("XDG_CONFIG_HOME", prev.c_str(), 1);
-      } else {
-        unsetenv("XDG_CONFIG_HOME");
-      }
-      std::error_code rm_ec;
-      std::filesystem::remove_all(dir, rm_ec);
-    }
-  } const guard(tmp_xdg, had_xdg, saved_xdg);
-
-  {
-    std::ofstream out(vinput::path::VinputConfigDir() / "i18n.local.json");
-    out << R"({"localized_adapter.title":"Localized Adapter"})";
-  }
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_pp_i18n");
+  vinput::test::ScopedXdgConfigDir::WriteLocalI18n(
+      R"({"localized_adapter.title":"Localized Adapter"})");
 
   CoreConfig config;
   LlmAdapter adapter;
