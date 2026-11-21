@@ -28,6 +28,7 @@ extern "C" {
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
 #include "common/dbus/dbus_interface.h"
+#include "common/i18n.h"
 #include "common/notify/notification_bridge.h"
 #include "common/registry/registry_i18n.h"
 #include "common/utils/debug_log.h"
@@ -163,19 +164,19 @@ const ClientSpec* FindClient(const CoreConfig& config, std::string_view client_i
 bool ValidateClientPreconditions(const ClientSpec& client, std::string* error) {
   if (PidPath(client.id).empty()) {
     if (error != nullptr) {
-      *error = "client id must not contain path separators";
+      *error = _("client id must not contain path separators");
     }
     return false;
   }
   if (client.command.empty()) {
     if (error != nullptr) {
-      *error = "client command is not configured";
+      *error = _("client command is not configured");
     }
     return false;
   }
   if (IsRunning(client.id)) {
     if (error != nullptr) {
-      *error = "client is already running";
+      *error = _("client is already running");
     }
     return false;
   }
@@ -187,7 +188,7 @@ bool TryAcquirePendingStart(std::string_view client_id, std::string* error) {
   const std::scoped_lock lock(state.mutex);
   if (state.sessions.contains(client_id) || !state.pending.insert(std::string(client_id)).second) {
     if (error != nullptr) {
-      *error = "client is already running";
+      *error = _("client is already running");
     }
     return false;
   }
@@ -254,7 +255,7 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
       [framer](std::span<const std::byte> bytes) { framer->Feed(bytes); });
   if (!started) {
     if (error != nullptr) {
-      *error = started.error().empty() ? "failed to start client" : started.error();
+      *error = started.error().empty() ? _("failed to start client") : started.error();
     }
     return false;
   }
@@ -316,14 +317,14 @@ bool HandleExternalProcessTermination(std::string_view client_id,
     return true;
   case vinput::process::TerminateOutcome::NotFound:
     RemovePidFile(client_id);
-    return fail("client is not running: ");
+    return fail(_("client is not running: "));
   case vinput::process::TerminateOutcome::StillRunning:
-    return fail("client did not exit after SIGKILL: ");
+    return fail(_("client did not exit after SIGKILL: "));
   case vinput::process::TerminateOutcome::Unconfirmed:
-    return fail("could not confirm that client stopped: ");
+    return fail(_("could not confirm that client stopped: "));
   case vinput::process::TerminateOutcome::Failed:
-    return fail(result.failed_signal == SIGKILL ? "failed to force-kill client "
-                                                : "failed to signal client ",
+    return fail(result.failed_signal == SIGKILL ? _("failed to force-kill client ")
+                                                : _("failed to signal client "),
                 ": " + result.error);
   }
   return false;
@@ -368,7 +369,7 @@ ClientPidRecord ReadPidRecord(std::string_view client_id) {
 bool WritePidFile(std::string_view client_id, pid_t pid, std::string* error) {
   if (pid <= 0) {
     if (error != nullptr) {
-      *error = "refusing to persist a non-positive client pid";
+      *error = _("refusing to persist a non-positive client pid");
     }
     return false;
   }
@@ -376,7 +377,7 @@ bool WritePidFile(std::string_view client_id, pid_t pid, std::string* error) {
   const std::uint64_t start_time = vinput::process::ProcessStartTime(pid);
   if (start_time == 0) {
     if (error != nullptr) {
-      *error = "failed to read process start time for client pid " + std::to_string(pid);
+      *error = _("failed to read process start time for client pid ") + std::to_string(pid);
     }
     return false;
   }
@@ -438,7 +439,7 @@ bool Start(std::string_view client_id, vinput::notify::NotificationBridge* bridg
   const auto* client = FindClient(config, client_id);
   if (client == nullptr) {
     if (error != nullptr) {
-      *error = "client not found";
+      *error = _("client not found");
     }
     return false;
   }

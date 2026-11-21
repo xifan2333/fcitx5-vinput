@@ -1790,3 +1790,51 @@ msgid ""
 "Speech detected before microphone was ready; the beginning of your sentence "
 "may be clipped."
 msgstr "麦克风就绪前已检测到语音，句首可能被截断。"
+
+#: src/common/client/client_manager.cpp:167
+msgid "client id must not contain path separators"
+msgstr "客户端 ID 不能包含路径分隔符"
+
+#: src/common/client/client_manager.cpp:173
+msgid "client command is not configured"
+msgstr "客户端命令未配置"
+
+#: src/common/client/client_manager.cpp:179
+msgid "client is already running"
+msgstr "客户端已在运行"
+
+#: src/common/client/client_manager.cpp:258
+msgid "failed to start client"
+msgstr "启动客户端失败"
+
+#: src/common/client/client_manager.cpp:320
+msgid "client is not running: "
+msgstr "客户端未在运行："
+
+#: src/common/client/client_manager.cpp:322
+msgid "client did not exit after SIGKILL: "
+msgstr "客户端在 SIGKILL 后未退出："
+
+#: src/common/client/client_manager.cpp:324
+msgid "could not confirm that client stopped: "
+msgstr "无法确认客户端已停止："
+
+#: src/common/client/client_manager.cpp:326
+msgid "failed to force-kill client "
+msgstr "强制终止客户端失败 "
+
+#: src/common/client/client_manager.cpp:327
+msgid "failed to signal client "
+msgstr "向客户端发送信号失败 "
+
+#: src/common/client/client_manager.cpp:372
+msgid "refusing to persist a non-positive client pid"
+msgstr "拒绝持久化非正数的客户端进程 ID"
+
+#: src/common/client/client_manager.cpp:380
+msgid "failed to read process start time for client pid "
+msgstr "读取客户端进程启动时间失败，进程 ID "
+
+#: src/common/client/client_manager.cpp:442
+msgid "client not found"
+msgstr "未找到客户端"
