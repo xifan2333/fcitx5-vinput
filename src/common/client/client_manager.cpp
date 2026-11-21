@@ -300,13 +300,12 @@ void StopTrackedSession(std::string_view client_id, std::unique_ptr<TrackedSessi
 bool HandleExternalProcessTermination(std::string_view client_id,
                                       const vinput::process::TerminateResult& result,
                                       std::string* error) {
-  const auto fail = [error](const std::string& message) {
+  const auto fail = [error, client_id](const std::string& prefix, const std::string& suffix = {}) {
     if (error != nullptr) {
-      *error = message;
+      *error = prefix + vinput::registry::LoadCachedTitle(client_id) + suffix;
     }
     return false;
   };
-  const std::string id(client_id);
 
   switch (result.outcome) {
   case vinput::process::TerminateOutcome::Exited:
@@ -317,15 +316,15 @@ bool HandleExternalProcessTermination(std::string_view client_id,
     return true;
   case vinput::process::TerminateOutcome::NotFound:
     RemovePidFile(client_id);
-    return fail("client is not running: " + id);
+    return fail("client is not running: ");
   case vinput::process::TerminateOutcome::StillRunning:
-    return fail("client did not exit after SIGKILL: " + id);
+    return fail("client did not exit after SIGKILL: ");
   case vinput::process::TerminateOutcome::Unconfirmed:
-    return fail("could not confirm that client stopped: " + id);
+    return fail("could not confirm that client stopped: ");
   case vinput::process::TerminateOutcome::Failed:
-    return fail((result.failed_signal == SIGKILL ? "failed to force-kill client "
-                                                 : "failed to signal client ") +
-                id + ": " + result.error);
+    return fail(result.failed_signal == SIGKILL ? "failed to force-kill client "
+                                                : "failed to signal client ",
+                ": " + result.error);
   }
   return false;
 }

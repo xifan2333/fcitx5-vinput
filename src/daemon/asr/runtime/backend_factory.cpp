@@ -16,6 +16,8 @@
 #if VINPUT_ENABLE_LOCAL_ASR
 #include <utility>
 
+#include "common/registry/registry_i18n.h"
+
 #include "daemon/asr/backends/sherpa_offline_backend.h"
 #include "daemon/asr/backends/sherpa_streaming_backend.h"
 #include "daemon/asr/local_asr_model_loader.h"
@@ -59,8 +61,8 @@ CreateLocalBackend(const CoreConfig& config, const LocalAsrProvider& provider, s
   }
 
   if (error != nullptr) {
-    *error =
-        "Unsupported local ASR backend '" + backend_id + "' for provider '" + provider.id + "'.";
+    *error = "Unsupported local ASR backend '" + backend_id + "' for provider '" +
+             vinput::registry::LoadCachedTitle(provider.id) + "'.";
   }
   return nullptr;
 #endif

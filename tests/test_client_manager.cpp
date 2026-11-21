@@ -335,6 +335,14 @@ void TestPlainStderrUsesLocalizedClientTitle() {
   std::string stop_error;
   ExpectTrue(vinput::client::Stop("trigger.mock.plain", &stop_error, &bridge),
              "Stop should succeed: " + stop_error);
+
+  std::string not_running_error;
+  ExpectTrue(!vinput::client::Stop("trigger.mock.plain", &not_running_error, &bridge),
+             "Stopping an already stopped client should fail");
+  ExpectTrue(not_running_error.find("Mock Plain Trigger") != std::string::npos,
+             "Stop error should use localized client title: " + not_running_error);
+  ExpectTrue(not_running_error.find("trigger.mock.plain") == std::string::npos,
+             "Stop error should not expose raw client id when title exists: " + not_running_error);
 }
 
 void TestClientNotFound() {
