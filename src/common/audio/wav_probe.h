@@ -62,8 +62,12 @@ inline WavScanOutcome ScanWavChunk(std::span<const uint8_t> buffer, std::size_t 
     return outcome;
   }
 
-  const std::size_t padded_size = (static_cast<std::size_t>(chunk_size) + 1U) & ~1U;
-  if (chunk_size > std::numeric_limits<std::size_t>::max() - kChunkHeaderSize - scan_pos) {
+  const std::size_t padded_size =
+      (static_cast<std::size_t>(chunk_size) + 1U) & ~static_cast<std::size_t>(1U);
+  // Reject padded extents that would wrap the address space. Padding is computed in
+  // size_t so the streaming sentinel (0xFFFFFFFF) on a non-data chunk stays huge instead
+  // of wrapping to an "empty" chunk (uint32 0xFFFFFFFF + 1 == 0).
+  if (padded_size > std::numeric_limits<std::size_t>::max() - kChunkHeaderSize - scan_pos) {
     outcome.result = WavScanResult::Malformed;
     return outcome;
   }

@@ -87,7 +87,7 @@ void AppendWavChunk(std::vector<uint8_t>& wav, const char* chunk_id,
   const std::size_t old = wav.size();
   wav.resize(old + 8 + payload.size());
   std::memcpy(wav.data() + old, chunk_id, 4);
-  const uint32_t size = static_cast<uint32_t>(payload.size());
+  const auto size = static_cast<uint32_t>(payload.size());
   std::memcpy(wav.data() + old + 4, &size, 4);
   std::memcpy(wav.data() + old + 8, payload.data(), payload.size());
   if (payload.size() % 2 == 1) {

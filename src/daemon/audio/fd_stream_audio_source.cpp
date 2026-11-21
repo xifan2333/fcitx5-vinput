@@ -1,5 +1,6 @@
 #include "daemon/audio/fd_stream_audio_source.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cerrno>
@@ -20,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "common/audio/wav_probe.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
 #include "common/utils/unique_fd.h"

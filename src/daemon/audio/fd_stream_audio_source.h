@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include "common/audio/wav_probe.h"
 #include "common/utils/unique_fd.h"
 
 #include "daemon/audio/audio_input_source.h"

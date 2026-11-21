@@ -106,7 +106,25 @@ void TestWavScanOddChunkAlignment() {
 
   // Odd-sized JUNK payloads are padded to the next even boundary.
   const auto bounds = FindDataBounds(wav);
-  TEST_ASSERT(bounds.has_value() && bounds->offset == 56 + 4);
+  TEST_ASSERT(bounds.has_value() && bounds->offset == 56);
+}
+
+void TestWavScanStreamingSizeNonDataChunk() {
+  // A non-data chunk declaring the streaming sentinel size (0xFFFFFFFF) must not wrap
+  // its padded extent to zero: the bytes that follow, even when they spell "data", are
+  // payload of that chunk and must not be reported as audio bounds.
+  std::vector<uint8_t> wav(12 + 8 + 8, 0);
+  std::memcpy(wav.data(), "RIFF", 4);
+  std::memcpy(wav.data() + 8, "WAVE", 4);
+  std::memcpy(wav.data() + 12, "JUNK", 4);
+  const uint32_t streaming_size = 0xFFFFFFFFU;
+  std::memcpy(wav.data() + 16, &streaming_size, 4);
+  std::memcpy(wav.data() + 20, "data", 4);
+  const uint32_t data_size = 4;
+  std::memcpy(wav.data() + 24, &data_size, 4);
+
+  const auto bounds = FindDataBounds(wav);
+  TEST_ASSERT(!bounds.has_value());
 }
 
 void TestWavScanMissingDataChunk() {
@@ -166,6 +184,7 @@ int main() {
   TestWavScanStandardWav();
   TestWavScanWithPrecedingChunk();
   TestWavScanOddChunkAlignment();
+  TestWavScanStreamingSizeNonDataChunk();
   TestWavScanMissingDataChunk();
   TestWavScanMalformedChunkSize();
   TestStreamWireProtocol();
