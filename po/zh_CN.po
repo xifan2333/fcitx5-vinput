@@ -1866,3 +1866,79 @@ msgstr "配置指针为空"
 #: src/common/llm/provider_model_cache.cpp:255
 msgid "Failed to save core config"
 msgstr "保存核心配置失败"
+
+#: src/daemon/asr/runtime/recognition_session_manager.cpp:87
+msgid "ASR backend is not ready."
+msgstr "ASR 后端未就绪。"
+
+#: src/daemon/runtime/lane_supervisor.cpp:356
+msgid "ASR session manager is not initialized."
+msgstr "ASR 会话管理器未初始化。"
+
+#: src/daemon/asr/runtime/backend_factory.cpp:81
+msgid "Active ASR provider not found."
+msgstr "未找到活动的 ASR 提供商。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:386
+msgid "Command ASR provider has empty command."
+msgstr "命令 ASR 提供商的命令为空。"
+
+#: src/daemon/runtime/session_lane.cpp:607
+msgid "Failed to finish recognition session."
+msgstr "识别会话结束失败。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:289
+msgid "Failed to pump streaming ASR output during grace window."
+msgstr "在宽限期内泵取流式 ASR 输出失败。"
+
+#: src/daemon/runtime/session_lane.cpp:125
+msgid "Failed to push audio chunk."
+msgstr "音频块推送失败。"
+
+#: src/daemon/asr/runtime/backend_factory.cpp:43
+msgid "Local ASR support is disabled in this Lite build."
+msgstr "当前 Lite 构建未启用本地 ASR 支持。"
+
+#: src/daemon/asr/runtime/recognition_session_manager.cpp:334
+msgid "Prepared backend is empty."
+msgstr "后端为空。"
+
+#: src/daemon/asr/runtime/recognition_session_manager.cpp:274
+msgid "Prepared backend output is not available."
+msgstr "后端输出暂不可用。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:377
+msgid "Recognition session already cancelled."
+msgstr "识别会话已取消。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:82
+msgid "Recognition session already finished."
+msgstr "识别会话已结束。"
+
+#: src/daemon/asr/runtime/recognition_session_manager.cpp:365
+msgid "Recognition session output is not available."
+msgstr "识别会话输出暂不可用。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:116
+msgid "Recognition session was cancelled."
+msgstr "识别会话已取消。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:237
+msgid "Streaming ASR provider timed out."
+msgstr "流式 ASR 提供商超时。"
+
+#: src/daemon/asr/runtime/backend_factory.cpp:97
+msgid "Unsupported ASR provider type: "
+msgstr "不支持的 ASR 提供商类型："
+
+#: src/daemon/asr/runtime/backend_factory.cpp:66
+msgid "Unsupported local ASR backend '%s' for provider '%s'."
+msgstr "不支持的本地 ASR 后端 '%s'（提供商为 '%s'）。"
+
+#: src/daemon/runtime/session_lane.cpp:240
+msgid "daemon is shutting down"
+msgstr "守护进程正在退出"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:453
+msgid "provider session is not started."
+msgstr "提供商会话未启动。"

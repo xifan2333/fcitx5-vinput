@@ -94,7 +94,7 @@ public:
   bool Finish(std::string* error) override {
     if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        *error = "Recognition session was cancelled.";
+        *error = _("Recognition session was cancelled.");
       }
       return false;
     }

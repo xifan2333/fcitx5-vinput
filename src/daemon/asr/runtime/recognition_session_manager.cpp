@@ -84,7 +84,7 @@ std::string ResolveBackendNotReadyError(std::string_view last_error, bool reload
   if (reload_in_progress) {
     return {_("ASR backend is still loading. Please try again in a moment.")};
   }
-  return "ASR backend is not ready.";
+  return _("ASR backend is not ready.");
 }
 
 void LogActiveBackend(const CoreConfig& config) {
@@ -271,7 +271,7 @@ bool RecognitionSessionManager::CreatePreparedBackend(
     vinput::notify::NotificationBridge* notification_bridge) {
   if (prepared == nullptr) {
     if (error != nullptr) {
-      *error = "Prepared backend output is not available.";
+      *error = _("Prepared backend output is not available.");
     }
     return false;
   }
@@ -331,7 +331,7 @@ bool RecognitionSessionManager::ActivatePreparedBackend(PreparedBackend prepared
                                                         std::string* error) {
   if (!prepared.backend) {
     if (error != nullptr) {
-      *error = "Prepared backend is empty.";
+      *error = _("Prepared backend is empty.");
     }
     return false;
   }
@@ -362,7 +362,7 @@ bool RecognitionSessionManager::CreateSessionFromEffectiveBackend(
     const std::function<void()>& wake_callback) {
   if (session == nullptr) {
     if (error != nullptr) {
-      *error = "Recognition session output is not available.";
+      *error = _("Recognition session output is not available.");
     }
     return false;
   }

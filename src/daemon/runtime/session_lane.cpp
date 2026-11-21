@@ -122,7 +122,7 @@ bool PushOrderPcm(vinput::daemon::asr::RecognitionSession& session, std::vector<
     pcm.clear();
   }
   if (!pushed && error_out != nullptr) {
-    *error_out = push_error.empty() ? "Failed to push audio chunk." : std::move(push_error);
+    *error_out = push_error.empty() ? _("Failed to push audio chunk.") : std::move(push_error);
   }
   return pushed;
 }
@@ -237,7 +237,7 @@ DbusService::MethodResult SessionLane::Start(bool ime, bool is_command,
   {
     const std::scoped_lock lock(worker_mutex_);
     if (shutting_down_) {
-      return DbusService::MethodResult::Failure("daemon is shutting down");
+      return DbusService::MethodResult::Failure(_("daemon is shutting down"));
     }
   }
   if (phase_ != LanePhase::Idle) {
@@ -375,7 +375,7 @@ DbusService::MethodResult SessionLane::InjectText(bool ime, vinput::client::Inje
   {
     const std::scoped_lock lock(worker_mutex_);
     if (shutting_down_) {
-      return DbusService::MethodResult::Failure("daemon is shutting down");
+      return DbusService::MethodResult::Failure(_("daemon is shutting down"));
     }
   }
 
@@ -604,7 +604,7 @@ void SessionLane::HandleWorkerCompleted(WorkerCompletedEvent& ev) {
 
   if (!ev.recognition_ok) {
     const std::string failure = ev.recognition_error.empty()
-                                    ? "Failed to finish recognition session."
+                                    ? _("Failed to finish recognition session.")
                                     : ev.recognition_error;
     VLOG_ERROR("recognition error: {}", failure);
     if (deps_.event_sink != nullptr) {
@@ -721,7 +721,7 @@ void SessionLane::FlushStreamingChunks() {
   while (auto chunk = audio_buffer_.PopStreamingChunk()) {
     std::string push_error;
     if (!attempt_.asr_session->PushAudio(*chunk, &push_error) || !push_error.empty()) {
-      FailActiveAttempt(push_error.empty() ? "Failed to push audio chunk." : push_error,
+      FailActiveAttempt(push_error.empty() ? _("Failed to push audio chunk.") : push_error,
                         /*abort_capture=*/true);
       return;
     }
@@ -1080,7 +1080,7 @@ bool SessionLane::RunRecognitionOnWorker(ProcessOrderTask& task, std::string* er
   CollectFinishEvents(events, final_text, finish_error, ok);
   if (!ok || !finish_error.empty()) {
     *error_out =
-        finish_error.empty() ? "Failed to finish recognition session." : std::move(finish_error);
+        finish_error.empty() ? _("Failed to finish recognition session.") : std::move(finish_error);
     return false;
   }
 

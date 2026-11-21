@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "common/config/core_config_types.h"
+#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/notify/notification_bridge.h"
 #include "common/registry/registry_i18n.h"
@@ -78,7 +79,7 @@ public:
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (phase_ == Phase::Finishing || phase_ == Phase::Completed || phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        *error = "Recognition session already finished.";
+        *error = _("Recognition session already finished.");
       }
       return false;
     }
@@ -112,7 +113,7 @@ public:
   bool Finish(std::string* error) override {
     if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        *error = "Recognition session was cancelled.";
+        *error = _("Recognition session was cancelled.");
       }
       return false;
     }
@@ -233,7 +234,7 @@ private:
         QueueCompleted();
         Terminate();
         if (error != nullptr) {
-          *error = "Streaming ASR provider timed out.";
+          *error = _("Streaming ASR provider timed out.");
         }
         return false;
       }
@@ -285,7 +286,7 @@ private:
     }
     if (grace_pump_failed) {
       if (error != nullptr && error->empty()) {
-        *error = "Failed to pump streaming ASR output during grace window.";
+        *error = _("Failed to pump streaming ASR output during grace window.");
       }
       return false;
     }
@@ -373,7 +374,7 @@ private:
   bool EnsureStarted(std::string* error) {
     if (phase_ == Phase::Cancelled || interrupted_.load(std::memory_order_acquire)) {
       if (error != nullptr) {
-        *error = "Recognition session already cancelled.";
+        *error = _("Recognition session already cancelled.");
       }
       return false;
     }
@@ -382,7 +383,7 @@ private:
     }
     if (provider_.command.empty()) {
       if (error != nullptr) {
-        *error = "Command ASR provider has empty command.";
+        *error = _("Command ASR provider has empty command.");
       }
       return false;
     }
@@ -449,7 +450,7 @@ private:
   bool SendJsonLine(const glz::json_t& payload, std::string* error) {
     if (!session_.has_value()) {
       if (error != nullptr) {
-        *error = "provider session is not started.";
+        *error = _("provider session is not started.");
       }
       return false;
     }
@@ -675,7 +676,7 @@ public:
   std::unique_ptr<RecognitionSession> CreateSession(std::string* error) override {
     if (provider_.command.empty()) {
       if (error != nullptr) {
-        *error = "Command ASR provider has empty command.";
+        *error = _("Command ASR provider has empty command.");
       }
       return nullptr;
     }
