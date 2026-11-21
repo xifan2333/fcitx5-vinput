@@ -231,7 +231,7 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 :   查看守护进程日志。*LEVEL* 可过滤日志级别：**trace**、**debug**、**info**、**warn**、**error**。
 
 **daemon pipe** [**-s**, **--scene** *SCENE_ID*] [**--ime**]
-:   从标准输入 STDIN 读取音频流（16kHz 16-bit 单声道 PCM 或 WAV）并送入守护进程识别。识别过程的换行符分隔 JSON 事件（`status`、`partial`、`committed`）输出至标准输出 STDOUT。所有诊断信息与日志均输出至标准错误 STDERR。若传入 **--ime**，识别完成的文本将直接上屏至当前桌面输入焦点。
+:   从标准输入 STDIN 读取 16kHz 16-bit 有符号小端单声道裸 PCM（`s16le`）音频流并送入守护进程识别（WAV、MP3 等格式可通过 `ffmpeg -i input.wav -f s16le -ar 16000 -ac 1 - | vinput d pipe` 转换后传入）。识别过程的换行符分隔 JSON 事件（`status`、`partial`、`committed`）输出至标准输出 STDOUT。所有诊断信息与日志均输出至标准错误 STDERR。若传入 **--ime**，识别完成的文本将直接上屏至当前桌面输入焦点。
 
 ## 录音控制
 **recording start**

@@ -180,5 +180,5 @@ output ducker.
 ### FdStreamAudioSource
 
 `src/daemon/audio/fd_stream_audio_source.{h,cpp}`. `AudioInputSource` adapter for `TranscribeStream`
-file descriptors. Probes RIFF/WAV headers, reads S16_LE PCM with bounded backpressure and abortable
-`poll()`, stops immediately on stream errors, and signals EOF after draining buffered samples.
+file descriptors. Reads raw 16 kHz mono S16_LE PCM with bounded backpressure and abortable `poll()`,
+stops immediately on stream errors, and signals EOF after draining buffered samples.

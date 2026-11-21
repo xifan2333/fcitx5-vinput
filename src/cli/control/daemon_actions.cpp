@@ -70,7 +70,7 @@ int OnStreamEvent(sd_bus_message* msg, void* userdata, sd_bus_error* /*ret_error
 void PrintPipeUsageHelp() {
   std::cerr << _("vinput daemon pipe requires audio streamed from standard input.") << "\n\n";
   std::cerr << _("Example usage:") << "\n";
-  std::cerr << "  cat audio.wav | vinput d pipe\n";
+  std::cerr << "  ffmpeg -i audio.wav -f s16le -ar 16000 -ac 1 - | vinput d pipe\n";
   std::cerr << "  ffmpeg -i test.mp3 -f s16le -ar 16000 -ac 1 - | vinput d pipe\n";
   std::cerr << "  sox -d -t raw -r 16000 -e signed -b 16 -c 1 - | vinput d pipe | jq -r "
                "'select(.type==\"committed\") | .text'\n";
