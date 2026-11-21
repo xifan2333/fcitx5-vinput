@@ -28,6 +28,7 @@ extern "C" {
 #include "common/config/core_config_view.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/notify/notification_bridge.h"
+#include "common/registry/registry_i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -108,6 +109,7 @@ struct StdoutFramer {
 struct TrackedSession {
   vinput::process::ProcessSession session;
   vinput::notify::NotificationBridge* bridge = nullptr;
+  std::string title;
   std::shared_ptr<StdoutFramer> framer;
 };
 
@@ -192,19 +194,21 @@ bool TryAcquirePendingStart(std::string_view client_id, std::string* error) {
   return true;
 }
 
-void CleanupBridgeSource(vinput::notify::NotificationBridge* bridge, std::string_view source_id) {
+void CleanupBridgeSource(vinput::notify::NotificationBridge* bridge, std::string_view source_id,
+                         std::string_view default_title) {
   if (bridge != nullptr) {
-    bridge->Flush(source_id);
+    bridge->Flush(source_id, default_title);
     bridge->RetireSource(source_id);
   }
 }
 
 void CommitTrackedSession(std::string_view client_id, vinput::process::ProcessSession session,
-                          vinput::notify::NotificationBridge* bridge,
+                          vinput::notify::NotificationBridge* bridge, std::string title,
                           std::shared_ptr<StdoutFramer> framer) {
   auto tracked = std::make_unique<TrackedSession>(TrackedSession{
       .session = std::move(session),
       .bridge = bridge,
+      .title = std::move(title),
       .framer = std::move(framer),
   });
   auto& state = GetTrackedState();
@@ -229,15 +233,16 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
 
   const auto spec = BuildCommandSpec(client);
   const std::string source_id = SourceId(client_id);
+  const std::string title = vinput::registry::ResolveCachedTitle(client_id);
   auto framer = std::make_shared<StdoutFramer>();
   framer->client_id = client_id;
   framer->handler = std::move(on_command);
 
   auto started = vinput::process::ProcessSession::Start(
       spec,
-      [bridge, source_id](std::span<const std::byte> bytes) {
+      [bridge, source_id, title](std::span<const std::byte> bytes) {
         if (bridge != nullptr) {
-          bridge->FeedStderr(source_id, bytes);
+          bridge->FeedStderr(source_id, bytes, title);
         }
       },
       [framer](std::span<const std::byte> bytes) { framer->Feed(bytes); });
@@ -251,7 +256,7 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
   vinput::process::ProcessSession session = std::move(*started);
   int immediate_exit = -1;
   if (session.WaitForExit(std::chrono::milliseconds(250), &immediate_exit)) {
-    CleanupBridgeSource(bridge, source_id);
+    CleanupBridgeSource(bridge, source_id, title);
     if (error != nullptr) {
       *error = fmt::format("client exited immediately (code {})", immediate_exit);
     }
@@ -262,11 +267,11 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
   if (!WritePidFile(client_id, child_pid, error)) {
     session.Cancel();
     (void)session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
-    CleanupBridgeSource(bridge, source_id);
+    CleanupBridgeSource(bridge, source_id, title);
     return false;
   }
 
-  CommitTrackedSession(client_id, std::move(session), bridge, std::move(framer));
+  CommitTrackedSession(client_id, std::move(session), bridge, title, std::move(framer));
   release.Disarm();
 
   VLOG_DEBUG("client started id={}", client_id);
@@ -281,11 +286,7 @@ void StopTrackedSession(std::string_view client_id, std::unique_ptr<TrackedSessi
   to_stop->session.Cancel();
   (void)to_stop->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
   auto* b = bridge != nullptr ? bridge : to_stop->bridge;
-  if (b != nullptr) {
-    const std::string source_id = SourceId(client_id);
-    b->Flush(source_id);
-    b->RetireSource(source_id);
-  }
+  CleanupBridgeSource(b, SourceId(client_id), to_stop->title);
   RemovePidFile(client_id);
   VLOG_DEBUG("client stopped id={}", client_id);
 }
@@ -396,6 +397,7 @@ pid_t GetPid(std::string_view client_id) {
   // after the lock is released: a notification sink that re-enters this manager
   // (Broadcast, GetPid) must never deadlock the query path.
   vinput::notify::NotificationBridge* exited_bridge = nullptr;
+  std::string exited_title;
   bool reaped = false;
   {
     auto& state = GetTrackedState();
@@ -404,6 +406,7 @@ pid_t GetPid(std::string_view client_id) {
       if (it->second->session.HasExited()) {
         reaped = true;
         exited_bridge = it->second->bridge;
+        exited_title = std::move(it->second->title);
         state.sessions.erase(it);
       } else {
         return static_cast<pid_t>(it->second->session.Pid());
@@ -411,11 +414,7 @@ pid_t GetPid(std::string_view client_id) {
     }
   }
   if (reaped) {
-    if (exited_bridge != nullptr) {
-      const std::string source_id = SourceId(client_id);
-      exited_bridge->Flush(source_id);
-      exited_bridge->RetireSource(source_id);
-    }
+    CleanupBridgeSource(exited_bridge, SourceId(client_id), exited_title);
     RemovePidFile(client_id);
     return -1;
   }
@@ -468,9 +467,8 @@ bool Stop(std::string_view client_id, std::string* error,
                                                            kGracefulStopTimeout, kForceKillTimeout);
 
   if (bridge != nullptr) {
-    const std::string source_id = SourceId(client_id);
-    bridge->Flush(source_id);
-    bridge->RetireSource(source_id);
+    CleanupBridgeSource(bridge, SourceId(client_id),
+                        vinput::registry::ResolveCachedTitle(client_id));
   }
 
   return HandleExternalProcessTermination(client_id, result, error);
@@ -539,11 +537,7 @@ void Shutdown() {
   }
   for (auto& [id, tracked] : to_shutdown) {
     (void)tracked->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
-    if (tracked->bridge != nullptr) {
-      const std::string source_id = SourceId(id);
-      tracked->bridge->Flush(source_id);
-      tracked->bridge->RetireSource(source_id);
-    }
+    CleanupBridgeSource(tracked->bridge, SourceId(id), tracked->title);
     RemovePidFile(id);
   }
 }
@@ -570,7 +564,12 @@ std::vector<vinput::dbus::ClientStatus> GetClientStatuses(const CoreConfig& conf
   collect(config.triggers);
   collect(config.receivers);
 
-  std::vector<std::pair<std::string, vinput::notify::NotificationBridge*>> reaped;
+  struct ReapedSession {
+    std::string id;
+    vinput::notify::NotificationBridge* bridge = nullptr;
+    std::string title;
+  };
+  std::vector<ReapedSession> reaped;
   {
     auto& state = GetTrackedState();
     const std::scoped_lock lock(state.mutex);
@@ -582,7 +581,7 @@ std::vector<vinput::dbus::ClientStatus> GetClientStatuses(const CoreConfig& conf
         continue;
       }
       if (tracked->session.HasExited()) {
-        reaped.emplace_back(id, tracked->bridge);
+        reaped.push_back({id, tracked->bridge, std::move(tracked->title)});
         result.push_back({
             .id = id,
             .running = false,
@@ -600,10 +599,10 @@ std::vector<vinput::dbus::ClientStatus> GetClientStatuses(const CoreConfig& conf
     }
   }
 
-  for (const auto& [id, bridge] : reaped) {
-    CleanupBridgeSource(bridge, SourceId(id));
-    if (GetPid(id) <= 0) {
-      RemovePidFile(id);
+  for (const auto& entry : reaped) {
+    CleanupBridgeSource(entry.bridge, SourceId(entry.id), entry.title);
+    if (GetPid(entry.id) <= 0) {
+      RemovePidFile(entry.id);
     }
   }
 

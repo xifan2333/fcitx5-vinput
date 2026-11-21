@@ -8,21 +8,23 @@
 #include "common/config/core_config_types.h"
 #include "common/config/core_config_view.h"
 #include "common/i18n.h"
+#include "common/registry/registry_i18n.h"
 #include "common/utils/expected.h"
 
 namespace vinput::daemon::asr {
 
 vinput::Expected<LocalAsrModelContext> LoadLocalAsrModelContext(const CoreConfig& /*config*/,
                                                                 const LocalAsrProvider& provider) {
+  const std::string provider_title = vinput::registry::ResolveCachedTitle(provider.id);
   if (provider.model.empty()) {
     return vinput::UnexpectedError(fmt::sprintf(
-        _("Local ASR model configuration is missing for provider '%s'."), provider.id));
+        _("Local ASR model configuration is missing for provider '%s'."), provider_title));
   }
 
   const ModelManager model_mgr(CoreConfigView::ModelBaseDir().string(), provider.model);
   if (auto ensure_result = model_mgr.EnsureModels(); !ensure_result) {
     std::string message =
-        fmt::sprintf(_("Local ASR model check failed for provider '%s'."), provider.id);
+        fmt::sprintf(_("Local ASR model check failed for provider '%s'."), provider_title);
     message += "\n";
     message += std::move(ensure_result).error();
     return vinput::UnexpectedError(std::move(message));
@@ -31,7 +33,7 @@ vinput::Expected<LocalAsrModelContext> LoadLocalAsrModelContext(const CoreConfig
   auto model_info = model_mgr.GetModelInfo();
   if (!model_info) {
     return vinput::UnexpectedError("Failed to read local ASR model metadata for provider '" +
-                                   provider.id + "': " + std::move(model_info).error());
+                                   provider_title + "': " + std::move(model_info).error());
   }
 
   LocalAsrModelContext context;

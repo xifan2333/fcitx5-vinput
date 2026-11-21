@@ -12,6 +12,7 @@
 #include "common/config/core_config_types.h"
 #include "common/i18n.h"
 #include "common/notify/notification_bridge.h"
+#include "common/registry/registry_i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
@@ -73,6 +74,7 @@ public:
   CommandBatchSession(const CommandAsrProvider& provider,
                       vinput::notify::NotificationBridge* notification_bridge)
       : command_(BuildCommandSpec(provider)), provider_id_(provider.id),
+        provider_title_(vinput::registry::ResolveCachedTitle(provider.id)),
         notification_bridge_(notification_bridge) {}
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
@@ -149,7 +151,7 @@ private:
           if (delivered >= kMaxBatchNotifications) {
             return false;
           }
-          notification_bridge_->DeliverLine(provider_id_, line);
+          notification_bridge_->DeliverLine(provider_id_, line, provider_title_);
           ++delivered;
           return true;
         },
@@ -158,6 +160,7 @@ private:
 
   vinput::process::CommandSpec command_;
   std::string provider_id_;
+  std::string provider_title_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   Phase phase_ = Phase::Active;
   std::vector<int16_t> pcm_;
