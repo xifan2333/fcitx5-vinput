@@ -67,9 +67,8 @@ void TestWavScanStandardWav() {
   std::memcpy(wav.data() + 40, &data_size, 4);
 
   const auto bounds = FindDataBounds(wav);
-  TEST_ASSERT(bounds.has_value());
-  TEST_ASSERT(bounds->offset == 44);
-  TEST_ASSERT(bounds->size == 100);
+  TEST_ASSERT(bounds.has_value() && bounds->offset == 44);
+  TEST_ASSERT(bounds.has_value() && bounds->size == 100);
 }
 
 void TestWavScanWithPrecedingChunk() {
@@ -87,9 +86,8 @@ void TestWavScanWithPrecedingChunk() {
   std::memcpy(wav.data() + 52, &data_size, 4);
 
   const auto bounds = FindDataBounds(wav);
-  TEST_ASSERT(bounds.has_value());
-  TEST_ASSERT(bounds->offset == 56);
-  TEST_ASSERT(bounds->size == 100);
+  TEST_ASSERT(bounds.has_value() && bounds->offset == 56);
+  TEST_ASSERT(bounds.has_value() && bounds->size == 100);
 }
 
 void TestWavScanOddChunkAlignment() {
@@ -108,8 +106,7 @@ void TestWavScanOddChunkAlignment() {
 
   // Odd-sized JUNK payloads are padded to the next even boundary.
   const auto bounds = FindDataBounds(wav);
-  TEST_ASSERT(bounds.has_value());
-  TEST_ASSERT(bounds->offset == 56 + 4);
+  TEST_ASSERT(bounds.has_value() && bounds->offset == 56 + 4);
 }
 
 void TestWavScanMissingDataChunk() {
