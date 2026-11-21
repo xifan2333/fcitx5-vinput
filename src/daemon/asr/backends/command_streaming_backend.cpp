@@ -152,7 +152,7 @@ public:
       }
     }
     finish_success_ = false;
-    finish_error_ = "Recognition session was cancelled.";
+    finish_error_ = _("Recognition session was cancelled.");
     stdout_buffer_.clear();
     last_partial_text_.clear();
     QueueCompleted();
@@ -545,7 +545,7 @@ private:
     glz::json_t payload;
     if (const auto ec = glz::read_json(payload, line); bool(ec)) {
       if (error != nullptr) {
-        *error = std::string("invalid streaming provider JSON: ") + glz::format_error(ec, line);
+        *error = _("invalid streaming provider JSON: ") + glz::format_error(ec, line);
       }
       return false;
     }

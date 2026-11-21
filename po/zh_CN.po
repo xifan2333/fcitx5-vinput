@@ -2031,3 +2031,19 @@ msgstr "发送结束事件失败。"
 #: src/daemon/asr/backends/command_streaming_backend.cpp:402
 msgid "failed to start."
 msgstr "启动失败。"
+
+#: src/daemon/runtime/dbus_service.cpp:290
+msgid "failed to duplicate stream file descriptor"
+msgstr "复制流文件描述符失败"
+
+#: src/daemon/runtime/dbus_service.cpp:285
+msgid "invalid stream arguments"
+msgstr "无效的流参数"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:548
+msgid "invalid streaming provider JSON: "
+msgstr "无效的流式提供商 JSON："
+
+#: src/daemon/runtime/dbus_service.cpp:295
+msgid "transcribe stream handler not configured"
+msgstr "未配置转写流处理器"
