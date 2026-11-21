@@ -20,6 +20,7 @@ enum class PaletteCategory : std::uint8_t {
 struct PaletteItem {
   PaletteCategory category = PaletteCategory::Scene;
   std::string id;
+  std::string title;
   std::string text;
   std::string comment;
   std::string search_text;
@@ -45,6 +46,8 @@ struct PaletteCommand {
   std::function<void(VinputEngine* engine, const PaletteItem& item, fcitx::InputContext* ic)>
       onSelect;
 };
+
+[[nodiscard]] std::string PaletteItemNotificationTitle(const PaletteItem& item);
 
 class PaletteCommandRegistry {
 public:
