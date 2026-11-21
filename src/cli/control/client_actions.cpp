@@ -8,16 +8,13 @@
 #include <glaze/json/json_t.hpp>
 #include <iostream>
 #include <map>
+#include <signal.h>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <systemd/sd-bus.h>
 #include <utility>
 #include <vector>
-
-extern "C" {
-#include <signal.h>
-#include <systemd/sd-bus.h>
-}
 
 #include "common/asr/recognition_result.h"
 #include "common/client/client_event.h"
@@ -48,8 +45,10 @@ std::atomic<bool>& ListenInterrupted() {
   return interrupted;
 }
 
-void OnListenSignal(int /*sig*/) {
+extern "C" {
+static void OnListenSignal(int /*sig*/) noexcept {
   ListenInterrupted().store(true, std::memory_order_relaxed);
+}
 }
 
 const char* KindLabel(ClientKind kind) {

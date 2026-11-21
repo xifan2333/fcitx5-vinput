@@ -2,12 +2,10 @@
 
 #include <algorithm>
 #include <array>
-extern "C" {
-#include <locale.h>
-}
 #include <cstdlib>
 #include <filesystem>
 #include <libintl.h>
+#include <locale.h>
 #include <string>
 #include <system_error>
 #include <vector>

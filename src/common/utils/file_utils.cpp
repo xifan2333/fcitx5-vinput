@@ -15,6 +15,7 @@
 #include <mio/mmap.hpp>
 #include <openssl/evp.h>
 #include <openssl/types.h>
+#include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
@@ -24,10 +25,6 @@
 #include <utility>
 
 #include "common/utils/expected.h"
-
-extern "C" {
-#include <stdlib.h>
-}
 
 namespace {
 
