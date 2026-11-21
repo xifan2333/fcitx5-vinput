@@ -581,6 +581,9 @@ void TestStreamErrorAndShutdownInterrupt() {
   auto gen2_state = std::make_shared<ScriptedSession::SharedState>();
   gen2_state->block_finish_until_interrupt = true;
 
+  std::mutex gate_mutex;
+  std::condition_variable gate_cv;
+  bool gen1_entered = false;
   std::atomic<int> create_calls{0};
   SessionLaneDependencies deps{
       .audio_source = &source,
@@ -591,7 +594,15 @@ void TestStreamErrorAndShutdownInterrupt() {
               const std::function<void()>&) {
             desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
             const int call = create_calls.fetch_add(1);
-            return std::make_unique<ScriptedSession>(call == 0 ? gen1_state : gen2_state);
+            if (call == 0) {
+              {
+                const std::scoped_lock lock(gate_mutex);
+                gen1_entered = true;
+              }
+              gate_cv.notify_all();
+              return std::make_unique<ScriptedSession>(gen1_state);
+            }
+            return std::make_unique<ScriptedSession>(gen2_state);
           },
       .run_postprocess = nullptr,
       .warn_on_clipped_head = false,
@@ -605,6 +616,14 @@ void TestStreamErrorAndShutdownInterrupt() {
   TEST_ASSERT(lane.IsIdle());
   TEST_ASSERT(sink.HasStatus(vinput::dbus::Status::Error));
 
+  // Wait deterministically until the worker has claimed generation 1's CreateSession task;
+  // otherwise generation 2's Start() could overwrite pending_task_ before the worker wakes
+  // up, causing generation 2 to receive gen1_state instead of gen2_state.
+  {
+    std::unique_lock<std::mutex> lock(gate_mutex);
+    TEST_ASSERT(gate_cv.wait_for(lock, std::chrono::seconds(5), [&] { return gen1_entered; }));
+  }
+
   // Now start a recording that enters Inferring and blocks in Finish(), then call Shutdown().
   TEST_ASSERT(lane.Start(true, false).ok);
   const std::vector<int16_t> pcm(8500, 0);
@@ -613,16 +632,16 @@ void TestStreamErrorAndShutdownInterrupt() {
     lane.ProcessPendingEvents();
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
+  TEST_ASSERT(lane.CurrentPhase() == LanePhase::Recording);
   TEST_ASSERT(lane.Stop(true, "").ok);
   TEST_ASSERT(lane.CurrentPhase() == LanePhase::Inferring);
 
   // Wait until the worker is actually parked inside Finish() before interrupting it.
   {
     std::unique_lock<std::mutex> lock(gen2_state->mutex);
-    gen2_state->cv.wait_for(lock, std::chrono::seconds(5),
-                            [&] { return gen2_state->finish_entered; });
+    TEST_ASSERT(gen2_state->cv.wait_for(lock, std::chrono::seconds(5),
+                                        [&] { return gen2_state->finish_entered; }));
   }
-  TEST_ASSERT(gen2_state->finish_entered);
   lane.Shutdown();
   TEST_ASSERT(gen2_state->interrupted);
   TEST_ASSERT(lane.IsIdle());
