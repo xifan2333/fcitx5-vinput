@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/audio/wav_probe.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
 #include "common/utils/unique_fd.h"

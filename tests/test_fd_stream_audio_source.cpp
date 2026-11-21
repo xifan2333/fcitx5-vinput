@@ -13,6 +13,7 @@
 #include <sys/poll.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "daemon/audio/fd_stream_audio_source.h"
@@ -97,7 +98,7 @@ void AppendWavChunk(std::vector<uint8_t>& wav, const char* chunk_id,
 
 void AppendSamplesLe(std::vector<uint8_t>& wav, std::span<const int16_t> samples) {
   const std::size_t old = wav.size();
-  wav.resize(old + samples.size() * sizeof(int16_t));
+  wav.resize(old + (samples.size() * sizeof(int16_t)));
   std::memcpy(wav.data() + old, samples.data(), samples.size() * sizeof(int16_t));
 }
 
@@ -118,7 +119,7 @@ void RunStreamToEof(std::vector<uint8_t>& wav, std::vector<int16_t>& collected,
   }));
 
   const ssize_t written = write(pipe_fds[1], wav.data(), wav.size());
-  TEST_ASSERT(written == static_cast<ssize_t>(wav.size()));
+  TEST_ASSERT(std::cmp_equal(written, wav.size()));
   close(pipe_fds[1]);
 
   for (int i = 0; i < 50 && !eof_called.load() && !error_called.load(); ++i) {
@@ -142,7 +143,7 @@ void TestWavJunkChunkBeyondProbe() {
   AppendWavChunk(wav, "JUNK", junk);
   const std::size_t data_pos = wav.size() + 8;
   AppendWavChunk(wav, "data", {});
-  const uint32_t data_size = static_cast<uint32_t>(expected.size() * sizeof(int16_t));
+  const auto data_size = static_cast<uint32_t>(expected.size() * sizeof(int16_t));
   std::memcpy(wav.data() + data_pos - 4, &data_size, 4);
   AppendSamplesLe(wav, expected);
 
@@ -154,7 +155,7 @@ void TestWavJunkChunkBeyondProbe() {
   TEST_ASSERT(!error_called.load());
   TEST_ASSERT(collected.size() == expected.size());
   for (std::size_t i = 0; i < expected.size(); ++i) {
-    TEST_ASSERT(collected[i] == expected[i]);
+    TEST_ASSERT(collected[i] == expected.at(i));
   }
 }
 
@@ -176,7 +177,7 @@ void TestWavTrailingMetadataIgnored() {
   TEST_ASSERT(!error_called.load());
   TEST_ASSERT(collected.size() == expected.size());
   for (std::size_t i = 0; i < expected.size(); ++i) {
-    TEST_ASSERT(collected[i] == expected[i]);
+    TEST_ASSERT(collected[i] == expected.at(i));
   }
 }
 
