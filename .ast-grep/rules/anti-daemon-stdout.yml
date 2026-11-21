@@ -9,7 +9,11 @@ rule:
   any:
     - pattern: std::cout << $$$A
     - pattern: std::cerr << $$$A
-    - pattern: printf($$$ARGS)
-    - pattern: puts($$$ARGS)
-    - pattern: fprintf($$$ARGS)
-    - pattern: fputs($$$ARGS)
+    - kind: call_expression
+      has:
+        field: function
+        any:
+          - kind: identifier
+            regex: "^(printf|puts|fprintf|fputs)$"
+          - kind: qualified_identifier
+            regex: "^(std)?::(printf|puts|fprintf|fputs)$"

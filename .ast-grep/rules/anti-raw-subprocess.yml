@@ -6,8 +6,11 @@ files:
   - "src/daemon/**"
   - "src/cli/**"
 rule:
-  any:
-    - pattern: system($$$ARGS)
-    - pattern: std::system($$$ARGS)
-    - pattern: popen($$$ARGS)
-    - pattern: ::popen($$$ARGS)
+  kind: call_expression
+  has:
+    field: function
+    any:
+      - kind: identifier
+        regex: "^(system|popen)$"
+      - kind: qualified_identifier
+        regex: "^(std)?::(system|popen)$"
