@@ -6,16 +6,13 @@
 #include <functional>
 #include <iostream>
 #include <mutex>
+#include <stdlib.h> // setenv
 #include <string>
 #include <string_view>
 #include <thread>
 #include <unistd.h>
 #include <utility>
 #include <vector>
-
-extern "C" {
-#include <stdlib.h> // setenv
-}
 
 #include "common/client/client_manager.h"
 #include "common/config/core_config_types.h"

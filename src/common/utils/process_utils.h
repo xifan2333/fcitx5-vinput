@@ -7,12 +7,9 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <time.h> // pid_t: <chrono> pulls <time.h> in first, so <sys/types.h> would be a no-op
 #include <type_traits>
 #include <vector>
-
-extern "C" {
-#include <time.h> // pid_t: <chrono> pulls <time.h> in first, so <sys/types.h> would be a no-op
-}
 
 namespace vinput::process {
 

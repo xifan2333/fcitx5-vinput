@@ -13,6 +13,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <signal.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -20,10 +21,6 @@
 #include <system_error>
 #include <utility>
 #include <vector>
-
-extern "C" {
-#include <signal.h>
-}
 
 #include "common/config/core_config.h"
 #include "common/config/core_config_types.h"

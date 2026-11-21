@@ -3,14 +3,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <stdlib.h> // setenv, unsetenv
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <unistd.h>
-
-extern "C" {
-#include <stdlib.h> // setenv, unsetenv
-}
 
 #include "common/utils/path_utils.h"
 

@@ -59,6 +59,9 @@ Manual resource deallocation, raw owning pointers, and unmanaged file descriptor
 ### Hard C-ABI Isolation
 Keep C-ABI callback trampolines strictly separate from C++20 domain logic. C-ABI wrappers must translate raw pointers and error codes into standard C++ types (`std::span`, `std::string_view`, `tl::expected`) before passing data to internal components.
 
+- **Explicit C Linkage on Signal Handlers**: POSIX signal handlers passed to `signal()` or `sigaction()` must be async-signal-safe and carry explicit `"C"` language linkage (for TU-local handlers, `namespace { extern "C" { static void ...(int) noexcept { ... } } }`).
+- **Direct POSIX Header Inclusion**: Include POSIX/C system headers directly (`<signal.h>`, `<stdlib.h>`, `<time.h>`, `<locale.h>`, `<systemd/sd-bus.h>`) without wrapping `#include` directives in `extern "C" { ... }`. System headers already provide C linkage guards, and `.clang-tidy` disables `modernize-deprecated-headers` while keeping `misc-include-cleaner` active.
+
 ---
 
 ## 4. Types, Memory & Evolution Safety

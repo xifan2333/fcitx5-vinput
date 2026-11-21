@@ -21,6 +21,7 @@ Checks: >
   -misc-no-recursion,
   -misc-non-private-member-variables-in-classes,
   modernize-*,
+  -modernize-deprecated-headers,
   -modernize-use-trailing-return-type,
   -modernize-avoid-c-arrays,
   performance-*,

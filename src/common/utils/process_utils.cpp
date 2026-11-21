@@ -14,6 +14,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <signal.h> // SIGKILL
 #include <span>
 #include <sstream>
 #include <string>
@@ -25,13 +26,9 @@
 #include <sys/wait.h>
 #include <system_error>
 #include <thread>
+#include <time.h> // pid_t
 #include <unistd.h>
 #include <vector>
-
-extern "C" {
-#include <signal.h> // SIGKILL
-#include <time.h>   // pid_t
-}
 
 #include "common/utils/debug_log.h"
 #include "common/utils/interpolation.h"

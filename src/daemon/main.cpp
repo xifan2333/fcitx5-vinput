@@ -2,15 +2,12 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
+#include <signal.h>
 #include <span>
 #include <string>
 #include <string_view>
 #include <sys/poll.h>
 #include <vector>
-
-extern "C" {
-#include <signal.h>
-}
 
 #include "common/client/client_manager.h"
 #include "common/config/core_config.h"
@@ -33,9 +30,11 @@ std::atomic<bool>& RunningFlag() {
   return running;
 }
 
-void signal_handler(int sig) {
+extern "C" {
+static void signal_handler(int sig) noexcept {
   (void)sig;
   RunningFlag() = false;
+}
 }
 
 void ParseCommandLineLogLevel(int argc, char* argv[]) {
