@@ -119,6 +119,13 @@ const Definition& Resolve(const Config& config, std::string_view scene_id) {
   return empty;
 }
 
+std::string DisplayLabel(std::string_view scene_id) {
+  if (const char* builtin_label = BuiltinSceneLabel(scene_id)) {
+    return builtin_label;
+  }
+  return std::string(scene_id);
+}
+
 std::string DisplayLabel(const Definition& scene) {
   if (const char* builtin_label = BuiltinSceneLabelFromKey(scene.label)) {
     return builtin_label;
@@ -126,10 +133,7 @@ std::string DisplayLabel(const Definition& scene) {
   if (!scene.label.empty()) {
     return scene.label;
   }
-  if (const char* builtin_label = BuiltinSceneLabel(scene.id)) {
-    return builtin_label;
-  }
-  return scene.id;
+  return DisplayLabel(std::string_view(scene.id));
 }
 
 bool AddScene(Config* config, const Definition& def, std::string* error) {

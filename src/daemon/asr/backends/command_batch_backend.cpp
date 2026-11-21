@@ -74,7 +74,6 @@ public:
   CommandBatchSession(const CommandAsrProvider& provider,
                       vinput::notify::NotificationBridge* notification_bridge)
       : command_(BuildCommandSpec(provider)), provider_id_(provider.id),
-        provider_title_(vinput::registry::ResolveCachedTitle(provider.id)),
         notification_bridge_(notification_bridge) {}
 
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
@@ -144,14 +143,15 @@ private:
     if (notification_bridge_ == nullptr || stderr_text.empty()) {
       return;
     }
+    const std::string provider_title = vinput::registry::LoadCachedTitle(provider_id_);
     std::size_t delivered = 0;
     vinput::process::DrainLinesFromBuffer(
         stderr_text,
-        [this, &delivered](std::string_view line) -> bool {
+        [this, &provider_title, &delivered](std::string_view line) -> bool {
           if (delivered >= kMaxBatchNotifications) {
             return false;
           }
-          notification_bridge_->DeliverLine(provider_id_, line, provider_title_);
+          notification_bridge_->DeliverLine(provider_id_, line, provider_title);
           ++delivered;
           return true;
         },
@@ -160,7 +160,6 @@ private:
 
   vinput::process::CommandSpec command_;
   std::string provider_id_;
-  std::string provider_title_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   Phase phase_ = Phase::Active;
   std::vector<int16_t> pcm_;

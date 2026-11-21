@@ -4,17 +4,25 @@
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <span>
 #include <string>
 #include <sys/wait.h>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
+
+extern "C" {
+#include <stdlib.h> // setenv, unsetenv
+}
 
 #include "common/config/core_config_types.h"
 #include "common/notify/notification_bridge.h"
+#include "common/utils/path_utils.h"
 
 #include "daemon/asr/backends/command_streaming_backend.h"
 #include "daemon/asr/runtime/recognition_contract.h"
@@ -748,6 +756,69 @@ void TestEarlyClosedReportsFailure() {
              "Subsequent Finish preserves exact error message even after Finish(nullptr)");
 }
 
+void TestStderrLocalizedTitleFromCache() {
+  const char* prev_xdg = std::getenv("XDG_CONFIG_HOME");
+  const std::string saved_xdg = prev_xdg != nullptr ? prev_xdg : "";
+  const bool had_xdg = prev_xdg != nullptr;
+  const std::filesystem::path tmp_xdg =
+      std::filesystem::temp_directory_path() /
+      ("vinput_test_stream_i18n_" + std::to_string(static_cast<long>(getpid())));
+  std::error_code ec;
+  std::filesystem::remove_all(tmp_xdg, ec);
+  std::filesystem::create_directories(tmp_xdg / "vinput", ec);
+  setenv("XDG_CONFIG_HOME", tmp_xdg.c_str(), 1);
+
+  struct Guard {
+    std::filesystem::path dir;
+    bool had_prev;
+    std::string prev;
+    Guard(std::filesystem::path d, bool h, std::string p)
+        : dir(std::move(d)), had_prev(h), prev(std::move(p)) {}
+    Guard(const Guard&) = delete;
+    Guard& operator=(const Guard&) = delete;
+    Guard(Guard&&) = delete;
+    Guard& operator=(Guard&&) = delete;
+    ~Guard() {
+      if (had_prev) {
+        setenv("XDG_CONFIG_HOME", prev.c_str(), 1);
+      } else {
+        unsetenv("XDG_CONFIG_HOME");
+      }
+      std::error_code rm_ec;
+      std::filesystem::remove_all(dir, rm_ec);
+    }
+  } const guard(tmp_xdg, had_xdg, saved_xdg);
+
+  {
+    std::ofstream out(vinput::path::VinputConfigDir() / "i18n.local.json");
+    out << R"({"test-stream-localized.title":"Localized Stream ASR"})";
+  }
+
+  std::vector<vinput::notify::Notification> received;
+  vinput::notify::NotificationBridge bridge([&](const auto& n) { received.push_back(n); });
+
+  CommandAsrProvider provider;
+  provider.id = "test-stream-localized";
+  provider.command = "/bin/sh";
+  provider.args = {"-c",
+                   "echo '{\"type\": \"session_started\"}'"
+                   " && echo 'plain stream notice' >&2"
+                   " && while read -r line; do case \"$line\" in *finish*) break ;; esac; done"
+                   " && echo '{\"type\": \"final\", \"text\": \"ok\"}'"
+                   " && echo '{\"type\": \"closed\"}'"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error, &bridge);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed");
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed");
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed");
+  ExpectTrue(session->Finish(&error), "Finish failed");
+  ExpectTrue(received.size() == 1 && received[0].title == "Localized Stream ASR",
+             "Streaming stderr notification must use localized provider title");
+}
+
 } // namespace
 
 int main() {
@@ -768,6 +839,7 @@ int main() {
   TestKilledByUsVsAbnormalExit();
   TestPrematureExitErrorReporting();
   TestEarlyClosedReportsFailure();
+  TestStderrLocalizedTitleFromCache();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

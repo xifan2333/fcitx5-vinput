@@ -637,9 +637,11 @@ void VinputEngine::handleAsrSelection(const PaletteItem& item) {
 #if !VINPUT_ENABLE_LOCAL_ASR
   const auto* target_provider = CoreConfigView(core_config).AsrProvider(item.provider_id);
   if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
+    const std::string provider_title =
+        item.model_id.empty() ? display_title : vinput::registry::LoadCachedTitle(item.provider_id);
     notifyError(fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
                                "supported in this Lite build."),
-                             display_title.c_str()));
+                             provider_title.c_str()));
     return;
   }
 #endif
@@ -741,16 +743,21 @@ bool VinputEngine::isClientActive(const PaletteItem& item) const {
   return vinput::client::IsRunning(item.id);
 }
 
+std::string VinputEngine::FormatClientToggleNotification(const PaletteItem& item, bool started) {
+  const std::string display_title = PaletteItemNotificationTitle(item);
+  return fmt::sprintf(started ? _("Client '%s' started.") : _("Client '%s' stopped."),
+                      display_title.c_str());
+}
+
 void VinputEngine::handleClientToggle(const PaletteItem& item) {
   const bool is_running = isClientActive(item);
-  const std::string display_title = PaletteItemNotificationTitle(item);
   std::string error;
   if (is_running) {
     if (!callStopClient(item.id, &error)) {
       notifyError(error.empty() ? _("Failed to stop client.") : error);
       return;
     }
-    notifyInfo(fmt::sprintf(_("Client '%s' stopped."), display_title.c_str()));
+    notifyInfo(FormatClientToggleNotification(item, false));
     return;
   }
 
@@ -758,7 +765,7 @@ void VinputEngine::handleClientToggle(const PaletteItem& item) {
     notifyError(error.empty() ? _("Failed to start client.") : error);
     return;
   }
-  notifyInfo(fmt::sprintf(_("Client '%s' started."), display_title.c_str()));
+  notifyInfo(FormatClientToggleNotification(item, true));
 }
 
 void VinputEngine::registerProcessCommand() {

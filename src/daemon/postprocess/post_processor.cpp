@@ -411,15 +411,15 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
 constexpr std::size_t kMaxBatchNotifications = 4;
 
 void DrainAdapterStderr(std::string& stderr_text, const LlmAdapter& adapter,
-                        std::string_view adapter_title,
                         vinput::notify::NotificationBridge* notification_bridge) {
   if (stderr_text.empty() || notification_bridge == nullptr) {
     return;
   }
+  const std::string adapter_title = vinput::registry::LoadCachedTitle(adapter.id);
   std::size_t delivered = 0;
   vinput::process::DrainLinesFromBuffer(
       stderr_text,
-      [notification_bridge, &adapter, adapter_title, &delivered](std::string_view line) -> bool {
+      [notification_bridge, &adapter, &adapter_title, &delivered](std::string_view line) -> bool {
         if (delivered >= kMaxBatchNotifications) {
           return false;
         }
@@ -431,9 +431,10 @@ void DrainAdapterStderr(std::string& stderr_text, const LlmAdapter& adapter,
 }
 
 bool ValidateAdapterProcessResult(const vinput::process::CommandResult& result,
-                                  const std::string& adapter_title, std::string* error_out) {
+                                  const LlmAdapter& adapter, std::string* error_out) {
   if (result.launch_failed) {
-    const std::string msg = fmt::sprintf(_("Failed to start adapter '%s'."), adapter_title);
+    const std::string msg = fmt::sprintf(_("Failed to start adapter '%s'."),
+                                         vinput::registry::LoadCachedTitle(adapter.id));
     VLOG_ERROR("{}", msg);
     if (error_out != nullptr) {
       *error_out = msg;
@@ -442,7 +443,8 @@ bool ValidateAdapterProcessResult(const vinput::process::CommandResult& result,
   }
 
   if (result.timed_out) {
-    const std::string msg = fmt::sprintf(_("Adapter '%s' timed out."), adapter_title);
+    const std::string msg =
+        fmt::sprintf(_("Adapter '%s' timed out."), vinput::registry::LoadCachedTitle(adapter.id));
     VLOG_ERROR("{}", msg);
     if (error_out != nullptr) {
       *error_out = msg;
@@ -452,7 +454,8 @@ bool ValidateAdapterProcessResult(const vinput::process::CommandResult& result,
 
   if (result.exit_code != 0) {
     const std::string msg =
-        fmt::sprintf(_("Adapter '%s' exited with code %d."), adapter_title, result.exit_code);
+        fmt::sprintf(_("Adapter '%s' exited with code %d."),
+                     vinput::registry::LoadCachedTitle(adapter.id), result.exit_code);
     VLOG_WARN("{}", msg);
     if (error_out != nullptr) {
       *error_out = msg;
@@ -475,10 +478,10 @@ RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::D
     return std::nullopt;
   }
 
-  const std::string adapter_title = vinput::registry::ResolveCachedTitle(adapter.id);
   if (adapter.command.empty()) {
     if (error_out != nullptr) {
-      *error_out = fmt::sprintf(_("Adapter '%s' has no command configured."), adapter_title);
+      *error_out = fmt::sprintf(_("Adapter '%s' has no command configured."),
+                                vinput::registry::LoadCachedTitle(adapter.id));
     }
     return std::nullopt;
   }
@@ -492,7 +495,7 @@ RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::D
   const auto stdin_bytes = std::as_bytes(std::span(stdin_content));
   auto result = vinput::process::Run(spec, stdin_bytes);
 
-  DrainAdapterStderr(result.stderr_text, adapter, adapter_title, notification_bridge);
+  DrainAdapterStderr(result.stderr_text, adapter, notification_bridge);
 
   if (IsCancellationRequested(shutdown_flag, request_cancel_flag)) {
     if (error_out != nullptr) {
@@ -501,7 +504,7 @@ RewriteWithCommandAdapter(std::string_view stdin_content, const vinput::scene::D
     return std::nullopt;
   }
 
-  if (!ValidateAdapterProcessResult(result, adapter_title, error_out)) {
+  if (!ValidateAdapterProcessResult(result, adapter, error_out)) {
     return std::nullopt;
   }
 

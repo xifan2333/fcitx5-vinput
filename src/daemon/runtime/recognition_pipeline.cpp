@@ -108,10 +108,8 @@ RecognitionPipeline::ProcessDictation(const PostprocessRequest& request, const C
   if (target_scene == nullptr) {
     RecognitionPipelineResult output;
     output.payload.commitText = request.text;
-    vinput::scene::Definition missing_scene;
-    missing_scene.id = std::string(target_scene_id);
     output.errors.push_back(
-        fmt::sprintf(_("Scene '%s' not found."), vinput::scene::DisplayLabel(missing_scene)));
+        fmt::sprintf(_("Scene '%s' not found."), vinput::scene::DisplayLabel(target_scene_id)));
     return output;
   }
 

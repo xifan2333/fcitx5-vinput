@@ -207,6 +207,20 @@ void TestLookupTitle() {
              "LookupTitle returns empty string for empty id");
 }
 
+void TestRememberedDefaultTitleOnFlush() {
+  std::vector<Notification> delivered;
+  NotificationBridge bridge([&](const Notification& n) { delivered.push_back(n); });
+
+  bridge.FeedStderr("client:mock", AsBytes("partial "), "Mock Client Title");
+  ExpectTrue(delivered.empty(), "incomplete line buffered");
+
+  bridge.Flush("client:mock");
+  ExpectTrue(delivered.size() == 1, "flushed line delivered");
+  ExpectTrue(delivered[0].title == "Mock Client Title",
+             "Flush reuses remembered default_title for source_id");
+  ExpectTrue(delivered[0].body == "partial ", "flushed body matches");
+}
+
 } // namespace
 
 int main() {
@@ -218,5 +232,6 @@ int main() {
   TestOversizedBufferProtection();
   TestDedupCacheHardCapEviction();
   TestLookupTitle();
+  TestRememberedDefaultTitleOnFlush();
   return 0;
 }

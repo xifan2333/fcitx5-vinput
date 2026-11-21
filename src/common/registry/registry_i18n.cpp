@@ -136,7 +136,7 @@ std::string LookupTitle(const I18nMap& map, std::string_view id) {
   return LookupI18n(map, key, std::string(id));
 }
 
-std::string ResolveCachedTitle(std::string_view id) {
+std::string LoadCachedTitle(std::string_view id) {
   if (id.empty()) {
     return {};
   }

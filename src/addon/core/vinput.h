@@ -63,6 +63,8 @@ public:
   [[nodiscard]] std::weak_ptr<bool> lifetimeToken() const { return lifetime_token_; }
   [[nodiscard]] static int matchKeyListIndex(const fcitx::Key& event_key,
                                              const fcitx::KeyList& list, bool is_release);
+  [[nodiscard]] static std::string FormatClientToggleNotification(const PaletteItem& item,
+                                                                  bool started);
 
   static constexpr auto kTapMaxHoldDuration = std::chrono::milliseconds(200);
 

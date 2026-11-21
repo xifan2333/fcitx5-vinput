@@ -168,6 +168,25 @@ void TestNonExistentSceneFailsHonestly() {
   Expect(res.payload.commitText == "untranslated speech", "Raw text must be preserved for user");
 }
 
+void TestMissingBuiltinSceneUsesDisplayLabel() {
+  PostProcessor processor;
+  const RecognitionPipeline pipeline(&processor);
+
+  const CoreConfig config{};
+  PostprocessRequest req;
+  req.text = "raw speech";
+  req.scene_id = std::string(vinput::scene::kRawSceneId);
+  req.is_command = false;
+
+  const auto res = pipeline.Process(req, config);
+  Expect(!res.errors.empty(), "Missing builtin scene must report error");
+  const std::string expected_label = vinput::scene::DisplayLabel(vinput::scene::kRawSceneId);
+  Expect(res.errors[0].find(expected_label) != std::string::npos,
+         "Missing builtin scene error must use DisplayLabel");
+  Expect(res.errors[0].find(vinput::scene::kRawSceneId) == std::string::npos,
+         "Missing builtin scene error must not expose raw __raw__ id");
+}
+
 } // namespace
 
 int main() {
@@ -178,6 +197,7 @@ int main() {
   TestDefaultActiveSceneOmitted();
   TestCommandMode();
   TestNonExistentSceneFailsHonestly();
+  TestMissingBuiltinSceneUsesDisplayLabel();
 
   std::cout << "All RecognitionPipeline tests passed!\n";
   return 0;

@@ -43,6 +43,7 @@ bool ValidateDefinition(const Definition& scene, std::string* error, bool requir
 
 const Definition* Find(const Config& config, std::string_view scene_id);
 const Definition& Resolve(const Config& config, std::string_view scene_id);
+std::string DisplayLabel(std::string_view scene_id);
 std::string DisplayLabel(const Definition& scene);
 
 bool AddScene(Config* config, const Definition& def, std::string* error);

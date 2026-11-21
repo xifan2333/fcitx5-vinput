@@ -22,6 +22,6 @@ I18nMap LoadMergedCachedI18nMap(const std::string& preferred_locale, std::string
 std::string LookupI18n(const I18nMap& map, const std::string& key,
                        const std::string& fallback = "");
 std::string LookupTitle(const I18nMap& map, std::string_view id);
-std::string ResolveCachedTitle(std::string_view id);
+std::string LoadCachedTitle(std::string_view id);
 
 } // namespace vinput::registry

@@ -66,7 +66,6 @@ public:
   CommandStreamingSession(CommandAsrProvider provider, std::string provider_id,
                           vinput::notify::NotificationBridge* notification_bridge = nullptr)
       : provider_(std::move(provider)), provider_id_(std::move(provider_id)),
-        provider_title_(vinput::registry::ResolveCachedTitle(provider_id_)),
         notification_bridge_(notification_bridge), source_id_(MakeSessionSourceId(provider_id_)) {}
 
   CommandStreamingSession(const CommandStreamingSession&) = delete;
@@ -348,7 +347,10 @@ private:
 
   void HandleStderrChunk(const std::vector<std::byte>& data) {
     if (notification_bridge_ != nullptr) {
-      notification_bridge_->FeedStderr(source_id_, data, provider_title_);
+      if (!provider_title_.has_value()) {
+        provider_title_ = vinput::registry::LoadCachedTitle(provider_id_);
+      }
+      notification_bridge_->FeedStderr(source_id_, data, *provider_title_);
     }
   }
 
@@ -357,7 +359,7 @@ private:
     exit_code_ = event.exit_code;
     killed_by_us_ = event.killed_by_us;
     if (notification_bridge_ != nullptr) {
-      notification_bridge_->Flush(source_id_, provider_title_);
+      notification_bridge_->Flush(source_id_);
     }
     if (killed_by_us_) {
       VLOG_DEBUG("streaming ASR provider '{}' terminated by session cancellation", provider_id_);
@@ -596,7 +598,7 @@ private:
     terminated_ = true;
 
     if (notification_bridge_ != nullptr) {
-      notification_bridge_->Flush(source_id_, provider_title_);
+      notification_bridge_->Flush(source_id_);
       notification_bridge_->RetireSource(source_id_);
     }
 
@@ -627,7 +629,7 @@ private:
 
   CommandAsrProvider provider_;
   std::string provider_id_;
-  std::string provider_title_;
+  std::optional<std::string> provider_title_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   std::string source_id_;
   Clock::time_point deadline_ = Clock::time_point::max();

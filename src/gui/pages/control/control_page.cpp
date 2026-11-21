@@ -213,12 +213,6 @@ QString FormatClientStatus(bool running, int pid) {
   return ControlPage::tr("Running");
 }
 
-// Clients register under a namespaced id such as `trigger.vinput.web_remote`; the
-// registry i18n map carries the human-readable title for the packaged ones.
-QString ClientDisplayName(const vinput::registry::I18nMap& i18n_map, const std::string& id) {
-  return QString::fromStdString(vinput::registry::LookupTitle(i18n_map, id));
-}
-
 void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trigger,
                      const QString& selected_id, const vinput::cli::ClientStatusMap& status_map,
                      const vinput::registry::I18nMap& i18n_map) {
@@ -236,7 +230,8 @@ void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trig
   itemType->setData(Qt::UserRole + 3, running);
   itemType->setData(Qt::UserRole + 4, static_cast<int>(pid));
 
-  auto* itemId = new QTableWidgetItem(ClientDisplayName(i18n_map, client.id));
+  auto* itemId = new QTableWidgetItem(
+      QString::fromStdString(vinput::registry::LookupTitle(i18n_map, client.id)));
   auto* itemStatus = new QTableWidgetItem(FormatClientStatus(running, static_cast<int>(pid)));
   auto* itemAutostart = new QTableWidgetItem(client.autoStart ? ControlPage::tr("Enabled")
                                                               : ControlPage::tr("Disabled"));

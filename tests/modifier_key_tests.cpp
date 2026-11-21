@@ -453,6 +453,17 @@ void TestPaletteItemNotificationTitleAndProcMenu(TestInputContext& ic, VinputEng
   expect(PaletteItemNotificationTitle(client_item) == "Web Remote",
          "PaletteItemNotificationTitle must prefer title over id and prefixed text");
 
+  const std::string started_msg = VinputEngine::FormatClientToggleNotification(client_item, true);
+  const std::string stopped_msg = VinputEngine::FormatClientToggleNotification(client_item, false);
+  expect(started_msg.find("Web Remote") != std::string::npos &&
+             started_msg.find("trigger.vinput.web_remote") == std::string::npos &&
+             started_msg.find("[Trigger]") == std::string::npos,
+         "Client start notification must use localized title without raw id or prefix");
+  expect(stopped_msg.find("Web Remote") != std::string::npos &&
+             stopped_msg.find("trigger.vinput.web_remote") == std::string::npos &&
+             stopped_msg.find("[Trigger]") == std::string::npos,
+         "Client stop notification must use localized title without raw id or prefix");
+
   PaletteItem text_fallback;
   text_fallback.id = "scene.custom";
   text_fallback.text = "Custom Scene";
