@@ -50,7 +50,7 @@ Canonical execution workflow for restructuring existing code while strictly pres
 ### 4. Migrate Callers Then Delete Legacy APIs in One Wave (No Shims)
 - Within this repository's codebase, **never introduce temporary backward-compatibility shims or parallel paths**.
 - Migrate every caller in the same wave and immediately delete the legacy API.
-- **Boy-Scout AST Ratchet**: `mise run check:changed` enforces zero AST violations on touched files (`ast-grep scan --error`). Any `deep-if-branching` or `nested-loops` in touched files must be resolved before committing. Untouched historical files are ignored.
+- **Boy-Scout Quality Ratchet**: `mise run check:changed` enforces zero `ast-grep` error-level violations (`ast-grep scan`) and `lizard` complexity ceilings (`CCN <= 15, CogC <= 15`) when `src/**/*.{cpp,h}` files are touched (untouched files and test-only changes are skipped by `hk`'s `src/` glob).
 - Run Deletion Test: verify that deleting the old wrapper concentrates complexity rather than scattering it.
 - Run `mise run check:changed` on each atomic task commit.
 - Update Draft PR checklist (`- [x]`) in lockstep.

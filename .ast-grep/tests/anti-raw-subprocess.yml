@@ -1,0 +1,17 @@
+id: anti-raw-subprocess
+valid:
+  - "myns::system(\"ok\");"
+  - "::myns::popen(\"ok\", \"r\");"
+  - "std::myns::system(\"ok\");"
+  - "runner.system(\"ok\");"
+invalid:
+  - "system(\"1\");"
+  - "std::system(\"2\");"
+  - "::system(\"3\");"
+  - "::std::system(\"4\");"
+  - "std :: system(\"5\");"
+  - ":: std :: system(\"6\");"
+  - "popen(\"1\", \"r\");"
+  - "::popen(\"2\", \"r\");"
+  - "std :: popen(\"3\", \"r\");"
+  - ":: std :: popen(\"4\", \"r\");"

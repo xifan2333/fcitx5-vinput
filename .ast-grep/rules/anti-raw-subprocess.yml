@@ -5,9 +5,44 @@ language: Cpp
 files:
   - "src/daemon/**"
   - "src/cli/**"
+utils:
+  std_or_global_subproc_fn:
+    any:
+      - kind: identifier
+        regex: "^(system|popen)$"
+      - kind: qualified_identifier
+        all:
+          - not:
+              has:
+                field: scope
+                regex: ".*"
+          - has:
+              field: name
+              any:
+                - kind: identifier
+                  regex: "^(system|popen)$"
+                - kind: qualified_identifier
+                  all:
+                    - has:
+                        field: scope
+                        kind: namespace_identifier
+                        regex: "^std$"
+                    - has:
+                        field: name
+                        kind: identifier
+                        regex: "^(system|popen)$"
+      - kind: qualified_identifier
+        all:
+          - has:
+              field: scope
+              kind: namespace_identifier
+              regex: "^std$"
+          - has:
+              field: name
+              kind: identifier
+              regex: "^(system|popen)$"
 rule:
-  any:
-    - pattern: system($$$ARGS)
-    - pattern: std::system($$$ARGS)
-    - pattern: popen($$$ARGS)
-    - pattern: ::popen($$$ARGS)
+  kind: call_expression
+  has:
+    field: function
+    matches: std_or_global_subproc_fn

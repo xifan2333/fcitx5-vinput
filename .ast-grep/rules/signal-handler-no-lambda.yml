@@ -4,10 +4,53 @@ severity: error
 language: Cpp
 files:
   - "src/**"
+utils:
+  std_or_global_signal_fn:
+    any:
+      - kind: identifier
+        regex: "^signal$"
+      - kind: qualified_identifier
+        all:
+          - not:
+              has:
+                field: scope
+                regex: ".*"
+          - has:
+              field: name
+              any:
+                - kind: identifier
+                  regex: "^signal$"
+                - kind: qualified_identifier
+                  all:
+                    - has:
+                        field: scope
+                        kind: namespace_identifier
+                        regex: "^std$"
+                    - has:
+                        field: name
+                        kind: identifier
+                        regex: "^signal$"
+      - kind: qualified_identifier
+        all:
+          - has:
+              field: scope
+              kind: namespace_identifier
+              regex: "^std$"
+          - has:
+              field: name
+              kind: identifier
+              regex: "^signal$"
 rule:
-  any:
-    - pattern: std::signal($SIG, $HANDLER)
-    - pattern: signal($SIG, $HANDLER)
+  kind: call_expression
+  all:
+    - has:
+        field: function
+        matches: std_or_global_signal_fn
+    - has:
+        field: arguments
+        pattern:
+          context: "f($SIG, $HANDLER)"
+          selector: argument_list
 constraints:
   HANDLER:
     kind: lambda_expression

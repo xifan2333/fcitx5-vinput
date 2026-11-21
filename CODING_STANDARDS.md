@@ -89,7 +89,7 @@ When a function requires deferred cleanup or resource return (e.g. `pw_stream_qu
 For homogeneous token/prefix matching or string rule dispatch ($N \ge 3$), replace procedural `if (starts_with(...))` cascades with `constexpr` lookup tables (`std::array` + search algorithm) to separate code from data and eliminate subtle branch-order hazards.
 
 ### Nesting ceiling
-Strive for <= 2 levels of logical nesting inside compound statements. As an automated baseline, `ast-grep` strictly flags deep pyramid nesting (>= 4 levels) as mandatory technical debt for immediate refactoring via guard clauses and scope guards.
+Strive for <= 2 levels of logical nesting inside compound statements. Deep pyramid nesting (>= 4 levels) is technical debt to be flattened via guard clauses and scope guards (audited alongside `lizard` complexity ceilings).
 
 ---
 
@@ -127,7 +127,7 @@ The following mechanical checks are audited by local tooling (`mise run check:as
 
 | Rule Category | Mechanical Enforcement | Command |
 | :--- | :--- | :--- |
-| **AST Anti-Patterns** | `ast-grep` (banned malloc in RT callback, banned daemon stdout, no diagnostic suppressions, deep if branching >= 4, qualified dispatch, POSIX signal linkage & no lambda handler) | `mise run check:ast` |
+| **AST Anti-Patterns** | `ast-grep` (banned daemon stdout, banned raw subprocess, no diagnostic suppressions, no lambda signal handlers) | `mise run check:ast` |
 | **Complexity Ceiling** | `lizard` ($\text{CCN} \le 15, \text{CogC} \le 15$) | `mise run check:complexity` |
 | **Code Duplication** | `jscpd` across `src/` | `mise run check:dup` |
 | **Code Formatting** | `hk` (`clang-format`, `cmake-format`, `ruff`, `shfmt`) | `mise run fix` / `check:cmake` |
