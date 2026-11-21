@@ -484,9 +484,9 @@ private:
     }
 
     const auto queued = session_->StdinQueueSizeApprox();
-    *error = fmt::format(
-        "Provider closed stdin or input buffer is full (queued_blocks={}, sent_chunks={}).", queued,
-        sent_chunks_count_);
+    *error = fmt::sprintf(
+        _("Provider closed stdin or input buffer is full (queued_blocks=%zu, sent_chunks=%zu)."),
+        queued, sent_chunks_count_);
     return false;
   }
 

@@ -2006,6 +2006,11 @@ msgstr "流式 ASR 提供商异常退出。"
 msgid "Streaming ASR provider exited prematurely with code %d."
 msgstr "流式 ASR 提供商提前退出，代码 %d。"
 
+#: src/daemon/asr/backends/command_streaming_backend.cpp:488
+#, c-format
+msgid "Provider closed stdin or input buffer is full (queued_blocks=%zu, sent_chunks=%zu)."
+msgstr "提供商已关闭标准输入或输入缓冲区已满（排队数据块=%zu，已发送数据块=%zu）。"
+
 #: src/daemon/asr/backends/command_streaming_backend.cpp:306
 msgid "Streaming ASR provider returned no text."
 msgstr "流式 ASR 提供商未返回文本。"

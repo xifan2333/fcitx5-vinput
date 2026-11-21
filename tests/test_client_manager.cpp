@@ -359,7 +359,14 @@ void TestClientNotFound() {
 void TestStartValidationError() {
   const TestEnvFixture fixture;
 
-  TestEnvFixture::WriteConfig(R"({"version": ">=2.4.0"})");
+  // The trigger must actually resolve via FindClient so Start reaches the
+  // path-separator validation in ValidateClientPreconditions.
+  TestEnvFixture::WriteConfig(R"({
+    "version": ">=2.4.0",
+    "triggers": [
+      {"id": "trigger/slash", "command": "sh", "args": ["-c", "sleep 30"], "auto_start": false}
+    ]
+  })");
 
   std::string error;
   ExpectTrue(!vinput::client::Start("trigger/slash", nullptr, nullptr, &error),
