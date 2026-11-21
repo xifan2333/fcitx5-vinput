@@ -457,6 +457,7 @@ void TestCancelImmediateStartAndDuckerIsolation() {
   std::mutex gate_mutex;
   std::condition_variable gate_cv;
   bool release_gen1 = false;
+  bool gen1_entered = false;
   std::atomic<int> create_calls{0};
   auto gen1_state = std::make_shared<ScriptedSession::SharedState>();
   auto gen2_state = std::make_shared<ScriptedSession::SharedState>();
@@ -472,6 +473,11 @@ void TestCancelImmediateStartAndDuckerIsolation() {
             const int call = ++create_calls;
             desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Buffered;
             if (call == 1) {
+              {
+                const std::scoped_lock lock(gate_mutex);
+                gen1_entered = true;
+              }
+              gate_cv.notify_all();
               std::unique_lock<std::mutex> lock(gate_mutex);
               gate_cv.wait(lock, [&] { return release_gen1; });
               return std::make_unique<ScriptedSession>(gen1_state);
@@ -484,6 +490,16 @@ void TestCancelImmediateStartAndDuckerIsolation() {
 
   SessionLane lane(std::move(deps));
   TEST_ASSERT(lane.Start(true, false).ok);
+
+  // Wait deterministically until the worker has claimed generation 1's CreateSession and
+  // is blocked inside the factory; otherwise generation 2's task could replace generation
+  // 1's unclaimed task and generation 1 would never be created (SubmitWorkerTask overwrites
+  // pending_task_).
+  {
+    std::unique_lock<std::mutex> lock(gate_mutex);
+    TEST_ASSERT(gate_cv.wait_for(lock, std::chrono::seconds(5), [&] { return gen1_entered; }));
+  }
+
   TEST_ASSERT(lane.Cancel(true, false).ok);
   TEST_ASSERT(lane.IsIdle());
 
