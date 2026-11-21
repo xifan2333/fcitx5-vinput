@@ -11,14 +11,12 @@ namespace vinput::audio {
 inline constexpr size_t kFourCcSize = 4;
 inline constexpr size_t kChunkHeaderSize = 8;
 inline constexpr size_t kRiffHeaderSize = 12;
-inline constexpr size_t kStandardWavHeaderSize = 44;
 // A `data` chunk declaring this size means "stream until EOF" (RIFF convention);
 // the header carries no usable payload boundary.
 inline constexpr uint32_t kWavStreamingDataSize = 0xFFFFFFFFU;
 
 // Payload bounds of the `data` chunk inside a scanned RIFF/WAVE buffer.
 struct WavDataBounds {
-  bool found = false;
   // Byte offset inside the scanned buffer where the `data` payload begins.
   std::size_t offset = 0;
   // Declared payload size, or kWavStreamingDataSize when unbounded.
@@ -59,7 +57,6 @@ inline WavScanOutcome ScanWavChunk(std::span<const uint8_t> buffer, std::size_t 
 
   if (std::memcmp(buffer.data() + scan_pos, "data", kFourCcSize) == 0) {
     outcome.result = WavScanResult::DataFound;
-    outcome.bounds.found = true;
     outcome.bounds.offset = scan_pos + kChunkHeaderSize;
     outcome.bounds.size = chunk_size;
     return outcome;
@@ -77,6 +74,21 @@ inline WavScanOutcome ScanWavChunk(std::span<const uint8_t> buffer, std::size_t 
   outcome.result = WavScanResult::Skipped;
   outcome.next_pos = chunk_extent;
   return outcome;
+}
+
+// Drives ScanWavChunk over a buffered RIFF/WAVE stream: skips fully-present non-data
+// chunks (advancing `scan_pos`) and returns the first DataFound / NeedMoreData /
+// Malformed outcome. Callers append more bytes and call again on NeedMoreData.
+inline WavScanOutcome WalkWavChunks(std::span<const uint8_t> buffer,
+                                    std::size_t& scan_pos) noexcept {
+  for (;;) {
+    const auto outcome = ScanWavChunk(buffer, scan_pos);
+    if (outcome.result == WavScanResult::Skipped) {
+      scan_pos = outcome.next_pos;
+      continue;
+    }
+    return outcome;
+  }
 }
 
 } // namespace vinput::audio

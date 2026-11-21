@@ -326,14 +326,10 @@ bool FdStreamAudioSource::ScanForWavDataChunk(int read_fd, int abort_fd,
                                               std::string* error_out) {
   std::size_t scan_pos = vinput::audio::kRiffHeaderSize;
   for (;;) {
-    const auto outcome = vinput::audio::ScanWavChunk(probe_buf, scan_pos);
+    const auto outcome = vinput::audio::WalkWavChunks(probe_buf, scan_pos);
     if (outcome.result == vinput::audio::WavScanResult::DataFound) {
       bounds = outcome.bounds;
       return true;
-    }
-    if (outcome.result == vinput::audio::WavScanResult::Skipped) {
-      scan_pos = outcome.next_pos;
-      continue;
     }
     if (!AdvanceWavScan(read_fd, abort_fd, probe_buf, reached_eof, outcome, error_out)) {
       return false;

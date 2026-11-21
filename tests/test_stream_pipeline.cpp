@@ -26,17 +26,11 @@ void AssertTrue(bool condition, const char* message, const char* file, int line)
 // buffer does not yet contain a complete `data` chunk header (or is malformed).
 std::optional<vinput::audio::WavDataBounds> FindDataBounds(std::span<const uint8_t> buffer) {
   std::size_t scan_pos = vinput::audio::kRiffHeaderSize;
-  for (;;) {
-    const auto outcome = vinput::audio::ScanWavChunk(buffer, scan_pos);
-    if (outcome.result == vinput::audio::WavScanResult::DataFound) {
-      return outcome.bounds;
-    }
-    if (outcome.result == vinput::audio::WavScanResult::Skipped) {
-      scan_pos = outcome.next_pos;
-      continue;
-    }
-    return std::nullopt; // NeedMoreData or Malformed
+  const auto outcome = vinput::audio::WalkWavChunks(buffer, scan_pos);
+  if (outcome.result == vinput::audio::WavScanResult::DataFound) {
+    return outcome.bounds;
   }
+  return std::nullopt; // NeedMoreData or Malformed
 }
 
 void TestWavScanSmallBuffer() {
