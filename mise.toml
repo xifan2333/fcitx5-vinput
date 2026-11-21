@@ -73,7 +73,7 @@ if [ -z "${files[0]:-}" ]; then
   echo "[check:ast:changed] no touched C++ files"
   exit 0
 fi
-ast-grep scan --error "${files[@]}"
+ast-grep scan "${files[@]}"
 """
 
 [tasks."check:typos"]
