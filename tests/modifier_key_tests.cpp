@@ -14,6 +14,7 @@
 #include <fcitx/instance.h>
 #include <fcitx/text.h>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -23,8 +24,11 @@
 #include <unistd.h>
 
 #include "common/config/vinput_config.h"
+#include "common/utils/path_utils.h"
 
 #include "core/vinput.h"
+#include "menu/palette_command.h"
+#include "scoped_xdg_config.h"
 
 namespace {
 
@@ -438,6 +442,66 @@ void TestLifetimeTokenUafGuard(fcitx::Instance& instance) {
   expect(token.expired(), "lifetimeToken must expire immediately upon engine destruction");
 }
 
+void TestPaletteItemNotificationTitleAndProcMenu(TestInputContext& ic, VinputEngine& engine) {
+  std::cout << "--- 8. Testing PaletteItemNotificationTitle & /proc Title Resolution (#727) ---\n";
+  PaletteItem client_item;
+  client_item.id = "trigger.vinput.web_remote";
+  client_item.title = "Web Remote";
+  client_item.text = "[Trigger] Web Remote";
+  expect(PaletteItemNotificationTitle(client_item) == "Web Remote",
+         "PaletteItemNotificationTitle must prefer title over id and prefixed text");
+
+  PaletteItem text_fallback;
+  text_fallback.id = "scene.custom";
+  text_fallback.text = "Custom Scene";
+  expect(PaletteItemNotificationTitle(text_fallback) == "Custom Scene",
+         "PaletteItemNotificationTitle must fall back to text when title is empty");
+
+  PaletteItem id_fallback;
+  id_fallback.id = "raw.id";
+  expect(PaletteItemNotificationTitle(id_fallback) == "raw.id",
+         "PaletteItemNotificationTitle must fall back to id when title and text are empty");
+
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_addon_i18n");
+  vinput::test::ScopedXdgConfigDir::WriteLocalI18n(
+      R"({"trigger.vinput.web_remote.title":"Web Remote"})");
+  {
+    std::ofstream cfg_out(vinput::path::VinputConfigDir() / "config.json");
+    cfg_out
+        << R"({"version":">=2.4.0","triggers":[{"id":"trigger.vinput.web_remote","command":"true","auto_start":false}]})";
+  }
+
+  fcitx::KeyEvent open_p(&ic, fcitx::Key(FcitxKey_Shift_R), false);
+  engine.handleKeyEvent(open_p);
+  fcitx::KeyEvent open_r(&ic, fcitx::Key(FcitxKey_Shift_R), true);
+  engine.handleKeyEvent(open_r);
+
+  fcitx::KeyEvent pgdn(&ic, fcitx::Key(FcitxKey_Page_Down), false);
+  engine.handleKeyEvent(pgdn);
+  fcitx::KeyEvent digit_2_p(&ic, fcitx::Key(FcitxKey_2), false);
+  engine.handleKeyEvent(digit_2_p);
+  fcitx::KeyEvent digit_2_r(&ic, fcitx::Key(FcitxKey_2), true);
+  engine.handleKeyEvent(digit_2_r);
+
+  auto candidate_list = ic.inputPanel().candidateList();
+  expect(candidate_list != nullptr && candidate_list->size() == 1,
+         "/proc menu must list the configured trigger");
+  const std::string candidate_text = candidate_list->candidate(0).text().toString();
+  expect(candidate_text.find("Web Remote") != std::string::npos,
+         "/proc candidate text must display localized title");
+  expect(candidate_text.find("trigger.vinput.web_remote") == std::string::npos,
+         "/proc candidate text must not display raw id when title exists");
+
+  fcitx::KeyEvent esc_p1(&ic, fcitx::Key(FcitxKey_Escape), false);
+  engine.handleKeyEvent(esc_p1);
+  fcitx::KeyEvent esc_r1(&ic, fcitx::Key(FcitxKey_Escape), true);
+  engine.handleKeyEvent(esc_r1);
+  fcitx::KeyEvent esc_p2(&ic, fcitx::Key(FcitxKey_Escape), false);
+  engine.handleKeyEvent(esc_p2);
+  fcitx::KeyEvent esc_r2(&ic, fcitx::Key(FcitxKey_Escape), true);
+  engine.handleKeyEvent(esc_r2);
+}
+
 void runAllTests() {
   const ScopedConfigDir sandbox;
 
@@ -465,6 +529,7 @@ void runAllTests() {
   TestMenuKeyTriggerAndCombination(ic, engine);
   TestPaletteMenuPaginationAndSelection(instance, ic, engine);
   TestLifetimeTokenUafGuard(instance);
+  TestPaletteItemNotificationTitleAndProcMenu(ic, engine);
 
   std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }

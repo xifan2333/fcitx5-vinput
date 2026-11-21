@@ -1,13 +1,20 @@
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "common/config/core_config_types.h"
+#include "common/registry/registry_i18n.h"
 #include "common/scene/postprocess_scene.h"
+#include "common/utils/path_utils.h"
 
+#include "daemon/asr/local_asr_model_loader.h"
 #include "daemon/postprocess/post_processor.h"
 #include "daemon/runtime/recognition_pipeline.h"
+
+#include "scoped_xdg_config.h"
 
 namespace {
 
@@ -168,6 +175,54 @@ void TestNonExistentSceneFailsHonestly() {
   Expect(res.payload.commitText == "untranslated speech", "Raw text must be preserved for user");
 }
 
+void TestMissingBuiltinSceneUsesDisplayLabel() {
+  PostProcessor processor;
+  const RecognitionPipeline pipeline(&processor);
+
+  const CoreConfig config{};
+  PostprocessRequest req;
+  req.text = "raw speech";
+  req.scene_id = std::string(vinput::scene::kRawSceneId);
+  req.is_command = false;
+
+  const auto res = pipeline.Process(req, config);
+  Expect(!res.errors.empty(), "Missing builtin scene must report error");
+  const std::string expected_label = vinput::scene::DisplayLabel(vinput::scene::kRawSceneId);
+  Expect(res.errors[0].find(expected_label) != std::string::npos,
+         "Missing builtin scene error must use DisplayLabel");
+  Expect(res.errors[0].find(vinput::scene::kRawSceneId) == std::string::npos,
+         "Missing builtin scene error must not expose raw __raw__ id");
+}
+
+void TestLoadLocalAsrModelContextUsesLocalizedProviderTitle() {
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_local_asr_i18n");
+  vinput::test::ScopedXdgConfigDir::WriteLocalI18n(
+      R"({"local.provider.id.title":"Localized Local ASR"})");
+
+  const CoreConfig config{};
+  LocalAsrProvider provider;
+  provider.id = "local.provider.id";
+  provider.model = "";
+
+  const auto res = vinput::daemon::asr::LoadLocalAsrModelContext(config, provider);
+  Expect(!res.has_value(), "Empty local model must fail");
+  Expect(res.error().find("Localized Local ASR") != std::string::npos,
+         "Local ASR error must use localized provider title");
+  Expect(res.error().find("local.provider.id") == std::string::npos,
+         "Local ASR error must not expose raw provider id");
+}
+
+void TestLoadCachedTitleToleratesDirectoryCachePath() {
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_dir_i18n");
+  std::error_code ec;
+  std::filesystem::create_directories(vinput::path::VinputConfigDir() / "i18n.local.json", ec);
+  Expect(!ec, "Creating directory at i18n.local.json path must succeed");
+
+  const std::string title = vinput::registry::LoadCachedTitle("provider.dir.test");
+  Expect(title == "provider.dir.test",
+         "LoadCachedTitle must not throw on directory cache path and must fall back to id");
+}
+
 } // namespace
 
 int main() {
@@ -178,6 +233,9 @@ int main() {
   TestDefaultActiveSceneOmitted();
   TestCommandMode();
   TestNonExistentSceneFailsHonestly();
+  TestMissingBuiltinSceneUsesDisplayLabel();
+  TestLoadLocalAsrModelContextUsesLocalizedProviderTitle();
+  TestLoadCachedTitleToleratesDirectoryCachePath();
 
   std::cout << "All RecognitionPipeline tests passed!\n";
   return 0;

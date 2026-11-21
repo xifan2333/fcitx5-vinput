@@ -11,6 +11,8 @@
 #include "daemon/asr/backends/command_batch_backend.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 
+#include "scoped_xdg_config.h"
+
 namespace {
 
 void ExpectTrue(bool condition, const std::string& message) {
@@ -92,6 +94,8 @@ void TestStderrPipedToNotificationBridge() {
              "Expected 2 notifications, got " + std::to_string(received.size()));
   ExpectTrue(received[0].title == "Batch Warning", "JSON notification title mismatch");
   ExpectTrue(received[0].body == "Token low", "JSON notification body mismatch");
+  ExpectTrue(received[1].title == "test-batch-stderr",
+             "Plain text notification should default title to provider title/id");
   ExpectTrue(received[1].body == "Verbatim batch notice", "Plain text notification body mismatch");
 }
 
@@ -218,6 +222,30 @@ void TestCancel() {
   ExpectTrue(!error.empty(), "Finish after cancel reports a non-empty error");
 }
 
+void TestStderrLocalizedTitleFromCache() {
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_batch_i18n");
+  vinput::test::ScopedXdgConfigDir::WriteLocalI18n(
+      R"({"test-batch-localized.title":"Localized Batch ASR"})");
+
+  std::vector<vinput::notify::Notification> received;
+  vinput::notify::NotificationBridge bridge([&](const auto& n) { received.push_back(n); });
+
+  CommandAsrProvider provider;
+  provider.id = "test-batch-localized";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo 'plain batch notice' >&2; echo 'ok'"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandBatchBackend(provider, &error, &bridge);
+  ExpectTrue(backend != nullptr, "CreateCommandBatchBackend failed");
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed");
+  ExpectTrue(session->Finish(&error), "Finish failed");
+  ExpectTrue(received.size() == 1 && received[0].title == "Localized Batch ASR",
+             "Batch stderr notification must use localized provider title");
+}
+
 } // namespace
 
 int main() {
@@ -230,6 +258,7 @@ int main() {
   TestCommandTimeout();
   TestEmptyOutputIsError();
   TestCancel();
+  TestStderrLocalizedTitleFromCache();
   std::cout << "All command batch tests passed successfully!\n";
   return 0;
 }

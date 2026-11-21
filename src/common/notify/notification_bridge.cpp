@@ -84,8 +84,13 @@ struct NotificationBridge::Impl {
   std::chrono::milliseconds dedup_window_;
   TimeProvider time_provider_;
 
+  struct SourceState {
+    std::string buffer;
+    std::string default_title;
+  };
+
   std::mutex mutex_;
-  std::map<std::string, std::string, std::less<>> buffers_;
+  std::map<std::string, SourceState, std::less<>> sources_;
 
   struct DedupEntry {
     std::chrono::steady_clock::time_point timestamp;
@@ -191,21 +196,26 @@ void NotificationBridge::FeedStderr(std::string_view source_id, std::span<const 
   std::vector<Notification> to_send;
   {
     const std::scoped_lock lock(impl_->mutex_);
-    auto& buffer = impl_->buffers_[std::string(source_id)];
+    auto& source = impl_->sources_[std::string(source_id)];
+    if (!default_title.empty()) {
+      source.default_title = std::string(default_title);
+    }
+    const std::string_view effective_title =
+        default_title.empty() ? std::string_view(source.default_title) : default_title;
 
-    buffer.reserve(buffer.size() + bytes.size());
+    source.buffer.reserve(source.buffer.size() + bytes.size());
     for (const auto b : bytes) {
-      buffer.push_back(static_cast<char>(b));
-      if (buffer.size() >= kMaxSourceBufferSize) {
-        impl_->ProcessLineLocked(buffer, default_title, to_send);
-        buffer.clear();
+      source.buffer.push_back(static_cast<char>(b));
+      if (source.buffer.size() >= kMaxSourceBufferSize) {
+        impl_->ProcessLineLocked(source.buffer, effective_title, to_send);
+        source.buffer.clear();
       }
     }
 
     vinput::process::DrainLinesFromBuffer(
-        buffer,
-        [this, default_title, &to_send](std::string_view line) {
-          impl_->ProcessLineLocked(line, default_title, to_send);
+        source.buffer,
+        [this, effective_title, &to_send](std::string_view line) {
+          impl_->ProcessLineLocked(line, effective_title, to_send);
         },
         /*flush_tail=*/false);
   }
@@ -227,12 +237,14 @@ void NotificationBridge::Flush(std::string_view source_id, std::string_view defa
   std::vector<Notification> to_send;
   {
     const std::scoped_lock lock(impl_->mutex_);
-    auto it = impl_->buffers_.find(source_id);
-    if (it != impl_->buffers_.end() && !it->second.empty()) {
+    auto it = impl_->sources_.find(source_id);
+    if (it != impl_->sources_.end() && !it->second.buffer.empty()) {
+      const std::string_view effective_title =
+          default_title.empty() ? std::string_view(it->second.default_title) : default_title;
       vinput::process::DrainLinesFromBuffer(
-          it->second,
-          [this, default_title, &to_send](std::string_view line) {
-            impl_->ProcessLineLocked(line, default_title, to_send);
+          it->second.buffer,
+          [this, effective_title, &to_send](std::string_view line) {
+            impl_->ProcessLineLocked(line, effective_title, to_send);
           },
           /*flush_tail=*/true);
     }
@@ -242,7 +254,7 @@ void NotificationBridge::Flush(std::string_view source_id, std::string_view defa
 
 void NotificationBridge::RetireSource(std::string_view source_id) {
   const std::scoped_lock lock(impl_->mutex_);
-  impl_->buffers_.erase(std::string(source_id));
+  impl_->sources_.erase(std::string(source_id));
 }
 
 void NotificationBridge::ResetDedup() {

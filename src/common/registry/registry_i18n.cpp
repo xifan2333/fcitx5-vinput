@@ -1,6 +1,7 @@
 #include "common/registry/registry_i18n.h"
 
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <glaze/core/common.hpp>
@@ -8,6 +9,8 @@
 #include <glaze/json/read.hpp>
 #include <iterator>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <utility>
 
 #include "common/utils/locale_utils.h"
@@ -44,6 +47,14 @@ I18nMap ParseI18nJson(const std::string& content, std::string* error) {
 namespace {
 
 I18nMap LoadI18nFile(const std::filesystem::path& path, std::string* error) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(path, ec)) {
+    if (error != nullptr) {
+      *error = "cached i18n unavailable: " + path.string();
+    }
+    return {};
+  }
+
   std::ifstream ifs(path);
   if (!ifs) {
     if (error != nullptr) {
@@ -52,8 +63,21 @@ I18nMap LoadI18nFile(const std::filesystem::path& path, std::string* error) {
     return {};
   }
 
-  const std::string content(std::istreambuf_iterator<char>(ifs), {});
-  return ParseI18nJson(content, error);
+  try {
+    const std::string content(std::istreambuf_iterator<char>(ifs), {});
+    if (ifs.bad()) {
+      if (error != nullptr) {
+        *error = "failed to read cached i18n: " + path.string();
+      }
+      return {};
+    }
+    return ParseI18nJson(content, error);
+  } catch (const std::exception& e) {
+    if (error != nullptr) {
+      *error = std::string("failed to read cached i18n: ") + e.what();
+    }
+    return {};
+  }
 }
 
 I18nMap LoadLocalI18nOverrides() {
@@ -122,6 +146,25 @@ std::string LookupI18n(const I18nMap& map, const std::string& key, const std::st
     return fallback;
   }
   return it->second;
+}
+
+std::string LookupTitle(const I18nMap& map, std::string_view id) {
+  if (id.empty()) {
+    return {};
+  }
+  std::string key;
+  key.reserve(id.size() + 6);
+  key.append(id);
+  key.append(".title");
+  return LookupI18n(map, key, std::string(id));
+}
+
+std::string LoadCachedTitle(std::string_view id) {
+  if (id.empty()) {
+    return {};
+  }
+  const auto i18n_map = LoadMergedCachedI18nMap(DetectPreferredLocale(), nullptr);
+  return LookupTitle(i18n_map, id);
 }
 
 } // namespace vinput::registry

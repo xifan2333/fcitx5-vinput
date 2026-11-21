@@ -12,6 +12,7 @@
 #include "common/config/core_config_types.h"
 #include "common/i18n.h"
 #include "common/notify/notification_bridge.h"
+#include "common/registry/registry_i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
@@ -142,14 +143,15 @@ private:
     if (notification_bridge_ == nullptr || stderr_text.empty()) {
       return;
     }
+    const std::string provider_title = vinput::registry::LoadCachedTitle(provider_id_);
     std::size_t delivered = 0;
     vinput::process::DrainLinesFromBuffer(
         stderr_text,
-        [this, &delivered](std::string_view line) -> bool {
+        [this, &provider_title, &delivered](std::string_view line) -> bool {
           if (delivered >= kMaxBatchNotifications) {
             return false;
           }
-          notification_bridge_->DeliverLine(provider_id_, line);
+          notification_bridge_->DeliverLine(provider_id_, line, provider_title);
           ++delivered;
           return true;
         },

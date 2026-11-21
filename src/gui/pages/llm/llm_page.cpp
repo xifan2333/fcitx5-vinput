@@ -211,8 +211,7 @@ QString SceneLabelForGui(const vinput::scene::Definition& scene) {
 // user-facing name. Fall back to id when the cache has no entry yet.
 QString AdapterTitleForGui(const std::string& adapter_id) {
   const auto i18n_map = I18nCache::Get().GetMap();
-  return QString::fromStdString(
-      vinput::registry::LookupI18n(i18n_map, adapter_id + ".title", adapter_id));
+  return QString::fromStdString(vinput::registry::LookupTitle(i18n_map, adapter_id));
 }
 
 QString BuildAdapterTooltip(const LlmAdapter& adapter) {

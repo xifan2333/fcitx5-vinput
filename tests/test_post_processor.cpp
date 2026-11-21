@@ -23,6 +23,8 @@
 
 #include "daemon/postprocess/post_processor.h"
 
+#include "scoped_xdg_config.h"
+
 namespace {
 
 void AssertTrue(bool condition, const char* message) {
@@ -112,6 +114,40 @@ private:
     return false;
   }
 
+  [[nodiscard]] std::string BuildMockResponse(const std::string& request_header) const {
+    auto ok_json = [](const std::string& body) {
+      return "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+             std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+    };
+    if (request_header.find("POST /error500/") != std::string::npos) {
+      return "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: "
+             "19\r\nConnection: close\r\n\r\nInternal Server Err";
+    }
+    if (request_header.find("POST /redirect/") != std::string::npos) {
+      return "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + std::to_string(port_) +
+             "/v1/chat/completions\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    }
+    if (request_header.find("POST /malformed/") != std::string::npos) {
+      return ok_json("{not-json}");
+    }
+    if (request_header.find("POST /empty_cands/") != std::string::npos) {
+      return ok_json(R"({"choices":[{"message":{"content":"{\"candidates\":[]}"}}]})");
+    }
+    if (request_header.find("POST /slow/") != std::string::npos) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(300));
+      return ok_json(
+          R"({"choices":[{"message":{"content":"{\"candidates\":[\"Slow Result\"]}"}}]})");
+    }
+    if (request_header.find("POST /plain_lines/") != std::string::npos) {
+      return ok_json(R"({"choices":[{"message":{"content":"Plain Line 1\nPlain Line 2"}}]})");
+    }
+    if (request_header.find("POST /plain_single/") != std::string::npos) {
+      return ok_json(R"({"choices":[{"message":{"content":"Single Plain Rewritten"}}]})");
+    }
+    return ok_json(
+        R"({"choices":[{"message":{"content":"{\"candidates\":[\"Candidate 1\",\"Candidate 2\"]}"}}]})");
+  }
+
   void RunServerLoop() {
     while (!stop_requested_.load()) {
       pollfd pfd{.fd = listen_fd_, .events = POLLIN, .revents = 0};
@@ -123,62 +159,17 @@ private:
         continue;
       }
 
-      while (!stop_requested_.load()) {
-        std::string request_body;
-        std::string request_header;
-        if (!ReadHttpRequest(client_fd, request_body, request_header)) {
-          break;
-        }
-
+      std::string request_body;
+      std::string request_header;
+      if (ReadHttpRequest(client_fd, request_body, request_header)) {
         {
           const std::scoped_lock lock(mutex_);
           captured_headers_.push_back(request_header);
           captured_bodies_.push_back(request_body);
         }
         ++request_count_;
-
-        std::string response;
-        if (request_header.find("POST /error500/") != std::string::npos) {
-          response =
-              "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: "
-              "19\r\nConnection: close\r\n\r\nInternal Server Err";
-        } else if (request_header.find("POST /redirect/") != std::string::npos) {
-          response = "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + std::to_string(port_) +
-                     "/v1/chat/completions\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        } else if (request_header.find("POST /malformed/") != std::string::npos) {
-          const std::string body = "{not-json}";
-          response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
-                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-        } else if (request_header.find("POST /empty_cands/") != std::string::npos) {
-          const std::string body = R"({"choices":[{"message":{"content":"{\"candidates\":[]}"}}]})";
-          response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
-                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-        } else if (request_header.find("POST /slow/") != std::string::npos) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(300));
-          const std::string body =
-              R"({"choices":[{"message":{"content":"{\"candidates\":[\"Slow Result\"]}"}}]})";
-          response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
-                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-        } else if (request_header.find("POST /plain_lines/") != std::string::npos) {
-          const std::string body =
-              R"({"choices":[{"message":{"content":"Plain Line 1\nPlain Line 2"}}]})";
-          response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
-                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-        } else if (request_header.find("POST /plain_single/") != std::string::npos) {
-          const std::string body =
-              R"({"choices":[{"message":{"content":"Single Plain Rewritten"}}]})";
-          response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
-                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-        } else {
-          // Standard successful OpenAI compatible response
-          const std::string body =
-              R"({"choices":[{"message":{"content":"{\"candidates\":[\"Candidate 1\",\"Candidate 2\"]}"}}]})";
-          response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
-                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-        }
-
+        const std::string response = BuildMockResponse(request_header);
         send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
-        break;
       }
       close(client_fd);
     }
@@ -629,10 +620,10 @@ void TestProcessCommandAdapterStderrNotification() {
   scene.llm_max_candidates = 1;
   scene.timeout_ms = 5000;
 
-  std::vector<std::string> delivered_notifications;
+  std::vector<vinput::notify::Notification> delivered_notifications;
   vinput::notify::NotificationBridge bridge(
       [&delivered_notifications](const vinput::notify::Notification& n) {
-        delivered_notifications.push_back(n.body);
+        delivered_notifications.push_back(n);
       });
 
   const PostProcessor processor(&bridge);
@@ -641,7 +632,9 @@ void TestProcessCommandAdapterStderrNotification() {
 
   AssertTrue(payload.commitText == "Result OK", "adapter succeeded despite stderr");
   AssertTrue(!delivered_notifications.empty(), "notification bridge received stderr");
-  AssertTrue(delivered_notifications[0].find("Warning log") != std::string::npos,
+  AssertTrue(delivered_notifications[0].title == "stderr_adapter",
+             "notification title defaults to adapter title/id");
+  AssertTrue(delivered_notifications[0].body.find("Warning log") != std::string::npos,
              "message content matches");
 }
 
@@ -669,6 +662,41 @@ void TestProcessCommandAdapterFailureFallback() {
   AssertTrue(payload.candidates.size() == 1, "only raw candidate on failure");
 }
 
+void TestCommandAdapterLocalizedTitleInStderrAndError() {
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_pp_i18n");
+  vinput::test::ScopedXdgConfigDir::WriteLocalI18n(
+      R"({"localized_adapter.title":"Localized Adapter"})");
+
+  CoreConfig config;
+  LlmAdapter adapter;
+  adapter.id = "localized_adapter";
+  adapter.command = "sh";
+  adapter.args = {"-c", "echo 'adapter stderr' >&2; exit 2"};
+  config.llm.adapters.push_back(adapter);
+
+  vinput::scene::Definition scene;
+  scene.id = "localized_scene";
+  scene.provider_id = "localized_adapter";
+  scene.raw_cand = true;
+  scene.llm_max_candidates = 1;
+  scene.timeout_ms = 5000;
+
+  std::vector<vinput::notify::Notification> delivered;
+  vinput::notify::NotificationBridge bridge(
+      [&delivered](const vinput::notify::Notification& n) { delivered.push_back(n); });
+
+  const PostProcessor processor(&bridge);
+  std::string error_out;
+  (void)processor.Process("input", scene, config, &error_out, nullptr);
+
+  AssertTrue(!delivered.empty() && delivered[0].title == "Localized Adapter",
+             "stderr notification title must use localized adapter title");
+  AssertTrue(error_out.find("Localized Adapter") != std::string::npos,
+             "adapter failure error must use localized adapter title");
+  AssertTrue(error_out.find("localized_adapter") == std::string::npos,
+             "adapter failure error must not expose raw adapter id");
+}
+
 } // namespace
 
 int main() {
@@ -690,6 +718,7 @@ int main() {
   TestProcessCommandAdapterLineStream();
   TestProcessCommandAdapterStderrNotification();
   TestProcessCommandAdapterFailureFallback();
+  TestCommandAdapterLocalizedTitleInStderrAndError();
   std::cout << "All PostProcessor unit tests passed!\n";
   return 0;
 }

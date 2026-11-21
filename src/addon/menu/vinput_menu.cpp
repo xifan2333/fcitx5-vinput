@@ -469,14 +469,12 @@ void AppendLocalAsrItems(const CoreConfig& config,
       continue;
     }
     const bool is_active = is_local_active && (m.state == ModelState::Active);
-    std::string display = vinput::registry::LookupI18n(i18n_map, m.id + ".title", m.id);
-    if (display.empty()) {
-      display = m.id;
-    }
+    const std::string display = vinput::registry::LookupTitle(i18n_map, m.id);
     std::string comment = is_active ? _("ASR *") : _("ASR");
     items->push_back(PaletteItem{
         .category = PaletteCategory::Asr,
         .id = m.id,
+        .title = display,
         .text = display,
         .comment = std::move(comment),
         .search_text = m.id + " " + display + " asr",
@@ -507,7 +505,7 @@ void AppendCloudAsrItems(const CoreConfig& config,
       continue;
     }
     const bool is_active = (pid == config.asr.activeProvider);
-    const std::string title = vinput::registry::LookupI18n(i18n_map, pid + ".title", pid);
+    const std::string title = vinput::registry::LookupTitle(i18n_map, pid);
     std::string comment = is_active ? _("ASR *") : _("ASR");
     std::string search_text = pid;
     search_text += ' ';
@@ -516,6 +514,7 @@ void AppendCloudAsrItems(const CoreConfig& config,
     items->push_back(PaletteItem{
         .category = PaletteCategory::Asr,
         .id = pid,
+        .title = title,
         .text = title,
         .comment = std::move(comment),
         .search_text = std::move(search_text),
@@ -555,7 +554,7 @@ std::string FormatClientComment(bool running, pid_t pid, bool auto_start) {
 
 PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bool running,
                                    pid_t pid, const vinput::registry::I18nMap& i18n_map) {
-  const std::string title = vinput::registry::LookupI18n(i18n_map, client.id + ".title", client.id);
+  const std::string title = vinput::registry::LookupTitle(i18n_map, client.id);
   const std::string type_label = is_trigger ? _("[Trigger]") : _("[Receiver]");
   std::string text = fmt::sprintf("%s %s", type_label.c_str(), title.c_str());
   std::string comment = FormatClientComment(running, pid, client.autoStart);
@@ -566,6 +565,7 @@ PaletteItem BuildClientPaletteItem(const ClientSpec& client, bool is_trigger, bo
   return PaletteItem{
       .category = PaletteCategory::Process,
       .id = client.id,
+      .title = title,
       .text = std::move(text),
       .comment = std::move(comment),
       .search_text = std::move(search_text),
@@ -597,10 +597,12 @@ void VinputEngine::registerModelCommand() {
             const auto active_models = vinput::llm::LoadActiveModels(config);
             for (const auto& m : active_models) {
               std::string comment = m.active_for_command ? _("Cmd-Model *") : _("Cmd-Model");
+              std::string display = m.provider_id + " / " + m.model;
               items.push_back(PaletteItem{
                   .category = PaletteCategory::CommandModel,
                   .id = m.full_id,
-                  .text = m.provider_id + " / " + m.model,
+                  .title = display,
+                  .text = std::move(display),
                   .comment = std::move(comment),
                   .search_text = m.full_id + " " + m.provider_id + " " + m.model + " model cmd",
                   .active = m.active_for_command,
@@ -631,12 +633,16 @@ void VinputEngine::registerModelCommand() {
 
 void VinputEngine::handleAsrSelection(const PaletteItem& item) {
   auto core_config = LoadCoreConfig();
+  const std::string display_title = PaletteItemNotificationTitle(item);
 #if !VINPUT_ENABLE_LOCAL_ASR
   const auto* target_provider = CoreConfigView(core_config).AsrProvider(item.provider_id);
   if (target_provider && std::holds_alternative<LocalAsrProvider>(*target_provider)) {
+    const std::string provider_title = (item.model_id.empty() && !item.title.empty())
+                                           ? item.title
+                                           : vinput::registry::LoadCachedTitle(item.provider_id);
     notifyError(fmt::sprintf(_("ASR provider '%s' is a local provider, which is not "
                                "supported in this Lite build."),
-                             item.provider_id.c_str()));
+                             provider_title.c_str()));
     return;
   }
 #endif
@@ -659,7 +665,7 @@ void VinputEngine::handleAsrSelection(const PaletteItem& item) {
       return;
     }
   }
-  notifyInfo(fmt::sprintf(_("ASR switch requested for '%s'."), item.text.c_str()));
+  notifyInfo(fmt::sprintf(_("ASR switch requested for '%s'."), display_title.c_str()));
 }
 
 void VinputEngine::registerAsrCommand() {
@@ -697,6 +703,7 @@ void VinputEngine::registerSceneCommand() {
               items.push_back(PaletteItem{
                   .category = PaletteCategory::Scene,
                   .id = scene.id,
+                  .title = label,
                   .text = label,
                   .comment = std::move(comment),
                   .search_text = scene.id + " " + label + " scene",
@@ -720,7 +727,8 @@ void VinputEngine::registerSceneCommand() {
               return;
             }
             active_scene_id_ = item.scene_id;
-            notifyInfo(fmt::sprintf(_("Scene switched to '%s'."), item.text.c_str()));
+            notifyInfo(fmt::sprintf(_("Scene switched to '%s'."),
+                                    PaletteItemNotificationTitle(item).c_str()));
           },
   });
 }
@@ -738,13 +746,14 @@ bool VinputEngine::isClientActive(const PaletteItem& item) const {
 
 void VinputEngine::handleClientToggle(const PaletteItem& item) {
   const bool is_running = isClientActive(item);
+  const std::string display_title = PaletteItemNotificationTitle(item);
   std::string error;
   if (is_running) {
     if (!callStopClient(item.id, &error)) {
       notifyError(error.empty() ? _("Failed to stop client.") : error);
       return;
     }
-    notifyInfo(fmt::sprintf(_("Client '%s' stopped."), item.id.c_str()));
+    notifyInfo(fmt::sprintf(_("Client '%s' stopped."), display_title.c_str()));
     return;
   }
 
@@ -752,7 +761,7 @@ void VinputEngine::handleClientToggle(const PaletteItem& item) {
     notifyError(error.empty() ? _("Failed to start client.") : error);
     return;
   }
-  notifyInfo(fmt::sprintf(_("Client '%s' started."), item.id.c_str()));
+  notifyInfo(fmt::sprintf(_("Client '%s' started."), display_title.c_str()));
 }
 
 void VinputEngine::registerProcessCommand() {
@@ -872,6 +881,7 @@ void VinputEngine::reloadPaletteItems() {
     palette_items_.push_back(PaletteItem{
         .category = cmd.category,
         .id = "cmd:" + cmd.id,
+        .title = cmd.title,
         .text = std::move(text),
         .comment = cmd.description,
         .search_text = std::move(search_text),

@@ -1,10 +1,21 @@
 #include "menu/palette_command.h"
 
 #include <algorithm>
+#include <string>
 #include <string_view>
 #include <utility>
 
 #include "common/utils/string_utils.h"
+
+std::string PaletteItemNotificationTitle(const PaletteItem& item) {
+  if (!item.title.empty()) {
+    return item.title;
+  }
+  if (!item.text.empty()) {
+    return item.text;
+  }
+  return item.id;
+}
 
 void PaletteCommandRegistry::registerCommand(PaletteCommand command) {
   auto it =

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "common/notify/notification_bridge.h"
+#include "common/registry/registry_i18n.h"
 
 namespace {
 
@@ -191,6 +192,35 @@ void TestDedupCacheHardCapEviction() {
   ExpectTrue(delivered.size() == 300, "all 300 unique messages delivered");
 }
 
+void TestLookupTitle() {
+  const vinput::registry::I18nMap map{
+      {"trigger.vinput.web_remote.title", "Web Remote"},
+      {"adapter.empty.title", ""},
+  };
+  ExpectTrue(vinput::registry::LookupTitle(map, "trigger.vinput.web_remote") == "Web Remote",
+             "LookupTitle returns localized title");
+  ExpectTrue(vinput::registry::LookupTitle(map, "adapter.empty") == "adapter.empty",
+             "LookupTitle falls back to id when title is empty");
+  ExpectTrue(vinput::registry::LookupTitle(map, "missing.id") == "missing.id",
+             "LookupTitle falls back to id when key is missing");
+  ExpectTrue(vinput::registry::LookupTitle(map, "").empty(),
+             "LookupTitle returns empty string for empty id");
+}
+
+void TestRememberedDefaultTitleOnFlush() {
+  std::vector<Notification> delivered;
+  NotificationBridge bridge([&](const Notification& n) { delivered.push_back(n); });
+
+  bridge.FeedStderr("client:mock", AsBytes("partial "), "Mock Client Title");
+  ExpectTrue(delivered.empty(), "incomplete line buffered");
+
+  bridge.Flush("client:mock");
+  ExpectTrue(delivered.size() == 1, "flushed line delivered");
+  ExpectTrue(delivered[0].title == "Mock Client Title",
+             "Flush reuses remembered default_title for source_id");
+  ExpectTrue(delivered[0].body == "partial ", "flushed body matches");
+}
+
 } // namespace
 
 int main() {
@@ -201,5 +231,7 @@ int main() {
   TestSlidingWindowDeduplication();
   TestOversizedBufferProtection();
   TestDedupCacheHardCapEviction();
+  TestLookupTitle();
+  TestRememberedDefaultTitleOnFlush();
   return 0;
 }

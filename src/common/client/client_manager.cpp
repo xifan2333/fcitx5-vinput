@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <span>
 #include <string>
@@ -28,6 +29,7 @@ extern "C" {
 #include "common/config/core_config_view.h"
 #include "common/dbus/dbus_interface.h"
 #include "common/notify/notification_bridge.h"
+#include "common/registry/registry_i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -199,6 +201,20 @@ void CleanupBridgeSource(vinput::notify::NotificationBridge* bridge, std::string
   }
 }
 
+vinput::process::StderrSink MakeStderrHandler(vinput::notify::NotificationBridge* bridge,
+                                              std::string source_id, std::string client_id) {
+  if (bridge == nullptr) {
+    return {};
+  }
+  return [bridge, source_id = std::move(source_id), client_id = std::move(client_id),
+          cached_title = std::optional<std::string>{}](std::span<const std::byte> bytes) mutable {
+    if (!cached_title.has_value()) {
+      cached_title = vinput::registry::LoadCachedTitle(client_id);
+    }
+    bridge->FeedStderr(source_id, bytes, *cached_title);
+  };
+}
+
 void CommitTrackedSession(std::string_view client_id, vinput::process::ProcessSession session,
                           vinput::notify::NotificationBridge* bridge,
                           std::shared_ptr<StdoutFramer> framer) {
@@ -234,12 +250,7 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
   framer->handler = std::move(on_command);
 
   auto started = vinput::process::ProcessSession::Start(
-      spec,
-      [bridge, source_id](std::span<const std::byte> bytes) {
-        if (bridge != nullptr) {
-          bridge->FeedStderr(source_id, bytes);
-        }
-      },
+      spec, MakeStderrHandler(bridge, source_id, client_id),
       [framer](std::span<const std::byte> bytes) { framer->Feed(bytes); });
   if (!started) {
     if (error != nullptr) {
@@ -281,11 +292,7 @@ void StopTrackedSession(std::string_view client_id, std::unique_ptr<TrackedSessi
   to_stop->session.Cancel();
   (void)to_stop->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
   auto* b = bridge != nullptr ? bridge : to_stop->bridge;
-  if (b != nullptr) {
-    const std::string source_id = SourceId(client_id);
-    b->Flush(source_id);
-    b->RetireSource(source_id);
-  }
+  CleanupBridgeSource(b, SourceId(client_id));
   RemovePidFile(client_id);
   VLOG_DEBUG("client stopped id={}", client_id);
 }
@@ -293,13 +300,12 @@ void StopTrackedSession(std::string_view client_id, std::unique_ptr<TrackedSessi
 bool HandleExternalProcessTermination(std::string_view client_id,
                                       const vinput::process::TerminateResult& result,
                                       std::string* error) {
-  const auto fail = [error](const std::string& message) {
+  const auto fail = [error, client_id](const std::string& prefix, const std::string& suffix = {}) {
     if (error != nullptr) {
-      *error = message;
+      *error = prefix + vinput::registry::LoadCachedTitle(client_id) + suffix;
     }
     return false;
   };
-  const std::string id(client_id);
 
   switch (result.outcome) {
   case vinput::process::TerminateOutcome::Exited:
@@ -310,15 +316,15 @@ bool HandleExternalProcessTermination(std::string_view client_id,
     return true;
   case vinput::process::TerminateOutcome::NotFound:
     RemovePidFile(client_id);
-    return fail("client is not running: " + id);
+    return fail("client is not running: ");
   case vinput::process::TerminateOutcome::StillRunning:
-    return fail("client did not exit after SIGKILL: " + id);
+    return fail("client did not exit after SIGKILL: ");
   case vinput::process::TerminateOutcome::Unconfirmed:
-    return fail("could not confirm that client stopped: " + id);
+    return fail("could not confirm that client stopped: ");
   case vinput::process::TerminateOutcome::Failed:
-    return fail((result.failed_signal == SIGKILL ? "failed to force-kill client "
-                                                 : "failed to signal client ") +
-                id + ": " + result.error);
+    return fail(result.failed_signal == SIGKILL ? "failed to force-kill client "
+                                                : "failed to signal client ",
+                ": " + result.error);
   }
   return false;
 }
@@ -411,11 +417,7 @@ pid_t GetPid(std::string_view client_id) {
     }
   }
   if (reaped) {
-    if (exited_bridge != nullptr) {
-      const std::string source_id = SourceId(client_id);
-      exited_bridge->Flush(source_id);
-      exited_bridge->RetireSource(source_id);
-    }
+    CleanupBridgeSource(exited_bridge, SourceId(client_id));
     RemovePidFile(client_id);
     return -1;
   }
@@ -467,11 +469,7 @@ bool Stop(std::string_view client_id, std::string* error,
   const auto result = vinput::process::TerminateGracefully(record.pid, record.start_time,
                                                            kGracefulStopTimeout, kForceKillTimeout);
 
-  if (bridge != nullptr) {
-    const std::string source_id = SourceId(client_id);
-    bridge->Flush(source_id);
-    bridge->RetireSource(source_id);
-  }
+  CleanupBridgeSource(bridge, SourceId(client_id));
 
   return HandleExternalProcessTermination(client_id, result, error);
 }
@@ -539,11 +537,7 @@ void Shutdown() {
   }
   for (auto& [id, tracked] : to_shutdown) {
     (void)tracked->session.WaitForExit(kGracefulStopTimeout + kForceKillTimeout);
-    if (tracked->bridge != nullptr) {
-      const std::string source_id = SourceId(id);
-      tracked->bridge->Flush(source_id);
-      tracked->bridge->RetireSource(source_id);
-    }
+    CleanupBridgeSource(tracked->bridge, SourceId(id));
     RemovePidFile(id);
   }
 }

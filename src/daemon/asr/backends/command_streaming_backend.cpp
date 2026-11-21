@@ -24,6 +24,7 @@
 #include "common/config/core_config_types.h"
 #include "common/json/json_access.h"
 #include "common/notify/notification_bridge.h"
+#include "common/registry/registry_i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/process_session.h"
 #include "common/utils/process_utils.h"
@@ -346,7 +347,10 @@ private:
 
   void HandleStderrChunk(const std::vector<std::byte>& data) {
     if (notification_bridge_ != nullptr) {
-      notification_bridge_->FeedStderr(source_id_, data);
+      if (!provider_title_.has_value()) {
+        provider_title_ = vinput::registry::LoadCachedTitle(provider_id_);
+      }
+      notification_bridge_->FeedStderr(source_id_, data, *provider_title_);
     }
   }
 
@@ -625,6 +629,7 @@ private:
 
   CommandAsrProvider provider_;
   std::string provider_id_;
+  std::optional<std::string> provider_title_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   std::string source_id_;
   Clock::time_point deadline_ = Clock::time_point::max();

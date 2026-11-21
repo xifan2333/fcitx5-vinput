@@ -19,6 +19,8 @@
 #include "daemon/asr/backends/command_streaming_backend.h"
 #include "daemon/asr/runtime/recognition_contract.h"
 
+#include "scoped_xdg_config.h"
+
 namespace {
 
 /** Abort test execution if condition is not satisfied. */
@@ -471,6 +473,8 @@ void TestStderrPipedToNotificationBridge() {
              "Expected custom title, got " + received[0].title);
   ExpectTrue(received[0].body == "Rate limit reached",
              "Expected json body, got " + received[0].body);
+  ExpectTrue(received[1].title == "test-bridge-provider",
+             "Expected provider title/id, got " + received[1].title);
   ExpectTrue(received[1].body == "Verbatim plain error",
              "Expected plain body, got " + received[1].body);
 }
@@ -746,6 +750,36 @@ void TestEarlyClosedReportsFailure() {
              "Subsequent Finish preserves exact error message even after Finish(nullptr)");
 }
 
+void TestStderrLocalizedTitleFromCache() {
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_stream_i18n");
+  vinput::test::ScopedXdgConfigDir::WriteLocalI18n(
+      R"({"test-stream-localized.title":"Localized Stream ASR"})");
+
+  std::vector<vinput::notify::Notification> received;
+  vinput::notify::NotificationBridge bridge([&](const auto& n) { received.push_back(n); });
+
+  CommandAsrProvider provider;
+  provider.id = "test-stream-localized";
+  provider.command = "/bin/sh";
+  provider.args = {"-c",
+                   "echo '{\"type\": \"session_started\"}'"
+                   " && echo 'plain stream notice' >&2"
+                   " && while read -r line; do case \"$line\" in *finish*) break ;; esac; done"
+                   " && echo '{\"type\": \"final\", \"text\": \"ok\"}'"
+                   " && echo '{\"type\": \"closed\"}'"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error, &bridge);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed");
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed");
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed");
+  ExpectTrue(session->Finish(&error), "Finish failed");
+  ExpectTrue(received.size() == 1 && received[0].title == "Localized Stream ASR",
+             "Streaming stderr notification must use localized provider title");
+}
+
 } // namespace
 
 int main() {
@@ -766,6 +800,7 @@ int main() {
   TestKilledByUsVsAbnormalExit();
   TestPrematureExitErrorReporting();
   TestEarlyClosedReportsFailure();
+  TestStderrLocalizedTitleFromCache();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }
