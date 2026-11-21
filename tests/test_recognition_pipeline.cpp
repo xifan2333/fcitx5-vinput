@@ -1,10 +1,14 @@
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "common/config/core_config_types.h"
+#include "common/registry/registry_i18n.h"
 #include "common/scene/postprocess_scene.h"
+#include "common/utils/path_utils.h"
 
 #include "daemon/asr/local_asr_model_loader.h"
 #include "daemon/postprocess/post_processor.h"
@@ -208,6 +212,17 @@ void TestLoadLocalAsrModelContextUsesLocalizedProviderTitle() {
          "Local ASR error must not expose raw provider id");
 }
 
+void TestLoadCachedTitleToleratesDirectoryCachePath() {
+  const vinput::test::ScopedXdgConfigDir xdg("vinput_test_dir_i18n");
+  std::error_code ec;
+  std::filesystem::create_directories(vinput::path::VinputConfigDir() / "i18n.local.json", ec);
+  Expect(!ec, "Creating directory at i18n.local.json path must succeed");
+
+  const std::string title = vinput::registry::LoadCachedTitle("provider.dir.test");
+  Expect(title == "provider.dir.test",
+         "LoadCachedTitle must not throw on directory cache path and must fall back to id");
+}
+
 } // namespace
 
 int main() {
@@ -220,6 +235,7 @@ int main() {
   TestNonExistentSceneFailsHonestly();
   TestMissingBuiltinSceneUsesDisplayLabel();
   TestLoadLocalAsrModelContextUsesLocalizedProviderTitle();
+  TestLoadCachedTitleToleratesDirectoryCachePath();
 
   std::cout << "All RecognitionPipeline tests passed!\n";
   return 0;
