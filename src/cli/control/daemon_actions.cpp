@@ -8,13 +8,10 @@
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <iostream>
-#include <string>
-#include <unistd.h>
-
-extern "C" {
 #include <signal.h>
+#include <string>
 #include <systemd/sd-bus.h>
-}
+#include <unistd.h>
 
 #include "common/dbus/dbus_interface.h"
 #include "common/i18n.h"

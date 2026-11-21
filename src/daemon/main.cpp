@@ -2,15 +2,12 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
+#include <signal.h>
 #include <span>
 #include <string>
 #include <string_view>
 #include <sys/poll.h>
 #include <vector>
-
-extern "C" {
-#include <signal.h>
-}
 
 #include "common/client/client_manager.h"
 #include "common/config/core_config.h"

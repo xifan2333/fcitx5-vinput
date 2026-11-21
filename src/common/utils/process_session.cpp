@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <readerwriterqueue.h>
+#include <signal.h> // SIGKILL, SIGTERM
 #include <span>
 #include <string>
 #include <string_view>
@@ -24,10 +25,6 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
-
-extern "C" {
-#include <signal.h> // SIGKILL, SIGTERM
-}
 
 #include "common/utils/debug_log.h"
 #include "common/utils/expected.h"

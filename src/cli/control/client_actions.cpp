@@ -8,16 +8,13 @@
 #include <glaze/json/json_t.hpp>
 #include <iostream>
 #include <map>
+#include <signal.h>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <systemd/sd-bus.h>
 #include <utility>
 #include <vector>
-
-extern "C" {
-#include <signal.h>
-#include <systemd/sd-bus.h>
-}
 
 #include "common/asr/recognition_result.h"
 #include "common/client/client_event.h"
