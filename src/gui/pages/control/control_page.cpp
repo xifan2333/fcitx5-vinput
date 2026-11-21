@@ -125,8 +125,7 @@ QString FormatProviderDetail(const AsrProvider& provider,
     if (local->model.empty()) {
       return ControlPage::tr("(not set)");
     }
-    const auto title =
-        vinput::registry::LookupI18n(i18n_map, local->model + ".title", local->model);
+    const auto title = vinput::registry::LookupTitle(i18n_map, local->model);
     return QString::fromStdString(title);
   }
   if (const auto* command = std::get_if<CommandAsrProvider>(&provider)) {
@@ -178,8 +177,7 @@ AsrProviderLabels ResolveAsrProviderLabels(const AsrProvider& provider,
   labels.id = QString::fromStdString(AsrProviderId(provider));
   labels.type = QString::fromStdString(std::string(AsrProviderType(provider)));
   const std::string id_str = labels.id.toStdString();
-  labels.title =
-      QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id_str + ".title", id_str));
+  labels.title = QString::fromStdString(vinput::registry::LookupTitle(i18n_map, id_str));
   return labels;
 }
 
@@ -218,7 +216,7 @@ QString FormatClientStatus(bool running, int pid) {
 // Clients register under a namespaced id such as `trigger.vinput.web_remote`; the
 // registry i18n map carries the human-readable title for the packaged ones.
 QString ClientDisplayName(const vinput::registry::I18nMap& i18n_map, const std::string& id) {
-  return QString::fromStdString(vinput::registry::LookupI18n(i18n_map, id + ".title", id));
+  return QString::fromStdString(vinput::registry::LookupTitle(i18n_map, id));
 }
 
 void AppendClientRow(QTableWidget* table, const ClientSpec& client, bool is_trigger,
@@ -302,18 +300,20 @@ bool SameAsrProviderData(const AsrProviderData& lhs, const AsrProviderData& rhs)
 
 bool ValidateEditState(QWidget* parent, const CoreConfig& fresh_config,
                        const AsrProviderData& current, std::string_view new_id) {
+  const QString provider_title =
+      QString::fromStdString(vinput::registry::LookupTitle(I18nCache::Get().GetMap(), current.id));
   const auto fresh_data = FindAsrProviderData(fresh_config, current.id);
   if (!fresh_data.has_value()) {
     QMessageBox::warning(
         parent, QObject::tr("Conflict"),
         QObject::tr("The provider '%1' was removed or modified by another process.")
-            .arg(QString::fromStdString(current.id)));
+            .arg(provider_title));
     return false;
   }
   if (!SameAsrProviderData(*fresh_data, current)) {
-    QMessageBox::warning(parent, QObject::tr("Conflict"),
-                         QObject::tr("The provider '%1' was modified by another process.")
-                             .arg(QString::fromStdString(current.id)));
+    QMessageBox::warning(
+        parent, QObject::tr("Conflict"),
+        QObject::tr("The provider '%1' was modified by another process.").arg(provider_title));
     return false;
   }
   if (new_id != current.id) {

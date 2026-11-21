@@ -33,6 +33,7 @@
 
 #include "common/llm/defaults.h"
 #include "common/llm/provider_model_cache.h"
+#include "common/registry/registry_i18n.h"
 #include "common/registry/registry_scripts.h"
 #include "common/utils/interpolation.h"
 #include "common/utils/string_utils.h"
@@ -41,6 +42,7 @@
 #include "cli/runtime/dbus_client.h"
 
 #include "gui/utils/config_manager.h"
+#include "gui/utils/i18n_cache.h"
 
 namespace vinput::gui {
 
@@ -557,9 +559,11 @@ void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
   }
 
   const CoreConfig config = ConfigManager::Get().Load();
+  const auto i18n_map = I18nCache::Get().GetMap();
   for (const auto& a : config.llm.adapters) {
     const QString id = QString::fromStdString(a.id);
-    comboProvider->addItem(QString("[%1] %2").arg(GuiHelpers::tr("Adapter"), id), id);
+    const QString title = QString::fromStdString(vinput::registry::LookupTitle(i18n_map, a.id));
+    comboProvider->addItem(QString("[%1] %2").arg(GuiHelpers::tr("Adapter"), title), id);
     comboProvider->setItemData(comboProvider->count() - 1,
                                static_cast<int>(ProviderEntryKind::Adapter), Qt::UserRole + 1);
   }
