@@ -1592,12 +1592,12 @@ msgid "Commit recognized text to desktop IME input context"
 msgstr "将识别文本提交至桌面输入法上下文"
 
 #: src/cli/control/daemon_actions.cpp
-msgid "vinput daemon pipe requires audio streamed from standard input."
-msgstr "vinput daemon pipe 需要通过标准输入传入流式音频。"
-
-#: src/cli/control/daemon_actions.cpp
-msgid "Example usage:"
-msgstr "使用示例："
+msgid ""
+"vinput daemon pipe requires raw 16kHz 16-bit mono S16_LE PCM streamed from "
+"standard input. See vinput(1) for examples."
+msgstr ""
+"vinput daemon pipe 需要通过标准输入传入 16kHz 16-bit 单声道 S16_LE 裸 PCM 音频"
+"流。示例用法请参见 vinput(1)。"
 
 #: src/cli/control/daemon_actions.cpp
 msgid "Failed to subscribe to daemon stream events."
