@@ -7,7 +7,6 @@
 #include <string_view>
 #include <system_error>
 #include <unistd.h>
-#include <utility>
 
 extern "C" {
 #include <stdlib.h> // setenv, unsetenv

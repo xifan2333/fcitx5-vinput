@@ -201,9 +201,8 @@ void CleanupBridgeSource(vinput::notify::NotificationBridge* bridge, std::string
   }
 }
 
-vinput::process::ProcessSession::OutputCallback
-MakeStderrHandler(vinput::notify::NotificationBridge* bridge, std::string source_id,
-                  std::string client_id) {
+vinput::process::StderrSink MakeStderrHandler(vinput::notify::NotificationBridge* bridge,
+                                              std::string source_id, std::string client_id) {
   if (bridge == nullptr) {
     return {};
   }

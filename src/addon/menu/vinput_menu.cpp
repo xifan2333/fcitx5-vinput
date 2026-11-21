@@ -469,7 +469,7 @@ void AppendLocalAsrItems(const CoreConfig& config,
       continue;
     }
     const bool is_active = is_local_active && (m.state == ModelState::Active);
-    std::string display = vinput::registry::LookupTitle(i18n_map, m.id);
+    const std::string display = vinput::registry::LookupTitle(i18n_map, m.id);
     std::string comment = is_active ? _("ASR *") : _("ASR");
     items->push_back(PaletteItem{
         .category = PaletteCategory::Asr,
