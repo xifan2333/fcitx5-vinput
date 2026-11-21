@@ -1838,3 +1838,31 @@ msgstr "读取客户端进程启动时间失败，进程 ID "
 #: src/common/client/client_manager.cpp:442
 msgid "client not found"
 msgstr "未找到客户端"
+
+#: src/common/config/core_config_resolve.cpp:12
+msgid "Config is null."
+msgstr "配置为空。"
+
+#: src/common/config/core_config_resolve.cpp:36
+msgid "Local ASR provider not found."
+msgstr "未找到本地 ASR 提供商。"
+
+#: src/common/llm/provider_model_cache.cpp:52
+msgid "failed to serialize provider model cache"
+msgstr "序列化提供商模型缓存失败"
+
+#: src/common/llm/provider_model_cache.cpp:135
+msgid "Provider ID cannot be empty"
+msgstr "提供商 ID 不能为空"
+
+#: src/common/llm/provider_model_cache.cpp:150
+msgid "failed to prepare provider model cache"
+msgstr "准备提供商模型缓存失败"
+
+#: src/common/llm/provider_model_cache.cpp:227
+msgid "Config pointer is null"
+msgstr "配置指针为空"
+
+#: src/common/llm/provider_model_cache.cpp:255
+msgid "Failed to save core config"
+msgstr "保存核心配置失败"
