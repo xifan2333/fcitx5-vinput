@@ -88,7 +88,8 @@ void WireDbusHandlers(DbusService& dbus, vinput::daemon::runtime::LaneSupervisor
               supervisor.EnqueueClientLine(cid, line);
             },
             &error)) {
-      return DbusService::MethodResult::Failure(error.empty() ? "failed to start client" : error);
+      return DbusService::MethodResult::Failure(error.empty() ? _("failed to start client")
+                                                              : error);
     }
     return DbusService::MethodResult::Success();
   });

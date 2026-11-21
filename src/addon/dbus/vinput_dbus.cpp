@@ -622,7 +622,7 @@ std::string VinputEngine::queryDaemonStatus() const {
 bool VinputEngine::callSyncRpc(const char* member, const std::string& fallback_error,
                                std::string* error, const std::string* arg) {
   if (bus_ == nullptr) {
-    AssignRpcError(error, "D-Bus is unavailable.");
+    AssignRpcError(error, _("D-Bus is unavailable."));
     noteDaemonSyncFailure();
     return false;
   }

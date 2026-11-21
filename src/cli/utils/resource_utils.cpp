@@ -295,13 +295,13 @@ std::string ResolveInstalledClientSelectorImpl(const ClientList& clients, vinput
 std::string ResolveInstalledTriggerSelector(const CoreConfig& config, const std::string& selector,
                                             std::string* error) {
   return ResolveInstalledClientSelectorImpl(config.triggers, vinput::script::Kind::kTrigger, config,
-                                            "trigger", selector, error);
+                                            _("trigger"), selector, error);
 }
 
 std::string ResolveInstalledReceiverSelector(const CoreConfig& config, const std::string& selector,
                                              std::string* error) {
   return ResolveInstalledClientSelectorImpl(config.receivers, vinput::script::Kind::kReceiver,
-                                            config, "receiver", selector, error);
+                                            config, _("receiver"), selector, error);
 }
 
 bool ParseEnvOverrides(const std::vector<std::string>& env_overrides,

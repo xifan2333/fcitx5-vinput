@@ -1932,6 +1932,7 @@ msgid "Unsupported ASR provider type: "
 msgstr "不支持的 ASR 提供商类型："
 
 #: src/daemon/asr/runtime/backend_factory.cpp:66
+#, c-format
 msgid "Unsupported local ASR backend '%s' for provider '%s'."
 msgstr "不支持的本地 ASR 后端 '%s'（提供商为 '%s'）。"
 
@@ -1944,6 +1945,7 @@ msgid "provider session is not started."
 msgstr "提供商会话未启动。"
 
 #: src/cli/utils/resource_utils.cpp:43
+#, c-format
 msgid "%s not found: %s"
 msgstr "未找到%s：%s"
 
@@ -1986,3 +1988,39 @@ msgstr "客户端状态指针为空"
 #: src/cli/utils/resource_utils.cpp:166
 msgid "script"
 msgstr "脚本"
+
+#: src/addon/dbus/vinput_dbus.cpp:625
+msgid "D-Bus is unavailable."
+msgstr "D-Bus 不可用。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:314
+msgid "Recognition session was interrupted or cancelled."
+msgstr "识别会话被中断或取消。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:370
+msgid "Streaming ASR provider exited abnormally."
+msgstr "流式 ASR 提供商异常退出。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:479
+msgid "Streaming ASR provider exited prematurely with code {}."
+msgstr "流式 ASR 提供商提前退出，代码 {}。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:306
+msgid "Streaming ASR provider returned no text."
+msgstr "流式 ASR 提供商未返回文本。"
+
+#: src/common/client/client_manager.cpp:268
+msgid "client exited immediately (code {})"
+msgstr "客户端立即退出（代码 {}）"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:220
+msgid "failed to poll provider."
+msgstr "轮询提供商失败。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:194
+msgid "failed to send finish event."
+msgstr "发送结束事件失败。"
+
+#: src/daemon/asr/backends/command_streaming_backend.cpp:402
+msgid "failed to start."
+msgstr "启动失败。"

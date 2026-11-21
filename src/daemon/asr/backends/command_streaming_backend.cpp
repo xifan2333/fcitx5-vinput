@@ -191,7 +191,7 @@ private:
 
     if (!SendControlEvent("finish", error)) {
       const std::string err_text =
-          error != nullptr && !error->empty() ? *error : "failed to send finish event.";
+          error != nullptr && !error->empty() ? *error : _("failed to send finish event.");
       QueueError(err_text);
       phase_ = Phase::Completed;
       finish_success_ = false;
@@ -217,7 +217,7 @@ private:
     while (!saw_final_text_ && !provider_closed_ && phase_ != Phase::Completed && !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
         const std::string err_text =
-            error != nullptr && !error->empty() ? *error : "failed to poll provider.";
+            error != nullptr && !error->empty() ? *error : _("failed to poll provider.");
         QueueError(err_text);
         phase_ = Phase::Completed;
         finish_success_ = false;
@@ -227,10 +227,10 @@ private:
         return false;
       }
       if (HasTimedOut(deadline_)) {
-        QueueError("Streaming ASR provider timed out.");
+        QueueError(_("Streaming ASR provider timed out."));
         phase_ = Phase::Completed;
         finish_success_ = false;
-        finish_error_ = "Streaming ASR provider timed out.";
+        finish_error_ = _("Streaming ASR provider timed out.");
         QueueCompleted();
         Terminate();
         if (error != nullptr) {
@@ -303,7 +303,7 @@ private:
 
     const bool cancelled = phase_ == Phase::Cancelled;
     if (!saw_final_text_ && !saw_error_ && !cancelled && !killed_by_us_) {
-      QueueError("Streaming ASR provider returned no text.");
+      QueueError(_("Streaming ASR provider returned no text."));
     }
     phase_ = Phase::Completed;
     QueueCompleted();
@@ -311,7 +311,7 @@ private:
 
     if (cancelled || killed_by_us_ || interrupted_.load(std::memory_order_acquire)) {
       finish_success_ = false;
-      finish_error_ = "Recognition session was interrupted or cancelled.";
+      finish_error_ = _("Recognition session was interrupted or cancelled.");
       return SetFinishError(error, finish_error_);
     }
     return ResolveFinalOutcome(grace_pump_failed, error);
@@ -325,8 +325,9 @@ private:
     finish_success_ = ResolveFinishFailure(grace_pump_failed, &local_error);
     if (!finish_success_) {
       if (local_error.empty()) {
-        local_error = saw_final_text_ ? "Failed to pump streaming ASR output during grace window."
-                                      : "Streaming ASR provider returned no text.";
+        local_error = saw_final_text_
+                          ? _("Failed to pump streaming ASR output during grace window.")
+                          : _("Streaming ASR provider returned no text.");
       }
       finish_error_ = std::move(local_error);
       return SetFinishError(error, finish_error_);
@@ -367,7 +368,7 @@ private:
     } else if (exit_code_ != 0 && !saw_error_ && !saw_final_text_) {
       VLOG_WARN("streaming ASR provider '{}' exited abnormally with code {}", provider_id_,
                 exit_code_);
-      QueueError("Streaming ASR provider exited abnormally.");
+      QueueError(_("Streaming ASR provider exited abnormally."));
     }
   }
 
@@ -399,7 +400,7 @@ private:
       if (error != nullptr) {
         *error = session_res.error();
       }
-      QueueError(error != nullptr ? *error : "failed to start.");
+      QueueError(error != nullptr ? *error : _("failed to start."));
       QueueCompleted();
       return false;
     }
@@ -476,7 +477,7 @@ private:
 
     int exit_code = -1;
     if (session_->HasExited(&exit_code)) {
-      *error = fmt::format("Streaming ASR provider exited prematurely with code {}.", exit_code);
+      *error = fmt::format(_("Streaming ASR provider exited prematurely with code {}."), exit_code);
       return false;
     }
 

@@ -265,7 +265,7 @@ bool StartWithSpec(const ClientSpec& client, vinput::notify::NotificationBridge*
   if (session.WaitForExit(std::chrono::milliseconds(250), &immediate_exit)) {
     CleanupBridgeSource(bridge, source_id);
     if (error != nullptr) {
-      *error = fmt::format("client exited immediately (code {})", immediate_exit);
+      *error = fmt::format(_("client exited immediately (code {})"), immediate_exit);
     }
     return false;
   }
