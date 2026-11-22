@@ -26,6 +26,8 @@ PRODUCTION_BINARIES = (
     "src/addon/fcitx5-vinput.so",
 )
 
+TRUTHY_CMAKE_VALUES = {"ON", "TRUE", "1", "YES"}
+
 
 def is_elf_file(path: Path) -> bool:
     """Return True if `path` is a regular file starting with the ELF magic."""
@@ -38,32 +40,46 @@ def is_elf_file(path: Path) -> bool:
         return False
 
 
-def check_non_lto_build(build_dir: Path) -> None:
-    """Fail loudly if CMakeCache.txt indicates an LTO or optimized build."""
+def parse_cmake_cache(cache_path: Path) -> dict[str, str]:
+    """Parse `KEY:TYPE=VALUE` entries from CMakeCache.txt."""
+    entries: dict[str, str] = {}
+    for line in cache_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "//")) or "=" not in stripped:
+            continue
+        key_part, value = stripped.split("=", 1)
+        key = key_part.split(":", 1)[0].strip()
+        entries[key] = value.strip()
+    return entries
+
+
+def check_non_lto_debug_build(build_dir: Path) -> None:
+    """Fail loudly unless `build_dir` is a non-LTO Debug (-O0) CMake build."""
     cache_path = build_dir / "CMakeCache.txt"
     if not cache_path.is_file():
-        return
+        raise RuntimeError(f"Missing CMakeCache.txt in {build_dir}; configure Debug build first.")
 
-    cache_text = cache_path.read_text(encoding="utf-8", errors="replace")
-    build_type = ""
-    ipo_release = ""
-    ipo_relwithdebinfo = ""
-    for line in cache_text.splitlines():
-        if line.startswith("CMAKE_BUILD_TYPE:"):
-            build_type = line.split("=", 1)[1].strip()
-        elif line.startswith("CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE:"):
-            ipo_release = line.split("=", 1)[1].strip()
-        elif line.startswith("CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO:"):
-            ipo_relwithdebinfo = line.split("=", 1)[1].strip()
+    cache = parse_cmake_cache(cache_path)
+    build_type = cache.get("CMAKE_BUILD_TYPE", "")
+    if build_type != "Debug":
+        raise RuntimeError(
+            f"{build_dir} has CMAKE_BUILD_TYPE={build_type!r}; dead-code audit requires 'Debug' (-O0)."
+        )
 
-    if build_type == "Release" and ipo_release.upper() in {"ON", "TRUE", "1"}:
-        raise RuntimeError(
-            f"{build_dir} is a Release LTO build; dead-code audit requires a non-LTO Debug (-O0) build."
-        )
-    if build_type == "RelWithDebInfo" and ipo_relwithdebinfo.upper() in {"ON", "TRUE", "1"}:
-        raise RuntimeError(
-            f"{build_dir} is a RelWithDebInfo LTO build; dead-code audit requires a non-LTO Debug (-O0) build."
-        )
+    for ipo_key in (
+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION",
+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG",
+    ):
+        if cache.get(ipo_key, "").upper() in TRUTHY_CMAKE_VALUES:
+            raise RuntimeError(
+                f"{build_dir} has {ipo_key}=ON; dead-code audit requires LTO disabled."
+            )
+
+    for flags_key in ("CMAKE_CXX_FLAGS", "CMAKE_CXX_FLAGS_DEBUG"):
+        if "-flto" in cache.get(flags_key, "").split():
+            raise RuntimeError(
+                f"{build_dir} has -flto in {flags_key}; dead-code audit requires LTO disabled."
+            )
 
 
 def run_nm_posix(path: Path) -> list[tuple[str, str]]:
@@ -136,16 +152,33 @@ def collect_binaries(build_dir: Path) -> tuple[list[Path], list[Path]]:
     test_bins: list[Path] = []
     tests_dir = build_dir / "tests"
     if tests_dir.is_dir():
-        for entry in sorted(tests_dir.iterdir()):
+        for entry in sorted(tests_dir.rglob("*")):
+            if "CMakeFiles" in entry.relative_to(tests_dir).parts:
+                continue
             if is_elf_file(entry):
                 test_bins.append(entry)
 
     return prod_bins, test_bins
 
 
+def collect_retained_symbols(binaries: list[Path]) -> set[str]:
+    """Collect retained text symbols across linked ELF binaries."""
+    retained: set[str] = set()
+    for binary in binaries:
+        bin_syms = {
+            sym for sym, sym_type in run_nm_posix(binary) if sym_type in {"T", "t", "W", "w"}
+        }
+        if not bin_syms:
+            raise RuntimeError(
+                f"No text symbols found in {binary}; binary appears stripped (unstripped Debug build required)."
+            )
+        retained.update(bin_syms)
+    return retained
+
+
 def audit_dead_code(build_dir: Path, fail_on_test_only: bool = False) -> int:
     """Run the cross-TU dead-code audit on `build_dir`."""
-    check_non_lto_build(build_dir)
+    check_non_lto_debug_build(build_dir)
     objects = collect_project_objects(build_dir)
     prod_bins, test_bins = collect_binaries(build_dir)
 
@@ -156,19 +189,10 @@ def audit_dead_code(build_dir: Path, fail_on_test_only: bool = False) -> int:
             if sym_type == "T":
                 defined_strong[sym].append(rel_obj)
 
-    retained_prod: set[str] = set()
-    for binary in prod_bins:
-        for sym, sym_type in run_nm_posix(binary):
-            if sym_type in {"T", "t", "W", "w"}:
-                retained_prod.add(sym)
-
-    retained_tests: set[str] = set()
-    for binary in test_bins:
-        for sym, sym_type in run_nm_posix(binary):
-            if sym_type in {"T", "t", "W", "w"}:
-                retained_tests.add(sym)
-
+    retained_prod = collect_retained_symbols(prod_bins)
+    retained_tests = collect_retained_symbols(test_bins)
     retained_all = retained_prod | retained_tests
+
     dead_syms = sorted(sym for sym in defined_strong if sym not in retained_all)
     test_only_syms = sorted(
         sym for sym in defined_strong if sym not in retained_prod and sym in retained_tests
@@ -179,27 +203,25 @@ def audit_dead_code(build_dir: Path, fail_on_test_only: bool = False) -> int:
         f"{len(prod_bins)} production binary(ies), {len(test_bins)} test binary(ies)."
     )
 
+    demangled = demangle_symbols(sorted(set(dead_syms) | set(test_only_syms)))
+
     if test_only_syms:
-        demangled_test_only = demangle_symbols(test_only_syms)
         print(
             f"[check-dead-code] Info: {len(test_only_syms)} src/ symbol(s) retained only in tests/*:"
         )
         for sym in test_only_syms:
             locs = ", ".join(defined_strong[sym])
-            print(f"  - {locs}: {demangled_test_only[sym]}")
+            print(f"  - {locs}: {demangled[sym]}")
 
-    if dead_syms or (fail_on_test_only and test_only_syms):
-        failing = (
-            dead_syms if not fail_on_test_only else sorted(set(dead_syms) | set(test_only_syms))
-        )
-        demangled_dead = demangle_symbols(failing)
+    failing = dead_syms if not fail_on_test_only else sorted(set(dead_syms) | set(test_only_syms))
+    if failing:
         print(
             f"✖ [check-dead-code]: Found {len(failing)} unreferenced strong symbol(s) in src/:",
             file=sys.stderr,
         )
         for sym in failing:
             locs = ", ".join(defined_strong[sym])
-            print(f"  - {locs}: {demangled_dead[sym]} [{sym}]", file=sys.stderr)
+            print(f"  - {locs}: {demangled[sym]} [{sym}]", file=sys.stderr)
         return 1
 
     print("✔ [check-dead-code]: 0 dead strong symbols across all targets.")
@@ -208,13 +230,13 @@ def audit_dead_code(build_dir: Path, fail_on_test_only: bool = False) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Audit cross-TU dead strong symbols in a non-LTO CMake build directory."
+        description="Audit cross-TU dead strong symbols in a non-LTO Debug CMake build directory."
     )
     parser.add_argument(
         "build_dir",
         nargs="?",
         default="build",
-        help="Path to non-LTO CMake build directory (default: build)",
+        help="Path to non-LTO Debug CMake build directory (default: build)",
     )
     parser.add_argument(
         "--fail-on-test-only",
