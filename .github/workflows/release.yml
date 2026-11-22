@@ -113,7 +113,7 @@ jobs:
             "${SHERPA_ONNX_VERSION}" "${prefix}"
           echo "VINPUT_CMAKE_PREFIX_PATH=${prefix}" >> "${GITHUB_ENV}"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ env.SCCACHE_DIR }}
           key: sccache-release-tarball-${{ matrix.arch }}-${{ matrix.mode }}-${{ github.ref_name }}
@@ -239,7 +239,7 @@ jobs:
           bash "fcitx5-vinput-${{ needs.source_archive.outputs.package_version }}/scripts/build-sherpa-onnx.sh" \
             "" "${prefix}"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ env.SCCACHE_DIR }}
           key: sccache-release-deb-${{ matrix.distro }}-${{ matrix.arch }}-${{ matrix.mode }}-${{ github.ref_name }}
@@ -449,8 +449,6 @@ jobs:
   build-flatpak:
     needs: source_archive
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
       options: --privileged
