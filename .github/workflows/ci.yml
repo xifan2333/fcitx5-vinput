@@ -20,6 +20,7 @@ on:
       - 'flake.lock'
       - '.clang-format'
       - '.clang-tidy'
+      - '.github/workflows/ci.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -38,6 +39,7 @@ on:
       - 'flake.lock'
       - '.clang-format'
       - '.clang-tidy'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 permissions:
