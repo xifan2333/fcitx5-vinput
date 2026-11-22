@@ -1458,10 +1458,6 @@ msgstr "客户端 '%s' 已启动。"
 msgid "Client '%s' stopped."
 msgstr "客户端 '%s' 已停止。"
 
-#: src/cli/control/client_actions.cpp:189
-msgid "Failed to connect to user D-Bus."
-msgstr "连接用户 D-Bus 失败。"
-
 #: src/cli/control/register_client.cpp:17
 msgid "Manage voice triggers"
 msgstr "管理语音触发器"
@@ -1508,14 +1504,6 @@ msgstr "停止接收器"
 #, c-format
 msgid "'%s' is not configured as a %s."
 msgstr "'%s' 未配置为 %s。"
-
-#: src/cli/control/client_actions.cpp:278
-msgid "Failed to subscribe to daemon signals."
-msgstr "订阅守护进程信号失败。"
-
-#: src/cli/control/client_actions.cpp:322
-msgid "D-Bus connection error during listen."
-msgstr "监听期间 D-Bus 连接发生错误。"
 
 #: src/daemon/postprocess/post_processor.cpp:396
 #, c-format

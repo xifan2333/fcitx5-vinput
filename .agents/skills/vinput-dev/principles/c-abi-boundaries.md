@@ -45,7 +45,7 @@ The following six subsystems are strictly bounded by third-party C libraries or 
   - **Action Rule**: Already encapsulated using `std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>`. Do not alter underlying C EVP calls.
 
 ### Boundary 5: POSIX Signals & Main Event Loop
-- **Files**: `src/daemon/main.cpp`, `src/cli/control/daemon_actions.cpp`, `src/cli/control/client_actions.cpp`
+- **Files**: `src/daemon/main.cpp`, `src/cli/control/daemon_actions.cpp`
 - **ABI Constraints**:
   - **Signal Handlers**: `signal(SIGTERM, ...)` and `signal(SIGINT, ...)` handlers must be async-signal-safe functions with explicit `"C"` language linkage and internal linkage (`namespace { extern "C" { static void Handler(int) noexcept { ... } } }`), writing only to lock-free/async-signal-safe state (e.g. `std::atomic<bool>` or `eventfd`). Passing lambdas to `std::signal` / `signal` is strictly forbidden (mechanically enforced by `signal-handler-no-lambda`). For ignoring signals (such as `SIGPIPE`), use the standard POSIX macro `SIG_IGN`.
   - **Event Loop `poll()`**: `struct pollfd fds[3]` and `poll(fds, ...)` interact directly with the Linux kernel multiplexing syscall.
