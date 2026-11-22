@@ -85,15 +85,6 @@ bool LoadCoreConfigFromFile(const std::filesystem::path& path, CoreConfig* confi
 
 } // namespace
 
-std::string GetCoreConfigPath() {
-  const auto path = vinput::path::CoreConfigPath();
-  std::filesystem::path resolved;
-  if (vinput::file::ResolveSymlinkPath(path, &resolved, nullptr)) {
-    return resolved.string();
-  }
-  return path.string();
-}
-
 CoreConfig LoadCoreConfig() {
   const std::filesystem::path path = vinput::path::CoreConfigPath();
 

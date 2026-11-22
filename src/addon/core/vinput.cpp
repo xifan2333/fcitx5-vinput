@@ -489,10 +489,6 @@ bool VinputEngine::isRecordingActive() const {
                                   session_->phase == Session::Phase::PendingStart);
 }
 
-bool VinputEngine::isHoldRecording() const {
-  return session_.has_value() && session_->stop_on_release;
-}
-
 bool VinputEngine::isPendingStart() const {
   return held_role_ == HotkeyRole::Trigger || held_role_ == HotkeyRole::Command;
 }

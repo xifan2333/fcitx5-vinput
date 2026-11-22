@@ -18,6 +18,11 @@ public:
   explicit DownloadWorker(QObject* parent = nullptr);
   ~DownloadWorker() override;
 
+  DownloadWorker(const DownloadWorker&) = delete;
+  DownloadWorker& operator=(const DownloadWorker&) = delete;
+  DownloadWorker(DownloadWorker&&) = delete;
+  DownloadWorker& operator=(DownloadWorker&&) = delete;
+
   // The task should return true on success, or set error and return false.
   void SetTask(Task task);
   void SetTask(TaskWithToken task);
@@ -28,7 +33,6 @@ public:
   // Cooperative cancellation
   void Cancel() noexcept;
   [[nodiscard]] bool IsCancelled() const noexcept;
-  [[nodiscard]] const std::atomic<bool>* CancelToken() const noexcept;
 
 signals:
   void progress(int percent, QString speed);
@@ -41,7 +45,7 @@ private:
   TaskWithToken task_;
   std::atomic<bool> cancel_token_{false};
   int last_percent_ = -1;
-  std::chrono::steady_clock::time_point last_progress_emit_{};
+  std::chrono::steady_clock::time_point last_progress_emit_;
   bool has_progress_emit_ = false;
 };
 

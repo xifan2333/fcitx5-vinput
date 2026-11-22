@@ -730,10 +730,6 @@ ResourcePage::~ResourcePage() {
   }
 }
 
-void ResourcePage::reload() {
-  refreshAll();
-}
-
 void ResourcePage::refreshLocalizedTables() {
 #if VINPUT_ENABLE_LOCAL_ASR
   const CoreConfig config = ConfigManager::Get().Load();

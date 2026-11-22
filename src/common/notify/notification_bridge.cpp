@@ -184,9 +184,6 @@ NotificationBridge::NotificationBridge(NotificationSink sink,
 
 NotificationBridge::~NotificationBridge() = default;
 
-NotificationBridge::NotificationBridge(NotificationBridge&&) noexcept = default;
-NotificationBridge& NotificationBridge::operator=(NotificationBridge&&) noexcept = default;
-
 void NotificationBridge::FeedStderr(std::string_view source_id, std::span<const std::byte> bytes,
                                     std::string_view default_title) {
   if (bytes.empty()) {

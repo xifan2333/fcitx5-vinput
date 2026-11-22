@@ -454,10 +454,6 @@ std::vector<int16_t> AudioCapture::StopAndGetBuffer() {
   return ring_buffer_.DrainAll();
 }
 
-void AudioCapture::Stop() {
-  EndRecording();
-}
-
 bool AudioCapture::IsRecording() const {
   return recording_.load(std::memory_order_relaxed);
 }

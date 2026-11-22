@@ -40,9 +40,7 @@ ProgressBar::ProgressBar(std::string label, uint64_t total, bool is_tty)
   }
 }
 
-// Move/destructor must be defined in the .cpp where indicators::ProgressBar is complete
-ProgressBar::ProgressBar(ProgressBar&&) noexcept = default;
-ProgressBar& ProgressBar::operator=(ProgressBar&&) noexcept = default;
+// Destructor must be defined in the .cpp where indicators::ProgressBar is complete
 ProgressBar::~ProgressBar() = default;
 
 void ProgressBar::Update(uint64_t current, double speed_bps) {

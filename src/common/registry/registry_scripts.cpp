@@ -267,7 +267,7 @@ CommandAsrProvider* GetCommandAsrProvider(AsrProvider* provider) {
   return provider != nullptr ? std::get_if<CommandAsrProvider>(provider) : nullptr;
 }
 
-std::vector<RegistryEntry> FetchRegistryImpl(const CoreConfig* config, Kind kind,
+std::vector<RegistryEntry> FetchRegistryImpl(const CoreConfig& config, Kind kind,
                                              const std::vector<std::string>& urls,
                                              std::string* error, std::string* resolved_registry_url,
                                              std::vector<std::string>* warnings) {
@@ -450,16 +450,11 @@ UpdateStatus CompareVersionsOrSha(const RegistryEntry& entry, const ResourceVers
 
 } // namespace
 
-std::vector<RegistryEntry> FetchRegistry(Kind kind, const std::vector<std::string>& urls,
-                                         std::string* error, std::string* resolved_registry_url) {
-  return FetchRegistryImpl(nullptr, kind, urls, error, resolved_registry_url, nullptr);
-}
-
 std::vector<RegistryEntry> FetchRegistry(const CoreConfig& config, Kind kind,
                                          const std::vector<std::string>& urls, std::string* error,
                                          std::string* resolved_registry_url,
                                          std::vector<std::string>* warnings) {
-  return FetchRegistryImpl(&config, kind, urls, error, resolved_registry_url, warnings);
+  return FetchRegistryImpl(config, kind, urls, error, resolved_registry_url, warnings);
 }
 
 std::filesystem::path RelativePathForId(std::string_view id) {

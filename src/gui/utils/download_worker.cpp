@@ -22,10 +22,6 @@ bool DownloadWorker::IsCancelled() const noexcept {
   return cancel_token_.load(std::memory_order_relaxed);
 }
 
-const std::atomic<bool>* DownloadWorker::CancelToken() const noexcept {
-  return &cancel_token_;
-}
-
 void DownloadWorker::SetTask(Task task) {
   if (task) {
     SetTask(

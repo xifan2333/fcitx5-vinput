@@ -153,68 +153,6 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   return true;
 }
 
-std::vector<float> VadTrimmer::Trim(const std::vector<float>& samples, int /*sample_rate*/) {
-  const std::scoped_lock lock(mutex_);
-  if (!vad_.has_value() || !vad_->Valid() || samples.empty()) {
-    return samples;
-  }
-
-  auto& vad = *vad_;
-  const int n = static_cast<int>(samples.size());
-  FeedWaveformToVad(vad, samples);
-
-  // Determine global speech bounds across all detected segments.
-  // We trim only leading and trailing silence outside the outer speech bounds;
-  // internal pauses are fully preserved to retain natural acoustic context.
-  int64_t earliest_speech_start = -1;
-  int64_t latest_speech_end = -1;
-
-  while (!vad.Empty()) {
-    auto seg = vad.Front();
-    if (!seg.samples.empty()) {
-      const int64_t seg_start = seg.start;
-      const int64_t seg_end = seg_start + static_cast<int64_t>(seg.samples.size());
-      if (earliest_speech_start < 0 || seg_start < earliest_speech_start) {
-        earliest_speech_start = seg_start;
-      }
-      latest_speech_end = std::max(latest_speech_end, seg_end);
-    }
-    vad.Pop();
-  }
-
-  if (earliest_speech_start < 0) {
-    VLOG_DEBUG("VAD found no speech, returning empty audio");
-    return {};
-  }
-  if (latest_speech_end <= earliest_speech_start) {
-    VLOG_WARN("VAD produced invalid speech bounds, returning original audio");
-    return samples;
-  }
-
-  const int64_t padding_samples =
-      std::max(int64_t{0}, static_cast<int64_t>(params_.speech_pad_ms) * sample_rate_ / 1000);
-  const auto total_n = static_cast<int64_t>(n);
-  const int64_t cut_start = std::max(int64_t{0}, earliest_speech_start - padding_samples);
-  const int64_t cut_end = std::min(total_n, latest_speech_end + padding_samples);
-
-  if (cut_start <= 0 && cut_end >= total_n) {
-    return samples;
-  }
-  if (cut_end <= cut_start) {
-    return samples;
-  }
-
-  std::vector<float> result(samples.begin() + cut_start, samples.begin() + cut_end);
-
-  const int64_t leading_removed = cut_start;
-  const int64_t trailing_removed = total_n - cut_end;
-  VLOG_DEBUG("VAD trimmed {} -> {} samples leading_removed_ms={} "
-             "trailing_removed_ms={} pad_ms={}",
-             n, result.size(), leading_removed * 1000 / sample_rate_,
-             trailing_removed * 1000 / sample_rate_, params_.speech_pad_ms);
-  return result;
-}
-
 std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& samples,
                                                     int sample_rate) {
   const std::scoped_lock lock(mutex_);
@@ -248,9 +186,4 @@ std::vector<std::vector<float>> VadTrimmer::Segment(const std::vector<float>& sa
 bool VadTrimmer::Available() const {
   const std::scoped_lock lock(mutex_);
   return vad_.has_value() && vad_->Valid();
-}
-
-void VadTrimmer::Shutdown() {
-  const std::scoped_lock lock(mutex_);
-  vad_.reset();
 }

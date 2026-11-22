@@ -20,7 +20,7 @@ public:
   ScopedTempDir& operator=(const ScopedTempDir&) = delete;
 
   ScopedTempDir(ScopedTempDir&& other) noexcept;
-  ScopedTempDir& operator=(ScopedTempDir&& other) noexcept;
+  ScopedTempDir& operator=(ScopedTempDir&&) = delete;
 
   static std::unique_ptr<ScopedTempDir> Create(const std::filesystem::path& base_dir = {},
                                                std::string_view prefix = ".tmp-",
