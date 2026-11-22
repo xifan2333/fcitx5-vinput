@@ -21,7 +21,6 @@ public:
   PostProcessor(PostProcessor&&) = delete;
   PostProcessor& operator=(PostProcessor&&) = delete;
 
-  void SetNotificationBridge(vinput::notify::NotificationBridge* notification_bridge);
   void Shutdown();
 
   vinput::result::Payload Process(const std::string& raw_text,

@@ -324,7 +324,7 @@ bool ProvisionBpeVocabulary(const fs::path& model_dir, const glz::json_t& vinput
   return GenerateBpeVocabFromModel(model_dir, *model_node, vocab_path, error);
 }
 
-std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig* config,
+std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig& config,
                                                 const std::vector<std::string>& registry_urls,
                                                 std::string* error,
                                                 std::string* resolved_registry_url,
@@ -365,36 +365,17 @@ std::vector<RemoteModelEntry> FetchRegistryImpl(const CoreConfig* config,
 
 ModelRepository::ModelRepository(const std::string& base_dir) : base_dir_(base_dir) {}
 
-std::vector<RemoteModelEntry> ModelRepository::FetchRegistry(const std::string& registry_url,
-                                                             std::string* error) {
-  return FetchRegistry(std::vector<std::string>{registry_url}, error, nullptr);
-}
-
-std::vector<RemoteModelEntry>
-ModelRepository::FetchRegistry(const std::vector<std::string>& registry_urls, std::string* error,
-                               std::string* resolved_registry_url) {
-  return FetchRegistryImpl(nullptr, registry_urls, error, resolved_registry_url, nullptr);
-}
-
 std::vector<RemoteModelEntry> ModelRepository::FetchRegistry(
     const CoreConfig& config, const std::vector<std::string>& registry_urls, std::string* error,
     std::string* resolved_registry_url, std::vector<std::string>* warnings) {
-  return FetchRegistryImpl(&config, registry_urls, error, resolved_registry_url, warnings);
+  return FetchRegistryImpl(config, registry_urls, error, resolved_registry_url, warnings);
 }
 
-bool ModelRepository::InstallModel(const std::string& registry_url, const std::string& model_id,
-                                   const ProgressCallback& progress_cb, std::string* error,
+bool ModelRepository::InstallModel(const CoreConfig& config,
+                                   const std::vector<std::string>& registry_urls,
+                                   const std::string& model_id, const ProgressCallback& progress_cb,
+                                   std::string* error, std::string* resolved_registry_url,
                                    const std::atomic<bool>* cancel_token) const {
-  return InstallModelImpl(nullptr, std::vector<std::string>{registry_url}, model_id, progress_cb,
-                          error, nullptr, cancel_token);
-}
-
-bool ModelRepository::InstallModelImpl(const CoreConfig* config,
-                                       const std::vector<std::string>& registry_urls,
-                                       const std::string& model_id,
-                                       const ProgressCallback& progress_cb, std::string* error,
-                                       std::string* resolved_registry_url,
-                                       const std::atomic<bool>* cancel_token) const {
   std::string fetch_err;
   auto entries =
       FetchRegistryImpl(config, registry_urls, &fetch_err, resolved_registry_url, nullptr);
@@ -421,23 +402,6 @@ bool ModelRepository::InstallModelImpl(const CoreConfig* config,
   }
 
   return InstallModelEntry(*it, progress_cb, error, cancel_token);
-}
-
-bool ModelRepository::InstallModel(const std::vector<std::string>& registry_urls,
-                                   const std::string& model_id, const ProgressCallback& progress_cb,
-                                   std::string* error, std::string* resolved_registry_url,
-                                   const std::atomic<bool>* cancel_token) const {
-  return InstallModelImpl(nullptr, registry_urls, model_id, progress_cb, error,
-                          resolved_registry_url, cancel_token);
-}
-
-bool ModelRepository::InstallModel(const CoreConfig& config,
-                                   const std::vector<std::string>& registry_urls,
-                                   const std::string& model_id, const ProgressCallback& progress_cb,
-                                   std::string* error, std::string* resolved_registry_url,
-                                   const std::atomic<bool>* cancel_token) const {
-  return InstallModelImpl(&config, registry_urls, model_id, progress_cb, error,
-                          resolved_registry_url, cancel_token);
 }
 
 namespace {

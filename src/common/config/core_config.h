@@ -10,7 +10,6 @@ CoreConfig LoadCoreConfig();
 bool LoadBundledDefaultCoreConfig(CoreConfig* config, std::string* error);
 bool InitializeCoreConfig(std::string* error);
 bool SaveCoreConfig(const CoreConfig& config);
-std::string GetCoreConfigPath();
 
 // Serializes the config to the on-disk `config.json` representation: four space
 // indentation, meaningful fields only.

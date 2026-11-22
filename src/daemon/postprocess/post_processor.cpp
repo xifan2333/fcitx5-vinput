@@ -617,10 +617,6 @@ ExecuteCommandRewrite(const std::string& normalized_asr, const std::string& sele
 PostProcessor::PostProcessor(vinput::notify::NotificationBridge* notification_bridge)
     : notification_bridge_(notification_bridge) {}
 
-void PostProcessor::SetNotificationBridge(vinput::notify::NotificationBridge* notification_bridge) {
-  notification_bridge_ = notification_bridge;
-}
-
 void PostProcessor::Shutdown() {
   shutting_down_.store(true, std::memory_order_relaxed);
 }

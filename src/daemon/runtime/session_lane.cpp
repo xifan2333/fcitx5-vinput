@@ -198,10 +198,6 @@ bool SessionLane::IsIdle() const noexcept {
   return phase_ == LanePhase::Idle;
 }
 
-int SessionLane::GetNotifyFd() const noexcept {
-  return notify_fd_;
-}
-
 bool SessionLane::BeginAudioCapture(std::uint64_t token, const std::string& target, bool is_command,
                                     std::string* error_out) {
   if (deps_.audio_source == nullptr) {

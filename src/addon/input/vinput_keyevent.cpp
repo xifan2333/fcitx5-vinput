@@ -486,11 +486,6 @@ void VinputEngine::toggleCommandPalette(fcitx::InputContext* ic) {
   showPaletteMenu(ic);
 }
 
-bool VinputEngine::isPendingStartTrigger(const fcitx::Key& trigger) const {
-  return pending_start_event_ && pending_start_event_->isEnabled() &&
-         pending_start_trigger_ == trigger;
-}
-
 void VinputEngine::cancelPendingStop() {
   if (pending_stop_event_ && pending_stop_event_->isEnabled()) {
     pending_stop_event_->setEnabled(false);

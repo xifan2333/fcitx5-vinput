@@ -58,7 +58,6 @@ public:
   CreateSession(const CoreConfig& settings, BackendDescriptor* descriptor, std::string* error,
                 const std::function<void()>& wake_callback = {});
   ReloadSnapshot GetReloadSnapshot() const;
-  void SetNotificationBridge(vinput::notify::NotificationBridge* notification_bridge);
   void
   SetReloadResultCallback(std::function<void(bool success, const std::string& message)> callback);
   void Shutdown();

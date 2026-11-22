@@ -247,11 +247,6 @@ bool DbusClient::StartRecording(std::string* error) {
   return CallDaemonVoid(bus_, vinput::dbus::kMethodStartRecording, error);
 }
 
-bool DbusClient::StartCommandRecording(const std::string& selected_text, std::string* error) {
-  return CallDaemonStringArg(bus_, vinput::dbus::kMethodStartCommandRecording, selected_text,
-                             error);
-}
-
 bool DbusClient::StopRecording(const std::string& scene_id, std::string* error) {
   return CallDaemonStringArg(bus_, vinput::dbus::kMethodStopRecording, scene_id, error);
 }

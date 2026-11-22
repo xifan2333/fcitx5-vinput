@@ -46,22 +46,18 @@ bool RefreshLocaleCache(const CoreConfig& config, const std::string& locale, std
   return ok;
 }
 
-void RefreshI18nAfterOnlineFetch(const CoreConfig* config, std::vector<std::string>* warnings) {
-  if (config == nullptr) {
-    return;
-  }
-
+void RefreshI18nAfterOnlineFetch(const CoreConfig& config, std::vector<std::string>* warnings) {
   const std::string preferred_locale = DetectPreferredLocale();
   std::string ignored_error;
-  RefreshLocaleCache(*config, preferred_locale, &ignored_error, warnings);
+  RefreshLocaleCache(config, preferred_locale, &ignored_error, warnings);
   if (preferred_locale != "en_US") {
-    RefreshLocaleCache(*config, "en_US", nullptr, warnings);
+    RefreshLocaleCache(config, "en_US", nullptr, warnings);
   }
 }
 
 } // namespace
 
-bool FetchRegistryText(const CoreConfig* config, const std::vector<std::string>& urls,
+bool FetchRegistryText(const CoreConfig& config, const std::vector<std::string>& urls,
                        const std::filesystem::path& cache_path,
                        const vinput::download::Options& options, std::string* content,
                        vinput::download::Result* result, std::string* error,

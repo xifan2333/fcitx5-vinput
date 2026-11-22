@@ -41,8 +41,8 @@ public:
 
   NotificationBridge(const NotificationBridge&) = delete;
   NotificationBridge& operator=(const NotificationBridge&) = delete;
-  NotificationBridge(NotificationBridge&&) noexcept;
-  NotificationBridge& operator=(NotificationBridge&&) noexcept;
+  NotificationBridge(NotificationBridge&&) = delete;
+  NotificationBridge& operator=(NotificationBridge&&) = delete;
 
   // Feeds raw stderr bytes from a helper identified by `source_id`.
   // Complete lines (delimited by '\n' or '\r\n') are drained, parsed, and forwarded.

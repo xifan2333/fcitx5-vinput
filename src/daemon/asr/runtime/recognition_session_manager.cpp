@@ -235,12 +235,6 @@ RecognitionSessionManager::ReloadSnapshot RecognitionSessionManager::GetReloadSn
   };
 }
 
-void RecognitionSessionManager::SetNotificationBridge(
-    vinput::notify::NotificationBridge* notification_bridge) {
-  const std::scoped_lock lock(state_mutex_);
-  notification_bridge_ = notification_bridge;
-}
-
 void RecognitionSessionManager::SetReloadResultCallback(
     std::function<void(bool success, const std::string& message)> callback) {
   const std::scoped_lock lock(state_mutex_);

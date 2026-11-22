@@ -30,7 +30,6 @@ public:
   bool GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::string* error = nullptr);
 
   bool StartRecording(std::string* error = nullptr);
-  bool StartCommandRecording(const std::string& selected_text, std::string* error = nullptr);
   bool StopRecording(const std::string& scene_id, std::string* error = nullptr);
   bool ReloadAsrBackend(std::string* error = nullptr);
   bool TranscribeStream(int fd, const std::string& scene_id, bool ime,
