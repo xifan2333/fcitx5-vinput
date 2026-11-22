@@ -31,17 +31,12 @@ public:
             const std::string& provider = "cpu", const VadTrimParams& params = {},
             std::string* error = nullptr);
 
-  // Extract continuous speech audio between outer bounds, preserving internal pauses.
-  // Returns empty if no speech found.
-  std::vector<float> Trim(const std::vector<float>& samples, int sample_rate);
-
   // Segment audio into speech utterances using VAD, respecting max_speech_duration.
   // Returns empty if no speech is detected.
   [[nodiscard]] std::vector<std::vector<float>> Segment(const std::vector<float>& samples,
                                                         int sample_rate);
 
   [[nodiscard]] bool Available() const;
-  void Shutdown();
 
 private:
   mutable std::mutex mutex_;

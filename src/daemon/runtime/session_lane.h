@@ -95,7 +95,6 @@ public:
   [[nodiscard]] vinput::dbus::Status CurrentDbusStatus() const noexcept;
   [[nodiscard]] std::string GetStatus() const;
   [[nodiscard]] bool IsIdle() const noexcept;
-  [[nodiscard]] int GetNotifyFd() const noexcept;
 
   // Notifies the lane that an FdStreamAudioSource reached EOF. Safe from any thread.
   void NotifySourceEof(std::uint64_t token);
