@@ -14,6 +14,7 @@ and fails the gate.
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from collections import defaultdict
@@ -53,7 +54,7 @@ def parse_cmake_cache(cache_path: Path) -> dict[str, str]:
     return entries
 
 
-def check_non_lto_debug_build(build_dir: Path) -> None:
+def check_non_lto_debug_build(build_dir: Path) -> dict[str, str]:
     """Fail loudly unless `build_dir` is a non-LTO Debug (-O0) CMake build."""
     cache_path = build_dir / "CMakeCache.txt"
     if not cache_path.is_file():
@@ -66,20 +67,19 @@ def check_non_lto_debug_build(build_dir: Path) -> None:
             f"{build_dir} has CMAKE_BUILD_TYPE={build_type!r}; dead-code audit requires 'Debug' (-O0)."
         )
 
-    for ipo_key in (
-        "CMAKE_INTERPROCEDURAL_OPTIMIZATION",
-        "CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG",
-    ):
-        if cache.get(ipo_key, "").upper() in TRUTHY_CMAKE_VALUES:
-            raise RuntimeError(
-                f"{build_dir} has {ipo_key}=ON; dead-code audit requires LTO disabled."
-            )
+    ipo_config_key = "CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG"
+    ipo_key = ipo_config_key if ipo_config_key in cache else "CMAKE_INTERPROCEDURAL_OPTIMIZATION"
+    if cache.get(ipo_key, "").upper() in TRUTHY_CMAKE_VALUES:
+        raise RuntimeError(f"{build_dir} has {ipo_key}=ON; dead-code audit requires LTO disabled.")
 
     for flags_key in ("CMAKE_CXX_FLAGS", "CMAKE_CXX_FLAGS_DEBUG"):
-        if "-flto" in cache.get(flags_key, "").split():
-            raise RuntimeError(
-                f"{build_dir} has -flto in {flags_key}; dead-code audit requires LTO disabled."
-            )
+        for flag in cache.get(flags_key, "").split():
+            if flag == "-flto" or flag.startswith("-flto="):
+                raise RuntimeError(
+                    f"{build_dir} has {flag} in {flags_key}; dead-code audit requires LTO disabled."
+                )
+
+    return cache
 
 
 def run_nm_posix(path: Path) -> list[tuple[str, str]]:
@@ -116,27 +116,48 @@ def demangle_symbols(symbols: list[str]) -> dict[str, str]:
 
 
 def collect_project_objects(build_dir: Path) -> list[Path]:
-    """Collect compiled project `.cpp.o` files under `<build_dir>/src/`."""
-    src_build = build_dir / "src"
-    if not src_build.is_dir():
-        raise RuntimeError(f"Missing build src directory: {src_build}")
+    """Collect compiled project `.cpp.o` files from `compile_commands.json`."""
+    compile_commands_path = build_dir / "compile_commands.json"
+    if not compile_commands_path.is_file():
+        raise RuntimeError(
+            f"Missing {compile_commands_path}; configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON (or use a CMake preset)."
+        )
 
-    objects: list[Path] = []
-    for obj in sorted(src_build.rglob("*.cpp.o")):
-        rel_parts = obj.relative_to(src_build).parts
+    entries = json.loads(compile_commands_path.read_text(encoding="utf-8"))
+    objects_set: set[Path] = set()
+    for entry in entries:
+        output = entry.get("output")
+        if not output:
+            raise RuntimeError(
+                f"{compile_commands_path} entry missing 'output' field; CMake >= 3.20 with Ninja/Makefiles required."
+            )
+        directory = Path(entry.get("directory", build_dir))
+        obj = (directory / output).resolve()
+        try:
+            rel_obj = obj.relative_to(build_dir)
+        except ValueError:
+            continue
+        if not rel_obj.parts or rel_obj.parts[0] != "src":
+            continue
+        if not obj.name.endswith(".cpp.o"):
+            continue
+        rel_parts = rel_obj.parts[1:]
         if any(part.endswith("_autogen") for part in rel_parts):
             continue
         if "3rdparty" in rel_parts or "_deps" in rel_parts:
             continue
-        objects.append(obj)
+        if not obj.is_file():
+            raise RuntimeError(f"Missing compiled object {rel_obj}; build all targets first.")
+        objects_set.add(obj)
 
+    objects = sorted(objects_set)
     if not objects:
-        raise RuntimeError(f"No compiled project .cpp.o files found under {src_build}")
+        raise RuntimeError(f"No compiled project .cpp.o files found in {compile_commands_path}")
     return objects
 
 
-def collect_binaries(build_dir: Path) -> tuple[list[Path], list[Path]]:
-    """Collect production ELF binaries and test ELF executables."""
+def collect_binaries(build_dir: Path, cache: dict[str, str]) -> tuple[list[Path], list[Path]]:
+    """Collect production ELF binaries and active CTest ELF executables."""
     prod_bins: list[Path] = []
     missing: list[str] = []
     for rel in PRODUCTION_BINARIES:
@@ -150,13 +171,36 @@ def collect_binaries(build_dir: Path) -> tuple[list[Path], list[Path]]:
         raise RuntimeError(f"Missing production ELF binaries in {build_dir}: {', '.join(missing)}")
 
     test_bins: list[Path] = []
-    tests_dir = build_dir / "tests"
-    if tests_dir.is_dir():
-        for entry in sorted(tests_dir.rglob("*")):
-            if "CMakeFiles" in entry.relative_to(tests_dir).parts:
+    if (
+        cache.get("BUILD_TESTING", "").upper() in TRUTHY_CMAKE_VALUES
+        and (build_dir / "CTestTestfile.cmake").is_file()
+    ):
+        res = subprocess.run(
+            ["ctest", "--test-dir", str(build_dir), "--show-only=json-v1"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        ctest_info = json.loads(res.stdout)
+        seen: set[Path] = set()
+        for test in ctest_info.get("tests", []):
+            cmd = test.get("command")
+            if not cmd:
                 continue
-            if is_elf_file(entry):
-                test_bins.append(entry)
+            exe = Path(cmd[0])
+            if not exe.is_absolute():
+                exe = build_dir / exe
+            exe = exe.resolve()
+            if exe in seen:
+                continue
+            seen.add(exe)
+            if exe.is_relative_to(build_dir) and not exe.exists():
+                raise RuntimeError(
+                    f"Missing test binary {exe.relative_to(build_dir)}; build all targets first."
+                )
+            if is_elf_file(exe):
+                test_bins.append(exe)
+        test_bins.sort()
 
     return prod_bins, test_bins
 
@@ -178,9 +222,10 @@ def collect_retained_symbols(binaries: list[Path]) -> set[str]:
 
 def audit_dead_code(build_dir: Path, fail_on_test_only: bool = False) -> int:
     """Run the cross-TU dead-code audit on `build_dir`."""
-    check_non_lto_debug_build(build_dir)
+    build_dir = build_dir.resolve()
+    cache = check_non_lto_debug_build(build_dir)
     objects = collect_project_objects(build_dir)
-    prod_bins, test_bins = collect_binaries(build_dir)
+    prod_bins, test_bins = collect_binaries(build_dir, cache)
 
     defined_strong: dict[str, list[str]] = defaultdict(list)
     for obj in objects:
@@ -247,7 +292,7 @@ def main() -> int:
 
     try:
         return audit_dead_code(Path(args.build_dir), fail_on_test_only=args.fail_on_test_only)
-    except (RuntimeError, subprocess.CalledProcessError) as exc:
+    except (RuntimeError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
         print(f"✖ [check-dead-code]: {exc}", file=sys.stderr)
         return 1
 
