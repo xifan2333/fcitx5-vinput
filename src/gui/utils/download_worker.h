@@ -28,7 +28,6 @@ public:
   // Cooperative cancellation
   void Cancel() noexcept;
   [[nodiscard]] bool IsCancelled() const noexcept;
-  [[nodiscard]] const std::atomic<bool>* CancelToken() const noexcept;
 
 signals:
   void progress(int percent, QString speed);

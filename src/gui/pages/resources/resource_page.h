@@ -34,8 +34,6 @@ public:
   ResourcePage(ResourcePage&&) = delete;
   ResourcePage& operator=(ResourcePage&&) = delete;
 
-  void reload();
-
 private:
   void populateLocalModels(const std::vector<ModelSummary>& models);
   void populateRemoteModels(const std::vector<RemoteModelEntry>& models);

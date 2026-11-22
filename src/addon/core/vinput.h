@@ -58,7 +58,6 @@ public:
   void handleKeyEvent(fcitx::Event& event);
 
   [[nodiscard]] bool isRecordingActive() const;
-  [[nodiscard]] bool isHoldRecording() const;
   [[nodiscard]] bool isPendingStart() const;
   [[nodiscard]] std::weak_ptr<bool> lifetimeToken() const { return lifetime_token_; }
   [[nodiscard]] static int matchKeyListIndex(const fcitx::Key& event_key,
@@ -105,7 +104,6 @@ private:
   void hideResultMenu();
   void resetResultMenuState();
   bool handleResultMenuKeyEvent(fcitx::KeyEvent& keyEvent);
-  bool isPendingStartTrigger(const fcitx::Key& trigger) const;
   void cancelPendingStop();
   void cancelPendingStart();
   void scheduleStopRecording();
