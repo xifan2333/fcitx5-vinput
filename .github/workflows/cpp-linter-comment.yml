@@ -21,7 +21,7 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled'
     steps:
       - name: Download report artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pr-report
           path: pr-report
@@ -32,7 +32,7 @@ jobs:
 
       - name: Post or update comment
         if: steps.download.outcome == 'success'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');

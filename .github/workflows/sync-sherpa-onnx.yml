@@ -101,7 +101,7 @@ jobs:
 
       - name: Install Nix
         if: steps.target.outputs.skip != 'true'
-        uses: DeterminateSystems/nix-installer-action@v18
+        uses: DeterminateSystems/nix-installer-action@v23
 
       - name: Update flake.lock sherpa-onnx input
         if: steps.target.outputs.skip != 'true'
@@ -113,7 +113,7 @@ jobs:
 
       - name: Open PR
         if: steps.target.outputs.skip != 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.SYNC_PR_TOKEN || github.token }}
           branch: chore/sherpa-onnx-${{ steps.target.outputs.target }}
