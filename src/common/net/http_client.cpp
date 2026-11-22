@@ -502,29 +502,6 @@ HttpResponse HttpClient::Request(const HttpRequest& request) {
   return impl_->Execute(request, nullptr);
 }
 
-HttpResponse HttpClient::Get(const std::string& url, long timeout_ms,
-                             const std::atomic<bool>* cancel_token) {
-  HttpRequest req;
-  req.url = url;
-  req.method = HttpMethod::Get;
-  req.timeout_ms = timeout_ms;
-  req.cancel_token = cancel_token;
-  return Request(req);
-}
-
-HttpResponse HttpClient::Post(const std::string& url, const std::string& body,
-                              const std::vector<HttpHeader>& headers, long timeout_ms,
-                              const std::atomic<bool>* cancel_token) {
-  HttpRequest req;
-  req.url = url;
-  req.method = HttpMethod::Post;
-  req.body = body;
-  req.headers = headers;
-  req.timeout_ms = timeout_ms;
-  req.cancel_token = cancel_token;
-  return Request(req);
-}
-
 HttpResponse HttpClient::PostJson(const std::string& url, const std::string& json_body,
                                   const std::vector<HttpHeader>& extra_headers, long timeout_ms,
                                   const std::atomic<bool>* cancel_token) {
@@ -544,18 +521,6 @@ HttpResponse HttpClient::PostJson(const std::string& url, const std::string& jso
 HttpResponse HttpClient::DownloadToFile(const HttpRequest& request,
                                         const std::filesystem::path& dest_path) {
   return impl_->Execute(request, &dest_path);
-}
-
-HttpResponse HttpClient::DownloadToFile(const std::string& url,
-                                        const std::filesystem::path& dest_path,
-                                        ProgressCallback progress_cb,
-                                        const std::atomic<bool>* cancel_token) {
-  HttpRequest req;
-  req.url = url;
-  req.method = HttpMethod::Get;
-  req.progress_cb = std::move(progress_cb);
-  req.cancel_token = cancel_token;
-  return DownloadToFile(req, dest_path);
 }
 
 HttpClient& HttpClient::Instance() {

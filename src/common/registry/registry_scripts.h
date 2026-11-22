@@ -55,9 +55,6 @@ struct RegistryEntry {
   std::vector<EnvSpec> envs;
 };
 
-std::vector<RegistryEntry> FetchRegistry(Kind kind, const std::vector<std::string>& urls,
-                                         std::string* error,
-                                         std::string* resolved_registry_url = nullptr);
 std::vector<RegistryEntry> FetchRegistry(const CoreConfig& config, Kind kind,
                                          const std::vector<std::string>& urls, std::string* error,
                                          std::string* resolved_registry_url = nullptr,
