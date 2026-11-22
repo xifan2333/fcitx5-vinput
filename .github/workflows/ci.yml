@@ -217,3 +217,50 @@ jobs:
             echo "Lite runtime closure contains a local ASR dependency." >&2
             exit 1
           fi
+
+  dead-code-check:
+    name: dead-code-check
+    needs: [cpp-linter]
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore apt archive cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/vinput-apt-archives
+          key: apt-archives-${{ runner.os }}-${{ hashFiles('scripts/ci-install-build-deps.sh') }}
+          restore-keys: |
+            apt-archives-${{ runner.os }}-
+
+      - name: Install build dependencies
+        run: ./scripts/ci-install-build-deps.sh ubuntu24.04
+
+      - name: Install sherpa-onnx build runtime
+        run: |
+          prefix="${RUNNER_TEMP}/sherpa-onnx-install"
+          source scripts/sherpa-onnx-vars.sh
+          bash scripts/build-sherpa-onnx.sh "${SHERPA_ONNX_VERSION}" "${prefix}"
+          echo "VINPUT_CMAKE_PREFIX_PATH=${prefix}" >> "${GITHUB_ENV}"
+
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: sccache-ci-linux-deadcode-${{ github.ref_name }}
+          restore-keys: |
+            sccache-ci-linux-deadcode-
+
+      - name: Configure non-LTO Debug build
+        run: |
+          cmake --preset debug-clang-mold \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DVINPUT_ENABLE_LOCAL_ASR=ON \
+            -DVINPUT_RUNTIME_MODE=bundled
+
+      - name: Build all targets
+        run: cmake --build --preset debug-clang-mold
+
+      - name: Audit cross-TU dead strong symbols
+        run: python3 scripts/check-dead-code.py build
