@@ -224,17 +224,6 @@ ScopedTempDir::ScopedTempDir(ScopedTempDir&& other) noexcept
   other.path_.clear();
 }
 
-ScopedTempDir& ScopedTempDir::operator=(ScopedTempDir&& other) noexcept {
-  if (this != &other) {
-    Remove();
-    path_ = std::move(other.path_);
-    active_ = other.active_;
-    other.active_ = false;
-    other.path_.clear();
-  }
-  return *this;
-}
-
 std::unique_ptr<ScopedTempDir> ScopedTempDir::Create(const std::filesystem::path& base_dir,
                                                      std::string_view prefix, std::string* error) {
   const auto dir = ResolveTempBaseDir(base_dir);

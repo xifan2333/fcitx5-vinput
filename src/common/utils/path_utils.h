@@ -23,7 +23,6 @@ std::filesystem::path ManagedAsrProviderDir();
 std::filesystem::path ManagedLlmAdapterDir();
 std::filesystem::path ManagedTriggerDir();
 std::filesystem::path ManagedReceiverDir();
-std::filesystem::path AdapterRuntimeDir();
 std::filesystem::path ClientRuntimeDir();
 std::filesystem::path ContextCachePath();
 std::filesystem::path ReadNotificationsPath();

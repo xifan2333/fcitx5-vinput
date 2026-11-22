@@ -175,17 +175,6 @@ std::filesystem::path ManagedReceiverDir() {
   return ManagedResourceDir("receivers");
 }
 
-std::filesystem::path AdapterRuntimeDir() {
-  if (const auto xdg_runtime = GetEnvNonEmpty("XDG_RUNTIME_DIR")) {
-    return std::filesystem::path(*xdg_runtime) / "vinput" / "adapters";
-  }
-
-  const auto tmpdir = GetEnvNonEmpty("TMPDIR");
-  const std::filesystem::path base =
-      tmpdir ? std::filesystem::path(*tmpdir) : std::filesystem::path("/tmp");
-  return base / "vinput" / "adapters";
-}
-
 std::filesystem::path ClientRuntimeDir() {
   if (const auto xdg_runtime = GetEnvNonEmpty("XDG_RUNTIME_DIR")) {
     return std::filesystem::path(*xdg_runtime) / "vinput" / "clients";

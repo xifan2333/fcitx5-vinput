@@ -22,10 +22,6 @@ struct MigrationReport {
   std::string error;
 };
 
-// Check if any registered migration steps have pending modifications.
-bool HasPendingMigrations(const std::filesystem::path& config_path = {},
-                          const std::filesystem::path& conf_path = {});
-
 // Run all registered migrations in order, with automatic backups before modifying files.
 MigrationReport RunConfigMigration(bool dry_run = false,
                                    const std::filesystem::path& config_path = {},

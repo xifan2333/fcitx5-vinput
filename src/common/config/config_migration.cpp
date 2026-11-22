@@ -752,12 +752,6 @@ bool SaveMigratedFiles(LoadedInputs& inputs, bool config_changed, bool conf_chan
 
 } // namespace
 
-bool HasPendingMigrations(const std::filesystem::path& config_path,
-                          const std::filesystem::path& conf_path) {
-  const auto report = RunConfigMigration(true, config_path, conf_path);
-  return report.needed;
-}
-
 MigrationReport RunConfigMigration(bool dry_run, const std::filesystem::path& config_path,
                                    const std::filesystem::path& conf_path) {
   MigrationReport report;
