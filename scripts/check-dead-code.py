@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import shlex
 import subprocess
 import sys
 from collections import defaultdict
@@ -28,6 +30,27 @@ PRODUCTION_BINARIES = (
 )
 
 TRUTHY_CMAKE_VALUES = {"ON", "TRUE", "1", "YES"}
+OPT_FLAG_RE = re.compile(r"^-O([0-3]|s|z|fast|g)?$")
+
+
+def check_compile_flags(tokens: list[str], source: str) -> None:
+    """Reject LTO and non-O0 optimization flags in `tokens`."""
+    effective_opt: str | None = None
+    lto_enabled = False
+    for flag in tokens:
+        if flag == "-flto" or flag.startswith("-flto="):
+            lto_enabled = True
+        elif flag == "-fno-lto":
+            lto_enabled = False
+        elif OPT_FLAG_RE.fullmatch(flag):
+            effective_opt = flag
+
+    if lto_enabled:
+        raise RuntimeError(f"{source} enables LTO; dead-code audit requires LTO disabled.")
+    if effective_opt is not None and effective_opt != "-O0":
+        raise RuntimeError(
+            f"{source} enables optimization ({effective_opt}); dead-code audit requires -O0."
+        )
 
 
 def is_elf_file(path: Path) -> bool:
@@ -72,12 +95,10 @@ def check_non_lto_debug_build(build_dir: Path) -> dict[str, str]:
     if cache.get(ipo_key, "").upper() in TRUTHY_CMAKE_VALUES:
         raise RuntimeError(f"{build_dir} has {ipo_key}=ON; dead-code audit requires LTO disabled.")
 
-    for flags_key in ("CMAKE_CXX_FLAGS", "CMAKE_CXX_FLAGS_DEBUG"):
-        for flag in cache.get(flags_key, "").split():
-            if flag == "-flto" or flag.startswith("-flto="):
-                raise RuntimeError(
-                    f"{build_dir} has {flag} in {flags_key}; dead-code audit requires LTO disabled."
-                )
+    check_compile_flags(
+        cache.get("CMAKE_CXX_FLAGS", "").split() + cache.get("CMAKE_CXX_FLAGS_DEBUG", "").split(),
+        f"{build_dir} (CMAKE_CXX_FLAGS / CMAKE_CXX_FLAGS_DEBUG)",
+    )
 
     return cache
 
@@ -129,7 +150,7 @@ def collect_project_objects(build_dir: Path) -> list[Path]:
         output = entry.get("output")
         if not output:
             raise RuntimeError(
-                f"{compile_commands_path} entry missing 'output' field; CMake >= 3.20 with Ninja/Makefiles required."
+                f"{compile_commands_path} entry missing 'output' field; CMake >= 3.26 with Ninja/Makefiles required."
             )
         directory = Path(entry.get("directory", build_dir))
         obj = (directory / output).resolve()
@@ -146,6 +167,13 @@ def collect_project_objects(build_dir: Path) -> list[Path]:
             continue
         if "3rdparty" in rel_parts or "_deps" in rel_parts:
             continue
+        raw_args = entry.get("arguments")
+        tokens = (
+            [str(arg) for arg in raw_args]
+            if isinstance(raw_args, list)
+            else shlex.split(entry.get("command", ""))
+        )
+        check_compile_flags(tokens, f"{compile_commands_path} ({rel_obj})")
         if not obj.is_file():
             raise RuntimeError(f"Missing compiled object {rel_obj}; build all targets first.")
         objects_set.add(obj)
