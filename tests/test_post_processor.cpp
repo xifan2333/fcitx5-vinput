@@ -27,7 +27,7 @@
 
 namespace {
 
-void AssertTrue(bool condition, const char* message) {
+void AssertTrue(bool condition, std::string_view message) {
   if (!condition) {
     std::cerr << "Assertion failed: " << message << '\n';
     std::abort();
