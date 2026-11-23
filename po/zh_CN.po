@@ -2035,3 +2035,121 @@ msgstr "无效的流式提供商 JSON："
 #: src/daemon/runtime/dbus_service.cpp:295
 msgid "transcribe stream handler not configured"
 msgstr "未配置转写流处理器"
+
+#: src/daemon/main.cpp:100
+msgid "failed to stop client"
+msgstr "停止客户端失败"
+
+#: src/daemon/main.cpp:183
+msgid "audio capture start failed"
+msgstr "音频采集启动失败"
+
+#: src/daemon/main.cpp:200
+msgid "DBus service start failed"
+msgstr "D-Bus 服务启动失败"
+
+#: src/daemon/runtime/session_lane.cpp:1044
+msgid "ASR session factory is not configured."
+msgstr "ASR 会话工厂未配置。"
+
+#: src/daemon/audio/audio_capture.cpp:181
+msgid "PipeWire stream error"
+msgstr "PipeWire 流错误"
+
+#: src/daemon/audio/audio_capture.cpp:208
+msgid "failed to create PipeWire thread loop"
+msgstr "创建 PipeWire 线程循环失败"
+
+#: src/daemon/audio/audio_capture.cpp:216
+msgid "failed to start PipeWire thread loop: %s"
+msgstr "启动 PipeWire 线程循环失败：%s"
+
+#: src/daemon/audio/audio_capture.cpp:241
+#: src/daemon/audio/audio_capture.cpp:337
+msgid "audio capture loop is not initialized"
+msgstr "音频采集循环未初始化"
+
+#: src/daemon/audio/audio_capture.cpp:257
+msgid "PipeWire core connection is not ready"
+msgstr "PipeWire 核心连接未就绪"
+
+#: src/daemon/audio/audio_capture.cpp:265
+msgid "failed to allocate PipeWire properties"
+msgstr "分配 PipeWire 属性失败"
+
+#: src/daemon/audio/audio_capture.cpp:273
+msgid "failed to create PipeWire stream"
+msgstr "创建 PipeWire 流失败"
+
+#: src/daemon/audio/audio_capture.cpp:285
+msgid "failed to connect PipeWire stream: %s"
+msgstr "连接 PipeWire 流失败：%s"
+
+#: src/daemon/audio/audio_capture.cpp:350
+msgid "PipeWire control plane is unavailable"
+msgstr "PipeWire 控制平面不可用"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:53
+msgid "invalid stream file descriptor"
+msgstr "无效的流文件描述符"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:59
+msgid "stream audio source is already active"
+msgstr "流音频源已处于活动状态"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:67
+msgid "failed to create stream abort eventfd: %s"
+msgstr "创建流中止 eventfd 失败：%s"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:97
+msgid "failed to start stream reader thread: %s"
+msgstr "启动流读取线程失败：%s"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:130
+msgid "stream poll failed: %s"
+msgstr "流 poll 失败：%s"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:164
+msgid "stream read failed: %s"
+msgstr "流读取失败：%s"
+
+#: src/daemon/asr/vad_trimmer.cpp:142
+msgid "failed to create VAD from '%s'"
+msgstr "从 '%s' 创建 VAD 失败"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:42
+msgid "failed to locate temporary directory: %s"
+msgstr "定位临时目录失败：%s"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:213
+msgid "model family '%s' does not expose an ASR hotword input in sherpa-onnx"
+msgstr "模型家族 '%s' 在 sherpa-onnx 中未提供 ASR 热词输入"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:431
+msgid "unsupported model family '%s'"
+msgstr "不支持的模型家族 '%s'"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:465
+msgid "failed to create sherpa-onnx recognizer for family '%s'"
+msgstr "为家族 '%s' 创建 sherpa-onnx 识别器失败"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:92
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:139
+msgid "Streaming recognizer is not initialized."
+msgstr "流式识别器未初始化。"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:362
+msgid "model family '%s' does not expose streaming ASR hotwords in sherpa-onnx"
+msgstr "模型家族 '%s' 在 sherpa-onnx 中未提供流式 ASR 热词"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:443
+msgid "Unsupported sherpa-streaming model family '%s'"
+msgstr "不支持的 sherpa-streaming 模型家族 '%s'"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:482
+msgid "failed to create sherpa-streaming stream"
+msgstr "创建 sherpa-streaming 流失败"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:527
+msgid "failed to create sherpa-streaming recognizer for family '%s'"
+msgstr "为家族 '%s' 创建 sherpa-streaming 识别器失败"

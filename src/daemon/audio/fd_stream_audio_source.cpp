@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <fmt/printf.h>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -19,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/time_utils.h"
 #include "common/utils/unique_fd.h"
@@ -50,13 +52,13 @@ bool FdStreamAudioSource::Begin(std::string_view /*target*/, FirstBufferCallback
                                 ErrorCallback on_error, std::string* error) {
   if (!fd_.IsValid()) {
     if (error != nullptr) {
-      *error = "invalid stream file descriptor";
+      *error = _("invalid stream file descriptor");
     }
     return false;
   }
   if (recording_.load(std::memory_order_acquire)) {
     if (error != nullptr) {
-      *error = "stream audio source is already active";
+      *error = _("stream audio source is already active");
     }
     return false;
   }
@@ -64,7 +66,7 @@ bool FdStreamAudioSource::Begin(std::string_view /*target*/, FirstBufferCallback
   abort_fd_.Reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
   if (!abort_fd_.IsValid()) {
     if (error != nullptr) {
-      *error = std::string("failed to create stream abort eventfd: ") + std::strerror(errno);
+      *error = fmt::sprintf(_("failed to create stream abort eventfd: %s"), std::strerror(errno));
     }
     return false;
   }
@@ -94,7 +96,7 @@ bool FdStreamAudioSource::Begin(std::string_view /*target*/, FirstBufferCallback
     // of letting it propagate through the sd-bus C callback.
     recording_.store(false, std::memory_order_release);
     if (error != nullptr) {
-      *error = std::string("failed to start stream reader thread: ") + e.what();
+      *error = fmt::sprintf(_("failed to start stream reader thread: %s"), e.what());
     }
     return false;
   }
@@ -127,7 +129,7 @@ FdStreamAudioSource::WaitReadableOrAbort(int read_fd, int abort_fd, std::string*
         continue;
       }
       if (error_out != nullptr) {
-        *error_out = std::string("stream poll failed: ") + std::strerror(errno);
+        *error_out = fmt::sprintf(_("stream poll failed: %s"), std::strerror(errno));
       }
       return PollOutcome::Error;
     }
@@ -161,7 +163,7 @@ FdStreamAudioSource::ReadStatus FdStreamAudioSource::ReadChunk(int read_fd, int 
         continue;
       }
       if (error_out != nullptr) {
-        *error_out = std::string("stream read failed: ") + std::strerror(errno);
+        *error_out = fmt::sprintf(_("stream read failed: %s"), std::strerror(errno));
       }
       return ReadStatus::Error;
     }

@@ -19,6 +19,7 @@
 #else
 #include <spa/param/audio/format-utils.h>
 #endif
+#include <fmt/printf.h>
 #include <spa/param/audio/raw.h>
 #include <spa/param/param.h>
 #include <spa/pod/builder.h>
@@ -33,6 +34,7 @@
 #include <vector>
 
 #include "common/audio/pipewire_device.h"
+#include "common/i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/scope_guard.h"
 #include "common/utils/time_utils.h"
@@ -179,7 +181,7 @@ void AudioCapture::onStateChanged(void* userdata, pw_stream_state old, pw_stream
              pw_stream_state_as_string(state), err_str != nullptr ? " error=" : "",
              err_str != nullptr ? err_str : "");
   if (state == PW_STREAM_STATE_ERROR) {
-    const std::string err_msg = err_str != nullptr ? err_str : "PipeWire stream error";
+    const std::string err_msg = err_str != nullptr ? err_str : _("PipeWire stream error");
     VLOG_ERROR("PipeWire stream error: {}", err_msg);
     if (self != nullptr) {
       self->recording_.store(false, std::memory_order_relaxed);
@@ -205,7 +207,7 @@ bool AudioCapture::Start(std::string* error) {
   loop_ = pw_thread_loop_new("vinput-capture-loop", nullptr);
   if (loop_ == nullptr) {
     if (error != nullptr) {
-      *error = "failed to create PipeWire thread loop";
+      *error = _("failed to create PipeWire thread loop");
     }
     return false;
   }
@@ -213,7 +215,7 @@ bool AudioCapture::Start(std::string* error) {
   const int ret = pw_thread_loop_start(loop_);
   if (ret < 0) {
     if (error != nullptr) {
-      *error = std::string("failed to start PipeWire thread loop: ") + strerror(-ret);
+      *error = fmt::sprintf(_("failed to start PipeWire thread loop: %s"), strerror(-ret));
     }
     pw_thread_loop_destroy(loop_);
     loop_ = nullptr;
@@ -238,7 +240,7 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
                                           std::string* error) {
   if (loop_ == nullptr) {
     if (error != nullptr) {
-      *error = "audio capture loop is not initialized";
+      *error = _("audio capture loop is not initialized");
     }
     return false;
   }
@@ -254,7 +256,7 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
   pw_core* core = control_plane_.Core();
   if (core == nullptr) {
     if (error != nullptr) {
-      *error = "PipeWire core connection is not ready";
+      *error = _("PipeWire core connection is not ready");
     }
     return false;
   }
@@ -262,7 +264,7 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
   auto* properties = BuildCaptureProperties(resolved_target);
   if (properties == nullptr) {
     if (error != nullptr) {
-      *error = "failed to allocate PipeWire properties";
+      *error = _("failed to allocate PipeWire properties");
     }
     return false;
   }
@@ -270,7 +272,7 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
   pw_stream* new_stream = pw_stream_new(core, "vinput-capture", properties);
   if (new_stream == nullptr) {
     if (error != nullptr) {
-      *error = "failed to create PipeWire stream";
+      *error = _("failed to create PipeWire stream");
     }
     return false;
   }
@@ -282,7 +284,7 @@ bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarge
   const int ret = ConnectStream(new_stream);
   if (ret < 0) {
     if (error != nullptr) {
-      *error = std::string("failed to connect PipeWire stream: ") + strerror(-ret);
+      *error = fmt::sprintf(_("failed to connect PipeWire stream: %s"), strerror(-ret));
     }
     spa_hook_remove(&stream_listener_);
     pw_stream_destroy(new_stream);
@@ -334,7 +336,7 @@ void AudioCapture::ArmRecording() noexcept {
 bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
   if (loop_ == nullptr) {
     if (error != nullptr) {
-      *error = "audio capture loop is not initialized";
+      *error = _("audio capture loop is not initialized");
     }
     return false;
   }
@@ -347,7 +349,7 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
   DestroyStream();
   if (!control_plane_.EnsureConnected(loop_)) {
     if (error != nullptr) {
-      *error = "PipeWire control plane is unavailable";
+      *error = _("PipeWire control plane is unavailable");
     }
     return false;
   }

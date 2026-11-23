@@ -97,7 +97,7 @@ void WireDbusHandlers(DbusService& dbus, vinput::daemon::runtime::LaneSupervisor
     supervisor.ReclaimLane(client_id);
     std::string error;
     if (!vinput::client::Stop(client_id, &error, &notification_bridge)) {
-      return DbusService::MethodResult::Failure(error.empty() ? "failed to stop client" : error);
+      return DbusService::MethodResult::Failure(error.empty() ? _("failed to stop client") : error);
     }
     return DbusService::MethodResult::Success();
   });
@@ -180,7 +180,7 @@ int main(int argc, char* argv[]) {
   std::string capture_error;
   if (!capture.Start(&capture_error)) {
     if (capture_error.empty()) {
-      capture_error = "audio capture start failed";
+      capture_error = _("audio capture start failed");
     }
     VLOG_ERROR("{}", capture_error);
     return 1;
@@ -197,7 +197,7 @@ int main(int argc, char* argv[]) {
   std::string dbus_error;
   if (!dbus.Start(&dbus_error)) {
     if (dbus_error.empty()) {
-      dbus_error = "DBus service start failed";
+      dbus_error = _("DBus service start failed");
     }
     VLOG_ERROR("{}", dbus_error);
     return 1;
