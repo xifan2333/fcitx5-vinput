@@ -228,6 +228,10 @@ void VinputEngine::onInputContextFocusOut(fcitx::InputContext* ic) {
       chord_interrupted_ = true;
     }
   }
+  if (!session_ && status_ic_ == ic) {
+    clearVoicePresentation(ic);
+    status_ic_ = nullptr;
+  }
 }
 
 void VinputEngine::registerEventHandlers() {

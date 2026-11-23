@@ -131,6 +131,8 @@ private:
   void onRecognitionResult(fcitx::dbus::Message& msg);
   void onRecognitionPartial(fcitx::dbus::Message& msg);
   void handleRecognitionPartial(const std::string& transcript_text);
+  void handleInjectedRecognitionPartial(fcitx::InputContext* ic,
+                                        const std::string& transcript_text);
   void onStatusChanged(fcitx::dbus::Message& msg);
   void sendNotification(const std::string& message, const char* icon, int timeout_ms);
   void notifyError(const std::string& message);

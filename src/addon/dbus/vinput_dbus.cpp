@@ -857,11 +857,24 @@ void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
   handleRecognitionPartial(transcript_text);
 }
 
-void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) {
+void VinputEngine::handleInjectedRecognitionPartial(fcitx::InputContext* ic,
+                                                    const std::string& transcript_text) {
   if (transcript_text.empty()) {
+    if (status_ic_ == ic) {
+      status_ic_ = nullptr;
+    }
+    clearVoicePresentation(ic);
     return;
   }
+  if (status_ic_ != nullptr && status_ic_ != ic) {
+    clearVoicePresentation(status_ic_);
+  }
+  status_ic_ = ic;
+  updateVoicePresentation(ic,
+                          ComposeLivePreedit(transcript_text, "", max_streaming_display_width_));
+}
 
+void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) {
   auto* ic = resolveFrontendInputContext();
   if (ic == nullptr) {
     return;
@@ -869,6 +882,16 @@ void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) 
 
   rememberInputContext(ic);
   if (!session_.has_value()) {
+    handleInjectedRecognitionPartial(ic, transcript_text);
+    return;
+  }
+
+  if (transcript_text.empty()) {
+    session_->transcript_text.clear();
+    updateVoicePresentation(ic, ComposeLivePreedit("",
+                                                   session_->command_mode ? CommandingPreeditText()
+                                                                          : RecordingPreeditText(),
+                                                   max_streaming_display_width_));
     return;
   }
 
