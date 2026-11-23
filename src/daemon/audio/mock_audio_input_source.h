@@ -62,7 +62,7 @@ public:
   }
 
   std::size_t DrainAvailable(SampleConsumer consumer) override {
-    return ring_buffer_.DrainAvailable(std::move(consumer));
+    return ring_buffer_.DrainAvailable(consumer);
   }
 
   [[nodiscard]] bool IsRecording() const override {
