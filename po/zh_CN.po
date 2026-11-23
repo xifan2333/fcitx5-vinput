@@ -2051,3 +2051,64 @@ msgstr "D-Bus 服务启动失败"
 #: src/daemon/runtime/session_lane.cpp:1044
 msgid "ASR session factory is not configured."
 msgstr "ASR 会话工厂未配置。"
+
+#: src/daemon/audio/audio_capture.cpp:181
+msgid "PipeWire stream error"
+msgstr "PipeWire 流错误"
+
+#: src/daemon/audio/audio_capture.cpp:208
+msgid "failed to create PipeWire thread loop"
+msgstr "创建 PipeWire 线程循环失败"
+
+#: src/daemon/audio/audio_capture.cpp:216
+msgid "failed to start PipeWire thread loop: %s"
+msgstr "启动 PipeWire 线程循环失败：%s"
+
+#: src/daemon/audio/audio_capture.cpp:241
+#: src/daemon/audio/audio_capture.cpp:337
+msgid "audio capture loop is not initialized"
+msgstr "音频采集循环未初始化"
+
+#: src/daemon/audio/audio_capture.cpp:257
+msgid "PipeWire core connection is not ready"
+msgstr "PipeWire 核心连接未就绪"
+
+#: src/daemon/audio/audio_capture.cpp:265
+msgid "failed to allocate PipeWire properties"
+msgstr "分配 PipeWire 属性失败"
+
+#: src/daemon/audio/audio_capture.cpp:273
+msgid "failed to create PipeWire stream"
+msgstr "创建 PipeWire 流失败"
+
+#: src/daemon/audio/audio_capture.cpp:285
+msgid "failed to connect PipeWire stream: %s"
+msgstr "连接 PipeWire 流失败：%s"
+
+#: src/daemon/audio/audio_capture.cpp:350
+msgid "PipeWire control plane is unavailable"
+msgstr "PipeWire 控制平面不可用"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:53
+msgid "invalid stream file descriptor"
+msgstr "无效的流文件描述符"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:59
+msgid "stream audio source is already active"
+msgstr "流音频源已处于活动状态"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:67
+msgid "failed to create stream abort eventfd: %s"
+msgstr "创建流中止 eventfd 失败：%s"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:97
+msgid "failed to start stream reader thread: %s"
+msgstr "启动流读取线程失败：%s"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:130
+msgid "stream poll failed: %s"
+msgstr "流 poll 失败：%s"
+
+#: src/daemon/audio/fd_stream_audio_source.cpp:164
+msgid "stream read failed: %s"
+msgstr "流读取失败：%s"
