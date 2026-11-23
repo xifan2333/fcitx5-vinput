@@ -82,6 +82,18 @@ public:
     return (duration < kTapMaxHoldDuration) ? TapHoldAction::BothTapLock : TapHoldAction::HoldStop;
   }
 
+  void handleRecognitionPartial(const std::string& transcript_text);
+  void handleRecognitionResultPayload(const std::string& payload_text);
+  void onInputContextFocusIn(fcitx::InputContext* ic);
+  void onInputContextFocusOut(fcitx::InputContext* ic);
+  void enterRecordingStateForTest(fcitx::InputContext* ic, const fcitx::Key& trigger = {},
+                                  bool command_mode = false) {
+    enterRecordingState(ic, trigger, command_mode);
+  }
+  void finishFrontendSessionForTest(fcitx::InputContext* ic = nullptr) {
+    finishFrontendSession(ic);
+  }
+
 private:
   void applySettings();
   void reloadSceneConfig();
@@ -135,7 +147,6 @@ private:
                         const vinput::result::LlmSummary& llm_summary, bool is_command);
   void restoreRecordingPreedit();
   void onRecognitionPartial(fcitx::dbus::Message& msg);
-  void handleRecognitionPartial(const std::string& transcript_text);
   void handleInjectedRecognitionPartial(fcitx::InputContext* ic,
                                         const std::string& transcript_text);
   void onStatusChanged(fcitx::dbus::Message& msg);
@@ -179,8 +190,6 @@ private:
   void connectDBus();
   void onInputContextCreated(fcitx::InputContext* ic);
   void onInputContextDestroyed(fcitx::InputContext* ic);
-  void onInputContextFocusIn(fcitx::InputContext* ic);
-  void onInputContextFocusOut(fcitx::InputContext* ic);
 
   fcitx::Instance* instance_;
   fcitx::EventDispatcher event_dispatcher_;

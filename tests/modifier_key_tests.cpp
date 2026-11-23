@@ -51,8 +51,10 @@ public:
   ~TestInputContext() override { destroy(); }
   [[nodiscard]] const char* frontend() const override { return "test"; }
 
+  std::string last_committed;
+
 protected:
-  void commitStringImpl(const std::string&) override {}
+  void commitStringImpl(const std::string& str) override { last_committed = str; }
   void deleteSurroundingTextImpl(int, unsigned int) override {}
   void forwardKeyImpl(const fcitx::ForwardKeyEvent&) override {}
   void updatePreeditImpl() override {}
@@ -502,6 +504,58 @@ void TestPaletteItemNotificationTitleAndProcMenu(TestInputContext& ic, VinputEng
   engine.handleKeyEvent(esc_r2);
 }
 
+void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputContext& ic,
+                                         VinputEngine& engine) {
+  std::cout << "--- 10. Testing Injected Partial Preedit and Focus Tracking (#737) ---\n";
+
+  // 1. Injected partial displays preedit when idle (no session)
+  engine.onInputContextFocusIn(&ic);
+  engine.handleRecognitionPartial("hello remote");
+  expect(ic.inputPanel().preedit().toString() == "hello remote",
+         "Injected partial must display live preedit without active session");
+
+  // 2. Empty partial clears injected preedit
+  engine.handleRecognitionPartial("");
+  expect(ic.inputPanel().preedit().toString().empty(), "Empty partial must clear live preedit");
+
+  // 3. Focus out clears injected preedit
+  engine.handleRecognitionPartial("partial before blur");
+  expect(ic.inputPanel().preedit().toString() == "partial before blur",
+         "Preedit should be visible before blur");
+  engine.onInputContextFocusOut(&ic);
+  expect(ic.inputPanel().preedit().toString().empty(),
+         "FocusOut must clear injected preedit when idle");
+
+  // 4. FocusIn switches active input context without key event
+  TestInputContext ic2(instance);
+  engine.onInputContextFocusIn(&ic2);
+  engine.handleRecognitionPartial("targeted to ic2");
+  expect(ic2.inputPanel().preedit().toString() == "targeted to ic2",
+         "Partial must route to newly focused input context (ic2)");
+  engine.handleRecognitionPartial("");
+  expect(ic2.inputPanel().preedit().toString().empty(), "ic2 preedit cleared");
+
+  // Switch back to ic
+  engine.onInputContextFocusIn(&ic);
+
+  // 5. Concurrent final injection does not destroy active recording session
+  engine.enterRecordingStateForTest(&ic);
+  expect(engine.isRecordingActive(), "Recording state should be active");
+
+  // Simulate an injected final recognition result while recording is active
+  const std::string final_payload = R"({"text": "concurrent commit", "candidates": []})";
+  engine.handleRecognitionResultPayload(final_payload);
+
+  expect(ic.last_committed == "concurrent commit",
+         "Injected final payload must commit text directly");
+  expect(engine.isRecordingActive(),
+         "Active recording session must NOT be destroyed by concurrent injected result");
+
+  // Cleanup active session
+  engine.finishFrontendSessionForTest(&ic);
+  expect(!engine.isRecordingActive(), "Session finished after cleanup");
+}
+
 void runAllTests() {
   const ScopedConfigDir sandbox;
 
@@ -530,6 +584,7 @@ void runAllTests() {
   TestPaletteMenuPaginationAndSelection(instance, ic, engine);
   TestLifetimeTokenUafGuard(instance);
   TestPaletteItemNotificationTitleAndProcMenu(ic, engine);
+  TestInjectedPartialAndFocusTracking(instance, ic, engine);
 
   std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }

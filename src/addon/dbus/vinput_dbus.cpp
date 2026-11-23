@@ -835,7 +835,10 @@ void VinputEngine::restoreRecordingPreedit() {
 void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
   std::string payload_text;
   msg >> payload_text;
+  handleRecognitionResultPayload(payload_text);
+}
 
+void VinputEngine::handleRecognitionResultPayload(const std::string& payload_text) {
   const bool recording_active = isRecordingActive();
   const bool has_session = session_.has_value() && !recording_active;
   const bool is_command = has_session && session_->command_mode;
