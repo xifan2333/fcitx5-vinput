@@ -460,10 +460,14 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: release-arch
-          path: |
-            packaging/arch/*.pkg.tar.zst
-            packaging/arch-lite/*.pkg.tar.zst
+          name: release-arch-full
+          path: packaging/arch/*.pkg.tar.zst
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-arch-lite
+          path: packaging/arch-lite/*.pkg.tar.zst
           if-no-files-found: error
 
   build-flatpak:
@@ -521,13 +525,6 @@ jobs:
           bundle: fcitx5-vinput-lite.flatpak
           repository-name: flathub
           cache-key: flatpak-builder-lite-${{ github.sha }}
-
-      - uses: actions/upload-artifact@v6
-        with:
-          name: flatpak-bundle
-          path: |
-            fcitx5-vinput.flatpak
-            fcitx5-vinput-lite.flatpak
 
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
