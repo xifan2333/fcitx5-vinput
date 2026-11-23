@@ -544,8 +544,8 @@ void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputCon
   expect(engine.isRecordingActive(), "Recording state should be active");
 
   // Simulate an injected final recognition result while recording is active
-  const std::string final_payload =
-      vinput::result::Serialize(vinput::result::Payload{.commitText = "concurrent commit"});
+  const std::string final_payload = vinput::result::Serialize(
+      vinput::result::Payload{.commitText = "concurrent commit", .candidates = {}});
   engine.handleRecognitionResultPayload(final_payload);
 
   expect(ic.last_committed == "concurrent commit",
@@ -577,8 +577,8 @@ void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputCon
   engine.onInputContextFocusIn(&icB);
 
   // Final arrives from mobile
-  const std::string final_for_b =
-      vinput::result::Serialize(vinput::result::Payload{.commitText = "committed to B"});
+  const std::string final_for_b = vinput::result::Serialize(
+      vinput::result::Payload{.commitText = "committed to B", .candidates = {}});
   engine.handleRecognitionResultPayload(final_for_b);
   expect(icB.last_committed == "committed to B", "Final must commit to focused icB");
   expect(icA.last_committed.empty(), "Blurred icA must not receive commit");
