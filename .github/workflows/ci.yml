@@ -117,15 +117,19 @@ jobs:
           CLANG_TIDY=$(command -v clang-tidy-21 || command -v clang-tidy)
           echo "Using run-clang-tidy: $RUN_TIDY with binary $CLANG_TIDY"
 
+          WORKSPACE_REGEX="^${GITHUB_WORKSPACE}/(src|tests)/.*"
+
           # Verify that matching compilation units exist in compile_commands.json
-          matched_units=$(jq '[.[] | select(.file | test(".*/(src|tests)/.*"))] | length' build/compile_commands.json)
-          echo "Found ${matched_units} compilation units matching .*/(src|tests)/.*"
+          matched_units=$(jq --arg ws "${GITHUB_WORKSPACE}" '[.[] | select(.file | test("^" + $ws + "/(src|tests)/.*"))] | length' build/compile_commands.json)
+          echo "Found ${matched_units} compilation units matching ${WORKSPACE_REGEX}"
           if [ "${matched_units}" -eq 0 ]; then
             echo "Error: 0 compilation units matched for Clang-Tidy analysis!" >> pr-report/tidy.log
             tidy_failed=1
           fi
 
-          if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" -p build -j $(nproc) '.*/(src|tests)/.*' > pr-report/tidy.log 2>&1; then
+          if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" \
+              -header-filter="${WORKSPACE_REGEX}" \
+              -p build -j $(nproc) "${WORKSPACE_REGEX}" > pr-report/tidy.log 2>&1; then
             tidy_failed=1
           fi
           if grep -q "warning:" pr-report/tidy.log || grep -q "error:" pr-report/tidy.log; then

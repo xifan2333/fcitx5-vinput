@@ -36,7 +36,7 @@ Checks: >
 WarningsAsErrors: ''
 
 # Only check project source headers, exclude build/_deps and third_party
-HeaderFilterRegex: '^(src|tests)/.*'
+HeaderFilterRegex: '.*(src|tests)/.*'
 
 CheckOptions:
   readability-function-cognitive-complexity.Threshold: 15
