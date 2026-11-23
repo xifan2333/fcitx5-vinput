@@ -797,49 +797,19 @@ void VinputEngine::applyDaemonStatusLocally(const std::string& status,
   applyDaemonStatusTransition(ic, vinput::dbus::StringToStatus(status), command_mode);
 }
 
-void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
-  std::string payload_text;
-  msg >> payload_text;
-
-  const bool has_session = session_.has_value();
-  const bool is_command = has_session && session_->command_mode;
-  const std::string command_selected_text = is_command ? command_selected_text_ : std::string{};
-  auto* ic = resolveFrontendInputContext();
-
-  if (ic == nullptr) {
-    return;
-  }
-
-  rememberInputContext(ic);
-
-  const auto payload = vinput::result::Parse(payload_text);
-  finishFrontendSession(ic);
-
-  if (payload.commitText.empty()) {
-    return;
-  }
-
+void VinputEngine::recordAsrCandidateContext(const vinput::result::Payload& payload,
+                                             bool is_command,
+                                             const std::string& command_selected_text) {
   const auto* asr_candidate =
       FindAsrCandidate(payload.candidates, is_command, command_selected_text);
   if (asr_candidate != nullptr && !asr_candidate->text.empty()) {
     appendContextEntry(asr_candidate->text, "asr");
   }
+}
 
-  const auto llm_summary = SummarizeLlmCandidates(payload.candidates, payload.commitText);
-
-  // Dictation presents every distinct choice: raw is option 1 and the primary LLM rewrite is
-  // focused. Command mode keeps its existing behavior because its payload also contains the
-  // selected text and spoken command as metadata candidates.
-  const bool should_show_result_menu =
-      is_command ? llm_summary.distinct_count > 1 : payload.candidates.size() > 1;
-  if (should_show_result_menu) {
-    // Save command mode for result menu interaction
-    result_is_command_ = is_command;
-    showResultMenu(ic, payload);
-    return;
-  }
-
-  if (llm_summary.commit_from_llm) {
+void VinputEngine::commitResultText(fcitx::InputContext* ic, const vinput::result::Payload& payload,
+                                    bool commit_from_llm, bool is_command) {
+  if (commit_from_llm) {
     appendContextEntry(payload.commitText, "llm");
   }
   suppressNextCommitContext(payload.commitText);
@@ -851,17 +821,98 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
   ic->commitString(payload.commitText);
 }
 
+void VinputEngine::restoreRecordingPreedit() {
+  if (session_.has_value()) {
+    updateVoicePresentation(session_->ic,
+                            ComposeLivePreedit(session_->transcript_text,
+                                               session_->command_mode ? CommandingPreeditText()
+                                                                      : RecordingPreeditText(),
+                                               max_streaming_display_width_));
+  }
+}
+
+void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
+  std::string payload_text;
+  msg >> payload_text;
+  handleRecognitionResultPayload(payload_text);
+}
+
+void VinputEngine::handleRecognitionResultPayload(const std::string& payload_text) {
+  const bool recording_active = isRecordingActive();
+  const bool has_session = session_.has_value() && !recording_active;
+  const bool is_command = has_session && session_->command_mode;
+  const std::string command_selected_text = is_command ? command_selected_text_ : std::string{};
+  auto* ic = resolveFrontendInputContext();
+
+  if (ic == nullptr) {
+    return;
+  }
+
+  rememberInputContext(ic);
+
+  const auto payload = vinput::result::Parse(payload_text);
+  if (!recording_active) {
+    finishFrontendSession(ic);
+  } else if (status_ic_ == ic && (!session_.has_value() || status_ic_ != session_->ic)) {
+    clearVoicePresentation(status_ic_);
+    status_ic_ = nullptr;
+  }
+
+  if (payload.commitText.empty()) {
+    if (recording_active) {
+      restoreRecordingPreedit();
+    }
+    return;
+  }
+
+  recordAsrCandidateContext(payload, is_command, command_selected_text);
+  const auto llm_summary = SummarizeLlmCandidates(payload.candidates, payload.commitText);
+
+  // Dictation presents every distinct choice: raw is option 1 and the primary LLM rewrite is
+  // focused. Command mode keeps its existing behavior because its payload also contains the
+  // selected text and spoken command as metadata candidates.
+  // Concurrently injected results during an active recording session never open the candidate menu.
+  const bool should_show_result_menu =
+      !recording_active &&
+      (is_command ? llm_summary.distinct_count > 1 : payload.candidates.size() > 1);
+  if (should_show_result_menu) {
+    // Save command mode for result menu interaction
+    result_is_command_ = is_command;
+    showResultMenu(ic, payload);
+    return;
+  }
+
+  commitResultText(ic, payload, llm_summary.commit_from_llm, is_command);
+
+  if (recording_active) {
+    restoreRecordingPreedit();
+  }
+}
+
 void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
   std::string transcript_text;
   msg >> transcript_text;
   handleRecognitionPartial(transcript_text);
 }
 
-void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) {
+void VinputEngine::handleInjectedRecognitionPartial(fcitx::InputContext* ic,
+                                                    const std::string& transcript_text) {
   if (transcript_text.empty()) {
+    if (status_ic_ == ic) {
+      status_ic_ = nullptr;
+      clearVoicePresentation(ic);
+    }
     return;
   }
+  if (status_ic_ != nullptr && status_ic_ != ic) {
+    clearVoicePresentation(status_ic_);
+  }
+  status_ic_ = ic;
+  updateVoicePresentation(ic,
+                          ComposeLivePreedit(transcript_text, "", max_streaming_display_width_));
+}
 
+void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) {
   auto* ic = resolveFrontendInputContext();
   if (ic == nullptr) {
     return;
@@ -869,6 +920,7 @@ void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) 
 
   rememberInputContext(ic);
   if (!session_.has_value()) {
+    handleInjectedRecognitionPartial(ic, transcript_text);
     return;
   }
 

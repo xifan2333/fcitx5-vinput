@@ -201,6 +201,9 @@ void VinputEngine::onInputContextDestroyed(fcitx::InputContext* ic) {
   if (last_active_ic_ == ic) {
     last_active_ic_ = nullptr;
   }
+  if (current_focused_ic_ == ic) {
+    current_focused_ic_ = nullptr;
+  }
   if (palette_menu_ic_ == ic) {
     resetPaletteMenuState();
   }
@@ -212,7 +215,15 @@ void VinputEngine::onInputContextDestroyed(fcitx::InputContext* ic) {
   }
 }
 
+void VinputEngine::onInputContextFocusIn(fcitx::InputContext* ic) {
+  current_focused_ic_ = ic;
+  rememberInputContext(ic);
+}
+
 void VinputEngine::onInputContextFocusOut(fcitx::InputContext* ic) {
+  if (current_focused_ic_ == ic) {
+    current_focused_ic_ = nullptr;
+  }
   if (pending_start_ic_.get() == ic) {
     cancelPendingStart();
     chord_interrupted_ = true;
@@ -227,6 +238,10 @@ void VinputEngine::onInputContextFocusOut(fcitx::InputContext* ic) {
       clearVoicePresentation(ic);
       chord_interrupted_ = true;
     }
+  }
+  if (!session_ && status_ic_ == ic) {
+    clearVoicePresentation(ic);
+    status_ic_ = nullptr;
   }
 }
 
@@ -247,6 +262,14 @@ void VinputEngine::registerEventHandlers() {
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
                               auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
                               onInputContextDestroyed(icEvent.inputContext());
+                            }));
+
+  eventHandlers_.emplace_back(
+      instance_->watchEvent(fcitx::EventType::InputContextFocusIn,
+                            fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
+                              if (auto* icEvent = dynamic_cast<fcitx::InputContextEvent*>(&event)) {
+                                onInputContextFocusIn(icEvent->inputContext());
+                              }
                             }));
 
   eventHandlers_.emplace_back(
@@ -370,13 +393,19 @@ VinputEngine::resolveFrontendInputContext(fcitx::InputContext* fallback_ic) cons
   if (session_) {
     return session_->ic;
   }
-  if (status_ic_ != nullptr) {
-    return status_ic_;
-  }
   if (fallback_ic != nullptr) {
     return fallback_ic;
   }
-  return last_active_ic_;
+  if (current_focused_ic_ != nullptr) {
+    return current_focused_ic_;
+  }
+  if (instance_ != nullptr) {
+    auto* focused = instance_->lastFocusedInputContext();
+    if (focused != nullptr) {
+      return focused;
+    }
+  }
+  return nullptr;
 }
 
 void VinputEngine::appendContextEntry(const std::string& text, const char* source) {

@@ -82,6 +82,18 @@ public:
     return (duration < kTapMaxHoldDuration) ? TapHoldAction::BothTapLock : TapHoldAction::HoldStop;
   }
 
+  void handleRecognitionPartial(const std::string& transcript_text);
+  void handleRecognitionResultPayload(const std::string& payload_text);
+  void onInputContextFocusIn(fcitx::InputContext* ic);
+  void onInputContextFocusOut(fcitx::InputContext* ic);
+  void enterRecordingStateForTest(fcitx::InputContext* ic, const fcitx::Key& trigger = fcitx::Key(),
+                                  bool command_mode = false) {
+    enterRecordingState(ic, trigger, command_mode);
+  }
+  void finishFrontendSessionForTest(fcitx::InputContext* ic = nullptr) {
+    finishFrontendSession(ic);
+  }
+
 private:
   void applySettings();
   void reloadSceneConfig();
@@ -129,8 +141,14 @@ private:
   bool callSyncRpc(const char* member, const std::string& fallback_error, std::string* error,
                    const std::string* arg = nullptr);
   void onRecognitionResult(fcitx::dbus::Message& msg);
+  void recordAsrCandidateContext(const vinput::result::Payload& payload, bool is_command,
+                                 const std::string& command_selected_text);
+  void commitResultText(fcitx::InputContext* ic, const vinput::result::Payload& payload,
+                        bool commit_from_llm, bool is_command);
+  void restoreRecordingPreedit();
   void onRecognitionPartial(fcitx::dbus::Message& msg);
-  void handleRecognitionPartial(const std::string& transcript_text);
+  void handleInjectedRecognitionPartial(fcitx::InputContext* ic,
+                                        const std::string& transcript_text);
   void onStatusChanged(fcitx::dbus::Message& msg);
   void sendNotification(const std::string& message, const char* icon, int timeout_ms);
   void notifyError(const std::string& message);
@@ -172,7 +190,6 @@ private:
   void connectDBus();
   void onInputContextCreated(fcitx::InputContext* ic);
   void onInputContextDestroyed(fcitx::InputContext* ic);
-  void onInputContextFocusOut(fcitx::InputContext* ic);
 
   fcitx::Instance* instance_;
   fcitx::EventDispatcher event_dispatcher_;
@@ -201,6 +218,7 @@ private:
   };
   std::optional<Session> session_;
   fcitx::InputContext* status_ic_ = nullptr;
+  fcitx::InputContext* current_focused_ic_ = nullptr;
   fcitx::InputContext* last_active_ic_ = nullptr;
   fcitx::InputContext* palette_menu_ic_ = nullptr;
   fcitx::InputContext* result_menu_ic_ = nullptr;
