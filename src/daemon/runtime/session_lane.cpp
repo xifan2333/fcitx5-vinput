@@ -1037,7 +1037,7 @@ void SessionLane::ExecuteCreateAsrSession(const CreateAsrSessionTask& task) {
       error = _("Unknown error during processing.");
     }
   } else {
-    error = "ASR session factory is not configured.";
+    error = _("ASR session factory is not configured.");
   }
 
   {

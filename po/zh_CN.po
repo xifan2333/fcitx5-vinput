@@ -2035,3 +2035,19 @@ msgstr "无效的流式提供商 JSON："
 #: src/daemon/runtime/dbus_service.cpp:295
 msgid "transcribe stream handler not configured"
 msgstr "未配置转写流处理器"
+
+#: src/daemon/main.cpp:100
+msgid "failed to stop client"
+msgstr "停止客户端失败"
+
+#: src/daemon/main.cpp:183
+msgid "audio capture start failed"
+msgstr "音频采集启动失败"
+
+#: src/daemon/main.cpp:200
+msgid "DBus service start failed"
+msgstr "D-Bus 服务启动失败"
+
+#: src/daemon/runtime/session_lane.cpp:1044
+msgid "ASR session factory is not configured."
+msgstr "ASR 会话工厂未配置。"
