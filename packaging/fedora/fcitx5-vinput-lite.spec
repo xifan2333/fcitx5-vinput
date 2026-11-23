@@ -1,3 +1,5 @@
+%global debug_package %{nil}
+
 Name:           fcitx5-vinput-lite
 Version:        @VINPUT_VERSION@
 Release:        1%{?dist}
@@ -44,6 +46,7 @@ Voice input plugin for Fcitx5 with cloud ASR and LLM post-processing (Lite build
 export CC=clang
 export CXX=clang++
 %cmake -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
     -DVINPUT_ENABLE_LOCAL_ASR=OFF \
     -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold \
     -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold \

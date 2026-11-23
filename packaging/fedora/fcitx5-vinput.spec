@@ -1,3 +1,4 @@
+%global debug_package %{nil}
 %bcond_without local_asr
 
 %if %{with local_asr}
@@ -63,6 +64,7 @@ export CXX=clang++
 %if %{with local_asr}
 bash scripts/build-sherpa-onnx.sh %{sherpa_onnx_ver} %{_builddir}/sherpa-onnx-install %{SOURCE1}
 %cmake -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH=%{_builddir}/sherpa-onnx-install \
     -DVINPUT_ENABLE_LOCAL_ASR=ON \
     -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold \
@@ -73,6 +75,7 @@ bash scripts/build-sherpa-onnx.sh %{sherpa_onnx_ver} %{_builddir}/sherpa-onnx-in
     -DVINPUT_PACKAGE_HOMEPAGE_URL=%{url}
 %else
 %cmake -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
     -DVINPUT_ENABLE_LOCAL_ASR=OFF \
     -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold \
     -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold \
