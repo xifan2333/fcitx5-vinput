@@ -64,6 +64,69 @@ public:
   [[nodiscard]] int RequestCount() const { return request_count_.load(); }
 
 private:
+  void HandleClientRequest(int client_fd, const std::string& buffer) {
+    if (buffer.find("GET /404 ") != std::string::npos) {
+      const std::string response =
+          "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+      send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
+    } else if (buffer.find("GET /204 ") != std::string::npos) {
+      const std::string response =
+          "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+      send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
+    } else if (buffer.find("GET /redirect ") != std::string::npos) {
+      const std::string response =
+          "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + std::to_string(port_) +
+          "/text\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+      send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
+    } else if (buffer.find("GET /slow ") != std::string::npos) {
+      const std::string header =
+          "HTTP/1.1 200 OK\r\nContent-Length: 20000\r\nConnection: close\r\n\r\n";
+      send(client_fd, header.data(), header.size(), MSG_NOSIGNAL);
+      const std::string chunk(50, 'Z');
+      for (int i = 0; i < 20 && !stop_requested_.load(); ++i) {
+        if (send(client_fd, chunk.data(), chunk.size(), MSG_NOSIGNAL) <= 0) {
+          break;
+        }
+        usleep(15000);
+      }
+    } else if (buffer.find("GET /large ") != std::string::npos) {
+      const std::string body(100, 'X');
+      const std::string response =
+          "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
+          "\r\nConnection: close\r\n\r\n" + body;
+      send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
+    } else {
+      const std::string body = "Hello Downloader";
+      const std::string response =
+          "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
+          "\r\nConnection: close\r\n\r\n" + body;
+      send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
+    }
+  }
+
+  void HandleClient(int client_fd) {
+    std::string buffer;
+    while (!stop_requested_.load()) {
+      pollfd client_pfd{.fd = client_fd, .events = POLLIN, .revents = 0};
+      if (poll(&client_pfd, 1, 100) <= 0) {
+        continue;
+      }
+      char chunk[2048];
+      const ssize_t bytes_read = recv(client_fd, chunk, sizeof(chunk), 0);
+      if (bytes_read <= 0) {
+        break;
+      }
+      buffer.append(chunk, static_cast<size_t>(bytes_read));
+      const auto head_end = buffer.find("\r\n\r\n");
+      if (head_end != std::string::npos) {
+        ++request_count_;
+        HandleClientRequest(client_fd, buffer);
+        break;
+      }
+    }
+    close(client_fd);
+  }
+
   void RunServerLoop() {
     while (!stop_requested_.load()) {
       pollfd pfd{.fd = listen_fd_, .events = POLLIN, .revents = 0};
@@ -71,66 +134,9 @@ private:
         continue;
       }
       const int client_fd = accept(listen_fd_, nullptr, nullptr);
-      if (client_fd < 0) {
-        continue;
+      if (client_fd >= 0) {
+        HandleClient(client_fd);
       }
-
-      std::string buffer;
-      while (!stop_requested_.load()) {
-        pollfd client_pfd{.fd = client_fd, .events = POLLIN, .revents = 0};
-        if (poll(&client_pfd, 1, 100) <= 0) {
-          continue;
-        }
-        char chunk[2048];
-        const ssize_t bytes_read = recv(client_fd, chunk, sizeof(chunk), 0);
-        if (bytes_read <= 0) {
-          break;
-        }
-        buffer.append(chunk, static_cast<size_t>(bytes_read));
-        const auto head_end = buffer.find("\r\n\r\n");
-        if (head_end != std::string::npos) {
-          ++request_count_;
-          if (buffer.find("GET /404 ") != std::string::npos) {
-            const std::string response =
-                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
-          } else if (buffer.find("GET /204 ") != std::string::npos) {
-            const std::string response =
-                "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
-          } else if (buffer.find("GET /redirect ") != std::string::npos) {
-            const std::string response =
-                "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + std::to_string(port_) +
-                "/text\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
-          } else if (buffer.find("GET /slow ") != std::string::npos) {
-            const std::string header =
-                "HTTP/1.1 200 OK\r\nContent-Length: 20000\r\nConnection: close\r\n\r\n";
-            send(client_fd, header.data(), header.size(), MSG_NOSIGNAL);
-            const std::string chunk(50, 'Z');
-            for (int i = 0; i < 20 && !stop_requested_.load(); ++i) {
-              if (send(client_fd, chunk.data(), chunk.size(), MSG_NOSIGNAL) <= 0) {
-                break;
-              }
-              usleep(15000);
-            }
-          } else if (buffer.find("GET /large ") != std::string::npos) {
-            const std::string body(100, 'X');
-            const std::string response =
-                "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
-                "\r\nConnection: close\r\n\r\n" + body;
-            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
-          } else {
-            const std::string body = "Hello Downloader";
-            const std::string response =
-                "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
-                "\r\nConnection: close\r\n\r\n" + body;
-            send(client_fd, response.data(), response.size(), MSG_NOSIGNAL);
-          }
-          break;
-        }
-      }
-      close(client_fd);
     }
   }
 

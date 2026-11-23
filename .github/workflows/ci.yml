@@ -117,7 +117,15 @@ jobs:
           CLANG_TIDY=$(command -v clang-tidy-21 || command -v clang-tidy)
           echo "Using run-clang-tidy: $RUN_TIDY with binary $CLANG_TIDY"
 
-          if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" -p build -j $(nproc) '^(src|tests)/.*' > pr-report/tidy.log 2>&1; then
+          # Verify that matching compilation units exist in compile_commands.json
+          matched_units=$(jq '[.[] | select(.file | test(".*/(src|tests)/.*"))] | length' build/compile_commands.json)
+          echo "Found ${matched_units} compilation units matching .*/(src|tests)/.*"
+          if [ "${matched_units}" -eq 0 ]; then
+            echo "Error: 0 compilation units matched for Clang-Tidy analysis!" >> pr-report/tidy.log
+            tidy_failed=1
+          fi
+
+          if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" -p build -j $(nproc) '.*/(src|tests)/.*' > pr-report/tidy.log 2>&1; then
             tidy_failed=1
           fi
           if grep -q "warning:" pr-report/tidy.log || grep -q "error:" pr-report/tidy.log; then
@@ -136,23 +144,27 @@ jobs:
           {
             echo "### Clang-Tidy & Clang-Format Report"
             echo ""
-            format_status="0"
+            format_status="unknown"
             if [ -f pr-report/format_failed ]; then
               format_status="$(cat pr-report/format_failed)"
             fi
-            tidy_status="0"
+            tidy_status="unknown"
             if [ -f pr-report/tidy_failed ]; then
               tidy_status="$(cat pr-report/tidy_failed)"
             fi
 
             if [ "$format_status" = "0" ]; then
               echo "- **Clang-Format**: Passed cleanly"
+            elif [ "$format_status" = "unknown" ]; then
+              echo "- **Clang-Format**: Not run or failed during setup"
             else
               echo "- **Clang-Format**: Formatting violations detected"
             fi
 
             if [ "$tidy_status" = "0" ]; then
               echo "- **Clang-Tidy**: 0 warnings"
+            elif [ "$tidy_status" = "unknown" ]; then
+              echo "- **Clang-Tidy**: Not run or failed during setup"
             else
               echo "- **Clang-Tidy**: Violations detected"
               echo ""

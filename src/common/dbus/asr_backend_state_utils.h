@@ -1,12 +1,13 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "common/dbus/dbus_interface.h"
 
 namespace vinput::dbus {
 
-enum class RequestedAsrBackendStatus {
+enum class RequestedAsrBackendStatus : std::uint8_t {
   kUnknown,
   kConfigSaved,
   kReloadInProgress,

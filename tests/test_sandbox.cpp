@@ -11,9 +11,10 @@
 
 #include "common/utils/sandbox.h"
 
+namespace {
 namespace fs = std::filesystem;
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -136,9 +137,9 @@ void TestProbeMissingPermissions() {
     opts.cache_dir = "/nonexistent/path/cache/vinput";
     auto missing = ProbeMissingPermissions(opts);
     TEST_ASSERT(missing.size() == 3);
-    TEST_ASSERT(std::find(missing.begin(), missing.end(), "pipewire") != missing.end());
-    TEST_ASSERT(std::find(missing.begin(), missing.end(), "xdg-config/systemd") != missing.end());
-    TEST_ASSERT(std::find(missing.begin(), missing.end(), "xdg-cache") != missing.end());
+    TEST_ASSERT(std::ranges::find(missing, "pipewire") != missing.end());
+    TEST_ASSERT(std::ranges::find(missing, "xdg-config/systemd") != missing.end());
+    TEST_ASSERT(std::ranges::find(missing, "xdg-cache") != missing.end());
   }
 }
 
@@ -212,6 +213,7 @@ void TestGeneralSandboxApis() {
     TEST_ASSERT(rewritten == unit);
   }
 }
+} // namespace
 
 int main() {
   TestDetectSandbox();

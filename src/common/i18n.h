@@ -1,6 +1,6 @@
 #pragma once
 
-#include <libintl.h>
+#include <libintl.h> // IWYU pragma: export
 
 namespace vinput::i18n {
 void Init();

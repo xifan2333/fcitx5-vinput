@@ -8,8 +8,9 @@ namespace vinput::url {
 /// Path constants (e.g. vinput::llm::kOpenAiModelsPath) start with '/'.
 inline std::string JoinPath(std::string_view base_url, std::string_view path) {
   std::string url(base_url);
-  while (!url.empty() && url.back() == '/')
+  while (!url.empty() && url.back() == '/') {
     url.pop_back();
+  }
   url += path;
   return url;
 }
