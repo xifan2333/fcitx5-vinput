@@ -323,17 +323,27 @@ jobs:
           rpmbuild -bb "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
             --define "_topdir $HOME/rpmbuild"
 
+          mkdir -p dist/full
+          find "${HOME}/rpmbuild/RPMS" -name 'fcitx5-vinput-[0-9]*.rpm' -exec cp {} dist/full/ \;
+          rm -rf "${HOME}/rpmbuild/RPMS"/*
+
           # Build Lite RPM
           rpmbuild -bb --without local_asr "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
             --define "_topdir $HOME/rpmbuild"
 
-          mkdir -p dist
-          find "${HOME}/rpmbuild/RPMS" -name '*.rpm' -exec cp {} dist/ \;
+          mkdir -p dist/lite
+          find "${HOME}/rpmbuild/RPMS" -name 'fcitx5-vinput-lite-[0-9]*.rpm' -exec cp {} dist/lite/ \;
 
       - uses: actions/upload-artifact@v6
         with:
-          name: release-rpm-fedora43
-          path: dist/*.rpm
+          name: release-rpm-fedora43-full
+          path: dist/full/*.rpm
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-rpm-fedora43-lite
+          path: dist/lite/*.rpm
           if-no-files-found: error
 
   build-rpm-opensuse-leap:
@@ -378,17 +388,27 @@ jobs:
           rpmbuild -bb "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
             --define "_topdir $HOME/rpmbuild"
 
+          mkdir -p dist/full
+          find "${HOME}/rpmbuild/RPMS" -name 'fcitx5-vinput-[0-9]*.rpm' -exec cp {} dist/full/ \;
+          rm -rf "${HOME}/rpmbuild/RPMS"/*
+
           # Build Lite RPM
           rpmbuild -bb --without local_asr "${HOME}/rpmbuild/SPECS/fcitx5-vinput.spec" \
             --define "_topdir $HOME/rpmbuild"
 
-          mkdir -p dist
-          find "${HOME}/rpmbuild/RPMS" -name '*.rpm' -exec cp {} dist/ \;
+          mkdir -p dist/lite
+          find "${HOME}/rpmbuild/RPMS" -name 'fcitx5-vinput-lite-[0-9]*.rpm' -exec cp {} dist/lite/ \;
 
       - uses: actions/upload-artifact@v6
         with:
-          name: release-rpm-opensuse-leap15.6
-          path: dist/*.rpm
+          name: release-rpm-opensuse-leap15.6-full
+          path: dist/full/*.rpm
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-rpm-opensuse-leap15.6-lite
+          path: dist/lite/*.rpm
           if-no-files-found: error
 
   build-arch:
