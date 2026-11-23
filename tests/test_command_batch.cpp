@@ -99,7 +99,7 @@ void TestStderrPipedToNotificationBridge() {
   ExpectTrue(received[1].body == "Verbatim batch notice", "Plain text notification body mismatch");
 }
 
-void TestBatchNotificationsBounded() {
+void TestBatchStderrAllLinesDelivered() {
   std::vector<vinput::notify::Notification> received;
   vinput::notify::NotificationBridge bridge([&](const auto& n) { received.push_back(n); });
 
@@ -121,8 +121,9 @@ void TestBatchNotificationsBounded() {
   ExpectTrue(session != nullptr, "CreateSession failed");
 
   ExpectTrue(session->Finish(&error), "Finish failed: " + error);
-  ExpectTrue(received.size() == 10,
-             "Notifications must be capped at 10, got " + std::to_string(received.size()));
+  ExpectTrue(received.size() == 25,
+             "All 25 stderr lines must be delivered without artificial cap, got " +
+                 std::to_string(received.size()));
 }
 
 void TestCommandFailure() {
@@ -253,7 +254,7 @@ int main() {
   TestEmptyCommandRejected();
   TestNormalExecution();
   TestStderrPipedToNotificationBridge();
-  TestBatchNotificationsBounded();
+  TestBatchStderrAllLinesDelivered();
   TestCommandFailure();
   TestCommandTimeout();
   TestEmptyOutputIsError();

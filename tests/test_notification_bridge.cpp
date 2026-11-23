@@ -34,6 +34,7 @@ void TestPlainTextNotification() {
   ExpectTrue(delivered.size() == 1, "plain text delivered");
   ExpectTrue(delivered[0].body == "Hello from helper", "plain text body matches");
   ExpectTrue(!delivered[0].title.empty(), "plain text default title present");
+  ExpectTrue(!delivered[0].is_structured, "plain text must not be marked as structured");
 
   bridge.DeliverLine("provider2", "Another alert", "Custom Provider");
   ExpectTrue(delivered.size() == 2, "second alert delivered");
@@ -59,22 +60,26 @@ void TestJsonNotification() {
   ExpectTrue(delivered.size() == 1, "json delivered");
   ExpectTrue(delivered[0].title == "Bailian ASR", "json title matches");
   ExpectTrue(delivered[0].body == "Token expired", "json body matches");
+  ExpectTrue(delivered[0].is_structured, "valid JSON must be marked as structured");
 
   // Explicit empty body in JSON should be preserved
   bridge.DeliverLine("adapter2", R"({"title": "Bailian ASR", "body": ""})");
   ExpectTrue(delivered.size() == 2, "json with empty body delivered");
   ExpectTrue(delivered[1].title == "Bailian ASR", "json empty body title matches");
   ExpectTrue(delivered[1].body.empty(), "json empty body preserved");
+  ExpectTrue(delivered[1].is_structured, "empty body JSON must still be marked as structured");
 
   // JSON missing body field falls back to verbatim plain text
   bridge.DeliverLine("adapter3", R"({"title": "Incomplete"})");
   ExpectTrue(delivered.size() == 3, "incomplete json delivered as plain text");
   ExpectTrue(delivered[2].body == R"({"title": "Incomplete"})", "incomplete json verbatim body");
+  ExpectTrue(!delivered[2].is_structured, "incomplete json must not be marked as structured");
 
   // Broken JSON falls back to verbatim body
   bridge.DeliverLine("adapter4", R"({"title": broken json)");
   ExpectTrue(delivered.size() == 4, "broken json delivered as plain text");
   ExpectTrue(delivered[3].body == R"({"title": broken json)", "broken json verbatim body");
+  ExpectTrue(!delivered[3].is_structured, "broken json must not be marked as structured");
 }
 
 void TestChunkedStreamingAndFlush() {
@@ -221,6 +226,49 @@ void TestRememberedDefaultTitleOnFlush() {
   ExpectTrue(delivered[0].body == "partial ", "flushed body matches");
 }
 
+void TestStructuredFilteringForDesktopNotification() {
+  std::vector<Notification> desktop_popups;
+  NotificationBridge bridge([&](const Notification& n) {
+    if (n.is_structured) {
+      desktop_popups.push_back(n);
+    }
+  });
+
+  // Plain text stderr lines (traceback, prints, etc.) are logged but not forwarded to desktop
+  // popups
+  bridge.DeliverLine("doubao", "Traceback (most recent call last):");
+  bridge.DeliverLine("doubao", "  File 'run.py', line 12");
+  bridge.DeliverLine("doubao", "ConnectionResetError: [Errno 104] Connection reset by peer");
+  ExpectTrue(desktop_popups.empty(), "plain text stderr must not trigger desktop notifications");
+
+  // Structured JSON notification is explicitly targeted for user feedback
+  bridge.DeliverLine("doubao", R"({"title": "Doubao ASR", "body": "API quota exceeded"})");
+  ExpectTrue(desktop_popups.size() == 1, "structured JSON must trigger desktop notification");
+  ExpectTrue(desktop_popups[0].title == "Doubao ASR", "desktop popup title matches");
+  ExpectTrue(desktop_popups[0].body == "API quota exceeded", "desktop popup body matches");
+}
+
+void TestStructuredNotSuppressedByPlainTextDedup() {
+  std::vector<Notification> delivered;
+  NotificationBridge bridge([&](const Notification& n) { delivered.push_back(n); });
+
+  // 1. Plain text arrives first and enters dedup cache
+  bridge.DeliverLine("provider1", "API quota exceeded", "Doubao ASR");
+  ExpectTrue(delivered.size() == 1, "plain text delivered");
+  ExpectTrue(!delivered[0].is_structured, "plain text must not be structured");
+
+  // 2. Structured JSON arrives with identical title & body within the dedup window;
+  // it must NOT be suppressed by the prior plain text
+  bridge.DeliverLine("provider1", R"({"title": "Doubao ASR", "body": "API quota exceeded"})");
+  ExpectTrue(delivered.size() == 2,
+             "structured notification must not be suppressed by prior plain text");
+  ExpectTrue(delivered[1].is_structured, "second notification must be structured");
+
+  // 3. A subsequent duplicate structured JSON should still be deduplicated
+  bridge.DeliverLine("provider1", R"({"title": "Doubao ASR", "body": "API quota exceeded"})");
+  ExpectTrue(delivered.size() == 2, "duplicate structured notification must be deduplicated");
+}
+
 } // namespace
 
 int main() {
@@ -233,5 +281,7 @@ int main() {
   TestDedupCacheHardCapEviction();
   TestLookupTitle();
   TestRememberedDefaultTitleOnFlush();
+  TestStructuredFilteringForDesktopNotification();
+  TestStructuredNotSuppressedByPlainTextDedup();
   return 0;
 }

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "common/i18n.h"
+#include "common/utils/debug_log.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
 
@@ -43,9 +44,11 @@ namespace {
 constexpr std::size_t kMaxDedupCacheSize = 256;
 constexpr std::size_t kMaxSourceBufferSize = std::size_t{64} * 1024; // 64 KiB
 
-std::string MakeDedupKey(std::string_view title, std::string_view body) {
+std::string MakeDedupKey(bool is_structured, std::string_view title, std::string_view body) {
   std::string key;
-  key.reserve(title.size() + 1 + body.size());
+  key.reserve(2 + title.size() + 1 + body.size());
+  key.push_back(is_structured ? 'S' : 'U');
+  key.push_back(':');
   key.append(title);
   key.push_back('\0');
   key.append(body);
@@ -71,6 +74,7 @@ std::optional<Notification> TryParseJsonNotification(std::string_view trimmed,
   n.level = NotificationLevel::Warning;
   n.title = std::move(*wire.title);
   n.body = std::move(*wire.body);
+  n.is_structured = true;
   if (n.title.empty()) {
     n.title = default_title.empty() ? _("Voice Input") : std::string(default_title);
   }
@@ -130,11 +134,17 @@ struct NotificationBridge::Impl {
     }
   }
 
-  void ProcessLineLocked(std::string_view raw_line, std::string_view default_title,
-                         std::vector<Notification>& ready_to_send) {
+  void ProcessLineLocked(std::string_view source_id, std::string_view raw_line,
+                         std::string_view default_title, std::vector<Notification>& ready_to_send) {
     const std::string_view trimmed = vinput::str::Trim(raw_line);
     if (trimmed.empty()) {
       return;
+    }
+
+    if (!source_id.empty()) {
+      VLOG_WARN("[stderr:{}] {}", source_id, trimmed);
+    } else {
+      VLOG_WARN("[stderr] {}", trimmed);
     }
 
     Notification n;
@@ -145,10 +155,11 @@ struct NotificationBridge::Impl {
     } else {
       n.body = std::string(raw_line);
       n.title = default_title.empty() ? _("Voice Input") : std::string(default_title);
+      n.is_structured = false;
     }
 
     const auto now = Now();
-    const std::string dedup_key = MakeDedupKey(n.title, n.body);
+    const std::string dedup_key = MakeDedupKey(n.is_structured, n.title, n.body);
 
     auto it = dedup_cache_.find(dedup_key);
     if (it != dedup_cache_.end()) {
@@ -204,15 +215,15 @@ void NotificationBridge::FeedStderr(std::string_view source_id, std::span<const 
     for (const auto b : bytes) {
       source.buffer.push_back(static_cast<char>(b));
       if (source.buffer.size() >= kMaxSourceBufferSize) {
-        impl_->ProcessLineLocked(source.buffer, effective_title, to_send);
+        impl_->ProcessLineLocked(source_id, source.buffer, effective_title, to_send);
         source.buffer.clear();
       }
     }
 
     vinput::process::DrainLinesFromBuffer(
         source.buffer,
-        [this, effective_title, &to_send](std::string_view line) {
-          impl_->ProcessLineLocked(line, effective_title, to_send);
+        [this, source_id, effective_title, &to_send](std::string_view line) {
+          impl_->ProcessLineLocked(source_id, line, effective_title, to_send);
         },
         /*flush_tail=*/false);
   }
@@ -220,12 +231,12 @@ void NotificationBridge::FeedStderr(std::string_view source_id, std::span<const 
   impl_->Dispatch(to_send);
 }
 
-void NotificationBridge::DeliverLine(std::string_view /*source_id*/, std::string_view raw_line,
+void NotificationBridge::DeliverLine(std::string_view source_id, std::string_view raw_line,
                                      std::string_view default_title) {
   std::vector<Notification> to_send;
   {
     const std::scoped_lock lock(impl_->mutex_);
-    impl_->ProcessLineLocked(raw_line, default_title, to_send);
+    impl_->ProcessLineLocked(source_id, raw_line, default_title, to_send);
   }
   impl_->Dispatch(to_send);
 }
@@ -240,8 +251,8 @@ void NotificationBridge::Flush(std::string_view source_id, std::string_view defa
           default_title.empty() ? std::string_view(it->second.default_title) : default_title;
       vinput::process::DrainLinesFromBuffer(
           it->second.buffer,
-          [this, effective_title, &to_send](std::string_view line) {
-            impl_->ProcessLineLocked(line, effective_title, to_send);
+          [this, source_id, effective_title, &to_send](std::string_view line) {
+            impl_->ProcessLineLocked(source_id, line, effective_title, to_send);
           },
           /*flush_tail=*/true);
     }

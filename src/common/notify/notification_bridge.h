@@ -21,6 +21,7 @@ struct Notification {
   std::string title;
   std::string body;
   NotificationLevel level = NotificationLevel::Warning;
+  bool is_structured = false;
 };
 
 using NotificationSink = std::function<void(const Notification&)>;

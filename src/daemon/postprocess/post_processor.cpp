@@ -408,24 +408,16 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   return ParseOpenAiChatResponse(res, url, max_llm_candidates, error_out);
 }
 
-constexpr std::size_t kMaxBatchNotifications = 4;
-
 void DrainAdapterStderr(std::string& stderr_text, const LlmAdapter& adapter,
                         vinput::notify::NotificationBridge* notification_bridge) {
   if (stderr_text.empty() || notification_bridge == nullptr) {
     return;
   }
   const std::string adapter_title = vinput::registry::LoadCachedTitle(adapter.id);
-  std::size_t delivered = 0;
   vinput::process::DrainLinesFromBuffer(
       stderr_text,
-      [notification_bridge, &adapter, &adapter_title, &delivered](std::string_view line) -> bool {
-        if (delivered >= kMaxBatchNotifications) {
-          return false;
-        }
+      [notification_bridge, &adapter, &adapter_title](std::string_view line) {
         notification_bridge->DeliverLine(adapter.id, line, adapter_title);
-        ++delivered;
-        return true;
       },
       /*flush_tail=*/true);
 }

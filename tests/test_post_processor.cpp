@@ -9,6 +9,7 @@
 #include <mutex>
 #include <netinet/in.h>
 #include <string>
+#include <string_view>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <thread>
@@ -27,7 +28,7 @@
 
 namespace {
 
-void AssertTrue(bool condition, const char* message) {
+void AssertTrue(bool condition, std::string_view message) {
   if (!condition) {
     std::cerr << "Assertion failed: " << message << '\n';
     std::abort();
@@ -697,6 +698,41 @@ void TestCommandAdapterLocalizedTitleInStderrAndError() {
              "adapter failure error must not expose raw adapter id");
 }
 
+void TestCommandAdapterMultiLineStderrNotTruncatedAtFourLines() {
+  CoreConfig config;
+  LlmAdapter adapter;
+  adapter.id = "traceback_adapter";
+  adapter.command = "sh";
+  adapter.args = {"-c", "echo 'Traceback (most recent call last):' >&2\n"
+                        "echo '  File \"adapter.py\", line 12, in <module>' >&2\n"
+                        "echo '    run()' >&2\n"
+                        "echo '  File \"adapter.py\", line 45, in run' >&2\n"
+                        "echo 'RuntimeError: Connection timed out after 5000ms' >&2\n"
+                        "exit 1"};
+  config.llm.adapters.push_back(adapter);
+
+  vinput::scene::Definition scene;
+  scene.id = "traceback_scene";
+  scene.provider_id = "traceback_adapter";
+  scene.raw_cand = true;
+  scene.llm_max_candidates = 1;
+  scene.timeout_ms = 5000;
+
+  std::vector<vinput::notify::Notification> delivered;
+  vinput::notify::NotificationBridge bridge(
+      [&delivered](const vinput::notify::Notification& n) { delivered.push_back(n); });
+
+  const PostProcessor processor(&bridge);
+  std::string error_out;
+  (void)processor.Process("input", scene, config, &error_out, nullptr);
+
+  AssertTrue(delivered.size() == 5,
+             "All 5 lines of stderr traceback including exception must be delivered, got " +
+                 std::to_string(delivered.size()));
+  AssertTrue(delivered.back().body == "RuntimeError: Connection timed out after 5000ms",
+             "Final exception line must be delivered to bridge");
+}
+
 } // namespace
 
 int main() {
@@ -719,6 +755,7 @@ int main() {
   TestProcessCommandAdapterStderrNotification();
   TestProcessCommandAdapterFailureFallback();
   TestCommandAdapterLocalizedTitleInStderrAndError();
+  TestCommandAdapterMultiLineStderrNotTruncatedAtFourLines();
   std::cout << "All PostProcessor unit tests passed!\n";
   return 0;
 }

@@ -1,6 +1,5 @@
 #include "daemon/asr/backends/command_batch_backend.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -23,8 +22,6 @@
 namespace vinput::daemon::asr {
 
 namespace {
-
-constexpr std::size_t kMaxBatchNotifications = 10;
 
 vinput::process::CommandSpec BuildCommandSpec(const CommandAsrProvider& provider) {
   vinput::process::CommandSpec spec;
@@ -144,16 +141,10 @@ private:
       return;
     }
     const std::string provider_title = vinput::registry::LoadCachedTitle(provider_id_);
-    std::size_t delivered = 0;
     vinput::process::DrainLinesFromBuffer(
         stderr_text,
-        [this, &provider_title, &delivered](std::string_view line) -> bool {
-          if (delivered >= kMaxBatchNotifications) {
-            return false;
-          }
+        [this, &provider_title](std::string_view line) {
           notification_bridge_->DeliverLine(provider_id_, line, provider_title);
-          ++delivered;
-          return true;
         },
         /*flush_tail=*/true);
   }

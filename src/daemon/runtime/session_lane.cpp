@@ -659,11 +659,6 @@ void SessionLane::WarnClippedHeadIfNeeded() {
   if (deps_.warn_on_clipped_head && !attempt_.clipped_head_warned) {
     attempt_.clipped_head_warned = true;
     VLOG_WARN("first audio buffer already contains speech-level energy; head may be clipped");
-    if (attempt_.ime && deps_.event_sink != nullptr) {
-      deps_.event_sink->OnNotification(vinput::daemon::notify::MakeDaemonWarningNotification(
-          _("Speech detected before microphone was ready; the beginning of your sentence may be "
-            "clipped.")));
-    }
   }
 }
 
@@ -870,11 +865,6 @@ void SessionLane::FinishCaptureAndSubmitOrDiscard() {
   if (total_samples < vinput::daemon::asr::kMinSamplesForRecognition) {
     VLOG_INFO("recording too short, skipping inference: {} samples ({:.1f} ms)", total_samples,
               static_cast<double>(total_samples) * 1000.0 / 16000.0);
-    if (attempt_.ime && deps_.event_sink != nullptr) {
-      deps_.event_sink->OnNotification(vinput::daemon::notify::MakeDaemonInfoNotification(
-          total_samples == 0 ? _("No audio was captured.")
-                             : _("Recording was too short and was discarded.")));
-    }
     // Stream clients only see the status line; report the drop explicitly so they can
     // distinguish it from an empty recognition result.
     if (!attempt_.ime && deps_.event_sink != nullptr) {
