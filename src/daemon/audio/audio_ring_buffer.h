@@ -55,7 +55,7 @@ public:
 
   // Drains available samples by invoking consumer callback with contiguous spans.
   // Updates read pointer atomically only after callback completes.
-  template <typename Callback> std::size_t DrainAvailable(Callback callback) {
+  template <typename Callback> std::size_t DrainAvailable(const Callback& callback) {
     const uint64_t current_read = read_pos_.load(std::memory_order_relaxed);
     const uint64_t current_write = write_pos_.load(std::memory_order_acquire);
     const auto available = static_cast<std::size_t>(current_write - current_read);

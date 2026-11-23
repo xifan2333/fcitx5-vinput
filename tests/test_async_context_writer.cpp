@@ -31,7 +31,7 @@ std::vector<std::string> ReadLines(const std::filesystem::path& file) {
 void TestOrderedPersistenceAndRotation(const std::filesystem::path& path) {
   vinput::addon::AsyncContextWriter writer(path);
   for (int i = 0; i < 105; ++i) {
-    const auto text = std::string(R"({"source":"user","text":")") + std::to_string(i) + R"("})");
+    const auto text = std::string(R"({"source":"user","text":")") + std::to_string(i) + R"("}")";
     Check(writer.Enqueue(text, 10), "normal queue must accept each row");
   }
   Check(writer.WaitUntilIdle(std::chrono::seconds(5)), "worker drained queued writes");
