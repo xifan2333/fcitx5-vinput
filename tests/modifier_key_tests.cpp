@@ -554,6 +554,33 @@ void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputCon
   // Cleanup active session
   engine.finishFrontendSessionForTest(&ic);
   expect(!engine.isRecordingActive(), "Session finished after cleanup");
+
+  // 6. Regression: A blur -> delayed partial while no focus -> B focus -> final routes to B
+  TestInputContext icA(instance);
+  TestInputContext icB(instance);
+  engine.onInputContextFocusIn(&icA);
+  engine.handleRecognitionPartial("partial A");
+  expect(icA.inputPanel().preedit().toString() == "partial A", "icA displays partial");
+
+  // A blurs -> no focused context currently
+  engine.onInputContextFocusOut(&icA);
+  expect(icA.inputPanel().preedit().toString().empty(), "icA preedit cleared on blur");
+
+  // Delayed partial arrives while no context is focused: must be dropped without retargeting A
+  engine.handleRecognitionPartial("stale partial for A");
+  expect(icA.inputPanel().preedit().toString().empty(), "Stale partial must not retarget icA");
+  expect(icB.inputPanel().preedit().toString().empty(), "icB preedit must remain empty");
+
+  // B gains focus
+  engine.onInputContextFocusIn(&icB);
+
+  // Final arrives from mobile
+  const std::string final_for_b = R"({"text": "committed to B", "candidates": []})";
+  engine.handleRecognitionResultPayload(final_for_b);
+  expect(icB.last_committed == "committed to B", "Final must commit to focused icB");
+  expect(icA.last_committed.empty(), "Blurred icA must not receive commit");
+
+  engine.onInputContextFocusOut(&icB);
 }
 
 void runAllTests() {

@@ -218,6 +218,7 @@ private:
   };
   std::optional<Session> session_;
   fcitx::InputContext* status_ic_ = nullptr;
+  fcitx::InputContext* current_focused_ic_ = nullptr;
   fcitx::InputContext* last_active_ic_ = nullptr;
   fcitx::InputContext* palette_menu_ic_ = nullptr;
   fcitx::InputContext* result_menu_ic_ = nullptr;

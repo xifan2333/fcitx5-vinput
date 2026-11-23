@@ -853,7 +853,7 @@ void VinputEngine::handleRecognitionResultPayload(const std::string& payload_tex
   const auto payload = vinput::result::Parse(payload_text);
   if (!recording_active) {
     finishFrontendSession(ic);
-  } else if (status_ic_ == ic && status_ic_ != session_->ic) {
+  } else if (status_ic_ == ic && (!session_.has_value() || status_ic_ != session_->ic)) {
     clearVoicePresentation(status_ic_);
     status_ic_ = nullptr;
   }
@@ -921,15 +921,6 @@ void VinputEngine::handleRecognitionPartial(const std::string& transcript_text) 
   rememberInputContext(ic);
   if (!session_.has_value()) {
     handleInjectedRecognitionPartial(ic, transcript_text);
-    return;
-  }
-
-  if (transcript_text.empty()) {
-    session_->transcript_text.clear();
-    updateVoicePresentation(ic, ComposeLivePreedit("",
-                                                   session_->command_mode ? CommandingPreeditText()
-                                                                          : RecordingPreeditText(),
-                                                   max_streaming_display_width_));
     return;
   }
 
