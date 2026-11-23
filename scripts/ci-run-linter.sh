@@ -143,10 +143,17 @@ collect_targets() {
   fi
 
   local changed_files_raw=""
-  if ! changed_files_raw="$(git diff --name-only "${base}...HEAD" 2>/dev/null)"; then
-    if ! changed_files_raw="$(git diff --name-only "${base}" 2>/dev/null)"; then
-      log_error "git diff against base '${base}' failed!"
+  if [ "${GITHUB_EVENT_NAME:-}" = "push" ] || [ -n "${GITHUB_EVENT_BEFORE:-}" ]; then
+    if ! changed_files_raw="$(git diff --name-only "${base}" HEAD 2>/dev/null)"; then
+      log_error "git diff against push base '${base}' failed!"
       return 1
+    fi
+  else
+    if ! changed_files_raw="$(git diff --name-only "${base}...HEAD" 2>/dev/null)"; then
+      if ! changed_files_raw="$(git diff --name-only "${base}" 2>/dev/null)"; then
+        log_error "git diff against base '${base}' failed!"
+        return 1
+      fi
     fi
   fi
 
@@ -271,7 +278,12 @@ run_tidy() {
   log_info "Target regex for Clang-Tidy: ${target_regex}"
 
   local matched_count
-  matched_count=$(jq --arg r "$target_regex" '[.[] | select(.file | test($r))] | length' "$compile_db" 2>/dev/null || echo 0)
+  if ! matched_count=$(jq --arg r "$target_regex" '[.[] | select(.file | test($r))] | length' "$compile_db" 2>&1); then
+    log_error "Failed to query compile_commands.json: ${matched_count}"
+    echo "Error: Failed to query compile_commands.json: ${matched_count}" >"${REPORT_DIR}/tidy.log"
+    echo "1" >"${REPORT_DIR}/tidy_failed"
+    return 1
+  fi
   log_info "Matched ${matched_count} compilation unit(s) in compile_commands.json"
 
   if [ "$matched_count" -eq 0 ]; then
