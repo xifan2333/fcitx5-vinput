@@ -160,8 +160,11 @@ int main(int argc, char* argv[]) {
   ParseCommandLineLogLevel(argc, argv);
 
   DbusService dbus;
-  vinput::notify::NotificationBridge notification_bridge(
-      [&dbus](const auto& n) { dbus.EmitDesktopNotification(n); });
+  vinput::notify::NotificationBridge notification_bridge([&dbus](const auto& n) {
+    if (n.is_structured) {
+      dbus.EmitDesktopNotification(n);
+    }
+  });
 
   auto startup_settings = LoadCoreConfig();
   NormalizeCoreConfig(&startup_settings);
