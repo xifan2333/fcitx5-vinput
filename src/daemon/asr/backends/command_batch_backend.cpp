@@ -1,6 +1,5 @@
 #include "daemon/asr/backends/command_batch_backend.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>

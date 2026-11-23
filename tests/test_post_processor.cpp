@@ -9,6 +9,7 @@
 #include <mutex>
 #include <netinet/in.h>
 #include <string>
+#include <string_view>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <thread>
