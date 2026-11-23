@@ -23,6 +23,7 @@
 #include <thread>
 #include <unistd.h>
 
+#include "common/asr/recognition_result.h"
 #include "common/config/vinput_config.h"
 #include "common/utils/path_utils.h"
 
