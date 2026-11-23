@@ -382,17 +382,11 @@ void TestReadinessTimeoutFallback() {
   TEST_ASSERT(sink.HasStatus(vinput::dbus::Status::Recording));
 
   // Even when the first chunk arrives after timeout transitioned to Recording,
-  // speech-level energy on that first chunk must still trigger the clipped-head warning.
+  // speech-level energy on that first chunk should be logged without noisy notification.
   const std::vector<int16_t> first_speech(160, 2000);
   source.PushSamples(first_speech);
   lane.ProcessPendingEvents();
-  bool saw_warning = false;
-  for (const auto& n : sink.Notifications()) {
-    if (n.level == vinput::notify::NotificationLevel::Warning) {
-      saw_warning = true;
-    }
-  }
-  TEST_ASSERT(saw_warning);
+  TEST_ASSERT(sink.Notifications().empty());
 
   TEST_ASSERT(lane.Cancel(true, false).ok);
   TEST_ASSERT(!source.IsRecording());
@@ -433,18 +427,7 @@ void TestClippedHeadWarningAndShortDiscardFeedback() {
   PumpUntilIdle(lane);
 
   const auto notes = sink.Notifications();
-  bool saw_warning = false;
-  bool saw_short_info = false;
-  for (const auto& n : notes) {
-    if (n.level == vinput::notify::NotificationLevel::Warning) {
-      saw_warning = true;
-    }
-    if (n.level == vinput::notify::NotificationLevel::Information) {
-      saw_short_info = true;
-    }
-  }
-  TEST_ASSERT(saw_warning);
-  TEST_ASSERT(saw_short_info);
+  TEST_ASSERT(notes.empty());
   TEST_ASSERT(session_state->cancelled);
 }
 
