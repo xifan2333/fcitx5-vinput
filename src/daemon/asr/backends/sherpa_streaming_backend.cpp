@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
@@ -16,6 +17,7 @@
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config_types.h"
+#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/string_utils.h"
@@ -81,15 +83,15 @@ public:
   bool PushAudio(std::span<const float> samples, std::string* error) override {
     if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
-                                            : "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? _("Recognition session was cancelled.")
+                                            : _("Recognition session already finished.");
       }
       return false;
     }
 
     if (!stream_.Valid() || recognizer_ == nullptr || !recognizer_->Valid()) {
       if (error != nullptr) {
-        *error = "Streaming recognizer is not initialized.";
+        *error = _("Streaming recognizer is not initialized.");
       }
       return false;
     }
@@ -123,7 +125,7 @@ public:
   bool Finish(std::string* error) override {
     if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        *error = "Recognition session was cancelled.";
+        *error = _("Recognition session was cancelled.");
       }
       return false;
     }
@@ -136,7 +138,7 @@ public:
 
     if (!stream_.Valid() || recognizer_ == nullptr || !recognizer_->Valid()) {
       if (error != nullptr) {
-        *error = "Streaming recognizer is not initialized.";
+        *error = _("Streaming recognizer is not initialized.");
       }
       return false;
     }
@@ -359,8 +361,9 @@ bool ResolveHotwordsBuffer(const ModelInfo& info, const AsrConfig& asr_config,
       info.supports_hotwords && !asr_config.hotwords_file.empty();
   if (provider_hotwords_configured && !IsTransducerHotwordFamily(info.family)) {
     if (error != nullptr) {
-      *error = "model family '" + info.family +
-               "' does not expose streaming ASR hotwords in sherpa-onnx";
+      *error =
+          fmt::sprintf(_("model family '%s' does not expose streaming ASR hotwords in sherpa-onnx"),
+                       info.family);
     }
     return false;
   }
@@ -440,7 +443,7 @@ bool ConfigureModelFamily(const ModelInfo& info, const StreamingRecognizerConfig
     return true;
   }
   if (error != nullptr) {
-    *error = "Unsupported sherpa-streaming model family '" + info.family + "'";
+    *error = fmt::sprintf(_("Unsupported sherpa-streaming model family '%s'"), info.family);
   }
   return false;
 }
@@ -479,7 +482,7 @@ public:
     auto stream = recognizer_->CreateStream();
     if (!stream.Valid()) {
       if (error != nullptr) {
-        *error = "failed to create sherpa-streaming stream";
+        *error = _("failed to create sherpa-streaming stream");
       }
       return nullptr;
     }
@@ -524,8 +527,9 @@ private:
 
     auto recognizer = sherpa::OnlineRecognizer::Create(config);
     if (!recognizer.has_value()) {
-      SetError(error, "failed to create sherpa-streaming recognizer for family '" +
-                          model_info_.family + "'");
+      SetError(error,
+               fmt::sprintf(_("failed to create sherpa-streaming recognizer for family '%s'"),
+                            model_info_.family));
       return false;
     }
 

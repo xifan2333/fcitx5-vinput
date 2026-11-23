@@ -4,12 +4,14 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fmt/printf.h>
 #include <mutex>
 #include <sherpa-onnx/c-api/c-api.h>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "common/i18n.h"
 #include "common/utils/debug_log.h"
 
 #include "daemon/asr/sherpa_capi.h"
@@ -139,7 +141,7 @@ bool VadTrimmer::Init(const std::string& model_path, int sample_rate, const std:
   auto vad = vinput::daemon::asr::sherpa::VoiceActivityDetector::Create(config, 30.0F);
   if (!vad.has_value()) {
     if (error != nullptr) {
-      *error = "failed to create VAD from '" + model_path + "'";
+      *error = fmt::sprintf(_("failed to create VAD from '%s'"), model_path);
     }
     return false;
   }

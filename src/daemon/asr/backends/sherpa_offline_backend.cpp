@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <memory>
 #include <mutex>
@@ -18,6 +19,7 @@
 
 #include "common/asr/model_manager.h"
 #include "common/config/core_config_types.h"
+#include "common/i18n.h"
 #include "common/json/json_access.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/file_utils.h"
@@ -39,7 +41,7 @@ bool WriteTemporaryHotwordFile(std::string_view content, std::string* path, std:
   const auto temp_dir = std::filesystem::temp_directory_path(temp_error);
   if (temp_error) {
     if (error != nullptr) {
-      *error = "failed to locate temporary directory: " + temp_error.message();
+      *error = fmt::sprintf(_("failed to locate temporary directory: %s"), temp_error.message());
     }
     return false;
   }
@@ -210,8 +212,8 @@ bool ConfigureHotwordSettings(const ModelInfo& info, const AsrConfig& asr_config
     }
   } else if (provider_hotwords_configured && !IsTransducerHotwordFamily(info.family)) {
     if (error != nullptr) {
-      *error =
-          "model family '" + info.family + "' does not expose an ASR hotword input in sherpa-onnx";
+      *error = fmt::sprintf(
+          _("model family '%s' does not expose an ASR hotword input in sherpa-onnx"), info.family);
     }
     return false;
   }
@@ -428,7 +430,7 @@ bool ConfigureModelFamily(const ModelInfo& info, const AsrConfig& asr_config,
 
   if (!configured) {
     if (error != nullptr) {
-      *error = "unsupported model family '" + family + "'";
+      *error = fmt::sprintf(_("unsupported model family '%s'"), family);
     }
     return false;
   }
@@ -462,7 +464,8 @@ CreateRecognizerInstance(const ModelInfo& info, const AsrConfig& asr_config,
 
   if (!recognizer.has_value() || !recognizer->Valid()) {
     if (error != nullptr) {
-      *error = "failed to create sherpa-onnx recognizer for family '" + info.family + "'";
+      *error =
+          fmt::sprintf(_("failed to create sherpa-onnx recognizer for family '%s'"), info.family);
     }
     return std::nullopt;
   }
@@ -585,8 +588,8 @@ public:
   bool PushAudio(std::span<const float> samples, std::string* error) override {
     if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
-                                            : "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? _("Recognition session was cancelled.")
+                                            : _("Recognition session already finished.");
       }
       return false;
     }
@@ -600,8 +603,8 @@ public:
   bool PushAudio(std::span<const int16_t> pcm, std::string* error) override {
     if (phase_ != Phase::Active) {
       if (error != nullptr) {
-        *error = phase_ == Phase::Cancelled ? "Recognition session was cancelled."
-                                            : "Recognition session already finished.";
+        *error = phase_ == Phase::Cancelled ? _("Recognition session was cancelled.")
+                                            : _("Recognition session already finished.");
       }
       return false;
     }
@@ -618,7 +621,7 @@ public:
   bool Finish(std::string* error) override {
     if (phase_ == Phase::Cancelled) {
       if (error != nullptr) {
-        *error = "Recognition session was cancelled.";
+        *error = _("Recognition session was cancelled.");
       }
       return false;
     }

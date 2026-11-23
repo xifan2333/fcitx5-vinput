@@ -4,6 +4,7 @@
 #include <string>
 
 #include "common/config/core_config_types.h"
+#include "common/i18n.h"
 
 #include "daemon/asr/runtime/recognition_contract.h"
 
@@ -22,7 +23,7 @@ MakeCommandBackend(const CommandAsrProvider& provider, std::string* error,
                    vinput::notify::NotificationBridge* notification_bridge) {
   if (provider.command.empty()) {
     if (error != nullptr) {
-      *error = "Command ASR provider has empty command.";
+      *error = _("Command ASR provider has empty command.");
     }
     return nullptr;
   }

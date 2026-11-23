@@ -2112,3 +2112,44 @@ msgstr "流 poll 失败：%s"
 #: src/daemon/audio/fd_stream_audio_source.cpp:164
 msgid "stream read failed: %s"
 msgstr "流读取失败：%s"
+
+#: src/daemon/asr/vad_trimmer.cpp:142
+msgid "failed to create VAD from '%s'"
+msgstr "从 '%s' 创建 VAD 失败"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:42
+msgid "failed to locate temporary directory: %s"
+msgstr "定位临时目录失败：%s"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:213
+msgid "model family '%s' does not expose an ASR hotword input in sherpa-onnx"
+msgstr "模型家族 '%s' 在 sherpa-onnx 中未提供 ASR 热词输入"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:431
+msgid "unsupported model family '%s'"
+msgstr "不支持的模型家族 '%s'"
+
+#: src/daemon/asr/backends/sherpa_offline_backend.cpp:465
+msgid "failed to create sherpa-onnx recognizer for family '%s'"
+msgstr "为家族 '%s' 创建 sherpa-onnx 识别器失败"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:92
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:139
+msgid "Streaming recognizer is not initialized."
+msgstr "流式识别器未初始化。"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:362
+msgid "model family '%s' does not expose streaming ASR hotwords in sherpa-onnx"
+msgstr "模型家族 '%s' 在 sherpa-onnx 中未提供流式 ASR 热词"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:443
+msgid "Unsupported sherpa-streaming model family '%s'"
+msgstr "不支持的 sherpa-streaming 模型家族 '%s'"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:482
+msgid "failed to create sherpa-streaming stream"
+msgstr "创建 sherpa-streaming 流失败"
+
+#: src/daemon/asr/backends/sherpa_streaming_backend.cpp:527
+msgid "failed to create sherpa-streaming recognizer for family '%s'"
+msgstr "为家族 '%s' 创建 sherpa-streaming 识别器失败"
