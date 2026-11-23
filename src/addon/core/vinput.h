@@ -174,6 +174,7 @@ private:
   void connectDBus();
   void onInputContextCreated(fcitx::InputContext* ic);
   void onInputContextDestroyed(fcitx::InputContext* ic);
+  void onInputContextFocusIn(fcitx::InputContext* ic);
   void onInputContextFocusOut(fcitx::InputContext* ic);
 
   fcitx::Instance* instance_;

@@ -212,6 +212,10 @@ void VinputEngine::onInputContextDestroyed(fcitx::InputContext* ic) {
   }
 }
 
+void VinputEngine::onInputContextFocusIn(fcitx::InputContext* ic) {
+  rememberInputContext(ic);
+}
+
 void VinputEngine::onInputContextFocusOut(fcitx::InputContext* ic) {
   if (pending_start_ic_.get() == ic) {
     cancelPendingStart();
@@ -251,6 +255,14 @@ void VinputEngine::registerEventHandlers() {
                             fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
                               auto& icEvent = dynamic_cast<fcitx::InputContextEvent&>(event);
                               onInputContextDestroyed(icEvent.inputContext());
+                            }));
+
+  eventHandlers_.emplace_back(
+      instance_->watchEvent(fcitx::EventType::InputContextFocusIn,
+                            fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event& event) {
+                              if (auto* icEvent = dynamic_cast<fcitx::InputContextEvent*>(&event)) {
+                                onInputContextFocusIn(icEvent->inputContext());
+                              }
                             }));
 
   eventHandlers_.emplace_back(
@@ -380,7 +392,13 @@ VinputEngine::resolveFrontendInputContext(fcitx::InputContext* fallback_ic) cons
   if (fallback_ic != nullptr) {
     return fallback_ic;
   }
-  return last_active_ic_;
+  if (last_active_ic_ != nullptr) {
+    return last_active_ic_;
+  }
+  if (instance_ != nullptr) {
+    return instance_->lastFocusedInputContext();
+  }
+  return nullptr;
 }
 
 void VinputEngine::appendContextEntry(const std::string& text, const char* source) {
