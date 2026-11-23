@@ -54,7 +54,7 @@ enum class ModelState : std::uint8_t { Installed, Active, Broken };
 
 struct ModelSummary {
   std::string id;
-  ModelState state;
+  ModelState state = ModelState::Installed;
   std::string model_type;
   std::string language;
   bool supports_hotwords = false;

@@ -441,7 +441,7 @@ std::size_t AudioCapture::DrainAvailable(SampleConsumer consumer) {
     }
   }
   const std::scoped_lock lock(consumer_mutex_);
-  return ring_buffer_.DrainAvailable(std::move(consumer));
+  return ring_buffer_.DrainAvailable(consumer);
 }
 
 void AudioCapture::EndRecording() {

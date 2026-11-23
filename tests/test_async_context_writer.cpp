@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "core/context_writer.h"
@@ -30,7 +31,7 @@ std::vector<std::string> ReadLines(const std::filesystem::path& file) {
 void TestOrderedPersistenceAndRotation(const std::filesystem::path& path) {
   vinput::addon::AsyncContextWriter writer(path);
   for (int i = 0; i < 105; ++i) {
-    const auto text = "{\"source\":\"user\",\"text\":\"" + std::to_string(i) + "\"}";
+    const auto text = std::string(R"({"source":"user","text":")") + std::to_string(i) + R"("}")";
     Check(writer.Enqueue(text, 10), "normal queue must accept each row");
   }
   Check(writer.WaitUntilIdle(std::chrono::seconds(5)), "worker drained queued writes");
@@ -45,10 +46,10 @@ void TestOrderedPersistenceAndRotation(const std::filesystem::path& path) {
 void TestShutdownDrainsAndBoundedQueue(const std::filesystem::path& path) {
   {
     vinput::addon::AsyncContextWriter writer(path);
-    const std::string too_large(5 * 1024 * 1024, 'x');
+    const std::string too_large(5ULL * 1024ULL * 1024ULL, 'x');
     Check(!writer.Enqueue(too_large, 30), "oversized entry rejected without blocking");
     Check(writer.DroppedEntries() == 1, "overflow explicitly counted");
-    Check(writer.Enqueue("{\"source\":\"asr\",\"text\":\"last\"}", 30),
+    Check(writer.Enqueue(R"({"source":"asr","text":"last"})", 30),
           "normal entry still accepted after overflow");
   }
   const auto lines = ReadLines(path);

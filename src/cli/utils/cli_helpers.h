@@ -1,5 +1,6 @@
 #pragma once
 #include "common/config/core_config.h"
+#include "common/config/core_config_types.h"
 #include "common/i18n.h"
 #include "common/scene/postprocess_scene.h"
 
@@ -26,9 +27,10 @@ inline void FromSceneConfig(CoreConfig::Scenes& s, const vinput::scene::Config& 
 }
 
 inline std::string ResolveSceneId(const std::string& explicit_id) {
-  if (!explicit_id.empty())
+  if (!explicit_id.empty()) {
     return explicit_id;
-  CoreConfig config = LoadCoreConfig();
-  auto sc = ToSceneConfig(config.scenes);
+  }
+  const CoreConfig config = LoadCoreConfig();
+  const auto sc = ToSceneConfig(config.scenes);
   return vinput::scene::Resolve(sc, sc.activeSceneId).id;
 }

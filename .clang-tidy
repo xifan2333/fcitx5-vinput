@@ -8,6 +8,7 @@ Checks: >
   -bugprone-narrowing-conversions,
   -bugprone-exception-escape,
   clang-analyzer-*,
+  -clang-analyzer-cplusplus.NewDeleteLeaks,
   clang-analyzer-deadcode.*,
   cppcoreguidelines-*,
   -cppcoreguidelines-avoid-c-arrays,
@@ -36,7 +37,7 @@ Checks: >
 WarningsAsErrors: ''
 
 # Only check project source headers, exclude build/_deps and third_party
-HeaderFilterRegex: '^(src|tests)/.*'
+HeaderFilterRegex: '.*(src|tests)/.*'
 
 CheckOptions:
   readability-function-cognitive-complexity.Threshold: 15

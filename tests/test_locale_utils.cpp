@@ -5,7 +5,8 @@
 
 #include "common/utils/locale_utils.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -94,6 +95,7 @@ void TestExtractLanguageCode() {
   TEST_ASSERT(lang.data() == input.data());
   TEST_ASSERT(lang.size() == 2);
 }
+} // namespace
 
 int main() {
   TestNormalizeLocale();

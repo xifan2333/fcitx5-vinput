@@ -38,7 +38,7 @@ private:
   void Run();
   void Persist(const ContextWriteTask& task);
 
-  static constexpr std::size_t kMaxPendingBytes = 4U * 1024U * 1024U;
+  static constexpr std::size_t kMaxPendingBytes = 4ULL * 1024ULL * 1024ULL;
   static constexpr std::size_t kMaxPendingEntries = 1024;
 
   const std::filesystem::path path_;

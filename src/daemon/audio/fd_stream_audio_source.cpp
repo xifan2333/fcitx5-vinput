@@ -368,7 +368,7 @@ std::size_t FdStreamAudioSource::DrainAvailable(SampleConsumer consumer) {
   std::size_t drained = 0;
   {
     const std::scoped_lock lock(consumer_mutex_);
-    drained = ring_buffer_.DrainAvailable(std::move(consumer));
+    drained = ring_buffer_.DrainAvailable(consumer);
   }
   if (drained > 0) {
     {

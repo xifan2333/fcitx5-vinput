@@ -2,11 +2,10 @@
 
 #include <cstdint>
 #include <optional>
+#include <spa/utils/dict.h>
 #include <string>
 #include <string_view>
 #include <vector>
-
-struct spa_dict;
 
 namespace vinput::pw {
 

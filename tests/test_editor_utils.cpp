@@ -5,7 +5,8 @@
 
 #include "cli/utils/editor_utils.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::cerr << "Assertion failed: " << message << " at " << file << ":" << line << "\n";
     std::abort();
@@ -27,6 +28,7 @@ void TestEditorCommandSplitting() {
   args = SplitEditorCommand("vi");
   TEST_ASSERT(args.size() == 1 && args[0] == "vi");
 }
+} // namespace
 
 int main() {
   std::cout << "Running test_editor_utils...\n";

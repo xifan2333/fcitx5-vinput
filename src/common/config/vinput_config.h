@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <fcitx-config/configuration.h>
 #include <fcitx-config/enum.h>
 #include <fcitx-config/option.h>
@@ -8,14 +9,18 @@
 
 inline constexpr const char* kVinputConfigPath = "conf/vinput.conf";
 
-FCITX_CONFIG_ENUM(TriggerMode, Tap, Hold, Both)
+enum class TriggerMode : std::uint8_t { Tap, Hold, Both };
+FCITX_CONFIG_ENUM_NAME(TriggerMode, "Tap", "Hold", "Both")
 FCITX_CONFIG_ENUM_I18N_ANNOTATION(TriggerMode, N_("Tap"), N_("Hold"), N_("Both"))
 
 class VinputConfig : public fcitx::Configuration {
 public:
   VinputConfig();
+  ~VinputConfig() override = default;
   VinputConfig(const VinputConfig&) = delete;
   VinputConfig& operator=(const VinputConfig&) = delete;
+  VinputConfig(VinputConfig&&) = delete;
+  VinputConfig& operator=(VinputConfig&&) = delete;
 
   const char* typeName() const override { return "VinputConfig"; }
 

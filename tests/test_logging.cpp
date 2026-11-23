@@ -5,7 +5,8 @@
 
 #include "common/utils/debug_log.h"
 
-inline void AssertTrue(bool condition, const char* message, const char* file, int line) {
+namespace {
+void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
     std::abort();
@@ -77,6 +78,7 @@ void TestLogPattern() {
   // Restore default pattern
   SetLogPattern(std::string(kDefaultLogPattern));
 }
+} // namespace
 
 int main() {
   TestParseLogLevel();
