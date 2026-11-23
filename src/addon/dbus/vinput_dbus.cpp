@@ -900,8 +900,8 @@ void VinputEngine::handleInjectedRecognitionPartial(fcitx::InputContext* ic,
   if (transcript_text.empty()) {
     if (status_ic_ == ic) {
       status_ic_ = nullptr;
+      clearVoicePresentation(ic);
     }
-    clearVoicePresentation(ic);
     return;
   }
   if (status_ic_ != nullptr && status_ic_ != ic) {

@@ -543,7 +543,8 @@ void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputCon
   expect(engine.isRecordingActive(), "Recording state should be active");
 
   // Simulate an injected final recognition result while recording is active
-  const std::string final_payload = R"({"text": "concurrent commit", "candidates": []})";
+  const std::string final_payload =
+      vinput::result::Serialize(vinput::result::Payload{.commitText = "concurrent commit"});
   engine.handleRecognitionResultPayload(final_payload);
 
   expect(ic.last_committed == "concurrent commit",
@@ -575,10 +576,37 @@ void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputCon
   engine.onInputContextFocusIn(&icB);
 
   // Final arrives from mobile
-  const std::string final_for_b = R"({"text": "committed to B", "candidates": []})";
+  const std::string final_for_b =
+      vinput::result::Serialize(vinput::result::Payload{.commitText = "committed to B"});
   engine.handleRecognitionResultPayload(final_for_b);
   expect(icB.last_committed == "committed to B", "Final must commit to focused icB");
   expect(icA.last_committed.empty(), "Blurred icA must not receive commit");
+
+  // 7. Showing multi-candidate menu -> delayed empty partial arrives -> candidates still selectable
+  const std::string multi_cand_payload = vinput::result::Serialize(vinput::result::Payload{
+      .commitText = "choice 1",
+      .candidates =
+          {
+              vinput::result::Candidate{.text = "choice 1", .source = vinput::result::kSourceRaw},
+              vinput::result::Candidate{.text = "choice 2", .source = vinput::result::kSourceLlm},
+          },
+  });
+  engine.handleRecognitionResultPayload(multi_cand_payload);
+  expect(icB.inputPanel().candidateList() != nullptr,
+         "Candidate menu must be visible when multiple candidates exist");
+
+  // Injected empty partial arrives: status_ic_ is not icB, so must not dismiss result menu
+  engine.handleRecognitionPartial("");
+  expect(icB.inputPanel().candidateList() != nullptr,
+         "Candidate menu must remain open after empty partial");
+
+  // Select candidate 1 with digit key 1
+  fcitx::KeyEvent digit_1_p(&icB, fcitx::Key(FcitxKey_1), false);
+  engine.handleKeyEvent(digit_1_p);
+  fcitx::KeyEvent digit_1_r(&icB, fcitx::Key(FcitxKey_1), true);
+  engine.handleKeyEvent(digit_1_r);
+  expect(icB.last_committed == "choice 1", "Selected candidate 1 must be committed successfully");
+  expect(icB.inputPanel().candidateList() == nullptr, "Candidate menu must close after selection");
 
   engine.onInputContextFocusOut(&icB);
 }
