@@ -86,7 +86,7 @@ public:
   void handleRecognitionResultPayload(const std::string& payload_text);
   void onInputContextFocusIn(fcitx::InputContext* ic);
   void onInputContextFocusOut(fcitx::InputContext* ic);
-  void enterRecordingStateForTest(fcitx::InputContext* ic, const fcitx::Key& trigger = {},
+  void enterRecordingStateForTest(fcitx::InputContext* ic, const fcitx::Key& trigger = fcitx::Key(),
                                   bool command_mode = false) {
     enterRecordingState(ic, trigger, command_mode);
   }
@@ -144,7 +144,7 @@ private:
   void recordAsrCandidateContext(const vinput::result::Payload& payload, bool is_command,
                                  const std::string& command_selected_text);
   void commitResultText(fcitx::InputContext* ic, const vinput::result::Payload& payload,
-                        const vinput::result::LlmSummary& llm_summary, bool is_command);
+                        bool commit_from_llm, bool is_command);
   void restoreRecordingPreedit();
   void onRecognitionPartial(fcitx::dbus::Message& msg);
   void handleInjectedRecognitionPartial(fcitx::InputContext* ic,

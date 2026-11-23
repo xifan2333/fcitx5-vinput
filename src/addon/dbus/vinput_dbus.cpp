@@ -808,9 +808,8 @@ void VinputEngine::recordAsrCandidateContext(const vinput::result::Payload& payl
 }
 
 void VinputEngine::commitResultText(fcitx::InputContext* ic, const vinput::result::Payload& payload,
-                                    const vinput::result::LlmSummary& llm_summary,
-                                    bool is_command) {
-  if (llm_summary.commit_from_llm) {
+                                    bool commit_from_llm, bool is_command) {
+  if (commit_from_llm) {
     appendContextEntry(payload.commitText, "llm");
   }
   suppressNextCommitContext(payload.commitText);
@@ -883,7 +882,7 @@ void VinputEngine::handleRecognitionResultPayload(const std::string& payload_tex
     return;
   }
 
-  commitResultText(ic, payload, llm_summary, is_command);
+  commitResultText(ic, payload, llm_summary.commit_from_llm, is_command);
 
   if (recording_active) {
     restoreRecordingPreedit();
