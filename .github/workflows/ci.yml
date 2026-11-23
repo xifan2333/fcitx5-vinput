@@ -41,6 +41,11 @@ on:
       - '.clang-tidy'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
+    inputs:
+      full_scan:
+        description: 'Run full-repository Clang-Tidy scan'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,9 +64,11 @@ jobs:
     name: cpp-linter
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Restore apt archive cache
         uses: actions/cache@v6
@@ -95,91 +102,22 @@ jobs:
             -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
             -DVINPUT_RUNTIME_MODE=bundled
 
-      - name: Run Clang-Format
-        id: format
+      - name: Run Clang-Tidy & Clang-Format Linter
+        id: linter
         run: |
-          mkdir -p pr-report
-          format_failed=0
-          CLANG_FORMAT=$(command -v clang-format-21 || command -v clang-format)
-          echo "Using clang-format: $CLANG_FORMAT ($($CLANG_FORMAT --version))"
-          if ! find src tests -type f \( -name '*.cpp' -o -name '*.h' \) -exec "$CLANG_FORMAT" --dry-run --Werror {} +; then
-            format_failed=1
+          mode="incremental"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.full_scan }}" = "true" ]; then
+            mode="full"
           fi
-          echo "format_failed=${format_failed}" >> "${GITHUB_OUTPUT}"
-          echo "${format_failed}" > pr-report/format_failed
-
-      - name: Run Clang-Tidy (LLVM Parallel Runner)
-        id: tidy
-        run: |
-          mkdir -p pr-report
-          tidy_failed=0
-          RUN_TIDY=$(command -v run-clang-tidy-21 || command -v run-clang-tidy)
-          CLANG_TIDY=$(command -v clang-tidy-21 || command -v clang-tidy)
-          echo "Using run-clang-tidy: $RUN_TIDY with binary $CLANG_TIDY"
-
-          WORKSPACE_REGEX="^${GITHUB_WORKSPACE}/(src|tests)/.*"
-
-          # Verify that matching compilation units exist in compile_commands.json
-          matched_units=$(jq --arg ws "${GITHUB_WORKSPACE}" '[.[] | select(.file | test("^" + $ws + "/(src|tests)/.*"))] | length' build/compile_commands.json)
-          echo "Found ${matched_units} compilation units matching ${WORKSPACE_REGEX}"
-          if [ "${matched_units}" -eq 0 ]; then
-            echo "Error: 0 compilation units matched for Clang-Tidy analysis!" >> pr-report/tidy.log
-            tidy_failed=1
-          fi
-
-          if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" \
-              -header-filter="${WORKSPACE_REGEX}" \
-              -p build -j $(nproc) "${WORKSPACE_REGEX}" > pr-report/tidy.log 2>&1; then
-            tidy_failed=1
-          fi
-          if grep -q "warning:" pr-report/tidy.log || grep -q "error:" pr-report/tidy.log; then
-            tidy_failed=1
-          fi
-          echo "tidy_failed=${tidy_failed}" >> "${GITHUB_OUTPUT}"
-          echo "${tidy_failed}" > pr-report/tidy_failed
-
-      - name: Generate summary report
-        if: always()
-        run: |
-          mkdir -p pr-report
+          pr_arg=()
           if [ -n "${{ github.event.pull_request.number }}" ]; then
-            echo "${{ github.event.pull_request.number }}" > pr-report/pr_number
+            pr_arg=(--pr-number="${{ github.event.pull_request.number }}")
           fi
-          {
-            echo "### Clang-Tidy & Clang-Format Report"
-            echo ""
-            format_status="unknown"
-            if [ -f pr-report/format_failed ]; then
-              format_status="$(cat pr-report/format_failed)"
-            fi
-            tidy_status="unknown"
-            if [ -f pr-report/tidy_failed ]; then
-              tidy_status="$(cat pr-report/tidy_failed)"
-            fi
-
-            if [ "$format_status" = "0" ]; then
-              echo "- **Clang-Format**: Passed cleanly"
-            elif [ "$format_status" = "unknown" ]; then
-              echo "- **Clang-Format**: Not run or failed during setup"
-            else
-              echo "- **Clang-Format**: Formatting violations detected"
-            fi
-
-            if [ "$tidy_status" = "0" ]; then
-              echo "- **Clang-Tidy**: 0 warnings"
-            elif [ "$tidy_status" = "unknown" ]; then
-              echo "- **Clang-Tidy**: Not run or failed during setup"
-            else
-              echo "- **Clang-Tidy**: Violations detected"
-              echo ""
-              echo '```'
-              if [ -f pr-report/tidy.log ]; then
-                tail -n 200 pr-report/tidy.log
-              fi
-              echo '```'
-            fi
-          } > pr-report/summary.md
-          cat pr-report/summary.md >> "${GITHUB_STEP_SUMMARY}"
+          base_arg=()
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            base_arg=(--base-ref="${{ github.event.before }}")
+          fi
+          ./scripts/ci-run-linter.sh --mode="$mode" "${base_arg[@]}" "${pr_arg[@]}"
 
       - name: Upload artifact for PR comment
         if: always() && github.event_name == 'pull_request'
@@ -188,13 +126,6 @@ jobs:
           name: pr-report
           path: pr-report/
           retention-days: 1
-
-      - name: Fail on formatting or tidy violations
-        if: steps.format.outputs.format_failed != '0' || steps.tidy.outputs.tidy_failed != '0'
-        run: |
-          echo "Linter checks failed! Please inspect clang-format and clang-tidy report."
-          cat pr-report/summary.md
-          exit 1
 
   build:
     name: build-linux-${{ matrix.mode }}

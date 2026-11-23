@@ -1,7 +1,16 @@
 # Inherit parent checks, but ignore Qt system headers for include-cleaner.
 # Qt uses forwarding alias headers (e.g. <QSignalBlocker>, <QString>) with IWYU export pragmas
 # which LLVM's misc-include-cleaner does not handle correctly (LLVM issue #73347).
+#
+# Also disable clang-analyzer-cplusplus.NewDeleteLeaks:
+# Qt's QMetaObject::invokeMethod allocates a QMetaCallEvent with new in inline template
+# headers (<QtCore/qobjectdefs.h>), which is delivered to the Qt event loop and deleted
+# asynchronously. Intra-TU static analysis cannot track the event loop boundary and emits false
+# positive memory leak warnings.
 InheritParentConfig: true
+
+Checks: >
+  -clang-analyzer-cplusplus.NewDeleteLeaks
 
 CheckOptions:
   misc-include-cleaner.IgnoreHeaders: '.*[Qq]t.*'

@@ -8,7 +8,6 @@ Checks: >
   -bugprone-narrowing-conversions,
   -bugprone-exception-escape,
   clang-analyzer-*,
-  -clang-analyzer-cplusplus.NewDeleteLeaks,
   clang-analyzer-deadcode.*,
   cppcoreguidelines-*,
   -cppcoreguidelines-avoid-c-arrays,
