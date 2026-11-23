@@ -95,9 +95,13 @@ resolve_base_ref() {
     return 0
   fi
 
-  # GitHub Actions Push with before SHA
-  if [ -n "${GITHUB_EVENT_BEFORE:-}" ] && [ "${GITHUB_EVENT_BEFORE}" != "0000000000000000000000000000000000000000" ]; then
-    echo "${GITHUB_EVENT_BEFORE}"
+  # GitHub Actions Push with before SHA (from env or GITHUB_EVENT_PATH)
+  local before_sha="${GITHUB_EVENT_BEFORE:-}"
+  if [ -z "$before_sha" ] && [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "$GITHUB_EVENT_PATH" ]; then
+    before_sha="$(jq -r '.before // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
+  fi
+  if [ -n "$before_sha" ] && [ "$before_sha" != "0000000000000000000000000000000000000000" ]; then
+    echo "$before_sha"
     return 0
   fi
 
@@ -129,8 +133,22 @@ collect_targets() {
   base="$(resolve_base_ref)"
   log_info "Mode: incremental diff against ${base}"
 
+  if ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null 2>&1; then
+    log_warn "Base ref '${base}' not resolved locally; attempting shallow fetch..."
+    git fetch origin "${base}" --depth=1 >/dev/null 2>&1 || true
+    if ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null 2>&1; then
+      log_error "Failed to resolve base ref '${base}' for incremental diff!"
+      return 1
+    fi
+  fi
+
   local changed_files_raw=""
-  changed_files_raw="$(git diff --name-only "${base}...HEAD" 2>/dev/null || git diff --name-only "${base}" 2>/dev/null || true)"
+  if ! changed_files_raw="$(git diff --name-only "${base}...HEAD" 2>/dev/null)"; then
+    if ! changed_files_raw="$(git diff --name-only "${base}" 2>/dev/null)"; then
+      log_error "git diff against base '${base}' failed!"
+      return 1
+    fi
+  fi
 
   # Also include unstaged and staged local changes if any (for local developer convenience)
   if [ -z "${GITHUB_ACTIONS:-}" ]; then
@@ -153,10 +171,34 @@ collect_targets() {
   local candidate_units=("${changed_cpp[@]}")
 
   if [ "${#changed_h[@]}" -gt 0 ]; then
-    log_info "Analyzing ${#changed_h[@]} modified header(s) for dependent translation units..."
+    log_info "Analyzing ${#changed_h[@]} modified header(s) for transitive translation units..."
+    local all_h
+    all_h=$(find src tests -type f -name '*.h')
     local all_cpp
     all_cpp=$(find src tests -type f -name '*.cpp')
-    for h in "${changed_h[@]}"; do
+
+    # Transitive closure of affected headers using BFS
+    local affected_headers=("${changed_h[@]}")
+    local queue=("${changed_h[@]}")
+
+    while [ "${#queue[@]}" -gt 0 ]; do
+      local current="${queue[0]}"
+      queue=("${queue[@]:1}")
+      local cur_base
+      cur_base="$(basename "$current")"
+      while IFS= read -r inc_h; do
+        if [ -n "$inc_h" ]; then
+          if [[ ! " ${affected_headers[*]} " =~ " ${inc_h} " ]]; then
+            affected_headers+=("$inc_h")
+            queue+=("$inc_h")
+          fi
+        fi
+      done < <(grep -l -E "#include [\"<].*${cur_base}[\">]" $all_h 2>/dev/null || true)
+    done
+
+    log_info "Transitive header expansion found ${#affected_headers[@]} affected header(s)."
+
+    for h in "${affected_headers[@]}"; do
       local h_base
       h_base="$(basename "$h")"
       while IFS= read -r inc_cpp; do

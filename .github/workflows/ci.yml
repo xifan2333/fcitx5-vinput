@@ -113,7 +113,11 @@ jobs:
           if [ -n "${{ github.event.pull_request.number }}" ]; then
             pr_arg=(--pr-number="${{ github.event.pull_request.number }}")
           fi
-          ./scripts/ci-run-linter.sh --mode="$mode" "${pr_arg[@]}"
+          base_arg=()
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            base_arg=(--base-ref="${{ github.event.before }}")
+          fi
+          ./scripts/ci-run-linter.sh --mode="$mode" "${base_arg[@]}" "${pr_arg[@]}"
 
       - name: Upload artifact for PR comment
         if: always() && github.event_name == 'pull_request'
