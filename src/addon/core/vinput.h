@@ -129,6 +129,11 @@ private:
   bool callSyncRpc(const char* member, const std::string& fallback_error, std::string* error,
                    const std::string* arg = nullptr);
   void onRecognitionResult(fcitx::dbus::Message& msg);
+  void recordAsrCandidateContext(const vinput::result::Payload& payload, bool is_command,
+                                 const std::string& command_selected_text);
+  void commitResultText(fcitx::InputContext* ic, const vinput::result::Payload& payload,
+                        const vinput::result::LlmSummary& llm_summary, bool is_command);
+  void restoreRecordingPreedit();
   void onRecognitionPartial(fcitx::dbus::Message& msg);
   void handleRecognitionPartial(const std::string& transcript_text);
   void handleInjectedRecognitionPartial(fcitx::InputContext* ic,
