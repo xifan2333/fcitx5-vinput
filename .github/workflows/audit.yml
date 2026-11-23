@@ -57,61 +57,12 @@ jobs:
             -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
             -DVINPUT_RUNTIME_MODE=bundled
 
-      - name: Run Clang-Format (Full Scan)
-        run: |
-          CLANG_FORMAT=$(command -v clang-format-21 || command -v clang-format)
-          echo "Using clang-format: $CLANG_FORMAT ($($CLANG_FORMAT --version))"
-          find src tests -type f \( -name '*.cpp' -o -name '*.h' \) -exec "$CLANG_FORMAT" --dry-run --Werror {} +
-
-      - name: Run Clang-Tidy (Full Repo Parallel Runner)
-        run: |
-          mkdir -p audit-report
-          RUN_TIDY=$(command -v run-clang-tidy-21 || command -v run-clang-tidy)
-          CLANG_TIDY=$(command -v clang-tidy-21 || command -v clang-tidy)
-          echo "Using run-clang-tidy: $RUN_TIDY with binary $CLANG_TIDY"
-
-          WORKSPACE_REGEX="^${GITHUB_WORKSPACE}/(src|tests)/.*"
-
-          matched_units=$(jq --arg ws "${GITHUB_WORKSPACE}" '[.[] | select(.file | test("^" + $ws + "/(src|tests)/.*"))] | length' build/compile_commands.json)
-          echo "Found ${matched_units} compilation units matching ${WORKSPACE_REGEX}"
-          if [ "${matched_units}" -eq 0 ]; then
-            echo "Error: 0 compilation units matched for Clang-Tidy analysis!" >&2
-            exit 1
-          fi
-
-          tidy_failed=0
-          if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" \
-              -header-filter="${WORKSPACE_REGEX}" \
-              -p build -j $(nproc) "${WORKSPACE_REGEX}" > audit-report/tidy.log 2>&1; then
-            tidy_failed=1
-          fi
-
-          if grep -q "warning:" audit-report/tidy.log || grep -q "error:" audit-report/tidy.log; then
-            tidy_failed=1
-          fi
-
-          {
-            echo "### Full Repository Clang-Tidy Audit Report"
-            echo ""
-            if [ "$tidy_failed" = "0" ]; then
-              echo "- **Status**: Passed cleanly (0 warnings across ${matched_units} compilation units)"
-            else
-              echo "- **Status**: Violations detected"
-              echo ""
-              echo '```'
-              tail -n 200 audit-report/tidy.log
-              echo '```'
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-          if [ "$tidy_failed" != "0" ]; then
-            echo "Audit failed! Check summary and attached log." >&2
-            exit 1
-          fi
+      - name: Run Full Clang-Tidy & Format Audit
+        run: ./scripts/ci-run-linter.sh --mode=full --report-dir=audit-report
 
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: full-clang-tidy-audit-report
           path: audit-report/
