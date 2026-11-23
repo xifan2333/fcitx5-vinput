@@ -44,9 +44,11 @@ namespace {
 constexpr std::size_t kMaxDedupCacheSize = 256;
 constexpr std::size_t kMaxSourceBufferSize = std::size_t{64} * 1024; // 64 KiB
 
-std::string MakeDedupKey(std::string_view title, std::string_view body) {
+std::string MakeDedupKey(bool is_structured, std::string_view title, std::string_view body) {
   std::string key;
-  key.reserve(title.size() + 1 + body.size());
+  key.reserve(2 + title.size() + 1 + body.size());
+  key.push_back(is_structured ? 'S' : 'U');
+  key.push_back(':');
   key.append(title);
   key.push_back('\0');
   key.append(body);
@@ -157,7 +159,7 @@ struct NotificationBridge::Impl {
     }
 
     const auto now = Now();
-    const std::string dedup_key = MakeDedupKey(n.title, n.body);
+    const std::string dedup_key = MakeDedupKey(n.is_structured, n.title, n.body);
 
     auto it = dedup_cache_.find(dedup_key);
     if (it != dedup_cache_.end()) {

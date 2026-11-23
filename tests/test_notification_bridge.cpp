@@ -248,6 +248,27 @@ void TestStructuredFilteringForDesktopNotification() {
   ExpectTrue(desktop_popups[0].body == "API quota exceeded", "desktop popup body matches");
 }
 
+void TestStructuredNotSuppressedByPlainTextDedup() {
+  std::vector<Notification> delivered;
+  NotificationBridge bridge([&](const Notification& n) { delivered.push_back(n); });
+
+  // 1. Plain text arrives first and enters dedup cache
+  bridge.DeliverLine("provider1", "API quota exceeded", "Doubao ASR");
+  ExpectTrue(delivered.size() == 1, "plain text delivered");
+  ExpectTrue(!delivered[0].is_structured, "plain text must not be structured");
+
+  // 2. Structured JSON arrives with identical title & body within the dedup window;
+  // it must NOT be suppressed by the prior plain text
+  bridge.DeliverLine("provider1", R"({"title": "Doubao ASR", "body": "API quota exceeded"})");
+  ExpectTrue(delivered.size() == 2,
+             "structured notification must not be suppressed by prior plain text");
+  ExpectTrue(delivered[1].is_structured, "second notification must be structured");
+
+  // 3. A subsequent duplicate structured JSON should still be deduplicated
+  bridge.DeliverLine("provider1", R"({"title": "Doubao ASR", "body": "API quota exceeded"})");
+  ExpectTrue(delivered.size() == 2, "duplicate structured notification must be deduplicated");
+}
+
 } // namespace
 
 int main() {
@@ -261,5 +282,6 @@ int main() {
   TestLookupTitle();
   TestRememberedDefaultTitleOnFlush();
   TestStructuredFilteringForDesktopNotification();
+  TestStructuredNotSuppressedByPlainTextDedup();
   return 0;
 }

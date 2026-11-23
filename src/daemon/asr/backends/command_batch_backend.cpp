@@ -24,7 +24,7 @@ namespace vinput::daemon::asr {
 
 namespace {
 
-constexpr std::size_t kMaxBatchNotifications = 10;
+constexpr std::size_t kMaxBatchNotifications = 16;
 
 vinput::process::CommandSpec BuildCommandSpec(const CommandAsrProvider& provider) {
   vinput::process::CommandSpec spec;

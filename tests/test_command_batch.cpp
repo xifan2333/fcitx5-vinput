@@ -121,8 +121,8 @@ void TestBatchNotificationsBounded() {
   ExpectTrue(session != nullptr, "CreateSession failed");
 
   ExpectTrue(session->Finish(&error), "Finish failed: " + error);
-  ExpectTrue(received.size() == 10,
-             "Notifications must be capped at 10, got " + std::to_string(received.size()));
+  ExpectTrue(received.size() == 16,
+             "Notifications must be capped at 16, got " + std::to_string(received.size()));
 }
 
 void TestCommandFailure() {

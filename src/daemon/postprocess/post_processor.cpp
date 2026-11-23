@@ -408,7 +408,7 @@ RewriteWithOpenAiCompatible(const std::string& text, const vinput::scene::Defini
   return ParseOpenAiChatResponse(res, url, max_llm_candidates, error_out);
 }
 
-constexpr std::size_t kMaxBatchNotifications = 4;
+constexpr std::size_t kMaxBatchNotifications = 16;
 
 void DrainAdapterStderr(std::string& stderr_text, const LlmAdapter& adapter,
                         vinput::notify::NotificationBridge* notification_bridge) {
