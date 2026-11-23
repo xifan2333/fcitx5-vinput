@@ -601,12 +601,12 @@ void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputCon
   expect(icB.inputPanel().candidateList() != nullptr,
          "Candidate menu must remain open after empty partial");
 
-  // Select candidate 1 with digit key 1
-  fcitx::KeyEvent digit_1_p(&icB, fcitx::Key(FcitxKey_1), false);
-  engine.handleKeyEvent(digit_1_p);
-  fcitx::KeyEvent digit_1_r(&icB, fcitx::Key(FcitxKey_1), true);
-  engine.handleKeyEvent(digit_1_r);
-  expect(icB.last_committed == "choice 1", "Selected candidate 1 must be committed successfully");
+  // Select candidate 2 with digit key 2
+  fcitx::KeyEvent digit_2_p(&icB, fcitx::Key(FcitxKey_2), false);
+  engine.handleKeyEvent(digit_2_p);
+  fcitx::KeyEvent digit_2_r(&icB, fcitx::Key(FcitxKey_2), true);
+  engine.handleKeyEvent(digit_2_r);
+  expect(icB.last_committed == "choice 2", "Selected candidate 2 must be committed successfully");
   expect(icB.inputPanel().candidateList() == nullptr, "Candidate menu must close after selection");
 
   engine.onInputContextFocusOut(&icB);
