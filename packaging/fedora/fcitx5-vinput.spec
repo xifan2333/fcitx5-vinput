@@ -48,6 +48,7 @@ Requires:       pipewire
 Requires:       systemd
 Requires:       qt6-qtbase
 Recommends:     wireplumber
+Recommends:     opus
 
 %description
 Voice input plugin for Fcitx5 with local and cloud ASR, and LLM post-processing

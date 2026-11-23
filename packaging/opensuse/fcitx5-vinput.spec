@@ -47,6 +47,7 @@ Requires:       fcitx5
 Requires:       pipewire
 Requires:       systemd
 Recommends:     wireplumber
+Recommends:     libopus0
 
 %description
 Voice input plugin for Fcitx5 with local and cloud ASR, and LLM post-processing

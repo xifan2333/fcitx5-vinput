@@ -38,7 +38,10 @@
           lib = pkgs.lib;
           sherpa-deps = sherpa-onnx.packages.${system};
           commandProviderPath = lib.makeBinPath [ pkgs.python3 ];
-          commandProviderLibraryPath = lib.makeLibraryPath [ pkgs.libopus ];
+          commandProviderLibraryPath = lib.makeLibraryPath [
+            pkgs.libopus
+            pkgs.openssl
+          ];
 
           makeVinputPackage =
             {
@@ -96,7 +99,8 @@
                 for program in "$out"/bin/*; do
                   wrapProgram "$program" \
                     --prefix PATH : ${commandProviderPath} \
-                    --prefix LD_LIBRARY_PATH : ${commandProviderLibraryPath}
+                    --prefix LD_LIBRARY_PATH : ${commandProviderLibraryPath} \
+                    --set-default VINPUT_ASR_LIBOPUS_PATH "${lib.getLib pkgs.libopus}/lib/libopus.so.0"
                 done
               '';
 

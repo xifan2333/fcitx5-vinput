@@ -7,7 +7,10 @@ url='@VINPUT_PKGURL@'
 license=('GPL-3.0-only')
 options=(!debug !lto)
 depends=('fcitx5' 'libarchive' 'openssl' 'pipewire' 'qt6-base')
-optdepends=('wireplumber: reduce system output volume while recording')
+optdepends=(
+    'wireplumber: reduce system output volume while recording'
+    'opus: audio compression for cloud ASR providers'
+)
 makedepends=('clang' 'cmake' 'curl' 'mold' 'ninja' 'pkgconf' 'qt6-tools')
 provides=("${pkgname}")
 source=('@VINPUT_SOURCE_ARCHIVE@')
