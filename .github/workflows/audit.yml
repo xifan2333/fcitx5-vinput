@@ -1,0 +1,118 @@
+name: audit
+
+on:
+  schedule:
+    # Daily full-repository audit at 04:00 CST (20:00 UTC)
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCCACHE_DIR: ${{ github.workspace }}/.sccache
+  SCCACHE_CACHE_SIZE: 2G
+
+jobs:
+  clang-tidy-audit:
+    name: Full Clang-Tidy Audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore apt archive cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/vinput-apt-archives
+          key: apt-archives-${{ runner.os }}-${{ hashFiles('scripts/ci-install-build-deps.sh') }}
+          restore-keys: |
+            apt-archives-${{ runner.os }}-
+
+      - name: Install build dependencies
+        run: ./scripts/ci-install-build-deps.sh ubuntu24.04
+
+      - name: Install LLVM 21 clang-tools
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y clang-format-21 clang-tidy-21
+
+      - name: Install sherpa-onnx runtime
+        run: |
+          prefix="${RUNNER_TEMP}/sherpa-onnx-install"
+          source scripts/sherpa-onnx-vars.sh
+          bash scripts/build-sherpa-onnx.sh "${SHERPA_ONNX_VERSION}" "${prefix}"
+          echo "VINPUT_CMAKE_PREFIX_PATH=${prefix}" >> "${GITHUB_ENV}"
+
+      - name: Configure CMake
+        run: |
+          cmake --preset release-clang-mold \
+            -DVINPUT_ENABLE_WERROR=ON \
+            -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}" \
+            -DVINPUT_RUNTIME_MODE=bundled
+
+      - name: Run Clang-Format (Full Scan)
+        run: |
+          CLANG_FORMAT=$(command -v clang-format-21 || command -v clang-format)
+          echo "Using clang-format: $CLANG_FORMAT ($($CLANG_FORMAT --version))"
+          find src tests -type f \( -name '*.cpp' -o -name '*.h' \) -exec "$CLANG_FORMAT" --dry-run --Werror {} +
+
+      - name: Run Clang-Tidy (Full Repo Parallel Runner)
+        run: |
+          mkdir -p audit-report
+          RUN_TIDY=$(command -v run-clang-tidy-21 || command -v run-clang-tidy)
+          CLANG_TIDY=$(command -v clang-tidy-21 || command -v clang-tidy)
+          echo "Using run-clang-tidy: $RUN_TIDY with binary $CLANG_TIDY"
+
+          WORKSPACE_REGEX="^${GITHUB_WORKSPACE}/(src|tests)/.*"
+
+          matched_units=$(jq --arg ws "${GITHUB_WORKSPACE}" '[.[] | select(.file | test("^" + $ws + "/(src|tests)/.*"))] | length' build/compile_commands.json)
+          echo "Found ${matched_units} compilation units matching ${WORKSPACE_REGEX}"
+          if [ "${matched_units}" -eq 0 ]; then
+            echo "Error: 0 compilation units matched for Clang-Tidy analysis!" >&2
+            exit 1
+          fi
+
+          tidy_failed=0
+          if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" \
+              -header-filter="${WORKSPACE_REGEX}" \
+              -p build -j $(nproc) "${WORKSPACE_REGEX}" > audit-report/tidy.log 2>&1; then
+            tidy_failed=1
+          fi
+
+          if grep -q "warning:" audit-report/tidy.log || grep -q "error:" audit-report/tidy.log; then
+            tidy_failed=1
+          fi
+
+          {
+            echo "### Full Repository Clang-Tidy Audit Report"
+            echo ""
+            if [ "$tidy_failed" = "0" ]; then
+              echo "- **Status**: Passed cleanly (0 warnings across ${matched_units} compilation units)"
+            else
+              echo "- **Status**: Violations detected"
+              echo ""
+              echo '```'
+              tail -n 200 audit-report/tidy.log
+              echo '```'
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ "$tidy_failed" != "0" ]; then
+            echo "Audit failed! Check summary and attached log." >&2
+            exit 1
+          fi
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-clang-tidy-audit-report
+          path: audit-report/
+          retention-days: 7

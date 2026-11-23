@@ -41,6 +41,11 @@ on:
       - '.clang-tidy'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
+    inputs:
+      full_scan:
+        description: 'Run full-repository Clang-Tidy scan'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,11 +64,91 @@ jobs:
     name: cpp-linter
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files and targets
+        id: detect
+        run: |
+          mkdir -p pr-report
+          is_full_scan=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.full_scan }}" = "true" ]; then
+            is_full_scan=true
+          fi
+
+          if [ "$is_full_scan" = "true" ]; then
+            echo "mode=full" >> "${GITHUB_OUTPUT}"
+            echo "has_cpp_changes=true" >> "${GITHUB_OUTPUT}"
+            echo "Running in full repository scan mode."
+            exit 0
+          fi
+
+          CHANGED_FILES=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_ref="origin/${{ github.base_ref }}"
+            if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+              git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            fi
+            CHANGED_FILES=$(git diff --name-only "$base_ref"...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD 2>/dev/null || true)
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            if [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}...${{ github.event.after }}" 2>/dev/null || git diff --name-only HEAD~1...HEAD 2>/dev/null || true)
+            else
+              CHANGED_FILES=$(git diff --name-only HEAD~1...HEAD 2>/dev/null || true)
+            fi
+          else
+            CHANGED_FILES=$(git diff --name-only HEAD~1...HEAD 2>/dev/null || true)
+          fi
+
+          echo "Changed files in commit range:"
+          echo "${CHANGED_FILES:-<none>}"
+
+          # Extract modified C++ files (for formatting)
+          mapfile -t format_files < <(echo "$CHANGED_FILES" | grep -E '^(src|tests)/.*\.(cpp|h)$' | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+          printf '%s\n' "${format_files[@]}" > pr-report/format_files.txt
+
+          # Extract modified C++ sources and headers (for tidy)
+          mapfile -t changed_cpp < <(echo "$CHANGED_FILES" | grep -E '^(src|tests)/.*\.cpp$' | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+          mapfile -t changed_h < <(echo "$CHANGED_FILES" | grep -E '^(src|tests)/.*\.h$' | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+
+          target_units=()
+          for f in "${changed_cpp[@]}"; do
+            [ -n "$f" ] && target_units+=("$f")
+          done
+
+          if [ "${#changed_h[@]}" -gt 0 ]; then
+            all_project_cpp=$(find src tests -name '*.cpp')
+            for h in "${changed_h[@]}"; do
+              h_base=$(basename "$h")
+              while IFS= read -r inc_cpp; do
+                [ -n "$inc_cpp" ] && target_units+=("$inc_cpp")
+              done < <(grep -l -E "#include [\"<].*${h_base}[\">]" $all_project_cpp 2>/dev/null || true)
+            done
+          fi
+
+          mapfile -t target_units < <(printf '%s\n' "${target_units[@]}" | sort -u | grep -v '^$' || true)
+          printf '%s\n' "${target_units[@]}" > pr-report/target_units.txt
+
+          echo "format_count=${#format_files[@]}" >> "${GITHUB_OUTPUT}"
+          echo "tidy_count=${#target_units[@]}" >> "${GITHUB_OUTPUT}"
+
+          if [ "${#format_files[@]}" -eq 0 ] && [ "${#target_units[@]}" -eq 0 ]; then
+            echo "has_cpp_changes=false" >> "${GITHUB_OUTPUT}"
+            echo "mode=skip" >> "${GITHUB_OUTPUT}"
+            echo "0" > pr-report/format_failed
+            echo "0" > pr-report/tidy_failed
+            echo "No C++ files or dependent translation units modified. Linter checks will be skipped."
+          else
+            echo "has_cpp_changes=true" >> "${GITHUB_OUTPUT}"
+            echo "mode=incremental" >> "${GITHUB_OUTPUT}"
+            echo "Found ${#format_files[@]} modified C++ file(s) and ${#target_units[@]} affected translation unit(s)."
+          fi
 
       - name: Restore apt archive cache
+        if: steps.detect.outputs.has_cpp_changes == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/vinput-apt-archives
@@ -72,9 +157,11 @@ jobs:
             apt-archives-${{ runner.os }}-
 
       - name: Install build dependencies
+        if: steps.detect.outputs.has_cpp_changes == 'true'
         run: ./scripts/ci-install-build-deps.sh ubuntu24.04
 
       - name: Install LLVM 21 clang-tools
+        if: steps.detect.outputs.has_cpp_changes == 'true'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
@@ -82,6 +169,7 @@ jobs:
           sudo apt-get install -y clang-format-21 clang-tidy-21
 
       - name: Install sherpa-onnx runtime
+        if: steps.detect.outputs.has_cpp_changes == 'true'
         run: |
           prefix="${RUNNER_TEMP}/sherpa-onnx-install"
           source scripts/sherpa-onnx-vars.sh
@@ -89,6 +177,7 @@ jobs:
           echo "VINPUT_CMAKE_PREFIX_PATH=${prefix}" >> "${GITHUB_ENV}"
 
       - name: Configure CMake
+        if: steps.detect.outputs.has_cpp_changes == 'true'
         run: |
           cmake --preset release-clang-mold \
             -DVINPUT_ENABLE_WERROR=ON \
@@ -96,19 +185,36 @@ jobs:
             -DVINPUT_RUNTIME_MODE=bundled
 
       - name: Run Clang-Format
+        if: steps.detect.outputs.has_cpp_changes == 'true'
         id: format
         run: |
           mkdir -p pr-report
           format_failed=0
           CLANG_FORMAT=$(command -v clang-format-21 || command -v clang-format)
           echo "Using clang-format: $CLANG_FORMAT ($($CLANG_FORMAT --version))"
-          if ! find src tests -type f \( -name '*.cpp' -o -name '*.h' \) -exec "$CLANG_FORMAT" --dry-run --Werror {} +; then
-            format_failed=1
+
+          if [ "${{ steps.detect.outputs.mode }}" = "full" ]; then
+            echo "Running full-repo clang-format..."
+            if ! find src tests -type f \( -name '*.cpp' -o -name '*.h' \) -exec "$CLANG_FORMAT" --dry-run --Werror {} +; then
+              format_failed=1
+            fi
+          else
+            mapfile -t format_files < pr-report/format_files.txt
+            if [ "${#format_files[@]}" -gt 0 ]; then
+              echo "Checking format on ${#format_files[@]} modified file(s)..."
+              if ! "$CLANG_FORMAT" --dry-run --Werror "${format_files[@]}"; then
+                format_failed=1
+              fi
+            else
+              echo "No C++ files modified for formatting."
+            fi
           fi
+
           echo "format_failed=${format_failed}" >> "${GITHUB_OUTPUT}"
           echo "${format_failed}" > pr-report/format_failed
 
       - name: Run Clang-Tidy (LLVM Parallel Runner)
+        if: steps.detect.outputs.has_cpp_changes == 'true'
         id: tidy
         run: |
           mkdir -p pr-report
@@ -117,21 +223,48 @@ jobs:
           CLANG_TIDY=$(command -v clang-tidy-21 || command -v clang-tidy)
           echo "Using run-clang-tidy: $RUN_TIDY with binary $CLANG_TIDY"
 
-          WORKSPACE_REGEX="^${GITHUB_WORKSPACE}/(src|tests)/.*"
+          if [ "${{ steps.detect.outputs.mode }}" = "full" ]; then
+            WORKSPACE_REGEX="^${GITHUB_WORKSPACE}/(src|tests)/.*"
+            matched_units=$(jq --arg ws "${GITHUB_WORKSPACE}" '[.[] | select(.file | test("^" + $ws + "/(src|tests)/.*"))] | length' build/compile_commands.json)
+            echo "Found ${matched_units} compilation units matching ${WORKSPACE_REGEX}"
+            if [ "${matched_units}" -eq 0 ]; then
+              echo "Error: 0 compilation units matched for Clang-Tidy analysis!" >> pr-report/tidy.log
+              tidy_failed=1
+            fi
+            if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" \
+                -header-filter="${WORKSPACE_REGEX}" \
+                -p build -j $(nproc) "${WORKSPACE_REGEX}" > pr-report/tidy.log 2>&1; then
+              tidy_failed=1
+            fi
+          else
+            mapfile -t target_units < pr-report/target_units.txt
+            if [ "${#target_units[@]}" -gt 0 ]; then
+              regex_parts=()
+              for f in "${target_units[@]}"; do
+                escaped_path=$(echo "$f" | sed 's/\./\\./g')
+                regex_parts+=("${escaped_path}")
+              done
+              IFS='|'
+              TARGET_REGEX="^${GITHUB_WORKSPACE}/(${regex_parts[*]})$"
+              echo "Target regex for ${#target_units[@]} unit(s): ${TARGET_REGEX}"
 
-          # Verify that matching compilation units exist in compile_commands.json
-          matched_units=$(jq --arg ws "${GITHUB_WORKSPACE}" '[.[] | select(.file | test("^" + $ws + "/(src|tests)/.*"))] | length' build/compile_commands.json)
-          echo "Found ${matched_units} compilation units matching ${WORKSPACE_REGEX}"
-          if [ "${matched_units}" -eq 0 ]; then
-            echo "Error: 0 compilation units matched for Clang-Tidy analysis!" >> pr-report/tidy.log
-            tidy_failed=1
+              matched_units=$(jq --arg regex "$TARGET_REGEX" '[.[] | select(.file | test($regex))] | length' build/compile_commands.json)
+              echo "Found ${matched_units} compilation units in compile_commands.json"
+
+              if [ "${matched_units}" -eq 0 ]; then
+                echo "Warning: target units not in compile_commands.json; skipping execution." >> pr-report/tidy.log
+              else
+                if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" \
+                    -header-filter="^${GITHUB_WORKSPACE}/(src|tests)/.*" \
+                    -p build -j $(nproc) "${TARGET_REGEX}" > pr-report/tidy.log 2>&1; then
+                  tidy_failed=1
+                fi
+              fi
+            else
+              echo "No compilation units affected. Skipping Clang-Tidy analysis." >> pr-report/tidy.log
+            fi
           fi
 
-          if ! "$RUN_TIDY" -clang-tidy-binary "$CLANG_TIDY" \
-              -header-filter="${WORKSPACE_REGEX}" \
-              -p build -j $(nproc) "${WORKSPACE_REGEX}" > pr-report/tidy.log 2>&1; then
-            tidy_failed=1
-          fi
           if grep -q "warning:" pr-report/tidy.log || grep -q "error:" pr-report/tidy.log; then
             tidy_failed=1
           fi
@@ -158,7 +291,13 @@ jobs:
             fi
 
             if [ "$format_status" = "0" ]; then
-              echo "- **Clang-Format**: Passed cleanly"
+              if [ "${{ steps.detect.outputs.mode }}" = "skip" ]; then
+                echo "- **Clang-Format**: Skipped (no modified C++ files)"
+              elif [ "${{ steps.detect.outputs.mode }}" = "incremental" ]; then
+                echo "- **Clang-Format**: Passed cleanly (incremental)"
+              else
+                echo "- **Clang-Format**: Passed cleanly"
+              fi
             elif [ "$format_status" = "unknown" ]; then
               echo "- **Clang-Format**: Not run or failed during setup"
             else
@@ -166,7 +305,13 @@ jobs:
             fi
 
             if [ "$tidy_status" = "0" ]; then
-              echo "- **Clang-Tidy**: 0 warnings"
+              if [ "${{ steps.detect.outputs.mode }}" = "skip" ]; then
+                echo "- **Clang-Tidy**: Skipped (no affected translation units)"
+              elif [ "${{ steps.detect.outputs.mode }}" = "incremental" ]; then
+                echo "- **Clang-Tidy**: 0 warnings (incremental)"
+              else
+                echo "- **Clang-Tidy**: 0 warnings (full scan)"
+              fi
             elif [ "$tidy_status" = "unknown" ]; then
               echo "- **Clang-Tidy**: Not run or failed during setup"
             else
