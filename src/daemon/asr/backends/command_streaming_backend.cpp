@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <atomic>
 #include <base64.hpp>
+#include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <glaze/core/common.hpp>
@@ -18,6 +21,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -28,6 +32,7 @@
 #include "common/notify/notification_bridge.h"
 #include "common/registry/registry_i18n.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/interpolation.h"
 #include "common/utils/process_session.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
@@ -42,10 +47,44 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 constexpr int kPollSliceMs = 50;
-constexpr int kAwaitFinalTimeoutMs = 10000;
+constexpr int kDefaultAwaitFinalTimeoutMs = 10000;
+constexpr int kFinishGraceMarginMs = 2000;
+constexpr int kMaxFinishGraceMs = 3600000;
 
 bool HasTimedOut(Clock::time_point deadline) {
   return Clock::now() >= deadline;
+}
+
+std::optional<int> ParsePositiveSecondsMs(std::string_view raw) {
+  const std::string_view trimmed = vinput::str::Trim(raw);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+  double seconds = 0.0;
+  const auto [ptr, ec] = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), seconds);
+  if (ec != std::errc{} || ptr != trimmed.data() + trimmed.size() || !std::isfinite(seconds) ||
+      seconds <= 0.0) {
+    return std::nullopt;
+  }
+  const double ms = seconds * 1000.0;
+  if (ms >= static_cast<double>(kMaxFinishGraceMs)) {
+    return kMaxFinishGraceMs;
+  }
+  return static_cast<int>(std::ceil(ms));
+}
+
+int ResolveFinishTimeoutMs(const CommandAsrProvider& provider) {
+  int timeout_ms = provider.timeoutMs > 0 ? provider.timeoutMs : kDefaultAwaitFinalTimeoutMs;
+  std::string grace_raw;
+  if (const auto it = provider.env.find("VINPUT_ASR_FINISH_GRACE_SECS"); it != provider.env.end()) {
+    grace_raw = vinput::interpolate::InterpolateEnv(it->second);
+  } else if (const char* env_val = std::getenv("VINPUT_ASR_FINISH_GRACE_SECS")) {
+    grace_raw = env_val;
+  }
+  if (const auto grace_ms = ParsePositiveSecondsMs(grace_raw)) {
+    timeout_ms = std::max(timeout_ms, *grace_ms + kFinishGraceMarginMs);
+  }
+  return timeout_ms;
 }
 
 std::string MakeSessionSourceId(std::string_view provider_id) {
@@ -197,7 +236,7 @@ private:
     if (session_.has_value()) {
       session_->CloseStdin();
     }
-    deadline_ = Clock::now() + std::chrono::milliseconds(kAwaitFinalTimeoutMs);
+    deadline_ = Clock::now() + std::chrono::milliseconds(ResolveFinishTimeoutMs(provider_));
     return true;
   }
 

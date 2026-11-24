@@ -884,6 +884,52 @@ void TestMidSessionFinalFollowedByCleanCloseAfterFinish() {
   AssertChildAlreadyReaped(active.child_pid);
 }
 
+/**
+ * Issue #756 regression test:
+ * Finish() must honor VINPUT_ASR_FINISH_GRACE_SECS even when it exceeds
+ * provider.timeoutMs, instead of cutting off the provider with a fixed cap.
+ */
+void TestFinishTimeoutHonorsFinishGraceEnv() {
+  const std::string pid_file = GetUniquePidFilePath(18);
+  unlink(pid_file.c_str());
+
+  CommandAsrProvider provider;
+  provider.id = "test-finish-grace-env";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo $$ > " + pid_file +
+                             " && echo '{\"type\": \"session_started\"}'"
+                             " && while IFS= read -r line; do"
+                             "   case \"$line\" in"
+                             "     *finish*) sleep 0.45; echo '{\"type\": \"final\", \"text\": "
+                             "\"grace ok\"}'; echo '{\"type\": \"closed\"}'; break ;;"
+                             "   esac;"
+                             " done"};
+  provider.timeoutMs = 200;
+  provider.env["VINPUT_ASR_FINISH_GRACE_SECS"] = "0.6";
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
+
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "Failed to read child pid file");
+
+  ExpectTrue(session->Finish(&error), "Finish must honor VINPUT_ASR_FINISH_GRACE_SECS: " + error);
+  const auto events = session->PollEvents();
+  bool saw_final = false;
+  for (const auto& ev : events) {
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText && ev.text == "grace ok") {
+      saw_final = true;
+    }
+  }
+  ExpectTrue(saw_final, "Expected final text after finish grace wait");
+  AssertChildAlreadyReaped(child_pid);
+}
+
 } // namespace
 
 int main() {
@@ -907,6 +953,7 @@ int main() {
   TestStderrLocalizedTitleFromCache();
   TestMultipleFinalsAwaitClosedAfterFinish();
   TestMidSessionFinalFollowedByCleanCloseAfterFinish();
+  TestFinishTimeoutHonorsFinishGraceEnv();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }
