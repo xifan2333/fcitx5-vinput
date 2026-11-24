@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdlib>
 #include <exception>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/i18n.h>
@@ -15,16 +16,22 @@
 #include <fcitx/text.h>
 #include <filesystem>
 #include <fstream>
+#include <glaze/json/json_t.hpp>
+#include <glaze/json/read.hpp>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <stdlib.h> // setenv, unsetenv
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include "common/asr/recognition_result.h"
 #include "common/config/vinput_config.h"
+#include "common/json/json_access.h"
 #include "common/utils/path_utils.h"
 
 #include "core/vinput.h"
@@ -41,8 +48,8 @@ void expect(bool condition, const char* message) {
 
 class TestInputContext : public fcitx::InputContext {
 public:
-  explicit TestInputContext(fcitx::Instance& instance)
-      : fcitx::InputContext(instance.inputContextManager()) {
+  explicit TestInputContext(fcitx::Instance& instance, const std::string& program = {})
+      : fcitx::InputContext(instance.inputContextManager(), program) {
     created();
   }
   TestInputContext(const TestInputContext&) = delete;
@@ -612,6 +619,130 @@ void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputCon
   engine.onInputContextFocusOut(&icB);
 }
 
+struct ScopedXdgCacheDir {
+  std::filesystem::path dir;
+  bool had_prev = false;
+  std::string prev;
+
+  explicit ScopedXdgCacheDir(std::string_view prefix) {
+    if (const char* existing = std::getenv("XDG_CACHE_HOME"); existing != nullptr) {
+      had_prev = true;
+      prev = existing;
+    }
+    dir = std::filesystem::temp_directory_path() /
+          (std::string(prefix) + "_" + std::to_string(static_cast<long>(getpid())));
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir / "vinput", ec);
+    setenv("XDG_CACHE_HOME", dir.c_str(), 1);
+  }
+
+  ScopedXdgCacheDir(const ScopedXdgCacheDir&) = delete;
+  ScopedXdgCacheDir& operator=(const ScopedXdgCacheDir&) = delete;
+  ScopedXdgCacheDir(ScopedXdgCacheDir&&) = delete;
+  ScopedXdgCacheDir& operator=(ScopedXdgCacheDir&&) = delete;
+
+  ~ScopedXdgCacheDir() {
+    if (had_prev) {
+      setenv("XDG_CACHE_HOME", prev.c_str(), 1);
+    } else {
+      unsetenv("XDG_CACHE_HOME");
+    }
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+  }
+};
+
+std::vector<glz::json_t> ReadContextJsonLines(const std::filesystem::path& path) {
+  std::ifstream ifs(path);
+  expect(ifs.is_open(), "context.jsonl must exist after engine teardown");
+  std::vector<glz::json_t> rows;
+  for (std::string line; std::getline(ifs, line);) {
+    if (line.empty()) {
+      continue;
+    }
+    glz::json_t parsed;
+    expect(!bool(glz::read_json(parsed, line)), "each context.jsonl line must be valid JSON");
+    rows.push_back(std::move(parsed));
+  }
+  return rows;
+}
+
+void ExpectContextEntry(const glz::json_t& entry, std::string_view expected_source,
+                        std::string_view expected_text, std::string_view expected_app) {
+  expect(vinput::json::String(entry, "source") == expected_source,
+         "context entry source must match");
+  expect(vinput::json::String(entry, "text") == expected_text, "context entry text must match");
+  if (expected_app.empty()) {
+    expect(vinput::json::Find(entry, "app") == nullptr,
+           "context entry must omit app when InputContext program is empty");
+  } else {
+    expect(vinput::json::String(entry, "app") == expected_app, "context entry app must match");
+  }
+}
+
+void TestContextJournalAppField(fcitx::Instance& instance) {
+  std::cout << "--- 11. Testing Context Journal App Field (#776) ---\n";
+  const vinput::test::ScopedXdgConfigDir xdg_cfg("vinput_test_ctx_cfg");
+  const ScopedXdgCacheDir xdg_cache("vinput_test_ctx_cache");
+  {
+    std::ofstream cfg_out(vinput::path::VinputConfigDir() / "config.json");
+    cfg_out << R"({"version":">=2.5.0","scenes":{"active_scene":"__raw__","definitions":[)"
+               R"({"id":"__raw__","label":"Raw","count":0,"context_lines":10}]}})";
+  }
+
+  {
+    VinputEngine scoped_engine(&instance);
+    TestInputContext ic_term(instance, "ftty");
+    TestInputContext ic_browser(instance, "chromium");
+    TestInputContext ic_empty(instance);
+
+    // 1. User typing in terminal buffers without terminal punctuation, then
+    // switching to browser flushes buffered terminal text with "ftty".
+    scoped_engine.onInputContextFocusIn(&ic_term);
+    ic_term.commitString("cargo");
+
+    scoped_engine.onInputContextFocusIn(&ic_browser);
+    ic_browser.commitString("hello.");
+
+    // 2. Direct single-candidate LLM commit records "llm" with "chromium".
+    const std::string direct_llm = vinput::result::Serialize(vinput::result::Payload{
+        .commitText = "Formatted text.",
+        .candidates = {vinput::result::Candidate{.text = "Formatted text.",
+                                                 .source = vinput::result::kSourceLlm}},
+    });
+    scoped_engine.handleRecognitionResultPayload(direct_llm);
+
+    // 3. Multi-candidate result records "asr" immediately and "llm" upon menu selection.
+    const std::string multi_cand = vinput::result::Serialize(vinput::result::Payload{
+        .commitText = "polished speech",
+        .candidates =
+            {
+                vinput::result::Candidate{.text = "raw speech",
+                                          .source = vinput::result::kSourceRaw},
+                vinput::result::Candidate{.text = "polished speech",
+                                          .source = vinput::result::kSourceLlm},
+            },
+    });
+    scoped_engine.handleRecognitionResultPayload(multi_cand);
+    scoped_engine.selectResultCandidate(1, &ic_browser);
+
+    // 4. Empty program() omits "app" completely.
+    scoped_engine.onInputContextFocusIn(&ic_empty);
+    ic_empty.commitString("plain text.");
+    scoped_engine.onInputContextFocusOut(&ic_empty);
+  }
+
+  const auto rows = ReadContextJsonLines(vinput::path::ContextCachePath());
+  expect(rows.size() == 6, "context.jsonl must contain all 6 recorded entries");
+  ExpectContextEntry(rows[0], "user", "cargo", "ftty");
+  ExpectContextEntry(rows[1], "user", "hello.", "chromium");
+  ExpectContextEntry(rows[2], "llm", "Formatted text.", "chromium");
+  ExpectContextEntry(rows[3], "asr", "raw speech", "chromium");
+  ExpectContextEntry(rows[4], "llm", "polished speech", "chromium");
+  ExpectContextEntry(rows[5], "user", "plain text.", "");
+}
+
 void runAllTests() {
   const ScopedConfigDir sandbox;
 
@@ -641,6 +772,7 @@ void runAllTests() {
   TestLifetimeTokenUafGuard(instance);
   TestPaletteItemNotificationTitleAndProcMenu(ic, engine);
   TestInjectedPartialAndFocusTracking(instance, ic, engine);
+  TestContextJournalAppField(instance);
 
   std::cout << "\n✅ ALL TRIGGER TESTS PASSED CLEANLY!\n";
 }
