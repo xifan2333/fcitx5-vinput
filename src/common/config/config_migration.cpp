@@ -568,6 +568,7 @@ bool ApplySingleIniRule(fcitx::RawConfig& parent, const std::string& key, const 
   case ActionType::Remove:
   case ActionType::Ensure:
   case ActionType::ReplaceIfDefault:
+  case ActionType::ArrayReplaceSubstring:
     return false;
   }
   return false;
