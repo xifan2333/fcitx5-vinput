@@ -637,12 +637,7 @@ void ExpectContextEntry(const glz::json_t& entry, std::string_view expected_sour
   expect(vinput::json::String(entry, "source") == expected_source,
          "context entry source must match");
   expect(vinput::json::String(entry, "text") == expected_text, "context entry text must match");
-  if (expected_app.empty()) {
-    expect(vinput::json::Find(entry, "app") == nullptr,
-           "context entry must omit app when InputContext program is empty");
-  } else {
-    expect(vinput::json::String(entry, "app") == expected_app, "context entry app must match");
-  }
+  expect(vinput::json::String(entry, "app") == expected_app, "context entry app must match");
 }
 
 void TestContextJournalAppField(fcitx::Instance& instance) {
@@ -691,7 +686,7 @@ void TestContextJournalAppField(fcitx::Instance& instance) {
     scoped_engine.handleRecognitionResultPayload(multi_cand);
     scoped_engine.selectResultCandidate(1, &ic_browser);
 
-    // 4. Empty program() omits "app" completely.
+    // 4. Empty program() records "app": "unknown".
     scoped_engine.onInputContextFocusIn(&ic_empty);
     ic_empty.commitString("plain text.");
     scoped_engine.onInputContextFocusOut(&ic_empty);
@@ -704,7 +699,7 @@ void TestContextJournalAppField(fcitx::Instance& instance) {
   ExpectContextEntry(rows[2], "llm", "Formatted text.", "chromium");
   ExpectContextEntry(rows[3], "asr", "raw speech", "chromium");
   ExpectContextEntry(rows[4], "llm", "polished speech", "chromium");
-  ExpectContextEntry(rows[5], "user", "plain text.", "");
+  ExpectContextEntry(rows[5], "user", "plain text.", "unknown");
 }
 
 void runAllTests() {

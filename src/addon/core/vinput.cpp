@@ -43,6 +43,7 @@ namespace {
 
 constexpr auto kContextClock = 1; // POSIX CLOCK_MONOTONIC
 constexpr const char* kContextSourceUser = "user";
+constexpr const char* kContextAppUnknown = "unknown";
 
 // Re-encodes `text` through the vendored Unicode codec, dropping ill formed byte
 // sequences. Context history is best effort input data that must never break the
@@ -421,18 +422,20 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
   // JSONL keeps one object per line. Text coming from ASR may carry ill formed
   // UTF-8, so it is round tripped through the vendored Unicode codec to keep the
   // cache file parseable.
-  glz::json_t entry = {
+  std::string app;
+  if (ic != nullptr) {
+    app = SanitizeUtf8(ic->program());
+  }
+  if (app.empty()) {
+    app = kContextAppUnknown;
+  }
+  const glz::json_t entry = {
       {"text", SanitizeUtf8(text)},
       {"source",
        SanitizeUtf8(source != nullptr ? std::string(source) : std::string(kContextSourceUser))},
+      {"app", std::move(app)},
       {"timestamp", static_cast<double>(vinput::time::CurrentUnixTimestampSeconds())},
   };
-  if (ic != nullptr) {
-    const std::string app = SanitizeUtf8(ic->program());
-    if (!app.empty()) {
-      entry["app"] = app;
-    }
-  }
 
   if (!context_writer_) {
     context_writer_ =
