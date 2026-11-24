@@ -46,9 +46,9 @@ void TestMeasureVisibleWidthAnsiAndOsc8() {
 
   // OSC 8 terminal hyperlink: \033]8;;<URL>\a<LABEL>\033]8;;\a
   // The URL should not contribute to visible column width.
-  const std::string long_url =
-      "\033]8;;https://github.com/xifan2333/vinput-registry/blob/main/resources/adapters/cjk-trim/"
-      "README.md\aOpen README\033]8;;\a";
+  const std::string long_url = "\033]8;;https://github.com/fcitx5-vinput/vinput-registry/blob/main/"
+                               "resources/adapters/cjk-trim/"
+                               "README.md\aOpen README\033]8;;\a";
   TEST_ASSERT(MeasureVisibleWidth(long_url) == 11);
 
   // OSC 8 with ST termination (\033\\ instead of \a)
@@ -67,11 +67,11 @@ void TestRenderTable() {
   using vinput::cli::RenderTable;
 
   const std::vector<std::string> headers = {"ID", "类型", "说明", "文档"};
-  const std::string link1 =
-      "\033]8;;https://github.com/xifan2333/vinput-registry/blob/main/resources/adapters/cjk-trim/"
-      "README.md\aOpen README\033]8;;\a";
+  const std::string link1 = "\033]8;;https://github.com/fcitx5-vinput/vinput-registry/blob/main/"
+                            "resources/adapters/cjk-trim/"
+                            "README.md\aOpen README\033]8;;\a";
   const std::string link2 =
-      "\033]8;;https://github.com/xifan2333/vinput-registry/blob/main/resources/providers/"
+      "\033]8;;https://github.com/fcitx5-vinput/vinput-registry/blob/main/resources/providers/"
       "sherpa-onnx/README.md\aOpen README\033]8;;\a";
 
   const std::vector<std::vector<std::string>> rows = {
@@ -102,7 +102,7 @@ void TestRenderTableWithHyperlinkInMiddleColumn() {
 
   const std::vector<std::string> headers = {"NAME", "LINK", "STATUS"};
   const std::string link =
-      "\033]8;;https://github.com/xifan2333/fcitx5-vinput/pull/574\aPull Request\033]8;;\a";
+      "\033]8;;https://github.com/fcitx5-vinput/fcitx5-vinput/pull/574\aPull Request\033]8;;\a";
 
   const std::vector<std::vector<std::string>> rows = {
       {"item-1", link, "运行中"},

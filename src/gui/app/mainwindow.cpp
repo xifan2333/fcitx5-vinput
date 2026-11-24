@@ -247,7 +247,7 @@ using UpdateCheckResult = MainWindow::UpdateCheckResult;
 
 std::optional<std::string> FetchNotificationJson(const std::atomic<bool>* cancel_token) {
   const std::vector<std::string> urls = {
-      "https://raw.githubusercontent.com/xifan2333/fcitx5-vinput/main/"
+      "https://raw.githubusercontent.com/fcitx5-vinput/fcitx5-vinput/main/"
       "notification.json"};
   std::string content;
   vinput::download::Options opts;
