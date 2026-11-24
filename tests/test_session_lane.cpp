@@ -119,6 +119,8 @@ public:
     bool finished = false;
     bool block_finish_until_interrupt = false;
     bool finish_entered = false;
+    bool mid_session_final_emitted = false;
+    std::string mid_session_final_text;
     std::string finish_text = "ok";
   };
 
@@ -133,6 +135,10 @@ public:
       return false;
     }
     state_->received_pcm.insert(state_->received_pcm.end(), pcm.begin(), pcm.end());
+    if (!state_->mid_session_final_emitted && !state_->mid_session_final_text.empty()) {
+      state_->mid_session_final_emitted = true;
+      events_.push_back({RecognitionEventKind::FinalText, state_->mid_session_final_text, {}});
+    }
     return true;
   }
 
@@ -764,6 +770,58 @@ void TestStreamingPushFailureDoesNotDeadlockConsumerLock() {
   TEST_ASSERT(sink.HasStatus(vinput::dbus::Status::Error));
 }
 
+void TestStreamingMidSessionFinalUpdatedByFinishTail() {
+  MockAudioInputSource source(15, 16000);
+  RecordingSink sink;
+  auto session_state = std::make_shared<ScriptedSession::SharedState>();
+  session_state->mid_session_final_text = "first part";
+  session_state->finish_text = "first part tail";
+
+  SessionLaneDependencies deps{
+      .audio_source = &source,
+      .event_sink = &sink,
+      .load_config = [] { return MakeTestConfig(); },
+      .create_asr_session =
+          [&](const CoreConfig&, BackendDescriptor* desc, std::string*,
+              const std::function<void()>&) {
+            desc->capabilities.audio_delivery_mode = AudioDeliveryMode::Chunked;
+            return std::make_unique<ScriptedSession>(session_state);
+          },
+      .run_postprocess =
+          [](const PostprocessRequest& req, const CoreConfig&, const std::function<void()>&,
+             const std::atomic<bool>*) {
+            RecognitionPipelineResult res;
+            res.payload.commitText = req.text;
+            return res;
+          },
+      .warn_on_clipped_head = false,
+  };
+
+  SessionLane lane(std::move(deps));
+  TEST_ASSERT(lane.Start(true, false).ok);
+  source.PushSamples(std::vector<int16_t>(8000, 100));
+  for (int i = 0; i < 50 && lane.CurrentPhase() != LanePhase::Recording; ++i) {
+    lane.ProcessPendingEvents();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  TEST_ASSERT(lane.CurrentPhase() == LanePhase::Recording);
+  lane.ProcessPendingEvents();
+
+  // Push trailing samples right before Stop() without draining first.
+  source.PushSamples(std::vector<int16_t>(800, 200));
+  TEST_ASSERT(lane.Stop(true, "").ok);
+  PumpUntilIdle(lane);
+  TEST_ASSERT(lane.IsIdle());
+
+  {
+    const std::scoped_lock lock(session_state->mutex);
+    TEST_ASSERT(session_state->finished);
+    TEST_ASSERT(session_state->received_pcm.size() == 8800);
+  }
+  TEST_ASSERT(sink.Results().size() == 1);
+  TEST_ASSERT(sink.Results()[0].first.commitText == "first part tail");
+}
+
 } // namespace
 
 int main() {
@@ -777,6 +835,7 @@ int main() {
   TestStreamErrorAndShutdownInterrupt();
   TestInjectTextDuringRecording();
   TestStreamingPushFailureDoesNotDeadlockConsumerLock();
+  TestStreamingMidSessionFinalUpdatedByFinishTail();
   std::printf("All test_session_lane passed!\n");
   return 0;
 }

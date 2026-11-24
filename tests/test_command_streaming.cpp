@@ -780,6 +780,129 @@ void TestStderrLocalizedTitleFromCache() {
              "Streaming stderr notification must use localized provider title");
 }
 
+/**
+ * Issue #756 regression test:
+ * Mid-session and post-finish segment_final events (without utterance_final)
+ * must not cause Finish() to exit early and kill the provider before the
+ * trailing utterance_final arrives.
+ */
+void TestSegmentFinalDoesNotTruncatePostFinishTail() {
+  const std::string pid_file = GetUniquePidFilePath(16);
+  unlink(pid_file.c_str());
+
+  CommandAsrProvider provider;
+  provider.id = "test-segment-final-tail";
+  provider.command = "/bin/sh";
+  provider.args = {
+      "-c",
+      "echo $$ > " + pid_file +
+          " && echo '{\"type\": \"session_started\"}'"
+          " && while IFS= read -r line; do"
+          "   case \"$line\" in"
+          "     *audio*) echo '{\"type\": \"final\", \"text\": \"first segment\", "
+          "\"segment_final\": true}' ;;"
+          "     *finish*) echo '{\"type\": \"final\", \"text\": \"first segment second\", "
+          "\"segment_final\": true}'; sleep 0.35; echo '{\"type\": \"final\", \"text\": "
+          "\"first segment second tail\", \"segment_final\": true, \"utterance_final\": true}'; "
+          "echo '{\"type\": \"closed\"}'; break ;;"
+          "   esac;"
+          " done"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  std::vector<int16_t> chunk(800, 100);
+  ExpectTrue(session->PushAudio(chunk, &error), "PushAudio failed: " + error);
+
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "Failed to read child pid file");
+
+  bool saw_mid_final = false;
+  for (int i = 0; i < 50 && !saw_mid_final; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "Poll PushAudio failed");
+    for (const auto& ev : session->PollEvents()) {
+      if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText &&
+          ev.text == "first segment") {
+        saw_mid_final = true;
+      }
+    }
+  }
+  ExpectTrue(saw_mid_final, "Expected mid-session segment_final before Finish");
+
+  ExpectTrue(session->Finish(&error), "Finish failed: " + error);
+  const auto events = session->PollEvents();
+  std::string last_final;
+  for (const auto& ev : events) {
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText) {
+      last_final = ev.text;
+    }
+  }
+  ExpectTrue(last_final == "first segment second tail",
+             "Expected full trailing final text after finish, got: " + last_final);
+  AssertChildAlreadyReaped(child_pid);
+}
+
+/**
+ * Issue #756 regression test:
+ * When a provider already emitted a mid-session segment_final and emits only
+ * {"type": "closed"} after finish (no new speech), Finish() must succeed
+ * without reporting "returned no text".
+ */
+void TestSegmentFinalFollowedByCleanCloseAfterFinish() {
+  const std::string pid_file = GetUniquePidFilePath(17);
+  unlink(pid_file.c_str());
+
+  CommandAsrProvider provider;
+  provider.id = "test-segment-final-clean-close";
+  provider.command = "/bin/sh";
+  provider.args = {"-c",
+                   "echo $$ > " + pid_file +
+                       " && echo '{\"type\": \"session_started\"}'"
+                       " && while IFS= read -r line; do"
+                       "   case \"$line\" in"
+                       "     *audio*) echo '{\"type\": \"final\", \"text\": \"only segment\", "
+                       "\"segment_final\": true}' ;;"
+                       "     *finish*) sleep 0.30; echo '{\"type\": \"closed\"}'; break ;;"
+                       "   esac;"
+                       " done"};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  std::vector<int16_t> chunk(800, 100);
+  ExpectTrue(session->PushAudio(chunk, &error), "PushAudio failed: " + error);
+
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "Failed to read child pid file");
+
+  bool saw_mid_final = false;
+  for (int i = 0; i < 50 && !saw_mid_final; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "Poll PushAudio failed");
+    for (const auto& ev : session->PollEvents()) {
+      if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText &&
+          ev.text == "only segment") {
+        saw_mid_final = true;
+      }
+    }
+  }
+  ExpectTrue(saw_mid_final, "Expected mid-session segment_final before Finish");
+
+  ExpectTrue(session->Finish(&error), "Finish after clean close must succeed: " + error);
+  AssertChildAlreadyReaped(child_pid);
+}
+
 } // namespace
 
 int main() {
@@ -801,6 +924,8 @@ int main() {
   TestPrematureExitErrorReporting();
   TestEarlyClosedReportsFailure();
   TestStderrLocalizedTitleFromCache();
+  TestSegmentFinalDoesNotTruncatePostFinishTail();
+  TestSegmentFinalFollowedByCleanCloseAfterFinish();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }
