@@ -1,10 +1,10 @@
 {
-  "version": ">=2.4.0",
+  "version": ">=2.5.0",
   "registry": {
     "base_urls": [
-      "https://raw.githubusercontent.com/xifan2333/vinput-registry/main",
-      "https://gh-proxy.com/https://raw.githubusercontent.com/xifan2333/vinput-registry/main",
-      "https://ghfast.top/https://raw.githubusercontent.com/xifan2333/vinput-registry/main"
+      "https://raw.githubusercontent.com/fcitx5-vinput/vinput-registry/main",
+      "https://gh-proxy.com/https://raw.githubusercontent.com/fcitx5-vinput/vinput-registry/main",
+      "https://ghfast.top/https://raw.githubusercontent.com/fcitx5-vinput/vinput-registry/main"
     ]
   },
   "global": {
