@@ -930,6 +930,31 @@ void TestFinishTimeoutHonorsFinishGraceEnv() {
   AssertChildAlreadyReaped(child_pid);
 }
 
+/**
+ * Issue #756 regression test:
+ * If a provider emits a mid-session final and then crashes (non-zero exit)
+ * during Finish() before emitting {"type": "closed"}, Finish() must fail
+ * instead of silently committing only the earlier segment.
+ */
+void TestMidSessionFinalFollowedByCrashDuringFinish() {
+  auto active = StartAndAwaitMidFinal(
+      19, "test-mid-final-crash-on-finish",
+      "echo '{\"type\": \"session_started\"}'"
+      " && while IFS= read -r line; do"
+      "   case \"$line\" in"
+      "     *audio*) echo '{\"type\": \"final\", \"text\": \"partial utterance\"}' ;;"
+      "     *finish*) exit 1 ;;"
+      "   esac;"
+      " done",
+      "partial utterance");
+
+  std::string error;
+  ExpectTrue(!active.session->Finish(&error),
+             "Finish must fail when provider crashes before closed");
+  ExpectTrue(!error.empty(), "Finish failure must report non-empty error");
+  AssertChildAlreadyReaped(active.child_pid);
+}
+
 } // namespace
 
 int main() {
@@ -954,6 +979,7 @@ int main() {
   TestMultipleFinalsAwaitClosedAfterFinish();
   TestMidSessionFinalFollowedByCleanCloseAfterFinish();
   TestFinishTimeoutHonorsFinishGraceEnv();
+  TestMidSessionFinalFollowedByCrashDuringFinish();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

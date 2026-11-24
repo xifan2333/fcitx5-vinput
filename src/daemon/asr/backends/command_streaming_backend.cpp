@@ -273,23 +273,13 @@ private:
     return true;
   }
 
-  // First provider-reported error text, empty when the session never saw one.
-  std::string FirstError() const {
-    for (const auto& event : events_) {
-      if (event.kind == RecognitionEventKind::Error) {
-        return event.error;
-      }
-    }
-    return {};
-  }
-
   // Drains leftovers, reports the no-text / interruption cases and resolves the
   // caller-visible outcome after the provider closes or exits.
   bool FinalizeFinish(std::string* error) {
     DrainEvents(std::chrono::milliseconds(0), nullptr);
 
     const bool cancelled = phase_ == Phase::Cancelled;
-    if (!saw_final_text_ && !saw_error_ && !cancelled && !killed_by_us_) {
+    if (!saw_final_text_ && !first_error_.has_value() && !cancelled && !killed_by_us_) {
       QueueError(_("Streaming ASR provider returned no text."));
     }
     phase_ = Phase::Completed;
@@ -301,9 +291,9 @@ private:
       finish_error_ = _("Recognition session was interrupted or cancelled.");
       return SetFinishError(error, finish_error_);
     }
-    if (saw_error_) {
+    if (first_error_.has_value()) {
       finish_success_ = false;
-      finish_error_ = FirstError();
+      finish_error_ = *first_error_;
       return SetFinishError(error, finish_error_);
     }
     finish_success_ = true;
@@ -340,7 +330,8 @@ private:
     }
     if (killed_by_us_) {
       VLOG_DEBUG("streaming ASR provider '{}' terminated by session cancellation", provider_id_);
-    } else if (exit_code_ != 0 && !saw_error_ && !saw_final_text_) {
+    } else if (exit_code_ != 0 && !first_error_.has_value() &&
+               (!saw_final_text_ || (phase_ == Phase::Finishing && !provider_closed_))) {
       VLOG_WARN("streaming ASR provider '{}' exited abnormally with code {}", provider_id_,
                 exit_code_);
       QueueError(_("Streaming ASR provider exited abnormally."));
@@ -556,9 +547,11 @@ private:
 
   void QueueError(std::string_view error_text) {
     const std::string_view trimmed = vinput::str::Trim(error_text);
-    saw_error_ = true;
-    events_.push_back(
-        {RecognitionEventKind::Error, {}, trimmed.empty() ? "failed." : std::string(trimmed)});
+    std::string message = trimmed.empty() ? "failed." : std::string(trimmed);
+    if (!first_error_.has_value()) {
+      first_error_ = message;
+    }
+    events_.push_back({RecognitionEventKind::Error, {}, std::move(message)});
   }
 
   void QueueCompleted() {
@@ -621,7 +614,7 @@ private:
   std::string finish_error_;
   bool terminated_ = false;
   bool completed_emitted_ = false;
-  bool saw_error_ = false;
+  std::optional<std::string> first_error_;
   bool saw_final_text_ = false;
   bool child_exited_ = false;
   bool killed_by_us_ = false;
