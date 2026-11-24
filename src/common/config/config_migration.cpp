@@ -334,12 +334,12 @@ bool ApplyArrayReplaceSubstringAction(glz::json_t& parent, const std::string& ke
       migrated.push_back(elem);
       continue;
     }
-    std::string updated = ReplaceAllOccurrences(*str, *from, *to);
+    const std::string updated = ReplaceAllOccurrences(*str, *from, *to);
     if (updated != *str) {
       changed = true;
     }
     if (seen.insert(updated).second) {
-      migrated.emplace_back(std::move(updated));
+      migrated.emplace_back(updated);
     }
   }
 
