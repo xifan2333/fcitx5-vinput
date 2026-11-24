@@ -797,20 +797,21 @@ void VinputEngine::applyDaemonStatusLocally(const std::string& status,
   applyDaemonStatusTransition(ic, vinput::dbus::StringToStatus(status), command_mode);
 }
 
-void VinputEngine::recordAsrCandidateContext(const vinput::result::Payload& payload,
+void VinputEngine::recordAsrCandidateContext(fcitx::InputContext* ic,
+                                             const vinput::result::Payload& payload,
                                              bool is_command,
                                              const std::string& command_selected_text) {
   const auto* asr_candidate =
       FindAsrCandidate(payload.candidates, is_command, command_selected_text);
   if (asr_candidate != nullptr && !asr_candidate->text.empty()) {
-    appendContextEntry(asr_candidate->text, "asr");
+    appendContextEntry(asr_candidate->text, "asr", ic);
   }
 }
 
 void VinputEngine::commitResultText(fcitx::InputContext* ic, const vinput::result::Payload& payload,
                                     bool commit_from_llm, bool is_command) {
   if (commit_from_llm) {
-    appendContextEntry(payload.commitText, "llm");
+    appendContextEntry(payload.commitText, "llm", ic);
   }
   suppressNextCommitContext(payload.commitText);
 
@@ -865,7 +866,7 @@ void VinputEngine::handleRecognitionResultPayload(const std::string& payload_tex
     return;
   }
 
-  recordAsrCandidateContext(payload, is_command, command_selected_text);
+  recordAsrCandidateContext(ic, payload, is_command, command_selected_text);
   const auto llm_summary = SummarizeLlmCandidates(payload.candidates, payload.commitText);
 
   // Dictation presents every distinct choice: raw is option 1 and the primary LLM rewrite is

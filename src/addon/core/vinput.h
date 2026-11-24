@@ -141,8 +141,8 @@ private:
   bool callSyncRpc(const char* member, const std::string& fallback_error, std::string* error,
                    const std::string* arg = nullptr);
   void onRecognitionResult(fcitx::dbus::Message& msg);
-  void recordAsrCandidateContext(const vinput::result::Payload& payload, bool is_command,
-                                 const std::string& command_selected_text);
+  void recordAsrCandidateContext(fcitx::InputContext* ic, const vinput::result::Payload& payload,
+                                 bool is_command, const std::string& command_selected_text);
   void commitResultText(fcitx::InputContext* ic, const vinput::result::Payload& payload,
                         bool commit_from_llm, bool is_command);
   void restoreRecordingPreedit();
@@ -181,7 +181,7 @@ private:
   void updateVoicePresentation(fcitx::InputContext* ic, const std::string& preedit_text,
                                const std::string& aux_down_text = {});
   void clearVoicePresentation(fcitx::InputContext* ic);
-  void appendContextEntry(const std::string& text, const char* source);
+  void appendContextEntry(const std::string& text, const char* source, fcitx::InputContext* ic);
   void flushContextBuffer();
   void accumulateContextBuffer(const std::string& text, fcitx::InputContext* ic);
   void suppressNextCommitContext(const std::string& text);

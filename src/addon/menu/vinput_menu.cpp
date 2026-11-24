@@ -1146,7 +1146,7 @@ void VinputEngine::selectResultCandidate(std::size_t index, fcitx::InputContext*
   hideResultMenu();
 
   if (chosen.source == vinput::result::kSourceLlm) {
-    appendContextEntry(chosen.text, "llm");
+    appendContextEntry(chosen.text, "llm", ic);
   }
   suppressNextCommitContext(chosen.text);
 

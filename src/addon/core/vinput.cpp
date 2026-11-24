@@ -18,6 +18,7 @@
 #include <system_error>
 #include <unicodelib.h>
 #include <unicodelib_encodings.h>
+#include <utility>
 
 #include "common/config/core_config.h"
 #include "common/config/vinput_config.h"
@@ -43,6 +44,7 @@ namespace {
 
 constexpr auto kContextClock = 1; // POSIX CLOCK_MONOTONIC
 constexpr const char* kContextSourceUser = "user";
+constexpr const char* kContextAppUnknown = "unknown";
 
 // Re-encodes `text` through the vendored Unicode codec, dropping ill formed byte
 // sequences. Context history is best effort input data that must never break the
@@ -408,7 +410,8 @@ VinputEngine::resolveFrontendInputContext(fcitx::InputContext* fallback_ic) cons
   return nullptr;
 }
 
-void VinputEngine::appendContextEntry(const std::string& text, const char* source) {
+void VinputEngine::appendContextEntry(const std::string& text, const char* source,
+                                      fcitx::InputContext* ic) {
   if (max_context_lines_ <= 0 || text.empty()) {
     return;
   }
@@ -420,10 +423,18 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
   // JSONL keeps one object per line. Text coming from ASR may carry ill formed
   // UTF-8, so it is round tripped through the vendored Unicode codec to keep the
   // cache file parseable.
+  std::string app;
+  if (ic != nullptr) {
+    app = SanitizeUtf8(ic->program());
+  }
+  if (app.empty()) {
+    app = kContextAppUnknown;
+  }
   const glz::json_t entry = {
       {"text", SanitizeUtf8(text)},
       {"source",
        SanitizeUtf8(source != nullptr ? std::string(source) : std::string(kContextSourceUser))},
+      {"app", std::move(app)},
       {"timestamp", static_cast<double>(vinput::time::CurrentUnixTimestampSeconds())},
   };
 
@@ -447,11 +458,12 @@ void VinputEngine::suppressNextCommitContext(const std::string& text) {
 }
 
 void VinputEngine::flushContextBuffer() {
+  fcitx::InputContext* ic = context_buffer_ic_;
   context_buffer_ic_ = nullptr;
   if (context_buffer_text_.empty()) {
     return;
   }
-  appendContextEntry(context_buffer_text_, kContextSourceUser);
+  appendContextEntry(context_buffer_text_, kContextSourceUser, ic);
   context_buffer_text_.clear();
   if (context_flush_timer_) {
     context_flush_timer_->setEnabled(false);
