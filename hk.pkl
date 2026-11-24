@@ -52,7 +52,6 @@ local linters = new Mapping<String, Step> {
 
   ["prettier"] = (Builtins.prettier) {
     glob = List("**/*.json")
-    exclude = List("site/package-lock.json")
   }
 
   ["trailing-whitespace"] = Builtins.trailing_whitespace

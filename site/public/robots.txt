@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://xifan2333.github.io/fcitx5-vinput/sitemap-index.xml
