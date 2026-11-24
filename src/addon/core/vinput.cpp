@@ -408,7 +408,8 @@ VinputEngine::resolveFrontendInputContext(fcitx::InputContext* fallback_ic) cons
   return nullptr;
 }
 
-void VinputEngine::appendContextEntry(const std::string& text, const char* source) {
+void VinputEngine::appendContextEntry(const std::string& text, const char* source,
+                                      fcitx::InputContext* ic) {
   if (max_context_lines_ <= 0 || text.empty()) {
     return;
   }
@@ -420,12 +421,18 @@ void VinputEngine::appendContextEntry(const std::string& text, const char* sourc
   // JSONL keeps one object per line. Text coming from ASR may carry ill formed
   // UTF-8, so it is round tripped through the vendored Unicode codec to keep the
   // cache file parseable.
-  const glz::json_t entry = {
+  glz::json_t entry = {
       {"text", SanitizeUtf8(text)},
       {"source",
        SanitizeUtf8(source != nullptr ? std::string(source) : std::string(kContextSourceUser))},
       {"timestamp", static_cast<double>(vinput::time::CurrentUnixTimestampSeconds())},
   };
+  if (ic != nullptr) {
+    const std::string app = SanitizeUtf8(ic->program());
+    if (!app.empty()) {
+      entry["app"] = app;
+    }
+  }
 
   if (!context_writer_) {
     context_writer_ =
@@ -447,11 +454,12 @@ void VinputEngine::suppressNextCommitContext(const std::string& text) {
 }
 
 void VinputEngine::flushContextBuffer() {
+  fcitx::InputContext* ic = context_buffer_ic_;
   context_buffer_ic_ = nullptr;
   if (context_buffer_text_.empty()) {
     return;
   }
-  appendContextEntry(context_buffer_text_, kContextSourceUser);
+  appendContextEntry(context_buffer_text_, kContextSourceUser, ic);
   context_buffer_text_.clear();
   if (context_flush_timer_) {
     context_flush_timer_->setEnabled(false);
