@@ -1,5 +1,4 @@
 #include <chrono>
-#include <cstdlib>
 #include <exception>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/i18n.h>
@@ -21,7 +20,6 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
-#include <stdlib.h> // setenv, unsetenv
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -619,40 +617,6 @@ void TestInjectedPartialAndFocusTracking(fcitx::Instance& instance, TestInputCon
   engine.onInputContextFocusOut(&icB);
 }
 
-struct ScopedXdgCacheDir {
-  std::filesystem::path dir;
-  bool had_prev = false;
-  std::string prev;
-
-  explicit ScopedXdgCacheDir(std::string_view prefix) {
-    if (const char* existing = std::getenv("XDG_CACHE_HOME"); existing != nullptr) {
-      had_prev = true;
-      prev = existing;
-    }
-    dir = std::filesystem::temp_directory_path() /
-          (std::string(prefix) + "_" + std::to_string(static_cast<long>(getpid())));
-    std::error_code ec;
-    std::filesystem::remove_all(dir, ec);
-    std::filesystem::create_directories(dir / "vinput", ec);
-    setenv("XDG_CACHE_HOME", dir.c_str(), 1);
-  }
-
-  ScopedXdgCacheDir(const ScopedXdgCacheDir&) = delete;
-  ScopedXdgCacheDir& operator=(const ScopedXdgCacheDir&) = delete;
-  ScopedXdgCacheDir(ScopedXdgCacheDir&&) = delete;
-  ScopedXdgCacheDir& operator=(ScopedXdgCacheDir&&) = delete;
-
-  ~ScopedXdgCacheDir() {
-    if (had_prev) {
-      setenv("XDG_CACHE_HOME", prev.c_str(), 1);
-    } else {
-      unsetenv("XDG_CACHE_HOME");
-    }
-    std::error_code ec;
-    std::filesystem::remove_all(dir, ec);
-  }
-};
-
 std::vector<glz::json_t> ReadContextJsonLines(const std::filesystem::path& path) {
   std::ifstream ifs(path);
   expect(ifs.is_open(), "context.jsonl must exist after engine teardown");
@@ -684,7 +648,7 @@ void ExpectContextEntry(const glz::json_t& entry, std::string_view expected_sour
 void TestContextJournalAppField(fcitx::Instance& instance) {
   std::cout << "--- 11. Testing Context Journal App Field (#776) ---\n";
   const vinput::test::ScopedXdgConfigDir xdg_cfg("vinput_test_ctx_cfg");
-  const ScopedXdgCacheDir xdg_cache("vinput_test_ctx_cache");
+  const vinput::test::ScopedXdgConfigDir xdg_cache("vinput_test_ctx_cache", "XDG_CACHE_HOME");
   {
     std::ofstream cfg_out(vinput::path::VinputConfigDir() / "config.json");
     cfg_out << R"({"version":">=2.5.0","scenes":{"active_scene":"__raw__","definitions":[)"

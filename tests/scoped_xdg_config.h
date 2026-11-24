@@ -15,8 +15,9 @@ namespace vinput::test {
 
 class ScopedXdgConfigDir {
 public:
-  explicit ScopedXdgConfigDir(std::string_view prefix) {
-    if (const char* prev = std::getenv("XDG_CONFIG_HOME"); prev != nullptr) {
+  explicit ScopedXdgConfigDir(std::string_view prefix, const char* env_var = "XDG_CONFIG_HOME")
+      : env_var_(env_var) {
+    if (const char* prev = std::getenv(env_var_.c_str()); prev != nullptr) {
       had_prev_ = true;
       prev_ = prev;
     }
@@ -25,7 +26,7 @@ public:
     std::error_code ec;
     std::filesystem::remove_all(dir_, ec);
     std::filesystem::create_directories(dir_ / "vinput", ec);
-    setenv("XDG_CONFIG_HOME", dir_.c_str(), 1);
+    setenv(env_var_.c_str(), dir_.c_str(), 1);
   }
 
   ScopedXdgConfigDir(const ScopedXdgConfigDir&) = delete;
@@ -35,9 +36,9 @@ public:
 
   ~ScopedXdgConfigDir() {
     if (had_prev_) {
-      setenv("XDG_CONFIG_HOME", prev_.c_str(), 1);
+      setenv(env_var_.c_str(), prev_.c_str(), 1);
     } else {
-      unsetenv("XDG_CONFIG_HOME");
+      unsetenv(env_var_.c_str());
     }
     std::error_code ec;
     std::filesystem::remove_all(dir_, ec);
@@ -49,6 +50,7 @@ public:
   }
 
 private:
+  std::string env_var_;
   std::filesystem::path dir_;
   bool had_prev_ = false;
   std::string prev_;
