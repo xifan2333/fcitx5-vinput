@@ -9,7 +9,7 @@
 
 ---
 
-## 2. Working with `vinput-registry` ([xifan2333/vinput-registry](https://github.com/xifan2333/vinput-registry), `~/Code/vinput-registry`)
+## 2. Working with `vinput-registry` ([fcitx5-vinput/vinput-registry](https://github.com/fcitx5-vinput/vinput-registry), `~/Code/vinput-registry`)
 
 When adding or updating ASR providers, LLM scenes, or local model catalogs, work in `~/Code/vinput-registry`.
 
@@ -39,7 +39,7 @@ When adding or updating ASR providers, LLM scenes, or local model catalogs, work
 Arch Linux binary package (`fcitx5-vinput-bin`) publication is automated in `~/Code/aur-auto`.
 
 ### Package Structure (`pkgs/fcitx5-vinput-bin/`)
-- `upstream.sh`: Fetches the latest release version and asset download URLs from `xifan2333/fcitx5-vinput` on GitHub.
+- `upstream.sh`: Fetches the latest release version and asset download URLs from `fcitx5-vinput/fcitx5-vinput` on GitHub.
 - `PKGBUILD`: Template for extracting pre-built binaries, installing systemd user units, icons, desktop files, and licenses.
 - `fcitx5-vinput-bin.install`: Post-install hooks (reminding users to reload systemd user daemon).
 

@@ -85,7 +85,7 @@ jobs:
             # Explicit manual override always runs the pipeline, even when
             # the version is unchanged. This lets maintainers force the
             # best-effort `nix flake update sherpa-onnx` (refresh flake.lock
-            # to the latest xifan2333/sherpa-onnx-flake rev) and re-open the
+            # to the latest fcitx5-vinput/sherpa-onnx-flake rev) and re-open the
             # bump PR without waiting for an upstream release.
             echo "Forced run via manual override: v${current} -> v${target}" >&2
           elif [[ "${current}" == "${target}" ]]; then
@@ -106,7 +106,7 @@ jobs:
       - name: Update flake.lock sherpa-onnx input
         if: steps.target.outputs.skip != 'true'
         # Best-effort: this only follows whatever revision
-        # xifan2333/sherpa-onnx-flake currently points to. If that flake
+        # fcitx5-vinput/sherpa-onnx-flake currently points to. If that flake
         # repo has not been bumped yet, flake.lock will not pick up the
         # new upstream version on the NixOS side until it is.
         run: nix flake update sherpa-onnx
@@ -138,7 +138,7 @@ jobs:
             and model-format changes ride along with this bump.
 
             **NixOS note**: the actual sherpa-onnx version on NixOS is decided by
-            [`xifan2333/sherpa-onnx-flake`](https://github.com/xifan2333/sherpa-onnx-flake).
+            [`fcitx5-vinput/sherpa-onnx-flake`](https://github.com/fcitx5-vinput/sherpa-onnx-flake).
             If `flake.lock` did not pick up `v${{ steps.target.outputs.target }}`, that
             repo needs to be bumped first.
           labels: |

@@ -15,11 +15,11 @@ The canonical execution workflow for contributing to `fcitx5-vinput` from an ext
      git remote -v
      # Expected:
      # origin:   git@github.com:<contributor>/fcitx5-vinput.git
-     # upstream: https://github.com/xifan2333/fcitx5-vinput.git
+     # upstream: https://github.com/fcitx5-vinput/fcitx5-vinput.git
      ```
    - If `upstream` is missing:
      ```bash
-     git remote add upstream https://github.com/xifan2333/fcitx5-vinput.git
+     git remote add upstream https://github.com/fcitx5-vinput/fcitx5-vinput.git
      git fetch upstream
      ```
 
