@@ -69,8 +69,9 @@ public:
   };
 
   SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer, sherpa::OnlineStream stream,
-                         bool is_paraformer = false)
-      : recognizer_(recognizer), stream_(std::move(stream)), is_paraformer_(is_paraformer) {}
+                         bool set_is_final_on_finish)
+      : recognizer_(recognizer), stream_(std::move(stream)),
+        set_is_final_on_finish_(set_is_final_on_finish) {}
 
   SherpaStreamingSession(const SherpaStreamingSession&) = delete;
   SherpaStreamingSession& operator=(const SherpaStreamingSession&) = delete;
@@ -149,7 +150,7 @@ public:
       const std::vector<float> tail_padding(kTailPaddingSamples, 0.0F);
       stream_.AcceptWaveform(kStreamingSampleRate, tail_padding.data(),
                              static_cast<int32_t>(tail_padding.size()));
-      if (is_paraformer_) {
+      if (set_is_final_on_finish_) {
         stream_.SetOption("is_final", "1");
       }
     }
@@ -248,7 +249,7 @@ private:
 
   const sherpa::OnlineRecognizer* recognizer_ = nullptr;
   sherpa::OnlineStream stream_;
-  bool is_paraformer_ = false;
+  bool set_is_final_on_finish_ = false;
   Phase phase_ = Phase::Active;
   std::size_t total_samples_ = 0;
   double peak_abs_ = 0.0;
