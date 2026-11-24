@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.\n
 """
 body = """
 {%- macro remote_url() -%}
-  https://github.com/xifan2333/fcitx5-vinput
+  https://github.com/fcitx5-vinput/fcitx5-vinput
 {%- endmacro -%}
 
 {% if version -%}

@@ -21,7 +21,7 @@ Build-Depends: debhelper-compat (= 13),
                qt6-tools-dev,
                qt6-tools-dev-tools
 Standards-Version: 4.6.2
-Homepage: https://github.com/xifan2333/fcitx5-vinput
+Homepage: https://github.com/fcitx5-vinput/fcitx5-vinput
 
 Package: fcitx5-vinput
 Architecture: any
