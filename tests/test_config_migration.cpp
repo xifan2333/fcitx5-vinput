@@ -36,7 +36,7 @@ void TestFastPath() {
   const auto conf_path = tmp_dir / "vinput.conf";
 
   glz::json_t valid_cfg = glz::json_t(glz::json_t::object_t{});
-  valid_cfg["version"] = ">=2.4.0";
+  valid_cfg["version"] = ">=2.5.0";
   valid_cfg["asr"]["vad"]["threshold"] = 0.35;
   ExpectTrue(
       vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(valid_cfg)).has_value());
@@ -161,8 +161,8 @@ void TestDryRunAndApply() {
              "min_silence_duration upgraded to 1.2");
   ExpectEq(std::to_string(vinput::json::Int(vad, "speech_pad_ms")), "500",
            "speech_pad_ms upgraded to 500");
-  ExpectEq(vinput::json::String(migrated_cfg, "version"), ">=2.4.0",
-           "version stamped with >=2.4.0");
+  ExpectEq(vinput::json::String(migrated_cfg, "version"), ">=2.5.0",
+           "version stamped with >=2.5.0");
 
   std::string migrated_conf_str;
   auto r_conf = vinput::file::ReadTextFile(conf_path);
@@ -248,9 +248,9 @@ void TestVersionConstraintAndCustomizationPreserved() {
   const auto config_path = tmp_dir / "config.json";
   const auto conf_path = tmp_dir / "vinput.conf";
 
-  // config.json already has version >=2.4.0 and intentionally custom threshold 0.45
+  // config.json already has version >=2.5.0 and intentionally custom threshold 0.45
   const glz::json_t cfg = {
-      {"version", ">=2.4.0"},
+      {"version", ">=2.5.0"},
       {"asr",
        {{"vad",
          {{"threshold", 0.45},
@@ -299,7 +299,7 @@ void TestUndefinedFieldsAndIntegrityPreserved() {
   const auto conf_path = tmp_dir / "vinput.conf";
 
   const glz::json_t valid_cfg = {
-      {"version", ">=2.4.0"},
+      {"version", ">=2.5.0"},
   };
   ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, vinput::json::ToText(valid_cfg) + "\n")
                  .has_value());
@@ -352,6 +352,82 @@ void TestUndefinedFieldsAndIntegrityPreserved() {
   std::filesystem::remove_all(tmp_dir, ec);
 }
 
+void TestRegistryBaseUrlsMigration() {
+  const auto tmp_dir = std::filesystem::temp_directory_path() / "vinput_test_mig_registry_urls";
+  std::filesystem::remove_all(tmp_dir);
+  std::filesystem::create_directories(tmp_dir);
+
+  const auto config_path = tmp_dir / "config.json";
+  const auto conf_path = tmp_dir / "nonexistent.conf";
+
+  const std::string legacy_cfg = R"({
+  "version": ">=2.4.0",
+  "registry": {
+    "base_urls": [
+      "https://raw.githubusercontent.com/xifan2333/vinput-registry/main",
+      "https://gh-proxy.com/https://raw.githubusercontent.com/xifan2333/vinput-registry/main",
+      "https://mirror.example.com/vinput-registry",
+      "https://raw.githubusercontent.com/fcitx5-vinput/vinput-registry/main"
+    ]
+  }
+})";
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, legacy_cfg).has_value());
+
+  const auto report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(report.error.empty(), report.error);
+  ExpectTrue(report.needed, "Registry URL migration should be needed");
+  ExpectTrue(report.applied, "Registry URL migration should be applied");
+
+  auto r_cfg = vinput::file::ReadTextFile(config_path);
+  ExpectTrue(r_cfg.has_value(), r_cfg ? "" : r_cfg.error());
+  std::string migrated_str = *r_cfg;
+  glz::json_t migrated_cfg;
+  ExpectTrue(!bool(glz::read_json(migrated_cfg, migrated_str)), "migrated config is valid JSON");
+  ExpectEq(vinput::json::String(migrated_cfg, "version"), ">=2.5.0",
+           "version stamped with >=2.5.0");
+
+  const auto& urls = migrated_cfg["registry"]["base_urls"].get_array();
+  ExpectTrue(urls.size() == 3, "Migrated base_urls should deduplicate to 3 entries");
+  ExpectEq(urls[0].get<std::string>(),
+           "https://raw.githubusercontent.com/fcitx5-vinput/vinput-registry/main");
+  ExpectEq(urls[1].get<std::string>(),
+           "https://gh-proxy.com/https://raw.githubusercontent.com/fcitx5-vinput/vinput-registry/"
+           "main");
+  ExpectEq(urls[2].get<std::string>(), "https://mirror.example.com/vinput-registry");
+
+  const auto second_report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(second_report.error.empty(), second_report.error);
+  ExpectTrue(!second_report.needed, "Second run should report needed == false");
+  ExpectTrue(!second_report.applied, "Second run should report applied == false");
+
+  // Custom-only mirrors must remain untouched while version updates to >=2.5.0
+  const std::string custom_only_cfg = R"({
+  "version": ">=2.4.0",
+  "registry": {
+    "base_urls": [
+      "https://mirror.example.com/vinput-registry"
+    ]
+  }
+})";
+  ExpectTrue(vinput::file::AtomicWriteTextFile(config_path, custom_only_cfg).has_value());
+  const auto custom_report = vinput::migration::RunConfigMigration(false, config_path, conf_path);
+  ExpectTrue(custom_report.error.empty(), custom_report.error);
+  ExpectTrue(custom_report.needed, "Version bump should still apply");
+  ExpectTrue(custom_report.applied, "Custom-only config should be updated");
+
+  auto r_custom = vinput::file::ReadTextFile(config_path);
+  ExpectTrue(r_custom.has_value(), r_custom ? "" : r_custom.error());
+  std::string custom_str = *r_custom;
+  glz::json_t custom_migrated;
+  ExpectTrue(!bool(glz::read_json(custom_migrated, custom_str)), "custom config stays valid JSON");
+  const auto& custom_urls = custom_migrated["registry"]["base_urls"].get_array();
+  ExpectTrue(custom_urls.size() == 1, "Custom mirror count preserved");
+  ExpectEq(custom_urls[0].get<std::string>(), "https://mirror.example.com/vinput-registry");
+
+  std::error_code ec;
+  std::filesystem::remove_all(tmp_dir, ec);
+}
+
 } // namespace
 
 int main() {
@@ -361,6 +437,7 @@ int main() {
   TestDefaultTemplateFastPath();
   TestVersionConstraintAndCustomizationPreserved();
   TestUndefinedFieldsAndIntegrityPreserved();
+  TestRegistryBaseUrlsMigration();
   std::cout << "All test_config_migration tests passed!\n";
   return 0;
 }
