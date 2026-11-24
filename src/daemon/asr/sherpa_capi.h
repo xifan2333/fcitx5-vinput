@@ -158,6 +158,9 @@ public:
     SherpaOnnxOnlineStreamAcceptWaveform(handle_, sample_rate, samples, n);
   }
   void InputFinished() const { SherpaOnnxOnlineStreamInputFinished(handle_); }
+  void SetOption(const char* key, const char* value) const {
+    SherpaOnnxOnlineStreamSetOption(handle_, key, value);
+  }
 
 private:
   explicit OnlineStream(const SherpaOnnxOnlineStream* handle) : handle_(handle) {}

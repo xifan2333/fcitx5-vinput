@@ -98,7 +98,7 @@ A streaming provider recognizes audio in real time as it arrives.
 ```json
 {"type":"session_started","session_id":"..."}
 {"type":"partial","text":"current partial transcript"}
-{"type":"final","text":"confirmed transcript","segment_final":true}
+{"type":"final","text":"confirmed transcript"}
 {"type":"error","message":"..."}
 {"type":"closed"}
 ```

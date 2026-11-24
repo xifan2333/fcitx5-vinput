@@ -6,11 +6,13 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <span>
 #include <string>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "common/config/core_config_types.h"
@@ -272,7 +274,7 @@ void TestOutputEofWait(bool produce_final, int id) {
                            .count();
   const double cpu_ms = static_cast<double>(std::clock() - cpu_start) * 1000.0 / CLOCKS_PER_SEC;
 
-  // The normal completion path lasts ~450 ms; a final result uses 200 ms grace.
+  // The normal completion path waits until the child exits (~450 ms).
   // Avoid asserting exact timing on a shared CI runner.
   ExpectTrue(wall_ms >= (produce_final ? 100 : 300), "EOF fixture should exercise wait state");
   ExpectTrue(wall_ms < 3000, "EOF wait should preserve bounded completion");
@@ -780,6 +782,179 @@ void TestStderrLocalizedTitleFromCache() {
              "Streaming stderr notification must use localized provider title");
 }
 
+struct MidFinalSession {
+  std::unique_ptr<vinput::daemon::asr::AsrBackend> backend;
+  std::unique_ptr<vinput::daemon::asr::RecognitionSession> session;
+  int child_pid = -1;
+};
+
+MidFinalSession StartAndAwaitMidFinal(int pid_id, const std::string& provider_id,
+                                      const std::string& shell_script,
+                                      const std::string& expected_mid_final) {
+  const std::string pid_file = GetUniquePidFilePath(pid_id);
+  unlink(pid_file.c_str());
+
+  CommandAsrProvider provider;
+  provider.id = provider_id;
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo $$ > " + pid_file + " && " + shell_script};
+  provider.timeoutMs = 5000;
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+
+  std::vector<int16_t> chunk(800, 100);
+  ExpectTrue(session->PushAudio(chunk, &error), "PushAudio failed: " + error);
+
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "Failed to read child pid file");
+
+  bool saw_mid_final = false;
+  for (int i = 0; i < 50 && !saw_mid_final; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "Poll PushAudio failed");
+    for (const auto& ev : session->PollEvents()) {
+      if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText &&
+          ev.text == expected_mid_final) {
+        saw_mid_final = true;
+      }
+    }
+  }
+  ExpectTrue(saw_mid_final, "Expected mid-session final before Finish");
+  return {.backend = std::move(backend), .session = std::move(session), .child_pid = child_pid};
+}
+
+/**
+ * Issue #756 regression test:
+ * Mid-session and post-finish final events must not cause Finish() to exit
+ * early and kill the provider before {"type": "closed"} arrives.
+ */
+void TestMultipleFinalsAwaitClosedAfterFinish() {
+  auto active = StartAndAwaitMidFinal(
+      16, "test-multiple-finals-tail",
+      "echo '{\"type\": \"session_started\"}'"
+      " && while IFS= read -r line; do"
+      "   case \"$line\" in"
+      "     *audio*) echo '{\"type\": \"final\", \"text\": \"first segment\"}' ;;"
+      "     *finish*) echo '{\"type\": \"final\", \"text\": \"first segment second\"}';"
+      " sleep 0.35; echo '{\"type\": \"final\", \"text\": \"first segment second tail\"}';"
+      " echo '{\"type\": \"closed\"}'; break ;;"
+      "   esac;"
+      " done",
+      "first segment");
+
+  std::string error;
+  ExpectTrue(active.session->Finish(&error), "Finish failed: " + error);
+  const auto events = active.session->PollEvents();
+  std::string last_final;
+  for (const auto& ev : events) {
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText) {
+      last_final = ev.text;
+    }
+  }
+  ExpectTrue(last_final == "first segment second tail",
+             "Expected full trailing final text after finish, got: " + last_final);
+  AssertChildAlreadyReaped(active.child_pid);
+}
+
+/**
+ * Issue #756 regression test:
+ * When a provider already emitted a mid-session final and emits only
+ * {"type": "closed"} after finish (no new speech), Finish() must succeed
+ * without reporting "returned no text".
+ */
+void TestMidSessionFinalFollowedByCleanCloseAfterFinish() {
+  auto active = StartAndAwaitMidFinal(
+      17, "test-mid-final-clean-close",
+      "echo '{\"type\": \"session_started\"}'"
+      " && while IFS= read -r line; do"
+      "   case \"$line\" in"
+      "     *audio*) echo '{\"type\": \"final\", \"text\": \"only segment\"}' ;;"
+      "     *finish*) sleep 0.30; echo '{\"type\": \"closed\"}'; break ;;"
+      "   esac;"
+      " done",
+      "only segment");
+
+  std::string error;
+  ExpectTrue(active.session->Finish(&error), "Finish after clean close must succeed: " + error);
+  AssertChildAlreadyReaped(active.child_pid);
+}
+
+/**
+ * Issue #756 regression test:
+ * Finish() must honor VINPUT_ASR_FINISH_GRACE_SECS even when it exceeds
+ * provider.timeoutMs, instead of cutting off the provider with a fixed cap.
+ */
+void TestFinishTimeoutHonorsFinishGraceEnv() {
+  const std::string pid_file = GetUniquePidFilePath(18);
+  unlink(pid_file.c_str());
+
+  CommandAsrProvider provider;
+  provider.id = "test-finish-grace-env";
+  provider.command = "/bin/sh";
+  provider.args = {"-c", "echo $$ > " + pid_file +
+                             " && echo '{\"type\": \"session_started\"}'"
+                             " && while IFS= read -r line; do"
+                             "   case \"$line\" in"
+                             "     *finish*) sleep 0.45; echo '{\"type\": \"final\", \"text\": "
+                             "\"grace ok\"}'; echo '{\"type\": \"closed\"}'; break ;;"
+                             "   esac;"
+                             " done"};
+  provider.timeoutMs = 200;
+  provider.env["VINPUT_ASR_FINISH_GRACE_SECS"] = "0.6";
+
+  std::string error;
+  auto backend = vinput::daemon::asr::CreateCommandStreamingBackend(provider, &error);
+  ExpectTrue(backend != nullptr, "CreateCommandStreamingBackend failed: " + error);
+
+  auto session = backend->CreateSession(&error);
+  ExpectTrue(session != nullptr, "CreateSession failed: " + error);
+  ExpectTrue(session->PushAudio(std::span<const int16_t>{}, &error), "PushAudio failed: " + error);
+
+  const int child_pid = ReadPidFileWithRetry(pid_file);
+  ExpectTrue(child_pid > 0, "Failed to read child pid file");
+
+  ExpectTrue(session->Finish(&error), "Finish must honor VINPUT_ASR_FINISH_GRACE_SECS: " + error);
+  const auto events = session->PollEvents();
+  bool saw_final = false;
+  for (const auto& ev : events) {
+    if (ev.kind == vinput::daemon::asr::RecognitionEventKind::FinalText && ev.text == "grace ok") {
+      saw_final = true;
+    }
+  }
+  ExpectTrue(saw_final, "Expected final text after finish grace wait");
+  AssertChildAlreadyReaped(child_pid);
+}
+
+/**
+ * Issue #756 regression test:
+ * If a provider emits a mid-session final and then crashes (non-zero exit)
+ * during Finish() before emitting {"type": "closed"}, Finish() must fail
+ * instead of silently committing only the earlier segment.
+ */
+void TestMidSessionFinalFollowedByCrashDuringFinish() {
+  auto active = StartAndAwaitMidFinal(
+      19, "test-mid-final-crash-on-finish",
+      "echo '{\"type\": \"session_started\"}'"
+      " && while IFS= read -r line; do"
+      "   case \"$line\" in"
+      "     *audio*) echo '{\"type\": \"final\", \"text\": \"partial utterance\"}' ;;"
+      "     *finish*) exit 1 ;;"
+      "   esac;"
+      " done",
+      "partial utterance");
+
+  std::string error;
+  ExpectTrue(!active.session->Finish(&error),
+             "Finish must fail when provider crashes before closed");
+  ExpectTrue(!error.empty(), "Finish failure must report non-empty error");
+  AssertChildAlreadyReaped(active.child_pid);
+}
+
 } // namespace
 
 int main() {
@@ -801,6 +976,10 @@ int main() {
   TestPrematureExitErrorReporting();
   TestEarlyClosedReportsFailure();
   TestStderrLocalizedTitleFromCache();
+  TestMultipleFinalsAwaitClosedAfterFinish();
+  TestMidSessionFinalFollowedByCleanCloseAfterFinish();
+  TestFinishTimeoutHonorsFinishGraceEnv();
+  TestMidSessionFinalFollowedByCrashDuringFinish();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

@@ -34,10 +34,10 @@ namespace vinput::daemon::asr {
 namespace {
 
 constexpr int32_t kStreamingSampleRate = 16000;
-// Streaming encoders (Zipformer / Paraformer / CTC) require ~0.66s of trailing
-// silence before InputFinished() to flush final tokens out of their right-context
-// lookahead window (see upstream sherpa-onnx online-decode-files examples).
-constexpr std::size_t kTailPaddingSamples = (std::size_t{16000} * 66) / 100;
+// Streaming encoders require trailing silence exceeding their chunk + right-context
+// window before InputFinished() so IsReady() flushes the final speech frames
+// (e.g. 960ms Zipformer models have T=109 frames = 1.09s; 1.20s covers 320/640/960ms).
+constexpr std::size_t kTailPaddingSamples = (std::size_t{16000} * 120) / 100;
 
 int ChooseNumThreads(const glz::json_t& model_cfg, int runtime_default) {
   if (runtime_default > 0) {
@@ -68,8 +68,10 @@ public:
     Cancelled,
   };
 
-  SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer, sherpa::OnlineStream stream)
-      : recognizer_(recognizer), stream_(std::move(stream)) {}
+  SherpaStreamingSession(const sherpa::OnlineRecognizer* recognizer, sherpa::OnlineStream stream,
+                         bool set_is_final_on_finish)
+      : recognizer_(recognizer), stream_(std::move(stream)),
+        set_is_final_on_finish_(set_is_final_on_finish) {}
 
   SherpaStreamingSession(const SherpaStreamingSession&) = delete;
   SherpaStreamingSession& operator=(const SherpaStreamingSession&) = delete;
@@ -148,6 +150,9 @@ public:
       const std::vector<float> tail_padding(kTailPaddingSamples, 0.0F);
       stream_.AcceptWaveform(kStreamingSampleRate, tail_padding.data(),
                              static_cast<int32_t>(tail_padding.size()));
+      if (set_is_final_on_finish_) {
+        stream_.SetOption("is_final", "1");
+      }
     }
     stream_.InputFinished();
     DecodeAvailable();
@@ -244,6 +249,7 @@ private:
 
   const sherpa::OnlineRecognizer* recognizer_ = nullptr;
   sherpa::OnlineStream stream_;
+  bool set_is_final_on_finish_ = false;
   Phase phase_ = Phase::Active;
   std::size_t total_samples_ = 0;
   double peak_abs_ = 0.0;
@@ -490,7 +496,8 @@ public:
     if (error != nullptr) {
       error->clear();
     }
-    return std::make_unique<SherpaStreamingSession>(&*recognizer_, std::move(stream));
+    return std::make_unique<SherpaStreamingSession>(&*recognizer_, std::move(stream),
+                                                    model_info_.family == "paraformer");
   }
 
   bool Warmup(std::string* error) override {

@@ -98,7 +98,7 @@ resources/providers/<目录>/batch/
 ```json
 {"type":"session_started","session_id":"..."}
 {"type":"partial","text":"当前部分识别文本"}
-{"type":"final","text":"已确认的识别文本","segment_final":true}
+{"type":"final","text":"已确认的识别文本"}
 {"type":"error","message":"..."}
 {"type":"closed"}
 ```

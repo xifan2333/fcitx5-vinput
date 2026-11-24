@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <atomic>
 #include <base64.hpp>
+#include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <glaze/core/common.hpp>
@@ -18,6 +21,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -28,10 +32,10 @@
 #include "common/notify/notification_bridge.h"
 #include "common/registry/registry_i18n.h"
 #include "common/utils/debug_log.h"
+#include "common/utils/interpolation.h"
 #include "common/utils/process_session.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
-#include "common/utils/time_utils.h"
 
 #include "daemon/asr/backends/command_backend_factory.h"
 #include "daemon/asr/runtime/recognition_contract.h"
@@ -43,15 +47,44 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 constexpr int kPollSliceMs = 50;
-constexpr int kAwaitFinalTimeoutMs = 10000;
-constexpr int kFinalGraceMs = 200;
+constexpr int kDefaultAwaitFinalTimeoutMs = 10000;
+constexpr int kFinishGraceMarginMs = 2000;
+constexpr int kMaxFinishGraceMs = 3600000;
 
 bool HasTimedOut(Clock::time_point deadline) {
   return Clock::now() >= deadline;
 }
 
-int RemainingMs(Clock::time_point deadline, int fallback_ms) {
-  return vinput::time::RemainingTimeoutMs(deadline, fallback_ms, Clock::now());
+std::optional<int> ParsePositiveSecondsMs(std::string_view raw) {
+  const std::string_view trimmed = vinput::str::Trim(raw);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+  double seconds = 0.0;
+  const auto [ptr, ec] = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), seconds);
+  if (ec != std::errc{} || ptr != trimmed.data() + trimmed.size() || !std::isfinite(seconds) ||
+      seconds <= 0.0) {
+    return std::nullopt;
+  }
+  const double ms = seconds * 1000.0;
+  if (ms >= static_cast<double>(kMaxFinishGraceMs)) {
+    return kMaxFinishGraceMs;
+  }
+  return static_cast<int>(std::ceil(ms));
+}
+
+int ResolveFinishTimeoutMs(const CommandAsrProvider& provider) {
+  int timeout_ms = provider.timeoutMs > 0 ? provider.timeoutMs : kDefaultAwaitFinalTimeoutMs;
+  std::string grace_raw;
+  if (const auto it = provider.env.find("VINPUT_ASR_FINISH_GRACE_SECS"); it != provider.env.end()) {
+    grace_raw = vinput::interpolate::InterpolateEnv(it->second);
+  } else if (const char* env_val = std::getenv("VINPUT_ASR_FINISH_GRACE_SECS")) {
+    grace_raw = env_val;
+  }
+  if (const auto grace_ms = ParsePositiveSecondsMs(grace_raw)) {
+    timeout_ms = std::max(timeout_ms, *grace_ms + kFinishGraceMarginMs);
+  }
+  return timeout_ms;
 }
 
 std::string MakeSessionSourceId(std::string_view provider_id) {
@@ -66,9 +99,11 @@ public:
   friend class CommandStreamingBackend;
 
   CommandStreamingSession(CommandAsrProvider provider, std::string provider_id,
+                          int finish_timeout_ms,
                           vinput::notify::NotificationBridge* notification_bridge = nullptr)
       : provider_(std::move(provider)), provider_id_(std::move(provider_id)),
-        notification_bridge_(notification_bridge), source_id_(MakeSessionSourceId(provider_id_)) {}
+        finish_timeout_ms_(finish_timeout_ms), notification_bridge_(notification_bridge),
+        source_id_(MakeSessionSourceId(provider_id_)) {}
 
   CommandStreamingSession(const CommandStreamingSession&) = delete;
   CommandStreamingSession& operator=(const CommandStreamingSession&) = delete;
@@ -132,15 +167,10 @@ public:
     if (!StartFinish(error)) {
       return false;
     }
-    if (!AwaitFinalText(error)) {
+    if (!AwaitCompletion(error)) {
       return false;
     }
-
-    bool grace_pump_failed = false;
-    if (saw_final_text_) {
-      grace_pump_failed = !PumpGraceOutput(error);
-    }
-    return FinalizeFinish(grace_pump_failed, error);
+    return FinalizeFinish(error);
   }
 
   void Cancel() override {
@@ -208,14 +238,14 @@ private:
     if (session_.has_value()) {
       session_->CloseStdin();
     }
-    deadline_ = Clock::now() + std::chrono::milliseconds(kAwaitFinalTimeoutMs);
+    deadline_ = Clock::now() + std::chrono::milliseconds(finish_timeout_ms_);
     return true;
   }
 
-  // Polls events until the provider emitted final text, the session completed,
-  // or the child exited. Injects the poll/timeout failure into the event queue.
-  bool AwaitFinalText(std::string* error) {
-    while (!saw_final_text_ && !provider_closed_ && phase_ != Phase::Completed && !child_exited_) {
+  // Polls events until the provider closes the stream, completes, or exits.
+  // Injects the poll/timeout failure into the event queue.
+  bool AwaitCompletion(std::string* error) {
+    while (!provider_closed_ && phase_ != Phase::Completed && !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
         const std::string err_text =
             error != nullptr && !error->empty() ? *error : _("failed to poll provider.");
@@ -243,67 +273,13 @@ private:
     return true;
   }
 
-  // Keeps draining for kFinalGraceMs after final text so trailing partial
-  // updates still arrive; returns false when the provider broke mid-grace.
-  bool PumpGraceOutput(std::string* error) {
-    if (!saw_final_text_) {
-      return true;
-    }
-    const Clock::time_point grace_deadline =
-        Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
-    bool pump_failed = false;
-    while (!HasTimedOut(grace_deadline) && !provider_closed_ && phase_ != Phase::Completed &&
-           !child_exited_) {
-      if (!DrainEvents(std::chrono::milliseconds(RemainingMs(grace_deadline, kPollSliceMs)),
-                       error)) {
-        pump_failed = true;
-        break;
-      }
-    }
-    return !pump_failed;
-  }
-
-  // First provider-reported error text, empty when the session never saw one.
-  std::string FirstError() const {
-    for (const auto& event : events_) {
-      if (event.kind == RecognitionEventKind::Error) {
-        return event.error;
-      }
-    }
-    return {};
-  }
-
-  // Resolves the final status contract: an observed provider error outranks a
-  // grace-pump failure, which outranks a clean teardown.
-  bool ResolveFinishFailure(bool grace_pump_failed, std::string* error) {
-    if (saw_error_) {
-      const std::string first_error = FirstError();
-      if (!first_error.empty()) {
-        if (error != nullptr) {
-          *error = first_error;
-        }
-        return false;
-      }
-    }
-    if (grace_pump_failed) {
-      if (error != nullptr && error->empty()) {
-        *error = _("Failed to pump streaming ASR output during grace window.");
-      }
-      return false;
-    }
-    if (error != nullptr) {
-      error->clear();
-    }
-    return !saw_error_ && !grace_pump_failed;
-  }
-
   // Drains leftovers, reports the no-text / interruption cases and resolves the
-  // caller-visible outcome after the final-text wait.
-  bool FinalizeFinish(bool grace_pump_failed, std::string* error) {
+  // caller-visible outcome after the provider closes or exits.
+  bool FinalizeFinish(std::string* error) {
     DrainEvents(std::chrono::milliseconds(0), nullptr);
 
     const bool cancelled = phase_ == Phase::Cancelled;
-    if (!saw_final_text_ && !saw_error_ && !cancelled && !killed_by_us_) {
+    if (!saw_final_text_ && !first_error_.has_value() && !cancelled && !killed_by_us_) {
       QueueError(_("Streaming ASR provider returned no text."));
     }
     phase_ = Phase::Completed;
@@ -315,24 +291,12 @@ private:
       finish_error_ = _("Recognition session was interrupted or cancelled.");
       return SetFinishError(error, finish_error_);
     }
-    return ResolveFinalOutcome(grace_pump_failed, error);
-  }
-
-  bool ResolveFinalOutcome(bool grace_pump_failed, std::string* error) {
-    std::string local_error;
-    if (error != nullptr && !error->empty()) {
-      local_error = *error;
-    }
-    finish_success_ = ResolveFinishFailure(grace_pump_failed, &local_error);
-    if (!finish_success_) {
-      if (local_error.empty()) {
-        local_error = saw_final_text_
-                          ? _("Failed to pump streaming ASR output during grace window.")
-                          : _("Streaming ASR provider returned no text.");
-      }
-      finish_error_ = std::move(local_error);
+    if (first_error_.has_value()) {
+      finish_success_ = false;
+      finish_error_ = *first_error_;
       return SetFinishError(error, finish_error_);
     }
+    finish_success_ = true;
     finish_error_.clear();
     if (error != nullptr) {
       error->clear();
@@ -366,7 +330,8 @@ private:
     }
     if (killed_by_us_) {
       VLOG_DEBUG("streaming ASR provider '{}' terminated by session cancellation", provider_id_);
-    } else if (exit_code_ != 0 && !saw_error_ && !saw_final_text_) {
+    } else if (exit_code_ != 0 && !first_error_.has_value() &&
+               (!saw_final_text_ || (phase_ == Phase::Finishing && !provider_closed_))) {
       VLOG_WARN("streaming ASR provider '{}' exited abnormally with code {}", provider_id_,
                 exit_code_);
       QueueError(_("Streaming ASR provider exited abnormally."));
@@ -582,9 +547,11 @@ private:
 
   void QueueError(std::string_view error_text) {
     const std::string_view trimmed = vinput::str::Trim(error_text);
-    saw_error_ = true;
-    events_.push_back(
-        {RecognitionEventKind::Error, {}, trimmed.empty() ? "failed." : std::string(trimmed)});
+    std::string message = trimmed.empty() ? "failed." : std::string(trimmed);
+    if (!first_error_.has_value()) {
+      first_error_ = message;
+    }
+    events_.push_back({RecognitionEventKind::Error, {}, std::move(message)});
   }
 
   void QueueCompleted() {
@@ -633,6 +600,7 @@ private:
 
   CommandAsrProvider provider_;
   std::string provider_id_;
+  int finish_timeout_ms_ = kDefaultAwaitFinalTimeoutMs;
   std::optional<std::string> provider_title_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   std::string source_id_;
@@ -646,7 +614,7 @@ private:
   std::string finish_error_;
   bool terminated_ = false;
   bool completed_emitted_ = false;
-  bool saw_error_ = false;
+  std::optional<std::string> first_error_;
   bool saw_final_text_ = false;
   bool child_exited_ = false;
   bool killed_by_us_ = false;
@@ -662,7 +630,8 @@ public:
   explicit CommandStreamingBackend(
       CommandAsrProvider provider,
       vinput::notify::NotificationBridge* notification_bridge = nullptr)
-      : provider_(std::move(provider)), notification_bridge_(notification_bridge) {}
+      : provider_(std::move(provider)), finish_timeout_ms_(ResolveFinishTimeoutMs(provider_)),
+        notification_bridge_(notification_bridge) {}
 
   [[nodiscard]] BackendDescriptor Describe() const override {
     BackendDescriptor descriptor;
@@ -687,8 +656,8 @@ public:
     // Start the external streaming subprocess immediately so the provider boot
     // and TLS/WebSocket handshake overlap the microphone wake window instead of
     // being paid serially on the first audio chunk (Issue #709).
-    auto session =
-        std::make_unique<CommandStreamingSession>(provider_, provider_.id, notification_bridge_);
+    auto session = std::make_unique<CommandStreamingSession>(
+        provider_, provider_.id, finish_timeout_ms_, notification_bridge_);
     if (!session->EnsureStarted(error)) {
       return nullptr;
     }
@@ -700,6 +669,7 @@ public:
 
 private:
   CommandAsrProvider provider_;
+  int finish_timeout_ms_ = kDefaultAwaitFinalTimeoutMs;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
 };
 
