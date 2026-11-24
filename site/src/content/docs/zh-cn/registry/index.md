@@ -98,7 +98,7 @@ resources/providers/<目录>/batch/
 ```json
 {"type":"session_started","session_id":"..."}
 {"type":"partial","text":"当前部分识别文本"}
-{"type":"final","text":"已确认的识别文本","segment_final":true}
+{"type":"final","text":"已确认的识别文本","segment_final":true,"utterance_final":true}
 {"type":"error","message":"..."}
 {"type":"closed"}
 ```
@@ -106,6 +106,8 @@ resources/providers/<目录>/batch/
 语义说明：
 - `partial.text` — 当前时刻用户应看到的完整文本
 - `final.text` — 当前时刻已确认的完整文本
+- `segment_final` — 可选布尔值，表示分段确认（`finish` 后不会提前结束整句等待）
+- `utterance_final` — 可选布尔值，表示整句最终识别结果已完成
 - 脚本负责累计和去重 segment
 
 **文件结构：**
