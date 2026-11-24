@@ -204,6 +204,7 @@ private:
 
     // Only mark Finishing after the control event was sent: a failed send must
     // not look like a finished session (Issue #709).
+    saw_terminal_final_ = false;
     phase_ = Phase::Finishing;
     if (session_.has_value()) {
       session_->CloseStdin();
@@ -212,10 +213,11 @@ private:
     return true;
   }
 
-  // Polls events until the provider emitted final text, the session completed,
-  // or the child exited. Injects the poll/timeout failure into the event queue.
+  // Polls events until the provider emitted a terminal final text after finish,
+  // closed the stream, or exited. Injects the poll/timeout failure into the event queue.
   bool AwaitFinalText(std::string* error) {
-    while (!saw_final_text_ && !provider_closed_ && phase_ != Phase::Completed && !child_exited_) {
+    while (!saw_terminal_final_ && !provider_closed_ && phase_ != Phase::Completed &&
+           !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
         const std::string err_text =
             error != nullptr && !error->empty() ? *error : _("failed to poll provider.");
@@ -564,13 +566,7 @@ private:
       return true;
     }
     if (type == "final" || type == "final_timestamps") {
-      const std::string text =
-          std::string(vinput::str::Trim(vinput::json::String(payload, "text")));
-      if (!text.empty()) {
-        saw_final_text_ = true;
-        last_partial_text_.clear();
-        events_.push_back({RecognitionEventKind::FinalText, text, {}});
-      }
+      HandleFinalOutputLine(payload);
       return true;
     }
     if (type == "closed") {
@@ -578,6 +574,23 @@ private:
       return true;
     }
     return true;
+  }
+
+  void HandleFinalOutputLine(const glz::json_t& payload) {
+    const std::string text = std::string(vinput::str::Trim(vinput::json::String(payload, "text")));
+    if (text.empty()) {
+      return;
+    }
+    saw_final_text_ = true;
+    if (phase_ == Phase::Finishing) {
+      const bool segment_final = vinput::json::Bool(payload, "segment_final", false);
+      const bool utterance_final = vinput::json::Bool(payload, "utterance_final", false);
+      if (utterance_final || !segment_final) {
+        saw_terminal_final_ = true;
+      }
+    }
+    last_partial_text_.clear();
+    events_.push_back({RecognitionEventKind::FinalText, text, {}});
   }
 
   void QueueError(std::string_view error_text) {
@@ -648,6 +661,7 @@ private:
   bool completed_emitted_ = false;
   bool saw_error_ = false;
   bool saw_final_text_ = false;
+  bool saw_terminal_final_ = false;
   bool child_exited_ = false;
   bool killed_by_us_ = false;
   int exit_code_ = -1;
