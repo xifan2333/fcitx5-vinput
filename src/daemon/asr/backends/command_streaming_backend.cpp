@@ -99,9 +99,11 @@ public:
   friend class CommandStreamingBackend;
 
   CommandStreamingSession(CommandAsrProvider provider, std::string provider_id,
+                          int finish_timeout_ms,
                           vinput::notify::NotificationBridge* notification_bridge = nullptr)
       : provider_(std::move(provider)), provider_id_(std::move(provider_id)),
-        notification_bridge_(notification_bridge), source_id_(MakeSessionSourceId(provider_id_)) {}
+        finish_timeout_ms_(finish_timeout_ms), notification_bridge_(notification_bridge),
+        source_id_(MakeSessionSourceId(provider_id_)) {}
 
   CommandStreamingSession(const CommandStreamingSession&) = delete;
   CommandStreamingSession& operator=(const CommandStreamingSession&) = delete;
@@ -236,7 +238,7 @@ private:
     if (session_.has_value()) {
       session_->CloseStdin();
     }
-    deadline_ = Clock::now() + std::chrono::milliseconds(ResolveFinishTimeoutMs(provider_));
+    deadline_ = Clock::now() + std::chrono::milliseconds(finish_timeout_ms_);
     return true;
   }
 
@@ -299,15 +301,9 @@ private:
       finish_error_ = _("Recognition session was interrupted or cancelled.");
       return SetFinishError(error, finish_error_);
     }
-    return ResolveFinalOutcome(error);
-  }
-
-  bool ResolveFinalOutcome(std::string* error) {
     if (saw_error_) {
-      std::string first_error = FirstError();
       finish_success_ = false;
-      finish_error_ = first_error.empty() ? _("Streaming ASR provider returned no text.")
-                                          : std::move(first_error);
+      finish_error_ = FirstError();
       return SetFinishError(error, finish_error_);
     }
     finish_success_ = true;
@@ -611,6 +607,7 @@ private:
 
   CommandAsrProvider provider_;
   std::string provider_id_;
+  int finish_timeout_ms_ = kDefaultAwaitFinalTimeoutMs;
   std::optional<std::string> provider_title_;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
   std::string source_id_;
@@ -640,7 +637,8 @@ public:
   explicit CommandStreamingBackend(
       CommandAsrProvider provider,
       vinput::notify::NotificationBridge* notification_bridge = nullptr)
-      : provider_(std::move(provider)), notification_bridge_(notification_bridge) {}
+      : provider_(std::move(provider)), finish_timeout_ms_(ResolveFinishTimeoutMs(provider_)),
+        notification_bridge_(notification_bridge) {}
 
   [[nodiscard]] BackendDescriptor Describe() const override {
     BackendDescriptor descriptor;
@@ -665,8 +663,8 @@ public:
     // Start the external streaming subprocess immediately so the provider boot
     // and TLS/WebSocket handshake overlap the microphone wake window instead of
     // being paid serially on the first audio chunk (Issue #709).
-    auto session =
-        std::make_unique<CommandStreamingSession>(provider_, provider_.id, notification_bridge_);
+    auto session = std::make_unique<CommandStreamingSession>(
+        provider_, provider_.id, finish_timeout_ms_, notification_bridge_);
     if (!session->EnsureStarted(error)) {
       return nullptr;
     }
@@ -678,6 +676,7 @@ public:
 
 private:
   CommandAsrProvider provider_;
+  int finish_timeout_ms_ = kDefaultAwaitFinalTimeoutMs;
   vinput::notify::NotificationBridge* notification_bridge_ = nullptr;
 };
 
