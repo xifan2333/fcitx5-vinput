@@ -477,6 +477,8 @@ ResourcePage::ResourcePage(QWidget* parent)
       downloadStatusLabel_(new QLabel()), downloadProgressBar_(new QProgressBar()),
       textLog_(new QTextEdit()) {
   auto* layout = new QVBoxLayout(this);
+  btnRefreshResources_ = new QPushButton(tr("Refresh"), this);
+  resourceTabs_->setCornerWidget(btnRefreshResources_, Qt::TopRightCorner);
   layout->addWidget(resourceTabs_, 1);
 
 #if VINPUT_ENABLE_LOCAL_ASR
@@ -496,10 +498,8 @@ ResourcePage::ResourcePage(QWidget* parent)
   auto* btnLayout = new QVBoxLayout();
   btnUseModel_ = new QPushButton(tr("Use"));
   btnRemoveModel_ = new QPushButton(tr("Remove"));
-  btnRefreshResources_ = new QPushButton(tr("Refresh"));
   btnLayout->addWidget(btnUseModel_);
   btnLayout->addWidget(btnRemoveModel_);
-  btnLayout->addWidget(btnRefreshResources_);
   btnLayout->addStretch();
   topLayout->addLayout(btnLayout);
   modelsLayout->addLayout(topLayout, 1);
@@ -527,7 +527,6 @@ ResourcePage::ResourcePage(QWidget* parent)
   btnUseModel_ = nullptr;
   btnRemoveModel_ = nullptr;
   btnDownloadModel_ = nullptr;
-  btnRefreshResources_ = new QPushButton(tr("Refresh"));
 #endif
 
   auto* providersTab = new QWidget(this);
@@ -551,9 +550,6 @@ ResourcePage::ResourcePage(QWidget* parent)
   providerBtnLayout->addWidget(btnAddProvider_);
   providerBtnLayout->addWidget(btnUpdateProvider_);
   providerBtnLayout->addWidget(btnRemoveProvider_);
-#if !VINPUT_ENABLE_LOCAL_ASR
-  providerBtnLayout->addWidget(btnRefreshResources_);
-#endif
   providerBtnLayout->addStretch();
   providerLayout->addLayout(providerBtnLayout);
   providersLayout->addLayout(providerLayout, 1);
