@@ -4,7 +4,7 @@ Thanks for your interest in fcitx5-vinput!
 
 ## Documentation
 
-Full documentation is available at the [project site](https://xifan2333.github.io/fcitx5-vinput/). For registry contribution guidelines (ASR providers, LLM adapters, models), see the [Registry](https://xifan2333.github.io/fcitx5-vinput/registry/) page.
+Full documentation is available at the [project site](https://fcitx5-vinput.github.io/) (source in [fcitx5-vinput.github.io](https://github.com/fcitx5-vinput/fcitx5-vinput.github.io)). For registry contribution guidelines (ASR providers, LLM adapters, models), see the [Registry](https://fcitx5-vinput.github.io/registry/) page.
 
 ## Build from Source
 
@@ -32,7 +32,7 @@ sudo mise run install
 - `src/daemon/` — ASR daemon (audio capture, inference, post-processing)
 - `src/common/` — Shared code (configs, D-Bus interface, scenes)
 - `src/cli/` — `vinput` CLI tool
-- `site/` — Documentation site (Astro + Starlight)
+- `src/gui/` — Qt 6 configuration GUI
 
 ## Submitting Changes
 
@@ -43,16 +43,16 @@ sudo mise run install
 
 ## Reporting Bugs
 
-Use the [Bug Report](https://github.com/xifan2333/fcitx5-vinput/issues/new?template=bug_report.yml) template. Include:
+Use the [Bug Report](https://github.com/fcitx5-vinput/fcitx5-vinput/issues/new?template=bug_report.yml) template. Include:
 - Version (`vinput --version`)
 - Distribution
 - Daemon logs: `journalctl --user -u vinput-daemon.service`
 
 ## Contributing to the Registry
 
-The [vinput-registry](https://github.com/xifan2333/vinput-registry) repository hosts downloadable resources: ASR models, cloud ASR provider scripts, and LLM adapter scripts.
+The [vinput-registry](https://github.com/fcitx5-vinput/vinput-registry) repository hosts downloadable resources: ASR models, cloud ASR provider scripts, and LLM adapter scripts.
 
-To contribute a new provider, adapter, or model, see the [Registry](https://xifan2333.github.io/fcitx5-vinput/registry/) page for the full specification.
+To contribute a new provider, adapter, or model, see the [Registry](https://fcitx5-vinput.github.io/registry/) page for the full specification.
 
 Key rules:
 - Scripts must be self-contained — standard library only, no third-party dependencies

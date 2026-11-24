@@ -8,7 +8,7 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
-    sherpa-onnx.url = "github:xifan2333/sherpa-onnx-flake";
+    sherpa-onnx.url = "github:fcitx5-vinput/sherpa-onnx-flake";
     sherpa-onnx.inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -110,7 +110,7 @@
                     "Voice input addon for Fcitx5 with local and cloud ASR"
                   else
                     "Voice input addon for Fcitx5, built without local ASR";
-                homepage = "https://github.com/xifan2333/fcitx5-vinput";
+                homepage = "https://github.com/fcitx5-vinput/fcitx5-vinput";
                 license = lib.licenses.gpl3Only;
                 platforms = systems;
                 mainProgram = "vinput";

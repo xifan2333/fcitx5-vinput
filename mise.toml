@@ -201,13 +201,3 @@ gh workflow run channels.yml \
   --field version="${version_value}" \
   "${extra_fields[@]}"
 """
-
-[tasks.docs-dev]
-description = "Start Astro documentation site in development mode"
-dir = "site"
-run = "npm run dev"
-
-[tasks.docs-build]
-description = "Build Astro documentation site"
-dir = "site"
-run = "npm run build"

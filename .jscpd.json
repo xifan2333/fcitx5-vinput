@@ -4,12 +4,6 @@
   "minLines": 6,
   "reporters": ["console"],
   "path": ["src"],
-  "ignore": [
-    "**/3rdparty/**",
-    "**/build/**",
-    "**/tests/**",
-    "**/*.json",
-    "**/site/**"
-  ],
+  "ignore": ["**/3rdparty/**", "**/build/**", "**/tests/**", "**/*.json"],
   "format": ["cpp", "c-header", "cmake"]
 }

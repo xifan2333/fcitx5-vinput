@@ -4,13 +4,13 @@
 
 **Voice input for Fcitx5 — local and cloud ASR, LLM rewriting, cross-distro packages**
 
-[![License](https://img.shields.io/github/license/xifan2333/fcitx5-vinput)](LICENSE)
-[![CI](https://github.com/xifan2333/fcitx5-vinput/actions/workflows/release.yml/badge.svg)](https://github.com/xifan2333/fcitx5-vinput/actions/workflows/release.yml)
-[![Release](https://img.shields.io/github/v/release/xifan2333/fcitx5-vinput)](https://github.com/xifan2333/fcitx5-vinput/releases)
+[![License](https://img.shields.io/github/license/fcitx5-vinput/fcitx5-vinput)](LICENSE)
+[![CI](https://github.com/fcitx5-vinput/fcitx5-vinput/actions/workflows/release.yml/badge.svg)](https://github.com/fcitx5-vinput/fcitx5-vinput/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/fcitx5-vinput/fcitx5-vinput)](https://github.com/fcitx5-vinput/fcitx5-vinput/releases)
 [![AUR](https://img.shields.io/aur/version/fcitx5-vinput-bin)](https://aur.archlinux.org/packages/fcitx5-vinput-bin)
-[![Downloads](https://img.shields.io/github/downloads/xifan2333/fcitx5-vinput/total)](https://github.com/xifan2333/fcitx5-vinput/releases)
+[![Downloads](https://img.shields.io/github/downloads/fcitx5-vinput/fcitx5-vinput/total)](https://github.com/fcitx5-vinput/fcitx5-vinput/releases)
 
-[English](README.md) | [中文](README_zh.md) | [Documentation](https://xifan2333.github.io/fcitx5-vinput/)
+[English](README.md) | [中文](README_zh.md) | [Documentation](https://fcitx5-vinput.github.io/)
 
 https://github.com/user-attachments/assets/5a548a68-153c-4842-bab6-926f30bb720e
 
@@ -88,7 +88,7 @@ sudo apt-get install -f
 Supports `x86_64-linux` and `aarch64-linux`. Both full and lite packages are cached on Cachix.
 
 ```nix
-inputs.fcitx5-vinput.url = "github:xifan2333/fcitx5-vinput";
+inputs.fcitx5-vinput.url = "github:fcitx5-vinput/fcitx5-vinput";
 
 # Full version (default):
 #   inputs.fcitx5-vinput.packages.${system}.default
@@ -105,7 +105,7 @@ nixConfig = {
 };
 ```
 
-Full Home Manager example in the [install docs](https://xifan2333.github.io/fcitx5-vinput/install/).
+Full Home Manager example in the [install docs](https://fcitx5-vinput.github.io/install/).
 
 ### Flatpak
 
@@ -130,7 +130,7 @@ flatpak kill org.fcitx.Fcitx5
 
 ### GitHub Releases
 
-Download the package for your system from [GitHub Releases](https://github.com/xifan2333/fcitx5-vinput/releases/latest) (both full and lite variants are provided):
+Download the package for your system from [GitHub Releases](https://github.com/fcitx5-vinput/fcitx5-vinput/releases/latest) (both full and lite variants are provided):
 
 - **Debian / Linux Mint / Ubuntu (other)**: `.deb` (`fcitx5-vinput_*.deb` / `fcitx5-vinput-lite_*.deb`)
 - **openSUSE / Fedora (other)**: `.rpm` (`fcitx5-vinput-*.rpm` / `fcitx5-vinput-lite-*.rpm`)
@@ -179,7 +179,7 @@ All keys can be customized in Fcitx5 configuration.
 
 ## Documentation
 
-For ASR configuration, scenes & LLM setup, CLI reference, and registry contribution guide, see the [documentation site](https://xifan2333.github.io/fcitx5-vinput/).
+For ASR configuration, scenes & LLM setup, CLI reference, and registry contribution guide, see the [documentation site](https://fcitx5-vinput.github.io/).
 
 ## License
 
@@ -187,8 +187,8 @@ For ASR configuration, scenes & LLM setup, CLI reference, and registry contribut
 
 ## Contributors
 
-<a href="https://github.com/xifan2333/fcitx5-vinput/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=xifan2333/fcitx5-vinput" />
+<a href="https://github.com/fcitx5-vinput/fcitx5-vinput/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=fcitx5-vinput/fcitx5-vinput" />
 </a>
 
 ## Sponsor

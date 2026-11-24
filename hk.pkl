@@ -52,7 +52,6 @@ local linters = new Mapping<String, Step> {
 
   ["prettier"] = (Builtins.prettier) {
     glob = List("**/*.json")
-    exclude = List("site/package-lock.json")
   }
 
   ["trailing-whitespace"] = Builtins.trailing_whitespace
@@ -80,7 +79,7 @@ local pre_push_guard = new Step {
       [ -z "${url}" ] && return 0
       local normalized
       normalized=$(echo "${url}" | tr '[:upper:]' '[:lower:]' | sed -E 's|\.git$||')
-      [[ "${normalized}" =~ (github\.com[:/])?xifan2333/fcitx5-vinput$ ]]
+      [[ "${normalized}" =~ (github\.com[:/])?(fcitx5-vinput|xifan2333)/fcitx5-vinput$ ]]
     }
 
     is_force_push() {
@@ -113,7 +112,7 @@ local pre_push_guard = new Step {
         local current_user
         current_user=$(get_gh_user)
         if [ -n "${current_user}" ] && [ "${current_user}" != "xifan2333" ]; then
-          echo "ERROR [hk pre-push]: Authenticated as '${current_user}'. Direct push to official upstream (xifan2333/fcitx5-vinput) is restricted to the maintainer. Please fork the repository and push to your fork." >&2
+          echo "ERROR [hk pre-push]: Authenticated as '${current_user}'. Direct push to official upstream (fcitx5-vinput/fcitx5-vinput) is restricted to the maintainer. Please fork the repository and push to your fork." >&2
           exit 1
         fi
       fi

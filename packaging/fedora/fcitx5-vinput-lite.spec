@@ -5,7 +5,7 @@ Version:        @VINPUT_VERSION@
 Release:        1%{?dist}
 Summary:        Voice input addon for Fcitx5 (Lite build)
 License:        GPL-3.0-only
-URL:            https://github.com/xifan2333/fcitx5-vinput
+URL:            https://github.com/fcitx5-vinput/fcitx5-vinput
 Source0:        %{url}/archive/v%{version}/fcitx5-vinput-%{version}.tar.gz
 
 Provides:       fcitx5-vinput = %{version}-%{release}
