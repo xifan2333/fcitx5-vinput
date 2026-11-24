@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <fcitx-config/iniparser.h>
@@ -13,6 +14,7 @@
 #include <glaze/json/json_t.hpp>
 #include <glaze/json/write.hpp>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -57,6 +59,7 @@ enum class ActionType : std::uint8_t {
   Remove,
   Ensure,
   ReplaceIfDefault,
+  ArrayReplaceSubstring,
   IniReplaceKey,
   IniRemoveKey,
 };
@@ -140,6 +143,16 @@ const std::vector<MigrationRule>& GetRules() {
 
       // v2.4.0: Remove obsolete auto_start from llm.adapters
       {"2.4.0", "config.json", ActionType::Remove, "llm.adapters.*.auto_start"},
+
+      // v2.5.0: Migrate registry.base_urls from xifan2333/vinput-registry to fcitx5-vinput org
+      {"2.5.0",
+       "config.json",
+       ActionType::ArrayReplaceSubstring,
+       "registry.base_urls",
+       {},
+       {},
+       "xifan2333/vinput-registry",
+       "fcitx5-vinput/vinput-registry"},
   };
   return kRules;
 }
@@ -281,6 +294,67 @@ bool ApplyReplaceIfDefaultAction(glz::json_t& parent, const std::string& key,
   return true;
 }
 
+std::string ReplaceAllOccurrences(std::string_view input, std::string_view from,
+                                  std::string_view to) {
+  if (from.empty()) {
+    return std::string(input);
+  }
+  std::string out;
+  std::size_t pos = 0;
+  while (pos < input.size()) {
+    const auto found = input.find(from, pos);
+    if (found == std::string_view::npos) {
+      out.append(input.substr(pos));
+      break;
+    }
+    out.append(input.substr(pos, found - pos));
+    out.append(to);
+    pos = found + from.size();
+  }
+  return out;
+}
+
+bool ApplyArrayReplaceSubstringAction(glz::json_t& parent, const std::string& key,
+                                      std::string_view desc_prefix, const glz::json_t& expected_val,
+                                      const glz::json_t& to_val,
+                                      std::vector<MigrationChange>& changes) {
+  const auto* from = expected_val.get_if<std::string>();
+  const auto* to = to_val.get_if<std::string>();
+  if (from == nullptr || to == nullptr || from->empty() || !parent.contains(key) ||
+      !parent[key].is_array()) {
+    return false;
+  }
+
+  bool changed = false;
+  glz::json_t::array_t migrated;
+  std::set<std::string> seen;
+  for (const auto& elem : parent[key].get_array()) {
+    const auto* str = elem.get_if<std::string>();
+    if (str == nullptr) {
+      migrated.push_back(elem);
+      continue;
+    }
+    std::string updated = ReplaceAllOccurrences(*str, *from, *to);
+    if (updated != *str) {
+      changed = true;
+    }
+    if (seen.insert(updated).second) {
+      migrated.emplace_back(std::move(updated));
+    }
+  }
+
+  if (!changed) {
+    return false;
+  }
+
+  parent[key] = glz::json_t(std::move(migrated));
+  changes.push_back({
+      .file = "config.json",
+      .description = std::string(desc_prefix) + ": migrated '" + *from + "' to '" + *to + "'",
+  });
+  return true;
+}
+
 bool ApplyActionToTarget(glz::json_t& parent, const std::string& key, std::string_view desc,
                          const MigrationRule& rule, std::vector<MigrationChange>& changes) {
   if (!parent.is_object()) {
@@ -300,6 +374,9 @@ bool ApplyActionToTarget(glz::json_t& parent, const std::string& key, std::strin
   case ActionType::ReplaceIfDefault:
     return ApplyReplaceIfDefaultAction(parent, key, desc_prefix, rule.expected_value, rule.to_value,
                                        changes);
+  case ActionType::ArrayReplaceSubstring:
+    return ApplyArrayReplaceSubstringAction(parent, key, desc_prefix, rule.expected_value,
+                                            rule.to_value, changes);
   case ActionType::IniReplaceKey:
   case ActionType::IniRemoveKey:
     return false;
