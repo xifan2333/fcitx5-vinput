@@ -18,6 +18,7 @@
 #include <system_error>
 #include <unicodelib.h>
 #include <unicodelib_encodings.h>
+#include <utility>
 
 #include "common/config/core_config.h"
 #include "common/config/vinput_config.h"
