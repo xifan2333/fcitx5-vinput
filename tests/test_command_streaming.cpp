@@ -824,7 +824,7 @@ MidFinalSession StartAndAwaitMidFinal(int pid_id, const std::string& provider_id
       }
     }
   }
-  ExpectTrue(saw_mid_final, "Expected mid-session segment_final before Finish");
+  ExpectTrue(saw_mid_final, "Expected mid-session final before Finish");
   return {.backend = std::move(backend), .session = std::move(session), .child_pid = child_pid};
 }
 

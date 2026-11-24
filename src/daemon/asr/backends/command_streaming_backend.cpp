@@ -242,24 +242,6 @@ private:
     return {};
   }
 
-  // Resolves the final status contract: an observed provider error outranks a
-  // clean teardown.
-  bool ResolveFinishFailure(std::string* error) {
-    if (saw_error_) {
-      const std::string first_error = FirstError();
-      if (!first_error.empty()) {
-        if (error != nullptr) {
-          *error = first_error;
-        }
-        return false;
-      }
-    }
-    if (error != nullptr) {
-      error->clear();
-    }
-    return !saw_error_;
-  }
-
   // Drains leftovers, reports the no-text / interruption cases and resolves the
   // caller-visible outcome after the provider closes or exits.
   bool FinalizeFinish(std::string* error) {
@@ -282,18 +264,14 @@ private:
   }
 
   bool ResolveFinalOutcome(std::string* error) {
-    std::string local_error;
-    if (error != nullptr && !error->empty()) {
-      local_error = *error;
-    }
-    finish_success_ = ResolveFinishFailure(&local_error);
-    if (!finish_success_) {
-      if (local_error.empty()) {
-        local_error = _("Streaming ASR provider returned no text.");
-      }
-      finish_error_ = std::move(local_error);
+    if (saw_error_) {
+      std::string first_error = FirstError();
+      finish_success_ = false;
+      finish_error_ = first_error.empty() ? _("Streaming ASR provider returned no text.")
+                                          : std::move(first_error);
       return SetFinishError(error, finish_error_);
     }
+    finish_success_ = true;
     finish_error_.clear();
     if (error != nullptr) {
       error->clear();
