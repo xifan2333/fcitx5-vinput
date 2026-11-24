@@ -274,7 +274,7 @@ void TestOutputEofWait(bool produce_final, int id) {
                            .count();
   const double cpu_ms = static_cast<double>(std::clock() - cpu_start) * 1000.0 / CLOCKS_PER_SEC;
 
-  // The normal completion path lasts ~450 ms; a final result uses 200 ms grace.
+  // The normal completion path waits until the child exits (~450 ms).
   // Avoid asserting exact timing on a shared CI runner.
   ExpectTrue(wall_ms >= (produce_final ? 100 : 300), "EOF fixture should exercise wait state");
   ExpectTrue(wall_ms < 3000, "EOF wait should preserve bounded completion");
@@ -830,22 +830,19 @@ MidFinalSession StartAndAwaitMidFinal(int pid_id, const std::string& provider_id
 
 /**
  * Issue #756 regression test:
- * Mid-session and post-finish segment_final events (without utterance_final)
- * must not cause Finish() to exit early and kill the provider before the
- * trailing utterance_final arrives.
+ * Mid-session and post-finish final events must not cause Finish() to exit
+ * early and kill the provider before {"type": "closed"} arrives.
  */
-void TestSegmentFinalDoesNotTruncatePostFinishTail() {
+void TestMultipleFinalsAwaitClosedAfterFinish() {
   auto active = StartAndAwaitMidFinal(
-      16, "test-segment-final-tail",
+      16, "test-multiple-finals-tail",
       "echo '{\"type\": \"session_started\"}'"
       " && while IFS= read -r line; do"
       "   case \"$line\" in"
-      "     *audio*) echo '{\"type\": \"final\", \"text\": \"first segment\", "
-      "\"segment_final\": true}' ;;"
-      "     *finish*) echo '{\"type\": \"final\", \"text\": \"first segment second\", "
-      "\"segment_final\": true}'; sleep 0.35; echo '{\"type\": \"final\", \"text\": "
-      "\"first segment second tail\", \"segment_final\": true, \"utterance_final\": true}'; "
-      "echo '{\"type\": \"closed\"}'; break ;;"
+      "     *audio*) echo '{\"type\": \"final\", \"text\": \"first segment\"}' ;;"
+      "     *finish*) echo '{\"type\": \"final\", \"text\": \"first segment second\"}';"
+      " sleep 0.35; echo '{\"type\": \"final\", \"text\": \"first segment second tail\"}';"
+      " echo '{\"type\": \"closed\"}'; break ;;"
       "   esac;"
       " done",
       "first segment");
@@ -866,22 +863,21 @@ void TestSegmentFinalDoesNotTruncatePostFinishTail() {
 
 /**
  * Issue #756 regression test:
- * When a provider already emitted a mid-session segment_final and emits only
+ * When a provider already emitted a mid-session final and emits only
  * {"type": "closed"} after finish (no new speech), Finish() must succeed
  * without reporting "returned no text".
  */
-void TestSegmentFinalFollowedByCleanCloseAfterFinish() {
-  auto active =
-      StartAndAwaitMidFinal(17, "test-segment-final-clean-close",
-                            "echo '{\"type\": \"session_started\"}'"
-                            " && while IFS= read -r line; do"
-                            "   case \"$line\" in"
-                            "     *audio*) echo '{\"type\": \"final\", \"text\": \"only segment\", "
-                            "\"segment_final\": true}' ;;"
-                            "     *finish*) sleep 0.30; echo '{\"type\": \"closed\"}'; break ;;"
-                            "   esac;"
-                            " done",
-                            "only segment");
+void TestMidSessionFinalFollowedByCleanCloseAfterFinish() {
+  auto active = StartAndAwaitMidFinal(
+      17, "test-mid-final-clean-close",
+      "echo '{\"type\": \"session_started\"}'"
+      " && while IFS= read -r line; do"
+      "   case \"$line\" in"
+      "     *audio*) echo '{\"type\": \"final\", \"text\": \"only segment\"}' ;;"
+      "     *finish*) sleep 0.30; echo '{\"type\": \"closed\"}'; break ;;"
+      "   esac;"
+      " done",
+      "only segment");
 
   std::string error;
   ExpectTrue(active.session->Finish(&error), "Finish after clean close must succeed: " + error);
@@ -909,8 +905,8 @@ int main() {
   TestPrematureExitErrorReporting();
   TestEarlyClosedReportsFailure();
   TestStderrLocalizedTitleFromCache();
-  TestSegmentFinalDoesNotTruncatePostFinishTail();
-  TestSegmentFinalFollowedByCleanCloseAfterFinish();
+  TestMultipleFinalsAwaitClosedAfterFinish();
+  TestMidSessionFinalFollowedByCleanCloseAfterFinish();
   std::cout << "All command streaming process lifecycle tests passed successfully!\n";
   return 0;
 }

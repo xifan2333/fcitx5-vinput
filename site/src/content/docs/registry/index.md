@@ -98,7 +98,7 @@ A streaming provider recognizes audio in real time as it arrives.
 ```json
 {"type":"session_started","session_id":"..."}
 {"type":"partial","text":"current partial transcript"}
-{"type":"final","text":"confirmed transcript","segment_final":true,"utterance_final":true}
+{"type":"final","text":"confirmed transcript"}
 {"type":"error","message":"..."}
 {"type":"closed"}
 ```
@@ -106,8 +106,6 @@ A streaming provider recognizes audio in real time as it arrives.
 Transcript semantics:
 - `partial.text` — full user-visible transcript at the current moment
 - `final.text` — full confirmed transcript at the current moment
-- `segment_final` — optional boolean indicating a mid-session segment commit (does not end the utterance after `finish`)
-- `utterance_final` — optional boolean indicating the final utterance transcript after `finish`
 - The script is responsible for accumulating and deduplicating segments
 
 **File structure:**

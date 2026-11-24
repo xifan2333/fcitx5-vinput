@@ -31,7 +31,6 @@
 #include "common/utils/process_session.h"
 #include "common/utils/process_utils.h"
 #include "common/utils/string_utils.h"
-#include "common/utils/time_utils.h"
 
 #include "daemon/asr/backends/command_backend_factory.h"
 #include "daemon/asr/runtime/recognition_contract.h"
@@ -44,14 +43,9 @@ using Clock = std::chrono::steady_clock;
 
 constexpr int kPollSliceMs = 50;
 constexpr int kAwaitFinalTimeoutMs = 10000;
-constexpr int kFinalGraceMs = 200;
 
 bool HasTimedOut(Clock::time_point deadline) {
   return Clock::now() >= deadline;
-}
-
-int RemainingMs(Clock::time_point deadline, int fallback_ms) {
-  return vinput::time::RemainingTimeoutMs(deadline, fallback_ms, Clock::now());
 }
 
 std::string MakeSessionSourceId(std::string_view provider_id) {
@@ -132,15 +126,10 @@ public:
     if (!StartFinish(error)) {
       return false;
     }
-    if (!AwaitFinalText(error)) {
+    if (!AwaitCompletion(error)) {
       return false;
     }
-
-    bool grace_pump_failed = false;
-    if (saw_final_text_) {
-      grace_pump_failed = !PumpGraceOutput(error);
-    }
-    return FinalizeFinish(grace_pump_failed, error);
+    return FinalizeFinish(error);
   }
 
   void Cancel() override {
@@ -204,7 +193,6 @@ private:
 
     // Only mark Finishing after the control event was sent: a failed send must
     // not look like a finished session (Issue #709).
-    saw_terminal_final_ = false;
     phase_ = Phase::Finishing;
     if (session_.has_value()) {
       session_->CloseStdin();
@@ -213,11 +201,10 @@ private:
     return true;
   }
 
-  // Polls events until the provider emitted a terminal final text after finish,
-  // closed the stream, or exited. Injects the poll/timeout failure into the event queue.
-  bool AwaitFinalText(std::string* error) {
-    while (!saw_terminal_final_ && !provider_closed_ && phase_ != Phase::Completed &&
-           !child_exited_) {
+  // Polls events until the provider closes the stream, completes, or exits.
+  // Injects the poll/timeout failure into the event queue.
+  bool AwaitCompletion(std::string* error) {
+    while (!provider_closed_ && phase_ != Phase::Completed && !child_exited_) {
       if (!DrainEvents(std::chrono::milliseconds(kPollSliceMs), error)) {
         const std::string err_text =
             error != nullptr && !error->empty() ? *error : _("failed to poll provider.");
@@ -245,26 +232,6 @@ private:
     return true;
   }
 
-  // Keeps draining for kFinalGraceMs after final text so trailing partial
-  // updates still arrive; returns false when the provider broke mid-grace.
-  bool PumpGraceOutput(std::string* error) {
-    if (!saw_final_text_) {
-      return true;
-    }
-    const Clock::time_point grace_deadline =
-        Clock::now() + std::chrono::milliseconds(kFinalGraceMs);
-    bool pump_failed = false;
-    while (!HasTimedOut(grace_deadline) && !provider_closed_ && phase_ != Phase::Completed &&
-           !child_exited_) {
-      if (!DrainEvents(std::chrono::milliseconds(RemainingMs(grace_deadline, kPollSliceMs)),
-                       error)) {
-        pump_failed = true;
-        break;
-      }
-    }
-    return !pump_failed;
-  }
-
   // First provider-reported error text, empty when the session never saw one.
   std::string FirstError() const {
     for (const auto& event : events_) {
@@ -276,8 +243,8 @@ private:
   }
 
   // Resolves the final status contract: an observed provider error outranks a
-  // grace-pump failure, which outranks a clean teardown.
-  bool ResolveFinishFailure(bool grace_pump_failed, std::string* error) {
+  // clean teardown.
+  bool ResolveFinishFailure(std::string* error) {
     if (saw_error_) {
       const std::string first_error = FirstError();
       if (!first_error.empty()) {
@@ -287,21 +254,15 @@ private:
         return false;
       }
     }
-    if (grace_pump_failed) {
-      if (error != nullptr && error->empty()) {
-        *error = _("Failed to pump streaming ASR output during grace window.");
-      }
-      return false;
-    }
     if (error != nullptr) {
       error->clear();
     }
-    return !saw_error_ && !grace_pump_failed;
+    return !saw_error_;
   }
 
   // Drains leftovers, reports the no-text / interruption cases and resolves the
-  // caller-visible outcome after the final-text wait.
-  bool FinalizeFinish(bool grace_pump_failed, std::string* error) {
+  // caller-visible outcome after the provider closes or exits.
+  bool FinalizeFinish(std::string* error) {
     DrainEvents(std::chrono::milliseconds(0), nullptr);
 
     const bool cancelled = phase_ == Phase::Cancelled;
@@ -317,20 +278,18 @@ private:
       finish_error_ = _("Recognition session was interrupted or cancelled.");
       return SetFinishError(error, finish_error_);
     }
-    return ResolveFinalOutcome(grace_pump_failed, error);
+    return ResolveFinalOutcome(error);
   }
 
-  bool ResolveFinalOutcome(bool grace_pump_failed, std::string* error) {
+  bool ResolveFinalOutcome(std::string* error) {
     std::string local_error;
     if (error != nullptr && !error->empty()) {
       local_error = *error;
     }
-    finish_success_ = ResolveFinishFailure(grace_pump_failed, &local_error);
+    finish_success_ = ResolveFinishFailure(&local_error);
     if (!finish_success_) {
       if (local_error.empty()) {
-        local_error = saw_final_text_
-                          ? _("Failed to pump streaming ASR output during grace window.")
-                          : _("Streaming ASR provider returned no text.");
+        local_error = _("Streaming ASR provider returned no text.");
       }
       finish_error_ = std::move(local_error);
       return SetFinishError(error, finish_error_);
@@ -566,7 +525,13 @@ private:
       return true;
     }
     if (type == "final" || type == "final_timestamps") {
-      HandleFinalOutputLine(payload);
+      const std::string text =
+          std::string(vinput::str::Trim(vinput::json::String(payload, "text")));
+      if (!text.empty()) {
+        saw_final_text_ = true;
+        last_partial_text_.clear();
+        events_.push_back({RecognitionEventKind::FinalText, text, {}});
+      }
       return true;
     }
     if (type == "closed") {
@@ -574,23 +539,6 @@ private:
       return true;
     }
     return true;
-  }
-
-  void HandleFinalOutputLine(const glz::json_t& payload) {
-    const std::string text = std::string(vinput::str::Trim(vinput::json::String(payload, "text")));
-    if (text.empty()) {
-      return;
-    }
-    saw_final_text_ = true;
-    if (phase_ == Phase::Finishing) {
-      const bool segment_final = vinput::json::Bool(payload, "segment_final", false);
-      const bool utterance_final = vinput::json::Bool(payload, "utterance_final", false);
-      if (utterance_final || !segment_final) {
-        saw_terminal_final_ = true;
-      }
-    }
-    last_partial_text_.clear();
-    events_.push_back({RecognitionEventKind::FinalText, text, {}});
   }
 
   void QueueError(std::string_view error_text) {
@@ -661,7 +609,6 @@ private:
   bool completed_emitted_ = false;
   bool saw_error_ = false;
   bool saw_final_text_ = false;
-  bool saw_terminal_final_ = false;
   bool child_exited_ = false;
   bool killed_by_us_ = false;
   int exit_code_ = -1;

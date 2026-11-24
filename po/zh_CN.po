@@ -1861,10 +1861,6 @@ msgstr "命令 ASR 提供商的命令为空。"
 msgid "Failed to finish recognition session."
 msgstr "识别会话结束失败。"
 
-#: src/daemon/asr/backends/command_streaming_backend.cpp:289
-msgid "Failed to pump streaming ASR output during grace window."
-msgstr "在宽限期内泵取流式 ASR 输出失败。"
-
 #: src/daemon/runtime/session_lane.cpp:125
 msgid "Failed to push audio chunk."
 msgstr "音频块推送失败。"
