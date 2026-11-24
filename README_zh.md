@@ -4,13 +4,13 @@
 
 **Fcitx5 语音输入方案 — 本地与云端 ASR、LLM 改写、多发行版支持**
 
-[![License](https://img.shields.io/github/license/xifan2333/fcitx5-vinput)](LICENSE)
-[![CI](https://github.com/xifan2333/fcitx5-vinput/actions/workflows/release.yml/badge.svg)](https://github.com/xifan2333/fcitx5-vinput/actions/workflows/release.yml)
-[![Release](https://img.shields.io/github/v/release/xifan2333/fcitx5-vinput)](https://github.com/xifan2333/fcitx5-vinput/releases)
+[![License](https://img.shields.io/github/license/fcitx5-vinput/fcitx5-vinput)](LICENSE)
+[![CI](https://github.com/fcitx5-vinput/fcitx5-vinput/actions/workflows/release.yml/badge.svg)](https://github.com/fcitx5-vinput/fcitx5-vinput/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/fcitx5-vinput/fcitx5-vinput)](https://github.com/fcitx5-vinput/fcitx5-vinput/releases)
 [![AUR](https://img.shields.io/aur/version/fcitx5-vinput-bin)](https://aur.archlinux.org/packages/fcitx5-vinput-bin)
-[![Downloads](https://img.shields.io/github/downloads/xifan2333/fcitx5-vinput/total)](https://github.com/xifan2333/fcitx5-vinput/releases)
+[![Downloads](https://img.shields.io/github/downloads/fcitx5-vinput/fcitx5-vinput/total)](https://github.com/fcitx5-vinput/fcitx5-vinput/releases)
 
-[English](README.md) | [中文](README_zh.md) | [文档站点](https://xifan2333.github.io/fcitx5-vinput/zh-cn/)
+[English](README.md) | [中文](README_zh.md) | [文档站点](https://fcitx5-vinput.github.io/zh-cn/)
 
 https://github.com/user-attachments/assets/5a548a68-153c-4842-bab6-926f30bb720e
 
@@ -88,7 +88,7 @@ sudo apt-get install -f
 支持 `x86_64-linux` 和 `aarch64-linux`。完整版与 Lite 版均在 Cachix 预编译缓存：
 
 ```nix
-inputs.fcitx5-vinput.url = "github:xifan2333/fcitx5-vinput";
+inputs.fcitx5-vinput.url = "github:fcitx5-vinput/fcitx5-vinput";
 
 # 完整版（默认）：
 #   inputs.fcitx5-vinput.packages.${system}.default
@@ -105,7 +105,7 @@ nixConfig = {
 };
 ```
 
-完整 Home Manager 示例见[安装文档](https://xifan2333.github.io/fcitx5-vinput/zh-cn/install/)。
+完整 Home Manager 示例见[安装文档](https://fcitx5-vinput.github.io/zh-cn/install/)。
 
 ### Flatpak
 
@@ -130,7 +130,7 @@ flatpak kill org.fcitx.Fcitx5
 
 ### GitHub Releases
 
-从 [GitHub Releases](https://github.com/xifan2333/fcitx5-vinput/releases/latest) 下载对应安装包（均提供完整版与 Lite 极简版）：
+从 [GitHub Releases](https://github.com/fcitx5-vinput/fcitx5-vinput/releases/latest) 下载对应安装包（均提供完整版与 Lite 极简版）：
 
 - **Debian / Linux Mint / Ubuntu（其他版本）**：`.deb`（`fcitx5-vinput_*.deb` / `fcitx5-vinput-lite_*.deb`）
 - **openSUSE / Fedora（其他版本）**：`.rpm`（`fcitx5-vinput-*.rpm` / `fcitx5-vinput-lite-*.rpm`）
@@ -179,7 +179,7 @@ fcitx5 -r
 
 ## 文档
 
-ASR 配置、场景与 LLM、CLI 参考和资源仓库贡献规范请查看[文档站点](https://xifan2333.github.io/fcitx5-vinput/zh-cn/)。
+ASR 配置、场景与 LLM、CLI 参考和资源仓库贡献规范请查看[文档站点](https://fcitx5-vinput.github.io/zh-cn/)。
 
 ## 许可证
 
@@ -187,8 +187,8 @@ ASR 配置、场景与 LLM、CLI 参考和资源仓库贡献规范请查看[文�
 
 ## 贡献者
 
-<a href="https://github.com/xifan2333/fcitx5-vinput/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=xifan2333/fcitx5-vinput" />
+<a href="https://github.com/fcitx5-vinput/fcitx5-vinput/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=fcitx5-vinput/fcitx5-vinput" />
 </a>
 
 ## 赞赏
