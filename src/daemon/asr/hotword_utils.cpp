@@ -1,9 +1,11 @@
 #include "daemon/asr/hotword_utils.h"
 
+#include <bit>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fast_float/fast_float.h>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -36,7 +38,7 @@ bool SetError(std::string* error, std::string message) {
 
 struct ScorePrefix {
   std::string_view digits;
-  std::chars_format format = std::chars_format::general;
+  bool is_hex = false;
   bool is_negative = false;
 };
 
@@ -53,32 +55,170 @@ std::optional<ScorePrefix> StripScorePrefix(std::string_view value) noexcept {
       return std::nullopt;
     }
   }
-  std::chars_format format = std::chars_format::general;
+  bool is_hex = false;
   if (digits.starts_with("0x") || digits.starts_with("0X")) {
     digits.remove_prefix(2);
-    format = std::chars_format::hex;
+    is_hex = true;
   }
-  return ScorePrefix{.digits = digits, .format = format, .is_negative = is_negative};
+  return ScorePrefix{.digits = digits, .is_hex = is_hex, .is_negative = is_negative};
+}
+
+int HexDigitValue(char c) noexcept {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return 10 + (c - 'a');
+  }
+  if (c >= 'A' && c <= 'F') {
+    return 10 + (c - 'A');
+  }
+  return -1;
+}
+
+std::optional<int> ParseHexExponent(std::string_view suffix) noexcept {
+  if (suffix.empty()) {
+    return std::nullopt;
+  }
+  if (suffix.front() == '+') {
+    suffix.remove_prefix(1);
+    if (suffix.empty() || suffix.front() == '+' || suffix.front() == '-') {
+      return std::nullopt;
+    }
+  }
+  int exp = 0;
+  const auto [ptr, ec] = std::from_chars(suffix.data(), suffix.data() + suffix.size(), exp);
+  if (ec != std::errc{} || ptr != suffix.data() + suffix.size()) {
+    return std::nullopt;
+  }
+  return exp;
+}
+
+struct HexMantissa {
+  std::uint64_t significand = 0;
+  int hex_digits = 0;
+  long long exp_offset = 0;
+};
+
+void AccumulateHexDigit(HexMantissa& state, int nibble, bool seen_dot) noexcept {
+  // 13 hex digits = up to 52 bits, fitting losslessly in IEEE 754 double (53-bit significand)
+  // so sticky-bit rounding to float never suffers from intermediate double-rounding.
+  constexpr int kMaxKeptHexDigits = 13;
+  if (state.significand == 0) {
+    if (nibble == 0) {
+      if (seen_dot) {
+        state.exp_offset -= 4;
+      }
+      return;
+    }
+    state.significand = static_cast<std::uint64_t>(nibble);
+    state.hex_digits = 1;
+    if (seen_dot) {
+      state.exp_offset -= 4;
+    }
+    return;
+  }
+  if (state.hex_digits < kMaxKeptHexDigits) {
+    state.significand = (state.significand << 4) | static_cast<std::uint64_t>(nibble);
+    ++state.hex_digits;
+    if (seen_dot) {
+      state.exp_offset -= 4;
+    }
+    return;
+  }
+  if (!seen_dot) {
+    state.exp_offset += 4;
+  }
+  if (nibble != 0) {
+    state.significand |= 1ULL;
+  }
+}
+
+std::optional<HexMantissa> ParseHexMantissa(std::string_view mantissa_str) noexcept {
+  HexMantissa state;
+  bool seen_dot = false;
+  bool seen_digit = false;
+  for (const char ch : mantissa_str) {
+    if (ch == '.') {
+      if (seen_dot) {
+        return std::nullopt;
+      }
+      seen_dot = true;
+      continue;
+    }
+    const int nibble = HexDigitValue(ch);
+    if (nibble < 0) {
+      return std::nullopt;
+    }
+    seen_digit = true;
+    AccumulateHexDigit(state, nibble, seen_dot);
+  }
+  if (!seen_digit) {
+    return std::nullopt;
+  }
+  return state;
+}
+
+std::optional<float> ParseHexFloat(std::string_view digits) noexcept {
+  if (digits.empty()) {
+    return std::nullopt;
+  }
+  const auto exp_pos = digits.find_first_of("pP");
+  const std::string_view mantissa_str = digits.substr(0, exp_pos);
+  int exp = 0;
+  if (exp_pos != std::string_view::npos) {
+    const auto parsed_exp = ParseHexExponent(digits.substr(exp_pos + 1));
+    if (!parsed_exp) {
+      return std::nullopt;
+    }
+    exp = *parsed_exp;
+  }
+
+  const auto mantissa = ParseHexMantissa(mantissa_str);
+  if (!mantissa) {
+    return std::nullopt;
+  }
+  if (mantissa->significand == 0) {
+    return 0.0F;
+  }
+
+  const int msb_bit = 63 - std::countl_zero(mantissa->significand);
+  const long long total_exp = static_cast<long long>(exp) + mantissa->exp_offset;
+  const long long norm_exp = total_exp + static_cast<long long>(msb_bit);
+  if (norm_exp >= 128 || norm_exp < -151) {
+    return std::nullopt;
+  }
+  const auto result = static_cast<float>(
+      std::ldexp(static_cast<double>(mantissa->significand), static_cast<int>(total_exp)));
+  if (!std::isfinite(result) || result == 0.0F) {
+    return std::nullopt;
+  }
+  return result;
 }
 
 // Hotword scores are passed through to sherpa-onnx, so only plain finite
-// decimals are accepted (no NaN/Inf, no locale-dependent parsing).
-bool ParseHotwordScore(std::string_view value, float* out = nullptr) noexcept {
+// numbers are accepted (no NaN/Inf, no locale-dependent parsing).
+std::optional<float> ParseHotwordScore(std::string_view value) noexcept {
   const auto prefix = StripScorePrefix(value);
   if (!prefix) {
-    return false;
+    return std::nullopt;
   }
   float parsed = 0.0F;
-  const auto [end, ec] = std::from_chars(
-      prefix->digits.data(), prefix->digits.data() + prefix->digits.size(), parsed, prefix->format);
-  if (ec != std::errc{} || end != prefix->digits.data() + prefix->digits.size() ||
-      !std::isfinite(parsed)) {
-    return false;
+  if (prefix->is_hex) {
+    const auto hex_val = ParseHexFloat(prefix->digits);
+    if (!hex_val) {
+      return std::nullopt;
+    }
+    parsed = *hex_val;
+  } else {
+    const auto [end, ec] = fast_float::from_chars(
+        prefix->digits.data(), prefix->digits.data() + prefix->digits.size(), parsed);
+    if (ec != std::errc{} || end != prefix->digits.data() + prefix->digits.size() ||
+        !std::isfinite(parsed)) {
+      return std::nullopt;
+    }
   }
-  if (out != nullptr) {
-    *out = prefix->is_negative ? -parsed : parsed;
-  }
-  return true;
+  return prefix->is_negative ? -parsed : parsed;
 }
 
 struct Utf8Validation {
@@ -187,7 +327,7 @@ struct HotwordEntry {
 };
 
 bool IsValidScore(std::string_view value) {
-  return ParseHotwordScore(value);
+  return ParseHotwordScore(value).has_value();
 }
 
 bool LooksLikeScore(std::string_view value) {

@@ -3,12 +3,12 @@
 #include <algorithm>
 #include <atomic>
 #include <base64.hpp>
-#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <fast_float/fast_float.h>
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <glaze/core/common.hpp>
@@ -61,7 +61,8 @@ std::optional<int> ParsePositiveSecondsMs(std::string_view raw) {
     return std::nullopt;
   }
   double seconds = 0.0;
-  const auto [ptr, ec] = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), seconds);
+  const auto [ptr, ec] =
+      fast_float::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), seconds);
   if (ec != std::errc{} || ptr != trimmed.data() + trimmed.size() || !std::isfinite(seconds) ||
       seconds <= 0.0) {
     return std::nullopt;

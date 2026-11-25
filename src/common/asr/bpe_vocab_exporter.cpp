@@ -1,11 +1,11 @@
 #include "common/asr/bpe_vocab_exporter.h"
 
 #include <algorithm>
-#include <bit>
-#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <fast_float/fast_float.h>
 #include <filesystem>
 #include <fmt/base.h>
 #include <fstream>
@@ -85,7 +85,9 @@ public:
     if (!bits.has_value()) {
       return std::nullopt;
     }
-    return std::bit_cast<float>(*bits);
+    float value = 0.0F;
+    std::memcpy(&value, &*bits, sizeof(value));
+    return value;
   }
 
   bool Skip(std::size_t count) noexcept {
@@ -221,7 +223,7 @@ vinput::Expected<void> HandleModelProtoField(ByteReader& reader, std::string& ou
 }
 
 // Validates one "piece<TAB>score" line from the text vocabulary. The score is
-// checked with std::from_chars and must parse the whole line tail.
+// checked with fast_float::from_chars and must parse the whole line tail.
 vinput::Expected<void> ParseVocabLine(std::string& line, std::size_t& piece_count) {
   if (!line.empty() && line.back() == '\r') {
     line.pop_back();
@@ -233,7 +235,7 @@ vinput::Expected<void> ParseVocabLine(std::string& line, std::size_t& piece_coun
   const std::string score_text = line.substr(tab + 1);
   float score = 0.0F;
   const auto [ptr, ec] =
-      std::from_chars(score_text.data(), score_text.data() + score_text.size(), score);
+      fast_float::from_chars(score_text.data(), score_text.data() + score_text.size(), score);
   if (ec != std::errc{} || ptr != score_text.data() + score_text.size() || !std::isfinite(score)) {
     return vinput::UnexpectedError("invalid BPE vocabulary score");
   }

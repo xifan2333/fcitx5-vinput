@@ -110,16 +110,57 @@ void TestValidHotwordsParsing() {
 
   // Weighted hotwords with float scores (including hex floats)
   const auto weighted_file = temp_dir->Path() / "weighted.txt";
-  const std::string content = "alpha:2.5\nbeta:+10.0\ngamma:-1.5\ndelta:0\nhex:0x1p+2\n";
+  const std::string content =
+      "alpha:2.5\nbeta:+10.0\ngamma:-1.5\ndelta:0\nhex:0x1p+2\nhexfrac:-0X1.8p+1\n";
   TEST_ASSERT(vinput::file::AtomicWriteTextFile(weighted_file, content).has_value());
 
   TEST_ASSERT(LoadTransducerHotwords(weighted_file.string(), &hotwords, &error));
-  TEST_ASSERT(hotwords == "alpha :2.5\nbeta :+10.0\ngamma :-1.5\ndelta :0\nhex :0x1p+2\n");
+  TEST_ASSERT(hotwords ==
+              "alpha :2.5\nbeta :+10.0\ngamma :-1.5\ndelta :0\nhex :0x1p+2\nhexfrac :-0X1.8p+1\n");
   TEST_ASSERT(error.empty());
 
   TEST_ASSERT(LoadPromptHotwordsCsv(weighted_file.string(), &hotwords, &error));
-  TEST_ASSERT(hotwords == "alpha,beta,gamma,delta,hex");
+  TEST_ASSERT(hotwords == "alpha,beta,gamma,delta,hex,hexfrac");
   TEST_ASSERT(error.empty());
+
+  // Trailing fractional zeros must not overflow intermediate mantissa
+  const std::string trailing_zero_hex = "0x1." + std::string(256, '0');
+  const auto long_hex_file = temp_dir->Path() / "long_hex.txt";
+  const auto short_hex_file = temp_dir->Path() / "short_hex.txt";
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(long_hex_file, "word:" + trailing_zero_hex + "\n")
+                  .has_value());
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(short_hex_file, "word:0x1.0\n").has_value());
+
+  std::string long_out;
+  std::string short_out;
+  TEST_ASSERT(LoadTransducerHotwords(long_hex_file.string(), &long_out, &error));
+  TEST_ASSERT(LoadTransducerHotwords(short_hex_file.string(), &short_out, &error));
+  TEST_ASSERT(long_out == "word :" + trailing_zero_hex + "\n");
+  TEST_ASSERT(short_out == "word :0x1.0\n");
+
+  std::string long_csv;
+  std::string short_csv;
+  TEST_ASSERT(LoadPromptHotwordsCsv(long_hex_file.string(), &long_csv, &error));
+  TEST_ASSERT(LoadPromptHotwordsCsv(short_hex_file.string(), &short_csv, &error));
+  TEST_ASSERT(long_csv == short_csv);
+
+  // True zero and representable non-zero subnormals must stay valid
+  const auto zero_hex_file = temp_dir->Path() / "zero_hex.txt";
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(
+                  zero_hex_file, "zero:0x0." + std::string(300, '0') +
+                                     "\nzeroexp:0x0p-10000\nsubmin:0x1p-149\nsubtie:0x1.000001p-150"
+                                     "\nsublong:0x1000000000000001p-210\n")
+                  .has_value());
+  TEST_ASSERT(LoadTransducerHotwords(zero_hex_file.string(), &hotwords, &error));
+
+  // Large integer/fractional zero runs compensated by large opposite exponents
+  const auto compensated_hex_file = temp_dir->Path() / "compensated_hex.txt";
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(compensated_hex_file,
+                                                "pos:0x1" + std::string(250100, '0') +
+                                                    "p-1000300\nneg:0x0." +
+                                                    std::string(250032, '0') + "1p+1000200\n")
+                  .has_value());
+  TEST_ASSERT(LoadTransducerHotwords(compensated_hex_file.string(), &hotwords, &error));
 
   // Mixed blank lines, whitespace trimming, and CRLF line endings
   const auto mixed_file = temp_dir->Path() / "mixed.txt";
@@ -235,6 +276,18 @@ void TestInvalidScores() {
   check_invalid("word:-+1");
   check_invalid("word:--1");
   check_invalid("word:1e9999");
+
+  // Malformed, overflowing, or underflowing hex floats
+  check_invalid("word:0x");
+  check_invalid("word:0xp+2");
+  check_invalid("word:0x1p");
+  check_invalid("word:0x1.2.3");
+  check_invalid("word:0x1p+9999");
+  check_invalid("word:0x1p-10000");
+  check_invalid("word:0x1p-151");
+  check_invalid("word:0x1p-150");
+  check_invalid("word:0x1" + std::string(32, '0') + "." + std::string(269, '0'));
+  check_invalid("word:0x1" + std::string(250032, '0') + "p-1000000");
 }
 
 void TestUtf8Validation() {

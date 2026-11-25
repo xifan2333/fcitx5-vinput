@@ -30,7 +30,9 @@ void TestTrim() {
   // Pure whitespace
   TEST_ASSERT(Trim("   \t\r\n ").empty());
 
-  // Leading and trailing whitespace
+  // Leading-only, trailing-only, and both-side whitespace (preserving internal spaces)
+  TEST_ASSERT(Trim("   leading") == "leading");
+  TEST_ASSERT(Trim("trailing   ") == "trailing");
   TEST_ASSERT(Trim("  hello world  \n") == "hello world");
   TEST_ASSERT(Trim("\t\tvinput\r") == "vinput");
 

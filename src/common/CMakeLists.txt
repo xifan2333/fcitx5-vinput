@@ -64,6 +64,7 @@ target_link_libraries(
          unicodelib::unicodelib
          mio::mio
          glaze::glaze
+         fast_float::fast_float
          tl::expected
          readerwriterqueue::readerwriterqueue
 )

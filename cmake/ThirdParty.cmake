@@ -53,10 +53,20 @@ add_library(3rdparty_mio INTERFACE)
 target_include_directories(3rdparty_mio SYSTEM INTERFACE ${CMAKE_SOURCE_DIR}/3rdparty/mio/include)
 add_library(mio::mio ALIAS 3rdparty_mio)
 
+# fast_float
+add_library(3rdparty_fast_float INTERFACE)
+target_include_directories(
+  3rdparty_fast_float SYSTEM INTERFACE ${CMAKE_SOURCE_DIR}/3rdparty/fast_float/include
+)
+add_library(fast_float::fast_float ALIAS 3rdparty_fast_float)
+
 # glaze
 add_library(3rdparty_glaze INTERFACE)
 target_include_directories(
   3rdparty_glaze SYSTEM INTERFACE ${CMAKE_SOURCE_DIR}/3rdparty/glaze/include
+)
+target_compile_options(
+  3rdparty_glaze INTERFACE -include ${CMAKE_SOURCE_DIR}/cmake/compat/bit_cast_shim.h
 )
 add_library(glaze::glaze ALIAS 3rdparty_glaze)
 
