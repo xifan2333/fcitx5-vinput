@@ -208,6 +208,14 @@ jobs:
       - name: Build official lite package
         run: nix build .#fcitx5-vinput-lite --no-link
 
+      - name: Verify GUI translations exist in package output
+        run: |
+          out_path="$(nix path-info .#fcitx5-vinput-lite)"
+          if [ ! -f "${out_path}/share/fcitx5-vinput/translations/zh_CN.qm" ]; then
+            echo "Missing GUI translation file in Nix package output: ${out_path}/share/fcitx5-vinput/translations/zh_CN.qm" >&2
+            exit 1
+          fi
+
       - name: Verify lite runtime closure excludes local ASR dependencies
         run: |
           if nix path-info --recursive .#fcitx5-vinput-lite | grep -Ei '(openfst|onnxruntime|sherpa-onnx|kaldi|sentencepiece)'; then

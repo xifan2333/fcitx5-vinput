@@ -58,6 +58,7 @@
                 gettext
                 fcitx5
                 makeBinaryWrapper
+                qt6.qttools
                 qt6.wrapQtAppsHook
                 autoPatchelfHook
               ];
@@ -152,6 +153,7 @@
               onnxruntime
               pipewire
               qt6.qtbase
+              qt6.qttools
               qt6.wrapQtAppsHook
               sherpa-deps.sherpa-onnx
             ];
