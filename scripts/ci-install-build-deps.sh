@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-  echo "usage: $0 <ubuntu24.04|debian12|fedora43|opensuse-leap|archlinux>" >&2
+  echo "usage: $0 <ubuntu24.04|debian12|debian11|fedora43|opensuse-leap|archlinux>" >&2
   exit 1
 fi
 
@@ -216,6 +216,48 @@ debian12)
   update-alternatives --install /usr/bin/clang clang /usr/bin/clang-16 100 \
     --slave /usr/bin/clang++ clang++ /usr/bin/clang++-16
   install_qt_apt
+  ;;
+debian11)
+  export DEBIAN_FRONTEND=noninteractive
+  "${sudo_cmd[@]}" apt-get update
+  "${sudo_cmd[@]}" apt-get install -y --no-install-recommends \
+    bzip2 \
+    ca-certificates \
+    cmake \
+    make \
+    ninja-build \
+    pkg-config \
+    gettext \
+    file \
+    git \
+    curl \
+    jq \
+    patch \
+    python3 \
+    zstd \
+    lsb-release \
+    wget \
+    gnupg \
+    software-properties-common \
+    libblas-dev \
+    liblapack-dev \
+    libopenblas-dev \
+    libssl-dev \
+    libarchive-dev \
+    libpipewire-0.3-dev \
+    libsystemd-dev \
+    libfcitx5core-dev \
+    libfcitx5config-dev \
+    libfcitx5utils-dev \
+    fcitx5-modules-dev
+  llvm_script="$(mktemp)"
+  wget -qO "${llvm_script}" https://apt.llvm.org/llvm.sh
+  chmod +x "${llvm_script}"
+  "${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive "${llvm_script}" 18
+  rm -f "${llvm_script}"
+  "${sudo_cmd[@]}" update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100 \
+    --slave /usr/bin/clang++ clang++ /usr/bin/clang++-18
+  "${sudo_cmd[@]}" update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-18 100
   ;;
 fedora43)
   # Avoid weak deps that can pull packages from the Cisco openh264 repo,
