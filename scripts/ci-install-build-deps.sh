@@ -219,6 +219,22 @@ debian12)
   ;;
 debian11)
   export DEBIAN_FRONTEND=noninteractive
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+    if [[ -f "${f}" ]]; then
+      "${sudo_cmd[@]}" sed -i -E \
+        -e 's#https?://(deb|security)\.debian\.org#http://archive.debian.org#g' \
+        -e '/archive\.debian\.org/ { /check-valid-until=/! s#^([[:space:]]*deb(-src)?[[:space:]]+)\[#\1[check-valid-until=no # }' \
+        -e '/archive\.debian\.org/ { /check-valid-until=/! s#^([[:space:]]*deb(-src)?[[:space:]]+)#\1[check-valid-until=no] # }' \
+        "${f}"
+    fi
+  done
+  "${sudo_cmd[@]}" apt-get update
+  "${sudo_cmd[@]}" apt-get install -y --no-install-recommends ca-certificates
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+    if [[ -f "${f}" ]]; then
+      "${sudo_cmd[@]}" sed -i 's#http://archive\.debian\.org#https://archive.debian.org#g' "${f}"
+    fi
+  done
   "${sudo_cmd[@]}" apt-get update
   "${sudo_cmd[@]}" apt-get install -y --no-install-recommends \
     bzip2 \
@@ -239,6 +255,7 @@ debian11)
     wget \
     gnupg \
     software-properties-common \
+    libstdc++-10-dev \
     libblas-dev \
     liblapack-dev \
     libopenblas-dev \

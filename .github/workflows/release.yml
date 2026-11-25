@@ -42,7 +42,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && format('{0}-{1}-{2}', inputs.target, inputs.arch, inputs.mode) || 'release' }}
   cancel-in-progress: true
 
 env:
@@ -593,7 +593,10 @@ jobs:
           cache-key: flatpak-builder-lite-${{ github.sha }}
 
   publish-release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      (github.event_name != 'workflow_dispatch' ||
+       (inputs.target == 'all' && inputs.arch == 'all' && inputs.mode == 'all'))
     needs:
       - source_archive
       - build-linux-tarball
@@ -603,6 +606,9 @@ jobs:
       - build-arch
       - build-flatpak
     runs-on: ubuntu-latest
+    concurrency:
+      group: publish-release-${{ github.ref }}
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
