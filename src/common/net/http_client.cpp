@@ -107,7 +107,7 @@ size_t ReadRequestBodyCallback(char* buffer, size_t size, size_t nmemb, void* us
 }
 
 struct MemoryWriteContext {
-  std::string body{};
+  std::string body;
   size_t max_bytes = 0;
   bool overflow = false;
 };
@@ -178,7 +178,7 @@ size_t HeaderWriteCallback(char* buffer, size_t size, size_t nitems, void* userd
 struct TransferProgressContext {
   const std::atomic<bool>* cancel_token = nullptr;
   ProgressCallback callback = nullptr;
-  std::chrono::steady_clock::time_point last_time{};
+  std::chrono::steady_clock::time_point last_time;
   uint64_t last_bytes = 0;
   bool has_last = false;
   bool callback_exception = false;
@@ -454,8 +454,9 @@ public:
     const CurlHeaderList header_list = BuildHeaderList(request);
     CurlBodyReader body_reader{.body = request.body, .offset = 0};
     HttpResponse response;
-    TransferProgressContext prog_ctx{.cancel_token = request.cancel_token,
-                                     .callback = request.progress_cb};
+    TransferProgressContext prog_ctx;
+    prog_ctx.cancel_token = request.cancel_token;
+    prog_ctx.callback = request.progress_cb;
 
     curl_easy_setopt(curl, CURLOPT_URL, request.url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header_list.list);
@@ -515,8 +516,8 @@ HttpClient::HttpClient() : impl_(std::make_unique<Impl>()) {}
 HttpClient::~HttpClient() = default;
 
 HttpResponse HttpClient::Request(const HttpRequest& request) {
-  ResponseSink sink(std::in_place_type<MemoryWriteContext>,
-                    MemoryWriteContext{.max_bytes = request.max_response_bytes});
+  ResponseSink sink(std::in_place_type<MemoryWriteContext>);
+  std::get<MemoryWriteContext>(sink).max_bytes = request.max_response_bytes;
   HttpResponse res = impl_->Execute(request, &sink);
   res.body = std::move(std::get<MemoryWriteContext>(sink).body);
   return res;
