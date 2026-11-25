@@ -1,5 +1,6 @@
 #include "daemon/asr/hotword_utils.h"
 
+#include <bit>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
@@ -94,15 +95,47 @@ std::optional<int> ParseHexExponent(std::string_view suffix) noexcept {
 }
 
 struct HexMantissa {
-  double mantissa = 0.0;
-  int exp_offset = 0;
+  std::uint64_t significand = 0;
+  int hex_digits = 0;
+  long long exp_offset = 0;
 };
 
+void AccumulateHexDigit(HexMantissa& state, int nibble, bool seen_dot) noexcept {
+  constexpr int kMaxKeptHexDigits = 15;
+  if (state.significand == 0) {
+    if (nibble == 0) {
+      if (seen_dot && state.exp_offset > -1000000) {
+        state.exp_offset -= 4;
+      }
+      return;
+    }
+    state.significand = static_cast<std::uint64_t>(nibble);
+    state.hex_digits = 1;
+    if (seen_dot) {
+      state.exp_offset -= 4;
+    }
+    return;
+  }
+  if (state.hex_digits < kMaxKeptHexDigits) {
+    state.significand = (state.significand << 4) | static_cast<std::uint64_t>(nibble);
+    ++state.hex_digits;
+    if (seen_dot) {
+      state.exp_offset -= 4;
+    }
+    return;
+  }
+  if (!seen_dot && state.exp_offset < 1000000) {
+    state.exp_offset += 4;
+  }
+  if (nibble != 0) {
+    state.significand |= 1ULL;
+  }
+}
+
 std::optional<HexMantissa> ParseHexMantissa(std::string_view mantissa_str) noexcept {
-  double mantissa = 0.0;
+  HexMantissa state;
   bool seen_dot = false;
   bool seen_digit = false;
-  int exp_offset = 0;
   for (const char ch : mantissa_str) {
     if (ch == '.') {
       if (seen_dot) {
@@ -116,15 +149,12 @@ std::optional<HexMantissa> ParseHexMantissa(std::string_view mantissa_str) noexc
       return std::nullopt;
     }
     seen_digit = true;
-    mantissa = (mantissa * 16.0) + static_cast<double>(nibble);
-    if (seen_dot) {
-      exp_offset -= 4;
-    }
+    AccumulateHexDigit(state, nibble, seen_dot);
   }
   if (!seen_digit) {
     return std::nullopt;
   }
-  return HexMantissa{.mantissa = mantissa, .exp_offset = exp_offset};
+  return state;
 }
 
 std::optional<float> ParseHexFloat(std::string_view digits) noexcept {
@@ -146,20 +176,21 @@ std::optional<float> ParseHexFloat(std::string_view digits) noexcept {
   if (!mantissa) {
     return std::nullopt;
   }
-  if (mantissa->mantissa == 0.0) {
+  if (mantissa->significand == 0) {
     return 0.0F;
   }
 
-  const long long total_exp =
-      static_cast<long long>(exp) + static_cast<long long>(mantissa->exp_offset);
-  if (total_exp > 1024) {
+  const int msb_bit = 63 - std::countl_zero(mantissa->significand);
+  const long long total_exp = static_cast<long long>(exp) + mantissa->exp_offset;
+  const long long norm_exp = total_exp + static_cast<long long>(msb_bit);
+  if (norm_exp >= 128) {
     return std::nullopt;
   }
-  if (total_exp < -1074) {
+  if (norm_exp < -151) {
     return 0.0F;
   }
-  const auto result =
-      static_cast<float>(std::ldexp(mantissa->mantissa, static_cast<int>(total_exp)));
+  const auto result = static_cast<float>(
+      std::ldexp(static_cast<double>(mantissa->significand), static_cast<int>(total_exp)));
   if (!std::isfinite(result)) {
     return std::nullopt;
   }

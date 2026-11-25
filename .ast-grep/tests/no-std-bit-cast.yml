@@ -1,0 +1,13 @@
+id: no-std-bit-cast
+valid:
+  - "std::memcpy(&dst, &src, sizeof(dst));"
+  - "myns::bit_cast<float>(bits);"
+  - "fmt::detail::bit_cast<float>(bits);"
+  - "std::myns::bit_cast<float>(bits);"
+  - "obj.bit_cast(bits);"
+invalid:
+  - "std::bit_cast<float>(bits);"
+  - "::std::bit_cast<std::uint32_t>(score);"
+  - "std :: bit_cast<float>(bits);"
+  - ":: std :: bit_cast<float>(bits);"
+  - "std::bit_cast(bits);"

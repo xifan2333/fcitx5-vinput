@@ -1,0 +1,53 @@
+id: no-std-bit-cast
+message: "严禁在业务或测试代码中直接调用 std::bit_cast（libstdc++-10 不支持）。请使用 std::memcpy，cmake/compat/bit_cast_shim.h 仅用于兼容未修改的 3rdparty/glaze。"
+severity: error
+language: Cpp
+files:
+  - "src/**"
+  - "tests/**"
+utils:
+  std_bit_cast_template:
+    kind: template_function
+    has:
+      field: name
+      kind: identifier
+      regex: "^bit_cast$"
+  std_qualified_bit_cast:
+    any:
+      - kind: qualified_identifier
+        all:
+          - has:
+              field: scope
+              kind: namespace_identifier
+              regex: "^std$"
+          - has:
+              field: name
+              any:
+                - kind: identifier
+                  regex: "^bit_cast$"
+                - matches: std_bit_cast_template
+      - kind: qualified_identifier
+        all:
+          - not:
+              has:
+                field: scope
+                regex: ".*"
+          - has:
+              field: name
+              kind: qualified_identifier
+              all:
+                - has:
+                    field: scope
+                    kind: namespace_identifier
+                    regex: "^std$"
+                - has:
+                    field: name
+                    any:
+                      - kind: identifier
+                        regex: "^bit_cast$"
+                      - matches: std_bit_cast_template
+rule:
+  kind: call_expression
+  has:
+    field: function
+    matches: std_qualified_bit_cast

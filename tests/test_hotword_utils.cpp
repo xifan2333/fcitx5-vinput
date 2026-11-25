@@ -123,6 +123,34 @@ void TestValidHotwordsParsing() {
   TEST_ASSERT(hotwords == "alpha,beta,gamma,delta,hex,hexfrac");
   TEST_ASSERT(error.empty());
 
+  // Trailing fractional zeros must not overflow intermediate mantissa
+  const std::string trailing_zero_hex = "0x1." + std::string(256, '0');
+  const auto long_hex_file = temp_dir->Path() / "long_hex.txt";
+  const auto short_hex_file = temp_dir->Path() / "short_hex.txt";
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(long_hex_file, "word:" + trailing_zero_hex + "\n")
+                  .has_value());
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(short_hex_file, "word:0x1.0\n").has_value());
+
+  std::string long_out;
+  std::string short_out;
+  TEST_ASSERT(LoadTransducerHotwords(long_hex_file.string(), &long_out, &error));
+  TEST_ASSERT(LoadTransducerHotwords(short_hex_file.string(), &short_out, &error));
+  TEST_ASSERT(long_out == "word :" + trailing_zero_hex + "\n");
+  TEST_ASSERT(short_out == "word :0x1.0\n");
+
+  std::string long_csv;
+  std::string short_csv;
+  TEST_ASSERT(LoadPromptHotwordsCsv(long_hex_file.string(), &long_csv, &error));
+  TEST_ASSERT(LoadPromptHotwordsCsv(short_hex_file.string(), &short_csv, &error));
+  TEST_ASSERT(long_csv == short_csv);
+
+  // True zero with many fractional zeros must stay valid
+  const auto zero_hex_file = temp_dir->Path() / "zero_hex.txt";
+  TEST_ASSERT(
+      vinput::file::AtomicWriteTextFile(zero_hex_file, "zero:0x0." + std::string(300, '0') + "\n")
+          .has_value());
+  TEST_ASSERT(LoadTransducerHotwords(zero_hex_file.string(), &hotwords, &error));
+
   // Mixed blank lines, whitespace trimming, and CRLF line endings
   const auto mixed_file = temp_dir->Path() / "mixed.txt";
   const std::string mixed_content = "  \r\n"
@@ -244,6 +272,7 @@ void TestInvalidScores() {
   check_invalid("word:0x1p");
   check_invalid("word:0x1.2.3");
   check_invalid("word:0x1p+9999");
+  check_invalid("word:0x1" + std::string(32, '0') + "." + std::string(269, '0'));
 }
 
 void TestUtf8Validation() {
