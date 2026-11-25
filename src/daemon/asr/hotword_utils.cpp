@@ -104,7 +104,7 @@ void AccumulateHexDigit(HexMantissa& state, int nibble, bool seen_dot) noexcept 
   constexpr int kMaxKeptHexDigits = 15;
   if (state.significand == 0) {
     if (nibble == 0) {
-      if (seen_dot && state.exp_offset > -1000000) {
+      if (seen_dot) {
         state.exp_offset -= 4;
       }
       return;
@@ -124,7 +124,7 @@ void AccumulateHexDigit(HexMantissa& state, int nibble, bool seen_dot) noexcept 
     }
     return;
   }
-  if (!seen_dot && state.exp_offset < 1000000) {
+  if (!seen_dot) {
     state.exp_offset += 4;
   }
   if (nibble != 0) {

@@ -151,6 +151,15 @@ void TestValidHotwordsParsing() {
           .has_value());
   TEST_ASSERT(LoadTransducerHotwords(zero_hex_file.string(), &hotwords, &error));
 
+  // Large integer/fractional zero runs compensated by large opposite exponents
+  const auto compensated_hex_file = temp_dir->Path() / "compensated_hex.txt";
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(compensated_hex_file,
+                                                "pos:0x1" + std::string(250100, '0') +
+                                                    "p-1000300\nneg:0x0." +
+                                                    std::string(250032, '0') + "1p+1000200\n")
+                  .has_value());
+  TEST_ASSERT(LoadTransducerHotwords(compensated_hex_file.string(), &hotwords, &error));
+
   // Mixed blank lines, whitespace trimming, and CRLF line endings
   const auto mixed_file = temp_dir->Path() / "mixed.txt";
   const std::string mixed_content = "  \r\n"
@@ -273,6 +282,7 @@ void TestInvalidScores() {
   check_invalid("word:0x1.2.3");
   check_invalid("word:0x1p+9999");
   check_invalid("word:0x1" + std::string(32, '0') + "." + std::string(269, '0'));
+  check_invalid("word:0x1" + std::string(250032, '0') + "p-1000000");
 }
 
 void TestUtf8Validation() {
