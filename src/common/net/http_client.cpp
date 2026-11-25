@@ -90,9 +90,9 @@ bool IsCancelRequested(const std::atomic<bool>* token) noexcept {
 
 // Normalizes a file:// URL via libcurl's URL API: raw local paths with spaces or
 // non-ASCII bytes are percent-encoded (RFC 8089 / RFC 3986 pchar). Returns the
-// original string when the URL API is unavailable (libcurl < 7.62) or rejects input.
+// original string when the URL API cannot allocate a handle or rejects the input.
 std::string NormalizeFileUrl(const std::string& url) {
-  std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> handle(curl_url(), &curl_url_cleanup);
+  const std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> handle(curl_url(), &curl_url_cleanup);
   if (!handle) {
     return url;
   }
@@ -105,13 +105,12 @@ std::string NormalizeFileUrl(const std::string& url) {
     return url;
   }
 
-  std::unique_ptr<char, decltype(&curl_free)> encoded(nullptr, &curl_free);
   char* raw_url = nullptr;
   if (curl_url_get(handle.get(), CURLUPART_URL, &raw_url, 0) != CURLUE_OK) {
     return url;
   }
-  encoded.reset(raw_url);
-  return std::string(encoded.get());
+  const std::unique_ptr<char, decltype(&curl_free)> encoded(raw_url, &curl_free);
+  return {encoded.get()};
 }
 
 struct CurlBodyReader {
