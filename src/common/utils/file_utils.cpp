@@ -5,7 +5,6 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fmt/format.h>
@@ -14,6 +13,7 @@
 #include <iterator>
 #include <memory>
 #include <mio/mmap.hpp>
+#include <span>
 #include <stdlib.h>
 #include <string>
 #include <string_view>
@@ -126,7 +126,7 @@ constexpr std::string_view kEmptyFileSha256 =
 class Sha256Context {
 public:
   void Update(std::string_view data) {
-    const auto* bytes = reinterpret_cast<const unsigned char*>(data.data());
+    const char* bytes = data.data();
     size_t len = data.size();
     total_len_ += len;
 
@@ -139,13 +139,13 @@ public:
       len -= take;
 
       if (buffer_len_ == 64) {
-        ProcessBlock(buffer_.data());
+        ProcessBlock(buffer_);
         buffer_len_ = 0;
       }
     }
 
     while (len >= 64) {
-      ProcessBlock(bytes);
+      ProcessBlock(std::span<const char, 64>(bytes, 64));
       bytes += 64;
       len -= 64;
     }
@@ -159,30 +159,31 @@ public:
   std::array<unsigned char, 32> Final() {
     total_len_ *= 8;
 
-    buffer_[buffer_len_++] = 0x80;
+    buffer_.at(buffer_len_++) = static_cast<char>(0x80);
     if (buffer_len_ > 56) {
       while (buffer_len_ < 64) {
-        buffer_[buffer_len_++] = 0;
+        buffer_.at(buffer_len_++) = 0;
       }
-      ProcessBlock(buffer_.data());
+      ProcessBlock(buffer_);
       buffer_len_ = 0;
     }
 
     while (buffer_len_ < 56) {
-      buffer_[buffer_len_++] = 0;
+      buffer_.at(buffer_len_++) = 0;
     }
 
     for (int i = 7; i >= 0; --i) {
-      buffer_[buffer_len_++] = static_cast<unsigned char>((total_len_ >> (i * 8)) & 0xFF);
+      buffer_.at(buffer_len_++) = static_cast<char>((total_len_ >> (i * 8)) & 0xFF);
     }
-    ProcessBlock(buffer_.data());
+    ProcessBlock(buffer_);
 
     std::array<unsigned char, 32> digest{};
     for (size_t i = 0; i < 8; ++i) {
-      digest[i * 4] = static_cast<unsigned char>((state_[i] >> 24) & 0xFF);
-      digest[i * 4 + 1] = static_cast<unsigned char>((state_[i] >> 16) & 0xFF);
-      digest[i * 4 + 2] = static_cast<unsigned char>((state_[i] >> 8) & 0xFF);
-      digest[i * 4 + 3] = static_cast<unsigned char>(state_[i] & 0xFF);
+      const std::uint32_t word = state_.at(i);
+      digest.at(i * 4) = static_cast<unsigned char>((word >> 24) & 0xFF);
+      digest.at((i * 4) + 1) = static_cast<unsigned char>((word >> 16) & 0xFF);
+      digest.at((i * 4) + 2) = static_cast<unsigned char>((word >> 8) & 0xFF);
+      digest.at((i * 4) + 3) = static_cast<unsigned char>(word & 0xFF);
     }
     return digest;
   }
@@ -204,18 +205,22 @@ private:
     return (x >> n) | (x << (32 - n));
   }
 
-  void ProcessBlock(const unsigned char* block) {
-    std::uint32_t w[64];
-    for (int i = 0; i < 16; ++i) {
-      w[i] = (static_cast<std::uint32_t>(block[i * 4]) << 24) |
-             (static_cast<std::uint32_t>(block[i * 4 + 1]) << 16) |
-             (static_cast<std::uint32_t>(block[i * 4 + 2]) << 8) |
-             static_cast<std::uint32_t>(block[i * 4 + 3]);
+  static constexpr std::uint32_t ByteAt(std::span<const char, 64> block, size_t idx) {
+    return static_cast<std::uint32_t>(static_cast<unsigned char>(block[idx]));
+  }
+
+  void ProcessBlock(std::span<const char, 64> block) {
+    std::array<std::uint32_t, 64> w{};
+    for (size_t i = 0; i < 16; ++i) {
+      w.at(i) = (ByteAt(block, i * 4) << 24) | (ByteAt(block, (i * 4) + 1) << 16) |
+                (ByteAt(block, (i * 4) + 2) << 8) | ByteAt(block, (i * 4) + 3);
     }
-    for (int i = 16; i < 64; ++i) {
-      const std::uint32_t s0 = Rotr(w[i - 15], 7) ^ Rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
-      const std::uint32_t s1 = Rotr(w[i - 2], 17) ^ Rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
-      w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+    for (size_t i = 16; i < 64; ++i) {
+      const std::uint32_t w15 = w.at(i - 15);
+      const std::uint32_t w2 = w.at(i - 2);
+      const std::uint32_t s0 = Rotr(w15, 7) ^ Rotr(w15, 18) ^ (w15 >> 3);
+      const std::uint32_t s1 = Rotr(w2, 17) ^ Rotr(w2, 19) ^ (w2 >> 10);
+      w.at(i) = w.at(i - 16) + s0 + w.at(i - 7) + s1;
     }
 
     std::uint32_t a = state_[0];
@@ -227,10 +232,10 @@ private:
     std::uint32_t g = state_[6];
     std::uint32_t h = state_[7];
 
-    for (int i = 0; i < 64; ++i) {
+    for (size_t i = 0; i < 64; ++i) {
       const std::uint32_t s1 = Rotr(e, 6) ^ Rotr(e, 11) ^ Rotr(e, 25);
       const std::uint32_t ch = (e & f) ^ ((~e) & g);
-      const std::uint32_t temp1 = h + s1 + ch + kRoundConstants[i] + w[i];
+      const std::uint32_t temp1 = h + s1 + ch + kRoundConstants.at(i) + w.at(i);
       const std::uint32_t s0 = Rotr(a, 2) ^ Rotr(a, 13) ^ Rotr(a, 22);
       const std::uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
       const std::uint32_t temp2 = s0 + maj;
@@ -257,7 +262,7 @@ private:
 
   std::array<std::uint32_t, 8> state_ = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
                                          0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
-  std::array<unsigned char, 64> buffer_{};
+  std::array<char, 64> buffer_{};
   size_t buffer_len_ = 0;
   std::uint64_t total_len_ = 0;
 };
@@ -266,9 +271,7 @@ std::string DigestToHex(const std::array<unsigned char, 32>& digest) {
   std::string hex;
   hex.reserve(digest.size() * 2);
   for (const unsigned char byte : digest) {
-    char pair[3];
-    std::snprintf(pair, sizeof(pair), "%02x", byte);
-    hex += pair;
+    fmt::format_to(std::back_inserter(hex), "{:02x}", byte);
   }
   return hex;
 }

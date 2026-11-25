@@ -512,8 +512,8 @@ void TestQueryOnlyUrlOriginReuse() {
 }
 
 void TestFileSchemeRequests() {
-  auto temp_dir = vinput::file::ScopedTempDir::Create("vinput_http_file_test");
-  AssertTrue(temp_dir.has_value(), "create temp dir for file:// test");
+  auto temp_dir = vinput::file::ScopedTempDir::Create({}, "vinput_http_file_test");
+  AssertTrue(temp_dir != nullptr, "create temp dir for file:// test");
 
   const std::filesystem::path src_path = temp_dir->Path() / "payload.txt";
   const std::filesystem::path dst_path = temp_dir->Path() / "downloaded.txt";

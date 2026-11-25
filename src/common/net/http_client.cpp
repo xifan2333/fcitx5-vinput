@@ -8,8 +8,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <curl/curl.h>
+#include <curl/curlver.h>
+#include <curl/easy.h>
+#include <curl/system.h>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <ios>
 #include <memory>
 #include <mutex>
@@ -75,12 +79,8 @@ std::string ExtractAuthorization(const std::vector<HttpHeader>& headers) {
 }
 
 bool HasHeader(const std::vector<HttpHeader>& headers, std::string_view name) {
-  for (const auto& h : headers) {
-    if (vinput::str::EqualsIgnoreCase(h.name, name)) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(
+      headers, [name](const HttpHeader& h) { return vinput::str::EqualsIgnoreCase(h.name, name); });
 }
 
 bool IsCancelRequested(const std::atomic<bool>* token) noexcept {
@@ -239,7 +239,7 @@ struct CurlHeaderList {
   }
   CurlHeaderList(const CurlHeaderList&) = delete;
   CurlHeaderList& operator=(const CurlHeaderList&) = delete;
-  CurlHeaderList(CurlHeaderList&&) = delete;
+  CurlHeaderList(CurlHeaderList&& other) noexcept : list(std::exchange(other.list, nullptr)) {}
   CurlHeaderList& operator=(CurlHeaderList&&) = delete;
 
   void Append(const std::string& str) { list = curl_slist_append(list, str.c_str()); }
@@ -371,7 +371,7 @@ void PopulateResponseResult(CURL* curl, CURLcode code, const HttpRequest& reques
                             const TransferProgressContext& prog_ctx, const ResponseSink& sink,
                             HttpResponse* response) {
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response->status_code);
-  char* effective_url = nullptr;
+  const char* effective_url = nullptr;
   curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url);
   if (effective_url != nullptr && *effective_url != '\0') {
     response->effective_url = effective_url;
@@ -451,7 +451,7 @@ public:
     }
 
     CURL* curl = lease.handle.get();
-    CurlHeaderList header_list = BuildHeaderList(request);
+    const CurlHeaderList header_list = BuildHeaderList(request);
     CurlBodyReader body_reader{.body = request.body, .offset = 0};
     HttpResponse response;
     TransferProgressContext prog_ctx{.cancel_token = request.cancel_token,
@@ -490,9 +490,9 @@ private:
       CurlHandlePtr handle = std::move(it->second.back());
       it->second.pop_back();
       curl_easy_reset(handle.get());
-      return {std::move(handle), identity};
+      return {.handle = std::move(handle), .identity = identity};
     }
-    return {CurlHandlePtr(curl_easy_init(), &curl_easy_cleanup), identity};
+    return {.handle = CurlHandlePtr(curl_easy_init(), &curl_easy_cleanup), .identity = identity};
   }
 
   void Release(HandleLease lease) {
