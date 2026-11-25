@@ -268,10 +268,13 @@ private:
 };
 
 std::string DigestToHex(const std::array<unsigned char, 32>& digest) {
+  constexpr std::string_view kHexDigits = "0123456789abcdef";
   std::string hex;
   hex.reserve(digest.size() * 2);
   for (const unsigned char byte : digest) {
-    fmt::format_to(std::back_inserter(hex), "{:02x}", byte);
+    const unsigned int value = byte;
+    hex.push_back(kHexDigits.at((value >> 4U) & 0x0FU));
+    hex.push_back(kHexDigits.at(value & 0x0FU));
   }
   return hex;
 }
