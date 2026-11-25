@@ -39,8 +39,10 @@
           sherpa-deps = sherpa-onnx.packages.${system};
           commandProviderPath = lib.makeBinPath [ pkgs.python3 ];
           commandProviderLibraryPath = lib.makeLibraryPath [
+            pkgs.libevdev
             pkgs.libopus
             pkgs.openssl
+            pkgs.systemdLibs
           ];
 
           makeVinputPackage =
@@ -68,6 +70,7 @@
                   fcitx5
                   systemdLibs
                   libarchive
+                  libevdev
                   openssl
                   pipewire
                   qt6.qtbase
@@ -101,7 +104,9 @@
                   wrapProgram "$program" \
                     --prefix PATH : ${commandProviderPath} \
                     --prefix LD_LIBRARY_PATH : ${commandProviderLibraryPath} \
-                    --set-default VINPUT_ASR_LIBOPUS_PATH "${lib.getLib pkgs.libopus}/lib/libopus.so.0"
+                    --set-default VINPUT_ASR_LIBOPUS_PATH "${lib.getLib pkgs.libopus}/lib/libopus.so.0" \
+                    --set-default VINPUT_TRIGGER_LIBUDEV_PATH "${lib.getLib pkgs.systemdLibs}/lib/libudev.so.1" \
+                    --set-default VINPUT_TRIGGER_LIBEVDEV_PATH "${lib.getLib pkgs.libevdev}/lib/libevdev.so.2"
                 done
               '';
 
@@ -149,6 +154,7 @@
               systemdLibs
               curl
               libarchive
+              libevdev
               openssl
               onnxruntime
               pipewire
