@@ -528,7 +528,7 @@ private:
       }
       return true;
     }
-    if (type == "final" || type == "final_timestamps") {
+    if (type == "final") {
       const std::string text =
           std::string(vinput::str::Trim(vinput::json::String(payload, "text")));
       if (!text.empty()) {
