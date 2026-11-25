@@ -100,7 +100,7 @@ Strive for <= 2 levels of logical nesting inside compound statements. Deep pyram
 
 ### Two-Tier Binary Boundary
 - **Tier 1 (Host System Shared Libraries)**: `fcitx5`, `pipewire`, `libsystemd`, `qt6`, `openssl`, `libarchive`, `gettext` must be resolved via host package managers (`find_package REQUIRED` / `pkg_check_modules`).
-- **Tier 2 (Header-Only C++ Libraries)**: Pure C++ dependencies (`glaze`, `spdlog`, `fmt`, `CLI11`, `httplib`, `mio`, `readerwriterqueue`, `subprocess`, `unicodelib`) must be vendored under `3rdparty/` as CMake `SYSTEM INTERFACE` targets. Build-time network downloading (`FetchContent`) is prohibited.
+- **Tier 2 (Header-Only C++ Libraries)**: Pure C++ dependencies (`glaze`, `fast_float`, `spdlog`, `fmt`, `CLI11`, `httplib`, `mio`, `readerwriterqueue`, `subprocess`, `unicodelib`) must be vendored under `3rdparty/` as CMake `SYSTEM INTERFACE` targets. Build-time network downloading (`FetchContent`) is prohibited.
 
 ### Pristine 3rdparty
 Code under `3rdparty/` must remain untouched upstream snapshots. Never patch, reformat, or modify vendored code directly. All adapters, shims, and workarounds must live inside `src/` or scoped build-time compatibility headers.
@@ -108,7 +108,7 @@ Code under `3rdparty/` must remain untouched upstream snapshots. Never patch, re
 ### Conditional Compilation & Feature Macros
 All feature switches, platform probes, and backend selectors must follow one uniform taxonomy:
 - **`VINPUT_ENABLE_<FEATURE>`**: user-configurable CMake feature toggles (`ON`/`OFF`), e.g. `VINPUT_ENABLE_LOCAL_ASR`.
-- **`VINPUT_<SCOPE>_HAVE_<CAPABILITY>`**: build-time probed toolchain, standard library, or dependency capabilities, e.g. `VINPUT_CXX_HAVE_STD_BIT_CAST`, `VINPUT_CXX_HAVE_FLOAT_FROM_CHARS`, `VINPUT_FCITX5_CORE_HAVE_SET_COMMENT`.
+- **`VINPUT_<SCOPE>_HAVE_<CAPABILITY>`**: build-time probed toolchain, standard library, or dependency capabilities, e.g. `VINPUT_FCITX5_CORE_HAVE_SET_COMMENT`.
 - **`VINPUT_<SUBSYSTEM>_BACKEND_<IMPL>`**: subsystem backend flags derived from CMake backend options, e.g. `VINPUT_HTTP_BACKEND_CURL`, `VINPUT_HTTP_BACKEND_HTTPLIB`.
 
 Rules for defining and consuming these macros:
