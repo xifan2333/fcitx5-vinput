@@ -7,10 +7,12 @@
 #include <ios>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <sys/eventfd.h>
 #include <system_error>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
@@ -207,6 +209,31 @@ void TestComputeFileSha256() {
     TEST_ASSERT(hash_proc.has_value());
     TEST_ASSERT(!hash_proc->empty());
     TEST_ASSERT(*hash_proc != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  }
+
+  // 8. Padding boundary sizes around the 64-byte block (55/56/63/64/65) with
+  // non-uniform deterministic content, verified against sha256sum vectors.
+  const std::vector<std::pair<size_t, std::string_view>> boundary_cases = {
+      {55, "463eb28e72f82e0a96c0a4cc53690c571281131f672aa229e0d45ae59b598b59"},
+      {56, "da2ae4d6b36748f2a318f23e7ab1dfdf45acdc9d049bd80e59de82a60895f562"},
+      {63, "29af2686fd53374a36b0846694cc342177e428d1647515f078784d69cdb9e488"},
+      {64, "fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108"},
+      {65, "4bfd2c8b6f1eec7a2afeb48b934ee4b2694182027e6d0fc075074f2fabb31781"},
+      {128, "471fb943aa23c511f6f72f8d1652d9c880cfa392ad80503120547703e56a2be5"},
+  };
+  for (const auto& [size, expected] : boundary_cases) {
+    std::string content(size, '\0');
+    for (size_t i = 0; i < size; ++i) {
+      content[i] = static_cast<char>(i % 256);
+    }
+    const fs::path boundary_file = temp_dir->Path() / ("boundary_" + std::to_string(size) + ".bin");
+    {
+      std::ofstream out(boundary_file, std::ios::binary);
+      out.write(content.data(), static_cast<std::streamsize>(content.size()));
+    }
+    const auto hash_boundary = ComputeFileSha256(boundary_file);
+    TEST_ASSERT(hash_boundary.has_value());
+    TEST_ASSERT(*hash_boundary == expected);
   }
 }
 
