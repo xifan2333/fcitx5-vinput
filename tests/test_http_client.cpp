@@ -18,6 +18,7 @@
 
 #include "common/net/http_client.h"
 #include "common/net/http_types.h"
+#include "common/utils/file_utils.h"
 #include "common/utils/string_utils.h"
 
 namespace {
@@ -130,11 +131,30 @@ private:
     captured_request_bodies_.push_back(std::move(request_body));
   }
 
-  [[nodiscard]] bool SendResponse(int client_fd) const {
-    const std::string_view response_payload =
-        behavior_ == MockServerBehavior::CloseEachConnection
-            ? "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
-            : "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nOK";
+  [[nodiscard]] std::string BuildResponsePayload(std::string_view request_header) const {
+    if (request_header.starts_with("GET /redirect ")) {
+      return "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + std::to_string(port_) +
+             "/final\r\nX-Hop: redirect\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n";
+    }
+    if (request_header.starts_with("GET /redir-file ")) {
+      return "HTTP/1.1 302 Found\r\nLocation: file:///etc/passwd\r\n"
+             "Content-Length: 0\r\nConnection: close\r\n\r\n";
+    }
+    if (request_header.starts_with("GET /final ")) {
+      return "HTTP/1.1 200 OK\r\nX-Final: yes\r\nContent-Length: 5\r\n"
+             "Connection: keep-alive\r\n\r\nFINAL";
+    }
+    if (request_header.starts_with("GET /large ")) {
+      return "HTTP/1.1 200 OK\r\nContent-Length: 1024\r\nConnection: keep-alive\r\n\r\n" +
+             std::string(1024, 'L');
+    }
+    return behavior_ == MockServerBehavior::CloseEachConnection
+               ? "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK"
+               : "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nOK";
+  }
+
+  [[nodiscard]] bool SendResponse(int client_fd, std::string_view request_header) const {
+    const std::string response_payload = BuildResponsePayload(request_header);
     return send(client_fd, response_payload.data(), response_payload.size(), MSG_NOSIGNAL) ==
            static_cast<ssize_t>(response_payload.size());
   }
@@ -149,7 +169,8 @@ private:
     if (ShouldDropResponse()) {
       return false;
     }
-    if (!SendResponse(client_fd) || behavior_ == MockServerBehavior::CloseEachConnection) {
+    if (!SendResponse(client_fd, request_header) ||
+        behavior_ == MockServerBehavior::CloseEachConnection) {
       return false;
     }
     pollfd next_poll{.fd = client_fd, .events = POLLIN, .revents = 0};
@@ -490,6 +511,107 @@ void TestQueryOnlyUrlOriginReuse() {
   std::cout << "Query-only URLs origin reuse verified\n";
 }
 
+void TestFileSchemeRequests() {
+  auto temp_dir = vinput::file::ScopedTempDir::Create("vinput_http_file_test");
+  AssertTrue(temp_dir.has_value(), "create temp dir for file:// test");
+
+  const std::filesystem::path src_path = temp_dir->Path() / "payload.txt";
+  const std::filesystem::path dst_path = temp_dir->Path() / "downloaded.txt";
+  {
+    std::ofstream out(src_path, std::ios::binary);
+    out << "local-file-body";
+  }
+
+  vinput::net::HttpClient client;
+  vinput::net::HttpRequest req;
+  req.url = "file://" + src_path.string();
+  req.method = vinput::net::HttpMethod::Get;
+
+  const auto mem_res = client.Request(req);
+  AssertTrue(mem_res.Ok(), "file:// Request succeeds");
+  AssertTrue(mem_res.status_code == 200, "file:// Request status_code is 200");
+  AssertTrue(mem_res.body == "local-file-body", "file:// Request body matches");
+  AssertTrue(mem_res.effective_url == req.url, "file:// effective_url preserved");
+
+  const auto dl_res = client.DownloadToFile(req, dst_path);
+  AssertTrue(dl_res.Ok(), "file:// DownloadToFile succeeds");
+  AssertTrue(dl_res.status_code == 200, "file:// DownloadToFile status_code is 200");
+  const auto read_back = vinput::file::ReadTextFile(dst_path);
+  AssertTrue(read_back.has_value() && *read_back == "local-file-body",
+             "file:// downloaded file content matches");
+
+  req.url = "file://" + (temp_dir->Path() / "missing.txt").string();
+  const auto missing_res = client.Request(req);
+  AssertTrue(!missing_res.Ok(), "missing file:// fails");
+  AssertTrue(!missing_res.error_message.empty(), "missing file:// populates error_message");
+  std::cout << "file:// local protocol tests verified\n";
+}
+
+void TestRedirectEffectiveUrlAndHeaders() {
+  MockHttpServer server(MockServerBehavior::KeepAlive);
+  vinput::net::HttpClient client;
+
+  vinput::net::HttpRequest follow_req;
+  follow_req.url = BuildMockServerUrl(server, "/redirect");
+  follow_req.method = vinput::net::HttpMethod::Get;
+  follow_req.proxy = "";
+  follow_req.follow_redirects = true;
+  const auto follow_res = client.Request(follow_req);
+  AssertTrue(follow_res.Ok(), "followed redirect succeeds");
+  AssertTrue(follow_res.status_code == 200, "followed redirect status is 200");
+  AssertTrue(follow_res.body == "FINAL", "followed redirect body matches");
+  AssertTrue(follow_res.effective_url == BuildMockServerUrl(server, "/final"),
+             "effective_url reflects final redirect destination");
+  AssertTrue(vinput::net::FindHeader(follow_res.headers, "X-Final") == "yes",
+             "final response header preserved");
+  AssertTrue(!vinput::net::FindHeader(follow_res.headers, "X-Hop").has_value(),
+             "intermediate redirect headers cleared");
+
+  vinput::net::HttpRequest no_follow_req = follow_req;
+  no_follow_req.follow_redirects = false;
+  const auto no_follow_res = client.Request(no_follow_req);
+  AssertTrue(!no_follow_res.Ok(), "302 without follow_redirects is not Ok()");
+  AssertTrue(no_follow_res.status_code == 302, "302 status preserved");
+  AssertTrue(no_follow_res.effective_url == no_follow_req.url,
+             "effective_url stays at initial URL when not following redirects");
+  AssertTrue(vinput::net::FindHeader(no_follow_res.headers, "X-Hop") == "redirect",
+             "302 header preserved when not following redirects");
+
+  vinput::net::HttpRequest redir_file_req = follow_req;
+  redir_file_req.url = BuildMockServerUrl(server, "/redir-file");
+  const auto redir_file_res = client.Request(redir_file_req);
+  AssertTrue(!redir_file_res.Ok(), "redirect to file:// is blocked");
+
+  server.Stop();
+  std::cout << "Redirect effective_url and header isolation verified\n";
+}
+
+void TestResponseMaxBytesEnforced() {
+  MockHttpServer server(MockServerBehavior::KeepAlive);
+  vinput::net::HttpClient client;
+
+  vinput::net::HttpRequest large_req;
+  large_req.url = BuildMockServerUrl(server, "/large");
+  large_req.method = vinput::net::HttpMethod::Get;
+  large_req.proxy = "";
+  large_req.max_response_bytes = 256;
+  const auto overflow_res = client.Request(large_req);
+  AssertTrue(!overflow_res.Ok(), "oversized response fails");
+  AssertTrue(!overflow_res.cancelled, "oversized response is not marked cancelled");
+  AssertTrue(overflow_res.error_message == "Response exceeded maximum allowed size",
+             "oversized response surfaces clear limit error");
+
+  vinput::net::HttpRequest ok_req;
+  ok_req.url = BuildMockServerUrl(server, "/chat");
+  ok_req.method = vinput::net::HttpMethod::Get;
+  ok_req.proxy = "";
+  const auto ok_res = client.Request(ok_req);
+  server.Stop();
+  AssertTrue(ok_res.Ok() && ok_res.body == "OK",
+             "subsequent request recovers after response overflow");
+  std::cout << "max_response_bytes enforcement verified\n";
+}
+
 } // namespace
 
 int main() {
@@ -502,6 +624,9 @@ int main() {
   TestCancelThenNextRequestIsIsolated();
   TestGetAndDownloadToFile();
   TestQueryOnlyUrlOriginReuse();
+  TestFileSchemeRequests();
+  TestRedirectEffectiveUrlAndHeaders();
+  TestResponseMaxBytesEnforced();
   std::cout << "All HttpClient unit tests passed successfully!\n";
   return 0;
 }
