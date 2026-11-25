@@ -143,9 +143,11 @@ jobs:
             version="$(tr -d '\n' < VERSION)"
           fi
 
-          echo "package_version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "package_release=1" >> "${GITHUB_OUTPUT}"
-          echo "source_archive=fcitx5-vinput-${version}.tar.gz" >> "${GITHUB_OUTPUT}"
+          {
+            echo "package_version=${version}"
+            echo "package_release=1"
+            echo "source_archive=fcitx5-vinput-${version}.tar.gz"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Verify VERSION matches release tag
         if: startsWith(github.ref, 'refs/tags/v')
