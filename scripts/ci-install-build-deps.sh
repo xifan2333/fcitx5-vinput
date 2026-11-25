@@ -219,6 +219,12 @@ debian12)
   ;;
 debian11)
   export DEBIAN_FRONTEND=noninteractive
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+    if [[ -f "${f}" ]]; then
+      "${sudo_cmd[@]}" sed -i -E 's|https?://(deb|security)\.debian\.org|http://archive.debian.org|g' "${f}"
+    fi
+  done
+  printf 'Acquire::Check-Valid-Until "false";\n' | "${sudo_cmd[@]}" tee /etc/apt/apt.conf.d/99archive >/dev/null
   "${sudo_cmd[@]}" apt-get update
   "${sudo_cmd[@]}" apt-get install -y --no-install-recommends \
     bzip2 \
@@ -239,6 +245,7 @@ debian11)
     wget \
     gnupg \
     software-properties-common \
+    libstdc++-10-dev \
     libblas-dev \
     liblapack-dev \
     libopenblas-dev \
