@@ -18,9 +18,11 @@
 #include <system_error>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "common/net/http_types.h"
+#include "common/utils/scope_guard.h"
 #include "common/utils/string_utils.h"
 
 namespace vinput::net {
@@ -81,8 +83,8 @@ bool HasHeader(const std::vector<HttpHeader>& headers, std::string_view name) {
   return false;
 }
 
-bool IsCancelled(const HttpRequest& request) noexcept {
-  return request.cancel_token != nullptr && request.cancel_token->load(std::memory_order_relaxed);
+bool IsCancelRequested(const std::atomic<bool>* token) noexcept {
+  return token != nullptr && token->load(std::memory_order_relaxed);
 }
 
 struct CurlBodyReader {
@@ -105,7 +107,7 @@ size_t ReadRequestBodyCallback(char* buffer, size_t size, size_t nmemb, void* us
 }
 
 struct MemoryWriteContext {
-  std::string* body = nullptr;
+  std::string body;
   size_t max_bytes = 0;
   bool overflow = false;
 };
@@ -116,11 +118,11 @@ size_t MemoryWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
     return 0;
   }
   auto* ctx = static_cast<MemoryWriteContext*>(userdata);
-  if (total > ctx->max_bytes || ctx->body->size() > ctx->max_bytes - total) {
+  if (total > ctx->max_bytes || ctx->body.size() > ctx->max_bytes - total) {
     ctx->overflow = true;
     return 0;
   }
-  ctx->body->append(ptr, total);
+  ctx->body.append(ptr, total);
   return total;
 }
 
@@ -128,6 +130,8 @@ struct FileWriteContext {
   std::ofstream* stream = nullptr;
   bool failed = false;
 };
+
+using ResponseSink = std::variant<MemoryWriteContext, FileWriteContext>;
 
 size_t FileWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const size_t total = size * nmemb;
@@ -193,10 +197,6 @@ double ComputeTransferSpeed(TransferProgressContext* ctx, uint64_t current_bytes
   ctx->last_time = now;
   ctx->has_last = true;
   return speed_bps;
-}
-
-bool IsCancelRequested(const std::atomic<bool>* token) noexcept {
-  return token != nullptr && token->load(std::memory_order_relaxed);
 }
 
 int TransferInfoCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal,
@@ -357,8 +357,18 @@ void ConfigureProxyAndProgress(CURL* curl, const HttpRequest& request,
   }
 }
 
+void ConfigureWriteSink(CURL* curl, ResponseSink* sink) {
+  if (auto* mem = std::get_if<MemoryWriteContext>(sink)) {
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, MemoryWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, mem);
+  } else if (auto* file = std::get_if<FileWriteContext>(sink)) {
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, FileWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, file);
+  }
+}
+
 void PopulateResponseResult(CURL* curl, CURLcode code, const HttpRequest& request,
-                            const TransferProgressContext& prog_ctx, const bool* overflow_flag,
+                            const TransferProgressContext& prog_ctx, const ResponseSink& sink,
                             HttpResponse* response) {
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response->status_code);
   char* effective_url = nullptr;
@@ -374,12 +384,15 @@ void PopulateResponseResult(CURL* curl, CURLcode code, const HttpRequest& reques
     response->status_code = 200;
   }
 
+  const auto* mem = std::get_if<MemoryWriteContext>(&sink);
+  const bool overflow = mem != nullptr && mem->overflow;
+
   if (prog_ctx.callback_exception) {
     response->error_message = "Progress callback threw an exception";
-  } else if (IsCancelled(request)) {
+  } else if (IsCancelRequested(request.cancel_token)) {
     response->cancelled = true;
     response->error_message = "Request cancelled";
-  } else if (code == CURLE_WRITE_ERROR && overflow_flag != nullptr && *overflow_flag) {
+  } else if (code == CURLE_WRITE_ERROR && overflow) {
     response->error_message = "Response exceeded maximum allowed size";
   } else if (code != CURLE_OK) {
     response->error_message = curl_easy_strerror(code);
@@ -390,17 +403,12 @@ void PopulateResponseResult(CURL* curl, CURLcode code, const HttpRequest& reques
 
 class HttpClient::Impl {
 public:
+  using CurlHandlePtr = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>;
+
   Impl() { EnsureCurlGlobalInit(); }
 
   ~Impl() {
     const std::scoped_lock lock(pool_mutex_);
-    for (auto& [identity, handles] : pool_) {
-      for (auto* handle : handles) {
-        if (handle != nullptr) {
-          curl_easy_cleanup(handle);
-        }
-      }
-    }
     pool_.clear();
   }
 
@@ -410,19 +418,18 @@ public:
   Impl& operator=(Impl&&) = delete;
 
   struct HandleLease {
-    CURL* handle = nullptr;
+    CurlHandlePtr handle{nullptr, &curl_easy_cleanup};
     ConnectionIdentity identity;
   };
 
-  HttpResponse Execute(const HttpRequest& request, size_t (*write_cb)(char*, size_t, size_t, void*),
-                       void* write_data, const bool* overflow_flag) {
+  HttpResponse Execute(const HttpRequest& request, ResponseSink* sink) {
     if (!EnsureCurlGlobalInit()) {
       HttpResponse res;
       res.error_message = "Failed to globally initialize libcurl";
       return res;
     }
 
-    if (IsCancelled(request)) {
+    if (IsCancelRequested(request.cancel_token)) {
       HttpResponse res;
       res.cancelled = true;
       res.error_message = "Request cancelled";
@@ -436,14 +443,14 @@ public:
             request.proxy.has_value() ? ("custom=" + *request.proxy) : BuildProxyPolicySignature(),
     };
 
-    const HandleLease lease = Acquire(id);
-    if (lease.handle == nullptr) {
+    HandleLease lease = Acquire(id);
+    if (!lease.handle) {
       HttpResponse res;
       res.error_message = "Failed to initialize libcurl handle";
       return res;
     }
 
-    CURL* curl = lease.handle;
+    CURL* curl = lease.handle.get();
     CurlHeaderList header_list = BuildHeaderList(request);
     CurlBodyReader body_reader{.body = request.body, .offset = 0};
     HttpResponse response;
@@ -459,21 +466,18 @@ public:
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
     ConfigureAllowedProtocols(curl);
     ConfigureMethod(curl, request, &body_reader);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, write_data);
+    ConfigureWriteSink(curl, sink);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, HeaderWriteCallback);
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, &response.headers);
     ConfigureProxyAndProgress(curl, request, &prog_ctx);
 
     const CURLcode code = curl_easy_perform(curl);
-    PopulateResponseResult(curl, code, request, prog_ctx, overflow_flag, &response);
+    PopulateResponseResult(curl, code, request, prog_ctx, *sink, &response);
 
     // Handles tainted by a failed transfer never return to the pool; only fully
     // completed transfers are eligible for keep-alive reuse.
-    if (code == CURLE_OK && !IsCancelled(request)) {
-      Release(lease);
-    } else {
-      curl_easy_cleanup(lease.handle);
+    if (code == CURLE_OK && !IsCancelRequested(request.cancel_token)) {
+      Release(std::move(lease));
     }
     return response;
   }
@@ -483,42 +487,39 @@ private:
     const std::scoped_lock lock(pool_mutex_);
     auto it = pool_.find(identity);
     if (it != pool_.end() && !it->second.empty()) {
-      CURL* handle = it->second.back();
+      CurlHandlePtr handle = std::move(it->second.back());
       it->second.pop_back();
-      curl_easy_reset(handle);
-      return {handle, identity};
+      curl_easy_reset(handle.get());
+      return {std::move(handle), identity};
     }
-    return {curl_easy_init(), identity};
+    return {CurlHandlePtr(curl_easy_init(), &curl_easy_cleanup), identity};
   }
 
-  void Release(const HandleLease& lease) {
-    if (lease.handle == nullptr) {
+  void Release(HandleLease lease) {
+    if (!lease.handle) {
       return;
     }
     const std::scoped_lock lock(pool_mutex_);
     auto& handles = pool_[lease.identity];
     if (handles.size() < kMaxPoolPerIdentity) {
-      handles.push_back(lease.handle);
-    } else {
-      curl_easy_cleanup(lease.handle);
+      handles.push_back(std::move(lease.handle));
     }
   }
 
   static constexpr std::size_t kMaxPoolPerIdentity = 4;
   mutable std::mutex pool_mutex_;
-  std::unordered_map<ConnectionIdentity, std::vector<CURL*>, ConnectionIdentityHash> pool_;
+  std::unordered_map<ConnectionIdentity, std::vector<CurlHandlePtr>, ConnectionIdentityHash> pool_;
 };
 
 HttpClient::HttpClient() : impl_(std::make_unique<Impl>()) {}
 HttpClient::~HttpClient() = default;
 
 HttpResponse HttpClient::Request(const HttpRequest& request) {
-  HttpResponse response;
-  MemoryWriteContext ctx{
-      .body = &response.body, .max_bytes = request.max_response_bytes, .overflow = false};
-  HttpResponse exec_res = impl_->Execute(request, MemoryWriteCallback, &ctx, &ctx.overflow);
-  exec_res.body = std::move(response.body);
-  return exec_res;
+  ResponseSink sink(std::in_place_type<MemoryWriteContext>,
+                    MemoryWriteContext{.max_bytes = request.max_response_bytes});
+  HttpResponse res = impl_->Execute(request, &sink);
+  res.body = std::move(std::get<MemoryWriteContext>(sink).body);
+  return res;
 }
 
 HttpResponse HttpClient::PostJson(const std::string& url, const std::string& json_body,
@@ -553,6 +554,11 @@ HttpResponse HttpClient::DownloadToFile(const HttpRequest& request,
   const std::filesystem::path temp_path =
       dest_path.string() + ".tmp." +
       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+  auto temp_guard = vinput::MakeScopeExit([&temp_path]() {
+    std::error_code rm_ec;
+    std::filesystem::remove(temp_path, rm_ec);
+  });
+
   std::ofstream out(temp_path, std::ios::binary | std::ios::trunc);
   if (!out.is_open()) {
     HttpResponse res;
@@ -560,24 +566,26 @@ HttpResponse HttpClient::DownloadToFile(const HttpRequest& request,
     return res;
   }
 
-  FileWriteContext ctx{.stream = &out, .failed = false};
-  HttpResponse res = impl_->Execute(request, FileWriteCallback, &ctx, nullptr);
+  ResponseSink sink(std::in_place_type<FileWriteContext>, FileWriteContext{.stream = &out});
+  HttpResponse res = impl_->Execute(request, &sink);
   out.flush();
   const bool stream_good = out.good();
   out.close();
 
-  if (res.Ok() && !res.cancelled && !ctx.failed && stream_good) {
-    std::filesystem::rename(temp_path, dest_path, ec);
-    if (ec) {
-      std::filesystem::remove(temp_path, ec);
-      res.error_message = "Failed to commit downloaded file: " + ec.message();
-    }
-  } else {
-    std::filesystem::remove(temp_path, ec);
+  const bool file_failed = std::get<FileWriteContext>(sink).failed;
+  if (!res.Ok() || res.cancelled || file_failed || !stream_good) {
     if (res.error_message.empty()) {
       res.error_message = "Failed to write complete download stream";
     }
+    return res;
   }
+
+  std::filesystem::rename(temp_path, dest_path, ec);
+  if (ec) {
+    res.error_message = "Failed to commit downloaded file: " + ec.message();
+    return res;
+  }
+  temp_guard.Dismiss();
   return res;
 }
 

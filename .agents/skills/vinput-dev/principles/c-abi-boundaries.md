@@ -38,11 +38,12 @@ The following six subsystems are strictly bounded by third-party C libraries or 
   - **Error Codes**: Uses integer return codes (`ARCHIVE_OK`, `ARCHIVE_EOF`, `ARCHIVE_WARN`).
   - **Action Rule**: Retain libarchive C API calls. Wrap handles in RAII deleters where appropriate.
 
-### Boundary 4: OpenSSL EVP Cryptographic Digest
-- **Files**: `src/common/utils/file_utils.cpp`
+### Boundary 4: libcurl HTTP Client
+- **Files**: `src/common/net/http_client.cpp`
 - **ABI Constraints**:
-  - **EVP API**: `EVP_MD_CTX*`, `EVP_DigestInit_ex()`, `EVP_DigestUpdate()`, `EVP_DigestFinal_ex()`.
-  - **Action Rule**: Already encapsulated using `std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>`. Do not alter underlying C EVP calls.
+  - **C Callbacks & Trampolines**: Transfer callbacks (`ReadRequestBodyCallback`, `MemoryWriteCallback`, `FileWriteCallback`, `HeaderWriteCallback`, `TransferInfoCallback`) must be C-linkage-compatible function pointers with `void* userdata` trampolines and must not let C++ exceptions escape into libcurl.
+  - **Handle Lifecycle**: `CURL*` easy handles and `curl_slist*` header chains must be wrapped in RAII deleters (`std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>` and `CurlHeaderList`).
+  - **Action Rule**: Retain libcurl C `setopt`/`getinfo` and callback signatures at the boundary; keep pooling, header construction, and response mapping in pure C++20.
 
 ### Boundary 5: POSIX Signals & Main Event Loop
 - **Files**: `src/daemon/main.cpp`, `src/cli/control/daemon_actions.cpp`

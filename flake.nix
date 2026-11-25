@@ -41,6 +41,7 @@
           commandProviderLibraryPath = lib.makeLibraryPath [
             pkgs.libevdev
             pkgs.libopus
+            pkgs.openssl
             pkgs.systemdLibs
           ];
 
