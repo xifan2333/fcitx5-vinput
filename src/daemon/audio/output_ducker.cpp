@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <cstddef>
 #include <cstdio>
+#include <fast_float/fast_float.h>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -43,7 +43,7 @@ std::optional<double> WpctlVolumeAdapter::ParseVolume(std::string_view text) {
   }
   const std::string_view number = after_prefix.substr(num_start);
   double value = 0.0;
-  const auto parsed = std::from_chars(number.data(), number.data() + number.size(), value);
+  const auto parsed = fast_float::from_chars(number.data(), number.data() + number.size(), value);
   if (parsed.ec != std::errc{}) {
     return std::nullopt;
   }
