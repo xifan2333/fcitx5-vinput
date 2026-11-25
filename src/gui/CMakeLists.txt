@@ -53,7 +53,7 @@ configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/vinput-gui.desktop.in" "${VINPUT_GUI_DESKTOP_FILE}" @ONLY
 )
 
-set(VINPUT_GUI_TS ${CMAKE_SOURCE_DIR}/i18n/zh_CN.ts)
+set(VINPUT_GUI_TS ${CMAKE_SOURCE_DIR}/translations/zh_CN.ts)
 
 if (QT_LINGUIST_FOUND)
   qt_add_translation(VINPUT_GUI_QM ${VINPUT_GUI_TS})

@@ -21,7 +21,7 @@ local linters = new Mapping<String, Step> {
   ["mise"] = Builtins.mise
 
   ["check-i18n"] {
-    glob = List("po/**", "i18n/**", "src/**", "scripts/check-i18n.py")
+    glob = List("po/**", "translations/**", "src/**", "scripts/check-i18n.py")
     check = "python3 scripts/check-i18n.py"
   }
 
