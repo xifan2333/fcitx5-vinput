@@ -23,6 +23,12 @@ SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_REMOTE_CONTROL}=="1", \
     ENV{ID_INPUT_TOUCHPAD}!="1", ENV{ID_INPUT_TABLET}!="1", \
     ENV{FCITX5_VINPUT_TRIGGER}="1"
 
+# Pointer mice for mouse button triggers (excludes keyboards, touchpads, and tablets)
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_MOUSE}=="1", \
+    ENV{ID_INPUT_KEYBOARD}!="1", ENV{ID_INPUT_TOUCHPAD}!="1", \
+    ENV{ID_INPUT_TABLET}!="1", \
+    ENV{FCITX5_VINPUT_TRIGGER}="1"
+
 # Tier 3 & Consolidated Action:
 # Apply unprivileged seat access (uaccess) and group fallback to all matched triggers.
 SUBSYSTEM=="input", KERNEL=="event*", ENV{FCITX5_VINPUT_TRIGGER}=="1", \
