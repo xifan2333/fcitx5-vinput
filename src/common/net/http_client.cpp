@@ -11,6 +11,7 @@
 #include <curl/curlver.h>
 #include <curl/easy.h>
 #include <curl/system.h>
+#include <curl/urlapi.h>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -85,6 +86,32 @@ bool HasHeader(const std::vector<HttpHeader>& headers, std::string_view name) {
 
 bool IsCancelRequested(const std::atomic<bool>* token) noexcept {
   return token != nullptr && token->load(std::memory_order_relaxed);
+}
+
+// Normalizes a file:// URL via libcurl's URL API: raw local paths with spaces or
+// non-ASCII bytes are percent-encoded (RFC 8089 / RFC 3986 pchar). Returns the
+// original string when the URL API is unavailable (libcurl < 7.62) or rejects input.
+std::string NormalizeFileUrl(const std::string& url) {
+  std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> handle(curl_url(), &curl_url_cleanup);
+  if (!handle) {
+    return url;
+  }
+
+  int flags = CURLU_URLENCODE;
+#if LIBCURL_VERSION_NUM >= 0x074E00
+  flags |= CURLU_ALLOW_SPACE;
+#endif
+  if (curl_url_set(handle.get(), CURLUPART_URL, url.c_str(), flags) != CURLUE_OK) {
+    return url;
+  }
+
+  std::unique_ptr<char, decltype(&curl_free)> encoded(nullptr, &curl_free);
+  char* raw_url = nullptr;
+  if (curl_url_get(handle.get(), CURLUPART_URL, &raw_url, 0) != CURLUE_OK) {
+    return url;
+  }
+  encoded.reset(raw_url);
+  return std::string(encoded.get());
 }
 
 struct CurlBodyReader {
@@ -458,7 +485,14 @@ public:
     prog_ctx.cancel_token = request.cancel_token;
     prog_ctx.callback = request.progress_cb;
 
-    curl_easy_setopt(curl, CURLOPT_URL, request.url.c_str());
+    // libcurl 7.78+ rejects file:// URLs containing raw spaces and non-ASCII
+    // characters; normalize the URL via libcurl's own URL API before transfer.
+    std::string request_url = request.url;
+    if (request_url.starts_with("file://")) {
+      request_url = NormalizeFileUrl(request_url);
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, request_url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header_list.list);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, request.timeout_ms);

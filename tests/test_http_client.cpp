@@ -544,6 +544,18 @@ void TestFileSchemeRequests() {
   const auto missing_res = client.Request(req);
   AssertTrue(!missing_res.Ok(), "missing file:// fails");
   AssertTrue(!missing_res.error_message.empty(), "missing file:// populates error_message");
+
+  // libcurl 7.78+ rejects file:// URLs with raw spaces; the client normalizes them
+  // via libcurl's own URL API so raw local paths keep working.
+  const std::filesystem::path spaced_path = temp_dir->Path() / "spaced file.txt";
+  {
+    std::ofstream out(spaced_path, std::ios::binary);
+    out << "spaced-content";
+  }
+  req.url = "file://" + spaced_path.string();
+  const auto spaced_res = client.Request(req);
+  AssertTrue(spaced_res.Ok(), "file:// with raw space succeeds");
+  AssertTrue(spaced_res.body == "spaced-content", "spaced file:// body matches");
   std::cout << "file:// local protocol tests verified\n";
 }
 
