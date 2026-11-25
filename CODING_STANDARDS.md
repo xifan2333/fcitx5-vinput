@@ -103,7 +103,19 @@ Strive for <= 2 levels of logical nesting inside compound statements. Deep pyram
 - **Tier 2 (Header-Only C++ Libraries)**: Pure C++ dependencies (`glaze`, `spdlog`, `fmt`, `CLI11`, `httplib`, `mio`, `readerwriterqueue`, `subprocess`, `unicodelib`) must be vendored under `3rdparty/` as CMake `SYSTEM INTERFACE` targets. Build-time network downloading (`FetchContent`) is prohibited.
 
 ### Pristine 3rdparty
-Code under `3rdparty/` must remain untouched upstream snapshots. Never patch, reformat, or modify vendored code directly. All adapters, shims, and workarounds must live inside `src/`.
+Code under `3rdparty/` must remain untouched upstream snapshots. Never patch, reformat, or modify vendored code directly. All adapters, shims, and workarounds must live inside `src/` or scoped build-time compatibility headers.
+
+### Conditional Compilation & Feature Macros
+All feature switches, platform probes, and backend selectors must follow one uniform taxonomy:
+- **`VINPUT_ENABLE_<FEATURE>`**: user-configurable CMake feature toggles (`ON`/`OFF`), e.g. `VINPUT_ENABLE_LOCAL_ASR`.
+- **`VINPUT_<SCOPE>_HAVE_<CAPABILITY>`**: build-time probed toolchain, standard library, or dependency capabilities, e.g. `VINPUT_CXX_HAVE_STD_BIT_CAST`, `VINPUT_CXX_HAVE_FLOAT_FROM_CHARS`, `VINPUT_FCITX5_CORE_HAVE_SET_COMMENT`.
+- **`VINPUT_<SUBSYSTEM>_BACKEND_<IMPL>`**: subsystem backend flags derived from CMake backend options, e.g. `VINPUT_HTTP_BACKEND_CURL`, `VINPUT_HTTP_BACKEND_HTTPLIB`.
+
+Rules for defining and consuming these macros:
+- **0/1 semantics with `#if`**: New project-defined toggles, capability probes, and backend flags must resolve to `0` or `1` (e.g. `#cmakedefine01` in `src/common/config.h.in` or `=1`/`=0` compile definitions) and be checked in C++ with `#if MACRO`, never `#ifdef MACRO`. System/third-party symbol macros (such as `PW_KEY_OBJECT_SERIAL` or `__cpp_lib_bit_cast`) use `#ifdef` / `defined(...)`.
+- **Centralized probing**: Standard-library, compiler, and Tier-1 version probes live in `cmake/PlatformChecks.cmake` (or the owning target's `CMakeLists.txt` for target-local library version checks). Business `.cpp` files must never branch directly on `__GLIBC__`, `__GLIBCXX__`, `__clang_major__`, or distro names.
+- **Separate translation units per backend**: When a subsystem provides multiple interchangeable backends (HTTP, audio), keep each backend in its own `.cpp` file selected in `CMakeLists.txt` behind a shared header interface rather than interleaving `#if` branches inside one source file.
+- **Scoped toolchain shims**: Workarounds needed solely so untouched `3rdparty/` headers compile on older toolchains (e.g., `std::bit_cast`) must be injected narrowly as private target compile options (`-include`) and guarded by standard feature-test macros.
 
 ---
 
