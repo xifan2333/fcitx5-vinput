@@ -21,16 +21,17 @@ namespace vinput::str {
 // =========================================================================
 
 [[nodiscard]] inline std::string_view Trim(std::string_view text) noexcept {
-  const auto not_ws = [](char c) noexcept -> bool {
-    return std::isspace(static_cast<unsigned char>(c)) == 0;
+  const auto is_ws = [](char c) noexcept -> bool {
+    return std::isspace(static_cast<unsigned char>(c)) != 0;
   };
-  const auto* const start = std::ranges::find_if(text, not_ws);
-  if (start == text.end()) {
-    return {};
+  size_t begin_idx = 0;
+  while (begin_idx < text.size() && is_ws(text[begin_idx])) {
+    ++begin_idx;
   }
-  const auto rstart = std::find_if(text.rbegin(), text.rend(), not_ws);
-  const auto begin_idx = static_cast<size_t>(start - text.begin());
-  const auto end_idx = static_cast<size_t>(text.rend() - rstart);
+  size_t end_idx = text.size();
+  while (end_idx > begin_idx && is_ws(text[end_idx - 1])) {
+    --end_idx;
+  }
   return text.substr(begin_idx, end_idx - begin_idx);
 }
 

@@ -158,7 +158,7 @@ std::optional<float> ParseHexFloat(std::string_view digits) noexcept {
   if (total_exp < -1074) {
     return 0.0F;
   }
-  const float result =
+  const auto result =
       static_cast<float>(std::ldexp(mantissa->mantissa, static_cast<int>(total_exp)));
   if (!std::isfinite(result)) {
     return std::nullopt;
