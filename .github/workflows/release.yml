@@ -5,6 +5,38 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Build target to run (all runs the standard release matrix)"
+        type: choice
+        default: "all"
+        options:
+          - all
+          - tarball
+          - deb
+          - deb-ubuntu24.04
+          - deb-debian12
+          - deb-debian11
+          - fedora
+          - opensuse
+          - arch
+          - flatpak
+      arch:
+        description: "Architecture filter for tarball/deb (all, amd64, arm64)"
+        type: choice
+        default: "all"
+        options:
+          - all
+          - amd64
+          - arm64
+      mode:
+        description: "Variant filter for tarball/deb (all, full, lite)"
+        type: choice
+        default: "all"
+        options:
+          - all
+          - full
+          - lite
 
 permissions:
   contents: write
@@ -24,8 +56,83 @@ jobs:
       package_version: ${{ steps.meta.outputs.package_version }}
       package_release: ${{ steps.meta.outputs.package_release }}
       source_archive: ${{ steps.meta.outputs.source_archive }}
+      run_tarball: ${{ steps.matrix.outputs.run_tarball }}
+      tarball_matrix: ${{ steps.matrix.outputs.tarball_matrix }}
+      run_deb: ${{ steps.matrix.outputs.run_deb }}
+      deb_matrix: ${{ steps.matrix.outputs.deb_matrix }}
     steps:
       - uses: actions/checkout@v6
+
+      - id: matrix
+        shell: python3 {0}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TARGET: ${{ inputs.target || 'all' }}
+          INPUT_ARCH: ${{ inputs.arch || 'all' }}
+          INPUT_MODE: ${{ inputs.mode || 'all' }}
+        run: |
+          import json
+          import os
+
+          is_dispatch = os.environ["EVENT_NAME"] == "workflow_dispatch"
+          target = os.environ["INPUT_TARGET"] if is_dispatch else "all"
+          arch_filter = os.environ["INPUT_ARCH"] if is_dispatch else "all"
+          mode_filter = os.environ["INPUT_MODE"] if is_dispatch else "all"
+
+          arch_to_tarball = {"amd64": "x86_64", "arm64": "aarch64"}
+          mode_to_tarball = {"full": "bundled", "lite": "lite"}
+
+          tarball_rows = [
+              {"arch": "x86_64", "runner": "ubuntu-24.04", "mode": "bundled", "enable_local_asr": "ON"},
+              {"arch": "x86_64", "runner": "ubuntu-24.04", "mode": "lite", "enable_local_asr": "OFF"},
+              {"arch": "aarch64", "runner": "ubuntu-24.04-arm", "mode": "bundled", "enable_local_asr": "ON"},
+              {"arch": "aarch64", "runner": "ubuntu-24.04-arm", "mode": "lite", "enable_local_asr": "OFF"},
+          ]
+          if target in ("all", "tarball"):
+              tarball_selected = [
+                  row for row in tarball_rows
+                  if (arch_filter == "all" or row["arch"] == arch_to_tarball[arch_filter])
+                  and (mode_filter == "all" or row["mode"] == mode_to_tarball[mode_filter])
+              ]
+          else:
+              tarball_selected = []
+
+          deb_distros = [
+              ("ubuntu24.04", "ubuntu:24.04"),
+              ("debian12", "debian:12"),
+          ]
+          if is_dispatch and target == "deb-debian11":
+              deb_distros.append(("debian11", "debian:11"))
+
+          deb_rows = []
+          for distro, image in deb_distros:
+              for arch, runner in (("amd64", "ubuntu-latest"), ("arm64", "ubuntu-24.04-arm")):
+                  for mode, local_asr in (("full", "ON"), ("lite", "OFF")):
+                      deb_rows.append({
+                          "distro": distro,
+                          "image": image,
+                          "arch": arch,
+                          "runner": runner,
+                          "mode": mode,
+                          "enable_local_asr": local_asr,
+                      })
+
+          if target in ("all", "deb") or target.startswith("deb-"):
+              distro_filter = target.removeprefix("deb-") if target.startswith("deb-") else None
+              deb_selected = [
+                  row for row in deb_rows
+                  if (distro_filter is None or row["distro"] == distro_filter)
+                  and (arch_filter == "all" or row["arch"] == arch_filter)
+                  and (mode_filter == "all" or row["mode"] == mode_filter)
+              ]
+          else:
+              deb_selected = []
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"run_tarball={'true' if tarball_selected else 'false'}\n")
+              out.write(f"tarball_matrix={json.dumps({'include': tarball_selected}, separators=(',', ':'))}\n")
+              out.write(f"run_deb={'true' if deb_selected else 'false'}\n")
+              out.write(f"deb_matrix={json.dumps({'include': deb_selected}, separators=(',', ':'))}\n")
 
       - id: meta
         shell: bash
@@ -68,26 +175,10 @@ jobs:
 
   build-linux-tarball:
     needs: source_archive
+    if: needs.source_archive.outputs.run_tarball == 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            runner: ubuntu-24.04
-            mode: bundled
-            enable_local_asr: "ON"
-          - arch: x86_64
-            runner: ubuntu-24.04
-            mode: lite
-            enable_local_asr: "OFF"
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-            mode: bundled
-            enable_local_asr: "ON"
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-            mode: lite
-            enable_local_asr: "OFF"
+      matrix: ${{ fromJson(needs.source_archive.outputs.tarball_matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
@@ -162,58 +253,10 @@ jobs:
 
   build-deb:
     needs: source_archive
+    if: needs.source_archive.outputs.run_deb == 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - distro: ubuntu24.04
-            image: ubuntu:24.04
-            arch: amd64
-            runner: ubuntu-latest
-            mode: full
-            enable_local_asr: "ON"
-          - distro: ubuntu24.04
-            image: ubuntu:24.04
-            arch: amd64
-            runner: ubuntu-latest
-            mode: lite
-            enable_local_asr: "OFF"
-          - distro: debian12
-            image: debian:12
-            arch: amd64
-            runner: ubuntu-latest
-            mode: full
-            enable_local_asr: "ON"
-          - distro: debian12
-            image: debian:12
-            arch: amd64
-            runner: ubuntu-latest
-            mode: lite
-            enable_local_asr: "OFF"
-          - distro: ubuntu24.04
-            image: ubuntu:24.04
-            arch: arm64
-            runner: ubuntu-24.04-arm
-            mode: full
-            enable_local_asr: "ON"
-          - distro: ubuntu24.04
-            image: ubuntu:24.04
-            arch: arm64
-            runner: ubuntu-24.04-arm
-            mode: lite
-            enable_local_asr: "OFF"
-          - distro: debian12
-            image: debian:12
-            arch: arm64
-            runner: ubuntu-24.04-arm
-            mode: full
-            enable_local_asr: "ON"
-          - distro: debian12
-            image: debian:12
-            arch: arm64
-            runner: ubuntu-24.04-arm
-            mode: lite
-            enable_local_asr: "OFF"
+      matrix: ${{ fromJson(needs.source_archive.outputs.deb_matrix) }}
     runs-on: ${{ matrix.runner }}
     container:
       image: ${{ matrix.image }}
@@ -240,6 +283,7 @@ jobs:
             "" "${prefix}"
 
       - uses: actions/cache@v6
+        if: matrix.distro != 'debian11'
         with:
           path: ${{ env.SCCACHE_DIR }}
           key: sccache-release-deb-${{ matrix.distro }}-${{ matrix.arch }}-${{ matrix.mode }}-${{ github.ref_name }}
@@ -257,15 +301,31 @@ jobs:
           if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
             prefix_args+=(-DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/runtime")
           fi
-          cmake --preset ci-clang-mold \
-            -DVINPUT_ENABLE_LOCAL_ASR=${{ matrix.enable_local_asr }} \
-            "${prefix_args[@]}" \
-            -DVINPUT_PROJECT_VERSION="${{ needs.source_archive.outputs.package_version }}" \
-            -DVINPUT_PACKAGE_RELEASE="${{ needs.source_archive.outputs.package_release }}" \
-            -DVINPUT_PACKAGE_CONTACT="${{ github.repository_owner }} <noreply@github.com>" \
-            -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}"
-
-          cmake --build --preset ci-clang-mold
+          if [[ "${{ matrix.distro }}" == "debian11" ]]; then
+            CC=clang-18 CXX=clang++-18 cmake -S . -B build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX=/usr \
+              -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld \
+              -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld \
+              -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld \
+              -DVINPUT_ENABLE_LOCAL_ASR=${{ matrix.enable_local_asr }} \
+              -DVINPUT_BUILD_GUI=OFF \
+              "${prefix_args[@]}" \
+              -DVINPUT_PROJECT_VERSION="${{ needs.source_archive.outputs.package_version }}" \
+              -DVINPUT_PACKAGE_RELEASE="${{ needs.source_archive.outputs.package_release }}" \
+              -DVINPUT_PACKAGE_CONTACT="${{ github.repository_owner }} <noreply@github.com>" \
+              -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}"
+            cmake --build build
+          else
+            cmake --preset ci-clang-mold \
+              -DVINPUT_ENABLE_LOCAL_ASR=${{ matrix.enable_local_asr }} \
+              "${prefix_args[@]}" \
+              -DVINPUT_PROJECT_VERSION="${{ needs.source_archive.outputs.package_version }}" \
+              -DVINPUT_PACKAGE_RELEASE="${{ needs.source_archive.outputs.package_release }}" \
+              -DVINPUT_PACKAGE_CONTACT="${{ github.repository_owner }} <noreply@github.com>" \
+              -DVINPUT_PACKAGE_HOMEPAGE_URL="${{ github.server_url }}/${{ github.repository }}"
+            cmake --build --preset ci-clang-mold
+          fi
           cpack --config build/CPackConfig.cmake -G DEB -B "${GITHUB_WORKSPACE}/dist"
 
           if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
@@ -286,6 +346,7 @@ jobs:
 
   build-rpm-fedora:
     needs: source_archive
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'fedora'
     runs-on: ubuntu-latest
     container:
       image: fedora:43
@@ -348,6 +409,7 @@ jobs:
 
   build-rpm-opensuse-leap:
     needs: source_archive
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'opensuse'
     runs-on: ubuntu-latest
     container:
       image: registry.opensuse.org/opensuse/leap:15.6
@@ -413,6 +475,7 @@ jobs:
 
   build-arch:
     needs: source_archive
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'arch'
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
@@ -472,6 +535,7 @@ jobs:
 
   build-flatpak:
     needs: source_archive
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'flatpak'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
