@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <initializer_list>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -29,7 +28,7 @@ namespace vinput::str {
   if (start == text.end()) {
     return {};
   }
-  const auto rstart = std::ranges::find_if(text | std::views::reverse, not_ws);
+  const auto rstart = std::find_if(text.rbegin(), text.rend(), not_ws);
   const auto begin_idx = static_cast<size_t>(start - text.begin());
   const auto end_idx = static_cast<size_t>(text.rend() - rstart);
   return text.substr(begin_idx, end_idx - begin_idx);

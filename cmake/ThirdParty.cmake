@@ -65,6 +65,9 @@ add_library(3rdparty_glaze INTERFACE)
 target_include_directories(
   3rdparty_glaze SYSTEM INTERFACE ${CMAKE_SOURCE_DIR}/3rdparty/glaze/include
 )
+target_compile_options(
+  3rdparty_glaze INTERFACE -include ${CMAKE_SOURCE_DIR}/cmake/compat/bit_cast_shim.h
+)
 add_library(glaze::glaze ALIAS 3rdparty_glaze)
 
 # indicators

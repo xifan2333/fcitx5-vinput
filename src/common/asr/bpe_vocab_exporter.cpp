@@ -1,10 +1,10 @@
 #include "common/asr/bpe_vocab_exporter.h"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <fast_float/fast_float.h>
 #include <filesystem>
 #include <fmt/base.h>
@@ -85,7 +85,9 @@ public:
     if (!bits.has_value()) {
       return std::nullopt;
     }
-    return std::bit_cast<float>(*bits);
+    float value = 0.0F;
+    std::memcpy(&value, &*bits, sizeof(value));
+    return value;
   }
 
   bool Skip(std::size_t count) noexcept {
