@@ -25,6 +25,7 @@ endif ()
 include(GNUInstallDirs)
 
 option(VINPUT_ENABLE_LOCAL_ASR "Build with sherpa-onnx local ASR support" ON)
+option(VINPUT_BUILD_GUI "Build the Qt6 configuration GUI" ON)
 option(VINPUT_ENABLE_WERROR "Treat compiler warnings as errors" OFF)
 
 find_package(Fcitx5Core REQUIRED)
@@ -80,7 +81,9 @@ add_subdirectory(src/common)
 add_subdirectory(src/daemon)
 add_subdirectory(src/addon)
 add_subdirectory(src/cli)
-add_subdirectory(src/gui)
+if (VINPUT_BUILD_GUI)
+  add_subdirectory(src/gui)
+endif ()
 add_subdirectory(po)
 
 include(CTest)
