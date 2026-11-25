@@ -53,21 +53,22 @@ configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/vinput-gui.desktop.in" "${VINPUT_GUI_DESKTOP_FILE}" @ONLY
 )
 
-set(VINPUT_GUI_TS ${CMAKE_SOURCE_DIR}/i18n/vinput-gui_zh_CN.ts)
+set(VINPUT_GUI_TS ${CMAKE_SOURCE_DIR}/translations/zh_CN.ts)
 
 if (QT_LINGUIST_FOUND)
   qt_add_translation(VINPUT_GUI_QM ${VINPUT_GUI_TS})
 else ()
   find_program(VINPUT_LRELEASE_EXECUTABLE NAMES lrelease-qt6 lrelease)
   if (VINPUT_LRELEASE_EXECUTABLE)
-    set(VINPUT_GUI_QM ${CMAKE_CURRENT_BINARY_DIR}/vinput-gui_zh_CN.qm)
+    set(VINPUT_GUI_QM ${CMAKE_CURRENT_BINARY_DIR}/zh_CN.qm)
     add_custom_command(
       OUTPUT ${VINPUT_GUI_QM}
-      COMMAND ${VINPUT_LRELEASE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/i18n/vinput-gui_zh_CN.ts -qm
-              ${VINPUT_GUI_QM}
-      DEPENDS ${CMAKE_SOURCE_DIR}/i18n/vinput-gui_zh_CN.ts
+      COMMAND ${VINPUT_LRELEASE_EXECUTABLE} ${VINPUT_GUI_TS} -qm ${VINPUT_GUI_QM}
+      DEPENDS ${VINPUT_GUI_TS}
       VERBATIM
     )
+  else ()
+    message(WARNING "Neither Qt6LinguistTools nor lrelease found. GUI translations will not be built.")
   endif ()
 endif ()
 
@@ -112,5 +113,5 @@ foreach (
 endforeach ()
 
 if (VINPUT_GUI_QM)
-  install(FILES ${VINPUT_GUI_QM} DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/i18n)
+  install(FILES ${VINPUT_GUI_QM} DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/translations)
 endif ()
