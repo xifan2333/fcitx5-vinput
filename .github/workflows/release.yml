@@ -606,6 +606,9 @@ jobs:
       - build-arch
       - build-flatpak
     runs-on: ubuntu-latest
+    concurrency:
+      group: publish-release-${{ github.ref }}
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
