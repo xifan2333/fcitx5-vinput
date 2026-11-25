@@ -107,7 +107,7 @@ size_t ReadRequestBodyCallback(char* buffer, size_t size, size_t nmemb, void* us
 }
 
 struct MemoryWriteContext {
-  std::string body;
+  std::string body{};
   size_t max_bytes = 0;
   bool overflow = false;
 };
@@ -178,7 +178,7 @@ size_t HeaderWriteCallback(char* buffer, size_t size, size_t nitems, void* userd
 struct TransferProgressContext {
   const std::atomic<bool>* cancel_token = nullptr;
   ProgressCallback callback = nullptr;
-  std::chrono::steady_clock::time_point last_time;
+  std::chrono::steady_clock::time_point last_time{};
   uint64_t last_bytes = 0;
   bool has_last = false;
   bool callback_exception = false;
