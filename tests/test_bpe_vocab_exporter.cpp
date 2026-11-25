@@ -1,4 +1,5 @@
 #include <cassert>
+#include <clocale>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -202,7 +203,7 @@ void TestValidateBpeVocabulary() {
   TEST_ASSERT(!ValidateBpeVocabulary(garbage_score_path).has_value());
 
   // Non-finite or leading-plus scores must be rejected
-  for (const std::string_view bad_val : {"nan", "inf", "-inf", "+1.5", " 1.5"}) {
+  for (const std::string_view bad_val : {"nan", "inf", "-inf", "+1.5", " 1.5", "-2,5"}) {
     const auto edge_path = tmp_dir / "edge_score.vocab";
     {
       std::ofstream ofs(edge_path);
@@ -210,6 +211,23 @@ void TestValidateBpeVocabulary() {
     }
     TEST_ASSERT(!ValidateBpeVocabulary(edge_path).has_value());
   }
+
+  // Decimal-point parsing must stay locale-independent even under comma-decimal LC_NUMERIC
+  const char* prev_locale_raw = std::setlocale(LC_NUMERIC, nullptr);
+  const std::string prev_locale = prev_locale_raw != nullptr ? prev_locale_raw : "C";
+  for (const char* candidate : {"de_DE.UTF-8", "fr_FR.UTF-8"}) {
+    if (std::setlocale(LC_NUMERIC, candidate) != nullptr) {
+      TEST_ASSERT(ValidateBpeVocabulary(valid_path).has_value());
+      const auto comma_path = tmp_dir / "comma_score.vocab";
+      {
+        std::ofstream ofs(comma_path);
+        ofs << "apple\t-2,5\n";
+      }
+      TEST_ASSERT(!ValidateBpeVocabulary(comma_path).has_value());
+      break;
+    }
+  }
+  std::setlocale(LC_NUMERIC, prev_locale.c_str());
 
   fs::remove_all(tmp_dir);
 }

@@ -75,118 +75,120 @@ int HexDigitValue(char c) noexcept {
   return -1;
 }
 
-bool ParseHexExponent(std::string_view suffix, int* out_exp) noexcept {
+std::optional<int> ParseHexExponent(std::string_view suffix) noexcept {
   if (suffix.empty()) {
-    return false;
+    return std::nullopt;
   }
   if (suffix.front() == '+') {
     suffix.remove_prefix(1);
     if (suffix.empty() || suffix.front() == '+' || suffix.front() == '-') {
-      return false;
+      return std::nullopt;
     }
   }
   int exp = 0;
   const auto [ptr, ec] = std::from_chars(suffix.data(), suffix.data() + suffix.size(), exp);
   if (ec != std::errc{} || ptr != suffix.data() + suffix.size()) {
-    return false;
+    return std::nullopt;
   }
-  *out_exp = exp;
-  return true;
+  return exp;
 }
 
-bool ParseHexMantissa(std::string_view mantissa_str, double* out_mantissa,
-                      int* out_frac_bits) noexcept {
+struct HexMantissa {
+  double mantissa = 0.0;
+  int exp_offset = 0;
+};
+
+std::optional<HexMantissa> ParseHexMantissa(std::string_view mantissa_str) noexcept {
   double mantissa = 0.0;
   bool seen_dot = false;
   bool seen_digit = false;
-  int frac_bits = 0;
+  int exp_offset = 0;
   for (const char ch : mantissa_str) {
     if (ch == '.') {
       if (seen_dot) {
-        return false;
+        return std::nullopt;
       }
       seen_dot = true;
       continue;
     }
     const int nibble = HexDigitValue(ch);
     if (nibble < 0) {
-      return false;
+      return std::nullopt;
     }
     seen_digit = true;
     mantissa = (mantissa * 16.0) + static_cast<double>(nibble);
     if (seen_dot) {
-      frac_bits -= 4;
+      exp_offset -= 4;
     }
   }
   if (!seen_digit) {
-    return false;
+    return std::nullopt;
   }
-  *out_mantissa = mantissa;
-  *out_frac_bits = frac_bits;
-  return true;
+  return HexMantissa{.mantissa = mantissa, .exp_offset = exp_offset};
 }
 
-bool ParseHexFloat(std::string_view digits, float* out) noexcept {
+std::optional<float> ParseHexFloat(std::string_view digits) noexcept {
   if (digits.empty()) {
-    return false;
+    return std::nullopt;
   }
   const auto exp_pos = digits.find_first_of("pP");
   const std::string_view mantissa_str = digits.substr(0, exp_pos);
   int exp = 0;
-  if (exp_pos != std::string_view::npos && !ParseHexExponent(digits.substr(exp_pos + 1), &exp)) {
-    return false;
+  if (exp_pos != std::string_view::npos) {
+    const auto parsed_exp = ParseHexExponent(digits.substr(exp_pos + 1));
+    if (!parsed_exp) {
+      return std::nullopt;
+    }
+    exp = *parsed_exp;
   }
 
-  double mantissa = 0.0;
-  int frac_bits = 0;
-  if (!ParseHexMantissa(mantissa_str, &mantissa, &frac_bits)) {
-    return false;
+  const auto mantissa = ParseHexMantissa(mantissa_str);
+  if (!mantissa) {
+    return std::nullopt;
   }
-  if (mantissa == 0.0) {
-    *out = 0.0F;
-    return true;
+  if (mantissa->mantissa == 0.0) {
+    return 0.0F;
   }
 
-  const long long total_exp = static_cast<long long>(exp) + static_cast<long long>(frac_bits);
+  const long long total_exp =
+      static_cast<long long>(exp) + static_cast<long long>(mantissa->exp_offset);
   if (total_exp > 1024) {
-    return false;
+    return std::nullopt;
   }
   if (total_exp < -1074) {
-    *out = 0.0F;
-    return true;
+    return 0.0F;
   }
-  const float result = static_cast<float>(std::ldexp(mantissa, static_cast<int>(total_exp)));
+  const float result =
+      static_cast<float>(std::ldexp(mantissa->mantissa, static_cast<int>(total_exp)));
   if (!std::isfinite(result)) {
-    return false;
+    return std::nullopt;
   }
-  *out = result;
-  return true;
+  return result;
 }
 
 // Hotword scores are passed through to sherpa-onnx, so only plain finite
 // numbers are accepted (no NaN/Inf, no locale-dependent parsing).
-bool ParseHotwordScore(std::string_view value, float* out = nullptr) noexcept {
+std::optional<float> ParseHotwordScore(std::string_view value) noexcept {
   const auto prefix = StripScorePrefix(value);
   if (!prefix) {
-    return false;
+    return std::nullopt;
   }
   float parsed = 0.0F;
   if (prefix->is_hex) {
-    if (!ParseHexFloat(prefix->digits, &parsed)) {
-      return false;
+    const auto hex_val = ParseHexFloat(prefix->digits);
+    if (!hex_val) {
+      return std::nullopt;
     }
+    parsed = *hex_val;
   } else {
     const auto [end, ec] = fast_float::from_chars(
         prefix->digits.data(), prefix->digits.data() + prefix->digits.size(), parsed);
     if (ec != std::errc{} || end != prefix->digits.data() + prefix->digits.size() ||
         !std::isfinite(parsed)) {
-      return false;
+      return std::nullopt;
     }
   }
-  if (out != nullptr) {
-    *out = prefix->is_negative ? -parsed : parsed;
-  }
-  return true;
+  return prefix->is_negative ? -parsed : parsed;
 }
 
 struct Utf8Validation {
@@ -295,7 +297,7 @@ struct HotwordEntry {
 };
 
 bool IsValidScore(std::string_view value) {
-  return ParseHotwordScore(value);
+  return ParseHotwordScore(value).has_value();
 }
 
 bool LooksLikeScore(std::string_view value) {
