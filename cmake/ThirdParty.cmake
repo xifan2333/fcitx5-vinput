@@ -8,15 +8,6 @@ target_include_directories(
 )
 add_library(CLI11::CLI11 ALIAS 3rdparty_cli11)
 
-# cpp-httplib
-add_library(3rdparty_httplib INTERFACE)
-target_include_directories(3rdparty_httplib SYSTEM INTERFACE ${CMAKE_SOURCE_DIR}/3rdparty/httplib)
-target_compile_definitions(
-  3rdparty_httplib INTERFACE CPPHTTPLIB_OPENSSL_SUPPORT=1 CPPHTTPLIB_USE_NON_BLOCKING_GETADDRINFO=1
-)
-target_link_libraries(3rdparty_httplib INTERFACE Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
-add_library(httplib::httplib ALIAS 3rdparty_httplib)
-
 # subprocess
 add_library(3rdparty_subprocess INTERFACE)
 target_include_directories(
