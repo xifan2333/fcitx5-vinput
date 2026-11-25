@@ -40,7 +40,7 @@ bool TryLoadCandidatesFromRoot(QTranslator& translator, const QString& root,
                                const QStringList& candidates) {
   for (const auto& name : candidates) {
     // System path pattern
-    QString path = QDir(root).filePath("fcitx5-vinput/i18n/" + name + ".qm");
+    QString path = QDir(root).filePath("fcitx5-vinput/translations/" + name + ".qm");
     if (translator.load(path)) {
       return true;
     }
@@ -53,11 +53,11 @@ bool TryLoadCandidatesFromRoot(QTranslator& translator, const QString& root,
   return false;
 }
 
-bool TryLoadTranslation(QTranslator& translator, const QString& base_name) {
+bool TryLoadTranslation(QTranslator& translator) {
   const QString locale = QLocale::system().name();
   const QStringList candidates = {
-      base_name + "_" + locale,
-      base_name + "_" + locale.left(2),
+      locale,
+      locale.left(2),
   };
   for (const auto& root : TranslationSearchPaths()) {
     if (TryLoadCandidatesFromRoot(translator, root, candidates)) {
@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
   const QApplication app(argc, argv);
 
   QTranslator translator;
-  if (TryLoadTranslation(translator, "vinput-gui")) {
+  if (TryLoadTranslation(translator)) {
     QCoreApplication::installTranslator(&translator);
   }
 

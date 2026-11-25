@@ -10,7 +10,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 
 PO_FILE = PROJECT_ROOT / "po" / "zh_CN.po"
-TS_FILE = PROJECT_ROOT / "i18n" / "vinput-gui_zh_CN.ts"
+TS_FILE = PROJECT_ROOT / "i18n" / "zh_CN.ts"
 
 PO_DIRS = ["src/cli", "src/common", "src/addon", "src/daemon"]
 GUI_DIR = "src/gui"
