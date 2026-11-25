@@ -45,7 +45,7 @@ readonly ubuntu_apt_packages=(
   libblas-dev
   liblapack-dev
   libopenblas-dev
-  libssl-dev
+  libcurl4-openssl-dev
   libarchive-dev
   libpipewire-0.3-dev
   libsystemd-dev
@@ -205,7 +205,7 @@ debian12)
     libblas-dev \
     liblapack-dev \
     libopenblas-dev \
-    libssl-dev \
+    libcurl4-openssl-dev \
     libarchive-dev \
     libpipewire-0.3-dev \
     libsystemd-dev \
@@ -259,7 +259,7 @@ debian11)
     libblas-dev \
     liblapack-dev \
     libopenblas-dev \
-    libssl-dev \
+    libcurl4-openssl-dev \
     libarchive-dev \
     libpipewire-0.3-dev \
     libsystemd-dev \
@@ -289,7 +289,7 @@ fedora43)
     gettext \
     curl \
     zstd \
-    openssl-devel \
+    libcurl-devel \
     libarchive-devel \
     pipewire-devel \
     systemd-devel \
@@ -310,7 +310,7 @@ opensuse-leap)
     lapack-devel \
     libarchive-devel \
     libopenblas_pthreads-devel \
-    libopenssl-devel \
+    libcurl-devel \
     make \
     mold \
     ninja \
@@ -336,7 +336,6 @@ archlinux)
     libarchive \
     mold \
     ninja \
-    openssl \
     pipewire \
     pkgconf \
     sccache \

@@ -6,7 +6,7 @@ arch=('x86_64')
 url='@VINPUT_PKGURL@'
 license=('GPL-3.0-only')
 options=(!debug !lto)
-depends=('fcitx5' 'libarchive' 'openssl' 'pipewire' 'qt6-base')
+depends=('curl' 'fcitx5' 'libarchive' 'pipewire' 'qt6-base')
 optdepends=(
     'wireplumber: reduce system output volume while recording'
     'opus: audio compression for cloud ASR providers'

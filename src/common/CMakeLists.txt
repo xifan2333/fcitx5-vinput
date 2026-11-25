@@ -56,7 +56,6 @@ target_link_libraries(
   config
   PUBLIC Fcitx5::Config
          ${GETTEXT_LIBRARIES}
-         OpenSSL::Crypto
          3rdparty_fmt
          spdlog::spdlog_header_only
          subprocess::subprocess
@@ -70,8 +69,7 @@ target_link_libraries(
 )
 
 target_link_libraries(
-  common PUBLIC config httplib::httplib LibArchive::LibArchive OpenSSL::Crypto
-                indicators::indicators
+  common PUBLIC config CURL::libcurl LibArchive::LibArchive indicators::indicators
 )
 
 add_library(pipewire_device STATIC audio/pipewire_device.cpp)

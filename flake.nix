@@ -69,9 +69,9 @@
                 (with pkgs; [
                   fcitx5
                   systemdLibs
+                  curl
                   libarchive
                   libevdev
-                  openssl
                   pipewire
                   qt6.qtbase
                   clang
@@ -155,7 +155,6 @@
               curl
               libarchive
               libevdev
-              openssl
               onnxruntime
               pipewire
               qt6.qtbase

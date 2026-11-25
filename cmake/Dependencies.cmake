@@ -8,7 +8,7 @@ set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 find_package(LibArchive REQUIRED)
-find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
 
 # Import systemd / sd-bus via pkg-config
 pkg_check_modules(SDBUS REQUIRED IMPORTED_TARGET libsystemd)

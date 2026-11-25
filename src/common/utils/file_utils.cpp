@@ -1,10 +1,10 @@
 #include "common/utils/file_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fmt/format.h>
@@ -13,8 +13,7 @@
 #include <iterator>
 #include <memory>
 #include <mio/mmap.hpp>
-#include <openssl/evp.h>
-#include <openssl/types.h>
+#include <span>
 #include <stdlib.h>
 #include <string>
 #include <string_view>
@@ -121,21 +120,162 @@ constexpr size_t kStreamBufferSize = 65536;
 constexpr std::string_view kEmptyFileSha256 =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
-Expected<std::string> FinalizeHashToHex(EVP_MD_CTX* ctx) {
-  unsigned char hash[EVP_MAX_MD_SIZE];
-  unsigned int hash_len = 0;
-  if (EVP_DigestFinal_ex(ctx, hash, &hash_len) != 1) {
-    return UnexpectedError("EVP_DigestFinal_ex failed");
+/// Self-contained pure C++20 SHA-256 implementation.
+/// Eliminates the OpenSSL dependency for file hashing while preserving exact
+/// byte-for-byte hash output with the previous EVP_sha256 backend.
+class Sha256Context {
+public:
+  void Update(std::string_view data) {
+    const char* bytes = data.data();
+    size_t len = data.size();
+    total_len_ += len;
+
+    if (buffer_len_ > 0) {
+      const size_t needed = 64 - buffer_len_;
+      const size_t take = std::min(needed, len);
+      std::memcpy(buffer_.data() + buffer_len_, bytes, take);
+      buffer_len_ += take;
+      bytes += take;
+      len -= take;
+
+      if (buffer_len_ == 64) {
+        ProcessBlock(buffer_);
+        buffer_len_ = 0;
+      }
+    }
+
+    while (len >= 64) {
+      ProcessBlock(std::span<const char, 64>(bytes, 64));
+      bytes += 64;
+      len -= 64;
+    }
+
+    if (len > 0) {
+      std::memcpy(buffer_.data(), bytes, len);
+      buffer_len_ = len;
+    }
   }
 
+  std::array<unsigned char, 32> Final() {
+    total_len_ *= 8;
+
+    buffer_.at(buffer_len_++) = static_cast<char>(0x80);
+    if (buffer_len_ > 56) {
+      while (buffer_len_ < 64) {
+        buffer_.at(buffer_len_++) = 0;
+      }
+      ProcessBlock(buffer_);
+      buffer_len_ = 0;
+    }
+
+    while (buffer_len_ < 56) {
+      buffer_.at(buffer_len_++) = 0;
+    }
+
+    for (int i = 7; i >= 0; --i) {
+      buffer_.at(buffer_len_++) = static_cast<char>((total_len_ >> (i * 8)) & 0xFF);
+    }
+    ProcessBlock(buffer_);
+
+    std::array<unsigned char, 32> digest{};
+    for (size_t i = 0; i < 8; ++i) {
+      const std::uint32_t word = state_.at(i);
+      digest.at(i * 4) = static_cast<unsigned char>((word >> 24) & 0xFF);
+      digest.at((i * 4) + 1) = static_cast<unsigned char>((word >> 16) & 0xFF);
+      digest.at((i * 4) + 2) = static_cast<unsigned char>((word >> 8) & 0xFF);
+      digest.at((i * 4) + 3) = static_cast<unsigned char>(word & 0xFF);
+    }
+    return digest;
+  }
+
+private:
+  static constexpr std::array<std::uint32_t, 64> kRoundConstants = {
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+      0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+      0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+      0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+      0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+      0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+      0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+      0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+      0xc67178f2};
+
+  static constexpr std::uint32_t Rotr(std::uint32_t x, std::uint32_t n) {
+    return (x >> n) | (x << (32 - n));
+  }
+
+  static constexpr std::uint32_t ByteAt(std::span<const char, 64> block, size_t idx) {
+    return static_cast<std::uint32_t>(static_cast<unsigned char>(block[idx]));
+  }
+
+  void ProcessBlock(std::span<const char, 64> block) {
+    std::array<std::uint32_t, 64> w{};
+    for (size_t i = 0; i < 16; ++i) {
+      w.at(i) = (ByteAt(block, i * 4) << 24) | (ByteAt(block, (i * 4) + 1) << 16) |
+                (ByteAt(block, (i * 4) + 2) << 8) | ByteAt(block, (i * 4) + 3);
+    }
+    for (size_t i = 16; i < 64; ++i) {
+      const std::uint32_t w15 = w.at(i - 15);
+      const std::uint32_t w2 = w.at(i - 2);
+      const std::uint32_t s0 = Rotr(w15, 7) ^ Rotr(w15, 18) ^ (w15 >> 3);
+      const std::uint32_t s1 = Rotr(w2, 17) ^ Rotr(w2, 19) ^ (w2 >> 10);
+      w.at(i) = w.at(i - 16) + s0 + w.at(i - 7) + s1;
+    }
+
+    std::uint32_t a = state_[0];
+    std::uint32_t b = state_[1];
+    std::uint32_t c = state_[2];
+    std::uint32_t d = state_[3];
+    std::uint32_t e = state_[4];
+    std::uint32_t f = state_[5];
+    std::uint32_t g = state_[6];
+    std::uint32_t h = state_[7];
+
+    for (size_t i = 0; i < 64; ++i) {
+      const std::uint32_t s1 = Rotr(e, 6) ^ Rotr(e, 11) ^ Rotr(e, 25);
+      const std::uint32_t ch = (e & f) ^ ((~e) & g);
+      const std::uint32_t temp1 = h + s1 + ch + kRoundConstants.at(i) + w.at(i);
+      const std::uint32_t s0 = Rotr(a, 2) ^ Rotr(a, 13) ^ Rotr(a, 22);
+      const std::uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+      const std::uint32_t temp2 = s0 + maj;
+
+      h = g;
+      g = f;
+      f = e;
+      e = d + temp1;
+      d = c;
+      c = b;
+      b = a;
+      a = temp1 + temp2;
+    }
+
+    state_[0] += a;
+    state_[1] += b;
+    state_[2] += c;
+    state_[3] += d;
+    state_[4] += e;
+    state_[5] += f;
+    state_[6] += g;
+    state_[7] += h;
+  }
+
+  std::array<std::uint32_t, 8> state_ = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+                                         0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+  std::array<char, 64> buffer_{};
+  size_t buffer_len_ = 0;
+  std::uint64_t total_len_ = 0;
+};
+
+std::string DigestToHex(const std::array<unsigned char, 32>& digest) {
+  constexpr std::string_view kHexDigits = "0123456789abcdef";
   std::string hex;
-  hex.reserve(static_cast<size_t>(hash_len) * 2);
-  for (size_t i = 0; i < static_cast<size_t>(hash_len); ++i) {
-    char pair[3];
-    std::snprintf(pair, sizeof(pair), "%02x", *(hash + i));
-    hex += pair;
+  hex.reserve(digest.size() * 2);
+  for (const unsigned char byte : digest) {
+    const unsigned int value = byte;
+    hex.push_back(kHexDigits.at((value >> 4U) & 0x0FU));
+    hex.push_back(kHexDigits.at(value & 0x0FU));
   }
-
   return hex;
 }
 
@@ -145,24 +285,13 @@ Expected<std::string> ComputeFileSha256StreamFallback(const std::filesystem::pat
     return UnexpectedError("failed to open file for SHA-256 calculation: " + path.string());
   }
 
-  const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
-                                                                    &EVP_MD_CTX_free);
-  if (ctx == nullptr) {
-    return UnexpectedError("failed to allocate EVP_MD_CTX");
-  }
-
-  if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
-    return UnexpectedError("EVP_DigestInit_ex failed");
-  }
-
+  Sha256Context ctx;
   char buffer[kStreamBufferSize];
   while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0) {
-    if (EVP_DigestUpdate(ctx.get(), buffer, static_cast<size_t>(file.gcount())) != 1) {
-      return UnexpectedError("EVP_DigestUpdate failed");
-    }
+    ctx.Update(std::string_view(buffer, static_cast<size_t>(file.gcount())));
   }
 
-  return FinalizeHashToHex(ctx.get());
+  return DigestToHex(ctx.Final());
 }
 
 Expected<std::filesystem::path> ResolveTempBaseDir(const std::filesystem::path& base_dir) {
@@ -189,22 +318,12 @@ std::string MakeMkdtempTemplate(const std::filesystem::path& dir, std::string_vi
 }
 
 Expected<std::string> ComputeMappingSha256(const vinput::file::ReadOnlyFileMapping& mapping) {
-  const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),
-                                                                    &EVP_MD_CTX_free);
-  if (ctx == nullptr) {
-    return UnexpectedError("failed to allocate EVP_MD_CTX");
-  }
-
-  if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
-    return UnexpectedError("EVP_DigestInit_ex failed");
-  }
-
+  Sha256Context ctx;
   const auto sv = mapping.StringView();
-  if (!sv.empty() && EVP_DigestUpdate(ctx.get(), sv.data(), sv.size()) != 1) {
-    return UnexpectedError("EVP_DigestUpdate failed");
+  if (!sv.empty()) {
+    ctx.Update(sv);
   }
-
-  return FinalizeHashToHex(ctx.get());
+  return DigestToHex(ctx.Final());
 }
 
 } // namespace
