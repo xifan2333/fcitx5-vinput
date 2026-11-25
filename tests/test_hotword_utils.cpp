@@ -144,11 +144,13 @@ void TestValidHotwordsParsing() {
   TEST_ASSERT(LoadPromptHotwordsCsv(short_hex_file.string(), &short_csv, &error));
   TEST_ASSERT(long_csv == short_csv);
 
-  // True zero with many fractional zeros must stay valid
+  // True zero and representable non-zero subnormals must stay valid
   const auto zero_hex_file = temp_dir->Path() / "zero_hex.txt";
-  TEST_ASSERT(
-      vinput::file::AtomicWriteTextFile(zero_hex_file, "zero:0x0." + std::string(300, '0') + "\n")
-          .has_value());
+  TEST_ASSERT(vinput::file::AtomicWriteTextFile(
+                  zero_hex_file, "zero:0x0." + std::string(300, '0') +
+                                     "\nzeroexp:0x0p-10000\nsubmin:0x1p-149\nsubtie:0x1.000001p-150"
+                                     "\nsublong:0x1000000000000001p-210\n")
+                  .has_value());
   TEST_ASSERT(LoadTransducerHotwords(zero_hex_file.string(), &hotwords, &error));
 
   // Large integer/fractional zero runs compensated by large opposite exponents
@@ -275,12 +277,15 @@ void TestInvalidScores() {
   check_invalid("word:--1");
   check_invalid("word:1e9999");
 
-  // Malformed or overflowing hex floats
+  // Malformed, overflowing, or underflowing hex floats
   check_invalid("word:0x");
   check_invalid("word:0xp+2");
   check_invalid("word:0x1p");
   check_invalid("word:0x1.2.3");
   check_invalid("word:0x1p+9999");
+  check_invalid("word:0x1p-10000");
+  check_invalid("word:0x1p-151");
+  check_invalid("word:0x1p-150");
   check_invalid("word:0x1" + std::string(32, '0') + "." + std::string(269, '0'));
   check_invalid("word:0x1" + std::string(250032, '0') + "p-1000000");
 }

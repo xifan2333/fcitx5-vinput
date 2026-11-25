@@ -101,7 +101,9 @@ struct HexMantissa {
 };
 
 void AccumulateHexDigit(HexMantissa& state, int nibble, bool seen_dot) noexcept {
-  constexpr int kMaxKeptHexDigits = 15;
+  // 13 hex digits = up to 52 bits, fitting losslessly in IEEE 754 double (53-bit significand)
+  // so sticky-bit rounding to float never suffers from intermediate double-rounding.
+  constexpr int kMaxKeptHexDigits = 13;
   if (state.significand == 0) {
     if (nibble == 0) {
       if (seen_dot) {
@@ -183,15 +185,12 @@ std::optional<float> ParseHexFloat(std::string_view digits) noexcept {
   const int msb_bit = 63 - std::countl_zero(mantissa->significand);
   const long long total_exp = static_cast<long long>(exp) + mantissa->exp_offset;
   const long long norm_exp = total_exp + static_cast<long long>(msb_bit);
-  if (norm_exp >= 128) {
+  if (norm_exp >= 128 || norm_exp < -151) {
     return std::nullopt;
-  }
-  if (norm_exp < -151) {
-    return 0.0F;
   }
   const auto result = static_cast<float>(
       std::ldexp(static_cast<double>(mantissa->significand), static_cast<int>(total_exp)));
-  if (!std::isfinite(result)) {
+  if (!std::isfinite(result) || result == 0.0F) {
     return std::nullopt;
   }
   return result;
