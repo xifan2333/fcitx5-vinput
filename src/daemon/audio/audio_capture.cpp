@@ -13,6 +13,7 @@
 #include <pulse/def.h>
 #include <pulse/error.h>
 #include <pulse/mainloop-api.h>
+#include <pulse/rtclock.h>
 #include <pulse/sample.h>
 #include <pulse/stream.h>
 #include <pulse/thread-mainloop.h>
@@ -20,7 +21,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <sys/time.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -95,7 +95,7 @@ void AudioCapture::OnStreamState(pa_stream* stream, void* userdata) noexcept {
 
   self->recording_.store(false, std::memory_order_relaxed);
   try {
-    pa_context* ctx = pa_stream_get_context(stream);
+    const pa_context* ctx = pa_stream_get_context(stream);
     const int err_code = ctx != nullptr ? pa_context_errno(ctx) : 0;
     const char* raw_err = err_code != 0 ? pa_strerror(err_code) : nullptr;
     const std::string err_msg = (raw_err != nullptr && raw_err[0] != '\0')
@@ -109,7 +109,7 @@ void AudioCapture::OnStreamState(pa_stream* stream, void* userdata) noexcept {
     }
     self->has_pending_error_.store(true, std::memory_order_release);
   } catch (...) {
-    // C ABI boundary: never allow exceptions to escape into libpulse.
+    self->has_pending_error_.store(false, std::memory_order_relaxed);
   }
   NotifyEventFd(self->notify_fd_.load(std::memory_order_relaxed));
 }
@@ -223,14 +223,12 @@ void AudioCapture::FailContextConnectLocked(int err_code, std::string* error) {
 
 bool AudioCapture::WaitForContextReadyLocked(pa_mainloop_api* api, int timeout_ms,
                                              std::string* error) {
-  struct timeval tv{};
-  pa_gettimeofday(&tv);
-  pa_timeval_add(&tv, static_cast<pa_usec_t>(std::max(timeout_ms, 50)) * PA_USEC_PER_MSEC);
+  const pa_usec_t deadline_usec =
+      pa_rtclock_now() + (static_cast<pa_usec_t>(std::max(timeout_ms, 50)) * PA_USEC_PER_MSEC);
 
   ConnectTimeoutState timeout_state{.loop = loop_.Get(), .timed_out = false};
-  pa_time_event* raw_timer = (api != nullptr && api->time_new != nullptr)
-                                 ? api->time_new(api, &tv, &OnConnectTimeout, &timeout_state)
-                                 : nullptr;
+  pa_time_event* raw_timer =
+      pa_context_rttime_new(context_.Get(), deadline_usec, &OnConnectTimeout, &timeout_state);
   const vinput::pulse::ScopedTimeEvent timer_guard(api, raw_timer);
 
   while (!timeout_state.timed_out) {

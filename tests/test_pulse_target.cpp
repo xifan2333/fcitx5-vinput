@@ -1,8 +1,8 @@
-#include <algorithm>
+#include <cstdio>
 #include <cstdlib>
-#include <iostream>
 #include <optional>
 #include <pulse/def.h>
+#include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,79 +43,73 @@ private:
   std::optional<std::string> old_value_;
 };
 
-bool Check(bool cond, std::string_view expr, const char* file, int line) {
+void AssertTrue(bool cond, const char* expr, const char* file, int line) {
   if (!cond) {
-    std::cerr << "Test failure: " << expr << " at " << file << ":" << line << '\n';
-    return false;
+    std::fprintf(stderr, "Test failure: %s at %s:%d\n", expr, file, line);
+    std::abort();
   }
-  return true;
 }
 
-#define CHECK(expr)                                                                                \
-  if (!Check((expr), #expr, __FILE__, __LINE__)) {                                                 \
-    return false;                                                                                  \
-  }
+#define TEST_ASSERT(expr) AssertTrue((expr), #expr, __FILE__, __LINE__)
 
-bool TestBasicTargets() {
+void TestBasicTargets() {
   using vinput::pulse::ResolveCaptureTarget;
 
   {
     const auto res = ResolveCaptureTarget("");
-    CHECK(res.source_name.empty());
-    CHECK(!res.is_sink_monitor);
+    TEST_ASSERT(res.source_name.empty());
+    TEST_ASSERT(!res.is_sink_monitor);
   }
 
   {
     const auto res = ResolveCaptureTarget("default");
-    CHECK(res.source_name.empty());
-    CHECK(!res.is_sink_monitor);
+    TEST_ASSERT(res.source_name.empty());
+    TEST_ASSERT(!res.is_sink_monitor);
   }
 
   {
     const auto res = ResolveCaptureTarget("  @DEFAULT_SOURCE@  ");
-    CHECK(res.source_name.empty());
-    CHECK(!res.is_sink_monitor);
+    TEST_ASSERT(res.source_name.empty());
+    TEST_ASSERT(!res.is_sink_monitor);
   }
 
   {
     const auto res = ResolveCaptureTarget("alsa_input.pci-0000_00_1b.0.analog-stereo");
-    CHECK(res.source_name == "alsa_input.pci-0000_00_1b.0.analog-stereo");
-    CHECK(!res.is_sink_monitor);
+    TEST_ASSERT(res.source_name == "alsa_input.pci-0000_00_1b.0.analog-stereo");
+    TEST_ASSERT(!res.is_sink_monitor);
   }
 
   // PulseAudio / pipewire-pulse exposes monitor sources directly as "<sink>.monitor".
   {
     const auto res = ResolveCaptureTarget("probe.monitor");
-    CHECK(res.source_name == "probe.monitor");
-    CHECK(res.is_sink_monitor);
+    TEST_ASSERT(res.source_name == "probe.monitor");
+    TEST_ASSERT(res.is_sink_monitor);
   }
 
   {
     const auto res = ResolveCaptureTarget(
         "alsa_output.usb-Generic_HP_DHE-8008U_20210726905926-00.analog-stereo.monitor");
-    CHECK(res.source_name ==
-          "alsa_output.usb-Generic_HP_DHE-8008U_20210726905926-00.analog-stereo.monitor");
-    CHECK(res.is_sink_monitor);
+    TEST_ASSERT(res.source_name ==
+                "alsa_output.usb-Generic_HP_DHE-8008U_20210726905926-00.analog-stereo.monitor");
+    TEST_ASSERT(res.is_sink_monitor);
   }
 
   {
     const auto res = ResolveCaptureTarget(".monitor");
-    CHECK(res.source_name == ".monitor");
-    CHECK(!res.is_sink_monitor);
+    TEST_ASSERT(res.source_name == ".monitor");
+    TEST_ASSERT(!res.is_sink_monitor);
   }
 
   {
     const auto res = ResolveCaptureTarget("monitor");
-    CHECK(res.source_name == "monitor");
-    CHECK(!res.is_sink_monitor);
+    TEST_ASSERT(res.source_name == "monitor");
+    TEST_ASSERT(!res.is_sink_monitor);
   }
-
-  return true;
 }
 
 // Regression tests for Issue #232 & #701: disambiguate real sources named "*.monitor" from
 // genuine sink monitors via known_devices metadata while keeping the exact Pulse source name.
-bool TestSourceMonitorDisambiguation() {
+void TestSourceMonitorDisambiguation() {
   using vinput::pulse::DeviceInfo;
   using vinput::pulse::ResolveCaptureTarget;
 
@@ -147,30 +141,28 @@ bool TestSourceMonitorDisambiguation() {
   };
 
   const auto res_source = ResolveCaptureTarget("clean.monitor", known_devices);
-  CHECK(res_source.source_name == "clean.monitor");
-  CHECK(!res_source.is_sink_monitor);
+  TEST_ASSERT(res_source.source_name == "clean.monitor");
+  TEST_ASSERT(!res_source.is_sink_monitor);
 
   const auto res_sink = ResolveCaptureTarget("probe.monitor", known_devices);
-  CHECK(res_sink.source_name == "probe.monitor");
-  CHECK(res_sink.is_sink_monitor);
+  TEST_ASSERT(res_sink.source_name == "probe.monitor");
+  TEST_ASSERT(res_sink.is_sink_monitor);
 
   const auto res_mic =
       ResolveCaptureTarget("alsa_input.pci-0000_00_1b.0.analog-stereo", known_devices);
-  CHECK(res_mic.source_name == "alsa_input.pci-0000_00_1b.0.analog-stereo");
-  CHECK(!res_mic.is_sink_monitor);
+  TEST_ASSERT(res_mic.source_name == "alsa_input.pci-0000_00_1b.0.analog-stereo");
+  TEST_ASSERT(!res_mic.is_sink_monitor);
 
   const auto res_custom_mon = ResolveCaptureTarget("loopback_capture_source", known_devices);
-  CHECK(res_custom_mon.source_name == "loopback_capture_source");
-  CHECK(res_custom_mon.is_sink_monitor);
+  TEST_ASSERT(res_custom_mon.source_name == "loopback_capture_source");
+  TEST_ASSERT(res_custom_mon.is_sink_monitor);
 
   const auto res_fallback = ResolveCaptureTarget("offline.monitor", known_devices);
-  CHECK(res_fallback.source_name == "offline.monitor");
-  CHECK(res_fallback.is_sink_monitor);
-
-  return true;
+  TEST_ASSERT(res_fallback.source_name == "offline.monitor");
+  TEST_ASSERT(res_fallback.is_sink_monitor);
 }
 
-bool TestDefaultSourceResolution() {
+void TestDefaultSourceResolution() {
   using vinput::pulse::DeviceInfo;
   using vinput::pulse::ResolveCaptureTarget;
 
@@ -196,67 +188,59 @@ bool TestDefaultSourceResolution() {
   };
 
   const auto live_default = ResolveCaptureTarget("default", known_devices, "alsa_input.usb");
-  CHECK(live_default.source_name == "alsa_input.usb");
-  CHECK(!live_default.is_sink_monitor);
+  TEST_ASSERT(live_default.source_name == "alsa_input.usb");
+  TEST_ASSERT(!live_default.is_sink_monitor);
 
   const auto monitor_default = ResolveCaptureTarget("", known_devices, "alsa_output.usb.monitor");
-  CHECK(monitor_default.source_name == "alsa_output.usb.monitor");
-  CHECK(monitor_default.is_sink_monitor);
+  TEST_ASSERT(monitor_default.source_name == "alsa_output.usb.monitor");
+  TEST_ASSERT(monitor_default.is_sink_monitor);
 
   const auto explicit_override =
       ResolveCaptureTarget("rnnoise_source", known_devices, "alsa_input.usb");
-  CHECK(explicit_override.source_name == "rnnoise_source");
-  CHECK(!explicit_override.is_sink_monitor);
+  TEST_ASSERT(explicit_override.source_name == "rnnoise_source");
+  TEST_ASSERT(!explicit_override.is_sink_monitor);
 
   const auto alias_default = ResolveCaptureTarget("@DEFAULT_SOURCE@", known_devices, "default");
-  CHECK(alias_default.source_name.empty());
-  CHECK(!alias_default.is_sink_monitor);
-
-  return true;
+  TEST_ASSERT(alias_default.source_name.empty());
+  TEST_ASSERT(!alias_default.is_sink_monitor);
 }
 
-bool TestFormatConnectionError() {
+void TestFormatConnectionError() {
   using vinput::pulse::FormatConnectionError;
 
   const std::string refused = FormatConnectionError(PA_ERR_CONNECTIONREFUSED);
-  CHECK(refused.find("pipewire-pulse") != std::string::npos);
+  TEST_ASSERT(refused.find("pipewire-pulse") != std::string::npos);
 
   const std::string generic = FormatConnectionError(0);
-  CHECK(generic.find("connection failed") != std::string::npos);
-  CHECK(generic.find("pipewire-pulse") != std::string::npos);
-
-  return true;
+  TEST_ASSERT(generic.find("connection failed") != std::string::npos);
+  TEST_ASSERT(generic.find("pipewire-pulse") != std::string::npos);
 }
 
 // Regression test for Issue #301 & #596: hermetic RAII lifecycle when sound server is unreachable,
 // plus zero-latency instant default target resolution.
-bool TestHermeticEnumerationAndInstantDefault() {
+void TestHermeticEnumerationAndInstantDefault() {
   const ScopedEnvVar pulse_env("PULSE_SERVER", "unix:/nonexistent/vinput-pulse-test-sock");
 
   const auto snapshot = vinput::pulse::QueryAudioServerSnapshot(80);
-  CHECK(!snapshot.connected);
-  CHECK(snapshot.sources.empty());
+  TEST_ASSERT(!snapshot.connected);
+  TEST_ASSERT(snapshot.sources.empty());
 
   const auto sources = vinput::pulse::EnumerateAudioSources(80);
-  CHECK(sources.empty());
+  TEST_ASSERT(sources.empty());
 
   const auto instant = vinput::pulse::ResolveCaptureTarget("default");
-  CHECK(instant.source_name.empty());
-  CHECK(!instant.is_sink_monitor);
-
-  return true;
+  TEST_ASSERT(instant.source_name.empty());
+  TEST_ASSERT(!instant.is_sink_monitor);
 }
-
-#undef CHECK
 
 } // namespace
 
 int main() {
-  if (!TestBasicTargets() || !TestSourceMonitorDisambiguation() || !TestDefaultSourceResolution() ||
-      !TestFormatConnectionError() || !TestHermeticEnumerationAndInstantDefault()) {
-    return 1;
-  }
-
-  std::cout << "All pulse capture target tests passed!\n";
+  TestBasicTargets();
+  TestSourceMonitorDisambiguation();
+  TestDefaultSourceResolution();
+  TestFormatConnectionError();
+  TestHermeticEnumerationAndInstantDefault();
+  std::printf("All pulse capture target tests passed!\n");
   return 0;
 }

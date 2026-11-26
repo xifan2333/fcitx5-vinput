@@ -10,6 +10,7 @@
 #include <pulse/operation.h>
 #include <pulse/stream.h>
 #include <pulse/thread-mainloop.h>
+#include <utility>
 
 namespace vinput::pulse {
 
@@ -22,12 +23,11 @@ public:
   ScopedMainloop(const ScopedMainloop&) = delete;
   ScopedMainloop& operator=(const ScopedMainloop&) = delete;
 
-  ScopedMainloop(ScopedMainloop&& other) noexcept : loop_(other.loop_) { other.loop_ = nullptr; }
+  ScopedMainloop(ScopedMainloop&& other) noexcept : loop_(std::exchange(other.loop_, nullptr)) {}
   ScopedMainloop& operator=(ScopedMainloop&& other) noexcept {
     if (this != &other) {
       Reset();
-      loop_ = other.loop_;
-      other.loop_ = nullptr;
+      loop_ = std::exchange(other.loop_, nullptr);
     }
     return *this;
   }
@@ -116,12 +116,11 @@ public:
   ScopedOperation(const ScopedOperation&) = delete;
   ScopedOperation& operator=(const ScopedOperation&) = delete;
 
-  ScopedOperation(ScopedOperation&& other) noexcept : op_(other.op_) { other.op_ = nullptr; }
+  ScopedOperation(ScopedOperation&& other) noexcept : op_(std::exchange(other.op_, nullptr)) {}
   ScopedOperation& operator=(ScopedOperation&& other) noexcept {
     if (this != &other) {
       Reset();
-      op_ = other.op_;
-      other.op_ = nullptr;
+      op_ = std::exchange(other.op_, nullptr);
     }
     return *this;
   }
@@ -153,12 +152,11 @@ public:
   ScopedContext(const ScopedContext&) = delete;
   ScopedContext& operator=(const ScopedContext&) = delete;
 
-  ScopedContext(ScopedContext&& other) noexcept : ctx_(other.ctx_) { ctx_ = nullptr; }
+  ScopedContext(ScopedContext&& other) noexcept : ctx_(std::exchange(other.ctx_, nullptr)) {}
   ScopedContext& operator=(ScopedContext&& other) noexcept {
     if (this != &other) {
       Reset();
-      ctx_ = other.ctx_;
-      other.ctx_ = nullptr;
+      ctx_ = std::exchange(other.ctx_, nullptr);
     }
     return *this;
   }
@@ -192,12 +190,11 @@ public:
   ScopedStream(const ScopedStream&) = delete;
   ScopedStream& operator=(const ScopedStream&) = delete;
 
-  ScopedStream(ScopedStream&& other) noexcept : stream_(other.stream_) { other.stream_ = nullptr; }
+  ScopedStream(ScopedStream&& other) noexcept : stream_(std::exchange(other.stream_, nullptr)) {}
   ScopedStream& operator=(ScopedStream&& other) noexcept {
     if (this != &other) {
       Reset();
-      stream_ = other.stream_;
-      other.stream_ = nullptr;
+      stream_ = std::exchange(other.stream_, nullptr);
     }
     return *this;
   }
@@ -287,7 +284,7 @@ public:
 
 private:
   template <typename Predicate>
-  bool StepUntil(Predicate&& done, std::chrono::steady_clock::time_point deadline) {
+  bool StepUntil(const Predicate& done, std::chrono::steady_clock::time_point deadline) {
     while (!done()) {
       const auto now = std::chrono::steady_clock::now();
       if (now >= deadline) {

@@ -20,34 +20,38 @@ public:
 
   AudioInputSource() = default;
   virtual ~AudioInputSource() = default;
+  AudioInputSource(const AudioInputSource&) = default;
+  AudioInputSource& operator=(const AudioInputSource&) = default;
+  AudioInputSource(AudioInputSource&&) = default;
+  AudioInputSource& operator=(AudioInputSource&&) = default;
 
-  AudioInputSource(const AudioInputSource&) = delete;
-  AudioInputSource& operator=(const AudioInputSource&) = delete;
-  AudioInputSource(AudioInputSource&&) = delete;
-  AudioInputSource& operator=(AudioInputSource&&) = delete;
+  // Starts capturing audio from the resolved target source.
+  // When the first audio buffer is received, on_first_buffer (if provided) is invoked.
+  // If an asynchronous stream error occurs, on_error (if provided) is invoked.
+  virtual bool Begin(std::string_view target = {}, FirstBufferCallback on_first_buffer = nullptr,
+                     ErrorCallback on_error = nullptr, std::string* error = nullptr) = 0;
 
-  // Starts capturing audio from `target` (empty or "default" uses system default).
-  // `on_first_buffer` is invoked once (on DrainAvailable) with the steady timestamp (ns)
-  // when the first non-empty PCM buffer arrived.
-  // `on_error` is invoked if the underlying audio stream encounters an error.
-  virtual bool Begin(std::string_view target, FirstBufferCallback on_first_buffer,
-                     ErrorCallback on_error, std::string* error) = 0;
-
-  // Stops active capture and drains any remaining buffered PCM samples.
+  // Stops capture and drains all remaining buffered audio samples.
   virtual std::vector<int16_t> StopAndDrain() = 0;
 
-  // Immediately aborts active capture and discards buffered PCM samples.
+  // Aborts capture immediately, discarding unconsumed audio.
   virtual void Abort() = 0;
 
-  // Drains currently available PCM chunks into `consumer`. Returns sample count drained.
+  // Drains currently available audio samples to the consumer callback.
   virtual std::size_t DrainAvailable(SampleConsumer consumer) = 0;
 
-  // Sets an optional non-blocking eventfd signaled when new samples or stream errors arrive.
-  virtual void SetNotifyFd(int fd) noexcept = 0;
+  // Set an optional eventfd (non-blocking) signaled when audio samples are enqueued.
+  // Pass -1 to disable.
+  virtual void SetNotifyFd(int /*fd*/) noexcept {}
 
+  // True if currently recording.
   [[nodiscard]] virtual bool IsRecording() const = 0;
+
+  // Real-time drop statistics when queue overflows.
   [[nodiscard]] virtual std::size_t DroppedSamples() const noexcept = 0;
   virtual void ResetDropCounters() noexcept = 0;
+
+  // First buffer latency in milliseconds, if recorded.
   [[nodiscard]] virtual std::optional<long> FirstBufferLatencyMs() const = 0;
 };
 

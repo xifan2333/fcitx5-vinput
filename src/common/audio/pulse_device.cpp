@@ -43,7 +43,9 @@ void OnServerInfo(pa_context* /*ctx*/, const pa_server_info* info, void* userdat
       snapshot->default_sink_name = info->default_sink_name;
     }
   } catch (...) {
-    // C ABI boundary: never allow exceptions to escape into libpulse.
+    auto* snapshot = static_cast<AudioServerSnapshot*>(userdata);
+    snapshot->default_source_name.clear();
+    snapshot->default_sink_name.clear();
   }
 }
 
@@ -52,8 +54,8 @@ void OnSourceInfo(pa_context* /*ctx*/, const pa_source_info* info, int eol,
   if (eol != 0 || info == nullptr || userdata == nullptr || info->name == nullptr) {
     return;
   }
+  auto* devices = static_cast<std::vector<DeviceInfo>*>(userdata);
   try {
-    auto* devices = static_cast<std::vector<DeviceInfo>*>(userdata);
     const std::string name(info->name);
     if (name.empty()) {
       return;
@@ -68,7 +70,7 @@ void OnSourceInfo(pa_context* /*ctx*/, const pa_source_info* info, int eol,
         .is_sink_monitor = (info->monitor_of_sink != PA_INVALID_INDEX),
     });
   } catch (...) {
-    // C ABI boundary: never allow exceptions to escape into libpulse.
+    devices->clear();
   }
 }
 

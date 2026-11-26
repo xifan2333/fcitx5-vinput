@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <optional>
 #include <span>
+#include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <sys/eventfd.h>
