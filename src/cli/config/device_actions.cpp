@@ -1,5 +1,6 @@
 #include "cli/config/device_actions.h"
 
+#include <algorithm>
 #include <fmt/printf.h>
 #include <glaze/json/json_t.hpp>
 #include <string>
@@ -20,7 +21,7 @@ int RunDeviceConfigList(Formatter& fmt, const CliContext& ctx) {
   const CoreConfig config = LoadCoreConfig();
   const std::string active_device = config.global.captureDevice;
 
-  auto devices = vinput::pulse::EnumerateAudioSources();
+  const auto devices = vinput::pulse::EnumerateAudioSources();
   if (devices.empty()) {
     fmt.PrintInfo(
         _("No audio capture devices found, or PulseAudio / pipewire-pulse is not running."));
@@ -67,14 +68,9 @@ int RunDeviceConfigUse(const std::string& name, Formatter& fmt, const CliContext
 
   const std::string target_to_save(vinput::str::Trim(name));
   if (target_to_save != "default") {
-    auto devices = vinput::pulse::EnumerateAudioSources();
-    bool found = false;
-    for (const auto& d : devices) {
-      if (d.name == target_to_save) {
-        found = true;
-        break;
-      }
-    }
+    const auto devices = vinput::pulse::EnumerateAudioSources();
+    const bool found = std::ranges::any_of(
+        devices, [&target_to_save](const auto& d) { return d.name == target_to_save; });
     if (!found) {
       fmt.PrintWarning(
           ::fmt::sprintf(_("Device '%s' not found in audio server. Setting it anyway."), name));

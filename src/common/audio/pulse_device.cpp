@@ -30,37 +30,46 @@ bool HasMonitorSuffix(std::string_view name) {
   return name.size() > kMonitorSuffix.size() && name.ends_with(kMonitorSuffix);
 }
 
-void OnServerInfo(pa_context* /*ctx*/, const pa_server_info* info, void* userdata) {
+void OnServerInfo(pa_context* /*ctx*/, const pa_server_info* info, void* userdata) noexcept {
   if (info == nullptr || userdata == nullptr) {
     return;
   }
-  auto* snapshot = static_cast<AudioServerSnapshot*>(userdata);
-  if (info->default_source_name != nullptr) {
-    snapshot->default_source_name = info->default_source_name;
-  }
-  if (info->default_sink_name != nullptr) {
-    snapshot->default_sink_name = info->default_sink_name;
+  try {
+    auto* snapshot = static_cast<AudioServerSnapshot*>(userdata);
+    if (info->default_source_name != nullptr) {
+      snapshot->default_source_name = info->default_source_name;
+    }
+    if (info->default_sink_name != nullptr) {
+      snapshot->default_sink_name = info->default_sink_name;
+    }
+  } catch (...) {
+    // C ABI boundary: never allow exceptions to escape into libpulse.
   }
 }
 
-void OnSourceInfo(pa_context* /*ctx*/, const pa_source_info* info, int eol, void* userdata) {
+void OnSourceInfo(pa_context* /*ctx*/, const pa_source_info* info, int eol,
+                  void* userdata) noexcept {
   if (eol != 0 || info == nullptr || userdata == nullptr || info->name == nullptr) {
     return;
   }
-  auto* devices = static_cast<std::vector<DeviceInfo>*>(userdata);
-  const std::string name(info->name);
-  if (name.empty()) {
-    return;
+  try {
+    auto* devices = static_cast<std::vector<DeviceInfo>*>(userdata);
+    const std::string name(info->name);
+    if (name.empty()) {
+      return;
+    }
+    const std::string desc = (info->description != nullptr && info->description[0] != '\0')
+                                 ? std::string(info->description)
+                                 : name;
+    devices->push_back(DeviceInfo{
+        .id = info->index,
+        .name = name,
+        .description = desc,
+        .is_sink_monitor = (info->monitor_of_sink != PA_INVALID_INDEX),
+    });
+  } catch (...) {
+    // C ABI boundary: never allow exceptions to escape into libpulse.
   }
-  const std::string desc = (info->description != nullptr && info->description[0] != '\0')
-                               ? std::string(info->description)
-                               : name;
-  devices->push_back(DeviceInfo{
-      .id = info->index,
-      .name = name,
-      .description = desc,
-      .is_sink_monitor = (info->monitor_of_sink != PA_INVALID_INDEX),
-  });
 }
 
 } // namespace
