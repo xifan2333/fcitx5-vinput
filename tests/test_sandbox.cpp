@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -11,9 +10,9 @@
 
 #include "common/utils/sandbox.h"
 
-namespace {
 namespace fs = std::filesystem;
 
+namespace {
 void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "Assertion failed: %s at %s:%d\n", message, file, line);
@@ -26,9 +25,7 @@ void AssertTrue(bool condition, const char* message, const char* file, int line)
 struct TempDirGuard {
   fs::path path;
   TempDirGuard() {
-    path = fs::temp_directory_path() /
-           ("vinput_test_sandbox_" + std::to_string(::getpid()) + "_" +
-            std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+    path = fs::temp_directory_path() / ("vinput_test_sandbox_" + std::to_string(::getpid()));
     std::error_code ec;
     fs::create_directories(path, ec);
   }
@@ -69,14 +66,40 @@ void TestDetectSandbox() {
   TEST_ASSERT(DetectSandbox(nullptr, nullptr, dummy_info.c_str()));
 }
 
+void TestResolvePulseEndpoint() {
+  using vinput::sandbox::detail::ResolvePulseEndpoint;
+
+  const auto default_ep = ResolvePulseEndpoint(nullptr, "/run/user/1000", 1000);
+  TEST_ASSERT(default_ep.socket_path == fs::path("/run/user/1000/pulse/native"));
+  TEST_ASSERT(!default_ep.tcp_configured);
+
+  const auto fallback_ep = ResolvePulseEndpoint(nullptr, "", 1001);
+  TEST_ASSERT(fallback_ep.socket_path == fs::path("/run/user/1001/pulse/native"));
+  TEST_ASSERT(!fallback_ep.tcp_configured);
+
+  const auto unix_ep =
+      ResolvePulseEndpoint("unix:/tmp/custom-pulse/native", "/run/user/1000", 1000);
+  TEST_ASSERT(unix_ep.socket_path == fs::path("/tmp/custom-pulse/native"));
+  TEST_ASSERT(!unix_ep.tcp_configured);
+
+  const auto cookie_ep = ResolvePulseEndpoint(
+      "{deadbeef}unix:/run/user/1000/pulse/native tcp:127.0.0.1:4713", "/run/user/1000", 1000);
+  TEST_ASSERT(cookie_ep.socket_path == fs::path("/run/user/1000/pulse/native"));
+  TEST_ASSERT(!cookie_ep.tcp_configured);
+
+  const auto tcp_ep = ResolvePulseEndpoint("tcp:127.0.0.1:4713", "/run/user/1000", 1000);
+  TEST_ASSERT(tcp_ep.socket_path.empty());
+  TEST_ASSERT(tcp_ep.tcp_configured);
+}
+
 void TestProbeMissingPermissions() {
   using vinput::sandbox::detail::ProbeMissingPermissions;
   using vinput::sandbox::detail::ProbeOptions;
 
   const TempDirGuard temp;
-  const fs::path pw_socket = temp.path / "pipewire-0";
+  const fs::path pulse_socket = temp.path / "native";
   {
-    std::ofstream ofs(pw_socket);
+    std::ofstream ofs(pulse_socket);
     ofs << "socket";
   }
   const fs::path systemd_dir = temp.path / "systemd" / "user";
@@ -89,55 +112,64 @@ void TestProbeMissingPermissions() {
   // Case 1: All valid and present
   {
     ProbeOptions opts;
-    opts.pipewire_socket_path = pw_socket;
+    opts.pulse_socket_path = pulse_socket;
     opts.systemd_dir = systemd_dir;
     opts.cache_dir = cache_dir;
-    auto missing = ProbeMissingPermissions(opts);
+    const auto missing = ProbeMissingPermissions(opts);
     TEST_ASSERT(missing.empty());
   }
 
-  // Case 2: Missing PipeWire socket
+  // Case 2: Missing PulseAudio socket
   {
     ProbeOptions opts;
-    opts.pipewire_socket_path = temp.path / "nonexistent-socket";
+    opts.pulse_socket_path = temp.path / "nonexistent-socket";
     opts.systemd_dir = systemd_dir;
     opts.cache_dir = cache_dir;
-    auto missing = ProbeMissingPermissions(opts);
+    const auto missing = ProbeMissingPermissions(opts);
     TEST_ASSERT(missing.size() == 1);
-    TEST_ASSERT(missing[0] == "pipewire");
+    TEST_ASSERT(missing[0] == "pulseaudio");
   }
 
-  // Case 3: Empty PipeWire socket path
+  // Case 3: Empty PulseAudio socket path without TCP configured
   {
     ProbeOptions opts;
-    opts.pipewire_socket_path = "";
+    opts.pulse_socket_path = "";
     opts.systemd_dir = systemd_dir;
     opts.cache_dir = cache_dir;
-    auto missing = ProbeMissingPermissions(opts);
+    const auto missing = ProbeMissingPermissions(opts);
     TEST_ASSERT(missing.size() == 1);
-    TEST_ASSERT(missing[0] == "pipewire");
+    TEST_ASSERT(missing[0] == "pulseaudio");
   }
 
-  // Case 4: Parent directory exists and writable for systemd and cache
+  // Case 4: TCP PulseAudio endpoint skips local socket requirement
   {
     ProbeOptions opts;
-    opts.pipewire_socket_path = pw_socket;
-    // Sub-sub directory that does not exist, but parent exists
+    opts.pulse_tcp_configured = true;
+    opts.systemd_dir = systemd_dir;
+    opts.cache_dir = cache_dir;
+    const auto missing = ProbeMissingPermissions(opts);
+    TEST_ASSERT(missing.empty());
+  }
+
+  // Case 5: Parent directory exists and writable for systemd and cache
+  {
+    ProbeOptions opts;
+    opts.pulse_socket_path = pulse_socket;
     opts.systemd_dir = temp.path / "systemd" / "nonexistent_sub";
     opts.cache_dir = temp.path / "cache" / "nonexistent_sub";
-    auto missing = ProbeMissingPermissions(opts);
+    const auto missing = ProbeMissingPermissions(opts);
     TEST_ASSERT(missing.empty());
   }
 
-  // Case 5: All missing / nonexistent roots
+  // Case 6: All missing / nonexistent roots
   {
     ProbeOptions opts;
-    opts.pipewire_socket_path = "/nonexistent/path/pw-0";
+    opts.pulse_socket_path = "/nonexistent/path/pulse/native";
     opts.systemd_dir = "/nonexistent/path/systemd/user";
     opts.cache_dir = "/nonexistent/path/cache/vinput";
-    auto missing = ProbeMissingPermissions(opts);
+    const auto missing = ProbeMissingPermissions(opts);
     TEST_ASSERT(missing.size() == 3);
-    TEST_ASSERT(std::ranges::find(missing, "pipewire") != missing.end());
+    TEST_ASSERT(std::ranges::find(missing, "pulseaudio") != missing.end());
     TEST_ASSERT(std::ranges::find(missing, "xdg-config/systemd") != missing.end());
     TEST_ASSERT(std::ranges::find(missing, "xdg-cache") != missing.end());
   }
@@ -151,10 +183,9 @@ void TestFormatOverrideCommands() {
 
   // Single permission
   {
-    const std::string cmds = FormatOverrideCommands({"pipewire"});
-    TEST_ASSERT(
-        cmds.find("flatpak override --user --filesystem=xdg-run/pipewire-0 org.fcitx.Fcitx5") !=
-        std::string::npos);
+    const std::string cmds = FormatOverrideCommands({"pulseaudio"});
+    TEST_ASSERT(cmds.find("flatpak override --user --socket=pulseaudio org.fcitx.Fcitx5") !=
+                std::string::npos);
     TEST_ASSERT(cmds.find("flatpak kill org.fcitx.Fcitx5") != std::string::npos);
     TEST_ASSERT(cmds.find("systemd") == std::string::npos);
   }
@@ -162,10 +193,9 @@ void TestFormatOverrideCommands() {
   // All three permissions
   {
     const std::string cmds =
-        FormatOverrideCommands({"pipewire", "xdg-config/systemd", "xdg-cache"});
-    TEST_ASSERT(
-        cmds.find("flatpak override --user --filesystem=xdg-run/pipewire-0 org.fcitx.Fcitx5") !=
-        std::string::npos);
+        FormatOverrideCommands({"pulseaudio", "xdg-config/systemd", "xdg-cache"});
+    TEST_ASSERT(cmds.find("flatpak override --user --socket=pulseaudio org.fcitx.Fcitx5") !=
+                std::string::npos);
     TEST_ASSERT(
         cmds.find(
             "flatpak override --user --filesystem=xdg-config/systemd:create org.fcitx.Fcitx5") !=
@@ -177,12 +207,10 @@ void TestFormatOverrideCommands() {
 }
 
 void TestGeneralSandboxApis() {
-  // IsInSandbox() should return a consistent boolean
   const bool in_sb1 = vinput::sandbox::IsInSandbox();
   const bool in_sb2 = vinput::sandbox::IsInSandbox();
   TEST_ASSERT(in_sb1 == in_sb2);
 
-  // MissingSandboxPermissions() should be consistent
   const auto missing1 = vinput::sandbox::MissingSandboxPermissions();
   const auto missing2 = vinput::sandbox::MissingSandboxPermissions();
   TEST_ASSERT(missing1 == missing2);
@@ -191,7 +219,6 @@ void TestGeneralSandboxApis() {
     TEST_ASSERT(missing1.empty());
   }
 
-  // WrapHostCommand
   const std::vector<std::string> args = {"echo", "hello"};
   const auto wrapped = vinput::sandbox::WrapHostCommand(args);
   if (!in_sb1) {
@@ -202,11 +229,9 @@ void TestGeneralSandboxApis() {
     TEST_ASSERT(wrapped[1] == "--host");
   }
 
-  // DaemonLogFilter
   const auto log_filter = vinput::sandbox::DaemonLogFilter();
   TEST_ASSERT(!log_filter.empty());
 
-  // RewriteServiceUnit
   const std::string unit = "ExecStart=/usr/bin/daemon\nRestart=always\n";
   const auto rewritten = vinput::sandbox::RewriteServiceUnit(unit);
   if (!in_sb1) {
@@ -217,6 +242,7 @@ void TestGeneralSandboxApis() {
 
 int main() {
   TestDetectSandbox();
+  TestResolvePulseEndpoint();
   TestProbeMissingPermissions();
   TestFormatOverrideCommands();
   TestGeneralSandboxApis();
