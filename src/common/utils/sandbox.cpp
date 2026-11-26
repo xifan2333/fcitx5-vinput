@@ -1,5 +1,6 @@
 #include "common/utils/sandbox.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iterator>
@@ -11,6 +12,7 @@
 
 #include "common/utils/file_utils.h"
 #include "common/utils/path_utils.h"
+#include "common/utils/string_utils.h"
 
 namespace vinput::sandbox {
 
@@ -18,6 +20,28 @@ namespace {
 
 constexpr const char* kSandboxInfoPath = "/.flatpak-info";
 constexpr const char* kFlatpakAppId = "org.fcitx.Fcitx5";
+
+std::filesystem::path DefaultPulseSocketPath(const char* xdg_runtime_dir, uint32_t uid) {
+  if (xdg_runtime_dir != nullptr && *xdg_runtime_dir != '\0') {
+    return std::filesystem::path(xdg_runtime_dir) / "pulse" / "native";
+  }
+  return std::filesystem::path("/run/user") / std::to_string(uid) / "pulse" / "native";
+}
+
+std::string_view ExtractFirstServerEntry(std::string_view raw) {
+  std::string_view server = vinput::str::Trim(raw);
+  const std::size_t space_pos = server.find_first_of(" \t");
+  if (space_pos != std::string_view::npos) {
+    server = server.substr(0, space_pos);
+  }
+  if (server.starts_with('{')) {
+    const std::size_t close_brace = server.find('}');
+    if (close_brace != std::string_view::npos) {
+      server.remove_prefix(close_brace + 1);
+    }
+  }
+  return server;
+}
 
 } // namespace
 
@@ -37,12 +61,38 @@ bool DetectSandbox(const char* flatpak_id, const char* container, const char* in
   return false;
 }
 
+PulseEndpoint ResolvePulseEndpoint(const char* pulse_server, const char* xdg_runtime_dir,
+                                   uint32_t uid) {
+  if (pulse_server == nullptr) {
+    return PulseEndpoint{
+        .socket_path = DefaultPulseSocketPath(xdg_runtime_dir, uid),
+        .tcp_configured = false,
+    };
+  }
+
+  std::string_view server = ExtractFirstServerEntry(pulse_server);
+  if (server.starts_with("tcp:") || server.starts_with("tcp4:") || server.starts_with("tcp6:")) {
+    return PulseEndpoint{.socket_path = {}, .tcp_configured = true};
+  }
+  if (server.starts_with("unix:")) {
+    server.remove_prefix(5);
+  }
+  if (!server.empty() && server.front() == '/') {
+    return PulseEndpoint{.socket_path = std::filesystem::path(server), .tcp_configured = false};
+  }
+  return PulseEndpoint{
+      .socket_path = DefaultPulseSocketPath(xdg_runtime_dir, uid),
+      .tcp_configured = false,
+  };
+}
+
 std::vector<std::string> ProbeMissingPermissions(const ProbeOptions& options) {
   std::vector<std::string> missing;
 
-  if (options.pipewire_socket_path.empty() ||
-      ::access(options.pipewire_socket_path.c_str(), R_OK | W_OK) != 0) {
-    missing.emplace_back("pipewire");
+  if (!options.pulse_tcp_configured &&
+      (options.pulse_socket_path.empty() ||
+       ::access(options.pulse_socket_path.c_str(), R_OK | W_OK) != 0)) {
+    missing.emplace_back("pulseaudio");
   }
 
   if (!vinput::file::IsDirectoryWritable(options.systemd_dir)) {
@@ -87,14 +137,11 @@ std::vector<std::string> MissingSandboxPermissions() {
   }
 
   static const std::vector<std::string> missing = []() {
+    const auto endpoint = detail::ResolvePulseEndpoint(std::getenv("PULSE_SERVER"),
+                                                       std::getenv("XDG_RUNTIME_DIR"), ::getuid());
     detail::ProbeOptions options;
-    const char* runtime_dir = std::getenv("XDG_RUNTIME_DIR");
-    if (runtime_dir != nullptr && *runtime_dir != '\0') {
-      options.pipewire_socket_path = std::filesystem::path(runtime_dir) / "pipewire-0";
-    } else {
-      options.pipewire_socket_path =
-          std::filesystem::path("/run/user") / std::to_string(::getuid()) / "pipewire-0";
-    }
+    options.pulse_socket_path = endpoint.socket_path;
+    options.pulse_tcp_configured = endpoint.tcp_configured;
     options.systemd_dir = vinput::path::UserSystemdUnitDir();
     options.cache_dir = vinput::path::VinputCacheDir();
     return detail::ProbeMissingPermissions(options);
@@ -109,8 +156,8 @@ std::string FormatOverrideCommands(const std::vector<std::string>& missing_permi
   }
   std::string result;
   for (const auto& perm : missing_permissions) {
-    if (perm == "pipewire") {
-      result += "flatpak override --user --filesystem=xdg-run/pipewire-0 ";
+    if (perm == "pulseaudio") {
+      result += "flatpak override --user --socket=pulseaudio ";
       result += kFlatpakAppId;
       result += '\n';
     } else if (perm == "xdg-config/systemd") {

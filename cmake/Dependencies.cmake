@@ -13,5 +13,8 @@ find_package(CURL REQUIRED)
 # Import systemd / sd-bus via pkg-config
 pkg_check_modules(SDBUS REQUIRED IMPORTED_TARGET libsystemd)
 
-# Import PipeWire 0.3 via pkg-config
+# Import PulseAudio client library via pkg-config
+pkg_check_modules(PULSEAUDIO REQUIRED IMPORTED_TARGET libpulse)
+
+# Legacy PipeWire target kept until daemon_core migration completes
 pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)

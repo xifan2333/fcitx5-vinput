@@ -71,8 +71,8 @@ msgid "CHANGE"
 msgstr "变更内容"
 
 #: src/cli/config/device_actions.cpp:19
-msgid "No audio capture devices found or PipeWire is not running."
-msgstr "未找到音频输入设备或 PipeWire 未运行。"
+msgid "No audio capture devices found, or PulseAudio / pipewire-pulse is not running."
+msgstr "未找到音频输入设备，或 PulseAudio / pipewire-pulse 未运行。"
 
 #: src/cli/config/device_actions.cpp:35
 msgid "NAME"
@@ -100,8 +100,8 @@ msgstr "系统默认"
 
 #: src/cli/config/device_actions.cpp:70
 #, c-format
-msgid "Device '%s' not found in PipeWire. Setting it anyway."
-msgstr "在 PipeWire 中未找到设备 '%s'，仍将继续设置。"
+msgid "Device '%s' not found in audio server. Setting it anyway."
+msgstr "在音频服务中未找到设备 '%s'，仍将继续设置。"
 
 #: src/cli/config/device_actions.cpp:80
 #, c-format
