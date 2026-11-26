@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
-#include <pulse/def.h> // NOLINT(misc-include-cleaner): PA_ERR_CONNECTIONREFUSED self-macro
+#include <pulse/def.h>
 #include <stdlib.h>
 #include <string>
 #include <string_view>
@@ -208,7 +208,7 @@ void TestDefaultSourceResolution() {
 void TestFormatConnectionError() {
   using vinput::pulse::FormatConnectionError;
 
-  const std::string refused = FormatConnectionError(PA_ERR_CONNECTIONREFUSED);
+  const std::string refused = FormatConnectionError(pa_error_code::PA_ERR_CONNECTIONREFUSED);
   TEST_ASSERT(refused.find("pipewire-pulse") != std::string::npos);
 
   const std::string generic = FormatConnectionError(0);
