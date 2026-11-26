@@ -51,7 +51,6 @@ public:
 
   // Compatibility and timing inspection APIs
   bool BeginRecording(std::string* error = nullptr, StartTiming* timing = nullptr);
-  std::vector<int16_t> StopAndGetBuffer();
   void EndRecording();
   void SetTargetObject(std::string target_object);
 
