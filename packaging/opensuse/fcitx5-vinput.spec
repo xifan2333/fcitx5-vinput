@@ -39,15 +39,14 @@ BuildRequires:  qt6-tools-devel
 BuildRequires:  libcurl-devel
 BuildRequires:  libarchive-devel
 BuildRequires:  libopenblas_pthreads-devel
-BuildRequires:  pipewire-devel
+BuildRequires:  libpulse-devel
 BuildRequires:  systemd-devel
 BuildRequires:  lapack-devel
 BuildRequires:  openblas-common-devel
 
 Requires:       fcitx5
-Requires:       pipewire
 Requires:       systemd
-Recommends:     wireplumber
+Recommends:     (pipewire-pulseaudio or pulseaudio)
 Recommends:     libopus0
 
 %description

@@ -47,7 +47,7 @@ readonly ubuntu_apt_packages=(
   libopenblas-dev
   libcurl4-openssl-dev
   libarchive-dev
-  libpipewire-0.3-dev
+  libpulse-dev
   libsystemd-dev
   libfcitx5core-dev
   libfcitx5config-dev
@@ -207,7 +207,7 @@ debian12)
     libopenblas-dev \
     libcurl4-openssl-dev \
     libarchive-dev \
-    libpipewire-0.3-dev \
+    libpulse-dev \
     libsystemd-dev \
     libfcitx5core-dev \
     libfcitx5config-dev \
@@ -261,7 +261,7 @@ debian11)
     libopenblas-dev \
     libcurl4-openssl-dev \
     libarchive-dev \
-    libpipewire-0.3-dev \
+    libpulse-dev \
     libsystemd-dev \
     libfcitx5core-dev \
     libfcitx5config-dev \
@@ -291,7 +291,7 @@ fedora43)
     zstd \
     libcurl-devel \
     libarchive-devel \
-    pipewire-devel \
+    pulseaudio-libs-devel \
     systemd-devel \
     fcitx5-devel
   install_qt_dnf
@@ -316,8 +316,8 @@ opensuse-leap)
     ninja \
     openblas-common-devel \
     patch \
+    libpulse-devel \
     pkg-config \
-    pipewire-devel \
     python3 \
     rpm-build \
     sccache \
@@ -334,9 +334,9 @@ archlinux)
     fcitx5 \
     git \
     libarchive \
+    libpulse \
     mold \
     ninja \
-    pipewire \
     pkgconf \
     sccache \
     systemd

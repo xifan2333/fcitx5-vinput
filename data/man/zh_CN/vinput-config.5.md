@@ -30,10 +30,10 @@ vinput-config - fcitx5-vinput 配置文件格式与选项说明
 ```
 
 **capture_device** (*字符串*)
-:   PipeWire 音频采集节点名称，或 `"default"` 使用系统默认输入设备。
+:   PulseAudio / `pipewire-pulse` 音频输入源名称，或 `"default"` 使用系统默认输入设备。
 
 **duck_output_while_recording** (*布尔值*)
-:   是否在录音时通过 WirePlumber 自动降低系统扬声器音量。
+:   是否在录音时通过 `libpulse` 自动降低系统默认输出设备音量。
 
 **duck_output_volume** (*浮点数*, `0.0` - `1.0`)
 :   降低音量时的目标音量比例（`0.25` 表示降至原音量的 25%）。

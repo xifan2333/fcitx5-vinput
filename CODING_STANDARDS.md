@@ -29,7 +29,7 @@ Never introduce an interface, abstract base class, or virtual methods solely to 
 - **Hermetic I/O Testing**: For network or IPC interactions, use lightweight in-process loopback servers (such as ephemeral localhost socket listeners) or temporary sandboxed directories rather than mocking transport interfaces in production code.
 
 ### Boundary Discipline: Guard the edges, trust the internals
-Concentrate defensive checks, type validation, and input sanitization strictly at system boundaries (CLI flags, D-Bus handlers, JSON decoders, PipeWire stream initialization). Once validated and translated into domain types, internal pure functions trust their inputs without redundant defensive null-checks or range guards.
+Concentrate defensive checks, type validation, and input sanitization strictly at system boundaries (CLI flags, D-Bus handlers, JSON decoders, PulseAudio stream initialization). Once validated and translated into domain types, internal pure functions trust their inputs without redundant defensive null-checks or range guards.
 
 - **The Cost**: Scattered defensive checks create dead branches, mask root causes, and clutter tests with unreachable permutations.
 
@@ -38,21 +38,21 @@ Concentrate defensive checks, type validation, and input sanitization strictly a
 ## 2. Real-Time Audio & Thread Safety
 
 ### The audio callback is lock-free and allocation-free
-The PipeWire audio processing callback (`processCallback`) runs on a real-time (RT) thread. Inside this callback, never allocate memory and never acquire blocking locks. Transfer captured PCM frames exclusively via lock-free single-producer single-consumer queues (`readerwriterqueue`).
+The `libpulse` stream read callback (`OnStreamRead`) runs on the audio I/O loop thread. Inside this callback, never allocate memory and never acquire blocking locks. Transfer captured PCM frames exclusively via lock-free single-producer single-consumer queues (`readerwriterqueue`).
 
-- **The Cost**: Allocations or lock contention in the RT callback cause priority inversion, buffer dropouts (XRuns), audio crackling, and desktop UI stutter.
+- **The Cost**: Allocations or lock contention in the audio callback cause priority inversion, buffer dropouts (XRuns), audio crackling, and desktop UI stutter.
 
-### Return SPA buffers immediately
-When reading PipeWire SPA buffers, copy the raw PCM payload into the lock-free ring buffer and release the SPA buffer immediately. Never perform format conversion, VAD calculation, or ASR inference inside the PipeWire thread.
+### Drop stream fragments immediately
+When reading `pa_stream` fragments via `pa_stream_peek`, copy the raw PCM payload (or zero-fill holes) into the lock-free ring buffer and call `pa_stream_drop` immediately via an RAII scope guard. Never perform format conversion, VAD calculation, or ASR inference inside the audio loop thread.
 
-- **The Cost**: Holding SPA buffers stalls the PipeWire graph, leading to stream termination and daemon audio starvation.
+- **The Cost**: Retaining stream fragments stalls the audio transport buffer, leading to stream overruns and daemon audio starvation.
 
 ---
 
 ## 3. C-ABI Boundaries & Resource Lifetimes
 
 ### Exclusive resource ownership via RAII
-Manual resource deallocation, raw owning pointers, and unmanaged file descriptors are prohibited. Encapsulate all POSIX and C API resources (PipeWire streams, sd-bus messages, libarchive handles) in custom RAII wrappers immediately at the system boundary.
+Manual resource deallocation, raw owning pointers, and unmanaged file descriptors are prohibited. Encapsulate all POSIX and C API resources (`libpulse` contexts/streams/mainloops, sd-bus messages, libarchive handles) in custom RAII wrappers immediately at the system boundary.
 
 - **The Cost**: Resource leaks, double-free vulnerabilities, and file descriptor exhaustion on error exit paths.
 
@@ -86,7 +86,7 @@ Prefer `switch` over cascading `else if` for `enum` / `enum class` types to guar
 Precondition checks, boundary validations, and error paths must exit early (`return`, `continue`, `break`). Keep the primary business flow at root indentation (0–1 levels). Wrapping extensive logic in `if (valid) { ... }` is prohibited (C++ Core Guidelines ES.45).
 
 ### Deferred cleanup via RAII Scope Guard
-When a function requires deferred cleanup or resource return (e.g. `pw_stream_queue_buffer`, unlocking, clearing pending states), manage the cleanup via RAII Scope Guard upon entry. Never nest business logic inside multi-level `if` blocks merely to reach a trailing cleanup statement.
+When a function requires deferred cleanup or resource return (e.g. `pa_stream_drop`, unlocking, clearing pending states), manage the cleanup via RAII Scope Guard upon entry. Never nest business logic inside multi-level `if` blocks merely to reach a trailing cleanup statement.
 
 ### Table-Driven Dispatch for homogeneous rules
 For homogeneous token/prefix matching or string rule dispatch ($N \ge 3$), replace procedural `if (starts_with(...))` cascades with `constexpr` lookup tables (`std::array` + search algorithm) to separate code from data and eliminate subtle branch-order hazards.
@@ -99,7 +99,7 @@ Strive for <= 2 levels of logical nesting inside compound statements. Deep pyram
 ## 6. Dependencies & 3rdparty Governance
 
 ### Two-Tier Binary Boundary
-- **Tier 1 (Host System Shared Libraries)**: `fcitx5`, `pipewire`, `libsystemd`, `qt6`, `libcurl`, `libarchive`, `gettext` must be resolved via host package managers (`find_package REQUIRED` / `pkg_check_modules`).
+- **Tier 1 (Host System Shared Libraries)**: `fcitx5`, `libpulse`, `libsystemd`, `qt6`, `libcurl`, `libarchive`, `gettext` must be resolved via host package managers (`find_package REQUIRED` / `pkg_check_modules`).
 - **Tier 2 (Header-Only C++ Libraries)**: Pure C++ dependencies (`glaze`, `fast_float`, `spdlog`, `fmt`, `CLI11`, `mio`, `readerwriterqueue`, `subprocess`, `unicodelib`) must be vendored under `3rdparty/` as CMake `SYSTEM INTERFACE` targets. Build-time network downloading (`FetchContent`) is prohibited.
 
 ### Pristine 3rdparty

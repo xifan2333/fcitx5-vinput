@@ -8,7 +8,7 @@ Full documentation is available at the [project site](https://fcitx5-vinput.gith
 
 ## Build from Source
 
-**Dependencies:** cmake, fcitx5, pipewire, Qt6
+**Dependencies:** cmake, fcitx5, libpulse, Qt6
 
 ```bash
 sudo bash scripts/build-sherpa-onnx.sh

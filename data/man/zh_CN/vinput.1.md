@@ -121,7 +121,7 @@ vinput - fcitx5-vinput 命令行控制与管理工具
 
 ## 音频设备管理
 **device list**
-:   列出系统中可用的 PipeWire 录音设备。
+:   列出系统中可用的 PulseAudio / `pipewire-pulse` 录音设备。
 
 **device use** *ID*
 :   设置当前用于录音的输入设备（使用设备节点名称或 *default*）。

@@ -27,7 +27,7 @@ fcitx5-vinput - Architecture overview and concepts of voice input for Fcitx5
 +-------------------------------------------------------------+
 |                       vinput-daemon                         |
 |  +--------------------+  +-------------------------------+  |
-|  | PipeWire Audio     |  | VAD (Voice Activity Detection)|  |
+|  | PulseAudio Capture |  | VAD (Voice Activity Detection)|  |
 |  +--------------------+  +-------------------------------+  |
 |                                                             |
 |  +--------------------+  +-------------------------------+  |
@@ -60,7 +60,7 @@ Keybindings can be customized in Fcitx5 Configuration → Addons → Vinput:
 
 # RECOGNITION PIPELINE
 
-1. **Audio Capture**: Audio is captured from the selected PipeWire input node.
+1. **Audio Capture**: Audio is captured from the selected PulseAudio / `pipewire-pulse` input source.
 2. **VAD Trimming**: Leading and trailing silence is removed to minimize latency.
 3. **ASR Inference**: Audio is transcribed by local sherpa-onnx models (offline) or external provider scripts (cloud).
 4. **Scene & LLM Post-Processing**: If a non-raw scene is active, recognized text is formatted, corrected, or translated via an LLM.

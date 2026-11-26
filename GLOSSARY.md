@@ -38,7 +38,7 @@ transcripts flow exclusively to connected client streams.
 
 ### Per-session capture device (`capture_device`)
 
-An optional override on `start` commands. Connects PipeWire capture to a specific hardware node (e.g.
+An optional override on `start` commands. Connects PulseAudio / `pipewire-pulse` capture to a specific audio source (e.g.
 a near-field Bluetooth microphone on a remote) for the duration of one session, then restores the
 global configuration.
 
@@ -173,8 +173,8 @@ compatibility aliases. Schema changes bump MINOR.
 
 ### Output ducker
 
-Lowers system output volume through `wpctl` while recording and restores it afterwards, always under a
-timeout so a hung WirePlumber cannot stall the worker. Only the primary IME `SessionLane` holds an
+Lowers default sink output volume via `libpulse` while recording and restores the baseline channel volume
+afterwards, always under a bounded timeout so an unresponsive sound server cannot stall the worker. Only the primary IME `SessionLane` holds an
 output ducker.
 
 ### FdStreamAudioSource

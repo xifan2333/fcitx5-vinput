@@ -72,7 +72,7 @@
                   curl
                   libarchive
                   libevdev
-                  pipewire
+                  libpulseaudio
                   qt6.qtbase
                   clang
                   mold
@@ -155,8 +155,8 @@
               curl
               libarchive
               libevdev
+              libpulseaudio
               onnxruntime
-              pipewire
               qt6.qtbase
               qt6.qttools
               qt6.wrapQtAppsHook

@@ -121,7 +121,7 @@ Manage domain-specific vocabulary and custom dictionaries for local sherpa-onnx 
 
 ## AUDIO DEVICE MANAGEMENT
 **device list**
-:   List available PipeWire audio capture devices.
+:   List available PulseAudio / `pipewire-pulse` audio capture devices.
 
 **device use** *ID*
 :   Set the active audio capture device by node name or *default*.

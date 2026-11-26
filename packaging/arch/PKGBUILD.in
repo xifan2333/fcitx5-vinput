@@ -6,9 +6,10 @@ arch=('x86_64')
 url='@VINPUT_PKGURL@'
 license=('GPL-3.0-only')
 options=(!debug !lto)
-depends=('curl' 'fcitx5' 'libarchive' 'pipewire' 'qt6-base')
+depends=('curl' 'fcitx5' 'libarchive' 'libpulse' 'qt6-base')
 optdepends=(
-    'wireplumber: reduce system output volume while recording'
+    'pipewire-pulse: PulseAudio compatibility layer for PipeWire desktops'
+    'pulseaudio: standalone PulseAudio sound server'
     'opus: audio compression for cloud ASR providers'
 )
 makedepends=('clang' 'cmake' 'curl' 'mold' 'ninja' 'pkgconf' 'qt6-tools')

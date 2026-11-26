@@ -15,11 +15,11 @@ This file lists third-party software that this project depends on or bundles, an
    - License: LGPL-2.1-or-later AND Unicode-DFS-2016
    - Upstream: https://github.com/fcitx/fcitx5
 
-2. **PipeWire** (media server / client libraries)
-   - License: MIT AND LGPL-2.1-or-later AND GPL-2.0-only (project contains multiple licenses)
-   - Upstream: https://pipewire.org
+3. **PulseAudio (`libpulse`)** (audio client library)
+   - License: LGPL-2.1-or-later
+   - Upstream: https://www.freedesktop.org/wiki/Software/PulseAudio/
 
-3. **systemd / libsystemd**
+4. **systemd / libsystemd**
    - License: GPL-2.0 and LGPL-2.1 (project contains components under both licenses)
    - Upstream: https://github.com/systemd/systemd
 

@@ -26,14 +26,13 @@ BuildRequires:  cmake(Qt6Network)
 BuildRequires:  cmake(Qt6LinguistTools)
 BuildRequires:  pkgconfig(libcurl)
 BuildRequires:  pkgconfig(libarchive)
-BuildRequires:  pkgconfig(libpipewire-0.3)
+BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libsystemd)
 
 Requires:       fcitx5
-Requires:       pipewire
 Requires:       systemd
 Requires:       qt6-qtbase
-Recommends:     wireplumber
+Recommends:     pulseaudio-daemon
 Recommends:     opus
 
 %description
