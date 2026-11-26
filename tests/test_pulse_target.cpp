@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
+#include <pulse/def.h> // NOLINT(misc-include-cleaner): PA_ERR_CONNECTIONREFUSED self-macro
 #include <stdlib.h>
 #include <string>
 #include <string_view>
