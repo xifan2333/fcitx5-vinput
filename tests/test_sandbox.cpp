@@ -66,35 +66,64 @@ void TestDetectSandbox() {
   TEST_ASSERT(DetectSandbox(nullptr, nullptr, dummy_info.c_str()));
 }
 
-void TestResolvePulseEndpoint() {
-  using vinput::sandbox::detail::ResolvePulseEndpoint;
+void TestResolvePulseEndpoints() {
+  using vinput::sandbox::detail::ResolvePulseEndpoints;
 
-  const auto default_ep = ResolvePulseEndpoint(nullptr, "/run/user/1000", 1000);
-  TEST_ASSERT(default_ep.socket_path == fs::path("/run/user/1000/pulse/native"));
-  TEST_ASSERT(!default_ep.tcp_configured);
+  const auto default_eps = ResolvePulseEndpoints(nullptr, "/run/user/1000", 1000);
+  TEST_ASSERT(default_eps.size() == 1);
+  TEST_ASSERT(default_eps[0].socket_path == fs::path("/run/user/1000/pulse/native"));
+  TEST_ASSERT(!default_eps[0].tcp_configured);
 
-  const auto fallback_ep = ResolvePulseEndpoint(nullptr, "", 1001);
-  TEST_ASSERT(fallback_ep.socket_path == fs::path("/run/user/1001/pulse/native"));
-  TEST_ASSERT(!fallback_ep.tcp_configured);
+  const auto fallback_eps = ResolvePulseEndpoints(nullptr, "", 1001);
+  TEST_ASSERT(fallback_eps.size() == 1);
+  TEST_ASSERT(fallback_eps[0].socket_path == fs::path("/run/user/1001/pulse/native"));
+  TEST_ASSERT(!fallback_eps[0].tcp_configured);
 
-  const auto unix_ep =
-      ResolvePulseEndpoint("unix:/tmp/custom-pulse/native", "/run/user/1000", 1000);
-  TEST_ASSERT(unix_ep.socket_path == fs::path("/tmp/custom-pulse/native"));
-  TEST_ASSERT(!unix_ep.tcp_configured);
+  const auto unix_eps =
+      ResolvePulseEndpoints("unix:/tmp/custom-pulse/native", "/run/user/1000", 1000);
+  TEST_ASSERT(unix_eps.size() == 1);
+  TEST_ASSERT(unix_eps[0].socket_path == fs::path("/tmp/custom-pulse/native"));
+  TEST_ASSERT(!unix_eps[0].tcp_configured);
 
-  const auto cookie_ep = ResolvePulseEndpoint(
-      "{deadbeef}unix:/run/user/1000/pulse/native tcp:127.0.0.1:4713", "/run/user/1000", 1000);
-  TEST_ASSERT(cookie_ep.socket_path == fs::path("/run/user/1000/pulse/native"));
-  TEST_ASSERT(!cookie_ep.tcp_configured);
+  const auto bare_unix_eps = ResolvePulseEndpoints("/mnt/wslg/PulseServer", "/run/user/1000", 1000);
+  TEST_ASSERT(bare_unix_eps.size() == 1);
+  TEST_ASSERT(bare_unix_eps[0].socket_path == fs::path("/mnt/wslg/PulseServer"));
+  TEST_ASSERT(!bare_unix_eps[0].tcp_configured);
 
-  const auto tcp_ep = ResolvePulseEndpoint("tcp:127.0.0.1:4713", "/run/user/1000", 1000);
-  TEST_ASSERT(tcp_ep.socket_path.empty());
-  TEST_ASSERT(tcp_ep.tcp_configured);
+  // Matching {machine-id} keeps entry and preserves subsequent fallback entries.
+  const auto matched_eps =
+      ResolvePulseEndpoints("{deadbeef}unix:/run/user/1000/pulse/native tcp:127.0.0.1:4713",
+                            "/run/user/1000", 1000, "deadbeef");
+  TEST_ASSERT(matched_eps.size() == 2);
+  TEST_ASSERT(matched_eps[0].socket_path == fs::path("/run/user/1000/pulse/native"));
+  TEST_ASSERT(!matched_eps[0].tcp_configured);
+  TEST_ASSERT(matched_eps[1].socket_path.empty());
+  TEST_ASSERT(matched_eps[1].tcp_configured);
+
+  // Mismatched {machine-id} skips that entry rather than stripping and accepting it.
+  const auto mismatched_eps =
+      ResolvePulseEndpoints("{other-machine}tcp:192.0.2.1 unix:/run/flatpak/pulse/native",
+                            "/run/user/1000", 1000, "local-machine");
+  TEST_ASSERT(mismatched_eps.size() == 1);
+  TEST_ASSERT(mismatched_eps[0].socket_path == fs::path("/run/flatpak/pulse/native"));
+  TEST_ASSERT(!mismatched_eps[0].tcp_configured);
+
+  // Bare host:port (without tcp: prefix) and tcp6: are recognized as TCP endpoints.
+  const auto bare_tcp_eps = ResolvePulseEndpoints("127.0.0.1:4713", "/run/user/1000", 1000);
+  TEST_ASSERT(bare_tcp_eps.size() == 1);
+  TEST_ASSERT(bare_tcp_eps[0].socket_path.empty());
+  TEST_ASSERT(bare_tcp_eps[0].tcp_configured);
+
+  const auto tcp6_eps = ResolvePulseEndpoints("tcp6:[::1]:4713", "/run/user/1000", 1000);
+  TEST_ASSERT(tcp6_eps.size() == 1);
+  TEST_ASSERT(tcp6_eps[0].socket_path.empty());
+  TEST_ASSERT(tcp6_eps[0].tcp_configured);
 }
 
 void TestProbeMissingPermissions() {
   using vinput::sandbox::detail::ProbeMissingPermissions;
   using vinput::sandbox::detail::ProbeOptions;
+  using vinput::sandbox::detail::PulseEndpoint;
 
   const TempDirGuard temp;
   const fs::path pulse_socket = temp.path / "native";
@@ -112,7 +141,7 @@ void TestProbeMissingPermissions() {
   // Case 1: All valid and present
   {
     ProbeOptions opts;
-    opts.pulse_socket_path = pulse_socket;
+    opts.pulse_endpoints = {PulseEndpoint{.socket_path = pulse_socket, .tcp_configured = false}};
     opts.systemd_dir = systemd_dir;
     opts.cache_dir = cache_dir;
     const auto missing = ProbeMissingPermissions(opts);
@@ -122,7 +151,8 @@ void TestProbeMissingPermissions() {
   // Case 2: Missing PulseAudio socket
   {
     ProbeOptions opts;
-    opts.pulse_socket_path = temp.path / "nonexistent-socket";
+    opts.pulse_endpoints = {
+        PulseEndpoint{.socket_path = temp.path / "nonexistent-socket", .tcp_configured = false}};
     opts.systemd_dir = systemd_dir;
     opts.cache_dir = cache_dir;
     const auto missing = ProbeMissingPermissions(opts);
@@ -130,10 +160,9 @@ void TestProbeMissingPermissions() {
     TEST_ASSERT(missing[0] == "pulseaudio");
   }
 
-  // Case 3: Empty PulseAudio socket path without TCP configured
+  // Case 3: Empty PulseAudio endpoint list without TCP configured
   {
     ProbeOptions opts;
-    opts.pulse_socket_path = "";
     opts.systemd_dir = systemd_dir;
     opts.cache_dir = cache_dir;
     const auto missing = ProbeMissingPermissions(opts);
@@ -141,10 +170,13 @@ void TestProbeMissingPermissions() {
     TEST_ASSERT(missing[0] == "pulseaudio");
   }
 
-  // Case 4: TCP PulseAudio endpoint skips local socket requirement
+  // Case 4: Fallback TCP or accessible second UNIX endpoint satisfies pulseaudio check
   {
     ProbeOptions opts;
-    opts.pulse_tcp_configured = true;
+    opts.pulse_endpoints = {
+        PulseEndpoint{.socket_path = temp.path / "nonexistent-socket", .tcp_configured = false},
+        PulseEndpoint{.socket_path = {}, .tcp_configured = true},
+    };
     opts.systemd_dir = systemd_dir;
     opts.cache_dir = cache_dir;
     const auto missing = ProbeMissingPermissions(opts);
@@ -154,7 +186,7 @@ void TestProbeMissingPermissions() {
   // Case 5: Parent directory exists and writable for systemd and cache
   {
     ProbeOptions opts;
-    opts.pulse_socket_path = pulse_socket;
+    opts.pulse_endpoints = {PulseEndpoint{.socket_path = pulse_socket, .tcp_configured = false}};
     opts.systemd_dir = temp.path / "systemd" / "nonexistent_sub";
     opts.cache_dir = temp.path / "cache" / "nonexistent_sub";
     const auto missing = ProbeMissingPermissions(opts);
@@ -164,7 +196,8 @@ void TestProbeMissingPermissions() {
   // Case 6: All missing / nonexistent roots
   {
     ProbeOptions opts;
-    opts.pulse_socket_path = "/nonexistent/path/pulse/native";
+    opts.pulse_endpoints = {
+        PulseEndpoint{.socket_path = "/nonexistent/path/pulse/native", .tcp_configured = false}};
     opts.systemd_dir = "/nonexistent/path/systemd/user";
     opts.cache_dir = "/nonexistent/path/cache/vinput";
     const auto missing = ProbeMissingPermissions(opts);
@@ -242,7 +275,7 @@ void TestGeneralSandboxApis() {
 
 int main() {
   TestDetectSandbox();
-  TestResolvePulseEndpoint();
+  TestResolvePulseEndpoints();
   TestProbeMissingPermissions();
   TestFormatOverrideCommands();
   TestGeneralSandboxApis();

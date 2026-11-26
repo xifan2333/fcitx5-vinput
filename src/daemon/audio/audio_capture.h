@@ -71,6 +71,8 @@ private:
                               std::string* error);
   void DisconnectContext() noexcept;
   void ArmRecording() noexcept;
+  void DisconnectStream() noexcept;
+  void ClearCallbackState() noexcept;
   void DestroyStream();
   void DrainQueue();
   void DispatchPendingError();

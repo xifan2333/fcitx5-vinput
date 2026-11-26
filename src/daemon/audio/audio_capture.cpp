@@ -273,7 +273,7 @@ bool AudioCapture::EnsureContextConnected(std::string* error, int timeout_ms) {
   }
 
   pa_context_set_state_callback(context_.Get(), &OnContextState, this);
-  if (pa_context_connect(context_.Get(), nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
+  if (pa_context_connect(context_.Get(), nullptr, PA_CONTEXT_NOAUTOSPAWN, nullptr) < 0) {
     FailContextConnectLocked(pa_context_errno(context_.Get()), error);
     return false;
   }
@@ -350,15 +350,23 @@ bool AudioCapture::CreateAndConnectStream(
   return true;
 }
 
-void AudioCapture::DestroyStream() {
+void AudioCapture::DisconnectStream() noexcept {
   recording_.store(false, std::memory_order_relaxed);
   if (loop_.IsStarted()) {
     const vinput::pulse::ScopedThreadedMainloopLock lock(loop_.Get());
+    const bool was_creating = stream_ && pa_stream_get_state(stream_.Get()) == PA_STREAM_CREATING;
     stream_.Reset();
+    if (was_creating) {
+      // pa_stream_disconnect() returns PA_ERR_BADSTATE before PA_COMMAND_REPLY arrives;
+      // drop our context connection so the server tears down the pending stream cleanly.
+      context_.Reset();
+    }
   } else {
     stream_.Reset();
   }
+}
 
+void AudioCapture::ClearCallbackState() noexcept {
   recording_armed_ns_.store(0, std::memory_order_release);
   first_buffer_ns_.store(0, std::memory_order_release);
   first_buffer_notified_.store(false, std::memory_order_release);
@@ -367,6 +375,11 @@ void AudioCapture::DestroyStream() {
   on_first_buffer_ = nullptr;
   on_error_ = nullptr;
   pending_error_.clear();
+}
+
+void AudioCapture::DestroyStream() {
+  DisconnectStream();
+  ClearCallbackState();
 }
 
 void AudioCapture::DrainQueue() {
@@ -452,8 +465,11 @@ void AudioCapture::DispatchPendingError() {
 }
 
 std::vector<int16_t> AudioCapture::StopAndDrain() {
+  DisconnectStream();
   DispatchPendingError();
-  return StopAndGetBuffer();
+  ClearCallbackState();
+  const std::scoped_lock lock(consumer_mutex_);
+  return ring_buffer_.DrainAll();
 }
 
 void AudioCapture::Abort() {

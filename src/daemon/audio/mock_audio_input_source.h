@@ -45,6 +45,7 @@ public:
     recording_ = true;
     recording_armed_ns_ = vinput::time::SteadyNowNs();
     first_buffer_ns_ = 0;
+    first_buffer_notified_ = false;
     ring_buffer_.Clear();
     return true;
   }
@@ -62,6 +63,19 @@ public:
   }
 
   std::size_t DrainAvailable(SampleConsumer consumer) override {
+    FirstBufferCallback first_cb;
+    int64_t fb_ns = 0;
+    {
+      const std::scoped_lock lock(mutex_);
+      if (!first_buffer_notified_ && first_buffer_ns_ > 0) {
+        first_buffer_notified_ = true;
+        fb_ns = first_buffer_ns_;
+        first_cb = on_first_buffer_;
+      }
+    }
+    if (first_cb) {
+      first_cb(fb_ns);
+    }
     return ring_buffer_.DrainAvailable(consumer);
   }
 
@@ -97,8 +111,6 @@ public:
 
   // Injects simulated PCM audio samples into the ring buffer.
   std::size_t PushSamples(std::span<const int16_t> samples) {
-    FirstBufferCallback first_cb;
-    int64_t now_ns = 0;
     {
       const std::scoped_lock lock(mutex_);
       if (!recording_) {
@@ -109,13 +121,8 @@ public:
         dropped_samples_.fetch_add(samples.size() - written, std::memory_order_relaxed);
       }
       if (written > 0 && first_buffer_ns_ == 0) {
-        now_ns = vinput::time::SteadyNowNs();
-        first_buffer_ns_ = now_ns;
-        first_cb = on_first_buffer_;
+        first_buffer_ns_ = vinput::time::SteadyNowNs();
       }
-    }
-    if (first_cb) {
-      first_cb(now_ns);
     }
     vinput::file::SignalEventFd(notify_fd_.load(std::memory_order_acquire));
     return samples.size();
@@ -153,6 +160,7 @@ private:
   std::atomic<std::size_t> dropped_samples_{0};
   int64_t recording_armed_ns_{0};
   int64_t first_buffer_ns_{0};
+  bool first_buffer_notified_{false};
   std::optional<long> simulated_latency_ms_;
 };
 

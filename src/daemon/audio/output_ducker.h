@@ -6,6 +6,7 @@
 #include <optional>
 #include <pulse/volume.h>
 #include <queue>
+#include <string>
 #include <thread>
 
 namespace vinput::daemon::audio {
@@ -45,6 +46,7 @@ private:
   std::mutex state_mutex_;
   std::optional<pa_cvolume> baseline_cvolume_;
   double baseline_scalar_{0.0};
+  std::string baseline_sink_name_;
 };
 
 // In-memory fake volume controller for testing without host sound server.

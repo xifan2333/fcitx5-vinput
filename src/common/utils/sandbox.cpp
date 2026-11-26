@@ -1,9 +1,13 @@
 #include "common/utils/sandbox.h"
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -28,19 +32,56 @@ std::filesystem::path DefaultPulseSocketPath(const char* xdg_runtime_dir, uint32
   return std::filesystem::path("/run/user") / std::to_string(uid) / "pulse" / "native";
 }
 
-std::string_view ExtractFirstServerEntry(std::string_view raw) {
-  std::string_view server = vinput::str::Trim(raw);
-  const std::size_t space_pos = server.find_first_of(" \t");
-  if (space_pos != std::string_view::npos) {
-    server = server.substr(0, space_pos);
+bool StripMachineQualifier(std::string_view& entry, std::string_view local_machine_id) {
+  if (!entry.starts_with('{')) {
+    return true;
   }
-  if (server.starts_with('{')) {
-    const std::size_t close_brace = server.find('}');
-    if (close_brace != std::string_view::npos) {
-      server.remove_prefix(close_brace + 1);
+  const std::size_t close_brace = entry.find('}');
+  if (close_brace == std::string_view::npos) {
+    return false;
+  }
+  const std::string_view qualifier = entry.substr(1, close_brace - 1);
+  if (local_machine_id.empty() || qualifier != local_machine_id) {
+    return false;
+  }
+  entry.remove_prefix(close_brace + 1);
+  return !entry.empty();
+}
+
+std::optional<detail::PulseEndpoint> ParseSinglePulseServer(std::string_view entry,
+                                                            std::string_view local_machine_id) {
+  if (!StripMachineQualifier(entry, local_machine_id) || entry.empty()) {
+    return std::nullopt;
+  }
+  if (vinput::str::ConsumePrefix(&entry, "unix:")) {
+    if (entry.empty()) {
+      return std::nullopt;
+    }
+    return detail::PulseEndpoint{.socket_path = std::filesystem::path(entry),
+                                 .tcp_configured = false};
+  }
+  if (entry.front() == '/') {
+    return detail::PulseEndpoint{.socket_path = std::filesystem::path(entry),
+                                 .tcp_configured = false};
+  }
+
+  static constexpr std::array<std::string_view, 3> kTcpPrefixes = {"tcp:", "tcp4:", "tcp6:"};
+  for (const std::string_view prefix : kTcpPrefixes) {
+    if (vinput::str::ConsumePrefix(&entry, prefix)) {
+      break;
     }
   }
-  return server;
+  if (entry.empty()) {
+    return std::nullopt;
+  }
+  return detail::PulseEndpoint{.socket_path = {}, .tcp_configured = true};
+}
+
+bool IsPulseEndpointAccessible(const detail::PulseEndpoint& endpoint) noexcept {
+  if (endpoint.tcp_configured) {
+    return true;
+  }
+  return !endpoint.socket_path.empty() && ::access(endpoint.socket_path.c_str(), R_OK | W_OK) == 0;
 }
 
 } // namespace
@@ -61,37 +102,70 @@ bool DetectSandbox(const char* flatpak_id, const char* container, const char* in
   return false;
 }
 
-PulseEndpoint ResolvePulseEndpoint(const char* pulse_server, const char* xdg_runtime_dir,
-                                   uint32_t uid) {
-  if (pulse_server == nullptr) {
-    return PulseEndpoint{
-        .socket_path = DefaultPulseSocketPath(xdg_runtime_dir, uid),
-        .tcp_configured = false,
-    };
+std::string LocalPulseMachineId() {
+  static constexpr std::array<const char*, 2> kMachineIdPaths = {
+      "/etc/machine-id",
+      "/var/lib/dbus/machine-id",
+  };
+  for (const char* path : kMachineIdPaths) {
+    const auto content = vinput::file::ReadTextFile(path, 128);
+    if (!content) {
+      continue;
+    }
+    const std::string_view trimmed = vinput::str::Trim(*content);
+    if (!trimmed.empty()) {
+      return std::string(trimmed);
+    }
   }
 
-  std::string_view server = ExtractFirstServerEntry(pulse_server);
-  if (server.starts_with("tcp:") || server.starts_with("tcp4:") || server.starts_with("tcp6:")) {
-    return PulseEndpoint{.socket_path = {}, .tcp_configured = true};
+  std::array<char, 256> host_buf{};
+  if (::gethostname(host_buf.data(), host_buf.size()) == 0) {
+    host_buf.back() = '\0';
+    if (host_buf[0] != '\0') {
+      return std::string(host_buf.data());
+    }
   }
-  if (server.starts_with("unix:")) {
-    server.remove_prefix(5);
+  return {};
+}
+
+std::vector<PulseEndpoint> ResolvePulseEndpoints(const char* pulse_server,
+                                                 const char* xdg_runtime_dir, uint32_t uid,
+                                                 std::string_view local_machine_id) {
+  if (pulse_server == nullptr) {
+    return {PulseEndpoint{
+        .socket_path = DefaultPulseSocketPath(xdg_runtime_dir, uid),
+        .tcp_configured = false,
+    }};
   }
-  if (!server.empty() && server.front() == '/') {
-    return PulseEndpoint{.socket_path = std::filesystem::path(server), .tcp_configured = false};
+
+  std::string_view remaining = vinput::str::Trim(pulse_server);
+  if (remaining.empty()) {
+    return {PulseEndpoint{
+        .socket_path = DefaultPulseSocketPath(xdg_runtime_dir, uid),
+        .tcp_configured = false,
+    }};
   }
-  return PulseEndpoint{
-      .socket_path = DefaultPulseSocketPath(xdg_runtime_dir, uid),
-      .tcp_configured = false,
-  };
+
+  std::vector<PulseEndpoint> endpoints;
+  while (!remaining.empty()) {
+    const std::size_t sep = remaining.find_first_of(" \t");
+    const std::string_view token =
+        (sep == std::string_view::npos) ? remaining : remaining.substr(0, sep);
+    if (const auto parsed = ParseSinglePulseServer(token, local_machine_id)) {
+      endpoints.push_back(*parsed);
+    }
+    if (sep == std::string_view::npos) {
+      break;
+    }
+    remaining = vinput::str::Trim(remaining.substr(sep + 1));
+  }
+  return endpoints;
 }
 
 std::vector<std::string> ProbeMissingPermissions(const ProbeOptions& options) {
   std::vector<std::string> missing;
 
-  if (!options.pulse_tcp_configured &&
-      (options.pulse_socket_path.empty() ||
-       ::access(options.pulse_socket_path.c_str(), R_OK | W_OK) != 0)) {
+  if (!std::ranges::any_of(options.pulse_endpoints, IsPulseEndpointAccessible)) {
     missing.emplace_back("pulseaudio");
   }
 
@@ -137,11 +211,10 @@ std::vector<std::string> MissingSandboxPermissions() {
   }
 
   static const std::vector<std::string> missing = []() {
-    const auto endpoint = detail::ResolvePulseEndpoint(std::getenv("PULSE_SERVER"),
-                                                       std::getenv("XDG_RUNTIME_DIR"), ::getuid());
     detail::ProbeOptions options;
-    options.pulse_socket_path = endpoint.socket_path;
-    options.pulse_tcp_configured = endpoint.tcp_configured;
+    options.pulse_endpoints =
+        detail::ResolvePulseEndpoints(std::getenv("PULSE_SERVER"), std::getenv("XDG_RUNTIME_DIR"),
+                                      ::getuid(), detail::LocalPulseMachineId());
     options.systemd_dir = vinput::path::UserSystemdUnitDir();
     options.cache_dir = vinput::path::VinputCacheDir();
     return detail::ProbeMissingPermissions(options);

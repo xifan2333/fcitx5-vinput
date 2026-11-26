@@ -3,26 +3,28 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vinput::sandbox {
 
 namespace detail {
-struct ProbeOptions {
-  std::filesystem::path pulse_socket_path;
-  bool pulse_tcp_configured{false};
-  std::filesystem::path systemd_dir;
-  std::filesystem::path cache_dir;
-};
-
 struct PulseEndpoint {
   std::filesystem::path socket_path;
   bool tcp_configured{false};
 };
 
+struct ProbeOptions {
+  std::vector<PulseEndpoint> pulse_endpoints;
+  std::filesystem::path systemd_dir;
+  std::filesystem::path cache_dir;
+};
+
 bool DetectSandbox(const char* flatpak_id, const char* container, const char* info_path);
-PulseEndpoint ResolvePulseEndpoint(const char* pulse_server, const char* xdg_runtime_dir,
-                                   uint32_t uid);
+std::string LocalPulseMachineId();
+std::vector<PulseEndpoint> ResolvePulseEndpoints(const char* pulse_server,
+                                                 const char* xdg_runtime_dir, uint32_t uid,
+                                                 std::string_view local_machine_id = {});
 std::vector<std::string> ProbeMissingPermissions(const ProbeOptions& options);
 } // namespace detail
 

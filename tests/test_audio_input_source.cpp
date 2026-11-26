@@ -101,14 +101,18 @@ void TestMockFirstBufferCallback() {
 
   const std::array<int16_t, 160> chunk1{};
   source.PushSamples(chunk1);
-  TEST_ASSERT(first_buffer_calls == 1);
-  TEST_ASSERT(recorded_ns > 0);
+  TEST_ASSERT(first_buffer_calls == 0);
   const auto latency = source.FirstBufferLatencyMs();
   TEST_ASSERT(latency.has_value());
   TEST_ASSERT(latency.value_or(-1) >= 0);
 
+  TEST_ASSERT(source.DrainAvailable([](std::span<const int16_t> /*pcm*/) {}) == 160);
+  TEST_ASSERT(first_buffer_calls == 1);
+  TEST_ASSERT(recorded_ns > 0);
+
   const std::array<int16_t, 160> chunk2{};
   source.PushSamples(chunk2);
+  TEST_ASSERT(source.DrainAvailable([](std::span<const int16_t> /*pcm*/) {}) == 160);
   TEST_ASSERT(first_buffer_calls == 1);
 
   source.StopAndDrain();

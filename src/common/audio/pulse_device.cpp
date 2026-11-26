@@ -91,7 +91,7 @@ bool PulseSyncSession::Connect(const char* app_name,
     return false;
   }
 
-  if (pa_context_connect(ctx_.Get(), nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
+  if (pa_context_connect(ctx_.Get(), nullptr, PA_CONTEXT_NOAUTOSPAWN, nullptr) < 0) {
     last_error_ = pa_context_errno(ctx_.Get());
     return false;
   }

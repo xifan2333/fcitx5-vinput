@@ -25,6 +25,7 @@ constexpr double kMaxVolumeScalar = 1.5;
 
 struct SinkQueryResult {
   std::optional<pa_cvolume> volume;
+  std::string sink_name;
 };
 
 void OnSinkInfo(pa_context* /*ctx*/, const pa_sink_info* info, int eol, void* userdata) noexcept {
@@ -32,8 +33,15 @@ void OnSinkInfo(pa_context* /*ctx*/, const pa_sink_info* info, int eol, void* us
     return;
   }
   auto* out = static_cast<SinkQueryResult*>(userdata);
-  if (pa_cvolume_valid(&info->volume) != 0 && info->volume.channels > 0) {
-    out->volume = info->volume;
+  if (pa_cvolume_valid(&info->volume) != 0 && info->volume.channels > 0 && info->name != nullptr &&
+      info->name[0] != '\0') {
+    try {
+      out->sink_name = info->name;
+      out->volume = info->volume;
+    } catch (...) {
+      out->volume.reset();
+      out->sink_name.clear();
+    }
   }
 }
 
@@ -43,15 +51,19 @@ void OnContextSuccess(pa_context* /*ctx*/, int success, void* userdata) noexcept
   }
 }
 
-std::optional<pa_cvolume> QueryDefaultSinkCvolume(vinput::pulse::PulseSyncSession& session,
-                                                  std::chrono::steady_clock::time_point deadline) {
+std::optional<SinkQueryResult>
+QueryDefaultSinkInfo(vinput::pulse::PulseSyncSession& session,
+                     std::chrono::steady_clock::time_point deadline) {
   SinkQueryResult result;
   if (!session.RunOperation(pa_context_get_sink_info_by_name(session.Context(), kDefaultSinkName,
                                                              &OnSinkInfo, &result),
                             deadline)) {
     return std::nullopt;
   }
-  return result.volume;
+  if (!result.volume.has_value() || result.sink_name.empty()) {
+    return std::nullopt;
+  }
+  return result;
 }
 
 } // namespace
@@ -84,6 +96,13 @@ pa_cvolume PulseVolumeAdapter::ScaleCvolume(const pa_cvolume& baseline, double t
 }
 
 std::optional<double> PulseVolumeAdapter::GetVolume() {
+  {
+    const std::scoped_lock lock(state_mutex_);
+    baseline_cvolume_.reset();
+    baseline_scalar_ = 0.0;
+    baseline_sink_name_.clear();
+  }
+
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(kPulseVolumeTimeoutMs);
   vinput::pulse::PulseSyncSession session;
@@ -91,19 +110,20 @@ std::optional<double> PulseVolumeAdapter::GetVolume() {
     return std::nullopt;
   }
 
-  const auto cvol = QueryDefaultSinkCvolume(session, deadline);
-  if (!cvol) {
+  auto info = QueryDefaultSinkInfo(session, deadline);
+  if (!info || !info->volume) {
     return std::nullopt;
   }
-  const auto scalar = CvolumeToScalar(*cvol);
+  const auto scalar = CvolumeToScalar(*info->volume);
   if (!scalar) {
     return std::nullopt;
   }
 
   {
     const std::scoped_lock lock(state_mutex_);
-    baseline_cvolume_ = *cvol;
+    baseline_cvolume_ = *info->volume;
     baseline_scalar_ = *scalar;
+    baseline_sink_name_ = std::move(info->sink_name);
   }
   return scalar;
 }
@@ -118,27 +138,31 @@ bool PulseVolumeAdapter::SetVolume(double volume) {
 
   std::optional<pa_cvolume> base;
   double base_scalar = 0.0;
+  std::string target_sink;
   {
     const std::scoped_lock lock(state_mutex_);
     base = baseline_cvolume_;
     base_scalar = baseline_scalar_;
+    target_sink = baseline_sink_name_;
   }
 
-  if (!base) {
-    base = QueryDefaultSinkCvolume(session, deadline);
-    if (!base) {
+  if (!base || target_sink.empty()) {
+    const auto info = QueryDefaultSinkInfo(session, deadline);
+    if (!info || !info->volume) {
       return false;
     }
+    base = info->volume;
     base_scalar = CvolumeToScalar(*base).value_or(0.0);
+    target_sink = info->sink_name;
   }
 
   const pa_cvolume target_cvol =
       (std::abs(volume - base_scalar) < 1e-6) ? *base : ScaleCvolume(*base, volume);
 
   bool ok = false;
-  if (!session.RunOperation(pa_context_set_sink_volume_by_name(session.Context(), kDefaultSinkName,
-                                                               &target_cvol, &OnContextSuccess,
-                                                               &ok),
+  if (!session.RunOperation(pa_context_set_sink_volume_by_name(session.Context(),
+                                                               target_sink.c_str(), &target_cvol,
+                                                               &OnContextSuccess, &ok),
                             deadline)) {
     return false;
   }
