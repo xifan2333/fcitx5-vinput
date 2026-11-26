@@ -1,7 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
-#include <pulse/def.h>
 #include <stdlib.h>
 #include <string>
 #include <string_view>
