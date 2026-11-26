@@ -1,234 +1,295 @@
-#include "audio_capture.h"
+#include "daemon/audio/audio_capture.h"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
-#include <cstring>
+#include <fmt/printf.h>
 #include <mutex>
 #include <optional>
-#include <pipewire/core.h>
-#include <pipewire/keys.h>
-#include <pipewire/pipewire.h>
-#include <pipewire/port.h>
-#include <pipewire/properties.h>
-#include <pipewire/stream.h>
-#include <pipewire/thread-loop.h>
-#include <spa/buffer/buffer.h>
-#if __has_include(<spa/param/audio/raw-utils.h>)
-#include <spa/param/audio/raw-utils.h>
-#else
-#include <spa/param/audio/format-utils.h>
-#endif
-#include <fmt/printf.h>
-#include <spa/param/audio/raw.h>
-#include <spa/param/param.h>
-#include <spa/pod/builder.h>
-#include <spa/pod/pod.h>
-#include <spa/utils/defs.h>
-#include <spa/utils/hook.h>
+#include <pulse/context.h>
+#include <pulse/def.h>
+#include <pulse/error.h>
+#include <pulse/mainloop-api.h>
+#include <pulse/sample.h>
+#include <pulse/stream.h>
+#include <pulse/thread-mainloop.h>
+#include <pulse/timeval.h>
 #include <span>
 #include <string>
 #include <string_view>
+#include <sys/time.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
 
-#include "common/audio/pipewire_device.h"
+#include "common/audio/pulse_device.h"
+#include "common/audio/pulse_raii.h"
 #include "common/i18n.h"
 #include "common/utils/debug_log.h"
 #include "common/utils/scope_guard.h"
 #include "common/utils/time_utils.h"
 
-#include "daemon/audio/audio_ring_buffer.h"
-#include "daemon/audio/pipewire_control_plane.h"
-
 namespace {
 
-pw_properties* BuildCaptureProperties(const vinput::pw::ResolvedCaptureTarget& resolved_target) {
-  const char* capture_sink_str = resolved_target.is_sink_capture ? "true" : "false";
-  auto* properties =
-      pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture",
-                        PW_KEY_MEDIA_ROLE, "Communication", PW_KEY_STREAM_CAPTURE_SINK,
-                        capture_sink_str, PW_KEY_NODE_LATENCY, "480/16000", nullptr);
-  if (properties == nullptr) {
-    return nullptr;
-  }
+constexpr uint32_t kSampleRate = 16000;
+constexpr uint8_t kChannels = 1;
+// 480 mono S16LE samples = 960 bytes (~30 ms fragment latency at 16 kHz).
+constexpr uint32_t kFragmentBytes = 960;
+constexpr int kStartupConnectTimeoutMs = 250;
+constexpr int kCaptureConnectTimeoutMs = 1500;
 
-  const std::string& target_value = !resolved_target.object_serial.empty()
-                                        ? resolved_target.object_serial
-                                        : resolved_target.node_name;
-  if (!target_value.empty()) {
-    pw_properties_set(properties, PW_KEY_TARGET_OBJECT, target_value.c_str());
-    VLOG_INFO("using PipeWire target.object={} (node={}, stream.capture.sink={})", target_value,
-              resolved_target.node_name, capture_sink_str);
+struct ConnectTimeoutState {
+  pa_threaded_mainloop* loop{nullptr};
+  bool timed_out{false};
+};
+
+void OnConnectTimeout(pa_mainloop_api* /*api*/, pa_time_event* /*event*/,
+                      const struct timeval* /*tv*/, void* userdata) noexcept {
+  auto* state = static_cast<ConnectTimeoutState*>(userdata);
+  if (state == nullptr) {
+    return;
   }
-  return properties;
+  state->timed_out = true;
+  if (state->loop != nullptr) {
+    pa_threaded_mainloop_signal(state->loop, 0);
+  }
 }
 
-int ConnectStream(pw_stream* stream) {
-  uint8_t pod_buffer[1024];
-  spa_pod_builder builder = SPA_POD_BUILDER_INIT(pod_buffer, sizeof(pod_buffer));
-  spa_audio_info_raw raw_info{};
-  raw_info.format = SPA_AUDIO_FORMAT_S16_LE;
-  raw_info.rate = 16000;
-  raw_info.channels = 1;
-  raw_info.position[0] = SPA_AUDIO_CHANNEL_MONO;
-  const spa_pod* params[1];
-  params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &raw_info);
-
-  const int flags =
-      PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS;
-  return pw_stream_connect(stream, PW_DIRECTION_INPUT, PW_ID_ANY,
-                           static_cast<pw_stream_flags>(flags), params, 1);
+void NotifyEventFd(int fd) noexcept {
+  if (fd >= 0) {
+    const uint64_t val = 1;
+    (void)write(fd, &val, sizeof(val));
+  }
 }
 
 } // namespace
 
-AudioCapture::AudioCapture() {
-  pw_init(nullptr, nullptr);
-}
-
 AudioCapture::~AudioCapture() {
   DestroyStream();
-  control_plane_.Disconnect();
-  if (loop_ != nullptr) {
-    pw_thread_loop_stop(loop_);
-    pw_thread_loop_destroy(loop_);
-    loop_ = nullptr;
-  }
-  pw_deinit();
+  DisconnectContext();
+  loop_.Reset();
 }
 
-void AudioCapture::onProcess(void* userdata) {
+void AudioCapture::OnContextState(pa_context* ctx, void* userdata) noexcept {
   auto* self = static_cast<AudioCapture*>(userdata);
-  self->processCallback();
+  if (self == nullptr || ctx == nullptr || !self->loop_.IsStarted()) {
+    return;
+  }
+  const pa_context_state_t st = pa_context_get_state(ctx);
+  if (st == PA_CONTEXT_READY || st == PA_CONTEXT_FAILED || st == PA_CONTEXT_TERMINATED) {
+    pa_threaded_mainloop_signal(self->loop_.Get(), 0);
+  }
 }
 
-void AudioCapture::processCallback() {
-  pw_stream* s = stream_.load(std::memory_order_acquire);
-  if (s == nullptr) {
+void AudioCapture::OnStreamState(pa_stream* stream, void* userdata) noexcept {
+  auto* self = static_cast<AudioCapture*>(userdata);
+  if (self == nullptr || stream == nullptr) {
+    return;
+  }
+  if (pa_stream_get_state(stream) != PA_STREAM_FAILED) {
     return;
   }
 
-  pw_buffer* b = pw_stream_dequeue_buffer(s);
-  if (b == nullptr) {
+  self->recording_.store(false, std::memory_order_relaxed);
+  try {
+    pa_context* ctx = pa_stream_get_context(stream);
+    const int err_code = ctx != nullptr ? pa_context_errno(ctx) : 0;
+    const char* raw_err = err_code != 0 ? pa_strerror(err_code) : nullptr;
+    const std::string err_msg = (raw_err != nullptr && raw_err[0] != '\0')
+                                    ? std::string(raw_err)
+                                    : std::string(_("PulseAudio stream error"));
+    VLOG_ERROR("PulseAudio capture stream error: {}", err_msg);
+
+    {
+      const std::scoped_lock lock(self->callback_mutex_);
+      self->pending_error_ = err_msg;
+    }
+    self->has_pending_error_.store(true, std::memory_order_release);
+  } catch (...) {
+    // C ABI boundary: never allow exceptions to escape into libpulse.
+  }
+  NotifyEventFd(self->notify_fd_.load(std::memory_order_relaxed));
+}
+
+void AudioCapture::OnStreamRead(pa_stream* stream, std::size_t /*nbytes*/,
+                                void* userdata) noexcept {
+  auto* self = static_cast<AudioCapture*>(userdata);
+  if (self == nullptr || stream == nullptr) {
     return;
   }
+  self->ReadStreamFragments(stream);
+}
 
-  const auto cleanup_buffer = vinput::MakeScopeExit([s, b] { pw_stream_queue_buffer(s, b); });
+std::size_t AudioCapture::WriteHoleSamples(std::size_t hole_samples) noexcept {
+  static constexpr std::array<int16_t, 256> kZeroChunk{};
+  std::size_t total_written = 0;
+  std::size_t remaining = hole_samples;
+  while (remaining > 0) {
+    const std::size_t batch = std::min(remaining, kZeroChunk.size());
+    const std::size_t written =
+        ring_buffer_.Write(std::span<const int16_t>(kZeroChunk.data(), batch));
+    total_written += written;
+    if (written < batch) {
+      dropped_samples_.fetch_add(remaining - written, std::memory_order_relaxed);
+      break;
+    }
+    remaining -= batch;
+  }
+  return total_written;
+}
 
-  const spa_buffer* buf = b->buffer;
-  if (buf == nullptr || buf->n_datas == 0 || buf->datas[0].data == nullptr ||
-      buf->datas[0].chunk == nullptr) {
-    return;
+void AudioCapture::ReadStreamFragments(pa_stream* stream) noexcept {
+  std::size_t total_written = 0;
+
+  while (pa_stream_readable_size(stream) > 0) {
+    const void* data = nullptr;
+    std::size_t nbytes = 0;
+    if (pa_stream_peek(stream, &data, &nbytes) < 0 || nbytes == 0) {
+      break;
+    }
+    const auto drop_packet = vinput::MakeScopeExit([stream] { (void)pa_stream_drop(stream); });
+
+    if (!recording_.load(std::memory_order_relaxed)) {
+      continue;
+    }
+
+    const std::size_t n_samples = nbytes / sizeof(int16_t);
+    if (n_samples == 0) {
+      continue;
+    }
+
+    if (data == nullptr) {
+      total_written += WriteHoleSamples(n_samples);
+      continue;
+    }
+
+    const auto* samples = static_cast<const int16_t*>(data);
+    const std::size_t written = ring_buffer_.Write(std::span<const int16_t>(samples, n_samples));
+    if (written < n_samples) {
+      dropped_samples_.fetch_add(n_samples - written, std::memory_order_relaxed);
+    }
+    total_written += written;
   }
 
-  if (!recording_.load(std::memory_order_relaxed)) {
-    return;
-  }
-
-  const auto* raw = static_cast<const uint8_t*>(buf->datas[0].data);
-  const uint32_t offset = buf->datas[0].chunk->offset;
-  const uint32_t size = buf->datas[0].chunk->size;
-  if (size == 0 || offset + size > buf->datas[0].maxsize) {
-    return;
-  }
-
-  const uint32_t n_samples = size / sizeof(int16_t);
-  if (n_samples == 0) {
-    return;
-  }
-
-  const auto* samples = reinterpret_cast<const int16_t*>(raw + offset);
-  const std::size_t written = ring_buffer_.Write(std::span<const int16_t>(samples, n_samples));
-  if (written < n_samples) {
-    dropped_samples_.fetch_add(n_samples - written, std::memory_order_relaxed);
-  }
-
-  if (written > 0) {
+  if (total_written > 0) {
     int64_t expected_zero = 0;
     first_buffer_ns_.compare_exchange_strong(expected_zero, vinput::time::SteadyNowNs(),
                                              std::memory_order_relaxed);
-
-    const int notify_fd = notify_fd_.load(std::memory_order_relaxed);
-    if (notify_fd >= 0) {
-      const uint64_t val = 1;
-      (void)write(notify_fd, &val, sizeof(val));
-    }
-  }
-}
-
-void AudioCapture::onParamChanged(void* userdata, uint32_t id, const spa_pod* param) {
-  (void)userdata;
-  if (param == nullptr || id != SPA_PARAM_Format) {
-    return;
-  }
-
-  spa_audio_info_raw info{};
-  if (spa_format_audio_raw_parse(param, &info) < 0) {
-    return;
-  }
-
-  VLOG_INFO("negotiated format: rate={} channels={} fmt={}", info.rate, info.channels,
-            static_cast<int>(info.format));
-}
-
-void AudioCapture::onStateChanged(void* userdata, pw_stream_state old, pw_stream_state state,
-                                  const char* error) {
-  auto* self = static_cast<AudioCapture*>(userdata);
-  const char* err_str = (error != nullptr && error[0] != '\0') ? error : nullptr;
-  VLOG_DEBUG("capture stream state: {} -> {}{}{}", pw_stream_state_as_string(old),
-             pw_stream_state_as_string(state), err_str != nullptr ? " error=" : "",
-             err_str != nullptr ? err_str : "");
-  if (state == PW_STREAM_STATE_ERROR) {
-    const std::string err_msg = err_str != nullptr ? err_str : _("PipeWire stream error");
-    VLOG_ERROR("PipeWire stream error: {}", err_msg);
-    if (self != nullptr) {
-      self->recording_.store(false, std::memory_order_relaxed);
-      {
-        const std::scoped_lock lock(self->callback_mutex_);
-        self->pending_error_ = err_msg;
-      }
-      self->has_pending_error_.store(true, std::memory_order_release);
-      const int notify_fd = self->notify_fd_.load(std::memory_order_relaxed);
-      if (notify_fd >= 0) {
-        const uint64_t val = 1;
-        (void)write(notify_fd, &val, sizeof(val));
-      }
-    }
+    NotifyEventFd(notify_fd_.load(std::memory_order_relaxed));
   }
 }
 
 bool AudioCapture::Start(std::string* error) {
-  if (loop_ != nullptr) {
+  if (loop_.IsStarted()) {
     return true;
   }
 
-  loop_ = pw_thread_loop_new("vinput-capture-loop", nullptr);
-  if (loop_ == nullptr) {
+  if (!loop_.Create("vinput-capture")) {
     if (error != nullptr) {
-      *error = _("failed to create PipeWire thread loop");
+      *error = _("failed to create PulseAudio threaded mainloop");
     }
     return false;
   }
 
-  const int ret = pw_thread_loop_start(loop_);
+  const int ret = loop_.Start();
   if (ret < 0) {
     if (error != nullptr) {
-      *error = fmt::sprintf(_("failed to start PipeWire thread loop: %s"), strerror(-ret));
+      *error =
+          fmt::sprintf(_("failed to start PulseAudio threaded mainloop: %s"), pa_strerror(ret));
     }
-    pw_thread_loop_destroy(loop_);
-    loop_ = nullptr;
+    loop_.Reset();
     return false;
   }
 
-  // Keep only the PipeWire control-plane registry/metadata connection warm at startup;
-  // never create or link an audio capture stream until BeginRecording().
-  if (!control_plane_.Connect(loop_)) {
-    VLOG_DEBUG("PipeWire control plane connection deferred; will retry on capture");
+  // Keep only the control/context connection warm at startup; never open a recording stream
+  // until BeginRecording() so desktop microphone indicators stay idle.
+  if (!EnsureContextConnected(nullptr, kStartupConnectTimeoutMs)) {
+    VLOG_DEBUG("PulseAudio context connection deferred; will retry on capture");
   }
 
   return true;
+}
+
+void AudioCapture::FailContextConnectLocked(int err_code, std::string* error) {
+  if (error != nullptr) {
+    *error = fmt::sprintf(_("failed to connect to audio server: %s"),
+                          vinput::pulse::FormatConnectionError(err_code));
+  }
+  context_.Reset();
+}
+
+bool AudioCapture::WaitForContextReadyLocked(pa_mainloop_api* api, int timeout_ms,
+                                             std::string* error) {
+  struct timeval tv{};
+  pa_gettimeofday(&tv);
+  pa_timeval_add(&tv, static_cast<pa_usec_t>(std::max(timeout_ms, 50)) * PA_USEC_PER_MSEC);
+
+  ConnectTimeoutState timeout_state{.loop = loop_.Get(), .timed_out = false};
+  pa_time_event* raw_timer = (api != nullptr && api->time_new != nullptr)
+                                 ? api->time_new(api, &tv, &OnConnectTimeout, &timeout_state)
+                                 : nullptr;
+  const vinput::pulse::ScopedTimeEvent timer_guard(api, raw_timer);
+
+  while (!timeout_state.timed_out) {
+    const pa_context_state_t st = pa_context_get_state(context_.Get());
+    if (st == PA_CONTEXT_READY) {
+      return true;
+    }
+    if (st == PA_CONTEXT_FAILED || st == PA_CONTEXT_TERMINATED) {
+      FailContextConnectLocked(pa_context_errno(context_.Get()), error);
+      return false;
+    }
+    pa_threaded_mainloop_wait(loop_.Get());
+  }
+
+  FailContextConnectLocked(PA_ERR_TIMEOUT, error);
+  return false;
+}
+
+bool AudioCapture::EnsureContextConnected(std::string* error, int timeout_ms) {
+  if (!loop_.IsStarted()) {
+    if (error != nullptr) {
+      *error = _("audio capture loop is not initialized");
+    }
+    return false;
+  }
+
+  const vinput::pulse::ScopedThreadedMainloopLock lock(loop_.Get());
+  if (context_ && pa_context_get_state(context_.Get()) == PA_CONTEXT_READY) {
+    return true;
+  }
+
+  stream_.Reset();
+  context_.Reset();
+
+  pa_mainloop_api* api = pa_threaded_mainloop_get_api(loop_.Get());
+  context_.Reset(pa_context_new(api, "vinput-daemon"));
+  if (!context_) {
+    if (error != nullptr) {
+      *error = _("failed to create PulseAudio context");
+    }
+    return false;
+  }
+
+  pa_context_set_state_callback(context_.Get(), &OnContextState, this);
+  if (pa_context_connect(context_.Get(), nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
+    FailContextConnectLocked(pa_context_errno(context_.Get()), error);
+    return false;
+  }
+
+  return WaitForContextReadyLocked(api, timeout_ms, error);
+}
+
+void AudioCapture::DisconnectContext() noexcept {
+  if (!loop_.IsStarted()) {
+    context_.Reset();
+    return;
+  }
+  const vinput::pulse::ScopedThreadedMainloopLock lock(loop_.Get());
+  context_.Reset();
 }
 
 std::string AudioCapture::CurrentTargetObject() const {
@@ -236,66 +297,70 @@ std::string AudioCapture::CurrentTargetObject() const {
   return target_object_;
 }
 
-bool AudioCapture::CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarget& resolved_target,
-                                          std::string* error) {
-  if (loop_ == nullptr) {
+bool AudioCapture::CreateAndConnectStream(
+    const vinput::pulse::ResolvedCaptureTarget& resolved_target, std::string* error) {
+  const vinput::pulse::ScopedThreadedMainloopLock lock(loop_.Get());
+  if (!context_ || pa_context_get_state(context_.Get()) != PA_CONTEXT_READY) {
     if (error != nullptr) {
-      *error = _("audio capture loop is not initialized");
+      *error = _("PulseAudio context is not ready");
     }
     return false;
   }
 
-  stream_events_.version = PW_VERSION_STREAM_EVENTS;
-  stream_events_.param_changed = onParamChanged;
-  stream_events_.process = onProcess;
-  stream_events_.state_changed = onStateChanged;
+  const pa_sample_spec sample_spec{
+      .format = PA_SAMPLE_S16LE,
+      .rate = kSampleRate,
+      .channels = kChannels,
+  };
 
-  pw_thread_loop_lock(loop_);
-  const auto loop_unlock = vinput::MakeScopeExit([this] { pw_thread_loop_unlock(loop_); });
-
-  pw_core* core = control_plane_.Core();
-  if (core == nullptr) {
+  vinput::pulse::ScopedStream candidate(
+      pa_stream_new(context_.Get(), "vinput-capture", &sample_spec, nullptr));
+  if (!candidate) {
     if (error != nullptr) {
-      *error = _("PipeWire core connection is not ready");
+      *error = _("failed to create PulseAudio capture stream");
     }
     return false;
   }
 
-  auto* properties = BuildCaptureProperties(resolved_target);
-  if (properties == nullptr) {
+  pa_stream_set_state_callback(candidate.Get(), &OnStreamState, this);
+  pa_stream_set_read_callback(candidate.Get(), &OnStreamRead, this);
+
+  pa_buffer_attr buffer_attr{};
+  buffer_attr.maxlength = static_cast<uint32_t>(-1);
+  buffer_attr.tlength = static_cast<uint32_t>(-1);
+  buffer_attr.prebuf = static_cast<uint32_t>(-1);
+  buffer_attr.minreq = static_cast<uint32_t>(-1);
+  buffer_attr.fragsize = kFragmentBytes;
+
+  const char* dev =
+      resolved_target.source_name.empty() ? nullptr : resolved_target.source_name.c_str();
+  if (dev != nullptr) {
+    VLOG_INFO("connecting PulseAudio capture stream to source={} (monitor={})", dev,
+              resolved_target.is_sink_monitor);
+  }
+
+  if (pa_stream_connect_record(candidate.Get(), dev, &buffer_attr, PA_STREAM_ADJUST_LATENCY) < 0) {
+    const int err_code = pa_context_errno(context_.Get());
     if (error != nullptr) {
-      *error = _("failed to allocate PipeWire properties");
+      *error =
+          fmt::sprintf(_("failed to connect PulseAudio capture stream: %s"), pa_strerror(err_code));
     }
     return false;
   }
 
-  pw_stream* new_stream = pw_stream_new(core, "vinput-capture", properties);
-  if (new_stream == nullptr) {
-    if (error != nullptr) {
-      *error = _("failed to create PipeWire stream");
-    }
-    return false;
-  }
-
-  spa_zero(stream_listener_);
-  pw_stream_add_listener(new_stream, &stream_listener_, &stream_events_, this);
-  stream_.store(new_stream, std::memory_order_release);
-
-  const int ret = ConnectStream(new_stream);
-  if (ret < 0) {
-    if (error != nullptr) {
-      *error = fmt::sprintf(_("failed to connect PipeWire stream: %s"), strerror(-ret));
-    }
-    spa_hook_remove(&stream_listener_);
-    pw_stream_destroy(new_stream);
-    stream_.store(nullptr, std::memory_order_release);
-    return false;
-  }
-
+  stream_ = std::move(candidate);
   return true;
 }
 
-void AudioCapture::MarkStreamDestroyed() {
+void AudioCapture::DestroyStream() {
+  recording_.store(false, std::memory_order_relaxed);
+  if (loop_.IsStarted()) {
+    const vinput::pulse::ScopedThreadedMainloopLock lock(loop_.Get());
+    stream_.Reset();
+  } else {
+    stream_.Reset();
+  }
+
   recording_armed_ns_.store(0, std::memory_order_release);
   first_buffer_ns_.store(0, std::memory_order_release);
   first_buffer_notified_.store(false, std::memory_order_release);
@@ -304,22 +369,6 @@ void AudioCapture::MarkStreamDestroyed() {
   on_first_buffer_ = nullptr;
   on_error_ = nullptr;
   pending_error_.clear();
-}
-
-void AudioCapture::DestroyStream() {
-  recording_.store(false, std::memory_order_relaxed);
-  if (loop_ == nullptr || stream_.load(std::memory_order_acquire) == nullptr) {
-    return;
-  }
-
-  pw_thread_loop_lock(loop_);
-  if (pw_stream* s = stream_.load(std::memory_order_acquire); s != nullptr) {
-    spa_hook_remove(&stream_listener_);
-    pw_stream_destroy(s);
-    stream_.store(nullptr, std::memory_order_release);
-  }
-  pw_thread_loop_unlock(loop_);
-  MarkStreamDestroyed();
 }
 
 void AudioCapture::DrainQueue() {
@@ -334,7 +383,7 @@ void AudioCapture::ArmRecording() noexcept {
 }
 
 bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
-  if (loop_ == nullptr) {
+  if (!loop_.IsStarted()) {
     if (error != nullptr) {
       *error = _("audio capture loop is not initialized");
     }
@@ -345,16 +394,13 @@ bool AudioCapture::BeginRecording(std::string* error, StartTiming* timing) {
 
   DrainQueue();
   ResetDropCounters();
-
   DestroyStream();
-  if (!control_plane_.EnsureConnected(loop_)) {
-    if (error != nullptr) {
-      *error = _("PipeWire control plane is unavailable");
-    }
+
+  if (!EnsureContextConnected(error, kCaptureConnectTimeoutMs)) {
     return false;
   }
 
-  const auto resolved_target = control_plane_.ResolveTarget(CurrentTargetObject());
+  const auto resolved_target = vinput::pulse::ResolveCaptureTarget(CurrentTargetObject());
 
   ArmRecording();
   recording_.store(true, std::memory_order_relaxed);
@@ -390,20 +436,25 @@ bool AudioCapture::Begin(std::string_view target, FirstBufferCallback on_first_b
   return true;
 }
 
-std::vector<int16_t> AudioCapture::StopAndDrain() {
-  if (has_pending_error_.load(std::memory_order_acquire)) {
-    has_pending_error_.store(false, std::memory_order_relaxed);
-    ErrorCallback err_cb;
-    std::string err_msg;
-    {
-      const std::scoped_lock lock(callback_mutex_);
-      err_cb = on_error_;
-      err_msg = std::move(pending_error_);
-    }
-    if (err_cb) {
-      err_cb(err_msg);
-    }
+void AudioCapture::DispatchPendingError() {
+  if (!has_pending_error_.load(std::memory_order_acquire)) {
+    return;
   }
+  has_pending_error_.store(false, std::memory_order_relaxed);
+  ErrorCallback err_cb;
+  std::string err_msg;
+  {
+    const std::scoped_lock lock(callback_mutex_);
+    err_cb = on_error_;
+    err_msg = std::move(pending_error_);
+  }
+  if (err_cb) {
+    err_cb(err_msg);
+  }
+}
+
+std::vector<int16_t> AudioCapture::StopAndDrain() {
+  DispatchPendingError();
   return StopAndGetBuffer();
 }
 
@@ -412,19 +463,7 @@ void AudioCapture::Abort() {
 }
 
 std::size_t AudioCapture::DrainAvailable(SampleConsumer consumer) {
-  if (has_pending_error_.load(std::memory_order_acquire)) {
-    has_pending_error_.store(false, std::memory_order_relaxed);
-    ErrorCallback err_cb;
-    std::string err_msg;
-    {
-      const std::scoped_lock lock(callback_mutex_);
-      err_cb = on_error_;
-      err_msg = std::move(pending_error_);
-    }
-    if (err_cb) {
-      err_cb(err_msg);
-    }
-  }
+  DispatchPendingError();
 
   if (!first_buffer_notified_.load(std::memory_order_relaxed)) {
     const int64_t fb_ns = first_buffer_ns_.load(std::memory_order_acquire);

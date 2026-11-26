@@ -42,7 +42,6 @@ add_library(
   audio/audio_utils.cpp
   audio/fd_stream_audio_source.cpp
   audio/output_ducker.cpp
-  audio/pipewire_control_plane.cpp
   notify/desktop_notification_sender.cpp
   runtime/dbus_service.cpp
   runtime/lane_supervisor.cpp
@@ -67,7 +66,7 @@ target_include_directories(daemon_core PUBLIC ${CMAKE_SOURCE_DIR}/src ${VINPUT_L
 target_link_libraries(
   daemon_core
   PUBLIC common
-         pipewire_device
+         pulse_device
          base64::base64
          readerwriterqueue::readerwriterqueue
          PkgConfig::SDBUS

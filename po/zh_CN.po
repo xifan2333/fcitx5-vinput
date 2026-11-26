@@ -2034,42 +2034,47 @@ msgstr "D-Bus 服务启动失败"
 msgid "ASR session factory is not configured."
 msgstr "ASR 会话工厂未配置。"
 
-#: src/daemon/audio/audio_capture.cpp:181
-msgid "PipeWire stream error"
-msgstr "PipeWire 流错误"
+#: src/daemon/audio/audio_capture.cpp:94
+msgid "PulseAudio stream error"
+msgstr "PulseAudio 音频流错误"
 
-#: src/daemon/audio/audio_capture.cpp:208
-msgid "failed to create PipeWire thread loop"
-msgstr "创建 PipeWire 线程循环失败"
+#: src/daemon/audio/audio_capture.cpp:178
+msgid "failed to create PulseAudio threaded mainloop"
+msgstr "创建 PulseAudio 线程循环失败"
 
-#: src/daemon/audio/audio_capture.cpp:216
-msgid "failed to start PipeWire thread loop: %s"
-msgstr "启动 PipeWire 线程循环失败：%s"
+#: src/daemon/audio/audio_capture.cpp:186
+#, c-format
+msgid "failed to start PulseAudio threaded mainloop: %s"
+msgstr "启动 PulseAudio 线程循环失败：%s"
 
-#: src/daemon/audio/audio_capture.cpp:241
-#: src/daemon/audio/audio_capture.cpp:337
+#: src/daemon/audio/audio_capture.cpp:202
+#: src/daemon/audio/audio_capture.cpp:358
 msgid "audio capture loop is not initialized"
 msgstr "音频采集循环未初始化"
 
-#: src/daemon/audio/audio_capture.cpp:257
-msgid "PipeWire core connection is not ready"
-msgstr "PipeWire 核心连接未就绪"
+#: src/daemon/audio/audio_capture.cpp:218
+msgid "failed to create PulseAudio context"
+msgstr "创建 PulseAudio 上下文失败"
 
-#: src/daemon/audio/audio_capture.cpp:265
-msgid "failed to allocate PipeWire properties"
-msgstr "分配 PipeWire 属性失败"
+#: src/daemon/audio/audio_capture.cpp:227
+#: src/daemon/audio/audio_capture.cpp:251
+#: src/daemon/audio/audio_capture.cpp:261
+#, c-format
+msgid "failed to connect to audio server: %s"
+msgstr "连接音频服务失败：%s"
 
-#: src/daemon/audio/audio_capture.cpp:273
-msgid "failed to create PipeWire stream"
-msgstr "创建 PipeWire 流失败"
+#: src/daemon/audio/audio_capture.cpp:283
+msgid "PulseAudio context is not ready"
+msgstr "PulseAudio 上下文未就绪"
 
-#: src/daemon/audio/audio_capture.cpp:285
-msgid "failed to connect PipeWire stream: %s"
-msgstr "连接 PipeWire 流失败：%s"
+#: src/daemon/audio/audio_capture.cpp:298
+msgid "failed to create PulseAudio capture stream"
+msgstr "创建 PulseAudio 录音流失败"
 
-#: src/daemon/audio/audio_capture.cpp:350
-msgid "PipeWire control plane is unavailable"
-msgstr "PipeWire 控制平面不可用"
+#: src/daemon/audio/audio_capture.cpp:323
+#, c-format
+msgid "failed to connect PulseAudio capture stream: %s"
+msgstr "连接 PulseAudio 录音流失败：%s"
 
 #: src/daemon/audio/fd_stream_audio_source.cpp:53
 msgid "invalid stream file descriptor"

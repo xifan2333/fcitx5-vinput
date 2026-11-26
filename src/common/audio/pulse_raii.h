@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <pulse/context.h>
 #include <pulse/def.h>
+#include <pulse/mainloop-api.h>
 #include <pulse/mainloop.h>
 #include <pulse/operation.h>
+#include <pulse/stream.h>
 #include <pulse/thread-mainloop.h>
 
 namespace vinput::pulse {
@@ -42,6 +44,66 @@ public:
 
 private:
   pa_mainloop* loop_{nullptr};
+};
+
+// RAII wrapper for pa_threaded_mainloop handles; stops the loop thread (unlocked) before freeing.
+class ScopedThreadedMainloop {
+public:
+  ScopedThreadedMainloop() = default;
+  ~ScopedThreadedMainloop() { Reset(); }
+
+  ScopedThreadedMainloop(const ScopedThreadedMainloop&) = delete;
+  ScopedThreadedMainloop& operator=(const ScopedThreadedMainloop&) = delete;
+  ScopedThreadedMainloop(ScopedThreadedMainloop&&) = delete;
+  ScopedThreadedMainloop& operator=(ScopedThreadedMainloop&&) = delete;
+
+  bool Create(const char* thread_name = nullptr) noexcept {
+    Reset();
+    loop_ = pa_threaded_mainloop_new();
+    if (loop_ != nullptr && thread_name != nullptr) {
+      pa_threaded_mainloop_set_name(loop_, thread_name);
+    }
+    return loop_ != nullptr;
+  }
+
+  int Start() noexcept {
+    if (loop_ == nullptr) {
+      return -1;
+    }
+    if (started_) {
+      return 0;
+    }
+    const int ret = pa_threaded_mainloop_start(loop_);
+    if (ret >= 0) {
+      started_ = true;
+    }
+    return ret;
+  }
+
+  // Must be called WITHOUT the threaded mainloop lock held.
+  void Stop() noexcept {
+    if (loop_ != nullptr && started_) {
+      pa_threaded_mainloop_stop(loop_);
+      started_ = false;
+    }
+  }
+
+  // Must be called WITHOUT the threaded mainloop lock held.
+  void Reset() noexcept {
+    Stop();
+    if (loop_ != nullptr) {
+      pa_threaded_mainloop_free(loop_);
+      loop_ = nullptr;
+    }
+  }
+
+  [[nodiscard]] pa_threaded_mainloop* Get() const noexcept { return loop_; }
+  [[nodiscard]] bool IsStarted() const noexcept { return started_; }
+  [[nodiscard]] explicit operator bool() const noexcept { return loop_ != nullptr; }
+
+private:
+  pa_threaded_mainloop* loop_{nullptr};
+  bool started_{false};
 };
 
 // RAII wrapper for pa_operation handles; cancels running operations before unreferencing.
@@ -91,7 +153,7 @@ public:
   ScopedContext(const ScopedContext&) = delete;
   ScopedContext& operator=(const ScopedContext&) = delete;
 
-  ScopedContext(ScopedContext&& other) noexcept : ctx_(other.ctx_) { other.ctx_ = nullptr; }
+  ScopedContext(ScopedContext&& other) noexcept : ctx_(other.ctx_) { ctx_ = nullptr; }
   ScopedContext& operator=(ScopedContext&& other) noexcept {
     if (this != &other) {
       Reset();
@@ -118,6 +180,66 @@ public:
 
 private:
   pa_context* ctx_{nullptr};
+};
+
+// RAII wrapper for pa_stream handles; clears callbacks and disconnects cleanly before unref.
+class ScopedStream {
+public:
+  ScopedStream() = default;
+  explicit ScopedStream(pa_stream* stream) noexcept : stream_(stream) {}
+  ~ScopedStream() { Reset(); }
+
+  ScopedStream(const ScopedStream&) = delete;
+  ScopedStream& operator=(const ScopedStream&) = delete;
+
+  ScopedStream(ScopedStream&& other) noexcept : stream_(other.stream_) { other.stream_ = nullptr; }
+  ScopedStream& operator=(ScopedStream&& other) noexcept {
+    if (this != &other) {
+      Reset();
+      stream_ = other.stream_;
+      other.stream_ = nullptr;
+    }
+    return *this;
+  }
+
+  [[nodiscard]] pa_stream* Get() const noexcept { return stream_; }
+  [[nodiscard]] explicit operator bool() const noexcept { return stream_ != nullptr; }
+
+  void Reset(pa_stream* next = nullptr) noexcept {
+    if (stream_ != nullptr) {
+      pa_stream_set_read_callback(stream_, nullptr, nullptr);
+      pa_stream_set_state_callback(stream_, nullptr, nullptr);
+      const pa_stream_state_t st = pa_stream_get_state(stream_);
+      if (st != PA_STREAM_UNCONNECTED && st != PA_STREAM_FAILED && st != PA_STREAM_TERMINATED) {
+        (void)pa_stream_disconnect(stream_);
+      }
+      pa_stream_unref(stream_);
+    }
+    stream_ = next;
+  }
+
+private:
+  pa_stream* stream_{nullptr};
+};
+
+// RAII wrapper for pa_time_event created on a pa_mainloop_api.
+class ScopedTimeEvent {
+public:
+  ScopedTimeEvent(pa_mainloop_api* api, pa_time_event* event) noexcept : api_(api), event_(event) {}
+  ~ScopedTimeEvent() {
+    if (api_ != nullptr && event_ != nullptr && api_->time_free != nullptr) {
+      api_->time_free(event_);
+    }
+  }
+
+  ScopedTimeEvent(const ScopedTimeEvent&) = delete;
+  ScopedTimeEvent& operator=(const ScopedTimeEvent&) = delete;
+  ScopedTimeEvent(ScopedTimeEvent&&) = delete;
+  ScopedTimeEvent& operator=(ScopedTimeEvent&&) = delete;
+
+private:
+  pa_mainloop_api* api_{nullptr};
+  pa_time_event* event_{nullptr};
 };
 
 // Scoped lock guard for pa_threaded_mainloop; never invoke inside the RT callback itself.
@@ -148,7 +270,6 @@ class PulseSyncSession {
 public:
   PulseSyncSession() = default;
   ~PulseSyncSession() {
-    // Destroy context before freeing the mainloop that owns its mainloop_api.
     ctx_.Reset();
     loop_.Reset();
   }

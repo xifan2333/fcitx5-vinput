@@ -35,7 +35,7 @@ include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cma
 # Compiler behavior, C++20 enforcement, diagnostics, and LTO
 include(cmake/CompilerSettings.cmake)
 
-# System dependencies (PkgConfig, Threads, Gettext, LibArchive, CURL, SDBUS, PIPEWIRE)
+# System dependencies (PkgConfig, Threads, Gettext, LibArchive, CURL, SDBUS, PULSEAUDIO)
 include(cmake/Dependencies.cmake)
 
 # 3rdparty vendored header-only libraries (SYSTEM INTERFACE)

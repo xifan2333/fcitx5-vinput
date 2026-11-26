@@ -4,8 +4,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <pulse/volume.h>
 #include <queue>
-#include <string_view>
 #include <thread>
 
 namespace vinput::daemon::audio {
@@ -17,7 +17,7 @@ struct DuckerTask {
   double scale{1.0};
 };
 
-// Abstract volume control adapter allowing production wpctl invocation or in-memory testing fake.
+// Abstract volume control adapter allowing production libpulse control or in-memory testing fake.
 class VolumeControlAdapter {
 public:
   VolumeControlAdapter() = default;
@@ -25,23 +25,29 @@ public:
   VolumeControlAdapter(const VolumeControlAdapter&) = default;
   VolumeControlAdapter& operator=(const VolumeControlAdapter&) = default;
   VolumeControlAdapter(VolumeControlAdapter&&) = default;
-  VolumeControlAdapter& operator=(VolumeControlAdapter&&) = default;
+  VolumeControlAdapter& operator=(VolumeControlAdapter&&) = delete;
 
   virtual std::optional<double> GetVolume() = 0;
   virtual bool SetVolume(double volume) = 0;
 };
 
-// Production volume controller executing WirePlumber wpctl commands with timeouts.
-class WpctlVolumeAdapter : public VolumeControlAdapter {
+// Production volume controller reading/writing @DEFAULT_SINK@ volume via libpulse with timeouts.
+class PulseVolumeAdapter : public VolumeControlAdapter {
 public:
-  WpctlVolumeAdapter() = default;
+  PulseVolumeAdapter() = default;
   std::optional<double> GetVolume() override;
   bool SetVolume(double volume) override;
 
-  static std::optional<double> ParseVolume(std::string_view text);
+  static std::optional<double> CvolumeToScalar(const pa_cvolume& cvol);
+  static pa_cvolume ScaleCvolume(const pa_cvolume& baseline, double target_scalar);
+
+private:
+  std::mutex state_mutex_;
+  std::optional<pa_cvolume> baseline_cvolume_;
+  double baseline_scalar_{0.0};
 };
 
-// In-memory fake volume controller for testing without host sound server or wpctl binary.
+// In-memory fake volume controller for testing without host sound server.
 class FakeVolumeAdapter : public VolumeControlAdapter {
 public:
   explicit FakeVolumeAdapter(double initial_volume = 1.0) : volume_(initial_volume) {}
