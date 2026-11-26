@@ -122,7 +122,7 @@ std::string LocalPulseMachineId() {
   if (::gethostname(host_buf.data(), host_buf.size()) == 0) {
     host_buf.back() = '\0';
     if (host_buf[0] != '\0') {
-      return std::string(host_buf.data());
+      return {host_buf.data()};
     }
   }
   return {};

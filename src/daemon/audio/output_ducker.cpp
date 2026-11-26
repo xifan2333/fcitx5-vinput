@@ -9,6 +9,7 @@
 #include <pulse/context.h>
 #include <pulse/introspect.h>
 #include <pulse/volume.h>
+#include <string>
 #include <thread>
 #include <utility>
 
