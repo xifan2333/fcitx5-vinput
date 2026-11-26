@@ -36,7 +36,7 @@
 #include <variant>
 #include <vector>
 
-#include "common/audio/pipewire_device.h"
+#include "common/audio/pulse_device.h"
 #include "common/client/client_manager.h"
 #include "common/config/core_config_types.h"
 #include "common/dbus/dbus_interface.h"
@@ -542,7 +542,7 @@ void ControlPage::reload() {
   comboDevice_->clear();
   comboDevice_->addItem("default", "default");
 
-  const auto devices = vinput::pw::EnumerateAudioSources();
+  const auto devices = vinput::pulse::EnumerateAudioSources();
   const CoreConfig config = ConfigManager::Get().Load();
   const QString activeDevice = QString::fromStdString(config.global.captureDevice);
 

@@ -16,12 +16,12 @@ This document defines the architectural boundaries between **C ABI interfaces** 
 
 The following six subsystems are strictly bounded by third-party C libraries or Linux kernel ABIs:
 
-### Boundary 1: PipeWire & SPA Audio Capture
-- **Files**: `src/daemon/audio/audio_capture.{h,cpp}`, `src/common/audio/pipewire_device.{h,cpp}`
+### Boundary 1: PulseAudio (`libpulse`) Audio Capture & Control
+- **Files**: `src/daemon/audio/audio_capture.{h,cpp}`, `src/daemon/audio/output_ducker.{h,cpp}`, `src/common/audio/pulse_device.{h,cpp}`, `src/common/audio/pulse_raii.h`
 - **ABI Constraints**:
-  - **C Callbacks & Trampolines**: Callback hooks (e.g., `onProcess`, `onParamChanged`, `onStateChanged`, `registry_event_global`) must be static C function pointers with `void* userdata` trampolines. They **must never throw C++ exceptions** across the PipeWire C boundary.
-  - **SPA Pod Serialization**: SPA structures (`struct spa_pod`, `spa_pod_builder`, `spa_buffer`) and fixed-size stack buffers (`uint8_t pod_buffer[1024]`) are dictated by SPA's variable-length binary serialization protocol.
-  - **Action Rule**: Do not replace `void*` or SPA C structs with C++ abstractions. Internal helper logic outside callbacks must use pure C++20.
+  - **C Callbacks & Trampolines**: Callback hooks (e.g., `OnStreamRead`, `OnStreamState`, `OnContextState`, `OnSourceInfo`, `OnSinkInfo`) must be static/free C function pointers with `void* userdata` trampolines. They **must never throw C++ exceptions** across the `libpulse` C boundary.
+  - **Handle Lifecycle**: `pa_mainloop*`, `pa_threaded_mainloop*`, `pa_context*`, `pa_stream*`, `pa_operation*`, and `pa_time_event*` handles must be encapsulated in RAII wrappers (`vinput::pulse::Scoped*`).
+  - **Action Rule**: Retain `libpulse` C callback signatures and POD structs (`pa_sample_spec`, `pa_buffer_attr`, `pa_cvolume`) at the boundary. Internal helper logic outside callbacks must use pure C++20.
 
 ### Boundary 2: sd-bus D-Bus Integration
 - **Files**: `src/daemon/runtime/dbus_service.{h,cpp}`, `src/cli/runtime/dbus_client.cpp`, `src/common/systemd/systemd_client.cpp`

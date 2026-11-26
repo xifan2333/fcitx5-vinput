@@ -30,10 +30,10 @@ Controls runtime audio environment and capture settings.
 ```
 
 **capture_device** (*string*)
-:   PipeWire capture node name, or `"default"`.
+:   PulseAudio / `pipewire-pulse` capture source name, or `"default"`.
 
 **duck_output_while_recording** (*boolean*)
-:   Whether to lower system audio volume via WirePlumber while recording.
+:   Whether to lower default sink output volume via `libpulse` while recording.
 
 **duck_output_volume** (*float*, `0.0` - `1.0`)
 :   Target volume fraction when ducking is active (`0.25` = 25% original volume).

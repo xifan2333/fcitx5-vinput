@@ -1,86 +1,177 @@
 #include "daemon/audio/output_ducker.h"
 
 #include <algorithm>
-#include <array>
-#include <cstddef>
-#include <cstdio>
-#include <fast_float/fast_float.h>
+#include <chrono>
+#include <cmath>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <pulse/context.h>
+#include <pulse/introspect.h>
+#include <pulse/volume.h>
 #include <string>
-#include <string_view>
-#include <system_error>
 #include <thread>
 #include <utility>
 
+#include "common/audio/pulse_raii.h"
 #include "common/utils/debug_log.h"
-#include "common/utils/process_utils.h"
 
 namespace vinput::daemon::audio {
 
 namespace {
 
-constexpr char kWpctl[] = "wpctl";
-constexpr char kDefaultSink[] = "@DEFAULT_AUDIO_SINK@";
-constexpr std::string_view kVolumePrefix = "Volume:";
-constexpr int kWpctlTimeoutMs = 2000;
+constexpr const char* kDefaultSinkName = "@DEFAULT_SINK@";
+constexpr int kPulseVolumeTimeoutMs = 1500;
+constexpr double kMaxVolumeScalar = 1.5;
+
+struct SinkQueryResult {
+  std::optional<pa_cvolume> volume;
+  std::string sink_name;
+};
+
+void OnSinkInfo(pa_context* /*ctx*/, const pa_sink_info* info, int eol, void* userdata) noexcept {
+  if (eol != 0 || info == nullptr || userdata == nullptr) {
+    return;
+  }
+  auto* out = static_cast<SinkQueryResult*>(userdata);
+  if (pa_cvolume_valid(&info->volume) != 0 && info->volume.channels > 0 && info->name != nullptr &&
+      info->name[0] != '\0') {
+    try {
+      out->sink_name = info->name;
+      out->volume = info->volume;
+    } catch (...) {
+      out->volume.reset();
+      out->sink_name.clear();
+    }
+  }
+}
+
+void OnContextSuccess(pa_context* /*ctx*/, int success, void* userdata) noexcept {
+  if (userdata != nullptr) {
+    *static_cast<bool*>(userdata) = (success != 0);
+  }
+}
+
+std::optional<SinkQueryResult>
+QueryDefaultSinkInfo(vinput::pulse::PulseSyncSession& session,
+                     std::chrono::steady_clock::time_point deadline) {
+  SinkQueryResult result;
+  if (!session.RunOperation(pa_context_get_sink_info_by_name(session.Context(), kDefaultSinkName,
+                                                             &OnSinkInfo, &result),
+                            deadline)) {
+    return std::nullopt;
+  }
+  if (!result.volume.has_value() || result.sink_name.empty()) {
+    return std::nullopt;
+  }
+  return result;
+}
 
 } // namespace
 
-std::optional<double> WpctlVolumeAdapter::ParseVolume(std::string_view text) {
-  if (text.empty()) {
+std::optional<double> PulseVolumeAdapter::CvolumeToScalar(const pa_cvolume& cvol) {
+  if (pa_cvolume_valid(&cvol) == 0 || cvol.channels == 0) {
     return std::nullopt;
   }
-  const auto prefix_pos = text.find(kVolumePrefix);
-  if (prefix_pos == std::string_view::npos) {
-    return std::nullopt;
-  }
-  const std::string_view after_prefix = text.substr(prefix_pos + kVolumePrefix.size());
-  const auto num_start = after_prefix.find_first_not_of(" \t");
-  if (num_start == std::string_view::npos) {
-    return std::nullopt;
-  }
-  const std::string_view number = after_prefix.substr(num_start);
-  double value = 0.0;
-  const auto parsed = fast_float::from_chars(number.data(), number.data() + number.size(), value);
-  if (parsed.ec != std::errc{}) {
-    return std::nullopt;
-  }
-  return value;
+  return static_cast<double>(pa_cvolume_max(&cvol)) / static_cast<double>(PA_VOLUME_NORM);
 }
 
-std::optional<double> WpctlVolumeAdapter::GetVolume() {
-  vinput::process::CommandSpec spec;
-  spec.command = kWpctl;
-  spec.args = {"get-volume", kDefaultSink};
-  spec.timeout_ms = kWpctlTimeoutMs;
+pa_cvolume PulseVolumeAdapter::ScaleCvolume(const pa_cvolume& baseline, double target_scalar) {
+  const double clamped = std::clamp(target_scalar, 0.0, kMaxVolumeScalar);
+  const auto target_raw =
+      static_cast<pa_volume_t>(std::lround(clamped * static_cast<double>(PA_VOLUME_NORM)));
 
-  const auto result = vinput::process::Run(spec);
-  if (result.launch_failed || result.timed_out || result.exit_code != 0) {
-    return std::nullopt;
+  pa_cvolume result = baseline;
+  if (pa_cvolume_valid(&result) == 0 || result.channels == 0) {
+    pa_cvolume_set(&result, 2, target_raw);
+    return result;
   }
-  return ParseVolume(result.stdout_text);
+  if (pa_cvolume_max(&result) == PA_VOLUME_MUTED) {
+    pa_cvolume_set(&result, result.channels, target_raw);
+    return result;
+  }
+  if (pa_cvolume_scale(&result, target_raw) == nullptr) {
+    pa_cvolume_set(&result, result.channels, target_raw);
+  }
+  return result;
 }
 
-bool WpctlVolumeAdapter::SetVolume(double volume) {
-  std::array<char, 32> buffer{};
-  const int written = std::snprintf(buffer.data(), buffer.size(), "%.4F", volume);
-  if (written <= 0 || static_cast<std::size_t>(written) >= buffer.size()) {
+std::optional<double> PulseVolumeAdapter::GetVolume() {
+  {
+    const std::scoped_lock lock(state_mutex_);
+    baseline_cvolume_.reset();
+    baseline_scalar_ = 0.0;
+    baseline_sink_name_.clear();
+  }
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(kPulseVolumeTimeoutMs);
+  vinput::pulse::PulseSyncSession session;
+  if (!session.Connect("vinput-ducker", deadline)) {
+    return std::nullopt;
+  }
+
+  auto info = QueryDefaultSinkInfo(session, deadline);
+  if (!info || !info->volume) {
+    return std::nullopt;
+  }
+  const auto scalar = CvolumeToScalar(*info->volume);
+  if (!scalar) {
+    return std::nullopt;
+  }
+
+  {
+    const std::scoped_lock lock(state_mutex_);
+    baseline_cvolume_ = *info->volume;
+    baseline_scalar_ = *scalar;
+    baseline_sink_name_ = std::move(info->sink_name);
+  }
+  return scalar;
+}
+
+bool PulseVolumeAdapter::SetVolume(double volume) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(kPulseVolumeTimeoutMs);
+  vinput::pulse::PulseSyncSession session;
+  if (!session.Connect("vinput-ducker", deadline)) {
     return false;
   }
 
-  vinput::process::CommandSpec spec;
-  spec.command = kWpctl;
-  spec.args = {"set-volume", kDefaultSink, std::string(buffer.data(), buffer.data() + written)};
-  spec.timeout_ms = kWpctlTimeoutMs;
+  std::optional<pa_cvolume> base;
+  double base_scalar = 0.0;
+  std::string target_sink;
+  {
+    const std::scoped_lock lock(state_mutex_);
+    base = baseline_cvolume_;
+    base_scalar = baseline_scalar_;
+    target_sink = baseline_sink_name_;
+  }
 
-  const auto result = vinput::process::Run(spec);
-  return !result.launch_failed && !result.timed_out && result.exit_code == 0;
+  if (!base || target_sink.empty()) {
+    const auto info = QueryDefaultSinkInfo(session, deadline);
+    if (!info || !info->volume) {
+      return false;
+    }
+    base = info->volume;
+    base_scalar = CvolumeToScalar(*base).value_or(0.0);
+    target_sink = info->sink_name;
+  }
+
+  const pa_cvolume target_cvol =
+      (std::abs(volume - base_scalar) < 1e-6) ? *base : ScaleCvolume(*base, volume);
+
+  bool ok = false;
+  if (!session.RunOperation(pa_context_set_sink_volume_by_name(session.Context(),
+                                                               target_sink.c_str(), &target_cvol,
+                                                               &OnContextSuccess, &ok),
+                            deadline)) {
+    return false;
+  }
+  return ok;
 }
 
 OutputDucker::OutputDucker(std::shared_ptr<VolumeControlAdapter> adapter)
-    : adapter_(adapter != nullptr ? std::move(adapter) : std::make_shared<WpctlVolumeAdapter>()) {}
+    : adapter_(adapter != nullptr ? std::move(adapter) : std::make_shared<PulseVolumeAdapter>()) {}
 
 OutputDucker::~OutputDucker() {
   StopAndJoin();

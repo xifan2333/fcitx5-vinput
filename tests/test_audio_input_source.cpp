@@ -1,20 +1,52 @@
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
 #include <span>
+#include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <vector>
 
+#include "daemon/audio/audio_capture.h"
 #include "daemon/audio/mock_audio_input_source.h"
-#include "daemon/audio/pipewire_control_plane.h"
 
 namespace {
+
+class ScopedEnvVar {
+public:
+  ScopedEnvVar(const char* name, const char* value) : name_(name) {
+    const char* prev = std::getenv(name);
+    if (prev != nullptr) {
+      old_value_ = std::string(prev);
+    }
+    if (value != nullptr) {
+      (void)::setenv(name, value, 1);
+    } else {
+      (void)::unsetenv(name);
+    }
+  }
+
+  ~ScopedEnvVar() {
+    if (old_value_.has_value()) {
+      (void)::setenv(name_.c_str(), old_value_->c_str(), 1);
+    } else {
+      (void)::unsetenv(name_.c_str());
+    }
+  }
+
+  ScopedEnvVar(const ScopedEnvVar&) = delete;
+  ScopedEnvVar& operator=(const ScopedEnvVar&) = delete;
+  ScopedEnvVar(ScopedEnvVar&&) = delete;
+  ScopedEnvVar& operator=(ScopedEnvVar&&) = delete;
+
+private:
+  std::string name_;
+  std::optional<std::string> old_value_;
+};
 
 void AssertTrue(bool condition, const char* message, const char* file, int line) {
   if (!condition) {
@@ -26,7 +58,6 @@ void AssertTrue(bool condition, const char* message, const char* file, int line)
 #define TEST_ASSERT(cond) AssertTrue((cond), #cond, __FILE__, __LINE__)
 
 using vinput::daemon::audio::MockAudioInputSource;
-using vinput::daemon::audio::PipeWireControlPlane;
 
 void TestMockLifecycle() {
   MockAudioInputSource source(5, 16000);
@@ -70,14 +101,18 @@ void TestMockFirstBufferCallback() {
 
   const std::array<int16_t, 160> chunk1{};
   source.PushSamples(chunk1);
-  TEST_ASSERT(first_buffer_calls == 1);
-  TEST_ASSERT(recorded_ns > 0);
+  TEST_ASSERT(first_buffer_calls == 0);
   const auto latency = source.FirstBufferLatencyMs();
   TEST_ASSERT(latency.has_value());
   TEST_ASSERT(latency.value_or(-1) >= 0);
 
+  TEST_ASSERT(source.DrainAvailable([](std::span<const int16_t> /*pcm*/) {}) == 160);
+  TEST_ASSERT(first_buffer_calls == 1);
+  TEST_ASSERT(recorded_ns > 0);
+
   const std::array<int16_t, 160> chunk2{};
   source.PushSamples(chunk2);
+  TEST_ASSERT(source.DrainAvailable([](std::span<const int16_t> /*pcm*/) {}) == 160);
   TEST_ASSERT(first_buffer_calls == 1);
 
   source.StopAndDrain();
@@ -107,9 +142,9 @@ void TestMockErrorCallback() {
   TEST_ASSERT(source.Begin("default", nullptr, on_err, nullptr));
   TEST_ASSERT(source.IsRecording());
 
-  source.SimulateError("simulated pipewire node failure");
+  source.SimulateError("simulated audio stream failure");
   TEST_ASSERT(error_calls == 1);
-  TEST_ASSERT(received_error == "simulated pipewire node failure");
+  TEST_ASSERT(received_error == "simulated audio stream failure");
   TEST_ASSERT(!source.IsRecording());
 }
 
@@ -152,23 +187,30 @@ void TestMockDropSamples() {
   source.StopAndDrain();
 }
 
-void TestPipeWireControlPlaneHeadless() {
-  PipeWireControlPlane cp;
-  TEST_ASSERT(!cp.Connect(nullptr));
-  TEST_ASSERT(!cp.EnsureConnected(nullptr));
-  TEST_ASSERT(cp.Core() == nullptr);
+void TestAudioCaptureHeadlessLifecycle() {
+  const ScopedEnvVar pulse_env("PULSE_SERVER", "unix:/nonexistent/vinput-pulse-test-sock");
 
-  const auto target_empty = cp.ResolveTarget("");
-  TEST_ASSERT(target_empty.node_name.empty());
-  TEST_ASSERT(target_empty.object_serial.empty());
-  TEST_ASSERT(!target_empty.is_sink_capture);
+  AudioCapture capture;
+  TEST_ASSERT(!capture.IsRecording());
+  TEST_ASSERT(capture.DroppedSamples() == 0);
+  TEST_ASSERT(!capture.FirstBufferLatencyMs().has_value());
 
-  const auto target_default = cp.ResolveTarget("default");
-  TEST_ASSERT(target_default.node_name.empty());
-  TEST_ASSERT(target_default.object_serial.empty());
-  TEST_ASSERT(!target_default.is_sink_capture);
+  std::string uninit_error;
+  TEST_ASSERT(!capture.Begin("default", nullptr, nullptr, &uninit_error));
+  TEST_ASSERT(!uninit_error.empty());
+  TEST_ASSERT(!capture.IsRecording());
 
-  cp.Disconnect();
+  std::string start_error;
+  TEST_ASSERT(capture.Start(&start_error));
+  TEST_ASSERT(start_error.empty());
+  TEST_ASSERT(!capture.IsRecording());
+
+  std::string connect_error;
+  TEST_ASSERT(!capture.Begin("default", nullptr, nullptr, &connect_error));
+  TEST_ASSERT(!connect_error.empty());
+  TEST_ASSERT(connect_error.find("pipewire-pulse") != std::string::npos);
+  TEST_ASSERT(!capture.IsRecording());
+  TEST_ASSERT(capture.StopAndDrain().empty());
 }
 
 void TestMockNotifyFd() {
@@ -206,7 +248,7 @@ int main() {
   TestMockBeginFailure();
   TestMockAbort();
   TestMockDropSamples();
-  TestPipeWireControlPlaneHeadless();
+  TestAudioCaptureHeadlessLifecycle();
   TestMockNotifyFd();
   std::printf("All test_audio_input_source passed!\n");
   return 0;

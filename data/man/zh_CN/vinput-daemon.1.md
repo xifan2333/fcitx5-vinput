@@ -21,13 +21,13 @@ vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 
 守护进程的主要职责包括：
 
-- 通过 **PipeWire** 捕获麦克风输入音频；
+- 通过 **PulseAudio** / **pipewire-pulse**（`libpulse`）捕获麦克风与系统内录音频；
 - 基于 **sherpa-onnx** 进行本地离线语音识别（ASR）；
 - 支持流式及批处理转发至云端 ASR 服务商脚本；
 - 基于 **VAD**（静音检测）过滤无效音频；
 - 调度 OpenAI 兼容大模型进行场景后处理与重写；
 - 管理后台 LLM 适配器进程的生命周期；
-- 录音期间通过 **WirePlumber** 动态降低系统背景音量（Audio Ducking）。
+- 录音期间通过 **libpulse** 动态降低系统默认输出音量（Audio Ducking）。
 
 # 服务管理与生命周期
 
@@ -44,12 +44,6 @@ vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 
 # 环境变量
 
-**VINPUT_CAPTURE_REUSE**
-:   控制录音结束后是否在短时间内保持已连接但未激活的 PipeWire 音频流（默认值：`1`）。该热路径（Warm Path）机制显著降低了下一次触发录音时的启动延迟。设置为 `0` 则每次停止录音后立即销毁音频流。
-
-**VINPUT_CAPTURE_IDLE_DESTROY_MS**
-:   闲置超时时间（毫秒），超时后销毁未激活的 PipeWire 音频流（默认值：`15000`，即 15 秒）。
-
 **VINPUT_LOG_LEVEL**
 :   日志过滤门槛：`trace`、`debug`、`info`、`warn`、`error`、`critical`、`off`（默认值：`info`）。排查问题时可设置为 `debug` 或 `trace`。
 
@@ -58,7 +52,7 @@ vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 
 # 隐私与音频安全
 
-当音频热路径（Warm Path）处于非活跃状态时，**绝不会读取或向内存缓冲任何音频数据**。闲置期过后，音频采集流将被完全关闭与销毁。
+空闲状态下，守护进程仅保持轻量控制连接，**绝不会打开录音流或向内存缓冲任何麦克风音频**；录音结束或中止时，采集流会立即断开销毁。
 
 # 文件
 *~/.config/vinput/config.json*
@@ -71,4 +65,4 @@ vinput-daemon - fcitx5-vinput 后台语音识别与处理守护进程
 :   D-Bus 激活配置文件。
 
 # 另请参阅
-**vinput**(1), **vinput-config**(5), **fcitx5**(1), **systemctl**(1), **pipewire**(1)
+**vinput**(1), **vinput-config**(5), **fcitx5**(1), **systemctl**(1), **pulseaudio**(1)

@@ -7,7 +7,7 @@ Routing index. Execution detail lives behind the pointers below.
 ## Module Boundaries
 
 - `src/common/` — shared domain types, configuration (glaze), RAII wrappers, D-Bus interfaces
-- `src/daemon/` — core service, PipeWire capture, ASR inference, D-Bus server
+- `src/daemon/` — core service, PulseAudio capture, ASR inference, D-Bus server
 - `src/addon/` — Fcitx5 plugin, hotkeys, push-to-talk, D-Bus client
 - `src/cli/` — standalone CLI
 - `src/gui/` — Qt 6 configuration GUI

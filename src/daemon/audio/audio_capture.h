@@ -5,20 +5,18 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
-#include <pipewire/stream.h>
-#include <pipewire/thread-loop.h>
-#include <spa/utils/hook.h>
+#include <pulse/context.h>
+#include <pulse/mainloop-api.h>
+#include <pulse/stream.h>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include "common/audio/pipewire_device.h"
+#include "common/audio/pulse_device.h"
+#include "common/audio/pulse_raii.h"
 
 #include "daemon/audio/audio_input_source.h"
 #include "daemon/audio/audio_ring_buffer.h"
-#include "daemon/audio/pipewire_control_plane.h"
-
-struct spa_pod;
 
 class AudioCapture : public vinput::daemon::audio::AudioInputSource {
 public:
@@ -30,7 +28,7 @@ public:
     long create_stream_ms = -1;
   };
 
-  AudioCapture();
+  AudioCapture() = default;
   ~AudioCapture() override;
 
   AudioCapture(const AudioCapture&) = delete;
@@ -53,7 +51,6 @@ public:
 
   // Compatibility and timing inspection APIs
   bool BeginRecording(std::string* error = nullptr, StartTiming* timing = nullptr);
-  std::vector<int16_t> StopAndGetBuffer();
   void EndRecording();
   void SetTargetObject(std::string target_object);
 
@@ -62,24 +59,31 @@ public:
   void SetNotifyFd(int fd) noexcept override;
 
 private:
-  static void onProcess(void* userdata);
-  static void onParamChanged(void* userdata, uint32_t id, const spa_pod* param);
-  static void onStateChanged(void* userdata, pw_stream_state old, pw_stream_state state,
-                             const char* error);
-  bool CreateAndConnectStream(const vinput::pw::ResolvedCaptureTarget& resolved_target,
+  static void OnContextState(pa_context* ctx, void* userdata) noexcept;
+  static void OnStreamState(pa_stream* stream, void* userdata) noexcept;
+  static void OnStreamRead(pa_stream* stream, std::size_t nbytes, void* userdata) noexcept;
+
+  bool EnsureContextConnected(std::string* error, int timeout_ms);
+  bool WaitForContextReadyLocked(pa_mainloop_api* api, int timeout_ms, std::string* error);
+  void FailContextConnectLocked(int err_code, std::string* error);
+  bool CreateAndConnectStream(const vinput::pulse::ResolvedCaptureTarget& resolved_target,
                               std::string* error);
+  void DisconnectContext() noexcept;
   void ArmRecording() noexcept;
+  void DisconnectStream() noexcept;
+  void ClearCallbackState() noexcept;
   void DestroyStream();
   void DrainQueue();
-  void processCallback();
-  void MarkStreamDestroyed();
+  void DispatchPendingError();
+  void ReadStreamFragments(pa_stream* stream) noexcept;
+  std::size_t WriteHoleSamples(std::size_t hole_samples) noexcept;
   std::string CurrentTargetObject() const;
 
   // SPSC compact sample-level ring buffer (< 500 KB)
   vinput::daemon::audio::AudioSampleRingBuffer ring_buffer_{kDefaultCapacitySeconds, 16000};
-  pw_thread_loop* loop_ = nullptr;
-  std::atomic<pw_stream*> stream_{nullptr};
-  vinput::daemon::audio::PipeWireControlPlane control_plane_;
+  vinput::pulse::ScopedThreadedMainloop loop_;
+  vinput::pulse::ScopedContext context_;
+  vinput::pulse::ScopedStream stream_;
   std::atomic<std::size_t> dropped_samples_{0};
 
   // Lock-free first-buffer timing (nanoseconds since epoch; 0 = unrecorded)
@@ -96,8 +100,6 @@ private:
   ErrorCallback on_error_;
   std::string pending_error_;
 
-  pw_stream_events stream_events_{};
-  spa_hook stream_listener_{};
   std::atomic<int> notify_fd_{-1};
   std::atomic<bool> recording_{false};
 };

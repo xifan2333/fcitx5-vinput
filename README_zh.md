@@ -122,7 +122,7 @@ flatpak install https://xifan2333.github.io/flatpak-auto/refs/org.fcitx.Fcitx5.A
 安装后需要授予额外权限并重启 Fcitx5：
 
 ```bash
-flatpak override --user --filesystem=xdg-run/pipewire-0 org.fcitx.Fcitx5
+flatpak override --user --socket=pulseaudio org.fcitx.Fcitx5
 flatpak override --user --filesystem=xdg-config/systemd:create org.fcitx.Fcitx5
 flatpak override --user --filesystem=xdg-cache org.fcitx.Fcitx5
 flatpak kill org.fcitx.Fcitx5
@@ -140,7 +140,7 @@ flatpak kill org.fcitx.Fcitx5
 
 ### 源码构建
 
-**依赖：** cmake、fcitx5、pipewire、Qt6
+**依赖：** cmake、fcitx5、libpulse、Qt6（运行时需启用 `pulseaudio` 或 `pipewire-pulse` 服务）
 
 ```bash
 # 完整版（带本地 sherpa-onnx 离线推理引擎）

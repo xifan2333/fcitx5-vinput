@@ -68,7 +68,9 @@ else ()
       VERBATIM
     )
   else ()
-    message(WARNING "Neither Qt6LinguistTools nor lrelease found. GUI translations will not be built.")
+    message(
+      WARNING "Neither Qt6LinguistTools nor lrelease found. GUI translations will not be built."
+    )
   endif ()
 endif ()
 
@@ -87,7 +89,7 @@ target_link_libraries(
           Qt6::Widgets
           Qt6::Network
           common
-          pipewire_device
+          pulse_device
           client_runtime
 )
 
@@ -113,5 +115,7 @@ foreach (
 endforeach ()
 
 if (VINPUT_GUI_QM)
-  install(FILES ${VINPUT_GUI_QM} DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/translations)
+  install(FILES ${VINPUT_GUI_QM}
+          DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fcitx5-vinput/translations
+  )
 endif ()

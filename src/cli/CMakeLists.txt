@@ -40,7 +40,7 @@ set_target_properties(cli_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(cli_lib PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(
-  cli_lib PUBLIC common pipewire_device client_runtime CLI11::CLI11 unicodelib::unicodelib
+  cli_lib PUBLIC common pulse_device client_runtime CLI11::CLI11 unicodelib::unicodelib
 )
 
 add_executable(cli main.cpp)

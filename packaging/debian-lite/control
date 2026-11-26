@@ -11,7 +11,7 @@ Build-Depends: debhelper-compat (= 13),
                gettext,
                libcurl4-openssl-dev,
                libarchive-dev,
-               libpipewire-0.3-dev,
+               libpulse-dev,
                libsystemd-dev,
                libfcitx5core-dev,
                libfcitx5config-dev,
@@ -28,7 +28,7 @@ Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, fcitx5
 Provides: fcitx5-vinput (= ${binary:Version})
 Conflicts: fcitx5-vinput
-Recommends: wireplumber, libopus0
+Recommends: pulseaudio | pipewire-pulse, libopus0
 Description: Voice input addon for Fcitx5 (Lite build)
  Lightweight cloud voice input plugin for Fcitx5 with cloud ASR
  providers and LLM post-processing, built without local ASR runtimes.

@@ -122,7 +122,7 @@ flatpak install https://xifan2333.github.io/flatpak-auto/refs/org.fcitx.Fcitx5.A
 After installation, grant the extra permissions and restart Fcitx5:
 
 ```bash
-flatpak override --user --filesystem=xdg-run/pipewire-0 org.fcitx.Fcitx5
+flatpak override --user --socket=pulseaudio org.fcitx.Fcitx5
 flatpak override --user --filesystem=xdg-config/systemd:create org.fcitx.Fcitx5
 flatpak override --user --filesystem=xdg-cache org.fcitx.Fcitx5
 flatpak kill org.fcitx.Fcitx5
@@ -140,7 +140,7 @@ Download the package for your system from [GitHub Releases](https://github.com/f
 
 ### Build from source
 
-**Dependencies:** cmake, fcitx5, pipewire, Qt6
+**Dependencies:** cmake, fcitx5, libpulse, Qt6 (at runtime, ensure `pulseaudio` or `pipewire-pulse` is active)
 
 ```bash
 # Full version (with local sherpa-onnx ASR runtime)

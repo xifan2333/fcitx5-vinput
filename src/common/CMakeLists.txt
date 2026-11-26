@@ -72,12 +72,12 @@ target_link_libraries(
   common PUBLIC config CURL::libcurl LibArchive::LibArchive indicators::indicators
 )
 
-add_library(pipewire_device STATIC audio/pipewire_device.cpp)
+add_library(pulse_device STATIC audio/pulse_device.cpp)
 
 set_target_properties(
-  pipewire_device PROPERTIES POSITION_INDEPENDENT_CODE ON OUTPUT_NAME "vinput-pipewire-device"
+  pulse_device PROPERTIES POSITION_INDEPENDENT_CODE ON OUTPUT_NAME "vinput-pulse-device"
 )
 
-target_include_directories(pipewire_device PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(pulse_device PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(pipewire_device PUBLIC config PkgConfig::PIPEWIRE)
+target_link_libraries(pulse_device PUBLIC config PkgConfig::PULSEAUDIO)

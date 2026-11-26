@@ -1,7 +1,7 @@
 # tests/CMakeLists.txt Unit tests powered by vinput_add_test helper and reusable core libraries.
 
-# 1. PipeWire device tests
-vinput_add_test(test_pipewire_target LIBS pipewire_device)
+# 1. PulseAudio device tests
+vinput_add_test(test_pulse_target LIBS pulse_device)
 
 # 1. Addon integration & modifier key tests
 vinput_add_test(modifier_key_tests LIBS addon_core ENV "XDG_CONFIG_HOME=/tmp/vinput_test_cfg")

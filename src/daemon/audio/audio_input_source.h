@@ -11,7 +11,7 @@
 
 namespace vinput::daemon::audio {
 
-// Narrow interface contract for audio input sources (PipeWire capture or testing mock).
+// Narrow interface contract for audio input sources (PulseAudio capture or testing mock).
 class AudioInputSource {
 public:
   using FirstBufferCallback = std::function<void(int64_t timestamp_ns)>;
@@ -25,7 +25,7 @@ public:
   AudioInputSource(AudioInputSource&&) = default;
   AudioInputSource& operator=(AudioInputSource&&) = default;
 
-  // Starts capturing audio from the resolved target device/node.
+  // Starts capturing audio from the resolved target source.
   // When the first audio buffer is received, on_first_buffer (if provided) is invoked.
   // If an asynchronous stream error occurs, on_error (if provided) is invoked.
   virtual bool Begin(std::string_view target = {}, FirstBufferCallback on_first_buffer = nullptr,

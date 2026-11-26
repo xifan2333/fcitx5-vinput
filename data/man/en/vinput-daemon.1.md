@@ -21,13 +21,13 @@ vinput-daemon - Background speech recognition and processing daemon for fcitx5-v
 
 The daemon is responsible for:
 
-- Capturing microphone audio via **PipeWire**.
+- Capturing microphone and monitor audio via **PulseAudio** / **pipewire-pulse** (`libpulse`).
 - Offline speech-to-text recognition powered by **sherpa-onnx**.
 - Forwarding streaming or batch audio to cloud ASR provider scripts.
 - Voice Activity Detection (**VAD**) to filter silence.
 - Post-processing and rewriting recognized text using OpenAI-compatible LLM APIs.
 - Managing background LLM adapter processes.
-- Dynamic system audio ducking via **WirePlumber** during recording.
+- Dynamic system audio ducking via **libpulse** during recording.
 
 # RUNTIME LIFECYCLE & SERVICE
 
@@ -44,12 +44,6 @@ View daemon logs:
 
 # ENVIRONMENT VARIABLES
 
-**VINPUT_CAPTURE_REUSE**
-:   Controls whether to keep a connected but inactive PipeWire capture stream alive after recording ends (default: `1`). This warm-path mechanism significantly reduces latency on subsequent voice triggers. Set to `0` to destroy the capture stream immediately upon recording completion.
-
-**VINPUT_CAPTURE_IDLE_DESTROY_MS**
-:   Idle grace period in milliseconds before destroying an inactive reusable PipeWire stream (default: `15000`, 15 seconds).
-
 **VINPUT_LOG_LEVEL**
 :   Log filtering threshold: `trace`, `debug`, `info`, `warn`, `error`, `critical`, `off` (default: `info`). Set to `debug` or `trace` for verbose troubleshooting logs.
 
@@ -58,7 +52,7 @@ View daemon logs:
 
 # PRIVACY & AUDIO CAPTURE
 
-When the capture warm path is active, **audio is never read or buffered into memory** while recording is inactive. After the idle grace period expires, the stream is fully closed and destroyed.
+While idle, the daemon keeps only a lightweight control context open and **never opens a recording stream or buffers microphone audio** until a voice session starts. Upon stopping or aborting a session, the capture stream is immediately disconnected.
 
 # FILES
 *~/.config/vinput/config.json*
@@ -71,4 +65,4 @@ When the capture warm path is active, **audio is never read or buffered into mem
 :   D-Bus activation service file.
 
 # SEE ALSO
-**vinput**(1), **vinput-config**(5), **fcitx5**(1), **systemctl**(1), **pipewire**(1)
+**vinput**(1), **vinput-config**(5), **fcitx5**(1), **systemctl**(1), **pulseaudio**(1)
