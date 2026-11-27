@@ -1,6 +1,6 @@
 # Playbook: Audio & Daemon Runtime Forensics
 
-The canonical execution workflow for diagnosing PipeWire audio capture defects, buffer dropouts (XRuns), swallowing initial syllables, or daemon lifecycle crashes.
+The canonical execution workflow for diagnosing PulseAudio / `pipewire-pulse` audio capture defects, buffer dropouts (XRuns), swallowing initial syllables, or daemon lifecycle crashes.
 
 > **Execution Contract**:
 > Copy these steps verbatim into your task checklist (Todo List). Follow the evidence; never apply speculative patches without a verified root cause.
@@ -27,14 +27,11 @@ The canonical execution workflow for diagnosing PipeWire audio capture defects, 
      busctl --user monitor org.fcitx.Vinput
      ```
 
-3. **PipeWire Stream & Buffer Tracing**:
-   - Run daemon with verbose PipeWire tracing:
-     ```bash
-     PIPEWIRE_DEBUG=3 /usr/bin/vinput-daemon --debug
-     ```
-   - Inspect stderr for SPA buffer overruns / underruns:
-     `spa.alsa: overrun`, `pw.stream: underrun`.
-   - Check whether `readerwriterqueue` in `src/daemon/audio/audio_capture.cpp` saturated.
+3. **libpulse Capture Stream & Buffer Tracing**:
+   - Run the daemon with debug logging and inspect `VLOG_DEBUG` output from `audio_capture.cpp` (connection, stream state, `create_stream_ms` timing).
+   - Check sound-server-side stream health (works for PulseAudio and `pipewire-pulse`):
+     `pactl list source-clients | grep -A4 vinput` (client latency); `pw-top` (pipewire-pulse XRun counters).
+   - Check whether the capture ring buffer in `src/daemon/audio/audio_capture.cpp` saturated (`DroppedSamples`).
 
 4. **Speech Onset & VAD Padding Analysis**:
    If reported defect is "swallowing initial syllables" or "dropping first words":

@@ -1,6 +1,6 @@
 ---
 name: vinput-diagnose
-description: "Diagnose crashes, XRuns, GDB traces, and PipeWire faults without compilation. 触发：崩溃排障、断音丢帧、GDB取证、/vinput-diagnose。"
+description: "Diagnose crashes, XRuns, GDB traces, and PulseAudio/pipewire-pulse faults without compilation. 触发：崩溃排障、断音丢帧、GDB取证、/vinput-diagnose。"
 ---
 
 # Runtime & Binary Forensics Engine
@@ -26,7 +26,7 @@ When a crash or abnormal termination occurs (`SIGSEGV`, `SIGABRT`, `SIGBUS`):
      vinput-daemon
    ```
 3. **Map thread topology**:
-   - **PipeWire RT Callback**: Look for buffer pointer invalidation, memory allocation during callback, or priority inversion.
+   - **libpulse RT Callback**: Look for buffer pointer invalidation, memory allocation during callback, or priority inversion in `OnStreamRead` (`audio_capture.cpp`).
    - **D-Bus Event Loop**: Check iterator invalidation, null message dereferences, or unhandled exceptions in `org.fcitx.Vinput`.
    - **ASR Inference Worker**: Check tensor shape mismatches, slice out-of-bounds, or float conversion overflows in Sherpa-ONNX/VAD.
 
@@ -44,7 +44,7 @@ When investigating prebuilt binaries (from CI or packaging) without local debug 
    ```
 2. **Inspect dynamic symbols & demangle names**:
    ```bash
-   nm -C -D /usr/lib/fcitx5/fcitx5-vinput.so | grep -E "(Vinput|PipeWire)"
+   nm -C -D /usr/lib/fcitx5/fcitx5-vinput.so | grep -E "Vinput"
    ```
 3. **Verify library dependencies and RPATH**:
    ```bash
@@ -73,20 +73,20 @@ When the daemon hangs, stalls, or drops IPC requests:
 
 ---
 
-## 4. Real-Time Audio & PipeWire Tracing
+## 4. Real-Time Audio & libpulse Tracing
 
 When audio syllables are swallowed, audio crackles, or XRuns occur:
 
-1. **Enable PipeWire stream tracing**:
+1. **Enable libpulse capture logging**: run the daemon with `--debug` and inspect `VLOG_DEBUG` lines from `audio_capture.cpp` (`capture begin create_stream_ms=...`, stream errors via `pa_strerror`).
+2. **Check sound-server-side stream health** (works for both PulseAudio and `pipewire-pulse`):
    ```bash
-   PIPEWIRE_DEBUG=3 /usr/bin/vinput-daemon --debug
+   pactl list source-clients | grep -A4 vinput
+   pw-top   # pipewire-pulse only: watch for XRun counts on the capture stream
    ```
-2. **Check SPA buffer overruns/underruns**:
-   Filter stderr for `spa.alsa: overrun` or `pw.stream: underrun`.
 3. **Inspect SPSC queue saturation**:
    Read queue saturation metrics via debug logs or CLI status: `DroppedChunks`, `DroppedSamples`.
 
-*Completion criterion*: Audio pipeline bottleneck classified (ALSA hardware underrun vs ring-buffer saturation).
+*Completion criterion*: Audio pipeline bottleneck classified (server-side underrun vs ring-buffer saturation).
 
 ---
 

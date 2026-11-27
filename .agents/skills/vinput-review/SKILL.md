@@ -94,7 +94,7 @@ gh api repos/:owner/:repo/pulls/<pr_id>/comments
 
 ### Critical Posture & Hard Invariants
 Evaluate bot suggestions dialectically. Bots frequently hallucinate:
-- Urging mutex locks or memory allocations inside PipeWire real-time audio callbacks (`audio_capture.cpp`);
+- Urging mutex locks or memory allocations inside libpulse real-time audio callbacks (`audio_capture.cpp`);
 - Demanding modern C++ across static C-ABI trampolines (`principles/c-abi-boundaries.md`);
 - Suggesting patches to vendored libraries under `3rdparty/` (violates Pristine 3rdparty rule);
 - Adding redundant defensive `if (ptr != nullptr)` checks inside trusted domain boundaries.

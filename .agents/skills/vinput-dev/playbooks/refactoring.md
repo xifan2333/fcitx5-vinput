@@ -14,7 +14,7 @@ Canonical execution workflow for restructuring existing code while strictly pres
   - D-Bus method signatures and properties (`org.fcitx.Vinput`).
   - Glaze JSON schema fields in `config.json`.
   - Three-stream helper contracts (`stdin`, `stdout`, `stderr` notification line).
-  - PipeWire real-time lock-free audio queue contracts.
+  - libpulse real-time lock-free audio capture contracts.
 
 *Completion criterion*: Invariant interfaces identified and pinned against tests or characterization assertions.
 

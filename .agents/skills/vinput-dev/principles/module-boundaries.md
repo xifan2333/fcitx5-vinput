@@ -35,7 +35,7 @@ Authoritative architectural specification governing module layering, objective c
 3. **Immutability and Pure Functions**: Prefer stateless functions operating on `std::string_view` or immutable inputs, returning structured domain values.
 
 ### B. Business Domain Contracts (`src/cli/`, `src/daemon/`, `src/addon/`, `src/gui/`)
-1. **Orchestration Only**: Domain code is strictly reserved for high-level business workflow assembly (e.g., column width orchestration, D-Bus method dispatch, PipeWire stream lifecycle).
+1. **Orchestration Only**: Domain code is strictly reserved for high-level business workflow assembly (e.g., column width orchestration, D-Bus method dispatch, libpulse stream lifecycle).
 2. **Prohibition of Hand-Rolled Parsers (Anti-Byte-Pumping)**: Domain modules are strictly forbidden from hand-rolling character-by-character scanners, raw index loops, or escape-sequence state machines. All text sanitization and measurement must be delegated to `src/common/utils/string_utils.h`.
 
 ---
