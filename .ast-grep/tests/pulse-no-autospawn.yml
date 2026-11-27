@@ -1,0 +1,7 @@
+id: pulse-no-autospawn
+valid:
+  - "pa_context_connect(ctx, nullptr, PA_CONTEXT_NOAUTOSPAWN, nullptr);"
+  - "pa_context_connect(ctx, nullptr, PA_CONTEXT_NOAUTOSPAWN | PA_CONTEXT_NOFAIL, nullptr);"
+invalid:
+  - "pa_context_connect(ctx, nullptr, PA_CONTEXT_NOFLAGS, nullptr);"
+  - "pa_context_connect(ctx, nullptr, 0, nullptr);"

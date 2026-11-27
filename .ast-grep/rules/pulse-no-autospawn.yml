@@ -1,0 +1,12 @@
+id: pulse-no-autospawn
+message: "pa_context_connect() 必须包含 PA_CONTEXT_NOAUTOSPAWN，严禁传 PA_CONTEXT_NOFLAGS 或 0 导致同步 fork/waitpid 击穿超时上限。"
+severity: error
+language: Cpp
+files:
+  - "src/**"
+rule:
+  pattern: pa_context_connect($CTX, $SRV, $FLAGS, $API)
+constraints:
+  FLAGS:
+    not:
+      regex: PA_CONTEXT_NOAUTOSPAWN
