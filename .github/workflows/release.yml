@@ -100,9 +100,8 @@ jobs:
           deb_distros = [
               ("ubuntu24.04", "ubuntu:24.04"),
               ("debian12", "debian:12"),
+              ("debian11", "debian:11"),
           ]
-          if is_dispatch and target == "deb-debian11":
-              deb_distros.append(("debian11", "debian:11"))
 
           deb_rows = []
           for distro, image in deb_distros:
@@ -311,7 +310,6 @@ jobs:
               -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld \
               -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld \
               -DVINPUT_ENABLE_LOCAL_ASR=${{ matrix.enable_local_asr }} \
-              -DVINPUT_BUILD_GUI=OFF \
               "${prefix_args[@]}" \
               -DVINPUT_PROJECT_VERSION="${{ needs.source_archive.outputs.package_version }}" \
               -DVINPUT_PACKAGE_RELEASE="${{ needs.source_archive.outputs.package_release }}" \
@@ -339,6 +337,32 @@ jobs:
               "${GITHUB_WORKSPACE}/dist/fcitx5-vinput-lite_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.arch }}.deb" \
               "${GITHUB_WORKSPACE}/dist/fcitx5-vinput-lite_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.distro }}_${{ matrix.arch }}.deb"
           fi
+
+      - name: Verify Debian package ABI & dependencies
+        shell: bash
+        run: |
+          if [[ "${{ matrix.enable_local_asr }}" == "ON" ]]; then
+            deb_file="${GITHUB_WORKSPACE}/dist/fcitx5-vinput_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.distro }}_${{ matrix.arch }}.deb"
+          else
+            deb_file="${GITHUB_WORKSPACE}/dist/fcitx5-vinput-lite_${{ needs.source_archive.outputs.package_version }}-1_${{ matrix.distro }}_${{ matrix.arch }}.deb"
+          fi
+          abi_args=(
+            --require-bin vinput-gui
+            --require-bin vinput-daemon
+            --require-bin vinput
+            --require-file 'usr/share/fcitx5-vinput/translations/zh_CN.qm'
+            --forbid-needed 'libssl.so.*'
+            --forbid-needed 'libcrypto.so.*'
+            --forbid-needed 'libpipewire-0.3.so.*'
+          )
+          if [[ "${{ matrix.distro }}" == "debian11" ]]; then
+            abi_args+=(
+              --max-glibc 2.31
+              --max-glibcxx 3.4.28
+              --forbid-needed 'libQt6*'
+            )
+          fi
+          python3 scripts/check-deb-abi.py "${deb_file}" "${abi_args[@]}"
 
       - uses: actions/upload-artifact@v6
         with:

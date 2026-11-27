@@ -21,7 +21,6 @@
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTextEdit>
-#include <QThreadPool>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -960,7 +959,7 @@ void ResourcePage::refreshAll() {
   btnRefreshResources_->setEnabled(false);
   textLog_->append(tr("Fetching remote registry..."));
 
-  QThreadPool::globalInstance()->start([self, config, generation]() {
+  RunInThreadPool([self, config, generation]() {
     if (!self) {
       return;
     }

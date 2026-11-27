@@ -132,15 +132,20 @@ flatpak kill org.fcitx.Fcitx5
 
 从 [GitHub Releases](https://github.com/fcitx5-vinput/fcitx5-vinput/releases/latest) 下载对应安装包（均提供完整版与 Lite 极简版）：
 
-- **Debian / Linux Mint / Ubuntu（其他版本）**：`.deb`（`fcitx5-vinput_*.deb` / `fcitx5-vinput-lite_*.deb`）
-- **openSUSE / Fedora（其他版本）**：`.rpm`（`fcitx5-vinput-*.rpm` / `fcitx5-vinput-lite-*.rpm`）
-- **Arch 系**：`.pkg.tar.zst`（`fcitx5-vinput-*.pkg.tar.zst` / `fcitx5-vinput-lite-*.pkg.tar.zst`）
-- **Flatpak**：`.flatpak`（`fcitx5-vinput.flatpak` / `fcitx5-vinput-lite.flatpak`）
-- **通用 Linux**：`tar.gz`（`*_bundled.tar.gz` / `fcitx5-vinput-lite-*.tar.gz`）
+| 安装包 | 适用系统 | 说明 |
+|--------|----------|------|
+| `*ubuntu24.04_{amd64,arm64}.deb` | Ubuntu 24.04+、Linux Mint 22+ | glibc 2.39+、Qt 6 |
+| `*debian12_{amd64,arm64}.deb` | Debian 12+ 及基于 Debian 12 的发行版 | glibc 2.36+、Qt 6 |
+| `*debian11_{amd64,arm64}.deb` | Debian 11、银河麒麟 V10 SP1、统信 UOS V20 等基于 glibc 2.31 的发行版 | glibc 2.31+、Qt 5（`>= 5.12`） |
+| `*.rpm` | Fedora 43+、openSUSE Leap 15.6+ | Qt 6 |
+| `*.pkg.tar.zst` | Arch Linux 及 Arch 系发行版 | Qt 6 |
+| `*.flatpak` | Flatpak 版 `org.fcitx.Fcitx5` 环境 | 沙箱扩展 |
+| `*_linux_{x86_64,aarch64}_*.tar.gz` | 通用 Linux（`x86_64` / `aarch64`） | 基于 Ubuntu 24.04 基线构建 |
 
-### 源码构建
+### 最低支持基线与源码构建
 
-**依赖：** cmake、fcitx5、libpulse、Qt6（运行时需启用 `pulseaudio` 或 `pipewire-pulse` 服务）
+- **最低运行基线：** `glibc 2.31+`（`GLIBCXX_3.4.28+`）、`PulseAudio` 或 `pipewire-pulse`（通过 `libpulse` 接入）、`Fcitx5 5.0.5+`、`Qt 5.12+` 或 `Qt 6.x`
+- **构建依赖：** `cmake`、`fcitx5 (>= 5.0.5)`、`libpulse`、`libcurl`、`libarchive`、`libsystemd`、`Qt 5 (>= 5.12)` 或 `Qt 6`（默认 `auto` 优先 Qt 6，未找到时回退 Qt 5；可用 `-DVINPUT_QT_MAJOR=6|5` 指定）
 
 ```bash
 # 完整版（带本地 sherpa-onnx 离线推理引擎）

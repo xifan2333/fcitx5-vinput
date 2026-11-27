@@ -22,3 +22,63 @@ function (vinput_add_test TEST_NAME)
     set_tests_properties(${TEST_NAME} PROPERTIES ENVIRONMENT "${ARG_ENV}")
   endif ()
 endfunction ()
+
+# vinput_find_qt(OUT_MAJOR_VAR [MAJOR auto|6|5] COMPONENTS comp1 [comp2 ...] [REQUIRED])
+# Resolves Qt6 or Qt5 (>= 5.12) according to MAJOR (defaulting to VINPUT_QT_MAJOR). Sets
+# ${OUT_MAJOR_VAR} in the caller scope to 6, 5, or "" when an optional lookup misses.
+function (vinput_find_qt OUT_MAJOR_VAR)
+  cmake_parse_arguments(PARSE_ARGV 1 ARG "REQUIRED" "MAJOR" "COMPONENTS")
+
+  set(requested_major "${ARG_MAJOR}")
+  if (NOT requested_major)
+    set(requested_major "${VINPUT_QT_MAJOR}")
+  endif ()
+
+  set(found_major "")
+
+  if (requested_major STREQUAL "6" OR requested_major STREQUAL "auto")
+    find_package(
+      Qt6
+      COMPONENTS ${ARG_COMPONENTS}
+      QUIET
+    )
+    if (Qt6_FOUND)
+      set(found_major "6")
+    elseif (requested_major STREQUAL "6" AND ARG_REQUIRED)
+      find_package(
+        Qt6
+        COMPONENTS ${ARG_COMPONENTS}
+        REQUIRED
+      )
+    endif ()
+  endif ()
+
+  if (NOT found_major AND (requested_major STREQUAL "5" OR requested_major STREQUAL "auto"))
+    find_package(
+      Qt5 5.12
+      COMPONENTS ${ARG_COMPONENTS}
+      QUIET
+    )
+    if (Qt5_FOUND)
+      set(found_major "5")
+    elseif (requested_major STREQUAL "5" AND ARG_REQUIRED)
+      find_package(
+        Qt5 5.12
+        COMPONENTS ${ARG_COMPONENTS}
+        REQUIRED
+      )
+    endif ()
+  endif ()
+
+  if (NOT found_major AND ARG_REQUIRED)
+    message(
+      FATAL_ERROR
+        "Could not find a suitable Qt installation (VINPUT_QT_MAJOR=${requested_major}; requires Qt 6 or Qt 5 >= 5.12)."
+    )
+  endif ()
+
+  set(${OUT_MAJOR_VAR}
+      "${found_major}"
+      PARENT_SCOPE
+  )
+endfunction ()

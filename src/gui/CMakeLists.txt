@@ -1,12 +1,18 @@
 cmake_minimum_required(VERSION 3.16)
 
-find_package(
-  Qt6
+vinput_find_qt(
+  VINPUT_QT_VERSION_MAJOR
   COMPONENTS Core Gui Widgets Network
   REQUIRED
 )
-find_package(Qt6LinguistTools QUIET)
-set(QT_LINGUIST_FOUND ${Qt6LinguistTools_FOUND})
+set(VINPUT_GUI_QT_MAJOR
+    "${VINPUT_QT_VERSION_MAJOR}"
+    PARENT_SCOPE
+)
+message(STATUS "Building GUI with Qt ${VINPUT_QT_VERSION_MAJOR}")
+
+find_package(Qt${VINPUT_QT_VERSION_MAJOR}LinguistTools QUIET)
+set(QT_LINGUIST_FOUND ${Qt${VINPUT_QT_VERSION_MAJOR}LinguistTools_FOUND})
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -56,9 +62,16 @@ configure_file(
 set(VINPUT_GUI_TS ${CMAKE_SOURCE_DIR}/translations/zh_CN.ts)
 
 if (QT_LINGUIST_FOUND)
-  qt_add_translation(VINPUT_GUI_QM ${VINPUT_GUI_TS})
+  if (VINPUT_QT_VERSION_MAJOR EQUAL 6)
+    qt_add_translation(VINPUT_GUI_QM ${VINPUT_GUI_TS})
+  else ()
+    qt5_add_translation(VINPUT_GUI_QM ${VINPUT_GUI_TS})
+  endif ()
 else ()
-  find_program(VINPUT_LRELEASE_EXECUTABLE NAMES lrelease-qt6 lrelease)
+  find_program(
+    VINPUT_LRELEASE_EXECUTABLE NAMES lrelease-qt${VINPUT_QT_VERSION_MAJOR} lrelease-qt6
+                                     lrelease-qt5 lrelease
+  )
   if (VINPUT_LRELEASE_EXECUTABLE)
     set(VINPUT_GUI_QM ${CMAKE_CURRENT_BINARY_DIR}/zh_CN.qm)
     add_custom_command(
@@ -69,7 +82,8 @@ else ()
     )
   else ()
     message(
-      WARNING "Neither Qt6LinguistTools nor lrelease found. GUI translations will not be built."
+      WARNING
+        "Neither Qt${VINPUT_QT_VERSION_MAJOR}LinguistTools nor lrelease found. GUI translations will not be built."
     )
   endif ()
 endif ()
@@ -84,10 +98,10 @@ target_include_directories(gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURC
 
 target_link_libraries(
   gui
-  PRIVATE Qt6::Core
-          Qt6::Gui
-          Qt6::Widgets
-          Qt6::Network
+  PRIVATE Qt${VINPUT_QT_VERSION_MAJOR}::Core
+          Qt${VINPUT_QT_VERSION_MAJOR}::Gui
+          Qt${VINPUT_QT_VERSION_MAJOR}::Widgets
+          Qt${VINPUT_QT_VERSION_MAJOR}::Network
           common
           pulse_device
           client_runtime

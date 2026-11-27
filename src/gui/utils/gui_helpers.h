@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QPushButton>
+#include <QRunnable>
 #include <QString>
 #include <QStringList>
 #include <QTableWidget>
@@ -79,22 +80,37 @@ bool SaveProviderModels(const std::string& provider_id, const QStringList& model
   return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
 }
 
+// Execute a callable on the global QThreadPool using an explicit QRunnable
+// subclass so a single implementation works on Qt 5.12+ and Qt 6.x.
+template <typename Fn> void RunInThreadPool(Fn&& fn) {
+  using FnType = std::decay_t<Fn>;
+  class FunctionRunnable final : public QRunnable {
+  public:
+    explicit FunctionRunnable(FnType func) : func_(std::move(func)) { setAutoDelete(true); }
+
+    void run() override { func_(); }
+
+  private:
+    FnType func_;
+  };
+  QThreadPool::globalInstance()->start(new FunctionRunnable(std::forward<Fn>(fn)));
+}
+
 bool ReloadAsrBackend(std::string* error = nullptr);
 
 template <typename Callback> void RunReloadAsrBackendAsync(QObject* context, Callback&& callback) {
   const QPointer<QObject> self(context);
-  QThreadPool::globalInstance()->start(
-      [self, callback = std::forward<Callback>(callback)]() mutable {
-        std::string err;
-        const bool ok = ReloadAsrBackend(&err);
-        QMetaObject::invokeMethod(
-            self, [self, callback = std::move(callback), ok, err = std::move(err)]() mutable {
-              if (!self) {
-                return;
-              }
-              callback(ok, err);
-            });
-      });
+  RunInThreadPool([self, callback = std::forward<Callback>(callback)]() mutable {
+    std::string err;
+    const bool ok = ReloadAsrBackend(&err);
+    QMetaObject::invokeMethod(
+        self, [self, callback = std::move(callback), ok, err = std::move(err)]() mutable {
+          if (!self) {
+            return;
+          }
+          callback(ok, err);
+        });
+  });
 }
 
 // Execute an asynchronous action while temporarily disabling buttons, re-enabling them upon

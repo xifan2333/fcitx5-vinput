@@ -8,6 +8,7 @@
 #include <QString>
 #include <QStringList>
 #include <QWidget>
+#include <QtGlobal>
 #include <map>
 #include <string>
 #include <utility>
@@ -197,8 +198,8 @@ bool ShowAsrProviderDialog(QWidget* parent, const QString& title, const AsrProvi
   PopulateInitialValues(initial, existing != nullptr, fields);
 
   UpdateFieldState(fields);
-  QObject::connect(fields.comboType, &QComboBox::currentIndexChanged, fields.comboType,
-                   [&fields]() { UpdateFieldState(fields); });
+  QObject::connect(fields.comboType, qOverload<int>(&QComboBox::currentIndexChanged),
+                   fields.comboType, [&fields]() { UpdateFieldState(fields); });
 
   return RunValidatingFormDialog(
       parent, title, form,

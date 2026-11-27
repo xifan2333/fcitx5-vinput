@@ -8,7 +8,6 @@
 #include <QString>
 #include <QStringList>
 #include <QTranslator>
-#include <Qt>
 #include <QtGlobal>
 
 #include "mainwindow.h"
@@ -21,8 +20,10 @@ QStringList TranslationSearchPaths() {
   QStringList paths;
   const QByteArray xdg = qgetenv("XDG_DATA_DIRS");
   if (!xdg.isEmpty()) {
-    for (const auto& p : QString::fromUtf8(xdg).split(":", Qt::SkipEmptyParts)) {
-      paths.push_back(p);
+    for (const auto& p : QString::fromUtf8(xdg).split(":")) {
+      if (!p.isEmpty()) {
+        paths.push_back(p);
+      }
     }
   }
   const QStringList std = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
@@ -90,8 +91,13 @@ int main(int argc, char* argv[]) {
   // Qt's own translations (qtbase_*) cover standard dialog buttons such as
   // OK/Cancel in QDialogButtonBox.
   QTranslator qtTranslator;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  const QString qt_translations_path = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
+#else
+  const QString qt_translations_path = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+#endif
   if (qtTranslator.load(QLocale::system(), QStringLiteral("qtbase"), QStringLiteral("_"),
-                        QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
+                        qt_translations_path)) {
     QCoreApplication::installTranslator(&qtTranslator);
   }
 

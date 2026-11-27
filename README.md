@@ -132,15 +132,20 @@ flatpak kill org.fcitx.Fcitx5
 
 Download the package for your system from [GitHub Releases](https://github.com/fcitx5-vinput/fcitx5-vinput/releases/latest) (both full and lite variants are provided):
 
-- **Debian / Linux Mint / Ubuntu (other)**: `.deb` (`fcitx5-vinput_*.deb` / `fcitx5-vinput-lite_*.deb`)
-- **openSUSE / Fedora (other)**: `.rpm` (`fcitx5-vinput-*.rpm` / `fcitx5-vinput-lite-*.rpm`)
-- **Arch-based**: `.pkg.tar.zst` (`fcitx5-vinput-*.pkg.tar.zst` / `fcitx5-vinput-lite-*.pkg.tar.zst`)
-- **Flatpak**: `.flatpak` (`fcitx5-vinput.flatpak` / `fcitx5-vinput-lite.flatpak`)
-- **Generic Linux**: `tar.gz` (`*_bundled.tar.gz` / `fcitx5-vinput-lite-*.tar.gz`)
+| Package | Applicable Systems | Notes |
+|---------|--------------------|-------|
+| `*ubuntu24.04_{amd64,arm64}.deb` | Ubuntu 24.04+, Linux Mint 22+ | glibc 2.39+, Qt 6 |
+| `*debian12_{amd64,arm64}.deb` | Debian 12+ and Debian 12-based distros | glibc 2.36+, Qt 6 |
+| `*debian11_{amd64,arm64}.deb` | Debian 11, Kylin V10 SP1, UOS V20, and other legacy Debian-based distros | glibc 2.31+, Qt 5 (`>= 5.12`) |
+| `*.rpm` | Fedora 43+, openSUSE Leap 15.6+ | Qt 6 |
+| `*.pkg.tar.zst` | Arch Linux and Arch-based distros | Qt 6 |
+| `*.flatpak` | Systems running Flatpak `org.fcitx.Fcitx5` | Sandboxed addon |
+| `*_linux_{x86_64,aarch64}_*.tar.gz` | Generic Linux (`x86_64` / `aarch64`) | Built on Ubuntu 24.04 baseline |
 
-### Build from source
+### Minimum Support Baseline & Build from Source
 
-**Dependencies:** cmake, fcitx5, libpulse, Qt6 (at runtime, ensure `pulseaudio` or `pipewire-pulse` is active)
+- **Minimum runtime baseline:** `glibc 2.31+` (`GLIBCXX_3.4.28+`), `PulseAudio` or `pipewire-pulse` (via `libpulse`), `Fcitx5 5.0.5+`, `Qt 5.12+` or `Qt 6.x`
+- **Build dependencies:** `cmake`, `fcitx5 (>= 5.0.5)`, `libpulse`, `libcurl`, `libarchive`, `libsystemd`, `Qt 5 (>= 5.12)` or `Qt 6` (default `auto` prefers Qt 6 and falls back to Qt 5; override with `-DVINPUT_QT_MAJOR=6|5`)
 
 ```bash
 # Full version (with local sherpa-onnx ASR runtime)
