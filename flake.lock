@@ -29,11 +29,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792775816,
-        "narHash": "sha256-p/iP3exnUbgdmBG+NEObTtxLIBvL3mYKxxbQTN9PNDQ=",
+        "lastModified": 1795533853,
+        "narHash": "sha256-fT5AedBBP3qo8UxZvEpWZWLGOz7BLDhfN4k6fnQpYj8=",
         "owner": "fcitx5-vinput",
         "repo": "sherpa-onnx-flake",
-        "rev": "9745ca4671b2c1242480f7c59dc403f68525e622",
+        "rev": "65b31cdeff5310909f9f25125dbad8afd5bb318b",
         "type": "github"
       },
       "original": {
