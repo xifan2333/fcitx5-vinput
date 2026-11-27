@@ -1,11 +1,12 @@
 #include "gui/utils/i18n_cache.h"
 
 #include <QMutexLocker>
-#include <QThreadPool>
 #include <string>
 #include <utility>
 
 #include "common/registry/registry_i18n.h"
+
+#include "gui/utils/gui_helpers.h"
 
 namespace vinput::gui {
 
@@ -38,7 +39,7 @@ quint64 I18nCache::LoadFromDiskSync() {
 
 quint64 I18nCache::ReloadFromDisk() {
   const quint64 generation = ++generation_;
-  QThreadPool::globalInstance()->start([this, generation]() {
+  RunInThreadPool([this, generation]() {
     const std::string locale = vinput::registry::DetectPreferredLocale();
     std::string error;
     auto map = vinput::registry::LoadMergedCachedI18nMap(locale, &error);

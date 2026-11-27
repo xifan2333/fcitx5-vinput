@@ -20,9 +20,9 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
-#include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -72,7 +72,7 @@ bool GetAsrBackendState(vinput::dbus::AsrBackendState* state, std::string* error
 
 template <typename Callback> void RunGetAsrBackendStateAsync(ControlPage* page, Callback callback) {
   const QPointer<ControlPage> self(page);
-  QThreadPool::globalInstance()->start([self, callback = std::move(callback)]() mutable {
+  RunInThreadPool([self, callback = std::move(callback)]() mutable {
     vinput::dbus::AsrBackendState state;
     std::string err;
     const bool ok = GetAsrBackendState(&state, &err);
@@ -95,18 +95,17 @@ template <typename Callback>
 void RunClientActionAsync(ControlPage* page, const std::string& client_id, bool start,
                           Callback callback) {
   const QPointer<ControlPage> self(page);
-  QThreadPool::globalInstance()->start(
-      [self, client_id, start, callback = std::move(callback)]() mutable {
-        std::string err;
-        const bool ok = CallClientLifecycleRpc(client_id, start, &err);
-        QMetaObject::invokeMethod(self,
-                                  [self, callback = std::move(callback), ok, err, start]() mutable {
-                                    if (!self) {
-                                      return;
-                                    }
-                                    callback(ok, err, start);
-                                  });
-      });
+  RunInThreadPool([self, client_id, start, callback = std::move(callback)]() mutable {
+    std::string err;
+    const bool ok = CallClientLifecycleRpc(client_id, start, &err);
+    QMetaObject::invokeMethod(self,
+                              [self, callback = std::move(callback), ok, err, start]() mutable {
+                                if (!self) {
+                                  return;
+                                }
+                                callback(ok, err, start);
+                              });
+  });
 }
 
 struct AsrDisplayContext {
@@ -134,8 +133,8 @@ QString FormatProviderDetail(const AsrProvider& provider,
   return {};
 }
 
-QList<QString> BuildProviderMarkers(const QString& id, const AsrDisplayContext& ctx) {
-  QList<QString> markers;
+QStringList BuildProviderMarkers(const QString& id, const AsrDisplayContext& ctx) {
+  QStringList markers;
   if (id == ctx.selected_id) {
     markers << ControlPage::tr("configured");
   }
@@ -155,8 +154,8 @@ QString FormatRemoteEndpoints(const vinput::dbus::AsrBackendState* backend_state
   if (backend_state == nullptr || backend_state->remote_endpoints.empty()) {
     return {};
   }
-  QList<QString> urls;
-  urls.reserve(static_cast<qsizetype>(backend_state->remote_endpoints.size()));
+  QStringList urls;
+  urls.reserve(static_cast<decltype(urls.size())>(backend_state->remote_endpoints.size()));
   for (const auto& endpoint : backend_state->remote_endpoints) {
     urls << QString::fromStdString(endpoint);
   }
@@ -1001,7 +1000,7 @@ void ControlPage::executeDaemonAction(bool restart) {
   btnDaemonStop_->setEnabled(false);
   btnDaemonRestart_->setEnabled(false);
   const QPointer<ControlPage> self(this);
-  QThreadPool::globalInstance()->start([self, restart]() {
+  RunInThreadPool([self, restart]() {
     const auto result = restart ? vinput::cli::SystemctlRestartWithDiagnostics()
                                 : vinput::cli::SystemctlStartWithDiagnostics();
     QMetaObject::invokeMethod(self, [self, result]() {
@@ -1026,7 +1025,7 @@ void ControlPage::onDaemonStop() {
   btnDaemonStart_->setEnabled(false);
   btnDaemonRestart_->setEnabled(false);
   const QPointer<ControlPage> self(this);
-  QThreadPool::globalInstance()->start([self]() {
+  RunInThreadPool([self]() {
     vinput::cli::SystemctlStop();
     QMetaObject::invokeMethod(self, [self]() {
       if (!self) {
@@ -1044,7 +1043,7 @@ void ControlPage::onDaemonRestart() {
 void ControlPage::refreshDaemonAutoStart() {
   const uint64_t seq = ++daemonAutoStartQuerySeq_;
   const QPointer<ControlPage> self(this);
-  QThreadPool::globalInstance()->start([self, seq]() {
+  RunInThreadPool([self, seq]() {
     const auto is_enabled = vinput::cli::SystemctlIsEnabled();
     QMetaObject::invokeMethod(self, [self, seq, is_enabled]() {
       if (!self || self->updatingDaemonAutoStart_ || seq != self->daemonAutoStartQuerySeq_) {
@@ -1067,7 +1066,7 @@ void ControlPage::onDaemonAutoStartToggled(bool checked) {
   chkDaemonAutoStart_->setEnabled(false);
 
   const QPointer<ControlPage> self(this);
-  QThreadPool::globalInstance()->start([self, checked]() {
+  RunInThreadPool([self, checked]() {
     const auto result = checked ? vinput::cli::SystemctlEnable() : vinput::cli::SystemctlDisable();
     QMetaObject::invokeMethod(self, [self, checked, result]() {
       if (!self) {

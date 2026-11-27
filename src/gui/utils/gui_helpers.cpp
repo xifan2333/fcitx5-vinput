@@ -25,6 +25,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QWidget>
+#include <QtGlobal>
 #include <algorithm>
 #include <functional>
 #include <map>
@@ -133,7 +134,11 @@ QNetworkReply* StartOpenAiModelsRequest(QNetworkAccessManager* nam, const std::s
   }
   const std::string url_str = vinput::url::JoinPath(base_url, vinput::llm::kOpenAiModelsPath);
   QNetworkRequest req{QUrl(QString::fromStdString(url_str))};
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
   req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+#else
+  req.setAttribute(QNetworkRequest::HTTP2AllowedAttribute, false);
+#endif
   const std::string resolved_key = vinput::interpolate::InterpolateEnv(api_key);
   if (!resolved_key.empty()) {
     const QByteArray bearer =
@@ -574,7 +579,8 @@ void SetupProviderModelCombos(QComboBox* comboProvider, QComboBox* comboModel,
   auto onActivated = [comboModel, comboProvider, spinContextLines, providers]() {
     ApplyProviderSelectionState(comboProvider, comboModel, spinContextLines, providers);
   };
-  QObject::connect(comboProvider, &QComboBox::activated, comboProvider, onActivated);
+  QObject::connect(comboProvider, qOverload<int>(&QComboBox::activated), comboProvider,
+                   onActivated);
 
   if (!currentProvider.isEmpty()) {
     const int idx = FindMatchingProviderIndex(comboProvider, currentProvider, currentModel);

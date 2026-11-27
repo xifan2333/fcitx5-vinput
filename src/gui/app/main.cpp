@@ -21,7 +21,12 @@ QStringList TranslationSearchPaths() {
   QStringList paths;
   const QByteArray xdg = qgetenv("XDG_DATA_DIRS");
   if (!xdg.isEmpty()) {
-    for (const auto& p : QString::fromUtf8(xdg).split(":", Qt::SkipEmptyParts)) {
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+    const auto split_behavior = Qt::SkipEmptyParts;
+#else
+    const auto split_behavior = QString::SkipEmptyParts;
+#endif
+    for (const auto& p : QString::fromUtf8(xdg).split(":", split_behavior)) {
       paths.push_back(p);
     }
   }
@@ -90,8 +95,13 @@ int main(int argc, char* argv[]) {
   // Qt's own translations (qtbase_*) cover standard dialog buttons such as
   // OK/Cancel in QDialogButtonBox.
   QTranslator qtTranslator;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  const QString qt_translations_path = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
+#else
+  const QString qt_translations_path = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+#endif
   if (qtTranslator.load(QLocale::system(), QStringLiteral("qtbase"), QStringLiteral("_"),
-                        QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
+                        qt_translations_path)) {
     QCoreApplication::installTranslator(&qtTranslator);
   }
 
