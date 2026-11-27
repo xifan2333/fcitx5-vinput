@@ -61,7 +61,7 @@ function (vinput_find_qt OUT_MAJOR_VAR)
     )
     if (Qt5_FOUND)
       set(found_major "5")
-    elseif (ARG_REQUIRED)
+    elseif (requested_major STREQUAL "5" AND ARG_REQUIRED)
       find_package(
         Qt5 5.12
         COMPONENTS ${ARG_COMPONENTS}

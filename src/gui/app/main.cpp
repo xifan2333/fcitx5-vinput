@@ -8,7 +8,6 @@
 #include <QString>
 #include <QStringList>
 #include <QTranslator>
-#include <Qt>
 #include <QtGlobal>
 
 #include "mainwindow.h"
@@ -21,13 +20,10 @@ QStringList TranslationSearchPaths() {
   QStringList paths;
   const QByteArray xdg = qgetenv("XDG_DATA_DIRS");
   if (!xdg.isEmpty()) {
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
-    const auto split_behavior = Qt::SkipEmptyParts;
-#else
-    const auto split_behavior = QString::SkipEmptyParts;
-#endif
-    for (const auto& p : QString::fromUtf8(xdg).split(":", split_behavior)) {
-      paths.push_back(p);
+    for (const auto& p : QString::fromUtf8(xdg).split(":")) {
+      if (!p.isEmpty()) {
+        paths.push_back(p);
+      }
     }
   }
   const QStringList std = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
