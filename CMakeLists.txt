@@ -25,7 +25,18 @@ endif ()
 include(GNUInstallDirs)
 
 option(VINPUT_ENABLE_LOCAL_ASR "Build with sherpa-onnx local ASR support" ON)
-option(VINPUT_BUILD_GUI "Build the Qt6 configuration GUI" ON)
+option(VINPUT_BUILD_GUI "Build the Qt5/Qt6 configuration GUI" ON)
+set(VINPUT_QT_MAJOR
+    "auto"
+    CACHE STRING "Qt major version for GUI and Qt tests: auto, 6, or 5"
+)
+set_property(CACHE VINPUT_QT_MAJOR PROPERTY STRINGS auto 6 5)
+if (NOT VINPUT_QT_MAJOR STREQUAL "auto"
+    AND NOT VINPUT_QT_MAJOR STREQUAL "6"
+    AND NOT VINPUT_QT_MAJOR STREQUAL "5"
+)
+  message(FATAL_ERROR "VINPUT_QT_MAJOR must be one of 'auto', '6', or '5'")
+endif ()
 option(VINPUT_ENABLE_WERROR "Treat compiler warnings as errors" OFF)
 
 find_package(Fcitx5Core REQUIRED)

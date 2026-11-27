@@ -92,23 +92,23 @@ target_include_directories(test_cli_commands PRIVATE ${CMAKE_SOURCE_DIR}/src)
 vinput_add_test(test_config_migration)
 target_compile_definitions(test_config_migration PRIVATE CMAKE_SOURCE_DIR_STR="${CMAKE_SOURCE_DIR}")
 
-# 1. GUI utility tests (optional on Qt6)
-find_package(
-  Qt6
-  COMPONENTS Core
-  QUIET
-)
-if (Qt6_FOUND)
+# 1. GUI utility tests (optional on Qt5/Qt6)
+if (DEFINED VINPUT_GUI_QT_MAJOR AND VINPUT_GUI_QT_MAJOR)
+  vinput_find_qt(VINPUT_TEST_QT_MAJOR MAJOR ${VINPUT_GUI_QT_MAJOR} COMPONENTS Core)
+else ()
+  vinput_find_qt(VINPUT_TEST_QT_MAJOR COMPONENTS Core)
+endif ()
+if (VINPUT_TEST_QT_MAJOR)
   vinput_add_test(
     test_download_worker SOURCES test_download_worker.cpp
-    ${CMAKE_SOURCE_DIR}/src/gui/utils/download_worker.cpp LIBS Qt6::Core
+    ${CMAKE_SOURCE_DIR}/src/gui/utils/download_worker.cpp LIBS Qt${VINPUT_TEST_QT_MAJOR}::Core
   )
   target_include_directories(test_download_worker PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
   set_target_properties(test_download_worker PROPERTIES AUTOMOC ON)
 
   vinput_add_test(
     test_config_manager SOURCES test_config_manager.cpp
-    ${CMAKE_SOURCE_DIR}/src/gui/utils/config_manager.cpp LIBS Qt6::Core
+    ${CMAKE_SOURCE_DIR}/src/gui/utils/config_manager.cpp LIBS Qt${VINPUT_TEST_QT_MAJOR}::Core
   )
   target_include_directories(test_config_manager PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
   set_target_properties(test_config_manager PROPERTIES AUTOMOC ON)
