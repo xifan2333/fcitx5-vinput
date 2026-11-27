@@ -24,7 +24,14 @@ readonly qt6_apt_packages=(
   qt6-tools-dev-tools
 )
 
+readonly qt5_apt_packages=(
+  qtbase5-dev
+  qttools5-dev
+  qttools5-dev-tools
+)
+
 readonly ubuntu_apt_packages=(
+  binutils
   bzip2
   ca-certificates
   clang
@@ -185,6 +192,7 @@ ubuntu24.04)
 debian12)
   apt-get update
   apt-get install -y \
+    binutils \
     bzip2 \
     ca-certificates \
     clang-16 \
@@ -237,6 +245,7 @@ debian11)
   done
   "${sudo_cmd[@]}" apt-get update
   "${sudo_cmd[@]}" apt-get install -y --no-install-recommends \
+    binutils \
     bzip2 \
     ca-certificates \
     cmake \
@@ -266,7 +275,8 @@ debian11)
     libfcitx5core-dev \
     libfcitx5config-dev \
     libfcitx5utils-dev \
-    fcitx5-modules-dev
+    fcitx5-modules-dev \
+    "${qt5_apt_packages[@]}"
   llvm_script="$(mktemp)"
   wget -qO "${llvm_script}" https://apt.llvm.org/llvm.sh
   chmod +x "${llvm_script}"
